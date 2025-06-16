@@ -9,6 +9,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from contextlib import asynccontextmanager
 
 from mcp import ClientSession, StdioServerParameters
@@ -127,7 +128,7 @@ class MCPKanbanClient:
             for project in (projects if isinstance(projects, list) else [projects]):
                 if "Task Master Test" in project.get("name", ""):
                     self.project_id = project["id"]
-                    print(f"✅ Found project: {project['name']} (ID: {self.project_id})")
+                    print(f"✅ Found project: {project['name']} (ID: {self.project_id})", file=sys.stderr)
                     break
     
     async def _find_board(self, conn: MCPConnection):
@@ -150,7 +151,7 @@ class MCPKanbanClient:
             if boards:
                 board = boards[0]  # Use first board
                 self.board_id = board["id"]
-                print(f"✅ Found board: {board['name']} (ID: {self.board_id})")
+                print(f"✅ Found board: {board['name']} (ID: {self.board_id})", file=sys.stderr)
     
     async def get_available_tasks(self) -> List[Task]:
         """Get all unassigned tasks from the board"""
@@ -232,7 +233,7 @@ class MCPKanbanClient:
                     "listId": target_list["id"]
                 })
             else:
-                print(f"⚠️  Warning: Could not find list '{target_list_name}' on board")
+                print(f"⚠️  Warning: Could not find list '{target_list_name}' on board", file=sys.stderr)
     
     async def update_task_status(self, task_id: str, status: str):
         """Update the status of a task by moving it to appropriate list"""
@@ -346,7 +347,7 @@ class MCPKanbanClient:
                         })
                         break
         except Exception as e:
-            print(f"⚠️  Warning: Could not add label '{label_name}': {e}")
+            print(f"⚠️  Warning: Could not add label '{label_name}': {e}", file=sys.stderr)
     
     async def get_board_summary(self) -> Dict[str, Any]:
         """Get summary statistics for the board"""

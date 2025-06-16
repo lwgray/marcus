@@ -5,6 +5,7 @@ Start PM Agent configured for Task Master Project
 
 import asyncio
 import os
+import sys
 from src.pm_agent_mvp_fixed import PMAgentMVP
 
 
@@ -18,14 +19,14 @@ async def start_pm_agent_for_task_master():
     pm_agent.kanban_client.project_id = "1533678301472621705"  # Your Task Master project ID
     
     # Find or create the active board
-    print("🔍 Connecting to Task Master project...")
+    print("🔍 Connecting to Task Master project...", file=sys.stderr)
     async with pm_agent.kanban_client.connect() as conn:
         # This will automatically find the board
-        print(f"✅ Connected to project: {pm_agent.kanban_client.project_id}")
-        print(f"✅ Using board: {pm_agent.kanban_client.board_id}")
+        print(f"✅ Connected to project: {pm_agent.kanban_client.project_id}", file=sys.stderr)
+        print(f"✅ Using board: {pm_agent.kanban_client.board_id}", file=sys.stderr)
     
     # Start the PM Agent server
-    print("\n🚀 Starting PM Agent for Task Master project...")
+    print("\n🚀 Starting PM Agent for Task Master project...", file=sys.stderr)
     await pm_agent.start()
 
 

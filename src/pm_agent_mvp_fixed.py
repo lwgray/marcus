@@ -6,6 +6,7 @@ Corrected MCP tool registration and error handling.
 import asyncio
 import json
 import psutil
+import sys
 import time
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -624,35 +625,35 @@ Provide 3-5 concrete steps to resolve this blocker. Be specific and actionable."
         """Start the MVP PM Agent server"""
         try:
             # Initialize components
-            print("🚀 Starting PM Agent MVP...")
+            print("🚀 Starting PM Agent MVP...", file=sys.stderr)
             
             # Note: With the refactored client, we don't keep a persistent connection
             # Each operation will create its own connection context
-            print("✅ PM Agent ready to connect to Kanban on demand")
+            print("✅ PM Agent ready to connect to Kanban on demand", file=sys.stderr)
             
             # Initialize AI engine
-            print("🤖 Initializing AI engine...")
+            print("🤖 Initializing AI engine...", file=sys.stderr)
             await self.ai_engine.initialize()
-            print("✅ AI engine ready")
+            print("✅ AI engine ready", file=sys.stderr)
             
-            print("🎯 PM Agent MVP is ready!")
-            print("📋 Available tools:")
-            print("   - ping")
-            print("   - register_agent")
-            print("   - request_next_task") 
-            print("   - report_task_progress")
-            print("   - report_blocker")
-            print("   - get_project_status")
-            print("   - get_agent_status")
-            print("   - list_registered_agents")
+            print("🎯 PM Agent MVP is ready!", file=sys.stderr)
+            print("📋 Available tools:", file=sys.stderr)
+            print("   - ping", file=sys.stderr)
+            print("   - register_agent", file=sys.stderr)
+            print("   - request_next_task", file=sys.stderr) 
+            print("   - report_task_progress", file=sys.stderr)
+            print("   - report_blocker", file=sys.stderr)
+            print("   - get_project_status", file=sys.stderr)
+            print("   - get_agent_status", file=sys.stderr)
+            print("   - list_registered_agents", file=sys.stderr)
             
             # Start MCP server
             await self.server.run()
             
         except Exception as e:
-            print(f"❌ Failed to start PM Agent MVP: {e}")
+            print(f"❌ Failed to start PM Agent MVP: {e}", file=sys.stderr)
             import traceback
-            traceback.print_exc()
+            traceback.print_exc(file=sys.stderr)
             raise
 
 

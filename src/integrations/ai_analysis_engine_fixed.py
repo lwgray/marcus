@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from typing import List, Dict, Optional, Any
 from datetime import datetime, timedelta
 
@@ -21,7 +22,7 @@ class AIAnalysisEngine:
             # Get API key from environment
             api_key = os.environ.get("ANTHROPIC_API_KEY")
             if not api_key:
-                print("⚠️  ANTHROPIC_API_KEY not found - AI features will use fallback mode")
+                print("⚠️  ANTHROPIC_API_KEY not found - AI features will use fallback mode", file=sys.stderr)
                 self.client = None
             else:
                 # Try different initialization approaches based on version
@@ -39,11 +40,11 @@ class AIAnalysisEngine:
                     else:
                         raise
                 
-                print("✅ Anthropic client initialized successfully")
+                print("✅ Anthropic client initialized successfully", file=sys.stderr)
                 
         except Exception as e:
-            print(f"⚠️  Failed to initialize Anthropic client: {e}")
-            print("   AI features will use fallback responses")
+            print(f"⚠️  Failed to initialize Anthropic client: {e}", file=sys.stderr)
+            print("   AI features will use fallback responses", file=sys.stderr)
             self.client = None
         
         self.model = "claude-3-sonnet-20241022"  # Using Sonnet for speed/cost balance
@@ -125,7 +126,7 @@ Identify risks and provide JSON:
     async def initialize(self):
         """Initialize the AI engine"""
         if not self.client:
-            print("⚠️  AI Engine running in fallback mode (no Anthropic client)")
+            print("⚠️  AI Engine running in fallback mode (no Anthropic client)", file=sys.stderr)
             return
         
         # Test connection
@@ -135,10 +136,10 @@ Identify risks and provide JSON:
                 max_tokens=10,
                 messages=[{"role": "user", "content": "test"}]
             )
-            print("✅ AI Engine connection verified")
+            print("✅ AI Engine connection verified", file=sys.stderr)
         except Exception as e:
-            print(f"⚠️  AI Engine test failed: {e}")
-            print("   Will use fallback responses")
+            print(f"⚠️  AI Engine test failed: {e}", file=sys.stderr)
+            print("   Will use fallback responses", file=sys.stderr)
             self.client = None  # Disable client if test fails
     
     async def match_task_to_agent(
@@ -195,7 +196,7 @@ Identify risks and provide JSON:
                     return task
                     
         except Exception as e:
-            print(f"AI task matching failed: {e}")
+            print(f"AI task matching failed: {e}", file=sys.stderr)
         
         # Fallback to simple matching
         return self._fallback_task_matching(available_tasks, agent)
@@ -261,7 +262,7 @@ Identify risks and provide JSON:
             instructions = await self._call_claude(prompt)
             return instructions
         except Exception as e:
-            print(f"AI instruction generation failed: {e}")
+            print(f"AI instruction generation failed: {e}", file=sys.stderr)
             return self._generate_fallback_instructions(task, agent)
     
     def _generate_fallback_instructions(self, task: Task, agent: Optional[WorkerStatus]) -> str:
@@ -325,7 +326,7 @@ Good luck with your task!"""
             response = await self._call_claude(prompt)
             return json.loads(response)
         except Exception as e:
-            print(f"AI blocker analysis failed: {e}")
+            print(f"AI blocker analysis failed: {e}", file=sys.stderr)
             return self._generate_fallback_blocker_analysis(description, severity)
     
     def _generate_fallback_blocker_analysis(self, description: str, severity: str) -> Dict[str, Any]:
@@ -372,7 +373,7 @@ Provide a helpful clarification that guides the developer."""
         try:
             return await self._call_claude(prompt)
         except Exception as e:
-            print(f"AI clarification failed: {e}")
+            print(f"AI clarification failed: {e}", file=sys.stderr)
             return f"Please clarify: {question}\n\nTask: {task.name}\nContext: {context}"
     
     async def analyze_project_risks(
@@ -431,7 +432,7 @@ Provide a helpful clarification that guides the developer."""
             return risks
             
         except Exception as e:
-            print(f"AI risk analysis failed: {e}")
+            print(f"AI risk analysis failed: {e}", file=sys.stderr)
             return self._generate_fallback_risk_analysis(project_state)
     
     def _generate_fallback_risk_analysis(self, project_state: ProjectState) -> List[ProjectRisk]:
@@ -468,5 +469,5 @@ Provide a helpful clarification that guides the developer."""
             return response.content[0].text
             
         except Exception as e:
-            print(f"Error calling Claude: {e}")
+            print(f"Error calling Claude: {e}", file=sys.stderr)
             raise
