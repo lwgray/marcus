@@ -1,0 +1,33 @@
+{
+  "option1_local_mcp_to_docker_planka": {
+    "_comment": "Run kanban-mcp locally, connecting to Planka in Docker",
+    "kanban_mcp_server": {
+      "command": "node",
+      "args": ["/Users/lwgray/dev/kanban-mcp/dist/index.js"]
+    },
+    "_note": "Make sure kanban-mcp is configured to connect to http://localhost:3333"
+  },
+  
+  "option2_docker_mcp": {
+    "_comment": "If kanban-mcp is in Docker (replace 'container-name')",
+    "kanban_mcp_server": {
+      "command": "docker",
+      "args": ["exec", "-i", "your-kanban-mcp-container-name", "node", "/app/index.js"]
+    }
+  },
+  
+  "option3_run_mcp_in_new_container": {
+    "_comment": "Start kanban-mcp in a new Docker container",
+    "kanban_mcp_server": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "--network", "kanban_default",
+        "-e", "PLANKA_URL=http://kanban:1337",
+        "-v", "/Users/lwgray/dev/kanban-mcp:/app",
+        "node:18",
+        "node", "/app/dist/index.js"
+      ]
+    }
+  }
+}

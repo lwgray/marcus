@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  pm-agent:
+    build: .
+    container_name: pm-agent-mcp-server
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - PM_AGENT_CONFIG=/app/config/pm_agent_config.json
+      - PM_AGENT_MONITORING_INTERVAL=900
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+      - ./data:/app/data
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+
+  # Development version with live code reload
+  pm-agent-dev:
+    build: .
+    container_name: pm-agent-dev
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - PM_AGENT_CONFIG=/app/config/pm_agent_config.json
+      - PM_AGENT_MONITORING_INTERVAL=900
+    volumes:
+      # Mount source code for live updates
+      - ./src:/app/src
+      - ./pm_agent_mcp_server.py:/app/pm_agent_mcp_server.py
+      - ./main.py:/app/main.py
+      - ./config:/app/config
+      - ./logs:/app/logs
+      - ./data:/app/data
+    command: python main.py --log-level DEBUG
+    restart: unless-stopped
+    stdin_open: true
+    tty: true

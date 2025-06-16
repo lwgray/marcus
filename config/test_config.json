@@ -1,0 +1,30 @@
+{
+  "kanban_mcp_server": {
+    "command": "node",
+    "args": ["/path/to/kanban-mcp-server/build/index.js"],
+    "test_project_name": "Task Master Test"
+  },
+  
+  "monitoring_interval": 300,
+  
+  "test_mode": true,
+  
+  "test_workers": [
+    {
+      "worker_id": "test-agent-001",
+      "name": "Test Agent Alpha",
+      "skills": ["python", "javascript", "testing"]
+    },
+    {
+      "worker_id": "test-agent-002", 
+      "name": "Test Agent Beta",
+      "skills": ["react", "css", "frontend"]
+    }
+  ],
+  
+  "ai_settings": {
+    "model": "claude-3-sonnet-20241022",
+    "temperature": 0.7,
+    "max_tokens": 2000
+  }
+}
