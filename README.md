@@ -1,170 +1,223 @@
 # PM Agent - AI Project Manager for Autonomous Development Teams
 
-PM Agent is an AI-powered Project Manager that coordinates autonomous software development teams through kanban board integration. It acts as a central hub, intelligently assigning tasks to AI worker agents based on their skills and managing the entire development workflow.
+<div align="center">
 
-## 🌟 Key Features
+![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
+![MCP](https://img.shields.io/badge/MCP-Protocol-green.svg)
+![License](https://img.shields.io/badge/license-MIT-orange.svg)
 
-- **Dual MCP Architecture**: Serves as both MCP Server (for worker agents) and MCP Client (for kanban integration)
-- **Intelligent Task Assignment**: Matches tasks to workers based on skills, priority, and availability
-- **AI-Enhanced Coordination**: Generates detailed task instructions and blocker resolutions using Claude
-- **Real-time Progress Tracking**: Updates kanban boards as workers progress through tasks
-- **Autonomous Workflow Support**: Enables continuous REQUEST → WORK → REPORT → REQUEST cycles
+An intelligent project management agent that coordinates autonomous development teams using the Model Context Protocol (MCP).
+
+[Quick Start](#-quick-start) • [Documentation](docs/) • [Architecture](docs/architecture.md) • [Contributing](#-contributing)
+
+</div>
+
+## 🎯 Overview
+
+PM Agent acts as an intelligent project manager that:
+- 🤖 Coordinates multiple AI worker agents
+- 📋 Manages tasks on Kanban boards (Planka)
+- 🧠 Uses AI to resolve blockers and optimize workflows
+- ⏱️ Tracks time and progress automatically
+- 🔄 Adapts task allocation based on agent capabilities
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 - Python 3.8+
 - Node.js 16+
-- Planka instance running (default: http://localhost:3333)
-- Anthropic API key
+- Docker (for Planka) or existing Planka instance
+- [kanban-mcp](https://github.com/bradrisse/mcp-kanban) installed at `../kanban-mcp`
+- Anthropic API key (optional, for AI features)
 
 ### Installation
 
 1. **Clone and setup**:
    ```bash
-   git clone https://github.com/your-repo/pm-agent.git
+   git clone https://github.com/lwgray/pm-agent.git
    cd pm-agent
-   ./scripts/setup/setup_environment.sh
+   pip install -r requirements.txt
    ```
 
-2. **Configure environment**:
+2. **Start Planka** (if not running):
    ```bash
-   # Edit .env file with your API key
-   ANTHROPIC_API_KEY=your-api-key-here
+   docker run -d --name planka -p 3333:1337 ghcr.io/plankanban/planka:latest
    ```
 
-3. **Activate virtual environment**:
+3. **Configure** (copy example and edit):
    ```bash
-   source venv/bin/activate
+   cp .env.example .env
+   # Add your ANTHROPIC_API_KEY to .env
+   ```
+
+4. **Verify setup**:
+   ```bash
+   python scripts/utilities/test_setup.py
    ```
 
 ### Running PM Agent
 
-1. **Select your project board**:
-   ```bash
-   python scripts/examples/select_task_master_board.py
-   ```
+```bash
+# Quick test - view board state
+python scripts/utilities/quick_board_view.py
 
-2. **Create test tasks** (optional):
-   ```bash
-   python scripts/examples/create_todo_app_tasks.py
-   ```
+# Interactive testing
+python scripts/utilities/interactive_test.py
 
-3. **Start PM Agent**:
-   ```bash
-   python start_pm_agent_task_master.py
-   ```
+# Start PM Agent as MCP server
+python start_pm_agent_task_master.py
+
+# Run full simulation
+python scripts/test_pm_agent_end_to_end.py
+```
 
 ## 📚 Documentation
 
-Comprehensive documentation is available in the `docs/` directory:
+- 📖 [Quick Start Guide](docs/quick-start.md) - Get running in 5 minutes
+- 🏗️ [Architecture Overview](docs/architecture.md) - System design and components  
+- 🔧 [Configuration Guide](docs/configuration.md) - All configuration options
+- 🤝 [Worker Agents Guide](docs/worker-agents.md) - Building compatible agents
+- 🧪 [Testing Guide](docs/testing-guide.md) - Testing approaches and tools
+- 🔌 [Kanban MCP Integration](docs/kanban-mcp-integration.md) - Understanding kanban-mcp
+- 🚀 [Beyond MVP](docs/beyond-mvp.md) - Roadmap and scaling
+- 📋 [API Reference](docs/api-reference.md) - Complete tool documentation
+- 🐛 [Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
 
-- [Overview](docs/overview.md) - System overview and concepts
-- [Getting Started](docs/getting-started.md) - Detailed setup guide
-- [Architecture](docs/architecture.md) - Technical architecture
-- [Configuration](docs/configuration.md) - Configuration options
-- [API Reference](docs/api-reference.md) - MCP tools documentation
-- [Worker Agents](docs/worker-agents.md) - Building compatible agents
-- [Troubleshooting](docs/troubleshooting.md) - Common issues
+## 🛠️ Key Features
 
-## 🤖 Example Worker Agent
+### For Worker Agents
+- **Register & Join**: Declare capabilities and join the team
+- **Request Tasks**: Get assigned work matching your skills
+- **Report Progress**: Update task status in real-time
+- **Handle Blockers**: Get AI-powered help when stuck
 
-```python
-import asyncio
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+### For Project Management
+- **Smart Task Distribution**: Match tasks to agent capabilities
+- **Real-time Monitoring**: Track progress across all agents
+- **AI-Powered Resolution**: Resolve blockers intelligently
+- **Automatic Time Tracking**: Monitor task duration
 
-async def worker_loop():
-    # Connect to PM Agent
-    server_params = StdioServerParameters(
-        command="python",
-        args=["pm_agent_mvp_fixed.py"]
-    )
-    
-    async with stdio_client(server_params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            
-            # Register
-            await session.call_tool("register_agent", {
-                "agent_id": "backend_dev_1",
-                "name": "Backend Developer",
-                "role": "Backend Developer",
-                "skills": ["python", "fastapi", "postgresql"]
-            })
-            
-            # Work loop
-            while True:
-                # Request task
-                task = await session.call_tool("request_next_task", {
-                    "agent_id": "backend_dev_1"
-                })
-                
-                if task["has_task"]:
-                    # Work on task...
-                    # Report progress...
-                    # Complete task...
-                    pass
-                
-                await asyncio.sleep(30)
+## 🏗️ Architecture
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│  Worker Agent   │     │  Worker Agent   │     │  Worker Agent   │
+│   (Frontend)    │     │   (Backend)     │     │     (QA)        │
+└────────┬────────┘     └────────┬────────┘     └────────┬────────┘
+         │ MCP                   │ MCP                   │ MCP
+         └───────────────┬───────┴───────────────────────┘
+                         │
+                ┌────────▼────────┐
+                │    PM Agent     │
+                │  (MCP Server)   │
+                └────────┬────────┘
+                         │
+            ┌────────────┼────────────┐
+            │            │            │
+    ┌───────▼──────┐ ┌───▼────┐ ┌────▼─────┐
+    │ Kanban MCP   │ │   AI   │ │ Monitor  │
+    │   Client     │ │ Engine │ │          │
+    └───────┬──────┘ └───┬────┘ └──────────┘
+            │            │
+    ┌───────▼──────┐ ┌───▼────┐
+    │   Planka     │ │ Claude │
+    │   (Kanban)   │ │  API   │
+    └──────────────┘ └────────┘
 ```
 
-## 🏗️ Project Structure
+## 📁 Project Structure
 
 ```
 pm-agent/
 ├── src/                    # Core source code
-│   ├── core/              # Core models and logic
-│   ├── integrations/      # External integrations
-│   ├── config/            # Configuration
-│   └── enhancements/      # Additional features
-├── scripts/               # Utility scripts
-│   ├── setup/            # Setup and installation
-│   ├── examples/         # Example scripts
-│   └── testing/          # Test scripts
+│   ├── core/              # Models and business logic
+│   ├── integrations/      # MCP & Kanban clients
+│   ├── monitoring/        # Project monitoring
+│   ├── config/            # Configuration management
+│   └── communication/     # Agent communication hub
+├── scripts/               
+│   ├── examples/          # Example usage scripts
+│   ├── setup/             # Setup and configuration
+│   ├── testing/           # Test utilities
+│   └── utilities/         # Helper tools
 ├── tests/                 # Test suite
+│   ├── unit/             # Unit tests
+│   └── integration/      # Integration tests
 ├── docs/                  # Documentation
-└── config_pm_agent.json   # Project configuration
+├── config/               # Configuration files
+└── archive/              # Archived/old code
 ```
 
 ## 🧪 Testing
 
-Run the test suite:
 ```bash
-# All tests
-python run_tests.py
+# Run all tests
+pytest
 
-# Unit tests only
-python run_tests.py --type unit
+# Run with coverage
+pytest --cov=src --cov-report=html
 
-# With coverage
-python run_tests.py --coverage
+# Interactive testing
+python scripts/utilities/interactive_test.py
+
+# Full simulation
+python scripts/test_pm_agent_end_to_end.py
 ```
 
 ## 🔧 Configuration
 
-PM Agent can be configured via:
-1. `config_pm_agent.json` - Project and board settings
-2. Environment variables - Credentials and API keys
-3. Command line arguments - Runtime options
+### Environment Variables (.env)
+```env
+ANTHROPIC_API_KEY=your-api-key
+PLANKA_BASE_URL=http://localhost:3333
+PLANKA_AGENT_EMAIL=demo@demo.demo
+PLANKA_AGENT_PASSWORD=demo
+```
 
-See [Configuration Guide](docs/configuration.md) for details.
+### Project Configuration (config_pm_agent.json)
+```json
+{
+  "project_id": "your-project-id",
+  "board_id": "your-board-id",
+  "project_name": "Your Project",
+  "auto_find_board": false
+}
+```
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please:
 1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-## 📝 License
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
-[Your License Here]
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
-- Built with [MCP (Model Context Protocol)](https://modelcontextprotocol.io)
-- Powered by [Claude](https://anthropic.com)
-- Kanban integration via [Planka](https://planka.app)
+- Built with [Model Context Protocol](https://modelcontextprotocol.io/) by Anthropic
+- Kanban board integration via [Planka](https://planka.app/)
+- MCP Kanban server by [kanban-mcp](https://github.com/bradrisse/mcp-kanban)
+
+## 🚧 Status
+
+Currently in MVP stage. The system is functional and includes:
+- ✅ Complete PM Agent MCP server implementation
+- ✅ Full kanban board integration
+- ✅ AI-powered task management
+- ✅ Worker agent communication
+- ✅ Comprehensive test suite
+- ✅ Documentation
+
+See [Beyond MVP](docs/beyond-mvp.md) for the roadmap to production.
+
+---
+
+<div align="center">
+Built with ❤️ for autonomous development teams
+</div>

@@ -26,6 +26,10 @@ build/
 *.swo
 *~
 
+# Node
+node_modules/
+package-lock.json
+
 # Environment
 .env
 .env.*

@@ -1,7 +1,8 @@
 {
   "project_id": "1533678301472621705",
-  "board_id": "1533859887128249584",
   "project_name": "Task Master Test",
+  "board_id": "1533859887128249584",
+  "board_name": "test",
   "auto_find_board": false,
   "planka": {
     "base_url": "http://localhost:3333",
