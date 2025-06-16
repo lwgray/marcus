@@ -4,7 +4,62 @@ This document details all MCP tools exposed by PM Agent for worker agents to use
 
 ## Available Tools
 
-### 1. register_agent
+### 1. ping
+Check PM Agent status and connectivity.
+
+**Parameters:**
+```json
+{
+  "echo": "string"           // Optional message to echo back (optional)
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "pong": true,
+  "status": "online",
+  "service": "PM Agent MVP",
+  "timestamp": "2024-01-10T12:00:00",
+  "version": "1.0.0",
+  "uptime": "2h 15m 30s",
+  "echo": "Your message",
+  "echo_received": true,
+  "health": {
+    "status": "healthy",
+    "ai_engine": "available",
+    "memory_usage": {
+      "rss_mb": 125.5,
+      "percent": 2.1
+    }
+  },
+  "capabilities": {
+    "agent_registration": true,
+    "task_assignment": true,
+    "progress_tracking": true,
+    "blocker_resolution": true,
+    "ai_assistance": true
+  },
+  "workload": {
+    "registered_agents": 3,
+    "active_assignments": 2,
+    "total_completed_tasks": 15,
+    "agents_available": 1
+  }
+}
+```
+
+**Example:**
+```python
+# Basic ping
+result = await session.call_tool("ping", {})
+
+# Ping with echo
+result = await session.call_tool("ping", {"echo": "Hello PM Agent!"})
+```
+
+### 2. register_agent
 Register a new agent with the PM system.
 
 **Parameters:**

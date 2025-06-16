@@ -364,6 +364,20 @@ class MCPKanbanClient:
             
             return {}
     
+    async def check_connection(self) -> bool:
+        """Check if connection to kanban-mcp is possible"""
+        try:
+            async with self.connect() as conn:
+                # Try a simple operation to verify connection
+                result = await conn.call_tool("mcp_kanban_project_board_manager", {
+                    "action": "get_projects",
+                    "page": 1,
+                    "perPage": 1
+                })
+                return hasattr(result, 'content') and result.content is not None
+        except Exception:
+            return False
+    
     # Helper methods remain the same
     def _is_available_task(self, card: Dict[str, Any]) -> bool:
         """Check if a task is in an available state"""

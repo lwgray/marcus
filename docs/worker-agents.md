@@ -13,6 +13,7 @@ This guide explains how to build AI worker agents that integrate with PM Agent f
 ### Basic Worker Structure
 ```python
 import asyncio
+import json
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -33,6 +34,9 @@ class WorkerAgent:
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 
+                # Check PM Agent health
+                await self._check_health(session)
+                
                 # Register with PM Agent
                 await self._register(session)
                 
@@ -40,6 +44,18 @@ class WorkerAgent:
                 while True:
                     await self._work_cycle(session)
                     await asyncio.sleep(30)  # Brief pause between cycles
+    
+    async def _check_health(self, session):
+        """Check PM Agent connectivity and health"""
+        result = await session.call_tool("ping", {"echo": f"Hello from {self.agent_id}"})
+        response = json.loads(result.content[0].text)
+        
+        if not response.get("pong"):
+            raise ConnectionError("PM Agent not responding to ping")
+        
+        print(f"✅ Connected to {response.get('service')} v{response.get('version')}")
+        print(f"   Uptime: {response.get('uptime')}")
+        return response
 ```
 
 ## Example Worker Agents

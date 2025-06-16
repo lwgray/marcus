@@ -5,6 +5,8 @@ Corrected MCP tool registration and error handling.
 
 import asyncio
 import json
+import psutil
+import time
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -35,6 +37,9 @@ class PMAgentMVP:
         # State tracking (simplified)
         self.agent_tasks: Dict[str, TaskAssignment] = {}
         self.agent_status: Dict[str, WorkerStatus] = {}
+        
+        # Track start time for uptime calculation
+        self._start_time = time.time()
         
         # Register MVP tools only
         self._register_mvp_tools()
@@ -133,6 +138,17 @@ class PMAgentMVP:
                         "properties": {},
                         "required": []
                     }
+                ),
+                Tool(
+                    name="ping",
+                    description="Check PM Agent status and connectivity",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "echo": {"type": "string", "description": "Optional message to echo back", "default": ""}
+                        },
+                        "required": []
+                    }
                 )
             ]
         
@@ -180,6 +196,11 @@ class PMAgentMVP:
                     
                 elif name == "list_registered_agents":
                     result = await self._list_registered_agents()
+                    
+                elif name == "ping":
+                    result = await self._ping(
+                        arguments.get("echo", "")
+                    )
                     
                 else:
                     result = {"error": f"Unknown tool: {name}"}
@@ -527,6 +548,78 @@ Provide 3-5 concrete steps to resolve this blocker. Be specific and actionable."
 4. Escalate to team lead if needed
 5. Document the resolution once complete"""
     
+    def _get_uptime(self) -> str:
+        """Calculate uptime since PM Agent started"""
+        if hasattr(self, '_start_time'):
+            uptime_seconds = int(time.time() - self._start_time)
+            hours = uptime_seconds // 3600
+            minutes = (uptime_seconds % 3600) // 60
+            seconds = uptime_seconds % 60
+            return f"{hours}h {minutes}m {seconds}s"
+        return "unknown"
+    
+    def _get_memory_usage(self) -> dict:
+        """Get current memory usage of the PM Agent process"""
+        try:
+            process = psutil.Process()
+            memory_info = process.memory_info()
+            return {
+                "rss_mb": round(memory_info.rss / 1024 / 1024, 2),
+                "percent": round(process.memory_percent(), 2)
+            }
+        except:
+            return {"rss_mb": 0, "percent": 0}
+    
+    async def _ping(self, echo: str = "") -> dict:
+        """Handle ping requests to check PM Agent status"""
+        try:
+            # Basic PM Agent health status
+            status = {
+                "status": "online",
+                "service": "PM Agent MVP",
+                "timestamp": datetime.utcnow().isoformat(),
+                "version": "1.0.0",
+                "uptime": self._get_uptime() if hasattr(self, '_start_time') else "unknown",
+                "health": {
+                    "status": "healthy",
+                    "ai_engine": "available" if self.ai_engine else "unavailable",
+                    "memory_usage": self._get_memory_usage()
+                },
+                "capabilities": {
+                    "agent_registration": True,
+                    "task_assignment": True,
+                    "progress_tracking": True,
+                    "blocker_resolution": True,
+                    "ai_assistance": bool(self.ai_engine)
+                },
+                "workload": {
+                    "registered_agents": len(self.agent_status),
+                    "active_assignments": len(self.agent_tasks),
+                    "total_completed_tasks": sum(agent.completed_tasks_count for agent in self.agent_status.values()),
+                    "agents_available": len([a for a in self.agent_status.values() if a.worker_id not in self.agent_tasks])
+                }
+            }
+            
+            # Add echo message if provided
+            if echo:
+                status["echo"] = echo
+                status["echo_received"] = True
+            
+            return {
+                "success": True,
+                "pong": True,
+                **status
+            }
+            
+        except Exception as e:
+            return {
+                "success": False,
+                "pong": False,
+                "error": str(e),
+                "status": "error",
+                "service": "PM Agent MVP"
+            }
+    
     async def start(self):
         """Start the MVP PM Agent server"""
         try:
@@ -544,6 +637,7 @@ Provide 3-5 concrete steps to resolve this blocker. Be specific and actionable."
             
             print("🎯 PM Agent MVP is ready!")
             print("📋 Available tools:")
+            print("   - ping")
             print("   - register_agent")
             print("   - request_next_task") 
             print("   - report_task_progress")
