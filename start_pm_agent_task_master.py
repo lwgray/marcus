@@ -5,7 +5,7 @@ Start PM Agent configured for Task Master Project
 
 import asyncio
 import os
-from pm_agent_mvp_fixed import PMAgentMVP
+from src.pm_agent_mvp_fixed import PMAgentMVP
 
 
 async def start_pm_agent_for_task_master():
