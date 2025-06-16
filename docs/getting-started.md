@@ -6,29 +6,45 @@ This guide will help you set up and run PM Agent for the first time.
 
 ### Required Software
 - Python 3.8+
-- Node.js 16+ (for Kanban MCP)
+- Node.js 18+
+- Docker
 - Git
 
-### Required Services
-- Planka instance (kanban board)
-  - Default: http://localhost:3333
-  - Credentials: demo@demo.demo / demo
+### Optional
 - Anthropic API key (for AI features)
-
-### Required Projects
-- [kanban-mcp](https://github.com/your-repo/kanban-mcp) - Kanban MCP server
-- PM Agent (this project)
 
 ## Installation
 
-### 1. Clone the Repository
+### 1. Install kanban-mcp (includes Planka)
+
 ```bash
-git clone https://github.com/your-repo/pm-agent.git
-cd pm-agent
+# Clone kanban-mcp repository
+git clone https://github.com/bradrisse/kanban-mcp.git
+cd kanban-mcp
+
+# Install dependencies and build
+npm install
+npm run build
+
+# Start Planka (runs in Docker)
+npm run up
 ```
 
-### 2. Set Up Python Environment
+Planka will be available at:
+- URL: http://localhost:3333
+- Login: demo@demo.demo
+- Password: demo
+
+### 2. Install PM Agent
+
 ```bash
+# Go back to parent directory
+cd ..
+
+# Clone PM Agent repository
+git clone https://github.com/lwgray/pm-agent.git
+cd pm-agent
+
 # Create virtual environment
 python -m venv venv
 
@@ -39,13 +55,14 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 3. Configure Environment
+### 3. Configure PM Agent
+
 ```bash
 # Copy example environment file
 cp .env.example .env
 
-# Edit .env with your settings
-# Required: ANTHROPIC_API_KEY
+# Edit .env and add your ANTHROPIC_API_KEY (optional)
+# If not provided, AI features will be disabled
 ```
 
 ### 4. Set Up Kanban MCP

@@ -25,27 +25,39 @@ PM Agent acts as an intelligent project manager that:
 
 ### Prerequisites
 - Python 3.8+
-- Node.js 16+
-- Docker (for Planka) or existing Planka instance
-- [kanban-mcp](https://github.com/bradrisse/mcp-kanban) installed at `../kanban-mcp`
+- Node.js 18+
+- Docker (for Planka, included with kanban-mcp)
+- Git
 - Anthropic API key (optional, for AI features)
 
 ### Installation
 
-1. **Clone and setup**:
+1. **Clone both repositories**:
    ```bash
+   # Clone kanban-mcp (includes Planka)
+   git clone https://github.com/bradrisse/kanban-mcp.git
+   cd kanban-mcp
+   npm install
+   npm run build
+   
+   # Clone PM Agent
+   cd ..
    git clone https://github.com/lwgray/pm-agent.git
    cd pm-agent
    pip install -r requirements.txt
    ```
 
-2. **Start Planka** (if not running):
+2. **Start Planka** (from kanban-mcp directory):
    ```bash
-   docker run -d --name planka -p 3333:1337 ghcr.io/plankanban/planka:latest
+   cd ../kanban-mcp
+   npm run up
    ```
+   - Access at: http://localhost:3333
+   - Login: demo@demo.demo / demo
 
-3. **Configure** (copy example and edit):
+3. **Configure PM Agent**:
    ```bash
+   cd pm-agent
    cp .env.example .env
    # Add your ANTHROPIC_API_KEY to .env
    ```
@@ -201,8 +213,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 
 - Built with [Model Context Protocol](https://modelcontextprotocol.io/) by Anthropic
-- Kanban board integration via [Planka](https://planka.app/)
-- MCP Kanban server by [kanban-mcp](https://github.com/bradrisse/mcp-kanban)
+- Kanban integration via [kanban-mcp](https://github.com/bradrisse/kanban-mcp) which includes:
+  - [Planka](https://planka.app/) - Open source kanban board (runs in Docker)
+  - MCP server for programmatic board access
 
 ## 🚧 Status
 
