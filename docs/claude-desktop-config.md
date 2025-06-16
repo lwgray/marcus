@@ -22,7 +22,8 @@ To use PM Agent with Claude Desktop, add the following configuration to your MCP
       "PYTHONPATH": "/Users/lwgray/dev/pm-agent",
       "PLANKA_BASE_URL": "http://localhost:3333",
       "PLANKA_AGENT_EMAIL": "demo@demo.demo",
-      "PLANKA_AGENT_PASSWORD": "demo"
+      "PLANKA_AGENT_PASSWORD": "demo",
+      "ANTHROPIC_API_KEY": "your-api-key-here"
     }
   }
 }
@@ -40,7 +41,8 @@ To use PM Agent with Claude Desktop, add the following configuration to your MCP
       "PYTHONPATH": "/Users/lwgray/dev/pm-agent",
       "PLANKA_BASE_URL": "http://localhost:3333",
       "PLANKA_AGENT_EMAIL": "demo@demo.demo",
-      "PLANKA_AGENT_PASSWORD": "demo"
+      "PLANKA_AGENT_PASSWORD": "demo",
+      "ANTHROPIC_API_KEY": "your-api-key-here"
     }
   }
 }
@@ -60,7 +62,8 @@ If you prefer using the start script that auto-configures the Task Master projec
       "PYTHONPATH": "/Users/lwgray/dev/pm-agent",
       "PLANKA_BASE_URL": "http://localhost:3333",
       "PLANKA_AGENT_EMAIL": "demo@demo.demo",
-      "PLANKA_AGENT_PASSWORD": "demo"
+      "PLANKA_AGENT_PASSWORD": "demo",
+      "ANTHROPIC_API_KEY": "your-api-key-here"
     }
   }
 }

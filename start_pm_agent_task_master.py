@@ -25,9 +25,18 @@ async def start_pm_agent_for_task_master():
         print(f"✅ Connected to project: {pm_agent.kanban_client.project_id}", file=sys.stderr)
         print(f"✅ Using board: {pm_agent.kanban_client.board_id}", file=sys.stderr)
     
-    # Start the PM Agent server
+    # Initialize PM Agent
     print("\n🚀 Starting PM Agent for Task Master project...", file=sys.stderr)
-    await pm_agent.start()
+    await pm_agent.initialize()
+    
+    # Run as stdio server
+    from mcp.server.stdio import stdio_server
+    async with stdio_server() as (read_stream, write_stream):
+        await pm_agent.server.run(
+            read_stream,
+            write_stream,
+            pm_agent.server.create_initialization_options()
+        )
 
 
 if __name__ == "__main__":

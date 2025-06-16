@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from mcp.server import Server
+from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 import mcp.types as types
 
@@ -621,8 +622,8 @@ Provide 3-5 concrete steps to resolve this blocker. Be specific and actionable."
                 "service": "PM Agent MVP"
             }
     
-    async def start(self):
-        """Start the MVP PM Agent server"""
+    async def initialize(self):
+        """Initialize PM Agent components"""
         try:
             # Initialize components
             print("🚀 Starting PM Agent MVP...", file=sys.stderr)
@@ -647,16 +648,26 @@ Provide 3-5 concrete steps to resolve this blocker. Be specific and actionable."
             print("   - get_agent_status", file=sys.stderr)
             print("   - list_registered_agents", file=sys.stderr)
             
-            # Start MCP server
-            await self.server.run()
-            
         except Exception as e:
-            print(f"❌ Failed to start PM Agent MVP: {e}", file=sys.stderr)
+            print(f"❌ Failed to initialize PM Agent MVP: {e}", file=sys.stderr)
             import traceback
             traceback.print_exc(file=sys.stderr)
             raise
 
 
-if __name__ == "__main__":
+async def main():
+    """Main entry point for stdio server"""
     agent = PMAgentMVP()
-    asyncio.run(agent.start())
+    await agent.initialize()
+    
+    # Run as stdio server
+    async with stdio_server() as (read_stream, write_stream):
+        await agent.server.run(
+            read_stream,
+            write_stream,
+            agent.server.create_initialization_options()
+        )
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
