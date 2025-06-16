@@ -17,14 +17,7 @@ To use PM Agent with Claude Desktop, add the following configuration to your MCP
   "pm-agent": {
     "command": "/Users/lwgray/opt/anaconda3/envs/pm-agent/bin/python",
     "args": ["-m", "src.pm_agent_mvp_fixed"],
-    "cwd": "/Users/lwgray/dev/pm-agent",
-    "env": {
-      "PYTHONPATH": "/Users/lwgray/dev/pm-agent",
-      "PLANKA_BASE_URL": "http://localhost:3333",
-      "PLANKA_AGENT_EMAIL": "demo@demo.demo",
-      "PLANKA_AGENT_PASSWORD": "demo",
-      "ANTHROPIC_API_KEY": "your-api-key-here"
-    }
+    "cwd": "/Users/lwgray/dev/pm-agent"
   }
 }
 ```
@@ -36,14 +29,7 @@ To use PM Agent with Claude Desktop, add the following configuration to your MCP
   "pm-agent": {
     "command": "python3",
     "args": ["-m", "src.pm_agent_mvp_fixed"],
-    "cwd": "/Users/lwgray/dev/pm-agent",
-    "env": {
-      "PYTHONPATH": "/Users/lwgray/dev/pm-agent",
-      "PLANKA_BASE_URL": "http://localhost:3333",
-      "PLANKA_AGENT_EMAIL": "demo@demo.demo",
-      "PLANKA_AGENT_PASSWORD": "demo",
-      "ANTHROPIC_API_KEY": "your-api-key-here"
-    }
+    "cwd": "/Users/lwgray/dev/pm-agent"
   }
 }
 ```
@@ -57,23 +43,22 @@ If you prefer using the start script that auto-configures the Task Master projec
   "pm-agent": {
     "command": "/Users/lwgray/opt/anaconda3/envs/pm-agent/bin/python",
     "args": ["start_pm_agent_task_master.py"],
-    "cwd": "/Users/lwgray/dev/pm-agent",
-    "env": {
-      "PYTHONPATH": "/Users/lwgray/dev/pm-agent",
-      "PLANKA_BASE_URL": "http://localhost:3333",
-      "PLANKA_AGENT_EMAIL": "demo@demo.demo",
-      "PLANKA_AGENT_PASSWORD": "demo",
-      "ANTHROPIC_API_KEY": "your-api-key-here"
-    }
+    "cwd": "/Users/lwgray/dev/pm-agent"
   }
 }
 ```
 
 ## Environment Variables
 
-Make sure these environment variables are set:
+PM Agent loads configuration from a `.env` file in the project root. Copy `.env.example` to `.env` and configure:
 
-- `PYTHONPATH`: Path to the PM Agent directory
+```bash
+cd /Users/lwgray/dev/pm-agent
+cp .env.example .env
+# Edit .env with your settings
+```
+
+The `.env` file should contain:
 - `PLANKA_BASE_URL`: URL where Planka is running (default: http://localhost:3333)
 - `PLANKA_AGENT_EMAIL`: Planka login email (default: demo@demo.demo)
 - `PLANKA_AGENT_PASSWORD`: Planka login password (default: demo)

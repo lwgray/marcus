@@ -5,11 +5,16 @@ Corrected MCP tool registration and error handling.
 
 import asyncio
 import json
+import os
 import psutil
 import sys
 import time
 from datetime import datetime
 from typing import Dict, List, Optional
+
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server

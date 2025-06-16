@@ -6,6 +6,11 @@ Start PM Agent configured for Task Master Project
 import asyncio
 import os
 import sys
+
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
 from src.pm_agent_mvp_fixed import PMAgentMVP
 
 
