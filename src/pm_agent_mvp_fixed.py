@@ -28,6 +28,7 @@ from src.core.models import (
 from src.integrations.mcp_kanban_client_refactored import MCPKanbanClient
 from src.integrations.ai_analysis_engine_fixed import AIAnalysisEngine
 from src.config.settings import Settings
+from src.core.workspace_manager import WorkspaceManager
 
 
 class PMAgentMVP:
@@ -40,6 +41,7 @@ class PMAgentMVP:
         # Core components (simplified)
         self.kanban_client = MCPKanbanClient()
         self.ai_engine = AIAnalysisEngine()
+        self.workspace_manager = WorkspaceManager()
         
         # State tracking (simplified)
         self.agent_tasks: Dict[str, TaskAssignment] = {}
@@ -300,6 +302,9 @@ class PMAgentMVP:
             # Generate basic instructions
             instructions = await self._generate_basic_instructions(optimal_task)
             
+            # Get workspace assignment data
+            workspace_data = self.workspace_manager.get_task_assignment_data(agent_id)
+            
             # Create assignment
             assignment = TaskAssignment(
                 task_id=optimal_task.id,
@@ -311,7 +316,9 @@ class PMAgentMVP:
                 dependencies=optimal_task.dependencies,
                 assigned_to=agent_id,
                 assigned_at=datetime.now(),
-                due_date=optimal_task.due_date
+                due_date=optimal_task.due_date,
+                workspace_path=workspace_data['workspace_path'],
+                forbidden_paths=workspace_data['forbidden_paths']
             )
             
             # Track assignment
@@ -329,7 +336,9 @@ class PMAgentMVP:
                     "instructions": assignment.instructions,
                     "priority": assignment.priority.value,
                     "estimated_hours": assignment.estimated_hours,
-                    "due_date": assignment.due_date.isoformat() if assignment.due_date else None
+                    "due_date": assignment.due_date.isoformat() if assignment.due_date else None,
+                    "workspace_path": assignment.workspace_path,
+                    "forbidden_paths": assignment.forbidden_paths
                 }
             }
             

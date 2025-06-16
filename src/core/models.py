@@ -89,6 +89,12 @@ class TaskAssignment:
     assigned_to: str
     assigned_at: datetime
     due_date: Optional[datetime]
+    workspace_path: Optional[str] = None
+    forbidden_paths: List[str] = None
+    
+    def __post_init__(self):
+        if self.forbidden_paths is None:
+            self.forbidden_paths = []
 
 
 @dataclass

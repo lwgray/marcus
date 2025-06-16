@@ -67,11 +67,40 @@ class MCPKanbanClient:
         self.settings = Settings()
         self._node_path: Optional[str] = None
         self._kanban_mcp_path = "/Users/lwgray/dev/kanban-mcp/dist/index.js"
+        
+        # Load configuration from config_pm_agent.json
+        self._load_config()
+        
+        # Use config values or defaults for Planka credentials
         self._env = {
-            "PLANKA_BASE_URL": "http://localhost:3333",
-            "PLANKA_AGENT_EMAIL": "demo@demo.demo", 
-            "PLANKA_AGENT_PASSWORD": "demo"
+            "PLANKA_BASE_URL": os.environ.get("PLANKA_BASE_URL", "http://localhost:3333"),
+            "PLANKA_AGENT_EMAIL": os.environ.get("PLANKA_AGENT_EMAIL", "demo@demo.demo"), 
+            "PLANKA_AGENT_PASSWORD": os.environ.get("PLANKA_AGENT_PASSWORD", "demo")
         }
+    
+    def _load_config(self):
+        """Load configuration from config_pm_agent.json"""
+        config_path = "config_pm_agent.json"
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                    self.project_id = config.get("project_id")
+                    self.board_id = config.get("board_id")
+                    
+                    # Also update Planka credentials if provided
+                    if "planka" in config:
+                        planka_config = config["planka"]
+                        if "base_url" in planka_config:
+                            os.environ["PLANKA_BASE_URL"] = planka_config["base_url"]
+                        if "email" in planka_config:
+                            os.environ["PLANKA_AGENT_EMAIL"] = planka_config["email"]
+                        if "password" in planka_config:
+                            os.environ["PLANKA_AGENT_PASSWORD"] = planka_config["password"]
+                    
+                    print(f"✅ Loaded config: project_id={self.project_id}, board_id={self.board_id}", file=sys.stderr)
+            except Exception as e:
+                print(f"⚠️ Error loading config_pm_agent.json: {e}", file=sys.stderr)
     
     def _find_node_executable(self) -> str:
         """Find Node.js executable in common locations"""
@@ -114,6 +143,11 @@ class MCPKanbanClient:
     
     async def _find_project(self, conn: MCPConnection):
         """Find the Task Master Test project"""
+        # Skip if already set from config
+        if self.project_id:
+            print(f"✅ Using configured project ID: {self.project_id}", file=sys.stderr)
+            return
+            
         result = await conn.call_tool("mcp_kanban_project_board_manager", {
             "action": "get_projects",
             "page": 1,
@@ -133,6 +167,11 @@ class MCPKanbanClient:
     
     async def _find_board(self, conn: MCPConnection):
         """Find a board for the project"""
+        # Skip if already set from config
+        if self.board_id:
+            print(f"✅ Using configured board ID: {self.board_id}", file=sys.stderr)
+            return
+            
         if not self.project_id:
             return
             

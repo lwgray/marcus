@@ -20,13 +20,13 @@ async def start_pm_agent_for_task_master():
     # Initialize PM Agent
     pm_agent = PMAgentMVP()
     
-    # Configure for Task Master project
-    pm_agent.kanban_client.project_id = "1533678301472621705"  # Your Task Master project ID
+    # The kanban client will load config from config_pm_agent.json automatically
+    # No need to override project_id here
     
-    # Find or create the active board
+    # Verify connection
     print("🔍 Connecting to Task Master project...", file=sys.stderr)
     async with pm_agent.kanban_client.connect() as conn:
-        # This will automatically find the board
+        # This will use the board_id and project_id from config
         print(f"✅ Connected to project: {pm_agent.kanban_client.project_id}", file=sys.stderr)
         print(f"✅ Using board: {pm_agent.kanban_client.board_id}", file=sys.stderr)
     
