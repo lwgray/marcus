@@ -24,5 +24,5 @@ RUN mkdir -p logs data
 # Expose MCP stdio interface (not a network port)
 # MCP uses stdio, not HTTP
 
-# Default command - run PM Agent MCP server
-CMD ["python", "pm_agent_mvp_fixed.py"]
+# Default command - run PM Agent MCP server with src module
+CMD ["python", "-m", "src.pm_agent_mvp_fixed"]

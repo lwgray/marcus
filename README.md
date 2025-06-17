@@ -69,6 +69,16 @@ PM Agent acts as an intelligent project manager that:
 
 ### Running PM Agent
 
+#### With Claude Desktop or Claude Code
+
+PM Agent works seamlessly with Anthropic's Claude applications:
+
+- **[Claude Desktop Setup](docs/CLAUDE_DESKTOP_SETUP.md)** - For project planning and coordination
+- **[Claude Code Setup](docs/CLAUDE_CODE_SETUP.md)** - For actual development work
+- **[Quick Setup Guide](README_SETUP.md)** - Get started in 2 minutes
+
+#### Standalone Testing
+
 ```bash
 # Quick test - view board state
 python scripts/utilities/quick_board_view.py
@@ -85,6 +95,12 @@ python scripts/test_pm_agent_end_to_end.py
 
 ## 📚 Documentation
 
+### Setup Guides
+- 🚀 [Quick Setup](README_SETUP.md) - Setup for Claude Desktop/Code in 2 minutes
+- 🖥️ [Claude Desktop Setup](docs/CLAUDE_DESKTOP_SETUP.md) - Detailed Claude Desktop configuration
+- 💻 [Claude Code Setup](docs/CLAUDE_CODE_SETUP.md) - Claude Code with security boundaries
+
+### Core Documentation
 - 📖 [Quick Start Guide](docs/quick-start.md) - Get running in 5 minutes
 - 🏗️ [Architecture Overview](docs/architecture.md) - System design and components  
 - 🔧 [Configuration Guide](docs/configuration.md) - All configuration options

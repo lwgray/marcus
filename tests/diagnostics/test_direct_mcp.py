@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Test direct MCP connection to isolate the issue
+Test direct MCP connection to isolate connection issues
+This bypasses all PM Agent wrappers and tests raw MCP connection
 """
 
 import asyncio
@@ -9,15 +10,55 @@ import sys
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+# Add parent directories to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 async def test_direct():
-    """Test direct connection like the working quick_board_view script"""
+    """Test direct connection to kanban-mcp server"""
     print("🔍 Testing Direct MCP Connection")
     print("=" * 60)
     
-    # Use same setup as working script
+    # Try different node paths
+    node_paths = [
+        "node",  # System node
+        "/opt/homebrew/bin/node",  # Homebrew on M1
+        "/usr/local/bin/node",  # Homebrew on Intel
+        "/Users/lwgray/.nvm/versions/node/v22.14.0/bin/node"  # NVM
+    ]
+    
+    kanban_paths = [
+        "../kanban-mcp/dist/index.js",  # Relative path
+        os.path.expanduser("~/dev/kanban-mcp/dist/index.js"),  # Absolute path
+    ]
+    
+    # Find working node
+    node_cmd = None
+    for path in node_paths:
+        if os.path.exists(path) or os.system(f"which {path} > /dev/null 2>&1") == 0:
+            node_cmd = path
+            break
+    
+    if not node_cmd:
+        print("❌ Could not find node executable")
+        return
+    
+    # Find kanban-mcp
+    kanban_path = None
+    for path in kanban_paths:
+        if os.path.exists(path):
+            kanban_path = path
+            break
+    
+    if not kanban_path:
+        print("❌ Could not find kanban-mcp/dist/index.js")
+        return
+    
+    print(f"Using node: {node_cmd}")
+    print(f"Using kanban-mcp: {kanban_path}")
+    
     server_params = StdioServerParameters(
-        command="/Users/lwgray/.nvm/versions/node/v22.14.0/bin/node",
-        args=["/Users/lwgray/dev/kanban-mcp/dist/index.js"],
+        command=node_cmd,
+        args=[kanban_path],
         env={
             "PLANKA_BASE_URL": "http://localhost:3333",
             "PLANKA_AGENT_EMAIL": "demo@demo.demo",
@@ -45,6 +86,9 @@ async def test_direct():
                         {"action": "get_projects", "page": 1, "perPage": 5}
                     )
                     print("✅ Tool called successfully")
+                    
+                    if hasattr(result, 'content') and result.content:
+                        print(f"\nResult: {result.content[0].text[:200]}...")
                     
     except asyncio.TimeoutError:
         print("❌ Connection timed out!")

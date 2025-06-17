@@ -1,231 +1,172 @@
-# PM Agent Test Suite - Detailed Walkthrough
+# PM Agent Test Suite Documentation
 
 ## Overview
 
-This test suite verifies that the AI Project Manager Agent works correctly. We have two types of tests:
+The PM Agent test suite is organized into three main categories:
 
-1. **Unit Tests** - Test individual components in isolation
-2. **Integration Tests** - Test how components work together
+1. **Unit Tests** (`tests/unit/`) - Test individual components in isolation
+2. **Integration Tests** (`tests/integration/`) - Test component interactions
+3. **Diagnostic Tests** (`tests/diagnostics/`) - Quick scripts for troubleshooting
 
-## Understanding the Tests
+## Test Structure
 
-### Unit Tests
+### Unit Tests (`tests/unit/`)
 
-#### 1. **Model Tests** (`test_models.py`)
-These verify our data structures work correctly:
-- Creating tasks with proper fields
-- Tracking worker status and capacity  
-- Calculating project health metrics
+Tests that run without external dependencies:
 
-**What happens:**
-```python
-# We create a task object
-task = Task(id="TASK-001", name="Build feature", ...)
+- **`test_simple_client_unit.py`** ✅ CURRENT
+  - Tests SimpleMCPKanbanClient internal methods
+  - Tests card-to-task conversion, status mapping, error handling
+  - No MCP connection required
+  
+- **`test_workspace_manager.py`** ✅ CURRENT
+  - Tests workspace security and path validation
+  - Tests configuration loading
+  
+- **`test_models.py`** ✅ CURRENT
+  - Tests data models (Task, Worker, etc.)
+  
+- **`test_settings.py`** ✅ CURRENT
+  - Tests configuration management
 
-# We verify it initialized correctly
-assert task.status == TaskStatus.TODO
-assert task.dependencies == []  # Empty by default
-```
+- **`test_ai_analysis_engine.py`** ✅ CURRENT
+  - Tests AI engine initialization and prompts
 
-#### 2. **Settings Tests** (`test_settings.py`)
-These verify configuration management:
-- Loading defaults
-- Reading from files
-- Environment variable overrides
+- **`test_kanban_client_unit.py`** ❌ OUTDATED
+  - Tests old refactored client (should be removed)
 
-**What happens:**
-```python
-# Settings loads from file
-settings = Settings("config.json")
+### Integration Tests (`tests/integration/`)
 
-# Environment variables override file
-os.environ["PM_AGENT_MONITORING_INTERVAL"] = "600"
-assert settings.get("monitoring_interval") == 600
-```
+Tests that require external services:
 
-#### 3. **AI Analysis Tests** (`test_ai_analysis_engine.py`)
-These are the most complex, testing our AI decision-making:
+- **`test_simple_client_comprehensive.py`** ✅ CURRENT
+  - Comprehensive test suite for SimpleMCPKanbanClient
+  - Tests all board operations: tasks, assignments, summaries
+  - Requires running kanban-mcp server
+  
+- **`test_pm_agent_integration.py`** ✅ CURRENT
+  - Tests PM Agent MCP server integration
+  - Tests agent registration, task assignment, progress reporting
 
-**Test 1: Task Assignment**
-```
-1. AI receives: available tasks + worker profile + project state
-2. AI analyzes: skills match, priority, capacity
-3. AI returns: best task for that worker
-4. Fallback: If API fails, picks highest priority
-```
+- **`test_kanban_mcp_all_commands.py`** ⚠️ LEGACY
+  - Tests all 8 MCP tools comprehensively
+  - Uses old refactored client (has timeout issues)
+  - Keep for reference but don't rely on it
 
-**Test 2: Instruction Generation**
-```
-1. Senior dev gets: concise, advanced instructions
-2. Junior dev gets: detailed, step-by-step guide
-3. Both include: relevant technical details
-```
+- **`test_mcp_kanban_client.py`** ❌ OUTDATED
+  - Tests old refactored client (should be removed)
 
-**Test 3: Blocker Analysis**
-```
-1. Critical blocker reported (e.g., database down)
-2. AI identifies: root cause, impact, resolution steps
-3. AI decides: needs escalation? who to involve?
-4. Returns: action plan with time estimates
-```
+- **`test_real_kanban_integration.py`** ❌ OUTDATED
+  - Old integration test (should be removed)
 
-### Integration Tests
+### Diagnostic Tests (`tests/diagnostics/`)
 
-These test complete workflows:
+Quick scripts for troubleshooting issues:
 
-#### **Test 1: Task Assignment Flow**
-```
-Agent requests work → PM finds best task → AI generates instructions 
-→ Kanban updated → Notifications sent → Agent receives assignment
-```
+- **`test_board_id.py`** ✅ DIAGNOSTIC
+  ```bash
+  python tests/diagnostics/test_board_id.py
+  ```
+  - Verifies board_id and project_id are loaded from config
+  - Quick check for configuration issues
 
-#### **Test 2: Blocker Escalation**
-```
-Agent reports blocker → AI analyzes severity → Resolution task created
-→ Status updated to blocked → Stakeholders notified → Escalation triggered
-```
+- **`test_simple_client.py`** ✅ DIAGNOSTIC
+  ```bash
+  python tests/diagnostics/test_simple_client.py
+  ```
+  - Tests SimpleMCPKanbanClient basic operations
+  - Shows board statistics and available tasks
+  - Can test task assignment
 
-#### **Test 3: Task Dependencies**
-```
-Task A completed → System checks dependencies → Task B unblocked
-→ Task B owner notified → Board updated → Next work available
-```
+- **`test_direct_mcp.py`** ✅ DIAGNOSTIC
+  ```bash
+  python tests/diagnostics/test_direct_mcp.py
+  ```
+  - Tests raw MCP connection bypassing all wrappers
+  - Useful for isolating connection issues
+  - Tries multiple node and kanban-mcp paths
 
-## Running the Tests
+- **`test_minimal_mcp.py`** ✅ DIAGNOSTIC
+  ```bash
+  python tests/diagnostics/test_minimal_mcp.py
+  ```
+  - Minimal test matching the working pattern
+  - Good baseline for troubleshooting
 
-### Setup
-```bash
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate
+- **`test_stdio_protocol.py`** ✅ DIAGNOSTIC
+  ```bash
+  python tests/diagnostics/test_stdio_protocol.py
+  ```
+  - Low-level stdio protocol testing
+  - Shows raw JSON-RPC communication
+  - Useful for protocol-level debugging
 
-# Install dependencies
-pip install -r requirements.txt
-```
+- **`test_workspace_integration.py`** ✅ DIAGNOSTIC
+  ```bash
+  python tests/diagnostics/test_workspace_integration.py
+  ```
+  - Tests workspace security features
+  - Verifies PM Agent source protection
+  - Shows workspace assignments
+
+## Running Tests
 
 ### Run All Tests
 ```bash
-# Basic run
-pytest
-
-# With output (see what's happening)
-pytest -v -s
-
-# Specific test file
-pytest tests/unit/test_ai_analysis_engine.py -v
+pytest tests/
 ```
 
-### Run with Coverage
+### Run Unit Tests Only
 ```bash
-# Generate coverage report
-pytest --cov=src --cov-report=html
+pytest tests/unit/
+```
 
-# View report
-open htmlcov/index.html
+### Run Integration Tests
+```bash
+pytest tests/integration/
 ```
 
 ### Run Specific Test
 ```bash
-# Run one test method
-pytest tests/unit/test_ai_analysis_engine.py::TestAIAnalysisEngine::test_match_task_to_agent_urgent_priority -v -s
+pytest tests/unit/test_simple_client_unit.py -v
 ```
 
-## What the Tests Verify
+### Run Diagnostic Scripts
+```bash
+# Quick config check
+python tests/diagnostics/test_board_id.py
 
-### 1. **Correctness**
-- Right task goes to right person
-- Blockers escalate when critical
-- Dependencies unblock properly
+# Test client functionality
+python tests/diagnostics/test_simple_client.py
 
-### 2. **Resilience**
-- System handles API failures gracefully
-- Falls back to reasonable defaults
-- Doesn't crash on bad input
-
-### 3. **Integration**
-- Components communicate properly
-- Data flows correctly between systems
-- Notifications reach right channels
-
-### 4. **Business Logic**
-- Urgent tasks prioritized
-- Skills matched appropriately
-- Capacity limits respected
-
-## Interpreting Test Output
-
-### Success Output
-```
-tests/unit/test_ai_analysis_engine.py::TestAIAnalysisEngine::test_match_task_to_agent_urgent_priority PASSED
+# Debug connection issues
+python tests/diagnostics/test_direct_mcp.py
 ```
 
-### Failure Output
-```
-FAILED tests/unit/test_ai_analysis_engine.py::TestAIAnalysisEngine::test_match_task_to_agent_urgent_priority
-    AssertionError: assert 'TASK-002' == 'TASK-003'
-```
-This means the AI didn't pick the expected task.
+## Test Requirements
 
-### With -s Flag (Shows Prints)
-```
-=== TEST: Complete Task Assignment Flow ===
+### For Unit Tests
+- No external requirements
+- Mock objects used for external dependencies
 
-STEP 1: Setting up test data...
-STEP 2: Configuring AI responses...
-STEP 3: Agent requesting next task...
-Result: {'has_task': True, 'assignment': {...}}
+### For Integration Tests
+- kanban-mcp server must be accessible
+- Planka must be running on localhost:3333
+- Valid `config_pm_agent.json` with board_id and project_id
 
-STEP 4: Verifying integration points...
-✅ All integration points verified successfully!
-```
+### For Diagnostic Tests
+- Same as integration tests
+- Designed to help troubleshoot when things aren't working
 
-## Common Test Patterns
+## Continuous Integration
 
-### 1. **Mocking External Services**
-We mock Claude API and Kanban to test without dependencies:
-```python
-ai_engine._call_claude = AsyncMock(return_value=json.dumps({...}))
-```
-
-### 2. **Fixtures**
-Reusable test data:
-```python
-@pytest.fixture
-def sample_tasks(self):
-    return [Task(...), Task(...)]
-```
-
-### 3. **Async Testing**
-Many operations are async:
-```python
-@pytest.mark.asyncio
-async def test_something(self):
-    result = await async_function()
-```
+Tests marked as ✅ CURRENT should be included in CI/CD pipelines.
+Tests marked as ⚠️ LEGACY or ❌ OUTDATED should be excluded or removed.
 
 ## Adding New Tests
 
-When adding features, add tests:
+1. **Unit Tests**: Add to `tests/unit/` if testing internal logic without external dependencies
+2. **Integration Tests**: Add to `tests/integration/` if testing with real services
+3. **Diagnostic Tests**: Add to `tests/diagnostics/` if creating troubleshooting tools
 
-1. **Unit test** for the new component
-2. **Integration test** for how it fits in
-3. **Edge cases** (errors, limits, etc.)
-
-Example:
-```python
-async def test_new_feature(self):
-    # Arrange - Set up test data
-    
-    # Act - Call the feature
-    
-    # Assert - Verify results
-```
-
-## Debugging Failed Tests
-
-1. Run with `-s` to see print statements
-2. Add more prints to understand flow
-3. Check mock configurations
-4. Verify test data is realistic
-
-Remember: Tests are documentation! They show how the system should work.
+Always use SimpleMCPKanbanClient for new kanban-related tests, not the old refactored client.

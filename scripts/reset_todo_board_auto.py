@@ -284,7 +284,7 @@ async def reset_board():
     
     server_params = StdioServerParameters(
         command="node",
-        args=["../kanban-mcp/dist/index.js"],
+        args=["/Users/lwgray/dev/kanban-mcp/dist/index.js"],
         env=os.environ.copy()
     )
     

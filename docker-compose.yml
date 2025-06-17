@@ -32,7 +32,7 @@ services:
       - ./config:/app/config
       - ./logs:/app/logs
       - ./data:/app/data
-    command: python main.py --log-level DEBUG
+    command: python -m src.pm_agent_mvp_fixed --log-level DEBUG
     restart: unless-stopped
     stdin_open: true
     tty: true
