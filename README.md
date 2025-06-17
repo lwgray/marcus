@@ -8,6 +8,23 @@
 
 An intelligent project management agent that coordinates autonomous development teams using the Model Context Protocol (MCP).
 
+</div>
+
+## 🎈 New User? Start Here!
+
+<div align="center">
+
+| Guide | Description | Time |
+|-------|-------------|------|
+| [**🚀 EASY SETUP**](EASY_SETUP.md) | Step-by-step setup guide | 5 min |
+| [**🖼️ With Pictures**](docs/SETUP_WITH_PICTURES.md) | Visual guide with examples | 10 min |
+| [**📋 Quick Reference**](QUICK_REFERENCE.md) | One-page cheat sheet | Print it! |
+| [**🔧 Troubleshooting**](docs/TROUBLESHOOTING_FLOWCHART.md) | Fix common problems | As needed |
+
+</div>
+
+<div align="center">
+
 [Quick Start](#-quick-start) • [Documentation](docs/) • [Architecture](docs/architecture.md) • [Contributing](#-contributing)
 
 </div>
@@ -22,6 +39,8 @@ PM Agent acts as an intelligent project manager that:
 - 🔄 Adapts task allocation based on agent capabilities
 
 ## 🚀 Quick Start
+
+> **🎈 First Time User?** Check out our [**Super Easy Setup Guide**](EASY_SETUP.md) with step-by-step instructions!
 
 ### Prerequisites
 - Python 3.8+
