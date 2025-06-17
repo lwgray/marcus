@@ -11,15 +11,18 @@ PM Agent can be used with both Claude Desktop and Claude Code. Choose based on y
 
 ### 1. Edit Configuration
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+Add to Claude Desktop config file:
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+- Linux: `~/.config/Claude/claude_desktop_config.json`
 
 ```json
 {
   "mcpServers": {
     "pm-agent": {
-      "command": "/Users/lwgray/opt/anaconda3/envs/pm-agent/bin/python",
+      "command": "/path/to/your/python",
       "args": ["-m", "src.pm_agent_mvp_fixed"],
-      "cwd": "/Users/lwgray/dev/pm-agent"
+      "cwd": "/path/to/pm-agent"
     }
   }
 }
@@ -40,8 +43,14 @@ Ask Claude: "Can you use the pm-agent ping tool?"
 Run in terminal:
 
 ```bash
-claude mcp add pm-agent /Users/lwgray/opt/anaconda3/envs/pm-agent/bin/python -m src.pm_agent_mvp_fixed
+claude mcp add pm-agent /path/to/your/python -m src.pm_agent_mvp_fixed
 ```
+
+Examples:
+- Conda: `~/anaconda3/envs/pm-agent/bin/python`
+- Pipenv: `pipenv run python`
+- Virtualenv: `./venv/bin/python`
+- System: `python3`
 
 ### 2. Verify
 
@@ -51,12 +60,12 @@ In Claude Code, ask to use the pm-agent ping tool.
 
 1. **Install PM Agent**:
    ```bash
-   cd /Users/lwgray/dev/pm-agent
+   cd /path/to/pm-agent
    pip install -r requirements.txt
    ```
 
 2. **Configure PM Agent**:
-   Create `config_pm_agent.json`:
+   Create `config_pm_agent.json` in PM Agent directory:
    ```json
    {
      "project_id": "your-project-id",
@@ -66,7 +75,7 @@ In Claude Code, ask to use the pm-agent ping tool.
 
 3. **Start Planka**:
    ```bash
-   cd /Users/lwgray/dev/kanban-mcp
+   cd /path/to/kanban-mcp
    npm run up
    ```
 
@@ -92,12 +101,30 @@ Both environments get access to:
 ## Troubleshooting
 
 ### Python Not Found
-Use full path to Python:
-- Conda: `/Users/lwgray/opt/anaconda3/envs/pm-agent/bin/python`
-- System: `/usr/bin/python3` or `python3`
+Find your Python path:
+```bash
+# For conda environments
+conda activate your-env
+which python
+
+# For pipenv
+pipenv --venv
+
+# For system Python
+which python3
+```
+
+Common paths:
+- Conda: `~/anaconda3/envs/your-env/bin/python` or `~/miniconda3/envs/your-env/bin/python`
+- Pipenv: Use `pipenv run python` from project directory
+- Virtualenv: `./venv/bin/python` or `.venv/bin/python`
+- System: `python3` or `/usr/bin/python3`
 
 ### Module Not Found
-Ensure running from PM Agent directory or set PYTHONPATH.
+Ensure running from PM Agent directory or set PYTHONPATH:
+```bash
+export PYTHONPATH=/path/to/pm-agent:$PYTHONPATH
+```
 
 ### Board ID Not Set
 Check `config_pm_agent.json` exists with valid IDs.

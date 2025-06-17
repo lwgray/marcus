@@ -9,7 +9,7 @@ The PM Agent includes security boundaries to prevent autonomous agents from acce
 ### Option 1: Run from PM Agent Directory (Secure)
 
 ```bash
-claude mcp add pm-agent /Users/lwgray/opt/anaconda3/envs/pm-agent/bin/python -m src.pm_agent_mvp_fixed
+claude mcp add pm-agent /path/to/your/python -m src.pm_agent_mvp_fixed
 ```
 
 This runs the PM Agent from its installation directory WITHOUT giving the agent access to it. The WorkspaceManager automatically protects the PM Agent directory.
@@ -23,7 +23,37 @@ If you want to set a specific working directory for the agent:
 mkdir -p ~/pm-agent-workspace
 
 # Add MCP server with client workspace as working directory
-claude mcp add pm-agent -d ~/pm-agent-workspace -- /Users/lwgray/opt/anaconda3/envs/pm-agent/bin/python /Users/lwgray/dev/pm-agent/src/pm_agent_mvp_fixed.py
+claude mcp add pm-agent -d ~/pm-agent-workspace -- /path/to/python /path/to/pm-agent/src/pm_agent_mvp_fixed.py
+```
+
+## Finding Your Python Path
+
+### For Conda Environments
+```bash
+conda activate your-env
+which python
+# Example output: /home/user/anaconda3/envs/pm-agent/bin/python
+```
+
+### For Virtualenv
+```bash
+source venv/bin/activate
+which python
+# Example output: /home/user/projects/pm-agent/venv/bin/python
+```
+
+### For Pipenv
+```bash
+cd /path/to/pm-agent
+pipenv --venv
+# Example output: /home/user/.local/share/virtualenvs/pm-agent-x7d8s9f/
+# Use the Python binary in that directory's bin folder
+```
+
+### For System Python
+```bash
+which python3
+# Example output: /usr/bin/python3
 ```
 
 ## What Each Flag Does
@@ -63,7 +93,14 @@ After setting up, you can verify security is working:
 ## Troubleshooting
 
 ### "No module named src"
-Make sure you're running from the PM Agent directory or using the full path to the script.
+Make sure you're running from the PM Agent directory or using the full path to the script:
+```bash
+# If running from PM Agent directory
+claude mcp add pm-agent python3 -m src.pm_agent_mvp_fixed
+
+# Or use full path
+claude mcp add pm-agent python3 /path/to/pm-agent/src/pm_agent_mvp_fixed.py
+```
 
 ### "Board ID not set"
 Ensure `config_pm_agent.json` exists in the PM Agent directory with:
@@ -86,7 +123,7 @@ You can also run PM Agent in Docker for additional isolation:
 
 ```bash
 # Build the image
-cd /Users/lwgray/dev/pm-agent
+cd /path/to/pm-agent
 docker build -t pm-agent:latest .
 
 # Run with MCP
@@ -99,3 +136,59 @@ claude mcp add pm-agent-docker docker run -i --rm -v $(pwd)/config_pm_agent.json
 2. **Use separate workspaces**: Create dedicated directories for agent work
 3. **Monitor logs**: Check PM Agent logs for security violations
 4. **Test isolation**: Regularly verify agents cannot access forbidden paths
+
+## Examples for Different Setups
+
+### Conda Environment
+```bash
+# Activate your environment first
+conda activate pm-agent-env
+
+# Find Python path
+which python
+# Output: /home/user/anaconda3/envs/pm-agent-env/bin/python
+
+# Add to Claude Code
+claude mcp add pm-agent /home/user/anaconda3/envs/pm-agent-env/bin/python -m src.pm_agent_mvp_fixed
+```
+
+### Pipenv
+```bash
+# From PM Agent directory
+cd /path/to/pm-agent
+
+# Add using pipenv
+claude mcp add pm-agent pipenv run python -m src.pm_agent_mvp_fixed
+```
+
+### Virtualenv
+```bash
+# Create and activate virtualenv
+cd /path/to/pm-agent
+python3 -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Add to Claude Code
+claude mcp add pm-agent ./venv/bin/python -m src.pm_agent_mvp_fixed
+```
+
+### System Python
+```bash
+# Simple setup with system Python
+claude mcp add pm-agent python3 -m src.pm_agent_mvp_fixed
+```
+
+## Understanding the Security Model
+
+Even though the PM Agent runs from its own directory, it's still secure because:
+
+1. **WorkspaceManager** detects its own location at startup
+2. Adds its directory to a forbidden paths list
+3. Intercepts all file operations from agents
+4. Blocks access to forbidden paths
+5. Assigns safe workspaces for agent work
+
+This means the `-d` flag is more about where the agent should work, not about security. The security is enforced at the application level, not by the working directory.

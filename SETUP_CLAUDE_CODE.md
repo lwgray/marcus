@@ -5,8 +5,14 @@
 Run this command to add PM Agent to Claude Code:
 
 ```bash
-claude mcp add pm-agent /Users/lwgray/opt/anaconda3/envs/pm-agent/bin/python -m src.pm_agent_mvp_fixed
+claude mcp add pm-agent /path/to/your/python -m src.pm_agent_mvp_fixed
 ```
+
+Replace `/path/to/your/python` with your Python executable:
+- Conda: `~/anaconda3/envs/your-env/bin/python`
+- Pipenv: `pipenv run python` (run from PM Agent directory)
+- Virtualenv: `./venv/bin/python`
+- System: `python3`
 
 This setup:
 - ✅ Runs PM Agent from its directory
@@ -24,15 +30,24 @@ If you want agents to work in a specific directory:
 mkdir -p ~/agent-workspace
 
 # Add PM Agent with workspace
-claude mcp add pm-agent -d ~/agent-workspace -- /Users/lwgray/opt/anaconda3/envs/pm-agent/bin/python /Users/lwgray/dev/pm-agent/src/pm_agent_mvp_fixed.py
+claude mcp add pm-agent -d ~/agent-workspace -- /path/to/python /path/to/pm-agent/src/pm_agent_mvp_fixed.py
 ```
 
 ### Using System Python
 
-If you don't have conda:
+If you're using system Python:
 
 ```bash
 claude mcp add pm-agent python3 -m src.pm_agent_mvp_fixed
+```
+
+### With Pipenv
+
+If using pipenv from PM Agent directory:
+
+```bash
+cd /path/to/pm-agent
+claude mcp add pm-agent pipenv run python -m src.pm_agent_mvp_fixed
 ```
 
 ## What NOT to Do
@@ -40,7 +55,38 @@ claude mcp add pm-agent python3 -m src.pm_agent_mvp_fixed
 ❌ **Don't set working directory to PM Agent:**
 ```bash
 # BAD - gives agent access to PM Agent source
-claude mcp add pm-agent -d /Users/lwgray/dev/pm-agent -- python -m src.pm_agent_mvp_fixed
+claude mcp add pm-agent -d /path/to/pm-agent -- python -m src.pm_agent_mvp_fixed
+```
+
+## Finding Your Python Path
+
+### For Conda
+```bash
+conda activate your-env
+which python
+# Example output: /home/user/anaconda3/envs/pm-agent/bin/python
+```
+
+### For Virtualenv
+```bash
+# If using virtualenv
+source venv/bin/activate
+which python
+# Example output: /home/user/projects/pm-agent/venv/bin/python
+```
+
+### For Pipenv
+```bash
+cd /path/to/pm-agent
+pipenv --venv
+# Example output: /home/user/.local/share/virtualenvs/pm-agent-x7d8s9f/
+# Use: /home/user/.local/share/virtualenvs/pm-agent-x7d8s9f/bin/python
+```
+
+### For System Python
+```bash
+which python3
+# Example output: /usr/bin/python3
 ```
 
 ## Verify Security

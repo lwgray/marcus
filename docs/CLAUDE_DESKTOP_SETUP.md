@@ -8,20 +8,20 @@ Claude Desktop uses a different configuration format than Claude Code. This guid
 
 1. **PM Agent installed and working**:
    ```bash
-   cd /Users/lwgray/dev/pm-agent
+   cd /path/to/pm-agent
    python -m src.pm_agent_mvp_fixed
    # Should see "PM Agent MVP is ready!" message
    ```
 
 2. **Planka running** (for kanban board):
    ```bash
-   cd /Users/lwgray/dev/kanban-mcp
+   cd /path/to/kanban-mcp
    npm run up
    ```
 
 3. **Configuration file exists**:
    ```bash
-   cat /Users/lwgray/dev/pm-agent/config_pm_agent.json
+   cat /path/to/pm-agent/config_pm_agent.json
    # Should show project_id and board_id
    ```
 
@@ -30,28 +30,37 @@ Claude Desktop uses a different configuration format than Claude Code. This guid
 ### 1. Open Claude Desktop Configuration
 
 1. Open Claude Desktop
-2. Go to Settings (⌘+, on Mac)
+2. Go to Settings (⌘+, on Mac, Ctrl+, on Windows/Linux)
 3. Navigate to "Developer" section
 4. Click "Edit Config" under MCP Servers
 
 ### 2. Add PM Agent Configuration
 
-Add this to your `claude_desktop_config.json`:
+Add this to your config file:
+
+**Location of config file:**
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+- Linux: `~/.config/Claude/claude_desktop_config.json`
 
 ```json
 {
   "mcpServers": {
     "pm-agent": {
-      "command": "/Users/lwgray/opt/anaconda3/envs/pm-agent/bin/python",
+      "command": "/path/to/your/python",
       "args": ["-m", "src.pm_agent_mvp_fixed"],
-      "cwd": "/Users/lwgray/dev/pm-agent",
+      "cwd": "/path/to/pm-agent",
       "env": {
-        "PYTHONPATH": "/Users/lwgray/dev/pm-agent"
+        "PYTHONPATH": "/path/to/pm-agent"
       }
     }
   }
 }
 ```
+
+Replace the paths with your actual paths:
+- `/path/to/your/python`: Your Python executable
+- `/path/to/pm-agent`: Where you cloned/installed PM Agent
 
 ### Alternative Configurations
 
@@ -62,7 +71,33 @@ Add this to your `claude_desktop_config.json`:
     "pm-agent": {
       "command": "python3",
       "args": ["-m", "src.pm_agent_mvp_fixed"],
-      "cwd": "/Users/lwgray/dev/pm-agent"
+      "cwd": "/path/to/pm-agent"
+    }
+  }
+}
+```
+
+#### Using Conda Environment
+```json
+{
+  "mcpServers": {
+    "pm-agent": {
+      "command": "/home/user/anaconda3/envs/pm-agent/bin/python",
+      "args": ["-m", "src.pm_agent_mvp_fixed"],
+      "cwd": "/path/to/pm-agent"
+    }
+  }
+}
+```
+
+#### Using Pipenv
+```json
+{
+  "mcpServers": {
+    "pm-agent": {
+      "command": "pipenv",
+      "args": ["run", "python", "-m", "src.pm_agent_mvp_fixed"],
+      "cwd": "/path/to/pm-agent"
     }
   }
 }
@@ -73,9 +108,9 @@ Add this to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "pm-agent": {
-      "command": "/Users/lwgray/opt/anaconda3/envs/pm-agent/bin/python",
+      "command": "/path/to/your/python",
       "args": ["start_pm_agent_task_master.py"],
-      "cwd": "/Users/lwgray/dev/pm-agent"
+      "cwd": "/path/to/pm-agent"
     }
   }
 }
@@ -84,9 +119,47 @@ Add this to your `claude_desktop_config.json`:
 ### 3. Restart Claude Desktop
 
 After saving the configuration:
-1. Quit Claude Desktop completely (⌘+Q)
+1. Quit Claude Desktop completely (⌘+Q on Mac, Alt+F4 on Windows)
 2. Restart Claude Desktop
 3. The PM Agent server should connect automatically
+
+## Finding Your Python Path
+
+### For Different Environments
+
+**Conda:**
+```bash
+conda activate your-env
+which python
+# Example: /home/user/anaconda3/envs/pm-agent/bin/python
+```
+
+**Virtualenv:**
+```bash
+source venv/bin/activate
+which python
+# Example: /home/user/project/venv/bin/python
+```
+
+**Pipenv:**
+```bash
+cd /path/to/pm-agent
+pipenv --venv
+# Returns: /home/user/.local/share/virtualenvs/pm-agent-x7d8/
+# Use: /home/user/.local/share/virtualenvs/pm-agent-x7d8/bin/python
+```
+
+**System Python:**
+```bash
+which python3
+# Example: /usr/bin/python3
+```
+
+**Windows:**
+```bash
+where python
+# Example: C:\Users\Username\AppData\Local\Programs\Python\Python39\python.exe
+```
 
 ## Verifying the Setup
 
@@ -156,31 +229,43 @@ The security boundaries work differently:
 ## Troubleshooting
 
 ### "MCP Server failed to start"
-1. Check Python path is correct: `which python` or `which python3`
-2. Verify PM Agent works standalone
+1. Check Python path is correct
+2. Verify PM Agent works standalone:
+   ```bash
+   cd /path/to/pm-agent
+   /path/to/your/python -m src.pm_agent_mvp_fixed
+   ```
 3. Check logs in Claude Desktop developer console
 
 ### "No module named src"
 1. Ensure `cwd` is set to PM Agent directory
 2. Add `PYTHONPATH` to env if needed
-3. Try absolute import: `"args": ["/Users/lwgray/dev/pm-agent/src/pm_agent_mvp_fixed.py"]`
+3. Try absolute path: `"args": ["/path/to/pm-agent/src/pm_agent_mvp_fixed.py"]`
 
 ### "Board ID not set"
 1. Check `config_pm_agent.json` exists in PM Agent directory
 2. Verify Planka is running
-3. Use diagnostic tools to test configuration
+3. Use diagnostic tools to test configuration:
+   ```bash
+   python /path/to/pm-agent/tests/diagnostics/test_board_id.py
+   ```
 
 ### Tools not appearing
 1. Restart Claude Desktop completely
 2. Check MCP server status in developer settings
-3. Verify no syntax errors in config JSON
+3. Verify no syntax errors in config JSON (use a JSON validator)
+
+### Windows-specific issues
+1. Use forward slashes in paths: `C:/Users/Name/pm-agent`
+2. Or escape backslashes: `C:\\Users\\Name\\pm-agent`
+3. Try short path names if spaces cause issues
 
 ## Environment Variables
 
 PM Agent reads from `.env` file in its directory:
 
 ```bash
-# /Users/lwgray/dev/pm-agent/.env
+# /path/to/pm-agent/.env
 PLANKA_BASE_URL=http://localhost:3333
 PLANKA_AGENT_EMAIL=demo@demo.demo
 PLANKA_AGENT_PASSWORD=demo
