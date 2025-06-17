@@ -35,15 +35,32 @@ class MCPConnection:
         
     async def __aenter__(self):
         """Enter the async context manager"""
-        # Start the transport
-        self._transport_context = stdio_client(self.server_params)
-        self._read_stream, self._write_stream = await self._transport_context.__aenter__()
-        
-        # Create and initialize session
-        self.session = ClientSession(self._read_stream, self._write_stream)
-        await self.session.initialize()
-        
-        return self
+        try:
+            # Start the transport
+            self._transport_context = stdio_client(self.server_params)
+            self._read_stream, self._write_stream = await self._transport_context.__aenter__()
+            
+            # Create and initialize session with timeout
+            self.session = ClientSession(self._read_stream, self._write_stream)
+            
+            # Add timeout to initialization
+            try:
+                async with asyncio.timeout(30):  # 30 second timeout
+                    await self.session.initialize()
+            except asyncio.TimeoutError:
+                print("⚠️ Session initialization timed out after 30 seconds", file=sys.stderr)
+                raise RuntimeError("MCP session initialization timed out")
+            
+            return self
+            
+        except Exception as e:
+            # Clean up on error
+            if self._transport_context:
+                try:
+                    await self._transport_context.__aexit__(None, None, None)
+                except:
+                    pass
+            raise
         
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Exit the async context manager"""
@@ -66,17 +83,18 @@ class MCPKanbanClient:
         self.project_id: Optional[str] = None
         self.settings = Settings()
         self._node_path: Optional[str] = None
-        self._kanban_mcp_path = "/Users/lwgray/dev/kanban-mcp/dist/index.js"
+        self._kanban_mcp_path = "../kanban-mcp/dist/index.js"
         
         # Load configuration from config_pm_agent.json
         self._load_config()
         
-        # Use config values or defaults for Planka credentials
-        self._env = {
+        # Use full environment with Planka credentials
+        self._env = os.environ.copy()
+        self._env.update({
             "PLANKA_BASE_URL": os.environ.get("PLANKA_BASE_URL", "http://localhost:3333"),
             "PLANKA_AGENT_EMAIL": os.environ.get("PLANKA_AGENT_EMAIL", "demo@demo.demo"), 
             "PLANKA_AGENT_PASSWORD": os.environ.get("PLANKA_AGENT_PASSWORD", "demo")
-        }
+        })
     
     def _load_config(self):
         """Load configuration from config_pm_agent.json"""
@@ -106,7 +124,26 @@ class MCPKanbanClient:
         """Find Node.js executable in common locations"""
         if self._node_path:
             return self._node_path
-            
+        
+        # First, try to find NVM's current node
+        nvm_dir = os.path.expanduser("~/.nvm/versions/node")
+        if os.path.exists(nvm_dir):
+            try:
+                # Get all node versions and sort them
+                versions = [d for d in os.listdir(nvm_dir) if d.startswith('v')]
+                if versions:
+                    # Sort versions and use the latest
+                    versions.sort(reverse=True)
+                    for version in versions:
+                        node_path = os.path.join(nvm_dir, version, 'bin', 'node')
+                        if os.path.isfile(node_path) and os.access(node_path, os.X_OK):
+                            print(f"✅ Found Node.js at: {node_path}", file=sys.stderr)
+                            self._node_path = node_path
+                            return node_path
+            except Exception as e:
+                print(f"⚠️ Error checking NVM directory: {e}", file=sys.stderr)
+        
+        # Then check standard locations
         possible_paths = [
             "/usr/local/bin/node",
             "/opt/homebrew/bin/node", 
@@ -120,6 +157,7 @@ class MCPKanbanClient:
                     result = subprocess.run([path, "--version"], 
                                           capture_output=True, text=True, timeout=5)
                     if result.returncode == 0 and "v" in result.stdout:
+                        print(f"✅ Found Node.js at: {path}", file=sys.stderr)
                         self._node_path = path
                         return path
                 except:
@@ -130,9 +168,11 @@ class MCPKanbanClient:
     @asynccontextmanager
     async def connect(self):
         """Create a connection context that can be used for operations"""
-        node_path = self._find_node_executable()
+        # Use 'node' command and let the system find it via PATH
+        # This matches what the working scripts do
+        node_command = "node"
         
-        async with MCPConnection(node_path, [self._kanban_mcp_path], self._env) as conn:
+        async with MCPConnection(node_command, [self._kanban_mcp_path], self._env) as conn:
             # If project/board not set, try to find them
             if not self.project_id:
                 await self._find_project(conn)
