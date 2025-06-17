@@ -1,7 +1,28 @@
+"""
+AI-powered analysis and decision engine for PM Agent.
+
+This module provides intelligent task assignment, blocker resolution, and project
+risk analysis using Claude API. It includes comprehensive fallback mechanisms
+for when the AI service is unavailable.
+
+The engine helps with:
+- Optimal task-to-agent matching based on skills and capacity
+- Generating detailed task instructions
+- Analyzing and resolving blockers
+- Identifying project risks and mitigation strategies
+
+Examples
+--------
+>>> engine = AIAnalysisEngine()
+>>> await engine.initialize()
+>>> task = await engine.match_task_to_agent(tasks, agent, project_state)
+>>> instructions = await engine.generate_task_instructions(task, agent)
+"""
+
 import json
 import os
 import sys
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Union
 from datetime import datetime, timedelta
 
 import anthropic
@@ -13,11 +34,43 @@ from src.core.models import (
 
 
 class AIAnalysisEngine:
-    """AI-powered analysis and decision engine using Claude - Fixed version"""
+    """
+    AI-powered analysis and decision engine using Claude API.
     
-    def __init__(self):
+    This class provides intelligent analysis for project management decisions,
+    including task assignment optimization, blocker resolution, and risk analysis.
+    It gracefully falls back to rule-based approaches when AI is unavailable.
+    
+    Attributes
+    ----------
+    client : Optional[anthropic.Anthropic]
+        Anthropic API client, None if unavailable
+    model : str
+        Claude model to use for analysis
+    prompts : Dict[str, str]
+        Template prompts for different analysis types
+    
+    Examples
+    --------
+    >>> engine = AIAnalysisEngine()
+    >>> await engine.initialize()
+    >>> # Engine is ready for analysis tasks
+    
+    Notes
+    -----
+    Requires ANTHROPIC_API_KEY environment variable for AI features.
+    Works in fallback mode without the API key.
+    """
+    
+    def __init__(self) -> None:
+        """
+        Initialize the AI Analysis Engine.
+        
+        Attempts to set up the Anthropic client with various compatibility
+        approaches for different library versions.
+        """
         # Initialize Anthropic client with better error handling
-        self.client = None
+        self.client: Optional[anthropic.Anthropic] = None
         try:
             # Get API key from environment
             api_key = os.environ.get("ANTHROPIC_API_KEY")
@@ -47,10 +100,10 @@ class AIAnalysisEngine:
             print("   AI features will use fallback responses", file=sys.stderr)
             self.client = None
         
-        self.model = "claude-3-sonnet-20241022"  # Using Sonnet for speed/cost balance
+        self.model: str = "claude-3-sonnet-20241022"  # Using Sonnet for speed/cost balance
         
         # Analysis prompts
-        self.prompts = {
+        self.prompts: Dict[str, str] = {
             "task_assignment": """You are an AI Project Manager analyzing task assignments.
             
 Given:
@@ -123,8 +176,19 @@ Identify risks and provide JSON:
 }}"""
         }
     
-    async def initialize(self):
-        """Initialize the AI engine"""
+    async def initialize(self) -> None:
+        """
+        Initialize the AI engine and test connectivity.
+        
+        Verifies the Anthropic client can communicate with the API by
+        sending a test message. Disables the client if the test fails.
+        
+        Examples
+        --------
+        >>> engine = AIAnalysisEngine()
+        >>> await engine.initialize()
+        ✅ AI Engine connection verified
+        """
         if not self.client:
             print("⚠️  AI Engine running in fallback mode (no Anthropic client)", file=sys.stderr)
             return
@@ -148,7 +212,35 @@ Identify risks and provide JSON:
         agent: WorkerStatus,
         project_state: ProjectState
     ) -> Optional[Task]:
-        """Find the optimal task for an agent"""
+        """
+        Find the optimal task for an agent using AI analysis.
+        
+        Parameters
+        ----------
+        available_tasks : List[Task]
+            List of unassigned tasks to choose from
+        agent : WorkerStatus
+            Agent profile including skills and capacity
+        project_state : ProjectState
+            Current state of the project
+        
+        Returns
+        -------
+        Optional[Task]
+            The best matching task, or None if no suitable task found
+        
+        Examples
+        --------
+        >>> task = await engine.match_task_to_agent(
+        ...     tasks, agent, ProjectState.HEALTHY
+        ... )
+        >>> print(f"Assigned: {task.name} to {agent.name}")
+        
+        Notes
+        -----
+        Falls back to skill-based matching if AI is unavailable.
+        Considers up to 10 tasks to avoid context limits.
+        """
         if not available_tasks:
             return None
         
@@ -202,7 +294,27 @@ Identify risks and provide JSON:
         return self._fallback_task_matching(available_tasks, agent)
     
     def _fallback_task_matching(self, tasks: List[Task], agent: WorkerStatus) -> Optional[Task]:
-        """Simple skill-based task matching without AI"""
+        """
+        Simple skill-based task matching without AI.
+        
+        Parameters
+        ----------
+        tasks : List[Task]
+            Available tasks to match
+        agent : WorkerStatus
+            Agent to match tasks for
+        
+        Returns
+        -------
+        Optional[Task]
+            Best matching task based on priority and skills
+        
+        Notes
+        -----
+        Scores tasks based on:
+        - Priority (urgent=4, high=3, medium=2, low=1)
+        - Skill matches (2 points per matching skill)
+        """
         # Score tasks based on priority and skill match
         best_score = -1
         best_task = None
@@ -233,7 +345,33 @@ Identify risks and provide JSON:
         task: Task, 
         agent: Optional[WorkerStatus] = None
     ) -> str:
-        """Generate detailed instructions for a task"""
+        """
+        Generate detailed instructions for a task.
+        
+        Parameters
+        ----------
+        task : Task
+            The task to generate instructions for
+        agent : Optional[WorkerStatus], default=None
+            The agent assigned to the task
+        
+        Returns
+        -------
+        str
+            Detailed task instructions formatted as markdown
+        
+        Examples
+        --------
+        >>> instructions = await engine.generate_task_instructions(task, agent)
+        >>> print(instructions)
+        ## Task Assignment for Alice
+        ...
+        
+        Notes
+        -----
+        Uses AI to generate context-aware instructions when available,
+        otherwise provides structured fallback instructions.
+        """
         if not self.client:
             # Fallback instructions when AI is not available
             return self._generate_fallback_instructions(task, agent)
@@ -266,7 +404,21 @@ Identify risks and provide JSON:
             return self._generate_fallback_instructions(task, agent)
     
     def _generate_fallback_instructions(self, task: Task, agent: Optional[WorkerStatus]) -> str:
-        """Generate fallback instructions when AI is not available"""
+        """
+        Generate fallback instructions when AI is not available.
+        
+        Parameters
+        ----------
+        task : Task
+            Task to generate instructions for
+        agent : Optional[WorkerStatus]
+            Agent assigned to the task
+        
+        Returns
+        -------
+        str
+            Structured task instructions in markdown format
+        """
         agent_name = agent.name if agent else "Team Member"
         
         return f"""## Task Assignment for {agent_name}
@@ -312,7 +464,40 @@ Good luck with your task!"""
         description: str,
         severity: str
     ) -> Dict[str, Any]:
-        """Analyze a blocker and suggest resolution"""
+        """
+        Analyze a blocker and suggest resolution steps.
+        
+        Parameters
+        ----------
+        task_id : str
+            ID of the blocked task
+        description : str
+            Detailed description of the blocker
+        severity : str
+            Severity level (low, medium, high, urgent)
+        
+        Returns
+        -------
+        Dict[str, Any]
+            Analysis results including:
+            - root_cause: Identified cause
+            - impact_assessment: Impact description
+            - resolution_steps: List of steps
+            - required_resources: Needed resources
+            - estimated_hours: Time to resolve
+            - escalation_needed: Boolean
+            - prevention_measures: Future prevention steps
+        
+        Examples
+        --------
+        >>> analysis = await engine.analyze_blocker(
+        ...     "TASK-123", 
+        ...     "Database connection timeout",
+        ...     "high"
+        ... )
+        >>> print(analysis['resolution_steps'])
+        ['Check database server status', ...]
+        """
         if not self.client:
             return self._generate_fallback_blocker_analysis(description, severity)
         
@@ -330,7 +515,21 @@ Good luck with your task!"""
             return self._generate_fallback_blocker_analysis(description, severity)
     
     def _generate_fallback_blocker_analysis(self, description: str, severity: str) -> Dict[str, Any]:
-        """Generate fallback blocker analysis"""
+        """
+        Generate fallback blocker analysis without AI.
+        
+        Parameters
+        ----------
+        description : str
+            Blocker description
+        severity : str
+            Severity level
+        
+        Returns
+        -------
+        Dict[str, Any]
+            Basic analysis with generic resolution steps
+        """
         return {
             "root_cause": "Analysis needed",
             "impact_assessment": f"Blocker reported: {description}",
@@ -357,7 +556,31 @@ Good luck with your task!"""
         question: str,
         context: str = ""
     ) -> str:
-        """Generate clarification for a task-related question"""
+        """
+        Generate clarification for a task-related question.
+        
+        Parameters
+        ----------
+        task : Task
+            The task in question
+        question : str
+            The question needing clarification
+        context : str, optional
+            Additional context for the question
+        
+        Returns
+        -------
+        str
+            Clarification response
+        
+        Examples
+        --------
+        >>> clarification = await engine.generate_clarification(
+        ...     task,
+        ...     "What database should I use?",
+        ...     "Working on user authentication"
+        ... )
+        """
         if not self.client:
             return f"Please clarify: {question}\n\nTask: {task.name}\nContext: {context}"
         
@@ -382,7 +605,38 @@ Provide a helpful clarification that guides the developer."""
         recent_blockers: List[BlockerReport],
         team_status: List[WorkerStatus]
     ) -> List[ProjectRisk]:
-        """Analyze and identify project risks"""
+        """
+        Analyze and identify project risks.
+        
+        Parameters
+        ----------
+        project_state : ProjectState
+            Current project state
+        recent_blockers : List[BlockerReport]
+            Recent blockers encountered
+        team_status : List[WorkerStatus]
+            Current team member status
+        
+        Returns
+        -------
+        List[ProjectRisk]
+            Identified risks with mitigation strategies
+        
+        Examples
+        --------
+        >>> risks = await engine.analyze_project_risks(
+        ...     ProjectState.AT_RISK,
+        ...     recent_blockers,
+        ...     team_status
+        ... )
+        >>> for risk in risks:
+        ...     print(f"{risk.description}: {risk.mitigation}")
+        
+        Notes
+        -----
+        Analyzes up to 10 recent blockers to identify patterns.
+        Falls back to basic risk assessment if AI unavailable.
+        """
         if not self.client:
             return self._generate_fallback_risk_analysis(project_state)
         
@@ -391,7 +645,7 @@ Provide a helpful clarification that guides the developer."""
             {
                 "task_id": b.task_id,
                 "description": b.description,
-                "severity": b.severity,
+                "severity": b.severity.value,
                 "reported_at": b.reported_at.isoformat()
             }
             for b in recent_blockers[-10:]  # Last 10 blockers
@@ -420,11 +674,25 @@ Provide a helpful clarification that guides the developer."""
             # Convert to ProjectRisk objects
             risks = []
             for risk_data in result.get("risks", []):
+                likelihood_map = {
+                    "low": 0.2,
+                    "medium": 0.5,
+                    "high": 0.8
+                }
+                
+                impact_severity = {
+                    "low": RiskLevel.LOW,
+                    "medium": RiskLevel.MEDIUM,
+                    "high": RiskLevel.HIGH
+                }
+                
                 risk = ProjectRisk(
+                    risk_type="project",
                     description=risk_data["description"],
-                    likelihood=risk_data["likelihood"],
-                    impact=risk_data["impact"],
-                    mitigation=risk_data["mitigation"],
+                    severity=impact_severity.get(risk_data["impact"], RiskLevel.MEDIUM),
+                    probability=likelihood_map.get(risk_data["likelihood"], 0.5),
+                    impact=risk_data.get("impact", "Unknown impact"),
+                    mitigation_strategy=risk_data["mitigation"],
                     identified_at=datetime.now()
                 )
                 risks.append(risk)
@@ -436,22 +704,53 @@ Provide a helpful clarification that guides the developer."""
             return self._generate_fallback_risk_analysis(project_state)
     
     def _generate_fallback_risk_analysis(self, project_state: ProjectState) -> List[ProjectRisk]:
-        """Generate fallback risk analysis"""
+        """
+        Generate fallback risk analysis without AI.
+        
+        Parameters
+        ----------
+        project_state : ProjectState
+            Current project state
+        
+        Returns
+        -------
+        List[ProjectRisk]
+            Basic risks based on project state
+        """
         risks = []
         
         if project_state == ProjectState.AT_RISK:
             risks.append(ProjectRisk(
+                risk_type="timeline",
                 description="Project timeline at risk",
-                likelihood="medium",
-                impact="high",
-                mitigation="Review task priorities and resource allocation",
+                severity=RiskLevel.HIGH,
+                probability=0.7,
+                impact="Potential delays in delivery",
+                mitigation_strategy="Review task priorities and resource allocation",
                 identified_at=datetime.now()
             ))
         
         return risks
     
     async def _call_claude(self, prompt: str) -> str:
-        """Call Claude API with error handling"""
+        """
+        Call Claude API with error handling.
+        
+        Parameters
+        ----------
+        prompt : str
+            The prompt to send to Claude
+        
+        Returns
+        -------
+        str
+            Claude's response text
+        
+        Raises
+        ------
+        Exception
+            If the API call fails or client is unavailable
+        """
         if not self.client:
             raise Exception("Anthropic client not available")
         

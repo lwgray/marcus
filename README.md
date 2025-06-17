@@ -114,6 +114,9 @@ python scripts/test_pm_agent_end_to_end.py
 
 ## 📚 Documentation
 
+### 📖 [Full API Documentation](https://lwgray.github.io/pm-agent/)
+Visit our comprehensive API documentation with detailed class and method references.
+
 ### Setup Guides
 - 🚀 [Quick Setup](README_SETUP.md) - Setup for Claude Desktop/Code in 2 minutes
 - 🖥️ [Claude Desktop Setup](docs/CLAUDE_DESKTOP_SETUP.md) - Detailed Claude Desktop configuration
@@ -127,7 +130,7 @@ python scripts/test_pm_agent_end_to_end.py
 - 🧪 [Testing Guide](docs/testing-guide.md) - Testing approaches and tools
 - 🔌 [Kanban MCP Integration](docs/kanban-mcp-integration.md) - Understanding kanban-mcp
 - 🚀 [Beyond MVP](docs/beyond-mvp.md) - Roadmap and scaling
-- 📋 [API Reference](docs/api-reference.md) - Complete tool documentation
+- 📋 [API Reference](docs/API_REFERENCE.md) - Complete tool documentation
 - 🐛 [Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
 
 ## 🛠️ Key Features
