@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -16,6 +17,16 @@ from src.integrations.ai_analysis_engine import AIAnalysisEngine
 from src.monitoring.project_monitor import ProjectMonitor
 from src.communication.communication_hub import CommunicationHub
 from src.config.settings import Settings
+
+# Configure detailed logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(name)s] %(levelname)s: %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('pm_agent_conversation.log')
+    ]
+)
 
 
 class PMAgentServer:

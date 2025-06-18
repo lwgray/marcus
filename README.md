@@ -1,274 +1,90 @@
-# PM Agent - AI Project Manager for Autonomous Development Teams
+# 🤖 PM Agent - Your AI Project Manager
 
-<div align="center">
+Think of PM Agent as a smart project manager that helps AI workers build software together. It's like having a teacher who assigns homework to different students based on what they're good at!
 
-![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
-![MCP](https://img.shields.io/badge/MCP-Protocol-green.svg)
-![License](https://img.shields.io/badge/license-MIT-orange.svg)
+## 🎯 What Does It Do?
 
-An intelligent project management agent that coordinates autonomous development teams using the Model Context Protocol (MCP).
+PM Agent helps AI workers (like Claude) work together on coding projects by:
+- 📋 **Giving out tasks** - Like a teacher assigning homework
+- 👀 **Watching progress** - Making sure work gets done
+- 🧩 **Sharing knowledge** - Telling workers what others have built
+- 🚧 **Solving problems** - Helping when workers get stuck
 
-</div>
-
-## 🎈 New User? Start Here!
-
-<div align="center">
-
-| Guide | Description | Time |
-|-------|-------------|------|
-| [**🚀 EASY SETUP**](EASY_SETUP.md) | Step-by-step setup guide | 5 min |
-| [**🖼️ With Pictures**](docs/SETUP_WITH_PICTURES.md) | Visual guide with examples | 10 min |
-| [**📋 Quick Reference**](QUICK_REFERENCE.md) | One-page cheat sheet | Print it! |
-| [**🔧 Troubleshooting**](docs/TROUBLESHOOTING_FLOWCHART.md) | Fix common problems | As needed |
-
-</div>
-
-<div align="center">
-
-[Quick Start](#-quick-start) • [Documentation](docs/) • [Architecture](docs/architecture.md) • [Contributing](#-contributing)
-
-</div>
-
-## 🎯 Overview
-
-PM Agent acts as an intelligent project manager that:
-- 🤖 Coordinates multiple AI worker agents
-- 📋 Manages tasks on Kanban boards (Planka)
-- 🧠 Uses AI to resolve blockers and optimize workflows
-- ⏱️ Tracks time and progress automatically
-- 🔄 Adapts task allocation based on agent capabilities
-
-## 🚀 Quick Start
-
-> **🎈 First Time User?** Check out our [**Super Easy Setup Guide**](EASY_SETUP.md) with step-by-step instructions!
-
-### Prerequisites
-- Python 3.8+
-- Node.js 18+
-- Docker (for Planka, included with kanban-mcp)
-- Git
-- Anthropic API key (optional, for AI features)
-
-### Installation
-
-1. **Clone both repositories**:
-   ```bash
-   # Clone kanban-mcp (includes Planka)
-   git clone https://github.com/bradrisse/kanban-mcp.git
-   cd kanban-mcp
-   npm install
-   npm run build
-   
-   # Clone PM Agent
-   cd ..
-   git clone https://github.com/lwgray/pm-agent.git
-   cd pm-agent
-   pip install -r requirements.txt
-   ```
-
-2. **Start Planka** (from kanban-mcp directory):
-   ```bash
-   cd ../kanban-mcp
-   npm run up
-   ```
-   - Access at: http://localhost:3333
-   - Login: demo@demo.demo / demo
-
-3. **Configure PM Agent**:
-   ```bash
-   cd pm-agent
-   cp .env.example .env
-   # Add your ANTHROPIC_API_KEY to .env
-   ```
-
-4. **Verify setup**:
-   ```bash
-   python scripts/utilities/test_setup.py
-   ```
-
-### Running PM Agent
-
-#### With Claude Desktop or Claude Code
-
-PM Agent works seamlessly with Anthropic's Claude applications:
-
-- **[Claude Desktop Setup](docs/CLAUDE_DESKTOP_SETUP.md)** - For project planning and coordination
-- **[Claude Code Setup](docs/CLAUDE_CODE_SETUP.md)** - For actual development work
-- **[Quick Setup Guide](README_SETUP.md)** - Get started in 2 minutes
-
-#### Standalone Testing
+## 🚀 Super Quick Start (30 seconds!)
 
 ```bash
-# Quick test - view board state
-python scripts/utilities/quick_board_view.py
+# 1. Download PM Agent
+git clone <this-repo>
+cd pm-agent
 
-# Interactive testing
-python scripts/utilities/interactive_test.py
+# 2. Start it up
+./start.sh
 
-# Start PM Agent as MCP server
-python start_pm_agent_task_master.py
+# 3. Add your API keys
+nano .env  # (or open .env in any text editor)
 
-# Run full simulation
-python scripts/test_pm_agent_end_to_end.py
+# 4. Restart with your settings
+docker-compose restart
 ```
+
+That's it! PM Agent is now running.
 
 ## 📚 Documentation
 
-### 📖 [Full API Documentation](https://lwgray.github.io/pm-agent/)
-Visit our comprehensive API documentation with detailed class and method references.
+### For Beginners
+- [**Getting Started**](docs/getting-started.md) - Your first time? Start here!
+- [**How It Works**](docs/how-it-works.md) - Simple explanation of PM Agent
 
-### Setup Guides
-- 🚀 [Quick Setup](README_SETUP.md) - Setup for Claude Desktop/Code in 2 minutes
-- 🖥️ [Claude Desktop Setup](docs/CLAUDE_DESKTOP_SETUP.md) - Detailed Claude Desktop configuration
-- 💻 [Claude Code Setup](docs/CLAUDE_CODE_SETUP.md) - Claude Code with security boundaries
+### Setting It Up  
+- [**Installation Guide**](docs/installation.md) - Detailed setup instructions
+- [**Choosing Your Task Board**](docs/providers.md) - GitHub, Linear, or Planka?
+- [**Configuration**](docs/configuration.md) - All the settings explained
 
-### Core Documentation
-- 📖 [Quick Start Guide](docs/quick-start.md) - Get running in 5 minutes
-- 🏗️ [Architecture Overview](docs/architecture.md) - System design and components  
-- 🔧 [Configuration Guide](docs/configuration.md) - All configuration options
-- 🤝 [Worker Agents Guide](docs/worker-agents.md) - Building compatible agents
-- 🧪 [Testing Guide](docs/testing-guide.md) - Testing approaches and tools
-- 🔌 [Kanban MCP Integration](docs/kanban-mcp-integration.md) - Understanding kanban-mcp
-- 🚀 [Beyond MVP](docs/beyond-mvp.md) - Roadmap and scaling
-- 📋 [API Reference](docs/API_REFERENCE.md) - Complete tool documentation
-- 🐛 [Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
+### Using PM Agent
+- [**Quick Commands**](docs/commands.md) - Common commands reference
+- [**Deployment Options**](docs/deployment.md) - Local vs Remote hosting
+- [**Troubleshooting**](docs/troubleshooting.md) - When things go wrong
 
-## 🛠️ Key Features
+### Advanced Topics
+- [**Architecture**](docs/architecture.md) - How PM Agent is built
+- [**API Reference**](docs/api.md) - For developers
+- [**Contributing**](CONTRIBUTING.md) - Help make PM Agent better!
 
-### For Worker Agents
-- **Register & Join**: Declare capabilities and join the team
-- **Request Tasks**: Get assigned work matching your skills
-- **Report Progress**: Update task status in real-time
-- **Handle Blockers**: Get AI-powered help when stuck
-
-### For Project Management
-- **Smart Task Distribution**: Match tasks to agent capabilities
-- **Real-time Monitoring**: Track progress across all agents
-- **AI-Powered Resolution**: Resolve blockers intelligently
-- **Automatic Time Tracking**: Monitor task duration
-
-## 🏗️ Architecture
-
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Worker Agent   │     │  Worker Agent   │     │  Worker Agent   │
-│   (Frontend)    │     │   (Backend)     │     │     (QA)        │
-└────────┬────────┘     └────────┬────────┘     └────────┬────────┘
-         │ MCP                   │ MCP                   │ MCP
-         └───────────────┬───────┴───────────────────────┘
-                         │
-                ┌────────▼────────┐
-                │    PM Agent     │
-                │  (MCP Server)   │
-                └────────┬────────┘
-                         │
-            ┌────────────┼────────────┐
-            │            │            │
-    ┌───────▼──────┐ ┌───▼────┐ ┌────▼─────┐
-    │ Kanban MCP   │ │   AI   │ │ Monitor  │
-    │   Client     │ │ Engine │ │          │
-    └───────┬──────┘ └───┬────┘ └──────────┘
-            │            │
-    ┌───────▼──────┐ ┌───▼────┐
-    │   Planka     │ │ Claude │
-    │   (Kanban)   │ │  API   │
-    └──────────────┘ └────────┘
-```
-
-## 📁 Project Structure
-
-```
-pm-agent/
-├── src/                    # Core source code
-│   ├── core/              # Models and business logic
-│   ├── integrations/      # MCP & Kanban clients
-│   ├── monitoring/        # Project monitoring
-│   ├── config/            # Configuration management
-│   └── communication/     # Agent communication hub
-├── scripts/               
-│   ├── examples/          # Example usage scripts
-│   ├── setup/             # Setup and configuration
-│   ├── testing/           # Test utilities
-│   └── utilities/         # Helper tools
-├── tests/                 # Test suite
-│   ├── unit/             # Unit tests
-│   └── integration/      # Integration tests
-├── docs/                  # Documentation
-├── config/               # Configuration files
-└── archive/              # Archived/old code
-```
-
-## 🧪 Testing
+## 🎮 Different Ways to Run
 
 ```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=src --cov-report=html
-
-# Interactive testing
-python scripts/utilities/interactive_test.py
-
-# Full simulation
-python scripts/test_pm_agent_end_to_end.py
+./start.sh              # Basic mode (recommended)
+./start.sh demo         # See it work with fake workers
+./start.sh full         # With visual dashboard
+./start.sh remote       # For hosting online
 ```
 
-## 🔧 Configuration
+## 📋 Task Board Options
 
-### Environment Variables (.env)
-```env
-ANTHROPIC_API_KEY=your-api-key
-PLANKA_BASE_URL=http://localhost:3333
-PLANKA_AGENT_EMAIL=demo@demo.demo
-PLANKA_AGENT_PASSWORD=demo
-```
+PM Agent works with different task boards (like different brands of notebooks):
 
-### Project Configuration (config_pm_agent.json)
-```json
-{
-  "project_id": "your-project-id",
-  "board_id": "your-board-id",
-  "project_name": "Your Project",
-  "auto_find_board": false
-}
-```
+| Task Board | Good For | Cost | Setup Time |
+|------------|----------|------|------------|
+| **GitHub** | Most people | Free | 2 minutes |
+| **Linear** | Companies | Paid | 3 minutes |
+| **Planka** | Home use only | Free | 5 minutes |
 
-## 🤝 Contributing
+## ⚠️ Important Notes
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+- **Planka** can only be used on your own computer (not online) due to licensing rules
+- **GitHub** is recommended for most users - it's free and powerful
+- You need API keys (like passwords) for the AI features to work
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+## 🆘 Need Help?
+
+1. Check [Troubleshooting](docs/troubleshooting.md)
+2. Look at [Common Questions](docs/faq.md)
+3. Open an issue on GitHub
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- Built with [Model Context Protocol](https://modelcontextprotocol.io/) by Anthropic
-- Kanban integration via [kanban-mcp](https://github.com/bradrisse/kanban-mcp) which includes:
-  - [Planka](https://planka.app/) - Open source kanban board (runs in Docker)
-  - MCP server for programmatic board access
-
-## 🚧 Status
-
-Currently in MVP stage. The system is functional and includes:
-- ✅ Complete PM Agent MCP server implementation
-- ✅ Full kanban board integration
-- ✅ AI-powered task management
-- ✅ Worker agent communication
-- ✅ Comprehensive test suite
-- ✅ Documentation
-
-See [Beyond MVP](docs/beyond-mvp.md) for the roadmap to production.
+PM Agent is open source (MIT License) - you can use it for anything!
 
 ---
 
-<div align="center">
-Built with ❤️ for autonomous development teams
-</div>
+🥔 Made with ❤️ in Boise, Idaho

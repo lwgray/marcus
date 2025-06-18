@@ -5,34 +5,202 @@ services:
     build: .
     container_name: pm-agent-mcp-server
     environment:
+      # Kanban provider selection (github, linear, or planka)
+      - KANBAN_PROVIDER=${KANBAN_PROVIDER:-github}
+      
+      # GitHub configuration
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_OWNER=${GITHUB_OWNER}
+      - GITHUB_REPO=${GITHUB_REPO}
+      
+      # Linear configuration (if using Linear)
+      - LINEAR_API_KEY=${LINEAR_API_KEY}
+      - LINEAR_TEAM_ID=${LINEAR_TEAM_ID}
+      
+      # Planka configuration (if using Planka)
+      - PLANKA_PROJECT_NAME=${PLANKA_PROJECT_NAME}
+      
+      # AI configuration
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      
+      # Original config
       - PM_AGENT_CONFIG=/app/config/pm_agent_config.json
       - PM_AGENT_MONITORING_INTERVAL=900
     volumes:
       - ./config:/app/config
       - ./logs:/app/logs
       - ./data:/app/data
+      - ./prompts:/app/prompts
+    command: python pm_agent_mcp_server_v2.py
     restart: unless-stopped
     stdin_open: true
     tty: true
+    networks:
+      - pm-network
 
   # Development version with live code reload
   pm-agent-dev:
     build: .
     container_name: pm-agent-dev
     environment:
+      # Kanban provider selection
+      - KANBAN_PROVIDER=${KANBAN_PROVIDER:-github}
+      
+      # GitHub configuration
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_OWNER=${GITHUB_OWNER}
+      - GITHUB_REPO=${GITHUB_REPO}
+      
+      # Linear configuration
+      - LINEAR_API_KEY=${LINEAR_API_KEY}
+      - LINEAR_TEAM_ID=${LINEAR_TEAM_ID}
+      
+      # Planka configuration
+      - PLANKA_PROJECT_NAME=${PLANKA_PROJECT_NAME}
+      
+      # AI configuration
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      
+      # Original config
       - PM_AGENT_CONFIG=/app/config/pm_agent_config.json
       - PM_AGENT_MONITORING_INTERVAL=900
     volumes:
       # Mount source code for live updates
       - ./src:/app/src
       - ./pm_agent_mcp_server.py:/app/pm_agent_mcp_server.py
+      - ./pm_agent_mcp_server_v2.py:/app/pm_agent_mcp_server_v2.py
       - ./main.py:/app/main.py
       - ./config:/app/config
       - ./logs:/app/logs
       - ./data:/app/data
-    command: python -m src.pm_agent_mvp_fixed --log-level DEBUG
+      - ./prompts:/app/prompts
+    command: python pm_agent_mcp_server_v2.py
     restart: unless-stopped
     stdin_open: true
     tty: true
+    networks:
+      - pm-network
+  
+  # Visualization UI (optional)
+  visualization:
+    build:
+      context: ./visualization-ui
+      dockerfile: Dockerfile
+    container_name: pm-visualization
+    ports:
+      - "4298:4298"  # Vite dev server
+      - "8080:8080"  # WebSocket server
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./visualization-ui/src:/app/src
+      - ./visualization-ui/public:/app/public
+    networks:
+      - pm-network
+    depends_on:
+      - pm-agent
+    profiles:
+      - full  # Only start when --profile full is used
+  
+  # Demo workers for testing
+  worker-backend:
+    build: .
+    container_name: pm-worker-backend
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - ./logs:/app/logs
+    command: ["python", "mock_claude_worker.py", "--name", "backend-developer", "--role", "Backend Developer", "--skills", "python,api,database,backend"]
+    networks:
+      - pm-network
+    depends_on:
+      - pm-agent
+    profiles:
+      - demo  # Only start when --profile demo is used
+  
+  worker-frontend:
+    build: .
+    container_name: pm-worker-frontend
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - ./logs:/app/logs
+    command: ["python", "mock_claude_worker.py", "--name", "frontend-developer", "--role", "Frontend Developer", "--skills", "javascript,react,vue,css,frontend"]
+    networks:
+      - pm-network
+    depends_on:
+      - pm-agent
+    profiles:
+      - demo
+  
+  worker-qa:
+    build: .
+    container_name: pm-worker-qa
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - ./logs:/app/logs
+    command: ["python", "mock_claude_worker.py", "--name", "qa-engineer", "--role", "QA Engineer", "--skills", "testing,automation,qa,selenium"]
+    networks:
+      - pm-network
+    depends_on:
+      - pm-agent
+    profiles:
+      - demo
+
+  # ⚠️ PLANKA - LOCAL USE ONLY ⚠️
+  # Due to AGPL license, only enable for personal/local use
+  # Use --profile local-planka to enable
+  planka:
+    image: ghcr.io/plankanban/planka:latest
+    container_name: pm-planka
+    command: >
+      bash -c
+        "for i in `seq 1 30`; do
+          ./start.sh &&
+          s=$$? && break || s=$$?;
+          echo \"Tried $$i times. Waiting 5 seconds...\";
+          sleep 5;
+        done; (exit $$s)"
+    restart: unless-stopped
+    volumes:
+      - planka-data:/app/public/user-avatars
+      - planka-data:/app/public/project-background-images
+      - planka-data:/app/private/attachments
+    ports:
+      - "1337:1337"  # Only exposed on localhost
+    environment:
+      - BASE_URL=http://localhost:1337
+      - DATABASE_URL=postgresql://planka:planka@planka-db/planka
+      - SECRET_KEY=${PLANKA_SECRET_KEY:-notsecretkey}
+    depends_on:
+      - planka-db
+    networks:
+      - pm-network
+    profiles:
+      - local-planka  # Must explicitly enable
+
+  planka-db:
+    image: postgres:14-alpine
+    container_name: pm-planka-db
+    restart: unless-stopped
+    volumes:
+      - planka-db-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=planka
+      - POSTGRES_USER=planka
+      - POSTGRES_PASSWORD=planka
+    networks:
+      - pm-network
+    profiles:
+      - local-planka  # Must explicitly enable
+
+networks:
+  pm-network:
+    driver: bridge
+
+volumes:
+  planka-data:
+  planka-db-data:

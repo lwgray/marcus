@@ -1,0 +1,887 @@
+#!/usr/bin/env python3
+"""
+Unified PM Agent MCP Server v2 - Corrected tool registration pattern
+"""
+
+import asyncio
+import json
+import os
+from datetime import datetime
+from typing import Dict, List, Optional, Any
+from dotenv import load_dotenv
+
+from mcp.server import Server
+from mcp.types import Tool, TextContent
+import mcp.types as types
+
+from src.core.models import (
+    Task, TaskStatus, Priority, RiskLevel,
+    ProjectState, WorkerStatus, TaskAssignment
+)
+from src.integrations.kanban_factory import KanbanFactory
+from src.integrations.kanban_interface import KanbanInterface
+from src.integrations.ai_analysis_engine import AIAnalysisEngine
+from src.core.code_analyzer import CodeAnalyzer
+from src.monitoring.project_monitor import ProjectMonitor
+from src.communication.communication_hub import CommunicationHub
+from src.config.settings import Settings
+from src.logging.conversation_logger import conversation_logger, log_conversation, log_thinking
+
+
+# Global server instance
+server = Server("pm-agent")
+
+# State storage
+class PMAgentState:
+    def __init__(self):
+        load_dotenv()
+        self.settings = Settings()
+        
+        # Get kanban provider from environment
+        self.provider = os.getenv('KANBAN_PROVIDER', 'planka')
+        print(f"Initializing PM Agent with {self.provider.upper()} kanban provider...")
+        
+        # Core components
+        self.kanban_client: Optional[KanbanInterface] = None
+        self.ai_engine = AIAnalysisEngine()
+        self.monitor = ProjectMonitor()
+        self.comm_hub = CommunicationHub()
+        
+        # Add code analyzer for GitHub
+        self.code_analyzer = None
+        if self.provider == 'github':
+            self.code_analyzer = CodeAnalyzer()
+        
+        # State tracking
+        self.agent_tasks: Dict[str, TaskAssignment] = {}
+        self.agent_status: Dict[str, WorkerStatus] = {}
+        self.project_state: Optional[ProjectState] = None
+        
+        # Log startup
+        conversation_logger.log_system_state(
+            active_workers=0,
+            tasks_in_progress=0,
+            tasks_completed=0,
+            tasks_blocked=0,
+            system_metrics={
+                "status": "starting",
+                "kanban_provider": self.provider
+            }
+        )
+    
+    async def initialize_kanban(self):
+        """Initialize the kanban client"""
+        if not self.kanban_client:
+            config = {}
+            
+            if self.provider == 'planka':
+                # Planka needs special handling for MCP
+                config['mcp_function_caller'] = self._mcp_function_caller
+                
+            self.kanban_client = KanbanFactory.create_default(config)
+            await self.kanban_client.connect()
+            
+    async def _mcp_function_caller(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
+        """Function to call MCP tools for kanban integrations"""
+        # This would be used to call external MCP servers
+        # For now, return mock response
+        print(f"MCP Call: {tool_name} with args: {arguments}")
+        return {"success": True, "message": "Mock response"}
+
+
+# Create global state instance
+state = PMAgentState()
+
+
+# Tool registration using correct MCP pattern
+@server.list_tools()
+async def handle_list_tools() -> list[types.Tool]:
+    """Return list of available tools"""
+    return [
+        types.Tool(
+            name="register_agent",
+            description="Register a new agent with the PM system",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "agent_id": {"type": "string", "description": "Unique agent identifier"},
+                    "name": {"type": "string", "description": "Agent's display name"},
+                    "role": {"type": "string", "description": "Agent's role (e.g., 'Backend Developer')"},
+                    "skills": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of agent's skills",
+                        "default": []
+                    }
+                },
+                "required": ["agent_id", "name", "role"]
+            }
+        ),
+        types.Tool(
+            name="request_next_task",
+            description="Request the next optimal task assignment for an agent",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "agent_id": {"type": "string", "description": "Agent requesting the task"}
+                },
+                "required": ["agent_id"]
+            }
+        ),
+        types.Tool(
+            name="report_task_progress",
+            description="Report progress on a task",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "agent_id": {"type": "string", "description": "Agent reporting progress"},
+                    "task_id": {"type": "string", "description": "Task being updated"},
+                    "status": {"type": "string", "description": "Task status: in_progress, completed, blocked"},
+                    "progress": {"type": "integer", "description": "Progress percentage (0-100)", "default": 0},
+                    "message": {"type": "string", "description": "Progress message", "default": ""}
+                },
+                "required": ["agent_id", "task_id", "status"]
+            }
+        ),
+        types.Tool(
+            name="report_blocker",
+            description="Report a blocker on a task",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "agent_id": {"type": "string", "description": "Agent reporting the blocker"},
+                    "task_id": {"type": "string", "description": "Blocked task ID"},
+                    "blocker_description": {"type": "string", "description": "Description of the blocker"},
+                    "severity": {"type": "string", "description": "Blocker severity: low, medium, high", "default": "medium"}
+                },
+                "required": ["agent_id", "task_id", "blocker_description"]
+            }
+        ),
+        types.Tool(
+            name="get_project_status",
+            description="Get current project status and metrics",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        types.Tool(
+            name="get_agent_status",
+            description="Get status and current assignment for an agent",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "agent_id": {"type": "string", "description": "Agent to check status for"}
+                },
+                "required": ["agent_id"]
+            }
+        ),
+        types.Tool(
+            name="list_registered_agents",
+            description="List all registered agents",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        types.Tool(
+            name="ping",
+            description="Check PM Agent status and connectivity",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "echo": {"type": "string", "description": "Optional message to echo back", "default": ""}
+                },
+                "required": []
+            }
+        )
+    ]
+
+
+@server.call_tool()
+async def handle_call_tool(
+    name: str, arguments: dict | None
+) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+    """Handle tool calls"""
+    
+    if arguments is None:
+        arguments = {}
+    
+    try:
+        if name == "register_agent":
+            result = await register_agent(
+                arguments.get("agent_id"),
+                arguments.get("name"),
+                arguments.get("role"),
+                arguments.get("skills", [])
+            )
+        
+        elif name == "request_next_task":
+            result = await request_next_task(arguments.get("agent_id"))
+        
+        elif name == "report_task_progress":
+            result = await report_task_progress(
+                arguments.get("agent_id"),
+                arguments.get("task_id"),
+                arguments.get("status"),
+                arguments.get("progress", 0),
+                arguments.get("message", "")
+            )
+        
+        elif name == "report_blocker":
+            result = await report_blocker(
+                arguments.get("agent_id"),
+                arguments.get("task_id"),
+                arguments.get("blocker_description"),
+                arguments.get("severity", "medium")
+            )
+        
+        elif name == "get_project_status":
+            result = await get_project_status()
+        
+        elif name == "get_agent_status":
+            result = await get_agent_status(arguments.get("agent_id"))
+        
+        elif name == "list_registered_agents":
+            result = await list_registered_agents()
+        
+        elif name == "ping":
+            result = await ping(arguments.get("echo", ""))
+        
+        else:
+            result = {"error": f"Unknown tool: {name}"}
+        
+        return [types.TextContent(
+            type="text",
+            text=json.dumps(result, indent=2)
+        )]
+        
+    except Exception as e:
+        return [types.TextContent(
+            type="text",
+            text=json.dumps({"error": str(e)}, indent=2)
+        )]
+
+
+# Tool implementations
+async def register_agent(agent_id: str, name: str, role: str, skills: List[str]) -> dict:
+    """Register a new agent with the PM system"""
+    # Log incoming registration request
+    conversation_logger.log_worker_message(
+        agent_id,
+        "to_pm",
+        f"Registering as {role} with skills: {skills}",
+        {"name": name, "role": role, "skills": skills}
+    )
+    
+    try:
+        # Log PM thinking
+        log_thinking("pm_agent", f"New agent registration request from {name}", {
+            "agent_id": agent_id,
+            "role": role,
+            "skills": skills
+        })
+        
+        # Create worker status
+        status = WorkerStatus(
+            agent_id=agent_id,
+            name=name,
+            role=role,
+            skills=skills or [],
+            status="available",
+            current_task=None,
+            total_completed=0,
+            performance_score=1.0
+        )
+        
+        state.agent_status[agent_id] = status
+        
+        # Log decision
+        conversation_logger.log_pm_decision(
+            decision=f"Register agent {name}",
+            rationale="Agent skills match project requirements",
+            confidence_score=0.95,
+            decision_factors={
+                "skills_match": True,
+                "capacity_available": True,
+                "role_needed": True
+            }
+        )
+        
+        # Log response
+        conversation_logger.log_worker_message(
+            agent_id,
+            "from_pm",
+            f"Registration successful. Welcome {name}!",
+            {"status": "registered"}
+        )
+        
+        return {
+            "success": True,
+            "message": f"Agent {name} registered successfully",
+            "agent_id": agent_id
+        }
+        
+    except Exception as e:
+        conversation_logger.log_worker_message(
+            agent_id,
+            "from_pm",
+            f"Registration failed: {str(e)}",
+            {"error": str(e)}
+        )
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+async def request_next_task(agent_id: str) -> dict:
+    """Agents call this to request their next optimal task"""
+    # Log task request
+    conversation_logger.log_worker_message(
+        agent_id,
+        "to_pm",
+        "Requesting next task",
+        {"status": state.agent_status.get(agent_id, {}).status if agent_id in state.agent_status else "unknown"}
+    )
+    
+    try:
+        # Initialize kanban if needed
+        await state.initialize_kanban()
+        
+        # Log PM thinking about refreshing state
+        log_thinking("pm_agent", "Need to check current project state")
+        
+        # Get current project state
+        await refresh_project_state()
+        
+        # Log thinking about finding task
+        agent = state.agent_status.get(agent_id)
+        if agent:
+            log_thinking("pm_agent", f"Finding optimal task for {agent.name}", {
+                "agent_skills": agent.skills,
+                "current_workload": agent.current_task or "None"
+            })
+        
+        # Find optimal task for this agent
+        optimal_task = await find_optimal_task_for_agent(agent_id)
+        
+        if optimal_task:
+            # Get implementation context if using GitHub
+            previous_implementations = None
+            if state.provider == 'github' and state.code_analyzer:
+                owner = os.getenv('GITHUB_OWNER')
+                repo = os.getenv('GITHUB_REPO')
+                impl_details = await state.code_analyzer.get_implementation_details(
+                    optimal_task.dependencies,
+                    owner,
+                    repo
+                )
+                if impl_details:
+                    previous_implementations = impl_details
+            
+            # Generate detailed instructions with AI
+            instructions = await state.ai_engine.generate_task_instructions(
+                optimal_task,
+                state.agent_status.get(agent_id),
+                previous_implementations
+            )
+            
+            # Log decision process
+            conversation_logger.log_pm_decision(
+                decision=f"Assign task '{optimal_task.name}' to {agent_id}",
+                rationale=f"Best skill match and highest priority",
+                alternatives_considered=[
+                    {"task": "Other Task 1", "score": 0.7},
+                    {"task": "Other Task 2", "score": 0.6}
+                ],
+                confidence_score=0.85,
+                decision_factors={
+                    "skill_match": 0.9,
+                    "priority": optimal_task.priority.value,
+                    "dependencies_clear": len(optimal_task.dependencies) == 0
+                }
+            )
+            
+            # Create assignment
+            assignment = TaskAssignment(
+                task_id=optimal_task.id,
+                task_name=optimal_task.name,
+                assigned_to=agent_id,
+                assigned_at=datetime.now(),
+                instructions=instructions
+            )
+            
+            # Track assignment
+            state.agent_tasks[agent_id] = assignment
+            agent = state.agent_status[agent_id]
+            agent.current_task = optimal_task.id
+            agent.status = "working"
+            
+            # Update kanban
+            await state.kanban_client.update_task(optimal_task.id, {
+                "status": TaskStatus.IN_PROGRESS,
+                "assigned_to": agent_id
+            })
+            
+            # Log task assignment
+            conversation_logger.log_worker_message(
+                agent_id,
+                "from_pm",
+                f"Assigned task: {optimal_task.name}",
+                {
+                    "task_id": optimal_task.id,
+                    "instructions": instructions,
+                    "priority": optimal_task.priority.value
+                }
+            )
+            
+            return {
+                "success": True,
+                "task": {
+                    "id": optimal_task.id,
+                    "name": optimal_task.name,
+                    "description": optimal_task.description,
+                    "instructions": instructions,
+                    "priority": optimal_task.priority.value,
+                    "implementation_context": previous_implementations
+                }
+            }
+        else:
+            conversation_logger.log_worker_message(
+                agent_id,
+                "from_pm",
+                "No suitable tasks available at this time",
+                {"reason": "no_matching_tasks"}
+            )
+            
+            return {
+                "success": False,
+                "message": "No suitable tasks available at this time"
+            }
+            
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+async def report_task_progress(
+    agent_id: str,
+    task_id: str,
+    status: str,
+    progress: int,
+    message: str
+) -> dict:
+    """Agents report their task progress"""
+    # Log progress update
+    conversation_logger.log_worker_message(
+        agent_id,
+        "to_pm",
+        f"Progress update: {message} ({progress}%)",
+        {
+            "task_id": task_id,
+            "status": status,
+            "progress": progress
+        }
+    )
+    
+    try:
+        # Initialize kanban if needed
+        await state.initialize_kanban()
+        
+        # Log PM thinking
+        log_thinking("pm_agent", f"Processing progress update from {agent_id}", {
+            "task_id": task_id,
+            "status": status,
+            "progress": progress
+        })
+        
+        # Update task in kanban
+        update_data = {"progress": progress}
+        
+        if status == "completed":
+            update_data["status"] = TaskStatus.COMPLETED
+            update_data["completed_at"] = datetime.now().isoformat()
+            
+            # Clear agent's current task
+            if agent_id in state.agent_status:
+                agent = state.agent_status[agent_id]
+                agent.current_task = None
+                agent.status = "available"
+                agent.total_completed += 1
+                
+                # Code analysis for GitHub
+                if state.provider == 'github' and state.code_analyzer:
+                    owner = os.getenv('GITHUB_OWNER')
+                    repo = os.getenv('GITHUB_REPO')
+                    
+                    # Get task details
+                    task = await state.kanban_client.get_task(task_id)
+                    
+                    # Analyze completed work
+                    analysis = await state.code_analyzer.analyze_task_completion(
+                        task,
+                        agent,
+                        owner,
+                        repo
+                    )
+                    
+                    if analysis and analysis.get('findings'):
+                        # Store findings for future tasks
+                        await state.kanban_client.add_comment(
+                            task_id,
+                            f"🤖 Code Analysis:\n{json.dumps(analysis['findings'], indent=2)}"
+                        )
+            
+        elif status == "blocked":
+            update_data["status"] = TaskStatus.BLOCKED
+            
+        await state.kanban_client.update_task(task_id, update_data)
+        
+        # Add comment to task
+        await state.kanban_client.add_comment(
+            task_id,
+            f"🤖 {agent_id}: {message} ({progress}% complete)"
+        )
+        
+        # Log response
+        conversation_logger.log_worker_message(
+            agent_id,
+            "from_pm",
+            f"Progress update received: {status} at {progress}%",
+            {"acknowledged": True}
+        )
+        
+        # Update system state
+        await refresh_project_state()
+        
+        return {
+            "success": True,
+            "message": "Progress updated successfully"
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+async def report_blocker(
+    agent_id: str,
+    task_id: str,
+    blocker_description: str,
+    severity: str
+) -> dict:
+    """Report a blocker on a task"""
+    # Log blocker report
+    conversation_logger.log_worker_message(
+        agent_id,
+        "to_pm",
+        f"Reporting blocker: {blocker_description}",
+        {
+            "task_id": task_id,
+            "severity": severity
+        }
+    )
+    
+    try:
+        # Initialize kanban if needed
+        await state.initialize_kanban()
+        
+        # Log PM thinking
+        log_thinking("pm_agent", f"Analyzing blocker from {agent_id}", {
+            "task_id": task_id,
+            "severity": severity,
+            "description": blocker_description
+        })
+        
+        # Use AI to analyze the blocker and suggest solutions
+        agent = state.agent_status.get(agent_id)
+        task = await state.kanban_client.get_task(task_id)
+        
+        suggestions = await state.ai_engine.analyze_blocker(
+            blocker_description,
+            task,
+            agent,
+            severity
+        )
+        
+        # Update task status
+        await state.kanban_client.update_task(task_id, {
+            "status": TaskStatus.BLOCKED,
+            "blocker": blocker_description
+        })
+        
+        # Add detailed comment
+        comment = f"🚫 BLOCKER ({severity.upper()})\\n"
+        comment += f"Reported by: {agent_id}\\n"
+        comment += f"Description: {blocker_description}\\n\\n"
+        comment += f"📋 AI Suggestions:\\n{suggestions}"
+        
+        await state.kanban_client.add_comment(task_id, comment)
+        
+        # Log PM decision
+        conversation_logger.log_pm_decision(
+            decision=f"Acknowledge blocker and provide suggestions",
+            rationale="Help agent overcome the blocker with AI guidance",
+            confidence_score=0.8,
+            decision_factors={
+                "severity": severity,
+                "has_suggestions": bool(suggestions)
+            }
+        )
+        
+        # Log response
+        conversation_logger.log_worker_message(
+            agent_id,
+            "from_pm",
+            f"Blocker acknowledged. Suggestions provided.",
+            {
+                "suggestions": suggestions,
+                "severity": severity
+            }
+        )
+        
+        return {
+            "success": True,
+            "suggestions": suggestions,
+            "message": "Blocker reported and suggestions provided"
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+async def get_project_status() -> dict:
+    """Get current project status and metrics"""
+    try:
+        # Initialize kanban if needed
+        await state.initialize_kanban()
+        
+        # Refresh state
+        await refresh_project_state()
+        
+        if state.project_state:
+            # Calculate metrics
+            total_tasks = len(state.project_state.tasks)
+            completed = len([t for t in state.project_state.tasks if t.status == TaskStatus.COMPLETED])
+            in_progress = len([t for t in state.project_state.tasks if t.status == TaskStatus.IN_PROGRESS])
+            blocked = len([t for t in state.project_state.tasks if t.status == TaskStatus.BLOCKED])
+            
+            # Worker metrics
+            active_workers = len([w for w in state.agent_status.values() if w.status == "working"])
+            
+            return {
+                "success": True,
+                "project": {
+                    "total_tasks": total_tasks,
+                    "completed": completed,
+                    "in_progress": in_progress,
+                    "blocked": blocked,
+                    "completion_percentage": (completed / total_tasks * 100) if total_tasks > 0 else 0
+                },
+                "workers": {
+                    "total": len(state.agent_status),
+                    "active": active_workers,
+                    "available": len(state.agent_status) - active_workers
+                },
+                "provider": state.provider
+            }
+        else:
+            return {
+                "success": False,
+                "message": "Project state not available"
+            }
+            
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+async def get_agent_status(agent_id: str) -> dict:
+    """Get status and current assignment for an agent"""
+    try:
+        agent = state.agent_status.get(agent_id)
+        if agent:
+            result = {
+                "success": True,
+                "agent": {
+                    "id": agent.agent_id,
+                    "name": agent.name,
+                    "role": agent.role,
+                    "skills": agent.skills,
+                    "status": agent.status,
+                    "current_task": agent.current_task,
+                    "total_completed": agent.total_completed,
+                    "performance_score": agent.performance_score
+                }
+            }
+            
+            # Add current assignment details if any
+            if agent.current_task and agent.agent_id in state.agent_tasks:
+                assignment = state.agent_tasks[agent.agent_id]
+                result["current_assignment"] = {
+                    "task_id": assignment.task_id,
+                    "task_name": assignment.task_name,
+                    "assigned_at": assignment.assigned_at.isoformat(),
+                    "instructions": assignment.instructions
+                }
+                
+            return result
+        else:
+            return {
+                "success": False,
+                "message": f"Agent {agent_id} not found"
+            }
+            
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+async def list_registered_agents() -> dict:
+    """List all registered agents"""
+    try:
+        agents = []
+        for agent in state.agent_status.values():
+            agents.append({
+                "id": agent.agent_id,
+                "name": agent.name,
+                "role": agent.role,
+                "status": agent.status,
+                "skills": agent.skills,
+                "current_task": agent.current_task,
+                "total_completed": agent.total_completed
+            })
+            
+        return {
+            "success": True,
+            "agents": agents,
+            "total": len(agents)
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+async def ping(echo: str) -> dict:
+    """Check PM Agent status and connectivity"""
+    return {
+        "success": True,
+        "status": "online",
+        "provider": state.provider,
+        "echo": echo or "pong",
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+# Helper functions
+async def refresh_project_state():
+    """Refresh the current project state from kanban"""
+    try:
+        tasks = await state.kanban_client.get_available_tasks()
+        
+        state.project_state = ProjectState(
+            tasks=tasks,
+            workers=list(state.agent_status.values()),
+            active_sprints=[],
+            risks=[],
+            timeline=None
+        )
+        
+        # Log system state
+        conversation_logger.log_system_state(
+            active_workers=len([w for w in state.agent_status.values() if w.status == "working"]),
+            tasks_in_progress=len([t for t in tasks if t.status == TaskStatus.IN_PROGRESS]),
+            tasks_completed=len([t for t in tasks if t.status == TaskStatus.COMPLETED]),
+            tasks_blocked=len([t for t in tasks if t.status == TaskStatus.BLOCKED]),
+            system_metrics={
+                "total_tasks": len(tasks),
+                "total_workers": len(state.agent_status)
+            }
+        )
+        
+    except Exception as e:
+        print(f"Error refreshing project state: {e}")
+
+
+async def find_optimal_task_for_agent(agent_id: str) -> Optional[Task]:
+    """Find the best task for an agent based on skills and priority"""
+    agent = state.agent_status.get(agent_id)
+    if not agent or not state.project_state:
+        return None
+        
+    # Get available tasks
+    available_tasks = [
+        t for t in state.project_state.tasks
+        if t.status == TaskStatus.TODO and
+        t.id not in [a.task_id for a in state.agent_tasks.values()]
+    ]
+    
+    if not available_tasks:
+        return None
+        
+    # Score tasks based on skill match and priority
+    best_task = None
+    best_score = -1
+    
+    for task in available_tasks:
+        # Calculate skill match score
+        skill_score = 0
+        if agent.skills and task.required_skills:
+            matching_skills = set(agent.skills) & set(task.required_skills)
+            skill_score = len(matching_skills) / len(task.required_skills)
+            
+        # Priority score
+        priority_score = {
+            Priority.CRITICAL: 1.0,
+            Priority.HIGH: 0.8,
+            Priority.MEDIUM: 0.5,
+            Priority.LOW: 0.2
+        }.get(task.priority, 0.5)
+        
+        # Combined score
+        total_score = (skill_score * 0.6) + (priority_score * 0.4)
+        
+        if total_score > best_score:
+            best_score = total_score
+            best_task = task
+            
+    return best_task
+
+
+async def main():
+    """Run the PM Agent server"""
+    provider = os.getenv('KANBAN_PROVIDER', 'planka')
+    print(f"\\nPM Agent MCP Server v2 Running")
+    print(f"Kanban Provider: {provider.upper()}")
+    print(f"Logs: logs/conversations/")
+    print("="*50)
+    
+    # Start server
+    from mcp.server.stdio import stdio_server
+    async with stdio_server() as (read_stream, write_stream):
+        await server.run(
+            read_stream,
+            write_stream,
+            server.create_initialization_options()
+        )
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

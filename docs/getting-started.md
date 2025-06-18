@@ -1,220 +1,151 @@
-# Getting Started with PM Agent
+# 🚀 Getting Started with PM Agent
 
-This guide will help you set up and run PM Agent for the first time.
+Welcome! This guide will help you set up PM Agent in about 5 minutes.
 
-## Prerequisites
+## 📝 What You'll Need
 
-### Required Software
-- Python 3.8+
-- Node.js 18+
-- Docker
-- Git
+Before starting, make sure you have:
 
-### Optional
-- Anthropic API key (for AI features)
+1. **A computer** with either Windows, Mac, or Linux
+2. **Docker Desktop** installed ([Download here](https://www.docker.com/products/docker-desktop))
+3. **A GitHub account** (free at [github.com](https://github.com))
+4. **An AI API key** from Anthropic ([Get one here](https://console.anthropic.com))
 
-## Installation
+## 🎯 Step 1: Download PM Agent
 
-### 1. Install kanban-mcp (includes Planka)
+Open your terminal (Command Prompt on Windows, Terminal on Mac) and type:
 
 ```bash
-# Clone kanban-mcp repository
-git clone https://github.com/bradrisse/kanban-mcp.git
-cd kanban-mcp
-
-# Install dependencies and build
-npm install
-npm run build
-
-# Start Planka (runs in Docker)
-npm run up
-```
-
-Planka will be available at:
-- URL: http://localhost:3333
-- Login: demo@demo.demo
-- Password: demo
-
-### 2. Install PM Agent
-
-```bash
-# Go back to parent directory
-cd ..
-
-# Clone PM Agent repository
-git clone https://github.com/lwgray/pm-agent.git
+git clone https://github.com/your-username/pm-agent.git
 cd pm-agent
-
-# Create virtual environment
-python -m venv venv
-
-# Activate it
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
 ```
 
-### 3. Configure PM Agent
+This downloads PM Agent to your computer.
+
+## 🔧 Step 2: Start PM Agent
+
+Just run this command:
 
 ```bash
-# Copy example environment file
-cp .env.example .env
-
-# Edit .env and add your ANTHROPIC_API_KEY (optional)
-# If not provided, AI features will be disabled
-```
-
-### 4. Set Up Kanban MCP
-```bash
-# Clone kanban-mcp (if not already done)
-cd ..
-git clone https://github.com/your-repo/kanban-mcp.git
-cd kanban-mcp
-
-# Install dependencies
-npm install
-
-# Build
-npm run build
-```
-
-## Starting PM Agent
-
-### Method 1: Quick Start (Task Master Project)
-```bash
-# From pm-agent directory
-python start_pm_agent_task_master.py
+./start.sh
 ```
 
 This will:
-- Connect to the Task Master project
-- Find or create a board automatically
-- Start the MCP server for workers
+- Create a settings file (`.env`)
+- Start PM Agent in Docker
+- Set everything up automatically
 
-### Method 2: Custom Configuration
+## 🔑 Step 3: Add Your API Keys
+
+PM Agent needs some "passwords" (API keys) to work. Open the `.env` file in any text editor:
+
 ```bash
-# First, select your project and board
-python select_task_master_board.py
+# On Mac/Linux
+nano .env
 
-# Then start PM Agent
-python -m pm_agent_mvp_fixed
+# On Windows
+notepad .env
 ```
 
-### Method 3: With Configuration File
+You'll see something like this:
+
+```
+# Kanban Provider (github, linear, or planka)
+KANBAN_PROVIDER=github
+
+# GitHub Configuration
+GITHUB_TOKEN=your_github_token_here
+GITHUB_OWNER=your_github_username
+GITHUB_REPO=your_repo_name
+
+# AI Configuration
+ANTHROPIC_API_KEY=your_anthropic_api_key
+```
+
+### Getting Your Keys:
+
+1. **GitHub Token**:
+   - Go to https://github.com/settings/tokens
+   - Click "Generate new token"
+   - Give it a name like "PM Agent"
+   - Select these permissions: `repo`, `project`
+   - Copy the token and paste it in `.env`
+
+2. **Anthropic API Key**:
+   - Go to https://console.anthropic.com
+   - Find your API key
+   - Copy and paste it in `.env`
+
+3. **Your GitHub Info**:
+   - `GITHUB_OWNER`: Your GitHub username
+   - `GITHUB_REPO`: Name of a repository you want to use
+
+Save the file when done!
+
+## 🔄 Step 4: Restart PM Agent
+
+After adding your keys, restart PM Agent:
+
 ```bash
-# Edit config_pm_agent.json with your project/board IDs
-# Then run:
-python -m src.enhancements.configurable_pm_agent
+docker-compose restart
 ```
 
-## Verifying PM Agent is Running
+## ✅ Step 5: You're Done!
 
-You should see output like:
-```
-🚀 Starting PM Agent MVP...
-✅ PM Agent ready to connect to Kanban on demand
-🤖 Initializing AI engine...
-✅ AI engine ready
-🎯 PM Agent MVP is ready!
-📋 Available tools:
-   - register_agent
-   - request_next_task
-   - report_task_progress
-   - report_blocker
-   - get_project_status
-   - get_agent_status
-   - list_registered_agents
-```
+PM Agent is now running! Here's what happens next:
 
-## Creating Test Tasks
+1. **AI workers can connect** and ask for tasks
+2. **Tasks come from GitHub Issues** in your repository
+3. **PM Agent assigns tasks** based on what workers are good at
+4. **Progress is tracked** automatically
 
-### Option 1: Use Pre-built Todo App Tasks
+## 🎮 Try It Out!
+
+Want to see PM Agent in action? Run the demo:
+
 ```bash
-python create_todo_app_tasks_fixed.py
+./start.sh demo
 ```
 
-### Option 2: Create Tasks Manually in Planka
-1. Navigate to http://localhost:3333
-2. Open your project board
-3. Create cards with:
-   - Clear titles
-   - Detailed descriptions
-   - Appropriate labels (backend, frontend, etc.)
+This starts PM Agent with 3 pretend workers who will:
+- Ask for tasks
+- Work on them
+- Report progress
+- Complete them
 
-## Testing with a Simple Worker
+## 🚫 Common Problems
 
-Create a test worker script:
+### "Docker not found"
+→ Install Docker Desktop first
 
-```python
-# test_worker.py
-import asyncio
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+### "Permission denied"  
+→ On Mac/Linux, run: `chmod +x start.sh`
 
-async def test_worker():
-    # Connect to PM Agent
-    server_params = StdioServerParameters(
-        command="python",
-        args=["pm_agent_mvp_fixed.py"]
-    )
-    
-    async with stdio_client(server_params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            
-            # Register as a worker
-            result = await session.call_tool("register_agent", {
-                "agent_id": "test_worker_1",
-                "name": "Test Worker",
-                "role": "Backend Developer",
-                "skills": ["python", "fastapi"]
-            })
-            print("Registration:", result)
-            
-            # Request a task
-            result = await session.call_tool("request_next_task", {
-                "agent_id": "test_worker_1"
-            })
-            print("Task assignment:", result)
+### "Invalid API key"
+→ Double-check your keys in `.env` file
 
-if __name__ == "__main__":
-    asyncio.run(test_worker())
-```
+### "Cannot connect to Docker"
+→ Make sure Docker Desktop is running
 
-## Stopping PM Agent
+## 🎯 Next Steps
 
-### Graceful Shutdown
-Press `Ctrl+C` in the terminal where PM Agent is running.
+1. **Create some tasks** - Add issues to your GitHub repository
+2. **Watch it work** - See PM Agent assign tasks to workers
+3. **Check the logs** - Look in `logs/` folder to see conversations
 
-### Force Stop (if needed)
-```bash
-# Find PM Agent process
-ps aux | grep pm_agent
+## 💡 Tips for Beginners
 
-# Kill the process
-kill <process_id>
-```
+- Start with just a few simple tasks
+- Use clear task titles like "Create login page" or "Add user database"
+- Check the logs to understand what's happening
+- Don't worry if something breaks - just restart!
 
-## Next Steps
+## 🆘 Still Stuck?
 
-1. [Configure PM Agent](./configuration.md) for your specific project
-2. [Build Worker Agents](./worker-agents.md) to automate development
-3. [Explore API Reference](./api-reference.md) for all available tools
-4. [Set up monitoring](./beyond-mvp.md#monitoring) for production use
+- Read the [Troubleshooting Guide](troubleshooting.md)
+- Check [Common Questions](faq.md)
+- Ask for help on GitHub Issues
 
-## Common Issues
+---
 
-### "No board found"
-- Run `python select_task_master_board.py` to create/select a board
-- Or create a board manually in Planka
-
-### "Connection refused"
-- Ensure Planka is running at http://localhost:3333
-- Check credentials in config file
-
-### "No tasks available"
-- Create tasks in Planka first
-- Ensure tasks are in the "To Do" or "Backlog" list
-
-For more troubleshooting, see [Troubleshooting Guide](./troubleshooting.md).
+Ready to dive deeper? Check out [How It Works](how-it-works.md) to understand PM Agent better!

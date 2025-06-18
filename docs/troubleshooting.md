@@ -1,400 +1,208 @@
-# PM Agent Troubleshooting Guide
+# 🔧 Troubleshooting Guide
 
-This guide helps you diagnose and fix common issues with PM Agent.
+Something not working? Don't worry! Here are fixes for common problems.
 
-## Common Issues
+## 🚨 Quick Fixes First
 
-### 1. Connection Issues
+Before anything else, try these:
 
-#### "Connection refused" or "Cannot connect to Kanban MCP"
-**Symptoms:**
-- PM Agent hangs on startup
-- Timeout errors when connecting
-- "Connection refused" errors
-
-**Solutions:**
-1. **Check Planka is running:**
+1. **Restart everything**:
    ```bash
-   # Check if Planka is accessible
-   curl http://localhost:3333
-   
-   # Check if port 3333 is in use
-   lsof -i :3333
+   docker-compose down
+   ./start.sh
    ```
 
-2. **Verify Kanban MCP path:**
+2. **Check Docker is running**:
+   - Look for Docker whale icon in your menu bar
+   - If not there, start Docker Desktop
+
+3. **Check your .env file**:
    ```bash
-   # Check if kanban-mcp exists
-   ls /Users/lwgray/dev/kanban-mcp/dist/index.js
-   
-   # Test kanban-mcp directly
-   node /Users/lwgray/dev/kanban-mcp/dist/index.js
+   cat .env
    ```
+   Make sure your API keys are there!
 
-3. **Check Node.js installation:**
-   ```bash
-   which node
-   node --version  # Should be 16+
-   ```
+## ❌ Common Problems
 
-4. **Fix in code:**
-   ```python
-   # In mcp_kanban_client_refactored.py
-   self._node_path = "/opt/homebrew/bin/node"  # Update to your path
-   ```
+### "Permission denied" when running start.sh
 
-#### "Protocol version mismatch"
-**Symptoms:**
-- Error about protocol versions not matching
-- MCP client expects different version than server
-
-**Solution:**
+**On Mac/Linux:**
 ```bash
-# Downgrade MCP client to match kanban-mcp
-pip install mcp==1.1.0
+chmod +x start.sh
 ```
 
-### 2. Board/Project Issues
+**On Windows:**
+Run in Administrator Command Prompt
 
-#### "No board found"
-**Symptoms:**
-- PM Agent can't find a board
-- Board ID is None/null
+### "Docker daemon is not running"
 
-**Solutions:**
-1. **Run board selector:**
-   ```bash
-   python select_task_master_board.py
-   ```
+1. Start Docker Desktop
+2. Wait 30 seconds for it to fully start
+3. Try again
 
-2. **Create board manually:**
-   ```bash
-   python direct_create_tasks.py
-   ```
+### "Invalid API key" errors
 
-3. **Check config file:**
-   ```bash
-   cat config_pm_agent.json
-   # Ensure board_id is set
-   ```
+1. Check your `.env` file has the right keys
+2. Make sure no extra spaces around the keys
+3. Regenerate the key if needed
 
-#### "Project not found"
-**Symptoms:**
-- Invalid project ID
-- 404 errors from Planka
-
-**Solution:**
-1. **Get correct project ID from Planka URL:**
-   ```
-   http://localhost:3333/projects/1533678301472621705/...
-                                  ^^^^^^^^^^^^^^^^^^^^
-                                  This is your project ID
-   ```
-
-2. **Update configuration:**
-   ```json
-   {
-     "project_id": "correct-project-id-here"
-   }
-   ```
-
-### 3. Task Assignment Issues
-
-#### "No tasks available"
-**Symptoms:**
-- Workers always get "no tasks" response
-- Board has tasks but none are assigned
-
-**Causes & Solutions:**
-1. **Tasks in wrong list:**
-   - Move tasks to "To Do" or "Backlog" list
-   - PM Agent only assigns tasks from these lists
-
-2. **Tasks already assigned:**
-   - Check if tasks have assignees in Planka
-   - Clear assignments for tasks to be picked up
-
-3. **No matching skills:**
-   - Ensure task labels match worker skills
-   - Add appropriate labels (backend, frontend, etc.)
-
-#### "Task assignment fails"
-**Symptoms:**
-- Worker gets task but can't update status
-- Progress reports fail
-
-**Solution:**
-```python
-# Debug task assignment
-async def debug_task_assignment():
-    # List all tasks
-    tasks = await kanban_client.get_available_tasks()
-    for task in tasks:
-        print(f"Task: {task.name}")
-        print(f"  ID: {task.id}")
-        print(f"  Labels: {task.labels}")
-        print(f"  Assigned: {task.assigned_to}")
+**Good:**
+```
+ANTHROPIC_API_KEY=sk-ant-abc123
 ```
 
-### 4. Worker Agent Issues
-
-#### "Agent not registered"
-**Symptoms:**
-- request_next_task fails with "agent not registered"
-- Agent status not found
-
-**Solution:**
-```python
-# Always register before requesting tasks
-result = await session.call_tool("register_agent", {
-    "agent_id": "my_agent",
-    "name": "My Agent",
-    "role": "Developer",
-    "skills": ["python"]
-})
-
-# Verify registration
-if not result.get("success"):
-    print(f"Registration failed: {result}")
+**Bad:**
+```
+ANTHROPIC_API_KEY= sk-ant-abc123  # Extra space!
 ```
 
-#### "Worker hanging or not progressing"
-**Symptoms:**
-- Worker stops requesting tasks
-- No progress updates
+### "Cannot connect to GitHub"
 
-**Debug steps:**
-1. **Add logging:**
-   ```python
-   import logging
-   logging.basicConfig(level=logging.DEBUG)
-   
-   async def work_cycle(self):
-       logging.info(f"Starting work cycle for {self.agent_id}")
-       # ... rest of code
-   ```
+1. Check your GitHub token has the right permissions:
+   - `repo` (full control of repositories)
+   - `project` (read project boards)
 
-2. **Add timeout handling:**
-   ```python
-   try:
-       result = await asyncio.wait_for(
-           session.call_tool("request_next_task", {...}),
-           timeout=30.0
-       )
-   except asyncio.TimeoutError:
-       logging.error("Task request timed out")
-   ```
-
-### 5. Performance Issues
-
-#### "PM Agent slow to respond"
-**Symptoms:**
-- Long delays in task assignment
-- Timeouts on API calls
-
-**Solutions:**
-1. **Check system resources:**
+2. Make sure repo exists:
    ```bash
-   # CPU and memory usage
-   top
-   
-   # Disk space
-   df -h
+   # Should show your repo
+   curl -H "Authorization: token YOUR_TOKEN" \
+        https://api.github.com/repos/YOUR_USERNAME/YOUR_REPO
    ```
 
-2. **Optimize Planka:**
-   - Archive old boards
-   - Limit active tasks per board (<100)
-   - Clean up completed tasks
+### "No tasks available"
 
-3. **Check AI API:**
-   - Verify Anthropic API key is valid
-   - Check API rate limits
-   - Monitor API response times
+1. Create issues in your GitHub repo
+2. Label them with priority:
+   - `priority/high`
+   - `priority/medium`
+   - `priority/low`
 
-### 6. AI/Claude Integration Issues
+### Docker runs out of space
 
-#### "AI instructions not generating"
-**Symptoms:**
-- Tasks assigned without instructions
-- Fallback instructions always used
+```bash
+# Clean up Docker
+docker system prune -a
+```
 
-**Solutions:**
-1. **Check API key:**
-   ```bash
-   echo $ANTHROPIC_API_KEY
-   ```
+### Logs folder is empty
 
-2. **Test AI engine:**
-   ```python
-   from src.integrations.ai_analysis_engine import AIAnalysisEngine
-   
-   ai = AIAnalysisEngine()
-   await ai.initialize()
-   
-   result = await ai._call_claude("Test prompt")
-   print(result)
-   ```
+```bash
+# Create logs directory
+mkdir -p logs/conversations logs/raw
 
-3. **Check rate limits:**
-   - Monitor API usage in Anthropic console
-   - Implement exponential backoff
+# Fix permissions
+chmod -R 777 logs/
+```
 
-## Debugging Tools
+### "Port already in use"
 
-### 1. Connection Test Script
-```python
-# test_connection.py
+Another service is using the port:
+
+```bash
+# Find what's using port 8000
+lsof -i :8000  # Mac/Linux
+netstat -ano | findstr :8000  # Windows
+
+# Kill the process or change PM Agent port
+```
+
+### Workers aren't connecting (Demo mode)
+
+```bash
+# Check workers are running
+docker-compose --profile demo ps
+
+# Restart just workers
+docker-compose --profile demo restart worker-backend worker-frontend worker-qa
+```
+
+## 🔍 Debugging Steps
+
+### 1. Check What's Running
+```bash
+docker-compose ps
+```
+
+Should show:
+```
+NAME                    STATUS
+pm-agent-mcp-server     Up
+```
+
+### 2. Check Logs for Errors
+```bash
+docker-compose logs pm-agent | grep -i error
+```
+
+### 3. Test PM Agent Manually
+```bash
+docker-compose exec pm-agent python -c "
+from pm_agent_mcp_server_v2 import ping
 import asyncio
-from src.integrations.mcp_kanban_client_refactored import MCPKanbanClient
-
-async def test_connection():
-    client = MCPKanbanClient()
-    try:
-        async with client.connect() as conn:
-            print("✅ Connection successful!")
-            print(f"Project: {client.project_id}")
-            print(f"Board: {client.board_id}")
-    except Exception as e:
-        print(f"❌ Connection failed: {e}")
-
-asyncio.run(test_connection())
+print(asyncio.run(ping('test')))
+"
 ```
 
-### 2. PM Agent Health Check
-```python
-# health_check.py
-import asyncio
-import aiohttp
-
-async def check_pm_agent():
-    checks = {
-        "planka": "http://localhost:3333",
-        "pm_agent": "http://localhost:8765/health"  # If implemented
-    }
-    
-    async with aiohttp.ClientSession() as session:
-        for name, url in checks.items():
-            try:
-                async with session.get(url, timeout=5) as resp:
-                    status = "✅ OK" if resp.status == 200 else f"❌ {resp.status}"
-                    print(f"{name}: {status}")
-            except Exception as e:
-                print(f"{name}: ❌ {e}")
-
-asyncio.run(check_pm_agent())
-```
-
-### 3. Task Inspector
-```python
-# inspect_tasks.py
-async def inspect_tasks():
-    client = MCPKanbanClient()
-    client.project_id = "your-project-id"
-    
-    async with client.connect() as conn:
-        # Get all lists
-        lists = await client.get_lists()
-        
-        for list_item in lists:
-            print(f"\nList: {list_item['name']}")
-            
-            # Get cards in list
-            cards = await client.get_cards_in_list(list_item['id'])
-            for card in cards:
-                print(f"  - {card['name']}")
-                print(f"    ID: {card['id']}")
-                print(f"    Labels: {card.get('labels', [])}")
-```
-
-## Log Analysis
-
-### Enable Debug Logging
-```python
-# In your agent or PM Agent startup
-import logging
-
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('pm_agent.log'),
-        logging.StreamHandler()
-    ]
-)
-```
-
-### Common Log Patterns to Look For
+### 4. Check Environment Variables
 ```bash
-# Connection issues
-grep -i "connection\|timeout\|refused" pm_agent.log
-
-# Task assignment issues  
-grep -i "no tasks\|assignment\|available" pm_agent.log
-
-# Error patterns
-grep -i "error\|exception\|failed" pm_agent.log
-
-# Worker activity
-grep "agent_id" pm_agent.log | tail -20
+docker-compose exec pm-agent env | grep -E "(GITHUB|ANTHROPIC|KANBAN)"
 ```
 
-## Recovery Procedures
+## 🆘 Still Stuck?
 
-### 1. Full System Reset
+### Collect Debug Info
+
+Run this command and save the output:
 ```bash
-# 1. Stop all processes
-pkill -f pm_agent
-pkill -f kanban-mcp
+echo "=== Docker Info ==="
+docker --version
+docker-compose --version
+docker-compose ps
 
-# 2. Clear any locks/temp files
-rm -f /tmp/pm_agent_*
+echo "=== Environment ==="
+grep -v "KEY\|TOKEN" .env  # Hides secrets
 
-# 3. Reset configuration
-cp config_pm_agent.json config_pm_agent.backup.json
-python select_task_master_board.py
+echo "=== Recent Logs ==="
+docker-compose logs --tail=50 pm-agent
 
-# 4. Restart
-python start_pm_agent_task_master.py
+echo "=== System ==="
+uname -a
 ```
 
-### 2. Board Cleanup
-```python
-# cleanup_board.py
-async def cleanup_board():
-    # Archive completed tasks
-    # Remove stuck assignments
-    # Reset task positions
-    pass
+### Get Help
+
+1. Check [FAQ](faq.md) for more answers
+2. Search existing [GitHub Issues](https://github.com/your-repo/issues)
+3. Create a new issue with your debug info
+
+### Nuclear Option (Start Fresh)
+
+⚠️ This deletes everything and starts over:
+
+```bash
+# Stop everything
+docker-compose down -v
+
+# Remove all PM Agent containers/images
+docker rm -f $(docker ps -a | grep pm-agent | awk '{print $1}')
+docker rmi -f $(docker images | grep pm-agent | awk '{print $3}')
+
+# Start fresh
+rm .env
+./start.sh
 ```
 
-### 3. Worker Recovery
-```python
-# For stuck workers
-async def recover_worker(agent_id):
-    # Get current status
-    status = await get_agent_status(agent_id)
-    
-    if status.get("current_task"):
-        # Force complete or unassign
-        await report_task_progress(
-            agent_id=agent_id,
-            task_id=status["current_task"]["task_id"],
-            status="blocked",
-            message="Worker recovery - releasing task"
-        )
-```
+## 💡 Prevention Tips
 
-## Getting Help
+1. **Always use ./start.sh** - It handles setup correctly
+2. **Check Docker is running** before starting PM Agent  
+3. **Keep your .env file safe** - Back it up!
+4. **Update regularly**:
+   ```bash
+   git pull
+   docker-compose build --no-cache
+   ```
 
-If you're still experiencing issues:
+---
 
-1. **Check the logs** with debug enabled
-2. **Verify all prerequisites** are met
-3. **Try the minimal test cases** in this guide
-4. **Report issues** with:
-   - Full error messages
-   - PM Agent version
-   - Python version
-   - Operating system
-   - Steps to reproduce
+Still having issues? Check the [FAQ](faq.md) or ask for help on GitHub!

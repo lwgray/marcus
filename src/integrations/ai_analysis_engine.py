@@ -9,12 +9,13 @@ from src.core.models import (
     Task, WorkerStatus, ProjectState, 
     RiskLevel, Priority, BlockerReport, ProjectRisk
 )
+from src.core.code_analyzer import CodeAnalyzer
 
 
 class AIAnalysisEngine:
     """AI-powered analysis and decision engine using Claude"""
     
-    def __init__(self):
+    def __init__(self, code_analyzer: Optional[CodeAnalyzer] = None):
         # Initialize Anthropic client with better error handling
         try:
             # Get API key from environment
@@ -33,6 +34,7 @@ class AIAnalysisEngine:
             self.client = None
         
         self.model = "claude-3-sonnet-20241022"  # Using Sonnet for speed/cost balance
+        self.code_analyzer = code_analyzer
         
         # Analysis prompts
         self.prompts = {
@@ -42,6 +44,7 @@ Given:
 - Available tasks: {tasks}
 - Agent profile: {agent}
 - Project state: {project_state}
+- Previous implementations: {previous_work}
 
 Analyze and recommend the SINGLE BEST task for this agent considering:
 1. Agent's skills match task requirements
@@ -49,6 +52,7 @@ Analyze and recommend the SINGLE BEST task for this agent considering:
 3. Task priority and dependencies
 4. Project timeline and critical path
 5. Team collaboration needs
+6. Integration with existing code/implementations
 
 Return your analysis as JSON:
 {{
@@ -63,6 +67,7 @@ Return your analysis as JSON:
 
 Task: {task}
 Assigned to: {agent}
+Previous Implementations: {previous_work}
 
 Generate comprehensive instructions that include:
 1. Clear objectives and success criteria
@@ -71,8 +76,9 @@ Generate comprehensive instructions that include:
 4. Resources and documentation references
 5. Potential challenges and solutions
 6. Collaboration touchpoints
+7. Integration points with existing code/APIs
 
-Make instructions specific, actionable, and tailored to the agent's skill level.""",
+Make instructions specific, actionable, and tailored to the agent's skill level. Include references to existing implementations that the agent should use or extend.""",
 
             "blocker_analysis": """You are an AI Project Manager analyzing a blocker.
 
@@ -154,12 +160,17 @@ Provide comprehensive analysis:
     async def generate_task_instructions(
         self,
         task: Task,
-        agent: Optional[WorkerStatus]
+        agent: Optional[WorkerStatus],
+        previous_implementations: Optional[Dict[str, Any]] = None
     ) -> str:
         """Generate detailed instructions for a task"""
+        # Get code analysis if available
+        if self.code_analyzer and previous_implementations is None:
+            previous_implementations = await self._get_relevant_implementations(task)
+        
         if not self.client:
             # Fallback instructions when AI is not available
-            return self._generate_fallback_instructions(task, agent)
+            return self._generate_fallback_instructions(task, agent, previous_implementations)
         
         task_data = {
             "name": task.name,
@@ -178,7 +189,8 @@ Provide comprehensive analysis:
         
         prompt = self.prompts["task_instructions"].format(
             task=json.dumps(task_data, indent=2),
-            agent=json.dumps(agent_data, indent=2)
+            agent=json.dumps(agent_data, indent=2),
+            previous_work=json.dumps(previous_implementations or {}, indent=2)
         )
         
         try:
@@ -186,13 +198,13 @@ Provide comprehensive analysis:
             return instructions
         except Exception as e:
             print(f"AI instruction generation failed: {e}")
-            return self._generate_fallback_instructions(task, agent)
+            return self._generate_fallback_instructions(task, agent, previous_implementations)
     
-    def _generate_fallback_instructions(self, task: Task, agent: Optional[WorkerStatus]) -> str:
+    def _generate_fallback_instructions(self, task: Task, agent: Optional[WorkerStatus], previous_implementations: Optional[Dict[str, Any]] = None) -> str:
         """Generate fallback instructions when AI is not available"""
         agent_name = agent.name if agent else "Team Member"
         
-        return f"""## Task Assignment for {agent_name}
+        instructions = f"""## Task Assignment for {agent_name}
 
 **Task:** {task.name}
 
@@ -201,19 +213,40 @@ Provide comprehensive analysis:
 **Priority:** {task.priority.value.upper()}
 
 **Estimated Time:** {task.estimated_hours} hours
-
+"""
+        
+        # Add previous implementation context if available
+        if previous_implementations:
+            if previous_implementations.get("endpoints"):
+                instructions += "\n### Existing API Endpoints to Use:\n"
+                for ep in previous_implementations["endpoints"][:5]:
+                    instructions += f"- {ep['method']} {ep['path']}\n"
+                    
+            if previous_implementations.get("models"):
+                instructions += "\n### Existing Data Models:\n"
+                for model in previous_implementations["models"][:5]:
+                    instructions += f"- {model['name']} ({model['type']})\n"
+                    
+            if previous_implementations.get("recommendations"):
+                instructions += "\n### Recommendations from Previous Work:\n"
+                for rec in previous_implementations["recommendations"]:
+                    instructions += f"- {rec}\n"
+        
+        instructions += """
 ### Objectives:
 Complete this task according to the requirements described above.
 
 ### Approach:
 1. Review the task description carefully
-2. Break down the work into smaller steps
-3. Implement according to best practices
-4. Test your work thoroughly
-5. Document any important decisions
+2. Check existing implementations for integration points
+3. Break down the work into smaller steps
+4. Implement according to best practices
+5. Test your work thoroughly
+6. Document any important decisions
 
 ### Definition of Done:
 - All requirements in the description are satisfied
+- Work integrates properly with existing code
 - Work is tested and ready for review
 - Any necessary documentation is updated
 
@@ -222,6 +255,8 @@ If you encounter any blockers or need clarification, please report them using th
 
 ---
 *Generated by PM Agent MVP*"""
+        
+        return instructions
     
     async def analyze_blocker(
         self,
@@ -366,3 +401,43 @@ Include any relevant context, examples, or references that would be helpful."""
         except Exception as e:
             print(f"Error calling Claude: {e}")
             raise
+    
+    async def _get_relevant_implementations(self, task: Task) -> Dict[str, Any]:
+        """Get relevant previous implementations for a task"""
+        if not self.code_analyzer:
+            return {}
+            
+        implementations = {}
+        
+        # Determine what to look for based on task type
+        if "api" in task.name.lower() or "endpoint" in task.name.lower():
+            # This is for tasks that need to use existing APIs
+            feature_type = "endpoints"
+        elif "frontend" in task.name.lower() or "ui" in task.name.lower():
+            # Frontend tasks need to know about APIs
+            feature_type = "endpoints"
+        elif "model" in task.name.lower() or "database" in task.name.lower():
+            # Database tasks need to know about models
+            feature_type = "models"
+        else:
+            return {}
+            
+        # Get implementation details
+        # Note: This requires owner/repo to be passed in context
+        # For now, returning empty as we need more context
+        return {}
+    
+    async def analyze_code_changes(
+        self,
+        task: Task,
+        worker: WorkerStatus,
+        owner: str,
+        repo: str
+    ) -> Dict[str, Any]:
+        """Analyze code changes after task completion"""
+        if not self.code_analyzer:
+            return {}
+            
+        return await self.code_analyzer.analyze_task_completion(
+            task, worker, owner, repo
+        )
