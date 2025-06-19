@@ -460,9 +460,14 @@ async def request_next_task(agent_id: str) -> dict:
             assignment = TaskAssignment(
                 task_id=optimal_task.id,
                 task_name=optimal_task.name,
+                description=optimal_task.description,
+                instructions=instructions,
+                estimated_hours=optimal_task.estimated_hours,
+                priority=optimal_task.priority,
+                dependencies=optimal_task.dependencies,
                 assigned_to=agent_id,
                 assigned_at=datetime.now(),
-                instructions=instructions
+                due_date=optimal_task.due_date
             )
             
             # Track assignment
