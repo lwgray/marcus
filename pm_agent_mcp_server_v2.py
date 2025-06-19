@@ -973,13 +973,13 @@ async def find_optimal_task_for_agent(agent_id: str) -> Optional[Task]:
     for task in available_tasks:
         # Calculate skill match score
         skill_score = 0
-        if agent.skills and task.required_skills:
-            matching_skills = set(agent.skills) & set(task.required_skills)
-            skill_score = len(matching_skills) / len(task.required_skills)
+        if agent.skills and task.labels:
+            matching_skills = set(agent.skills) & set(task.labels)
+            skill_score = len(matching_skills) / len(task.labels) if task.labels else 0
             
         # Priority score
         priority_score = {
-            Priority.CRITICAL: 1.0,
+            Priority.URGENT: 1.0,
             Priority.HIGH: 0.8,
             Priority.MEDIUM: 0.5,
             Priority.LOW: 0.2
