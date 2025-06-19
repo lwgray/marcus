@@ -153,7 +153,7 @@ BACKEND_AGENT_PROMPT = """
 You are a Backend Developer Agent. Your PM Agent ID is 'backend_dev_1'.
 
 REGISTRATION INFO:
-- agent_id: "backend_dev_1"
+- worker_id: "backend_dev_1"
 - name: "Backend Developer"
 - role: "Backend Developer"
 - skills: ["python", "fastapi", "postgresql", "redis", "docker"]

@@ -26,6 +26,8 @@ extensions = [
     'sphinx.ext.todo',
     'sphinx.ext.coverage',
     'sphinx.ext.githubpages',
+    'myst_parser',  # For markdown support
+    'sphinx_copybutton',  # For code block copy buttons
 ]
 
 # Napoleon settings for Google and NumPy style docstrings
@@ -86,3 +88,20 @@ github_username = 'lwgray'
 
 # GitHub Pages URL
 html_baseurl = f'https://{github_username}.github.io/{github_repo_name}/'
+
+# -- MyST Parser configuration -----------------------------------------------
+
+# Configure MyST
+myst_enable_extensions = [
+    "deflist",
+    "tasklist",
+    "html_image",
+    "colon_fence",
+    "substitution",
+]
+
+# Source file suffixes
+source_suffix = {
+    '.rst': 'restructuredtext',
+    '.md': 'markdown',
+}

@@ -7,14 +7,22 @@ This directory contains the documentation for PM Agent, including API references
 ```
 docs/
 ├── sphinx/                  # Sphinx documentation source
-│   ├── source/             # RST source files
-│   │   ├── api/           # API reference documentation
+│   ├── source/             # RST and Markdown source files
+│   │   ├── api/           # Auto-generated API documentation
+│   │   ├── user_guide/    # User guides and how-tos
+│   │   ├── tutorials/     # Step-by-step tutorials
+│   │   ├── templates/     # Project templates for users
+│   │   ├── developer/     # Developer documentation
+│   │   ├── reference/     # Reference documentation
 │   │   ├── conf.py        # Sphinx configuration
 │   │   └── index.rst      # Main documentation index
 │   ├── build/             # Built documentation (git-ignored)
 │   └── Makefile           # Build commands
-├── API_REFERENCE.md        # Comprehensive API reference
-├── *.md                    # Various guides and documentation
+├── internal/               # Internal developer documentation
+│   ├── planning/          # Product planning documents
+│   ├── implementation/    # Technical implementation details
+│   └── archive/           # Historical documents
+├── *.md                    # Legacy documentation (being migrated)
 └── build_docs.sh          # Local documentation build script
 ```
 

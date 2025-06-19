@@ -79,19 +79,8 @@ class AIAnalysisEngine:
                 self.client = None
             else:
                 # Try different initialization approaches based on version
-                try:
-                    # First try with just api_key (works with most versions)
-                    self.client = anthropic.Anthropic(api_key=api_key)
-                except TypeError as e:
-                    if "proxies" in str(e):
-                        # If it expects proxies, provide None
-                        try:
-                            self.client = anthropic.Anthropic(api_key=api_key, proxies=None)
-                        except:
-                            # If that fails too, try with empty dict
-                            self.client = anthropic.Anthropic(api_key=api_key, proxies={})
-                    else:
-                        raise
+                # Simple initialization - Anthropic SDK doesn't use proxies parameter
+                self.client = anthropic.Anthropic(api_key=api_key)
                 
                 print("✅ Anthropic client initialized successfully", file=sys.stderr)
                 

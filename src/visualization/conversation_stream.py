@@ -102,7 +102,9 @@ class ConversationStreamProcessor:
         
     async def _process_existing_logs(self):
         """Process all existing log files"""
+        # Include both old format and new realtime logs
         log_files = list(self.log_dir.glob("conversations_*.jsonl"))
+        log_files.extend(list(self.log_dir.glob("realtime_*.jsonl")))
         log_files.sort()  # Process in chronological order
         
         for log_file in log_files:
@@ -157,6 +159,12 @@ class ConversationStreamProcessor:
         
         # Extract common fields
         timestamp = datetime.fromisoformat(data.get('timestamp', datetime.now().isoformat()))
+        
+        # Check for new simple format from realtime logs
+        if 'type' in data and 'event' not in data:
+            return self._parse_simple_event(data, timestamp)
+        
+        # Legacy format handling
         event_name = data.get('event', '')
         
         # Parse based on event type
@@ -178,6 +186,41 @@ class ConversationStreamProcessor:
             return self._parse_system_state_event(data, timestamp)
             
         return None
+    
+    def _parse_simple_event(self, data: Dict, timestamp: datetime) -> ConversationEvent:
+        """Parse simple event format from realtime logs"""
+        event_type = data.get('type', 'unknown')
+        
+        # Determine source and target based on event type
+        if event_type == 'ping_request':
+            source = data.get('source', 'mcp_client')
+            target = 'pm_agent'
+        elif event_type == 'ping_response':
+            source = 'pm_agent'
+            target = 'mcp_client'
+        else:
+            source = data.get('source', 'unknown')
+            target = data.get('target', 'unknown')
+        
+        # Create message from data
+        message = data.get('message', '')
+        if not message:
+            if event_type == 'ping_request':
+                message = f"Ping: {data.get('echo', 'pong')}"
+            elif event_type == 'ping_response':
+                message = f"Pong: {data.get('echo', 'pong')} (Status: {data.get('status', 'unknown')})"
+            else:
+                message = json.dumps({k: v for k, v in data.items() if k not in ['timestamp', 'type']})
+        
+        return ConversationEvent(
+            id=f"event_{self._event_counter}",
+            timestamp=timestamp,
+            source=source,
+            target=target,
+            event_type=event_type,
+            message=message,
+            metadata=data
+        )
         
     def _parse_worker_event(self, data: Dict, timestamp: datetime) -> ConversationEvent:
         """Parse worker communication event"""

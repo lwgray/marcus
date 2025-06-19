@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 from src.integrations.kanban_interface import KanbanInterface, KanbanProvider
 from src.integrations.providers import PlankaKanban, LinearKanban, GitHubKanban
+from src.integrations.providers.planka_kanban_simple import PlankaKanbanSimple
 
 
 class KanbanFactory:
@@ -39,9 +40,9 @@ class KanbanFactory:
             if not config:
                 config = {
                     'project_name': os.getenv('PLANKA_PROJECT_NAME', 'Task Master Test'),
-                    'mcp_function_caller': None  # Will be set by PM Agent
                 }
-            return PlankaKanban(config)
+            # Use SimpleMCPKanbanClient-based implementation
+            return PlankaKanbanSimple(config)
             
         elif provider_lower == KanbanProvider.LINEAR.value:
             if not config:

@@ -69,7 +69,6 @@ services:
     volumes:
       # Mount source code for live updates
       - ./src:/app/src
-      - ./pm_agent_mcp_server.py:/app/pm_agent_mcp_server.py
       - ./pm_agent_mcp_server_v2.py:/app/pm_agent_mcp_server_v2.py
       - ./main.py:/app/main.py
       - ./config:/app/config

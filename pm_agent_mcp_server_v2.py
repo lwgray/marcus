@@ -6,8 +6,17 @@ Unified PM Agent MCP Server v2 - Corrected tool registration pattern
 import asyncio
 import json
 import os
+import sys
+from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Any
+from dataclasses import dataclass
+
+# Change to script directory to ensure correct working directory
+script_dir = Path(__file__).parent.absolute()
+os.chdir(script_dir)
+sys.path.insert(0, str(script_dir))
+
 from dotenv import load_dotenv
 
 from mcp.server import Server
@@ -27,6 +36,7 @@ from src.communication.communication_hub import CommunicationHub
 from src.config.settings import Settings
 from src.logging.conversation_logger import conversation_logger, log_conversation, log_thinking
 
+import atexit
 
 # Global server instance
 server = Server("pm-agent")
@@ -40,6 +50,16 @@ class PMAgentState:
         # Get kanban provider from environment
         self.provider = os.getenv('KANBAN_PROVIDER', 'planka')
         print(f"Initializing PM Agent with {self.provider.upper()} kanban provider...")
+        
+        # Quick fix: Create realtime log with line buffering
+        log_dir = Path("logs/conversations")
+        log_dir.mkdir(parents=True, exist_ok=True)
+        self.realtime_log = open(
+            log_dir / f"realtime_{datetime.now():%Y%m%d_%H%M%S}.jsonl", 
+            'a', 
+            buffering=1  # Line buffering - writes immediately on newline
+        )
+        atexit.register(self.realtime_log.close)
         
         # Core components
         self.kanban_client: Optional[KanbanInterface] = None
@@ -56,6 +76,7 @@ class PMAgentState:
         self.agent_tasks: Dict[str, TaskAssignment] = {}
         self.agent_status: Dict[str, WorkerStatus] = {}
         self.project_state: Optional[ProjectState] = None
+        self.project_tasks: List[Task] = []
         
         # Log startup
         conversation_logger.log_system_state(
@@ -72,13 +93,7 @@ class PMAgentState:
     async def initialize_kanban(self):
         """Initialize the kanban client"""
         if not self.kanban_client:
-            config = {}
-            
-            if self.provider == 'planka':
-                # Planka needs special handling for MCP
-                config['mcp_function_caller'] = self._mcp_function_caller
-                
-            self.kanban_client = KanbanFactory.create_default(config)
+            self.kanban_client = KanbanFactory.create_default()
             await self.kanban_client.connect()
             
     async def _mcp_function_caller(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
@@ -87,6 +102,15 @@ class PMAgentState:
         # For now, return mock response
         print(f"MCP Call: {tool_name} with args: {arguments}")
         return {"success": True, "message": "Mock response"}
+    
+    def log_event(self, event_type: str, data: dict):
+        """Quick fix: Log events immediately to realtime log"""
+        event = {
+            "timestamp": datetime.now().isoformat(),
+            "type": event_type,
+            **data
+        }
+        self.realtime_log.write(json.dumps(event) + '\n')
 
 
 # Create global state instance
@@ -284,19 +308,39 @@ async def register_agent(agent_id: str, name: str, role: str, skills: List[str])
             "skills": skills
         })
         
-        # Create worker status
+        # Create worker status with correct field names
         status = WorkerStatus(
-            agent_id=agent_id,
+            worker_id=agent_id,
             name=name,
             role=role,
+            email=None,
+            current_tasks=[],
+            completed_tasks_count=0,
+            capacity=40,  # Default 40 hours/week
             skills=skills or [],
-            status="available",
-            current_task=None,
-            total_completed=0,
+            availability={
+                "monday": True,
+                "tuesday": True,
+                "wednesday": True,
+                "thursday": True,
+                "friday": True,
+                "saturday": False,
+                "sunday": False
+            },
             performance_score=1.0
         )
         
         state.agent_status[agent_id] = status
+        
+        # Log registration event immediately
+        state.log_event("worker_registration", {
+            "worker_id": agent_id,
+            "name": name,
+            "role": role,
+            "skills": skills,
+            "source": "mcp_client",
+            "target": "pm_agent"
+        })
         
         # Log decision
         conversation_logger.log_pm_decision(
@@ -344,10 +388,17 @@ async def request_next_task(agent_id: str) -> dict:
         agent_id,
         "to_pm",
         "Requesting next task",
-        {"status": state.agent_status.get(agent_id, {}).status if agent_id in state.agent_status else "unknown"}
+        {"worker_info": f"Worker {agent_id} requesting task"}
     )
     
     try:
+        # Log the task request immediately
+        state.log_event("task_request", {
+            "worker_id": agent_id,
+            "source": agent_id,
+            "target": "pm_agent"
+        })
+        
         # Initialize kanban if needed
         await state.initialize_kanban()
         
@@ -362,7 +413,7 @@ async def request_next_task(agent_id: str) -> dict:
         if agent:
             log_thinking("pm_agent", f"Finding optimal task for {agent.name}", {
                 "agent_skills": agent.skills,
-                "current_workload": agent.current_task or "None"
+                "current_workload": len(agent.current_tasks)
             })
         
         # Find optimal task for this agent
@@ -417,8 +468,7 @@ async def request_next_task(agent_id: str) -> dict:
             # Track assignment
             state.agent_tasks[agent_id] = assignment
             agent = state.agent_status[agent_id]
-            agent.current_task = optimal_task.id
-            agent.status = "working"
+            agent.current_tasks = [optimal_task]
             
             # Update kanban
             await state.kanban_client.update_task(optimal_task.id, {
@@ -504,15 +554,14 @@ async def report_task_progress(
         update_data = {"progress": progress}
         
         if status == "completed":
-            update_data["status"] = TaskStatus.COMPLETED
+            update_data["status"] = TaskStatus.DONE
             update_data["completed_at"] = datetime.now().isoformat()
             
             # Clear agent's current task
             if agent_id in state.agent_status:
                 agent = state.agent_status[agent_id]
-                agent.current_task = None
-                agent.status = "available"
-                agent.total_completed += 1
+                agent.current_tasks = []
+                agent.completed_tasks_count += 1
                 
                 # Code analysis for GitHub
                 if state.provider == 'github' and state.code_analyzer:
@@ -520,7 +569,7 @@ async def report_task_progress(
                     repo = os.getenv('GITHUB_REPO')
                     
                     # Get task details
-                    task = await state.kanban_client.get_task(task_id)
+                    task = await state.kanban_client.get_task_by_id(task_id)
                     
                     # Analyze completed work
                     analysis = await state.code_analyzer.analyze_task_completion(
@@ -602,7 +651,7 @@ async def report_blocker(
         
         # Use AI to analyze the blocker and suggest solutions
         agent = state.agent_status.get(agent_id)
-        task = await state.kanban_client.get_task(task_id)
+        task = await state.kanban_client.get_task_by_id(task_id)
         
         suggestions = await state.ai_engine.analyze_blocker(
             blocker_description,
@@ -671,13 +720,13 @@ async def get_project_status() -> dict:
         
         if state.project_state:
             # Calculate metrics
-            total_tasks = len(state.project_state.tasks)
-            completed = len([t for t in state.project_state.tasks if t.status == TaskStatus.COMPLETED])
-            in_progress = len([t for t in state.project_state.tasks if t.status == TaskStatus.IN_PROGRESS])
-            blocked = len([t for t in state.project_state.tasks if t.status == TaskStatus.BLOCKED])
+            total_tasks = len(state.project_tasks)
+            completed = len([t for t in state.project_tasks if t.status == TaskStatus.DONE])
+            in_progress = len([t for t in state.project_tasks if t.status == TaskStatus.IN_PROGRESS])
+            blocked = len([t for t in state.project_tasks if t.status == TaskStatus.BLOCKED])
             
             # Worker metrics
-            active_workers = len([w for w in state.agent_status.values() if w.status == "working"])
+            active_workers = len([w for w in state.agent_status.values() if len(w.current_tasks) > 0])
             
             return {
                 "success": True,
@@ -716,20 +765,20 @@ async def get_agent_status(agent_id: str) -> dict:
             result = {
                 "success": True,
                 "agent": {
-                    "id": agent.agent_id,
+                    "id": agent.worker_id,
                     "name": agent.name,
                     "role": agent.role,
                     "skills": agent.skills,
-                    "status": agent.status,
-                    "current_task": agent.current_task,
-                    "total_completed": agent.total_completed,
+                    "status": "working" if len(agent.current_tasks) > 0 else "available",
+                    "current_tasks": [t.id for t in agent.current_tasks],
+                    "total_completed": agent.completed_tasks_count,
                     "performance_score": agent.performance_score
                 }
             }
             
             # Add current assignment details if any
-            if agent.current_task and agent.agent_id in state.agent_tasks:
-                assignment = state.agent_tasks[agent.agent_id]
+            if len(agent.current_tasks) > 0 and agent.worker_id in state.agent_tasks:
+                assignment = state.agent_tasks[agent.worker_id]
                 result["current_assignment"] = {
                     "task_id": assignment.task_id,
                     "task_name": assignment.task_name,
@@ -757,13 +806,13 @@ async def list_registered_agents() -> dict:
         agents = []
         for agent in state.agent_status.values():
             agents.append({
-                "id": agent.agent_id,
+                "id": agent.worker_id,
                 "name": agent.name,
                 "role": agent.role,
-                "status": agent.status,
+                "status": "working" if len(agent.current_tasks) > 0 else "available",
                 "skills": agent.skills,
-                "current_task": agent.current_task,
-                "total_completed": agent.total_completed
+                "current_tasks": [t.id for t in agent.current_tasks],
+                "total_completed": agent.completed_tasks_count
             })
             
         return {
@@ -781,34 +830,81 @@ async def list_registered_agents() -> dict:
 
 async def ping(echo: str) -> dict:
     """Check PM Agent status and connectivity"""
-    return {
+    # Log the ping request immediately
+    state.log_event("ping_request", {
+        "echo": echo,
+        "source": "mcp_client"
+    })
+    
+    # Also use structured logging
+    log_thinking("pm_agent", f"Received ping request with echo: {echo}")
+    
+    response = {
         "success": True,
         "status": "online",
         "provider": state.provider,
         "echo": echo or "pong",
         "timestamp": datetime.now().isoformat()
     }
+    
+    # Log the response immediately
+    state.log_event("ping_response", response)
+    
+    # Also use structured logging
+    conversation_logger.log_kanban_interaction(
+        action="ping",
+        direction="response",
+        data=response
+    )
+    
+    return response
 
 
 # Helper functions
 async def refresh_project_state():
     """Refresh the current project state from kanban"""
     try:
+        # Log refresh attempt
+        state.log_event("refresh_project_state_start", {
+            "kanban_client_exists": state.kanban_client is not None
+        })
+        
         tasks = await state.kanban_client.get_available_tasks()
         
+        # Log tasks retrieved
+        state.log_event("refresh_project_state_tasks", {
+            "task_count": len(tasks),
+            "task_names": [t.name for t in tasks]
+        })
+        
+        # Store tasks separately
+        state.project_tasks = tasks
+        
+        # Calculate task statistics
+        completed = len([t for t in tasks if t.status == TaskStatus.DONE])
+        in_progress = len([t for t in tasks if t.status == TaskStatus.IN_PROGRESS])
+        blocked = len([t for t in tasks if t.status == TaskStatus.BLOCKED])
+        total = len(tasks)
+        
         state.project_state = ProjectState(
-            tasks=tasks,
-            workers=list(state.agent_status.values()),
-            active_sprints=[],
-            risks=[],
-            timeline=None
+            board_id="default",
+            project_name="Task Master Test",
+            total_tasks=total,
+            completed_tasks=completed,
+            in_progress_tasks=in_progress,
+            blocked_tasks=blocked,
+            progress_percent=(completed / total * 100) if total > 0 else 0,
+            overdue_tasks=[],
+            team_velocity=0.0,
+            risk_level=RiskLevel.LOW,
+            last_updated=datetime.now()
         )
         
         # Log system state
         conversation_logger.log_system_state(
-            active_workers=len([w for w in state.agent_status.values() if w.status == "working"]),
+            active_workers=len([w for w in state.agent_status.values() if len(w.current_tasks) > 0]),
             tasks_in_progress=len([t for t in tasks if t.status == TaskStatus.IN_PROGRESS]),
-            tasks_completed=len([t for t in tasks if t.status == TaskStatus.COMPLETED]),
+            tasks_completed=len([t for t in tasks if t.status == TaskStatus.DONE]),
             tasks_blocked=len([t for t in tasks if t.status == TaskStatus.BLOCKED]),
             system_metrics={
                 "total_tasks": len(tasks),
@@ -817,21 +913,55 @@ async def refresh_project_state():
         )
         
     except Exception as e:
+        state.log_event("refresh_project_state_error", {
+            "error": str(e),
+            "error_type": type(e).__name__
+        })
         print(f"Error refreshing project state: {e}")
 
 
 async def find_optimal_task_for_agent(agent_id: str) -> Optional[Task]:
     """Find the best task for an agent based on skills and priority"""
     agent = state.agent_status.get(agent_id)
+    
+    # Debug logging
+    state.log_event("debug_find_optimal_task", {
+        "agent_id": agent_id,
+        "agent_exists": agent is not None,
+        "project_state_exists": state.project_state is not None,
+        "project_tasks_count": len(state.project_tasks) if state.project_tasks else 0
+    })
+    
     if not agent or not state.project_state:
         return None
         
     # Get available tasks
+    debug_info = {
+        "total_tasks": len(state.project_tasks),
+        "tasks": []
+    }
+    
+    for t in state.project_tasks:
+        debug_info["tasks"].append({
+            "name": t.name,
+            "id": t.id,
+            "status": str(t.status),
+            "is_todo": t.status == TaskStatus.TODO
+        })
+    
+    assigned_task_ids = [a.task_id for a in state.agent_tasks.values()]
+    debug_info["assigned_task_ids"] = assigned_task_ids
+    
     available_tasks = [
-        t for t in state.project_state.tasks
+        t for t in state.project_tasks
         if t.status == TaskStatus.TODO and
-        t.id not in [a.task_id for a in state.agent_tasks.values()]
+        t.id not in assigned_task_ids
     ]
+    
+    debug_info["available_tasks_count"] = len(available_tasks)
+    
+    # Log debug info to file
+    state.log_event("debug_task_finding", debug_info)
     
     if not available_tasks:
         return None

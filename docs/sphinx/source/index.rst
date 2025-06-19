@@ -6,47 +6,78 @@ PM Agent Documentation
 PM Agent is an AI-powered project manager for autonomous development teams using the Model Context Protocol (MCP).
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Getting Started
-
+   :maxdepth: 1
+   :caption: 🚀 Getting Started
+   
    getting_started
    installation
    quick_start
+   tutorials/demo_guide
+
+.. toctree::
+   :maxdepth: 2
+   :caption: 📚 User Guide
+   
+   user_guide/index
+   user_guide/concepts
+   user_guide/providers
+   user_guide/creating_tasks
+   user_guide/claude_desktop_setup
+   user_guide/claude_code_setup
+   user_guide/monitoring_progress
    configuration
 
 .. toctree::
    :maxdepth: 2
-   :caption: User Guide
-
-   usage
-   mcp_tools
-   worker_agents
-   security
+   :caption: 🔧 Tutorials
+   
+   tutorials/index
+   tutorials/demo_guide
+   tutorials/todo_app_example
+   tutorials/custom_workers
+   tutorials/real_world_examples
 
 .. toctree::
    :maxdepth: 2
-   :caption: API Reference
+   :caption: 📝 Templates & Examples
+   
+   templates/index
+   templates/prd_template
+   templates/product_spec_template
+   templates/task_writing_guide
 
+.. toctree::
+   :maxdepth: 3
+   :caption: 📖 API Reference
+   
    api/modules
+   reference/api_reference
+   reference/mcp_tools
    api/pm_agent
    api/models
    api/integrations
+   api/workspace
 
 .. toctree::
    :maxdepth: 2
-   :caption: Developer Guide
-
-   development
-   architecture
-   testing
-   contributing
+   :caption: 👩‍💻 Developer Guide
+   
+   developer/index
+   developer/architecture
+   developer/worker_agents
+   developer/visualization
+   developer/testing
+   developer/contributing
 
 .. toctree::
    :maxdepth: 1
-   :caption: Additional Resources
-
-   troubleshooting
-   faq
+   :caption: ❓ Help & Reference
+   
+   reference/index
+   reference/troubleshooting
+   reference/faq
+   reference/glossary
+   reference/environment_variables
    changelog
    license
 
