@@ -596,11 +596,12 @@ async def report_task_progress(
             
         await state.kanban_client.update_task(task_id, update_data)
         
-        # Add comment to task
-        await state.kanban_client.add_comment(
-            task_id,
-            f"🤖 {agent_id}: {message} ({progress}% complete)"
-        )
+        # Update task progress (including checklist items)
+        await state.kanban_client.update_task_progress(task_id, {
+            'progress': progress,
+            'status': status,
+            'message': message
+        })
         
         # Log response
         conversation_logger.log_worker_message(

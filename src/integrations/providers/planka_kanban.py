@@ -104,8 +104,24 @@ class PlankaKanban(KanbanInterface):
         if not self.connected:
             await self.connect()
             
-        # Update card
-        await self.client.update_task_details(task_id, updates)
+        # Check if status is being updated
+        if 'status' in updates:
+            status = updates['status']
+            # Map TaskStatus to column names
+            status_to_column = {
+                TaskStatus.TODO: 'backlog',
+                TaskStatus.IN_PROGRESS: 'in progress',
+                TaskStatus.DONE: 'done',
+                TaskStatus.BLOCKED: 'blocked'
+            }
+            
+            # Move to appropriate column if status changed
+            if status in status_to_column:
+                await self.move_task_to_column(task_id, status_to_column[status])
+        
+        # Update card details (if update_task_details exists)
+        if hasattr(self.client, 'update_task_details'):
+            await self.client.update_task_details(task_id, updates)
         
         # Get updated task
         return await self.get_task_by_id(task_id)
@@ -115,7 +131,13 @@ class PlankaKanban(KanbanInterface):
         if not self.connected:
             await self.connect()
             
-        return await self.client.assign_task(task_id, assignee_id)
+        # Add assignment comment
+        await self.client.assign_task(task_id, assignee_id)
+        
+        # Move to In Progress column
+        await self.move_task_to_column(task_id, 'in progress')
+        
+        return True
         
     async def move_task_to_column(self, task_id: str, column_name: str) -> bool:
         """Move task to specific column"""
@@ -228,6 +250,9 @@ class PlankaKanban(KanbanInterface):
             
         await self.add_comment(task_id, comment)
         
+        # Update checklist items based on progress
+        await self._update_checklist_progress(task_id, progress)
+        
         # Move to appropriate column based on status
         if status:
             if status == 'in_progress' and progress < 100:
@@ -236,3 +261,35 @@ class PlankaKanban(KanbanInterface):
                 await self.move_task_to_column(task_id, "Done")
                 
         return True
+    
+    async def _update_checklist_progress(self, task_id: str, progress: int) -> None:
+        """Update checklist items based on progress percentage"""
+        try:
+            # Get all checklist items for the card
+            checklist_items = await self.client.get_card_tasks(task_id)
+            
+            if not checklist_items:
+                return
+            
+            # Calculate how many items should be completed based on progress
+            total_items = len(checklist_items)
+            items_to_complete = int((progress / 100) * total_items)
+            
+            # Sort items by position to maintain order
+            sorted_items = sorted(checklist_items, key=lambda x: x.get('position', 0))
+            
+            # Update checklist items
+            for idx, item in enumerate(sorted_items):
+                should_be_completed = idx < items_to_complete
+                is_completed = item.get('isCompleted', False)
+                
+                # Only update if state needs to change
+                if should_be_completed != is_completed:
+                    await self.client.update_card_task(
+                        item['id'], 
+                        should_be_completed
+                    )
+                    
+        except Exception as e:
+            # Log error but don't fail the progress update
+            print(f"Warning: Could not update checklist items: {e}")

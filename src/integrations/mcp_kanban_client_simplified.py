@@ -78,7 +78,7 @@ class MCPKanbanClientSimplified:
         
         for card in card_list:
             # Convert to Task object
-            task = self._card_to_task(card)
+            task = await self._card_to_task(card)
             # Only return unassigned tasks (or adapt your logic)
             if not task.assigned_to:
                 tasks.append(task)
@@ -92,7 +92,7 @@ class MCPKanbanClientSimplified:
             "cardId": task_id
         })
         
-        return self._card_to_task(details)
+        return await self._card_to_task(details)
     
     async def assign_task(self, task_id: str, agent_id: str):
         """Assign a task to an agent"""
@@ -119,6 +119,69 @@ class MCPKanbanClientSimplified:
         # This would need to implement the logic to move cards between lists
         # based on your board structure
         pass
+    
+    async def get_card_tasks(self, card_id: str):
+        """Get all checklist tasks for a card"""
+        try:
+            result = await self.mcp_call("mcp_kanban_task_manager", {
+                "action": "get_all",
+                "cardId": card_id
+            })
+            return result if isinstance(result, list) else []
+        except:
+            return []
+    
+    async def update_card_task(self, task_id: str, is_completed: bool):
+        """Update a checklist task's completion status"""
+        try:
+            await self.mcp_call("mcp_kanban_task_manager", {
+                "action": "update",
+                "id": task_id,
+                "isCompleted": is_completed
+            })
+            return True
+        except:
+            return False
+    
+    async def create_card_tasks(self, card_id: str, task_names: List[str]):
+        """Create checklist tasks for a card"""
+        tasks = []
+        for idx, name in enumerate(task_names):
+            try:
+                result = await self.mcp_call("mcp_kanban_task_manager", {
+                    "action": "create",
+                    "cardId": card_id,
+                    "name": name,
+                    "position": (idx + 1) * 65536
+                })
+                tasks.append(result)
+            except:
+                pass
+        return tasks
+    
+    async def _get_lists(self):
+        """Get all lists on the board"""
+        if not self.board_id:
+            raise RuntimeError("Not initialized - call initialize() first")
+        
+        result = await self.mcp_call("mcp_kanban_list_manager", {
+            "action": "get_all",
+            "boardId": self.board_id
+        })
+        
+        return result if isinstance(result, list) else []
+    
+    async def _get_cards(self):
+        """Get all cards on the board"""
+        if not self.board_id:
+            raise RuntimeError("Not initialized - call initialize() first")
+        
+        result = await self.mcp_call("mcp_kanban_card_manager", {
+            "action": "get_all",
+            "boardId": self.board_id
+        })
+        
+        return result if isinstance(result, list) else []
     
     async def complete_task(self, task_id: str):
         """Mark a task as completed"""
@@ -154,15 +217,43 @@ class MCPKanbanClientSimplified:
             "description": task_data.get("description", "")
         })
         
-        return self._card_to_task(card)
+        return await self._card_to_task(card)
     
-    def _card_to_task(self, card: Dict[str, Any]) -> Task:
+    async def get_task_by_id(self, task_id: str) -> Optional[Task]:
+        """Get a task by its ID"""
+        try:
+            card = await self.mcp_call("mcp_kanban_card_manager", {
+                "action": "get_details",
+                "cardId": task_id
+            })
+            if card:
+                return await self._card_to_task(card)
+        except:
+            pass
+        return None
+    
+    async def _card_to_task(self, card: Dict[str, Any]) -> Task:
         """Convert a kanban card to a Task object"""
+        # Get list information to determine status
+        status = TaskStatus.TODO
+        if card.get("listId"):
+            lists = await self._get_lists()
+            for lst in lists:
+                if lst["id"] == card["listId"]:
+                    list_name = lst["name"].lower()
+                    if "progress" in list_name:
+                        status = TaskStatus.IN_PROGRESS
+                    elif "done" in list_name or "complete" in list_name:
+                        status = TaskStatus.DONE
+                    elif "blocked" in list_name:
+                        status = TaskStatus.BLOCKED
+                    break
+        
         return Task(
             id=card["id"],
             name=card.get("name", card.get("title", "")),
             description=card.get("description", ""),
-            status=TaskStatus.TODO,  # Simplified - you'd map based on list
+            status=status,
             priority=Priority.MEDIUM,  # You'd extract from labels
             assigned_to=card.get("assigned_to"),
             created_at=datetime.fromisoformat(card.get("createdAt", datetime.now().isoformat())),
