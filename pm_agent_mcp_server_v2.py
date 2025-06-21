@@ -568,6 +568,10 @@ async def report_task_progress(
                 agent.current_tasks = []
                 agent.completed_tasks_count += 1
                 
+                # Remove task assignment from state
+                if agent_id in state.agent_tasks:
+                    del state.agent_tasks[agent_id]
+                
                 # Code analysis for GitHub
                 if state.provider == 'github' and state.code_analyzer:
                     owner = os.getenv('GITHUB_OWNER')

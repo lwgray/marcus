@@ -257,7 +257,7 @@ class PlankaKanban(KanbanInterface):
         if status:
             if status == 'in_progress' and progress < 100:
                 await self.move_task_to_column(task_id, "In Progress")
-            elif progress >= 100:
+            elif status == 'completed' or progress >= 100:
                 await self.move_task_to_column(task_id, "Done")
                 
         return True

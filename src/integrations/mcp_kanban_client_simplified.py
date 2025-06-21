@@ -63,7 +63,7 @@ class MCPKanbanClientSimplified:
             raise ValueError(f"No board found for project '{project_name}'")
     
     async def get_available_tasks(self) -> List[Task]:
-        """Get all available tasks from the board"""
+        """Get all tasks from the board (not just unassigned)"""
         if not self.board_id:
             raise RuntimeError("Not initialized - call initialize() first")
         
@@ -79,9 +79,7 @@ class MCPKanbanClientSimplified:
         for card in card_list:
             # Convert to Task object
             task = await self._card_to_task(card)
-            # Only return unassigned tasks (or adapt your logic)
-            if not task.assigned_to:
-                tasks.append(task)
+            tasks.append(task)
         
         return tasks
     
