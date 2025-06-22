@@ -1,0 +1,1000 @@
+{
+  "project": {
+    "name": "Todo App Development",
+    "description": "Building a simple but fully-featured todo application with modern web technologies"
+  },
+  "board": {
+    "name": "Todo App Development Board",
+    "lists": [
+      {
+        "id": "list-backlog",
+        "name": "Backlog",
+        "position": 0
+      },
+      {
+        "id": "list-todo",
+        "name": "TODO",
+        "position": 1
+      },
+      {
+        "id": "list-progress",
+        "name": "In Progress",
+        "position": 2
+      },
+      {
+        "id": "list-review",
+        "name": "Review",
+        "position": 3
+      },
+      {
+        "id": "list-done",
+        "name": "Done",
+        "position": 4
+      }
+    ]
+  },
+  "cards": [
+    {
+      "id": "card-001",
+      "title": "Set up project structure",
+      "description": "Initialize the project with proper folder structure, package.json, and basic configuration files.\n\n### Acceptance Criteria:\n- Project initialized with npm/yarn\n- Folder structure created (src, tests, config, etc.)\n- Basic configuration files added (.gitignore, .env.example)\n- README.md with initial project description",
+      "listId": "list-backlog",
+      "position": 1,
+      "labels": ["setup", "high-priority", "backend", "frontend"],
+      "dueDate": "2024-01-15T09:00:00Z",
+      "tasks": [
+        {
+          "id": "task-001-1",
+          "name": "Run npm init and configure package.json",
+          "isCompleted": false
+        },
+        {
+          "id": "task-001-2",
+          "name": "Create folder structure (src, tests, config, public)",
+          "isCompleted": false
+        },
+        {
+          "id": "task-001-3",
+          "name": "Add .gitignore file",
+          "isCompleted": false
+        },
+        {
+          "id": "task-001-4",
+          "name": "Create .env.example with required variables",
+          "isCompleted": false
+        },
+        {
+          "id": "task-001-5",
+          "name": "Initialize git repository",
+          "isCompleted": false
+        }
+      ],
+      "actions": [
+        {
+          "id": "action-001-1",
+          "type": "comment",
+          "text": "Make sure to use TypeScript for better type safety",
+          "userId": "user-1",
+          "createdAt": "2024-01-10T10:00:00Z"
+        }
+      ],
+      "members": ["user-1"],
+      "attachments": [],
+      "dependencies": []
+    },
+    {
+      "id": "card-002",
+      "title": "Design database schema",
+      "description": "Design the database schema for todos including all necessary fields and relationships.\n\n### Requirements:\n- Support for multiple users\n- Todo items with all necessary fields\n- Categories/tags support\n- Audit fields (created, updated timestamps)\n\n### Schema Design:\n```sql\nCREATE TABLE users (\n  id UUID PRIMARY KEY,\n  email VARCHAR(255) UNIQUE NOT NULL,\n  password_hash VARCHAR(255) NOT NULL,\n  created_at TIMESTAMP DEFAULT NOW()\n);\n\nCREATE TABLE todos (\n  id UUID PRIMARY KEY,\n  user_id UUID REFERENCES users(id),\n  title VARCHAR(255) NOT NULL,\n  description TEXT,\n  status VARCHAR(50) DEFAULT 'pending',\n  priority VARCHAR(50) DEFAULT 'medium',\n  due_date TIMESTAMP,\n  created_at TIMESTAMP DEFAULT NOW(),\n  updated_at TIMESTAMP DEFAULT NOW()\n);\n```",
+      "listId": "list-backlog",
+      "position": 2,
+      "labels": ["backend", "high-priority", "database"],
+      "dueDate": "2024-01-16T09:00:00Z",
+      "tasks": [
+        {
+          "id": "task-002-1",
+          "name": "Design users table schema",
+          "isCompleted": false
+        },
+        {
+          "id": "task-002-2",
+          "name": "Design todos table schema",
+          "isCompleted": false
+        },
+        {
+          "id": "task-002-3",
+          "name": "Design tags/categories table schema",
+          "isCompleted": false
+        },
+        {
+          "id": "task-002-4",
+          "name": "Create ERD diagram",
+          "isCompleted": false
+        },
+        {
+          "id": "task-002-5",
+          "name": "Write migration files",
+          "isCompleted": false
+        }
+      ],
+      "actions": [
+        {
+          "id": "action-002-1",
+          "type": "comment",
+          "text": "Consider adding a 'completed_at' timestamp field",
+          "userId": "user-2",
+          "createdAt": "2024-01-11T14:30:00Z"
+        }
+      ],
+      "members": ["user-2"],
+      "attachments": [
+        {
+          "id": "attach-002-1",
+          "name": "database-erd.png",
+          "url": "/attachments/database-erd.png"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "card-003",
+      "title": "Create Todo model",
+      "description": "Implement the Todo model/entity with proper data types, validation, and business logic.\n\n### Model Requirements:\n- All CRUD operations\n- Data validation\n- Business logic methods\n- Proper error handling",
+      "listId": "list-backlog",
+      "position": 3,
+      "labels": ["backend", "high-priority", "api"],
+      "dueDate": "2024-01-18T09:00:00Z",
+      "tasks": [
+        {
+          "id": "task-003-1",
+          "name": "Create Todo model class/interface",
+          "isCompleted": false
+        },
+        {
+          "id": "task-003-2",
+          "name": "Add validation rules",
+          "isCompleted": false
+        },
+        {
+          "id": "task-003-3",
+          "name": "Implement CRUD methods",
+          "isCompleted": false
+        },
+        {
+          "id": "task-003-4",
+          "name": "Add business logic methods (complete, archive, etc.)",
+          "isCompleted": false
+        },
+        {
+          "id": "task-003-5",
+          "name": "Write unit tests for model",
+          "isCompleted": false
+        }
+      ],
+      "actions": [
+        {
+          "id": "action-003-1",
+          "type": "comment",
+          "text": "Use an ORM like Sequelize or TypeORM for easier database operations",
+          "userId": "user-1",
+          "createdAt": "2024-01-12T09:15:00Z"
+        }
+      ],
+      "members": ["user-2"],
+      "attachments": [],
+      "dependencies": ["card-001", "card-002"]
+    },
+    {
+      "id": "card-004",
+      "title": "Set up database connection",
+      "description": "Configure database connection with proper pooling, error handling, and environment-based configuration.\n\n### Requirements:\n- Connection pooling\n- Retry logic\n- Environment-based configuration\n- Health check endpoint",
+      "listId": "list-backlog",
+      "position": 4,
+      "labels": ["backend", "high-priority", "infrastructure"],
+      "dueDate": "2024-01-17T09:00:00Z",
+      "tasks": [
+        {
+          "id": "task-004-1",
+          "name": "Install database driver (pg, mysql2, etc.)",
+          "isCompleted": false
+        },
+        {
+          "id": "task-004-2",
+          "name": "Create database connection module",
+          "isCompleted": false
+        },
+        {
+          "id": "task-004-3",
+          "name": "Configure connection pooling",
+          "isCompleted": false
+        },
+        {
+          "id": "task-004-4",
+          "name": "Add retry logic for failed connections",
+          "isCompleted": false
+        },
+        {
+          "id": "task-004-5",
+          "name": "Create database health check",
+          "isCompleted": false
+        }
+      ],
+      "actions": [],
+      "members": ["user-2"],
+      "attachments": [],
+      "dependencies": ["card-001"]
+    },
+    {
+      "id": "card-005",
+      "title": "Create API endpoints for CRUD operations",
+      "description": "Implement RESTful API endpoints for todo operations.\n\n### Endpoints to implement:\n- `GET /api/todos` - List all todos with pagination\n- `GET /api/todos/:id` - Get single todo\n- `POST /api/todos` - Create new todo\n- `PUT /api/todos/:id` - Update todo\n- `DELETE /api/todos/:id` - Delete todo\n- `PATCH /api/todos/:id/complete` - Mark as complete\n\n### Requirements:\n- Proper HTTP status codes\n- JSON request/response\n- Error handling\n- Request validation",
+      "listId": "list-backlog",
+      "position": 5,
+      "labels": ["backend", "high-priority", "api"],
+      "dueDate": "2024-01-20T09:00:00Z",
+      "tasks": [
+        {
+          "id": "task-005-1",
+          "name": "Set up Express/Fastify router",
+          "isCompleted": false
+        },
+        {
+          "id": "task-005-2",
+          "name": "Implement GET /todos endpoint",
+          "isCompleted": false
+        },
+        {
+          "id": "task-005-3",
+          "name": "Implement GET /todos/:id endpoint",
+          "isCompleted": false
+        },
+        {
+          "id": "task-005-4",
+          "name": "Implement POST /todos endpoint",
+          "isCompleted": false
+        },
+        {
+          "id": "task-005-5",
+          "name": "Implement PUT /todos/:id endpoint",
+          "isCompleted": false
+        },
+        {
+          "id": "task-005-6",
+          "name": "Implement DELETE /todos/:id endpoint",
+          "isCompleted": false
+        },
+        {
+          "id": "task-005-7",
+          "name": "Add pagination to GET /todos",
+          "isCompleted": false
+        }
+      ],
+      "actions": [
+        {
+          "id": "action-005-1",
+          "type": "comment",
+          "text": "Don't forget to add rate limiting to prevent API abuse",
+          "userId": "user-3",
+          "createdAt": "2024-01-14T11:00:00Z"
+        }
+      ],
+      "members": ["user-1", "user-2"],
+      "attachments": [
+        {
+          "id": "attach-005-1",
+          "name": "api-design.md",
+          "url": "/attachments/api-design.md"
+        }
+      ],
+      "dependencies": ["card-003", "card-004"]
+    },
+    {
+      "id": "card-006",
+      "title": "Add input validation middleware",
+      "description": "Create middleware to validate todo input data using a validation library like Joi or Yup.\n\n### Validation Rules:\n- Title: required, min 3 chars, max 255 chars\n- Description: optional, max 1000 chars\n- Priority: enum (low, medium, high, urgent)\n- Due date: valid future date\n- Status: enum (pending, in-progress, completed)",
+      "listId": "list-backlog",
+      "position": 6,
+      "labels": ["backend", "medium-priority", "security"],
+      "dueDate": "2024-01-22T09:00:00Z",
+      "tasks": [
+        {
+          "id": "task-006-1",
+          "name": "Install validation library (Joi/Yup)",
+          "isCompleted": false
+        },
+        {
+          "id": "task-006-2",
+          "name": "Create validation schemas",
+          "isCompleted": false
+        },
+        {
+          "id": "task-006-3",
+          "name": "Create validation middleware",
+          "isCompleted": false
+        },
+        {
+          "id": "task-006-4",
+          "name": "Add validation to all endpoints",
+          "isCompleted": false
+        },
+        {
+          "id": "task-006-5",
+          "name": "Write tests for validation",
+          "isCompleted": false
+        }
+      ],
+      "actions": [],
+      "members": ["user-3"],
+      "attachments": [],
+      "dependencies": ["card-005"]
+    },
+    {
+      "id": "card-007",
+      "title": "Implement error handling",
+      "description": "Add comprehensive error handling throughout the application.\n\n### Requirements:\n- Global error handler middleware\n- Custom error classes\n- Proper error logging\n- User-friendly error messages\n- Different handling for dev/prod environments",
+      "listId": "list-backlog",
+      "position": 7,
+      "labels": ["backend", "medium-priority", "infrastructure"],
+      "dueDate": "2024-01-23T09:00:00Z",
+      "tasks": [
+        {
+          "id": "task-007-1",
+          "name": "Create custom error classes",
+          "isCompleted": false
+        },
+        {
+          "id": "task-007-2",
+          "name": "Create global error handler middleware",
+          "isCompleted": false
+        },
+        {
+          "id": "task-007-3",
+          "name": "Add error logging with Winston/Morgan",
+          "isCompleted": false
+        },
+        {
+          "id": "task-007-4",
+          "name": "Create error response formatter",
+          "isCompleted": false
+        },
+        {
+          "id": "task-007-5",
+          "name": "Add async error wrapper",
+          "isCompleted": false
+        }
+      ],
+      "actions": [],
+      "members": ["user-3"],
+      "attachments": [],
+      "dependencies": ["card-005"]
+    },
+    {
+      "id": "card-008",
+      "title": "Create frontend app structure",
+      "description": "Set up the frontend application with a modern framework and proper architecture.\n\n### Tech Stack Options:\n- React with TypeScript\n- Vue 3 with Composition API\n- Angular with RxJS\n\n### Structure:\n- Component-based architecture\n- State management (Redux/Vuex/NgRx)\n- Routing setup\n- API service layer",
+      "listId": "list-backlog",
+      "position": 8,
+      "labels": ["frontend", "high-priority", "setup"],
+      "dueDate": "2024-01-19T09:00:00Z",
+      "tasks": [
+        {
+          "id": "task-008-1",
+          "name": "Initialize frontend app (CRA/Vite/Angular CLI)",
+          "isCompleted": false
+        },
+        {
+          "id": "task-008-2",
+          "name": "Set up folder structure",
+          "isCompleted": false
+        },
+        {
+          "id": "task-008-3",
+          "name": "Configure TypeScript",
+          "isCompleted": false
+        },
+        {
+          "id": "task-008-4",
+          "name": "Set up routing",
+          "isCompleted": false
+        },
+        {
+          "id": "task-008-5",
+          "name": "Configure state management",
+          "isCompleted": false
+        },
+        {
+          "id": "task-008-6",
+          "name": "Set up CSS framework (Tailwind/Material UI)",
+          "isCompleted": false
+        }
+      ],
+      "actions": [
+        {
+          "id": "action-008-1",
+          "type": "comment",
+          "text": "Let's use React with Vite for better performance",
+          "userId": "user-4",
+          "createdAt": "2024-01-15T10:00:00Z"
+        }
+      ],
+      "members": ["user-4"],
+      "attachments": [],
+      "dependencies": ["card-001"]
+    },
+    {
+      "id": "card-009",
+      "title": "Design UI mockups",
+      "description": "Create UI/UX designs for all application screens.\n\n### Screens to design:\n- Todo list view (desktop & mobile)\n- Add/Edit todo modal\n- Filter sidebar\n- User profile/settings\n- Login/Register screens\n\n### Design Requirements:\n- Modern, clean interface\n- Accessibility compliant\n- Dark mode support\n- Responsive design",
+      "listId": "list-backlog",
+      "position": 9,
+      "labels": ["design", "medium-priority", "frontend"],
+      "dueDate": "2024-01-18T09:00:00Z",
+      "tasks": [
+        {
+          "id": "task-009-1",
+          "name": "Create wireframes",
+          "isCompleted": false
+        },
+        {
+          "id": "task-009-2",
+          "name": "Design todo list view",
+          "isCompleted": false
+        },
+        {
+          "id": "task-009-3",
+          "name": "Design add/edit forms",
+          "isCompleted": false
+        },
+        {
+          "id": "task-009-4",
+          "name": "Design mobile views",
+          "isCompleted": false
+        },
+        {
+          "id": "task-009-5",
+          "name": "Create style guide",
+          "isCompleted": false
+        },
+        {
+          "id": "task-009-6",
+          "name": "Design dark mode variants",
+          "isCompleted": false
+        }
+      ],
+      "actions": [],
+      "members": ["user-5"],
+      "attachments": [
+        {
+          "id": "attach-009-1",
+          "name": "figma-designs.link",
+          "url": "/attachments/figma-link.txt"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "card-010",
+      "title": "Build TodoList component",
+      "description": "Create the main todo list component that displays all todos.\n\n### Features:\n- Display todos in a clean list format\n- Show todo status with icons/colors\n- Priority indicators\n- Due date display\n- Hover effects\n- Empty state",
+      "listId": "list-backlog",
+      "position": 10,
+      "labels": ["frontend", "high-priority", "component"],
+      "dueDate": "2024-01-24T09:00:00Z",
+      "tasks": [
+        {
+          "id": "task-010-1",
+          "name": "Create TodoList component structure",
+          "isCompleted": false
+        },
+        {
+          "id": "task-010-2",
+          "name": "Add props interface/types",
+          "isCompleted": false
+        },
+        {
+          "id": "task-010-3",
+          "name": "Implement todo rendering logic",
+          "isCompleted": false
+        },
+        {
+          "id": "task-010-4",
+          "name": "Add empty state handling",
+          "isCompleted": false
+        },
+        {
+          "id": "task-010-5",
+          "name": "Style the component",
+          "isCompleted": false
+        }
+      ],
+      "actions": [],
+      "members": ["user-4"],
+      "attachments": [],
+      "dependencies": ["card-008", "card-009"]
+    },
+    {
+      "id": "card-011",
+      "title": "Build TodoItem component",
+      "description": "Create individual todo item component with all interactive features.\n\n### Features:\n- Checkbox for completion\n- Edit button\n- Delete button with confirmation\n- Priority badge\n- Due date with overdue styling\n- Expand/collapse for description",
+      "listId": "list-backlog",
+      "position": 11,
+      "labels": ["frontend", "high-priority", "component"],
+      "dueDate": "2024-01-25T09:00:00Z",
+      "tasks": [
+        {
+          "id": "task-011-1",
+          "name": "Create TodoItem component",
+          "isCompleted": false
+        },
+        {
+          "id": "task-011-2",
+          "name": "Add completion checkbox",
+          "isCompleted": false
+        },
+        {
+          "id": "task-011-3",
+          "name": "Add edit/delete actions",
+          "isCompleted": false
+        },
+        {
+          "id": "task-011-4",
+          "name": "Implement expand/collapse",
+          "isCompleted": false
+        },
+        {
+          "id": "task-011-5",
+          "name": "Add animations/transitions",
+          "isCompleted": false
+        },
+        {
+          "id": "task-011-6",
+          "name": "Style priority and date indicators",
+          "isCompleted": false
+        }
+      ],
+      "actions": [],
+      "members": ["user-4"],
+      "attachments": [],
+      "dependencies": ["card-010"]
+    },
+    {
+      "id": "card-012",
+      "title": "Build AddTodo form component",
+      "description": "Create form component for adding new todos with validation.\n\n### Form Fields:\n- Title (required)\n- Description (textarea)\n- Priority selector\n- Due date picker\n- Tags input\n\n### Features:\n- Client-side validation\n- Error messages\n- Loading state\n- Success feedback",
+      "listId": "list-backlog",
+      "position": 12,
+      "labels": ["frontend", "high-priority", "component"],
+      "dueDate": "2024-01-26T09:00:00Z",
+      "tasks": [
+        {
+          "id": "task-012-1",
+          "name": "Create form component structure",
+          "isCompleted": false
+        },
+        {
+          "id": "task-012-2",
+          "name": "Add form fields",
+          "isCompleted": false
+        },
+        {
+          "id": "task-012-3",
+          "name": "Implement form validation",
+          "isCompleted": false
+        },
+        {
+          "id": "task-012-4",
+          "name": "Add date picker component",
+          "isCompleted": false
+        },
+        {
+          "id": "task-012-5",
+          "name": "Handle form submission",
+          "isCompleted": false
+        },
+        {
+          "id": "task-012-6",
+          "name": "Add loading/error states",
+          "isCompleted": false
+        }
+      ],
+      "actions": [
+        {
+          "id": "action-012-1",
+          "type": "comment",
+          "text": "Use react-hook-form for better form handling",
+          "userId": "user-4",
+          "createdAt": "2024-01-20T14:00:00Z"
+        }
+      ],
+      "members": ["user-4"],
+      "attachments": [],
+      "dependencies": ["card-008", "card-009"]
+    },
+    {
+      "id": "card-013",
+      "title": "Implement API client service",
+      "description": "Create a service layer to handle all API communications.\n\n### Requirements:\n- Axios/Fetch wrapper\n- Request/Response interceptors\n- Error handling\n- Auth token management\n- Request cancellation",
+      "listId": "list-backlog",
+      "position": 13,
+      "labels": ["frontend", "high-priority", "infrastructure"],
+      "dueDate": "2024-01-21T09:00:00Z",
+      "tasks": [
+        {
+          "id": "task-013-1",
+          "name": "Set up Axios instance",
+          "isCompleted": false
+        },
+        {
+          "id": "task-013-2",
+          "name": "Create API service class",
+          "isCompleted": false
+        },
+        {
+          "id": "task-013-3",
+          "name": "Add request interceptors",
+          "isCompleted": false
+        },
+        {
+          "id": "task-013-4",
+          "name": "Add response interceptors",
+          "isCompleted": false
+        },
+        {
+          "id": "task-013-5",
+          "name": "Implement error handling",
+          "isCompleted": false
+        },
+        {
+          "id": "task-013-6",
+          "name": "Add request retry logic",
+          "isCompleted": false
+        }
+      ],
+      "actions": [],
+      "members": ["user-4"],
+      "attachments": [],
+      "dependencies": ["card-008"]
+    },
+    {
+      "id": "card-014",
+      "title": "Connect frontend to backend",
+      "description": "Wire up all frontend components to use the API service.\n\n### Integration Points:\n- Fetch todos on mount\n- Create todo submission\n- Update todo\n- Delete todo\n- Real-time updates\n- Optimistic updates",
+      "listId": "list-backlog",
+      "position": 14,
+      "labels": ["frontend", "high-priority", "integration"],
+      "dueDate": "2024-01-28T09:00:00Z",
+      "tasks": [
+        {
+          "id": "task-014-1",
+          "name": "Connect TodoList to API",
+          "isCompleted": false
+        },
+        {
+          "id": "task-014-2",
+          "name": "Connect AddTodo form to API",
+          "isCompleted": false
+        },
+        {
+          "id": "task-014-3",
+          "name": "Implement update functionality",
+          "isCompleted": false
+        },
+        {
+          "id": "task-014-4",
+          "name": "Implement delete functionality",
+          "isCompleted": false
+        },
+        {
+          "id": "task-014-5",
+          "name": "Add loading states",
+          "isCompleted": false
+        },
+        {
+          "id": "task-014-6",
+          "name": "Handle API errors",
+          "isCompleted": false
+        }
+      ],
+      "actions": [],
+      "members": ["user-1", "user-4"],
+      "attachments": [],
+      "dependencies": ["card-010", "card-011", "card-012", "card-013", "card-005"]
+    },
+    {
+      "id": "card-015",
+      "title": "Add user authentication",
+      "description": "Implement complete authentication system.\n\n### Features:\n- User registration\n- Email verification\n- Login/Logout\n- Password reset\n- JWT tokens\n- Refresh tokens\n- Remember me",
+      "listId": "list-backlog",
+      "position": 15,
+      "labels": ["backend", "security", "high-priority"],
+      "dueDate": "2024-01-30T09:00:00Z",
+      "tasks": [
+        {
+          "id": "task-015-1",
+          "name": "Create auth routes",
+          "isCompleted": false
+        },
+        {
+          "id": "task-015-2",
+          "name": "Implement registration",
+          "isCompleted": false
+        },
+        {
+          "id": "task-015-3",
+          "name": "Implement login with JWT",
+          "isCompleted": false
+        },
+        {
+          "id": "task-015-4",
+          "name": "Add refresh token logic",
+          "isCompleted": false
+        },
+        {
+          "id": "task-015-5",
+          "name": "Implement password reset",
+          "isCompleted": false
+        },
+        {
+          "id": "task-015-6",
+          "name": "Add email verification",
+          "isCompleted": false
+        },
+        {
+          "id": "task-015-7",
+          "name": "Create auth middleware",
+          "isCompleted": false
+        }
+      ],
+      "actions": [
+        {
+          "id": "action-015-1",
+          "type": "comment",
+          "text": "Consider using Passport.js for authentication strategies",
+          "userId": "user-2",
+          "createdAt": "2024-01-25T10:00:00Z"
+        }
+      ],
+      "members": ["user-2", "user-3"],
+      "attachments": [],
+      "dependencies": ["card-005"]
+    },
+    {
+      "id": "card-016",
+      "title": "Write comprehensive tests",
+      "description": "Create test suites for both backend and frontend.\n\n### Test Coverage:\n- Unit tests (80% coverage minimum)\n- Integration tests\n- E2E tests\n- Performance tests\n\n### Testing Stack:\n- Jest for unit tests\n- Supertest for API tests\n- Cypress for E2E\n- React Testing Library",
+      "listId": "list-backlog",
+      "position": 16,
+      "labels": ["testing", "high-priority", "quality"],
+      "dueDate": "2024-02-05T09:00:00Z",
+      "tasks": [
+        {
+          "id": "task-016-1",
+          "name": "Write API endpoint tests",
+          "isCompleted": false
+        },
+        {
+          "id": "task-016-2",
+          "name": "Write model unit tests",
+          "isCompleted": false
+        },
+        {
+          "id": "task-016-3",
+          "name": "Write component unit tests",
+          "isCompleted": false
+        },
+        {
+          "id": "task-016-4",
+          "name": "Write integration tests",
+          "isCompleted": false
+        },
+        {
+          "id": "task-016-5",
+          "name": "Create E2E test scenarios",
+          "isCompleted": false
+        },
+        {
+          "id": "task-016-6",
+          "name": "Set up test coverage reports",
+          "isCompleted": false
+        }
+      ],
+      "actions": [],
+      "members": ["user-1", "user-2", "user-4"],
+      "attachments": [],
+      "dependencies": ["card-014", "card-015"]
+    },
+    {
+      "id": "card-017",
+      "title": "Deploy to production",
+      "description": "Deploy the application to a cloud provider.\n\n### Deployment Steps:\n- Set up cloud infrastructure\n- Configure CI/CD pipeline\n- Set up monitoring\n- Configure SSL certificates\n- Set up backup strategy\n- Load balancing\n\n### Providers to consider:\n- AWS (EC2/ECS/Lambda)\n- Heroku\n- Vercel/Netlify (frontend)\n- DigitalOcean",
+      "listId": "list-backlog",
+      "position": 17,
+      "labels": ["devops", "high-priority", "deployment"],
+      "dueDate": "2024-02-10T09:00:00Z",
+      "tasks": [
+        {
+          "id": "task-017-1",
+          "name": "Set up cloud infrastructure",
+          "isCompleted": false
+        },
+        {
+          "id": "task-017-2",
+          "name": "Configure GitHub Actions CI/CD",
+          "isCompleted": false
+        },
+        {
+          "id": "task-017-3",
+          "name": "Set up environment variables",
+          "isCompleted": false
+        },
+        {
+          "id": "task-017-4",
+          "name": "Configure SSL certificates",
+          "isCompleted": false
+        },
+        {
+          "id": "task-017-5",
+          "name": "Set up monitoring (Sentry/DataDog)",
+          "isCompleted": false
+        },
+        {
+          "id": "task-017-6",
+          "name": "Configure backup strategy",
+          "isCompleted": false
+        },
+        {
+          "id": "task-017-7",
+          "name": "Performance testing",
+          "isCompleted": false
+        }
+      ],
+      "actions": [
+        {
+          "id": "action-017-1",
+          "type": "comment",
+          "text": "Make sure to set up staging environment first",
+          "userId": "user-1",
+          "createdAt": "2024-02-01T10:00:00Z"
+        }
+      ],
+      "members": ["user-1", "user-3"],
+      "attachments": [
+        {
+          "id": "attach-017-1",
+          "name": "deployment-checklist.md",
+          "url": "/attachments/deployment-checklist.md"
+        }
+      ],
+      "dependencies": ["card-016"]
+    }
+  ],
+  "labels": [
+    {
+      "id": "label-1",
+      "name": "high-priority",
+      "color": "#ff0000"
+    },
+    {
+      "id": "label-2",
+      "name": "medium-priority",
+      "color": "#ffaa00"
+    },
+    {
+      "id": "label-3",
+      "name": "low-priority",
+      "color": "#00aa00"
+    },
+    {
+      "id": "label-4",
+      "name": "backend",
+      "color": "#0066cc"
+    },
+    {
+      "id": "label-5",
+      "name": "frontend",
+      "color": "#9933cc"
+    },
+    {
+      "id": "label-6",
+      "name": "testing",
+      "color": "#00cccc"
+    },
+    {
+      "id": "label-7",
+      "name": "documentation",
+      "color": "#666666"
+    },
+    {
+      "id": "label-8",
+      "name": "devops",
+      "color": "#ff6600"
+    },
+    {
+      "id": "label-9",
+      "name": "security",
+      "color": "#cc0000"
+    },
+    {
+      "id": "label-10",
+      "name": "performance",
+      "color": "#009900"
+    },
+    {
+      "id": "label-11",
+      "name": "design",
+      "color": "#ff00ff"
+    },
+    {
+      "id": "label-12",
+      "name": "setup",
+      "color": "#333333"
+    },
+    {
+      "id": "label-13",
+      "name": "api",
+      "color": "#4a90e2"
+    },
+    {
+      "id": "label-14",
+      "name": "database",
+      "color": "#f5a623"
+    },
+    {
+      "id": "label-15",
+      "name": "infrastructure",
+      "color": "#7ed321"
+    },
+    {
+      "id": "label-16",
+      "name": "component",
+      "color": "#bd10e0"
+    },
+    {
+      "id": "label-17",
+      "name": "integration",
+      "color": "#50e3c2"
+    },
+    {
+      "id": "label-18",
+      "name": "quality",
+      "color": "#b8e986"
+    },
+    {
+      "id": "label-19",
+      "name": "deployment",
+      "color": "#ff5252"
+    }
+  ],
+  "users": [
+    {
+      "id": "user-1",
+      "name": "Alex Chen",
+      "email": "alex@todoapp.com",
+      "role": "Full Stack Lead"
+    },
+    {
+      "id": "user-2",
+      "name": "Sarah Johnson",
+      "email": "sarah@todoapp.com",
+      "role": "Backend Developer"
+    },
+    {
+      "id": "user-3",
+      "name": "Mike Wilson",
+      "email": "mike@todoapp.com",
+      "role": "DevOps Engineer"
+    },
+    {
+      "id": "user-4",
+      "name": "Emma Davis",
+      "email": "emma@todoapp.com",
+      "role": "Frontend Developer"
+    },
+    {
+      "id": "user-5",
+      "name": "Tom Martinez",
+      "email": "tom@todoapp.com",
+      "role": "UI/UX Designer"
+    }
+  ]
+}

@@ -1,0 +1,362 @@
+{
+  "project": {
+    "name": "Todo App Development",
+    "description": "Building a simple but fully-featured todo application"
+  },
+  "board": {
+    "name": "Todo App Board",
+    "lists": [
+      {
+        "name": "Backlog",
+        "position": 0
+      },
+      {
+        "name": "TODO",
+        "position": 1
+      },
+      {
+        "name": "In Progress",
+        "position": 2
+      },
+      {
+        "name": "Review",
+        "position": 3
+      },
+      {
+        "name": "Done",
+        "position": 4
+      }
+    ]
+  },
+  "tasks": [
+    {
+      "id": "task-001",
+      "name": "Set up project structure",
+      "description": "Initialize the project with proper folder structure, package.json, and basic configuration files",
+      "list": "Backlog",
+      "labels": ["setup", "high"],
+      "dependencies": [],
+      "estimatedHours": 2
+    },
+    {
+      "id": "task-002",
+      "name": "Design database schema",
+      "description": "Design the database schema for todos including fields like id, title, description, status, priority, created_at, updated_at, due_date",
+      "list": "Backlog",
+      "labels": ["backend", "high"],
+      "dependencies": [],
+      "estimatedHours": 3
+    },
+    {
+      "id": "task-003",
+      "name": "Create Todo model",
+      "description": "Implement the Todo model/entity with proper data types and validation",
+      "list": "Backlog",
+      "labels": ["backend", "high"],
+      "dependencies": ["task-001", "task-002"],
+      "estimatedHours": 2
+    },
+    {
+      "id": "task-004",
+      "name": "Set up database connection",
+      "description": "Configure database connection (PostgreSQL/MySQL/SQLite) with connection pooling",
+      "list": "Backlog",
+      "labels": ["backend", "high"],
+      "dependencies": ["task-001"],
+      "estimatedHours": 2
+    },
+    {
+      "id": "task-005",
+      "name": "Create API endpoints for CRUD operations",
+      "description": "Implement REST API endpoints: GET /todos, GET /todos/:id, POST /todos, PUT /todos/:id, DELETE /todos/:id",
+      "list": "Backlog",
+      "labels": ["backend", "high"],
+      "dependencies": ["task-003", "task-004"],
+      "estimatedHours": 5
+    },
+    {
+      "id": "task-006",
+      "name": "Add input validation middleware",
+      "description": "Create middleware to validate todo input data (title required, valid date formats, etc.)",
+      "list": "Backlog",
+      "labels": ["backend", "medium"],
+      "dependencies": ["task-005"],
+      "estimatedHours": 3
+    },
+    {
+      "id": "task-007",
+      "name": "Implement error handling",
+      "description": "Add global error handling middleware and custom error classes",
+      "list": "Backlog",
+      "labels": ["backend", "medium"],
+      "dependencies": ["task-005"],
+      "estimatedHours": 2
+    },
+    {
+      "id": "task-008",
+      "name": "Create frontend app structure",
+      "description": "Set up React/Vue/Angular app with routing and component structure",
+      "list": "Backlog",
+      "labels": ["frontend", "high"],
+      "dependencies": ["task-001"],
+      "estimatedHours": 3
+    },
+    {
+      "id": "task-009",
+      "name": "Design UI mockups",
+      "description": "Create mockups for todo list view, add/edit forms, and filtering interface",
+      "list": "Backlog",
+      "labels": ["design", "medium"],
+      "dependencies": [],
+      "estimatedHours": 4
+    },
+    {
+      "id": "task-010",
+      "name": "Build TodoList component",
+      "description": "Create component to display list of todos with status indicators",
+      "list": "Backlog",
+      "labels": ["frontend", "high"],
+      "dependencies": ["task-008", "task-009"],
+      "estimatedHours": 3
+    },
+    {
+      "id": "task-011",
+      "name": "Build TodoItem component",
+      "description": "Create individual todo item component with edit/delete actions",
+      "list": "Backlog",
+      "labels": ["frontend", "high"],
+      "dependencies": ["task-010"],
+      "estimatedHours": 3
+    },
+    {
+      "id": "task-012",
+      "name": "Build AddTodo form component",
+      "description": "Create form for adding new todos with all fields",
+      "list": "Backlog",
+      "labels": ["frontend", "high"],
+      "dependencies": ["task-008", "task-009"],
+      "estimatedHours": 3
+    },
+    {
+      "id": "task-013",
+      "name": "Implement API client service",
+      "description": "Create frontend service to communicate with backend API using fetch/axios",
+      "list": "Backlog",
+      "labels": ["frontend", "high"],
+      "dependencies": ["task-008"],
+      "estimatedHours": 2
+    },
+    {
+      "id": "task-014",
+      "name": "Connect frontend to backend",
+      "description": "Wire up components to use API client for CRUD operations",
+      "list": "Backlog",
+      "labels": ["frontend", "high"],
+      "dependencies": ["task-010", "task-011", "task-012", "task-013", "task-005"],
+      "estimatedHours": 4
+    },
+    {
+      "id": "task-015",
+      "name": "Add todo status management",
+      "description": "Implement status transitions (pending -> in-progress -> completed) with UI updates",
+      "list": "Backlog",
+      "labels": ["frontend", "medium"],
+      "dependencies": ["task-014"],
+      "estimatedHours": 3
+    },
+    {
+      "id": "task-016",
+      "name": "Implement filtering and sorting",
+      "description": "Add ability to filter todos by status, priority, and sort by date/priority",
+      "list": "Backlog",
+      "labels": ["frontend", "medium"],
+      "dependencies": ["task-014"],
+      "estimatedHours": 4
+    },
+    {
+      "id": "task-017",
+      "name": "Add search functionality",
+      "description": "Implement search feature to find todos by title or description",
+      "list": "Backlog",
+      "labels": ["frontend", "medium", "backend"],
+      "dependencies": ["task-014"],
+      "estimatedHours": 3
+    },
+    {
+      "id": "task-018",
+      "name": "Implement due date notifications",
+      "description": "Add visual indicators for overdue tasks and upcoming deadlines",
+      "list": "Backlog",
+      "labels": ["frontend", "low"],
+      "dependencies": ["task-014"],
+      "estimatedHours": 2
+    },
+    {
+      "id": "task-019",
+      "name": "Add loading states and spinners",
+      "description": "Implement loading indicators for async operations",
+      "list": "Backlog",
+      "labels": ["frontend", "low"],
+      "dependencies": ["task-014"],
+      "estimatedHours": 2
+    },
+    {
+      "id": "task-020",
+      "name": "Implement optimistic updates",
+      "description": "Add optimistic UI updates for better user experience",
+      "list": "Backlog",
+      "labels": ["frontend", "low"],
+      "dependencies": ["task-014"],
+      "estimatedHours": 3
+    },
+    {
+      "id": "task-021",
+      "name": "Style the application",
+      "description": "Apply CSS/styling framework to make the app visually appealing",
+      "list": "Backlog",
+      "labels": ["frontend", "medium"],
+      "dependencies": ["task-010", "task-011", "task-012"],
+      "estimatedHours": 4
+    },
+    {
+      "id": "task-022",
+      "name": "Make app responsive",
+      "description": "Ensure the app works well on mobile devices and tablets",
+      "list": "Backlog",
+      "labels": ["frontend", "medium"],
+      "dependencies": ["task-021"],
+      "estimatedHours": 3
+    },
+    {
+      "id": "task-023",
+      "name": "Write API tests",
+      "description": "Create unit and integration tests for all API endpoints",
+      "list": "Backlog",
+      "labels": ["testing", "high"],
+      "dependencies": ["task-005", "task-006", "task-007"],
+      "estimatedHours": 4
+    },
+    {
+      "id": "task-024",
+      "name": "Write frontend component tests",
+      "description": "Create unit tests for all React/Vue/Angular components",
+      "list": "Backlog",
+      "labels": ["testing", "high"],
+      "dependencies": ["task-010", "task-011", "task-012"],
+      "estimatedHours": 4
+    },
+    {
+      "id": "task-025",
+      "name": "Write E2E tests",
+      "description": "Create end-to-end tests for critical user flows using Cypress/Playwright",
+      "list": "Backlog",
+      "labels": ["testing", "medium"],
+      "dependencies": ["task-014"],
+      "estimatedHours": 5
+    },
+    {
+      "id": "task-026",
+      "name": "Set up CI/CD pipeline",
+      "description": "Configure GitHub Actions or similar for automated testing and deployment",
+      "list": "Backlog",
+      "labels": ["devops", "medium"],
+      "dependencies": ["task-023", "task-024"],
+      "estimatedHours": 3
+    },
+    {
+      "id": "task-027",
+      "name": "Add user authentication",
+      "description": "Implement user registration and login functionality",
+      "list": "Backlog",
+      "labels": ["backend", "medium", "security"],
+      "dependencies": ["task-005"],
+      "estimatedHours": 5
+    },
+    {
+      "id": "task-028",
+      "name": "Add authorization",
+      "description": "Ensure users can only see and modify their own todos",
+      "list": "Backlog",
+      "labels": ["backend", "high", "security"],
+      "dependencies": ["task-027"],
+      "estimatedHours": 3
+    },
+    {
+      "id": "task-029",
+      "name": "Add data persistence layer",
+      "description": "Implement repository pattern for data access abstraction",
+      "list": "Backlog",
+      "labels": ["backend", "medium"],
+      "dependencies": ["task-003"],
+      "estimatedHours": 3
+    },
+    {
+      "id": "task-030",
+      "name": "Add logging",
+      "description": "Implement structured logging for debugging and monitoring",
+      "list": "Backlog",
+      "labels": ["backend", "low"],
+      "dependencies": ["task-005"],
+      "estimatedHours": 2
+    },
+    {
+      "id": "task-031",
+      "name": "Create API documentation",
+      "description": "Document all API endpoints using Swagger/OpenAPI",
+      "list": "Backlog",
+      "labels": ["documentation", "medium"],
+      "dependencies": ["task-005"],
+      "estimatedHours": 3
+    },
+    {
+      "id": "task-032",
+      "name": "Write user documentation",
+      "description": "Create user guide and README for the application",
+      "list": "Backlog",
+      "labels": ["documentation", "low"],
+      "dependencies": ["task-014"],
+      "estimatedHours": 2
+    },
+    {
+      "id": "task-033",
+      "name": "Performance optimization",
+      "description": "Optimize database queries and implement caching where needed",
+      "list": "Backlog",
+      "labels": ["backend", "low", "performance"],
+      "dependencies": ["task-025"],
+      "estimatedHours": 4
+    },
+    {
+      "id": "task-034",
+      "name": "Security audit",
+      "description": "Review code for security vulnerabilities (SQL injection, XSS, etc.)",
+      "list": "Backlog",
+      "labels": ["security", "high"],
+      "dependencies": ["task-014", "task-028"],
+      "estimatedHours": 3
+    },
+    {
+      "id": "task-035",
+      "name": "Deploy to production",
+      "description": "Deploy application to cloud provider (AWS/Heroku/Vercel)",
+      "list": "Backlog",
+      "labels": ["devops", "high"],
+      "dependencies": ["task-026", "task-034"],
+      "estimatedHours": 4
+    }
+  ],
+  "labels": [
+    {"name": "high", "color": "#ff0000"},
+    {"name": "medium", "color": "#ffaa00"},
+    {"name": "low", "color": "#00aa00"},
+    {"name": "backend", "color": "#0066cc"},
+    {"name": "frontend", "color": "#9933cc"},
+    {"name": "testing", "color": "#00cccc"},
+    {"name": "documentation", "color": "#666666"},
+    {"name": "devops", "color": "#ff6600"},
+    {"name": "security", "color": "#cc0000"},
+    {"name": "performance", "color": "#009900"},
+    {"name": "design", "color": "#ff00ff"},
+    {"name": "setup", "color": "#333333"}
+  ]
+}
