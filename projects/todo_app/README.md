@@ -12,6 +12,7 @@ todo_app/
 ├── create_moderate_todo_cards_v2.py   # Moderate detail card creator
 ├── create_minimal_todo_cards_v2.py    # Minimal card creator
 ├── create_todo_cards_menu.py          # Interactive menu
+├── clear_board.py                     # Clear all cards from board
 └── docs/                              # Documentation files
     ├── auth-api-specification.yaml    # API specification
     ├── auth-database-schema.sql       # Database schema
@@ -50,13 +51,27 @@ todo_app/
   - Only high-priority labels
   - Basic task breakdown
 
+### 4. Clear Board (`clear_board.py`)
+- **Description**: Removes all cards from the Task Master Test board
+- **Features**:
+  - Finds and deletes all cards
+  - Keeps lists intact
+  - Shows summary of cards removed
+  - Can be run standalone or from menu
+
 ## Interactive Menu
 
-Use `create_todo_cards_menu.py` for an interactive way to choose which level of detail you want:
+Use `create_todo_cards_menu.py` for an interactive way to manage your Todo App cards:
 
 ```bash
 python create_todo_cards_menu.py
 ```
+
+The menu provides:
+- Options to create cards at three detail levels
+- Clear board functionality
+- Option to clear board before creating new cards
+- Confirmation prompts for all destructive actions
 
 ## Prerequisites
 
@@ -84,6 +99,9 @@ python create_moderate_todo_cards_v2.py
 
 # For minimal cards
 python create_minimal_todo_cards_v2.py
+
+# To clear the board
+python clear_board.py
 ```
 
 ### Use Interactive Menu
