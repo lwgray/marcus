@@ -9,7 +9,7 @@ load_dotenv()
 # Set to use Planka
 os.environ['KANBAN_PROVIDER'] = 'planka'
 
-from src.integrations.mcp_kanban_client_simple import SimpleMCPKanbanClient
+from src.integrations.mcp_kanban_client_simplified import MCPKanbanClientSimplified as SimpleMCPKanbanClient
 
 async def check_tasks():
     print("Checking tasks in Planka...")

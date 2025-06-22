@@ -29,7 +29,7 @@ from src.core.models import (
 )
 from src.integrations.kanban_factory import KanbanFactory
 from src.integrations.kanban_interface import KanbanInterface
-from src.integrations.ai_analysis_engine import AIAnalysisEngine
+from src.integrations.ai_analysis_engine_fixed import AIAnalysisEngine
 from src.core.code_analyzer import CodeAnalyzer
 from src.monitoring.project_monitor import ProjectMonitor
 from src.communication.communication_hub import CommunicationHub

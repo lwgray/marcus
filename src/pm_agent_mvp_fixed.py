@@ -33,7 +33,7 @@ from src.core.models import (
     Task, TaskStatus, Priority, RiskLevel,
     ProjectState, WorkerStatus, TaskAssignment
 )
-from src.integrations.mcp_kanban_client_simple import SimpleMCPKanbanClient as MCPKanbanClient
+from src.integrations.mcp_kanban_client_simplified import MCPKanbanClientSimplified as MCPKanbanClient
 from src.integrations.ai_analysis_engine_fixed import AIAnalysisEngine
 from src.config.settings import Settings
 from src.core.workspace_manager import WorkspaceManager

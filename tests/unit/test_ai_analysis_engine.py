@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch, AsyncMock
 from datetime import datetime, timedelta
 
 from src.core.models import Task, TaskStatus, Priority, WorkerStatus, ProjectState, RiskLevel
-from src.integrations.ai_analysis_engine import AIAnalysisEngine
+from src.integrations.ai_analysis_engine_fixed import AIAnalysisEngine
 
 
 class TestAIAnalysisEngine:
