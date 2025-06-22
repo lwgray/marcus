@@ -550,7 +550,8 @@ class SimpleMCPKanbanClient:
                             {
                                 "action": "move",
                                 "id": task_id,
-                                "listId": target_list["id"]
+                                "listId": target_list["id"],
+                                "position": 65535  # Default position at end of list
                             }
                         )
                     else:
