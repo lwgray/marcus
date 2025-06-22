@@ -5,6 +5,7 @@ Menu to create Todo App cards with different levels of detail
 
 import subprocess
 import sys
+import os
 
 def display_menu():
     """Display the menu options"""
@@ -36,7 +37,8 @@ def run_script(script_name):
     """Run the selected script"""
     try:
         print(f"\n🚀 Running {script_name}...\n")
-        subprocess.run([sys.executable, script_name], check=True)
+        script_path = os.path.join(os.path.dirname(__file__), script_name)
+        subprocess.run([sys.executable, script_path], check=True)
     except subprocess.CalledProcessError as e:
         print(f"\n❌ Error running script: {e}")
     except FileNotFoundError:

@@ -1,6 +1,23 @@
-# Todo App Card Creators
+# Todo App Project
 
-This directory contains scripts to create Todo App development cards on a Planka board with varying levels of detail.
+This directory contains scripts and resources for creating Todo App development cards on a Planka board with varying levels of detail.
+
+## Project Structure
+
+```
+todo_app/
+├── README.md                           # This file
+├── todo_app_planka_cards.json         # Card definitions and structure
+├── create_all_todo_app_cards.py       # Comprehensive card creator
+├── create_moderate_todo_cards_v2.py   # Moderate detail card creator
+├── create_minimal_todo_cards_v2.py    # Minimal card creator
+├── create_todo_cards_menu.py          # Interactive menu
+└── docs/                              # Documentation files
+    ├── auth-api-specification.yaml    # API specification
+    ├── auth-database-schema.sql       # Database schema
+    ├── jwt-implementation-guide.md    # JWT implementation guide
+    └── security-checklist.md          # Security checklist
+```
 
 ## Available Scripts
 
@@ -50,6 +67,12 @@ python create_todo_cards_menu.py
 
 ## Usage
 
+### From the project root directory
+
+```bash
+cd projects/todo_app
+```
+
 ### Run Individual Scripts
 
 ```bash
@@ -67,6 +90,16 @@ python create_minimal_todo_cards_v2.py
 
 ```bash
 python create_todo_cards_menu.py
+```
+
+### From any directory
+
+```bash
+# Run the interactive menu
+python projects/todo_app/create_todo_cards_menu.py
+
+# Or run specific scripts
+python projects/todo_app/create_all_todo_app_cards.py
 ```
 
 ## What Gets Created

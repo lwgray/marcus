@@ -16,7 +16,7 @@ os.environ['PLANKA_AGENT_EMAIL'] = 'demo@demo.demo'
 os.environ['PLANKA_AGENT_PASSWORD'] = 'demo'
 
 # Load the JSON data
-with open('todo_app_planka_cards.json', 'r') as f:
+with open(os.path.join(os.path.dirname(__file__), 'todo_app_planka_cards.json'), 'r') as f:
     TODO_APP_DATA = json.load(f)
 
 # Label color mapping for Planka

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Create Todo App cards with moderate detail
+Create Todo App cards with moderate detail - simplified version
 """
 
 import asyncio
@@ -16,10 +16,10 @@ os.environ['PLANKA_AGENT_EMAIL'] = 'demo@demo.demo'
 os.environ['PLANKA_AGENT_PASSWORD'] = 'demo'
 
 # Load the JSON data
-with open('todo_app_planka_cards.json', 'r') as f:
+with open(os.path.join(os.path.dirname(__file__), 'todo_app_planka_cards.json'), 'r') as f:
     TODO_APP_DATA = json.load(f)
 
-# Moderate card descriptions - focused and practical
+# Moderate card descriptions
 MODERATE_CARDS = {
     "card-001": {
         "description": """## Project Setup
@@ -401,32 +401,6 @@ Deploy application to production.
     }
 }
 
-async def clear_board(session, list_id):
-    """Clear all cards from the board"""
-    try:
-        # Get all cards in the list
-        cards_result = await session.call_tool("planka_get_cards_by_list", {
-            "listId": list_id
-        })
-        
-        if isinstance(cards_result, str):
-            cards_data = json.loads(cards_result)
-        else:
-            cards_data = cards_result
-            
-        cards = cards_data.get("included", {}).get("cards", [])
-        
-        # Delete each card
-        for card in cards:
-            await session.call_tool("planka_delete_card", {
-                "cardId": card["id"]
-            })
-            
-        print(f"  ✅ Cleared {len(cards)} existing cards")
-        
-    except Exception as e:
-        print(f"  ⚠️  Error clearing board: {e}")
-
 async def create_moderate_cards():
     """Create Todo App cards with moderate detail"""
     print("🚀 Creating Todo App cards with moderate detail...")
@@ -434,24 +408,29 @@ async def create_moderate_cards():
     server_params = StdioServerParameters(
         command="node",
         args=["/Users/lwgray/dev/kanban-mcp/dist/index.js"],
-        env=None
+        env=os.environ.copy()
     )
     
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
+            await session.initialize()
             print("✅ Connected to kanban-mcp\n")
             
-            # Find project
+            # Get all projects
             print("📋 Finding Task Master Test project...")
-            projects_result = await session.call_tool("planka_get_all_projects", {})
+            result = await session.call_tool("mcp_kanban_project_board_manager", {
+                "action": "get_projects",
+                "page": 1,
+                "perPage": 25
+            })
             
-            if isinstance(projects_result, str):
-                projects_data = json.loads(projects_result)
-            else:
-                projects_data = projects_result
-                
-            projects = projects_data.get("projects", [])
-            project = next((p for p in projects if p["name"] == "Task Master Test"), None)
+            projects_data = json.loads(result.content[0].text)
+            project = None
+            
+            for p in projects_data["items"]:
+                if p["name"] == "Task Master Test":
+                    project = p
+                    break
             
             if not project:
                 print("❌ Project not found!")
@@ -460,48 +439,75 @@ async def create_moderate_cards():
             project_id = project["id"]
             print(f"✅ Found project: {project['name']} (ID: {project_id})")
             
-            # Get board
-            boards_result = await session.call_tool("planka_get_boards_by_project", {
-                "projectId": project_id
-            })
+            # Find the board in the included data
+            board_id = None
+            if "boards" in projects_data.get("included", {}):
+                for board in projects_data["included"]["boards"]:
+                    if board["projectId"] == project_id:
+                        board_id = board["id"]
+                        print(f"✅ Found board: {board['name']} (ID: {board_id})")
+                        break
             
-            if isinstance(boards_result, str):
-                boards_data = json.loads(boards_result)
-            else:
-                boards_data = boards_result
-                
-            boards = boards_data.get("boards", boards_data.get("included", {}).get("boards", []))
-            if not boards:
-                print("❌ No boards found!")
+            if not board_id:
+                print("❌ No board found for Task Master Test!")
                 return
-                
-            board = boards[0]
-            board_id = board["id"]
-            print(f"✅ Found board: {board['name']} (ID: {board_id})")
             
-            # Clear existing cards
-            print("\n🧹 Clearing existing cards...")
-            lists_result = await session.call_tool("planka_get_lists_by_board", {
+            # Get lists
+            print("\n📋 Getting lists...")
+            result = await session.call_tool("mcp_kanban_list_manager", {
+                "action": "get_all",
                 "boardId": board_id
             })
             
-            if isinstance(lists_result, str):
-                lists_data = json.loads(lists_result)
-            else:
-                lists_data = lists_result
-                
-            lists = lists_data.get("lists", lists_data.get("included", {}).get("lists", []))
+            lists = json.loads(result.content[0].text)
             backlog_list = next((l for l in lists if l["name"] == "Backlog"), None)
             
-            if backlog_list:
-                await clear_board(session, backlog_list["id"])
+            if not backlog_list:
+                print("❌ Backlog list not found!")
+                return
+                
+            print(f"✅ Found list: {backlog_list['name']} (ID: {backlog_list['id']})")
+            
+            # Clear existing cards
+            print("\n🧹 Clearing existing cards...")
+            result = await session.call_tool("mcp_kanban_card_manager", {
+                "action": "get_all",
+                "listId": backlog_list["id"]
+            })
+            
+            cards = []
+            if result.content and result.content[0].text:
+                try:
+                    cards = json.loads(result.content[0].text)
+                    if not isinstance(cards, list):
+                        cards = []
+                except:
+                    cards = []
+            for card in cards:
+                await session.call_tool("mcp_kanban_card_manager", {
+                    "action": "delete",
+                    "cardId": card["id"]
+                })
+            print(f"  ✅ Cleared {len(cards)} existing cards")
+            
+            # Get labels
+            print("\n🏷️  Getting labels...")
+            result = await session.call_tool("mcp_kanban_label_manager", {
+                "action": "get_all",
+                "boardId": board_id
+            })
+            
+            labels = json.loads(result.content[0].text)
+            label_map = {label["name"]: label["id"] for label in labels}
+            print(f"  ✅ Found {len(labels)} labels")
             
             # Create cards
             print("\n📝 Creating moderate detail cards...")
             cards_created = 0
             
-            for card_key, card_data in TODO_APP_DATA["cards"].items():
+            for i, card_data in enumerate(TODO_APP_DATA["cards"]):
                 card_num = cards_created + 1
+                card_key = card_data["id"]  # Use the card id as key
                 print(f"\n[{card_num}/17] Creating: {card_data['title']}")
                 
                 # Get moderate description and subtasks
@@ -509,43 +515,42 @@ async def create_moderate_cards():
                 description = moderate_info.get("description", card_data["description"])
                 subtasks = moderate_info.get("subtasks", [])
                 
-                # Parse due date
-                due_date_str = card_data.get("dueDate", "7 days")
-                due_days = int(due_date_str.split()[0]) if " day" in due_date_str else 7
-                due_date = datetime.now() + timedelta(days=due_days)
+                # Use existing due date or create one
+                if "dueDate" in card_data:
+                    due_date = card_data["dueDate"]
+                else:
+                    # Create a due date based on position (1-2 days per card)
+                    due_date = (datetime.now() + timedelta(days=i+2)).isoformat() + "Z"
                 
                 try:
                     # Create the card
-                    result = await session.call_tool("planka_create_card", {
+                    result = await session.call_tool("mcp_kanban_card_manager", {
+                        "action": "create",
                         "listId": backlog_list["id"],
                         "name": card_data["title"],
-                        "description": description,
-                        "position": card_data["position"]
+                        "description": description
                     })
                     
-                    if isinstance(result, str):
-                        result_data = json.loads(result)
-                    else:
-                        result_data = result
-                        
-                    card_id = result_data.get("card", {}).get("id") or result_data.get("id")
+                    card = json.loads(result.content[0].text)
+                    card_id = card["id"]
                     print(f"  ✅ Created card ID: {card_id}")
                     
                     # Add labels
-                    for label in card_data.get("labels", []):
-                        if label in ["Feature", "Frontend", "Backend", "Database", "Testing", 
-                                   "Bug", "High Priority", "Enhancement", "Documentation"]:
-                            await session.call_tool("planka_add_label_to_card", {
+                    for label_name in card_data.get("labels", []):
+                        if label_name in label_map:
+                            await session.call_tool("mcp_kanban_label_manager", {
+                                "action": "add_to_card",
                                 "cardId": card_id,
-                                "labelId": label  # This will need to be fixed to use label ID
+                                "labelId": label_map[label_name]
                             })
-                            print(f"  ✅ Added label: {label}")
+                            print(f"  ✅ Added label: {label_name}")
                     
                     # Create subtasks
                     if subtasks:
                         print(f"  📋 Creating {len(subtasks)} subtasks...")
                         for i, subtask in enumerate(subtasks):
-                            await session.call_tool("planka_create_task", {
+                            await session.call_tool("mcp_kanban_task_manager", {
+                                "action": "create",
                                 "cardId": card_id,
                                 "name": subtask,
                                 "position": i
@@ -553,9 +558,10 @@ async def create_moderate_cards():
                         print(f"  ✅ Created subtasks")
                     
                     # Update due date
-                    await session.call_tool("planka_update_card", {
+                    await session.call_tool("mcp_kanban_card_manager", {
+                        "action": "update",
                         "cardId": card_id,
-                        "dueDate": due_date.isoformat() + "Z"
+                        "dueDate": due_date
                     })
                     
                     cards_created += 1
