@@ -28,6 +28,7 @@ extensions = [
     'sphinx.ext.githubpages',
     'myst_parser',  # For markdown support
     'sphinx_copybutton',  # For code block copy buttons
+    'sphinxcontrib.mermaid',  # For mermaid diagram support
 ]
 
 # Napoleon settings for Google and NumPy style docstrings
@@ -99,6 +100,10 @@ myst_enable_extensions = [
     "colon_fence",
     "substitution",
 ]
+
+# Mermaid configuration
+mermaid_output_format = 'raw'
+mermaid_version = 'latest'
 
 # Source file suffixes
 source_suffix = {
