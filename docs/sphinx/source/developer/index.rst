@@ -8,6 +8,8 @@ Technical documentation for developers working on or extending PM Agent.
    :caption: Contents
    
    architecture
+   system_architecture
+   ai_engine_guide
    worker_agents
    visualization
    testing

@@ -4,6 +4,11 @@
 
 PM Agent implements a dual MCP (Model Context Protocol) architecture, serving as both a server and client to enable seamless coordination between AI workers and project management tools.
 
+```{note}
+For a comprehensive visual guide to the complete system architecture, see [System Architecture Overview](system_architecture.md).
+For detailed information about the AI Engine, see [AI Engine Comprehensive Guide](ai_engine_guide.md).
+```
+
 ## Core Components
 
 ### 1. MCP Server (Worker Interface)
