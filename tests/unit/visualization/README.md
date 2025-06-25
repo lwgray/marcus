@@ -9,16 +9,20 @@ Due to pytest-asyncio event loop conflicts when mixing sync and async tests, the
 Run each test file individually:
 
 ```bash
-# Option 1: Use the provided script
+# Option 1: Use the provided script (RECOMMENDED)
 ./run_tests.sh
 
-# Option 2: Run each file manually
-python -m pytest test_conversation_stream.py -v
-python -m pytest test_decision_visualizer.py -v
-python -m pytest test_health_monitor.py -v
-python -m pytest test_knowledge_graph.py -v
-python -m pytest test_ui_server.py -v
-python -m pytest test_visualization_integration.py -v
+# Option 2: Run each file manually from project root
+cd /Users/lwgray/dev/pm-agent
+python -m pytest tests/unit/visualization/test_conversation_stream.py -v
+python -m pytest tests/unit/visualization/test_decision_visualizer.py -v
+python -m pytest tests/unit/visualization/test_health_monitor.py -v
+python -m pytest tests/unit/visualization/test_knowledge_graph.py -v
+python -m pytest tests/unit/visualization/test_visualization_integration.py -v
+
+# For UI server tests, run unit/API and integration tests separately:
+python -m pytest tests/unit/visualization/test_ui_server.py::TestVisualizationServerUnit tests/unit/visualization/test_ui_server.py::TestVisualizationServerAPI -v
+python -m pytest tests/unit/visualization/test_ui_server.py::TestVisualizationServerIntegration -v
 ```
 
 ### ❌ This Will Cause Failures
