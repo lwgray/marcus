@@ -186,11 +186,15 @@ class TestTelemetryClient:
         # Give consent for health insights
         consent_response = {
             'categories': {
-                'failure_prediction': {'level': 'basic'},
-                'team_optimization': {'level': 'basic'}
+                'failure_prediction': {'level': ConsentLevel.BASIC.value},
+                'team_optimization': {'level': ConsentLevel.BASIC.value}
             }
         }
         telemetry_client.update_consent(consent_response)
+        
+        # Verify consent was updated properly
+        assert telemetry_client.enabled is True
+        assert telemetry_client._has_consent_for(InsightCategory.FAILURE_PREDICTION) is True
         
         # Mock the strategic collector to avoid complex analysis
         with patch.object(telemetry_client.strategic_collector, 'collect_project_lifecycle_insight') as mock_collect:
@@ -225,7 +229,7 @@ class TestTelemetryClient:
         # Give consent for workflow optimization
         consent_response = {
             'categories': {
-                'workflow_efficiency': {'level': 'basic'}
+                'workflow_efficiency': {'level': ConsentLevel.BASIC.value}
             }
         }
         telemetry_client.update_consent(consent_response)
@@ -265,7 +269,7 @@ class TestTelemetryClient:
         # Give consent for AI effectiveness
         consent_response = {
             'categories': {
-                'ai_effectiveness': {'level': 'basic'}
+                'ai_effectiveness': {'level': ConsentLevel.BASIC.value}
             }
         }
         telemetry_client.update_consent(consent_response)
@@ -318,8 +322,8 @@ class TestTelemetryClient:
         # Update consent
         consent_response = {
             'categories': {
-                'failure_prediction': {'level': 'basic'},
-                'team_optimization': {'level': 'denied'}
+                'failure_prediction': {'level': ConsentLevel.BASIC.value},
+                'team_optimization': {'level': ConsentLevel.DENIED.value}
             }
         }
         
@@ -336,8 +340,8 @@ class TestTelemetryClient:
         # Give initial consent
         consent_response = {
             'categories': {
-                'failure_prediction': {'level': 'basic'},
-                'ai_effectiveness': {'level': 'basic'}
+                'failure_prediction': {'level': ConsentLevel.BASIC.value},
+                'ai_effectiveness': {'level': ConsentLevel.BASIC.value}
             }
         }
         telemetry_client.update_consent(consent_response)
@@ -397,7 +401,7 @@ class TestTelemetryClient:
         # Give consent
         consent_response = {
             'categories': {
-                'failure_prediction': {'level': 'basic'}
+                'failure_prediction': {'level': ConsentLevel.BASIC.value}
             }
         }
         telemetry_client.update_consent(consent_response)
@@ -437,8 +441,8 @@ class TestTelemetryClient:
         # With consent and some insights
         consent_response = {
             'categories': {
-                'failure_prediction': {'level': 'basic'},
-                'workflow_efficiency': {'level': 'basic'}
+                'failure_prediction': {'level': ConsentLevel.BASIC.value},
+                'workflow_efficiency': {'level': ConsentLevel.BASIC.value}
             }
         }
         telemetry_client.update_consent(consent_response)
@@ -474,7 +478,7 @@ class TestTelemetryClient:
         # Give consent
         consent_response = {
             'categories': {
-                'failure_prediction': {'level': 'basic'}
+                'failure_prediction': {'level': ConsentLevel.BASIC.value}
             }
         }
         telemetry_client.update_consent(consent_response)
@@ -501,7 +505,7 @@ class TestTelemetryClient:
         # Give consent
         consent_response = {
             'categories': {
-                'failure_prediction': {'level': 'basic'}
+                'failure_prediction': {'level': ConsentLevel.BASIC.value}
             }
         }
         telemetry_client.update_consent(consent_response)
@@ -528,7 +532,7 @@ class TestTelemetryClient:
         # Update consent
         consent_response = {
             'categories': {
-                'failure_prediction': {'level': 'basic'}
+                'failure_prediction': {'level': ConsentLevel.BASIC.value}
             }
         }
         client.update_consent(consent_response)
@@ -545,7 +549,7 @@ class TestTelemetryClient:
         # Give consent first
         consent_response = {
             'categories': {
-                'failure_prediction': {'level': 'basic'}
+                'failure_prediction': {'level': ConsentLevel.BASIC.value}
             }
         }
         telemetry_client.update_consent(consent_response)
@@ -573,7 +577,7 @@ class TestTelemetryClient:
         # Give initial consent
         consent_response = {
             'categories': {
-                'failure_prediction': {'level': 'basic'}
+                'failure_prediction': {'level': ConsentLevel.BASIC.value}
             }
         }
         telemetry_client.update_consent(consent_response)
@@ -581,8 +585,8 @@ class TestTelemetryClient:
         # Update consent
         updated_response = {
             'categories': {
-                'failure_prediction': {'level': 'denied'},
-                'team_optimization': {'level': 'basic'}
+                'failure_prediction': {'level': ConsentLevel.DENIED.value},
+                'team_optimization': {'level': ConsentLevel.BASIC.value}
             }
         }
         telemetry_client.update_consent(updated_response)
@@ -629,7 +633,7 @@ class TestTelemetryClient:
         # Give consent for market trends
         consent_response = {
             'categories': {
-                'market_trends': {'level': 'basic'}
+                'market_trends': {'level': ConsentLevel.BASIC.value}
             }
         }
         telemetry_client.update_consent(consent_response)

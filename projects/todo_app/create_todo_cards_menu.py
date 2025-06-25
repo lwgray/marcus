@@ -103,7 +103,7 @@ def main():
             
             confirm = input("\nCreate cards now? (y/n): ").strip().lower()
             if confirm == 'y':
-                run_script("create_moderate_todo_cards_v2.py")
+                run_script("create_moderate_todo_cards.py")
             else:
                 print("Cancelled.")
                 
@@ -128,7 +128,7 @@ def main():
             
             confirm = input("\nCreate cards now? (y/n): ").strip().lower()
             if confirm == 'y':
-                run_script("create_minimal_todo_cards_v2.py")
+                run_script("create_minimal_todo_cards.py")
             else:
                 print("Cancelled.")
                 
