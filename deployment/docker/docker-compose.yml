@@ -1,0 +1,215 @@
+version: '3.8'
+
+services:
+  # PM Agent Scaled Server
+  pm-agent:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile
+    image: pm-agent:latest
+    container_name: pm-agent-server
+    ports:
+      - "8000:8000"
+      - "9090:9090"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://pmuser:pmpass@postgres:5432/pmagent
+      - SERVER_ID=pm-agent-1
+      - LOG_LEVEL=info
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - pm-agent-network
+    volumes:
+      - ./config:/app/config
+      - pm-agent-logs:/app/logs
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Additional PM Agent instances for testing horizontal scaling
+  pm-agent-2:
+    image: pm-agent:latest
+    container_name: pm-agent-server-2
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://pmuser:pmpass@postgres:5432/pmagent
+      - SERVER_ID=pm-agent-2
+      - LOG_LEVEL=info
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - pm-agent-network
+    volumes:
+      - ./config:/app/config
+      - pm-agent-logs:/app/logs
+    restart: unless-stopped
+
+  pm-agent-3:
+    image: pm-agent:latest
+    container_name: pm-agent-server-3
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://pmuser:pmpass@postgres:5432/pmagent
+      - SERVER_ID=pm-agent-3
+      - LOG_LEVEL=info
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - pm-agent-network
+    volumes:
+      - ./config:/app/config
+      - pm-agent-logs:/app/logs
+    restart: unless-stopped
+
+  # Nginx Load Balancer
+  nginx:
+    image: nginx:alpine
+    container_name: pm-agent-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - pm-agent
+      - pm-agent-2
+      - pm-agent-3
+    networks:
+      - pm-agent-network
+    restart: unless-stopped
+
+  # Redis for caching and state management
+  redis:
+    image: redis:7-alpine
+    container_name: pm-agent-redis
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+    volumes:
+      - redis-data:/data
+    networks:
+      - pm-agent-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+  # PostgreSQL for persistent storage
+  postgres:
+    image: postgres:15-alpine
+    container_name: pm-agent-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=pmagent
+      - POSTGRES_USER=pmuser
+      - POSTGRES_PASSWORD=pmpass
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - pm-agent-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+
+  # Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: pm-agent-prometheus
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - pm-agent-network
+    restart: unless-stopped
+
+  # Grafana for metrics visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: pm-agent-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana-dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+    depends_on:
+      - prometheus
+    networks:
+      - pm-agent-network
+    restart: unless-stopped
+
+  # Redis Commander for Redis management
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: pm-agent-redis-commander
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    depends_on:
+      - redis
+    networks:
+      - pm-agent-network
+    restart: unless-stopped
+
+  # pgAdmin for PostgreSQL management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pm-agent-pgadmin
+    ports:
+      - "8082:80"
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@pm-agent.local
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - pm-agent-network
+    restart: unless-stopped
+
+networks:
+  pm-agent-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  postgres-data:
+  prometheus-data:
+  grafana-data:
+  pgadmin-data:
+  pm-agent-logs:

@@ -1,9 +1,10 @@
 import pytest
 import json
+import os
 from unittest.mock import Mock, patch, AsyncMock
 from datetime import datetime, timedelta
 
-from src.core.models import Task, TaskStatus, Priority, WorkerStatus, ProjectState, RiskLevel
+from src.core.models import Task, TaskStatus, Priority, WorkerStatus, ProjectState, RiskLevel, BlockerReport, ProjectRisk
 from src.integrations.ai_analysis_engine_fixed import AIAnalysisEngine
 
 
@@ -538,3 +539,599 @@ Remember: Take your time, test thoroughly, and ask questions!"""
         assert "resolution_steps" in blocker_result
         assert "escalation_needed" in blocker_result
         assert blocker_result["escalation_needed"] is True  # Conservative approach
+    
+    @pytest.mark.asyncio
+    async def test_client_initialization_with_api_key(self, monkeypatch):
+        """Test successful client initialization with API key"""
+        # Mock environment variable
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-api-key")
+        
+        # Mock anthropic module
+        with patch('src.integrations.ai_analysis_engine_fixed.anthropic') as mock_anthropic:
+            mock_client = Mock()
+            mock_anthropic.Anthropic.return_value = mock_client
+            
+            # Create engine - should initialize client
+            engine = AIAnalysisEngine()
+            
+            assert engine.client == mock_client
+            mock_anthropic.Anthropic.assert_called_once_with(api_key="test-api-key")
+    
+    @pytest.mark.asyncio
+    async def test_client_initialization_failure(self, monkeypatch, capsys):
+        """Test client initialization when Anthropic raises exception"""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-api-key")
+        
+        with patch('src.integrations.ai_analysis_engine_fixed.anthropic') as mock_anthropic:
+            mock_anthropic.Anthropic.side_effect = Exception("Connection failed")
+            
+            engine = AIAnalysisEngine()
+            
+            assert engine.client is None
+            captured = capsys.readouterr()
+            assert "Failed to initialize Anthropic client" in captured.err
+    
+    
+    @pytest.mark.asyncio
+    async def test_generate_task_instructions_with_agent(self, ai_engine, sample_tasks, sample_workers):
+        """Test instruction generation with agent context"""
+        task = sample_tasks[0]
+        agent = sample_workers["backend_senior"]
+        
+        mock_response = """## Task Instructions
+
+**Setup Steps:**
+1. Install dependencies
+2. Configure OAuth
+
+**Implementation Steps:**
+1. Create auth module
+2. Add OAuth endpoints
+
+**Testing Approach:**
+Write unit tests for auth flow
+
+**Acceptance Criteria:**
+- Users can login
+- Tokens are secure"""
+        
+        ai_engine._call_claude = AsyncMock(return_value=mock_response)
+        
+        result = await ai_engine.generate_task_instructions(task, agent)
+        
+        assert isinstance(result, str)
+        assert "Setup Steps" in result
+        assert "Implementation Steps" in result
+    
+    @pytest.mark.asyncio
+    async def test_generate_task_instructions_fallback(self, ai_engine, sample_tasks):
+        """Test instruction generation fallback when AI fails"""
+        task = sample_tasks[0]
+        
+        # Make AI call fail
+        ai_engine._call_claude = AsyncMock(side_effect=Exception("API error"))
+        
+        result = await ai_engine.generate_task_instructions(task)
+        
+        # Should return fallback instructions
+        assert isinstance(result, str)
+        assert "Task Assignment" in result
+        assert task.name in result
+    
+    @pytest.mark.asyncio
+    async def test_analyze_blocker_json_error(self, ai_engine):
+        """Test blocker analysis with JSON parsing error"""
+        ai_engine._call_claude = AsyncMock(return_value="Not valid JSON")
+        
+        result = await ai_engine.analyze_blocker("TASK-001", "Database down", "high")
+        
+        # Should return fallback
+        assert result["escalation_needed"] is True
+        assert "resolution_steps" in result
+    
+    @pytest.mark.asyncio
+    async def test_analyze_project_risks_with_blockers(self, ai_engine, sample_workers):
+        """Test project risk analysis with recent blockers"""
+        project_state = ProjectState(
+            board_id="BOARD-001",
+            project_name="Test Project",
+            total_tasks=50,
+            completed_tasks=10,
+            in_progress_tasks=20,
+            blocked_tasks=5,
+            progress_percent=20.0,
+            overdue_tasks=[],
+            team_velocity=2.0,
+            risk_level=RiskLevel.HIGH,
+            last_updated=datetime.now()
+        )
+        
+        blockers = [
+            BlockerReport(
+                task_id="TASK-001",
+                reporter_id="dev-001",
+                description="API rate limit",
+                severity=RiskLevel.HIGH,
+                reported_at=datetime.now(),
+                resolved=False,
+                resolution=None,
+                resolved_at=None
+            )
+        ]
+        
+        team = [sample_workers["backend_senior"]] 
+        
+        mock_response = json.dumps({
+            "risks": [
+                {
+                    "type": "technical",
+                    "description": "API dependencies causing delays",
+                    "likelihood": "high",
+                    "impact": "high",
+                    "mitigation": "Implement caching layer"
+                }
+            ],
+            "overall_risk_level": "high",
+            "recommendations": ["Add redundancy", "Review architecture"]
+        })
+        
+        ai_engine._call_claude = AsyncMock(return_value=mock_response)
+        
+        result = await ai_engine.analyze_project_risks(project_state, blockers, team)
+        
+        assert len(result) > 0
+        assert result[0].risk_type == "project"
+        assert result[0].severity == RiskLevel.HIGH
+    
+    @pytest.mark.asyncio
+    async def test_analyze_project_risks_json_error(self, ai_engine):
+        """Test risk analysis with JSON parsing error"""
+        project_state = ProjectState(
+            board_id="BOARD-001",
+            project_name="Test Project",
+            total_tasks=10,
+            completed_tasks=5,
+            in_progress_tasks=3,
+            blocked_tasks=0,
+            progress_percent=50.0,
+            overdue_tasks=[],
+            team_velocity=5.0,
+            risk_level=RiskLevel.LOW,
+            last_updated=datetime.now()
+        )
+        
+        ai_engine._call_claude = AsyncMock(return_value="Invalid response")
+        
+        result = await ai_engine.analyze_project_risks(project_state, [], [])
+        
+        # Should return empty list on error for low risk project
+        assert len(result) == 0
+    
+    @pytest.mark.asyncio
+    async def test_fallback_risk_analysis_high_risk(self):
+        """Test fallback risk analysis for high risk project"""
+        engine = AIAnalysisEngine()
+        
+        project_state = ProjectState(
+            board_id="BOARD-001",
+            project_name="Test Project",
+            total_tasks=10,
+            completed_tasks=2,
+            in_progress_tasks=3,
+            blocked_tasks=2,
+            progress_percent=20.0,
+            overdue_tasks=[],
+            team_velocity=1.0,
+            risk_level=RiskLevel.HIGH,
+            last_updated=datetime.now()
+        )
+        
+        risks = engine._generate_fallback_risk_analysis(project_state)
+        
+        assert len(risks) > 0
+        assert risks[0].risk_type == "timeline"
+        assert risks[0].severity == RiskLevel.HIGH
+    
+    @pytest.mark.asyncio
+    async def test_call_claude_success(self, ai_engine):
+        """Test successful Claude API call"""
+        mock_response = Mock()
+        mock_response.content = [Mock(text="AI response")]
+        
+        ai_engine.client = Mock()
+        ai_engine.client.messages.create.return_value = mock_response
+        
+        result = await ai_engine._call_claude("test prompt")
+        
+        assert result == "AI response"
+        ai_engine.client.messages.create.assert_called_once_with(
+            model=ai_engine.model,
+            max_tokens=2000,
+            temperature=0.7,
+            messages=[{"role": "user", "content": "test prompt"}]
+        )
+    
+    @pytest.mark.asyncio
+    async def test_call_claude_no_client(self, ai_engine):
+        """Test Claude call when client is None"""
+        ai_engine.client = None
+        
+        with pytest.raises(Exception, match="Anthropic client not available"):
+            await ai_engine._call_claude("test prompt")
+    
+    @pytest.mark.asyncio
+    async def test_call_claude_api_error(self, ai_engine, capsys):
+        """Test Claude call with API error"""
+        ai_engine.client = Mock()
+        ai_engine.client.messages.create.side_effect = Exception("API rate limit")
+        
+        with pytest.raises(Exception):
+            await ai_engine._call_claude("test prompt")
+        
+        captured = capsys.readouterr()
+        assert "Error calling Claude" in captured.err
+    
+    @pytest.mark.asyncio 
+    async def test_fallback_health_analysis_comprehensive(self):
+        """Test comprehensive fallback health analysis"""
+        engine = AIAnalysisEngine()
+        
+        # High risk project with many issues
+        project_state = ProjectState(
+            board_id="BOARD-001",
+            project_name="Test Project",
+            total_tasks=100,
+            completed_tasks=20,
+            in_progress_tasks=30,
+            blocked_tasks=5,
+            progress_percent=40.0,  # Should be 40% but only 20% complete
+            overdue_tasks=[Mock(), Mock(), Mock()],  # 3 overdue tasks
+            team_velocity=1.5,  # Low velocity
+            risk_level=RiskLevel.HIGH,
+            last_updated=datetime.now()
+        )
+        
+        team_status = {}  # Not used in fallback
+        
+        result = engine._generate_fallback_health_analysis(project_state, team_status)
+        
+        assert result["overall_health"] == "red"
+        assert result["timeline_prediction"]["on_track"] is False
+        assert len(result["risk_factors"]) >= 2  # Both blocked and overdue risks
+        assert len(result["recommendations"]) >= 2
+        assert result["timeline_prediction"]["confidence"] == 0.3
+    
+    @pytest.mark.asyncio
+    async def test_match_task_edge_cases(self, ai_engine):
+        """Test task matching with edge cases"""
+        # Empty task list
+        result = await ai_engine.match_task_to_agent([], Mock(), Mock())
+        assert result is None
+        
+        # Task with valid priority 
+        task_with_priority = Task(
+            id="TASK-999",
+            name="Task with priority",
+            description="Test",
+            status=TaskStatus.TODO,
+            priority=Priority.LOW,  # Valid priority
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=1.0,
+            dependencies=[],
+            labels=[]
+        )
+        
+        agent = WorkerStatus(
+            worker_id="test-001",
+            name="Test Worker",
+            role="Developer",
+            email="test@example.com",
+            current_tasks=[],
+            completed_tasks_count=0,
+            capacity=40,
+            skills=[],
+            availability={},
+            performance_score=1.0
+        )
+        
+        project_state = ProjectState(
+            board_id="BOARD-001",
+            project_name="Test",
+            total_tasks=10,
+            completed_tasks=5,
+            in_progress_tasks=3,
+            blocked_tasks=0,
+            progress_percent=50.0,
+            overdue_tasks=[],
+            team_velocity=5.0,
+            risk_level=RiskLevel.LOW,
+            last_updated=datetime.now()
+        )
+        
+        result = await ai_engine.match_task_to_agent([task_with_priority], agent, project_state)
+        assert result == task_with_priority  # Should return the only task
+    
+    @pytest.mark.asyncio
+    async def test_project_health_with_dict_team_status(self, ai_engine):
+        """Test project health analysis with dict team status"""
+        project_state = Mock()
+        project_state.board_id = "BOARD-001"
+        project_state.project_name = "Test"
+        project_state.total_tasks = 10
+        project_state.completed_tasks = 5
+        project_state.in_progress_tasks = 3
+        project_state.blocked_tasks = 1
+        project_state.progress_percent = 50.0
+        project_state.team_velocity = 5.0
+        project_state.risk_level = RiskLevel.LOW
+        project_state.last_updated = datetime.now()
+        project_state.overdue_tasks = []
+        
+        # Pass team status as dict instead of list
+        team_status = {"team_size": 5, "avg_capacity": 35}
+        
+        mock_response = json.dumps({
+            "overall_health": "green",
+            "timeline_prediction": {
+                "on_track": True,
+                "estimated_completion": "On schedule",
+                "confidence": 0.8
+            },
+            "risk_factors": [],
+            "recommendations": [],
+            "resource_optimization": []
+        })
+        
+        ai_engine._call_claude = AsyncMock(return_value=mock_response)
+        
+        result = await ai_engine.analyze_project_health(
+            project_state, 
+            [], 
+            team_status  # Dict instead of list
+        )
+        
+        assert result["overall_health"] == "green"
+    
+    @pytest.mark.asyncio
+    async def test_no_client_fallback_all_methods(self):
+        """Test all methods work with no client"""
+        # Create engine with no client
+        engine = AIAnalysisEngine()
+        engine.client = None
+        
+        # Test data
+        task = Task(
+            id="TASK-001",
+            name="Test task",
+            description="Test",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=1.0,
+            dependencies=[],
+            labels=["test"]
+        )
+        
+        worker = WorkerStatus(
+            worker_id="test-001",
+            name="Test Worker",
+            role="Developer",
+            email="test@example.com",
+            current_tasks=[],
+            completed_tasks_count=0,
+            capacity=40,
+            skills=["test"],
+            availability={},
+            performance_score=1.0
+        )
+        
+        project_state = ProjectState(
+            board_id="BOARD-001",
+            project_name="Test",
+            total_tasks=10,
+            completed_tasks=5,
+            in_progress_tasks=3,
+            blocked_tasks=0,
+            progress_percent=50.0,
+            overdue_tasks=[],
+            team_velocity=5.0,
+            risk_level=RiskLevel.LOW,
+            last_updated=datetime.now()
+        )
+        
+        # Test match_task_to_agent with no client
+        result = await engine.match_task_to_agent([task], worker, project_state)
+        assert result == task
+        
+        # Test generate_task_instructions with no client
+        instructions = await engine.generate_task_instructions(task, worker)
+        assert "Task Assignment" in instructions
+        
+        # Test analyze_blocker with no client
+        blocker_result = await engine.analyze_blocker("TASK-001", "Test blocker", "high")
+        assert blocker_result["escalation_needed"] is True
+        
+        # Test analyze_project_health with no client
+        health_result = await engine.analyze_project_health(project_state, [], [])
+        assert "overall_health" in health_result
+        
+        # Test analyze_project_risks with no client
+        risks = await engine.analyze_project_risks(project_state, [], [])
+        assert isinstance(risks, list)
+    
+    @pytest.mark.asyncio
+    async def test_generate_instructions_no_agent(self, ai_engine):
+        """Test instruction generation without agent"""
+        task = Task(
+            id="TASK-001",
+            name="Test task",
+            description="Test description",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            due_date=datetime.now() + timedelta(days=3),
+            estimated_hours=8.0,
+            dependencies=["TASK-999"],
+            labels=["backend"]
+        )
+        
+        mock_instructions = "Test instructions"
+        ai_engine._call_claude = AsyncMock(return_value=mock_instructions)
+        
+        result = await ai_engine.generate_task_instructions(task, None)
+        assert result == mock_instructions
+    
+    @pytest.mark.asyncio
+    async def test_health_analysis_edge_cases(self):
+        """Test health analysis with edge cases"""
+        engine = AIAnalysisEngine()
+        
+        # Project with no blocked tasks and no overdue tasks
+        project_state = ProjectState(
+            board_id="BOARD-001",
+            project_name="Test",
+            total_tasks=10,
+            completed_tasks=5,
+            in_progress_tasks=3,
+            blocked_tasks=0,
+            progress_percent=50.0,
+            overdue_tasks=[],
+            team_velocity=5.0,  # Good velocity
+            risk_level=RiskLevel.LOW,
+            last_updated=datetime.now()
+        )
+        
+        result = engine._generate_fallback_health_analysis(project_state, {})
+        
+        assert result["overall_health"] == "green"
+        assert len(result["risk_factors"]) == 0  # No risks
+        assert len(result["recommendations"]) == 0  # No recommendations needed
+    
+    @pytest.mark.asyncio
+    async def test_health_analysis_yellow_status(self):
+        """Test health analysis with yellow status (medium risk)"""
+        engine = AIAnalysisEngine()
+        
+        # Project with medium risk 
+        project_state = ProjectState(
+            board_id="BOARD-001",
+            project_name="Test",
+            total_tasks=10,
+            completed_tasks=5,
+            in_progress_tasks=3,
+            blocked_tasks=3,  # More than 2 blocked tasks
+            progress_percent=50.0,
+            overdue_tasks=[],
+            team_velocity=5.0,
+            risk_level=RiskLevel.MEDIUM,
+            last_updated=datetime.now()
+        )
+        
+        result = engine._generate_fallback_health_analysis(project_state, {})
+        
+        assert result["overall_health"] == "yellow"
+        assert len(result["risk_factors"]) > 0
+        assert len(result["recommendations"]) > 0
+    
+    @pytest.mark.asyncio
+    async def test_blocker_severity_mapping(self, ai_engine):
+        """Test blocker analysis with different severity mappings"""
+        # Test medium severity
+        result = await ai_engine.analyze_blocker("TASK-001", "Database slow", "medium")
+        assert result["escalation_needed"] is False
+        
+        # Test low severity
+        result = await ai_engine.analyze_blocker("TASK-001", "Minor UI issue", "low") 
+        assert result["escalation_needed"] is False
+        
+        # Test unknown severity (defaults to False)
+        result = await ai_engine.analyze_blocker("TASK-001", "System down", "unknown")
+        assert result["escalation_needed"] is False
+    
+    @pytest.mark.asyncio
+    async def test_blocker_analysis_all_fields(self, ai_engine):
+        """Test blocker analysis returns all expected fields"""
+        mock_response = json.dumps({
+            "root_cause": "Database connection pool exhausted",
+            "resolution_steps": [
+                "Check database connection settings",
+                "Increase connection pool size",
+                "Review query optimization"
+            ],
+            "estimated_resolution_time": "2-4 hours",
+            "escalation_needed": False,
+            "suggested_experts": ["DBA team", "Backend lead"],
+            "similar_past_issues": [
+                {
+                    "issue": "Connection timeouts in production",
+                    "resolution": "Increased pool size and added monitoring"
+                }
+            ]
+        })
+        
+        ai_engine._call_claude = AsyncMock(return_value=mock_response)
+        
+        result = await ai_engine.analyze_blocker("TASK-001", "Database connection errors", "high")
+        
+        # Verify all fields are present
+        assert "root_cause" in result
+        assert "resolution_steps" in result
+        assert "estimated_resolution_time" in result
+        assert "escalation_needed" in result
+        assert "suggested_experts" in result
+        assert "similar_past_issues" in result
+        assert len(result["resolution_steps"]) == 3
+    
+    @pytest.mark.asyncio
+    async def test_initialize_success(self, capsys):
+        """Test successful initialization"""
+        with patch('src.integrations.ai_analysis_engine_fixed.anthropic') as mock_anthropic:
+            mock_client = Mock()
+            mock_response = Mock()
+            mock_response.content = [Mock(text="test")]
+            mock_client.messages.create.return_value = mock_response
+            mock_anthropic.Anthropic.return_value = mock_client
+            
+            with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+                engine = AIAnalysisEngine()
+                engine.client = mock_client
+                await engine.initialize()
+                
+                captured = capsys.readouterr()
+                assert "AI Engine connection verified" in captured.err
+    
+    @pytest.mark.asyncio
+    async def test_initialize_no_client(self, capsys):
+        """Test initialize with no client"""
+        engine = AIAnalysisEngine()
+        engine.client = None
+        
+        await engine.initialize()
+        
+        captured = capsys.readouterr()
+        assert "AI Engine running in fallback mode" in captured.err
+    
+    @pytest.mark.asyncio
+    async def test_initialize_connection_failure(self, capsys):
+        """Test initialize when connection test fails"""
+        with patch('src.integrations.ai_analysis_engine_fixed.anthropic') as mock_anthropic:
+            mock_client = Mock()
+            mock_client.messages.create.side_effect = Exception("Connection failed")
+            mock_anthropic.Anthropic.return_value = mock_client
+            
+            with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+                engine = AIAnalysisEngine()
+                engine.client = mock_client
+                await engine.initialize()
+                
+                captured = capsys.readouterr()
+                assert "AI Engine test failed" in captured.err
+                assert engine.client is None
