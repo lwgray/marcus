@@ -206,7 +206,7 @@ nano .env
 
 ```bash
 # Start the MCP server
-python pm_agent_mcp_server_v2.py
+python marcus_mcp_server.py
 ```
 
 ## Configuration

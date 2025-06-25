@@ -63,7 +63,7 @@ python run_visualization.py
 
 ```bash
 # Terminal 1: Start Marcus with logging
-python pm_agent_mcp_server_logged.py
+python marcus_mcp_server_logged.py
 
 # Terminal 2: Start visualization server
 python run_visualization.py

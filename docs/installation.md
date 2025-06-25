@@ -1,9 +1,9 @@
-# =æ Installing Marcus
+# =ï¿½ Installing Marcus
 
 > **Time to complete**: 5-15 minutes  
 > **Difficulty**: Beginner friendly
 
-## <¯ Choose Your Installation Method
+## <ï¿½ Choose Your Installation Method
 
 ### Quick Install (Recommended for Most Users)
 
@@ -24,7 +24,7 @@ This script will:
 
 For more control over the setup process, follow the steps below.
 
-## =Ë System Requirements
+## =ï¿½ System Requirements
 
 ### Minimum Requirements
 - **Operating System**: Linux, macOS 10.15+, or Windows 10+ (with WSL2)
@@ -39,7 +39,7 @@ For more control over the setup process, follow the steps below.
 - **Storage**: 10GB free space
 - **CPU**: 4 cores or more
 
-## =à Step-by-Step Installation
+## =ï¿½ Step-by-Step Installation
 
 ### Step 1: Install Prerequisites
 
@@ -213,13 +213,13 @@ python scripts/setup/configure_board.py
 python scripts/quick_start.py
 ```
 
-## =€ Starting Marcus
+## =ï¿½ Starting Marcus
 
 ### As MCP Server (For Claude Desktop/Code)
 
 ```bash
 # Start the MCP server
-python pm_agent_mcp_server_v2.py
+python marcus_mcp_server.py
 ```
 
 ### As Standalone Service
@@ -348,7 +348,7 @@ docker-compose restart  # If using Docker
 # Or restart your Python processes
 ```
 
-## <‰ Next Steps
+## <ï¿½ Next Steps
 
 Congratulations! Marcus is now installed. Here's what to do next:
 
@@ -365,19 +365,19 @@ Congratulations! Marcus is now installed. Here's what to do next:
    - [Claude Desktop Setup](claude-desktop-setup.md)
    - [Worker Agents Guide](worker-agents.md)
 
-## =¡ Tips for Success
+## =ï¿½ Tips for Success
 
 - **Start Small**: Begin with a simple project to understand the workflow
 - **Use Planka First**: It's the easiest to set up and requires no external accounts
 - **Check Logs**: If something goes wrong, logs are in the `logs/` directory
 - **Join Community**: Get help and share experiences with other users
 
-## <˜ Getting Help
+## <ï¿½ Getting Help
 
-- =Ö [Troubleshooting Guide](troubleshooting.md) - Detailed solutions
-- =¬ [GitHub Discussions](https://github.com/lwgray/pm-agent/discussions) - Ask questions
+- =ï¿½ [Troubleshooting Guide](troubleshooting.md) - Detailed solutions
+- =ï¿½ [GitHub Discussions](https://github.com/lwgray/pm-agent/discussions) - Ask questions
 - = [Issue Tracker](https://github.com/lwgray/pm-agent/issues) - Report bugs
-- =ç Email: support@marcus.ai
+- =ï¿½ Email: support@marcus.ai
 
 ---
 

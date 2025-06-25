@@ -32,7 +32,7 @@ services:
       - ./logs:/app/logs
       - ./data:/app/data
       - ./prompts:/app/prompts
-    command: python pm_agent_mcp_server_v2.py
+    command: python marcus_mcp_server.py
     restart: unless-stopped
     stdin_open: true
     tty: true
@@ -75,7 +75,7 @@ services:
       - ./logs:/app/logs
       - ./data:/app/data
       - ./prompts:/app/prompts
-    command: python pm_agent_mcp_server_v2.py
+    command: python marcus_mcp_server.py
     restart: unless-stopped
     stdin_open: true
     tty: true

@@ -23,7 +23,7 @@ cd pm-agent
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
-python -m pm_agent_mcp_server_v2
+python -m marcus_mcp_server
 ```
 
 ## Detailed Steps
@@ -99,7 +99,7 @@ EOF
 mkdir -p config
 
 # Generate default configuration
-python -m pm_agent_mcp_server_v2 --generate-config
+python -m marcus_mcp_server --generate-config
 ```
 
 ### 4. Run Marcus
@@ -108,20 +108,20 @@ Start Marcus with various options:
 
 ```bash
 # Basic start
-python -m pm_agent_mcp_server_v2
+python -m marcus_mcp_server
 
 # With specific config file
-python -m pm_agent_mcp_server_v2 --config config/production.json
+python -m marcus_mcp_server --config config/production.json
 
 # With debug logging
-python -m pm_agent_mcp_server_v2 --log-level DEBUG
+python -m marcus_mcp_server --log-level DEBUG
 
 # On custom port
-python -m pm_agent_mcp_server_v2 --port 3200
+python -m marcus_mcp_server --port 3200
 
 # With auto-reload for development
 pip install watchdog
-watchmedo auto-restart -d src -p "*.py" -- python -m pm_agent_mcp_server_v2
+watchmedo auto-restart -d src -p "*.py" -- python -m marcus_mcp_server
 ```
 
 ### 5. Set Up as System Service
@@ -141,7 +141,7 @@ Type=simple
 User=$USER
 WorkingDirectory=/path/to/pm-agent
 Environment="PATH=/path/to/pm-agent/venv/bin"
-ExecStart=/path/to/pm-agent/venv/bin/python -m pm_agent_mcp_server_v2
+ExecStart=/path/to/pm-agent/venv/bin/python -m marcus_mcp_server
 Restart=always
 RestartSec=10
 
@@ -170,7 +170,7 @@ cat > ~/Library/LaunchAgents/com.pm-agent.plist << EOF
     <array>
         <string>/path/to/pm-agent/venv/bin/python</string>
         <string>-m</string>
-        <string>pm_agent_mcp_server_v2</string>
+        <string>marcus_mcp_server</string>
     </array>
     <key>WorkingDirectory</key>
     <string>/path/to/pm-agent</string>
@@ -190,7 +190,7 @@ launchctl load ~/Library/LaunchAgents/com.pm-agent.plist
 ```powershell
 # Create scheduled task
 $action = New-ScheduledTaskAction -Execute "C:\path\to\pm-agent\venv\Scripts\python.exe" `
-    -Argument "-m pm_agent_mcp_server_v2" -WorkingDirectory "C:\path\to\pm-agent"
+    -Argument "-m marcus_mcp_server" -WorkingDirectory "C:\path\to\pm-agent"
 
 $trigger = New-ScheduledTaskTrigger -AtStartup
 
@@ -207,7 +207,7 @@ curl http://localhost:3100/health
 
 # Test MCP tools
 python -c "
-from pm_agent_mcp_server_v2 import test_connection
+from marcus_mcp_server import test_connection
 import asyncio
 asyncio.run(test_connection())
 "
@@ -239,7 +239,7 @@ gunicorn -w 4 -b 0.0.0.0:3100 \
   --timeout 120 \
   --access-logfile logs/access.log \
   --error-logfile logs/error.log \
-  "pm_agent_mcp_server_v2:create_app()"
+  "marcus_mcp_server:create_app()"
 ```
 
 ### Option 2: Development with Hot Reload
@@ -251,7 +251,7 @@ pip install watchdog python-dotenv
 # Run with auto-reload
 export FLASK_ENV=development
 watchmedo auto-restart -d src -p "*.py" \
-  --recursive -- python -m pm_agent_mcp_server_v2 --debug
+  --recursive -- python -m marcus_mcp_server --debug
 ```
 
 ### Option 3: Virtual Environment Management
@@ -260,12 +260,12 @@ Use pipenv or poetry for better dependency management:
 # Using pipenv
 pip install pipenv
 pipenv install
-pipenv run python -m pm_agent_mcp_server_v2
+pipenv run python -m marcus_mcp_server
 
 # Using poetry
 pip install poetry
 poetry install
-poetry run python -m pm_agent_mcp_server_v2
+poetry run python -m marcus_mcp_server
 ```
 
 ## Troubleshooting
@@ -302,7 +302,7 @@ ulimit -v 2097152  # 2GB limit
 
 # Or use Python memory profiling
 pip install memory-profiler
-python -m memory_profiler pm_agent_mcp_server_v2.py
+python -m memory_profiler marcus_mcp_server.py
 ```
 
 ### Logging Configuration
@@ -338,7 +338,7 @@ while true; do
     if ! curl -f http://localhost:3100/health > /dev/null 2>&1; then
         echo "Marcus is down, restarting..."
         source venv/bin/activate
-        python -m pm_agent_mcp_server_v2 &
+        python -m marcus_mcp_server &
     fi
     sleep 30
 done

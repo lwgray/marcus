@@ -137,7 +137,7 @@ docker-compose logs pm-agent | grep -i error
 ### 3. Test Marcus Manually
 ```bash
 docker-compose exec pm-agent python -c "
-from pm_agent_mcp_server_v2 import ping
+from marcus_mcp_server import ping
 import asyncio
 print(asyncio.run(ping('test')))
 "

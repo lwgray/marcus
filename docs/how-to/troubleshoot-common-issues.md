@@ -259,7 +259,7 @@ Run Marcus without Docker for debugging:
 pip install -r requirements.txt
 
 # Run directly with verbose output
-python -m pm_agent_mcp_server_v2 --debug
+python -m marcus_mcp_server --debug
 ```
 
 ## Troubleshooting

@@ -15,9 +15,9 @@ from typing import List, Dict, Any
 # Add parent dir to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-import pm_agent_mcp_server_v2 as pm_server
-from pm_agent_mcp_server_v2 import (
-    PMAgentState, 
+import marcus_mcp_server as pm_server
+from marcus_mcp_server import (
+    MarcusState, 
     register_agent, 
     request_next_task,
     report_task_progress,

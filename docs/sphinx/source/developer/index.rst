@@ -87,7 +87,7 @@ Development Setup
 
 5. **Start development server**::
 
-      python pm_agent_mcp_server.py
+      python marcus_mcp_server.py
 
 Code Organization
 -----------------
@@ -127,7 +127,7 @@ Debugging Tips
 1. **Enable debug logging**::
 
       export LOG_LEVEL=DEBUG
-      python pm_agent_mcp_server_logged.py
+      python marcus_mcp_server_logged.py
 
 2. **Monitor conversations**::
 

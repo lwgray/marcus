@@ -2,7 +2,7 @@
   "name": "marcus",
   "description": "Marcus - AI Project Coordination System for autonomous development teams",
   "command": "python",
-  "args": ["pm_agent_mcp_server_v2.py"],
+  "args": ["marcus_mcp_server.py"],
   "env": {
     "PYTHONPATH": "."
   }

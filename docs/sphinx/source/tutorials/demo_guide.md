@@ -48,7 +48,7 @@ This shows a simulated conversation between Marcus and a worker without needing 
 ### Run Single Verbose Worker
 ```bash
 # Make sure Marcus is running first
-python pm_agent_mcp_server.py
+python marcus_mcp_server.py
 
 # In another terminal, run a worker
 python scripts/mock_claude_worker_verbose.py

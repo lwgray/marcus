@@ -58,7 +58,7 @@ Let's create a basic documentation worker:
            # Configure connection to Marcus
            server_params = StdioServerParameters(
                command="python",
-               args=["pm_agent_mcp_server.py"]
+               args=["marcus_mcp_server.py"]
            )
            
            # Connect to Marcus

@@ -424,7 +424,7 @@ Development Tips
       docker-compose up -d planka
       
       # Run Marcus locally
-      python pm_agent_mcp_server_logged.py
+      python marcus_mcp_server_logged.py
       
       # Test with mock workers
       python scripts/mock_claude_worker.py

@@ -24,5 +24,5 @@ RUN mkdir -p logs data
 # Expose MCP stdio interface (not a network port)
 # MCP uses stdio, not HTTP
 
-# Default command - run Marcus MCP server v2
-CMD ["python", "pm_agent_mcp_server_v2.py"]
+# Default command - run Marcus MCP server
+CMD ["python", "marcus_mcp_server.py"]

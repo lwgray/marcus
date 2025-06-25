@@ -147,7 +147,7 @@ Starting the Visualization
 
 1. Start Marcus with logging::
 
-      python pm_agent_mcp_server_logged.py
+      python marcus_mcp_server_logged.py
 
 2. Start visualization server::
 
