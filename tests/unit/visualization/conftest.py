@@ -8,8 +8,19 @@ Notes
 -----
 These fixtures create realistic test data that matches the actual data structures
 used by the PM Agent visualization system.
+
+IMPORTANT: These tests must be run separately by file due to event loop conflicts.
+Use ./run_tests.sh or run each test file individually.
 """
 import pytest
+
+
+# Automatically mark all tests in this directory as visualization tests
+def pytest_collection_modifyitems(items):
+    """Mark all visualization tests so they can be excluded from main test run"""
+    for item in items:
+        if "visualization" in str(item.fspath):
+            item.add_marker(pytest.mark.visualization)
 import tempfile
 import json
 from pathlib import Path
