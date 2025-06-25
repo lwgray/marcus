@@ -196,6 +196,36 @@ services:
     profiles:
       - local-planka  # Must explicitly enable
 
+  # MCP Server for Claude Code integration
+  marcus-mcp:
+    build: .
+    container_name: marcus-mcp-stdio
+    environment:
+      # Inherit all environment variables from main service
+      - KANBAN_PROVIDER=${KANBAN_PROVIDER:-github}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_OWNER=${GITHUB_OWNER}
+      - GITHUB_REPO=${GITHUB_REPO}
+      - LINEAR_API_KEY=${LINEAR_API_KEY}
+      - LINEAR_TEAM_ID=${LINEAR_TEAM_ID}
+      - PLANKA_PROJECT_NAME=${PLANKA_PROJECT_NAME}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - MARCUS_CONFIG=/app/config/pm_agent_config.json
+      - MARCUS_MONITORING_INTERVAL=900
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./prompts:/app/prompts
+    command: python marcus_mcp_server.py
+    stdin_open: true
+    tty: false  # Important: MCP uses stdio, not TTY
+    networks:
+      - marcus-network
+    profiles:
+      - mcp  # Only start when --profile mcp is used
+
 networks:
   marcus-network:
     driver: bridge

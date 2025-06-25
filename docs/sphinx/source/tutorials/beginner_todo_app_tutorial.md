@@ -251,31 +251,31 @@ Open http://localhost:3000 to see your Todo app!
 Let's examine how the AI workers collaborated:
 
 ### Task Dependencies
-.. mermaid::
-
-   graph TD
-       A[Project Setup] --> B[Database Schema]
-       B --> C[Todo Model]
-       B --> D[Database Connection]
-       C --> E[REST API]
-       D --> E
-       E --> F[Validation]
-       E --> G[Error Handling]
-       A --> H[React Setup]
-       H --> I[UI Design]
-       I --> J[List Component]
-       I --> K[Item Component]
-       I --> L[Add Form]
-       J --> M[API Service]
-       K --> M
-       L --> M
-       M --> N[Connect Frontend]
-       E --> N
-       G --> N
-       E --> O[Authentication]
-       N --> P[Testing]
-       O --> P
-       P --> Q[Deployment]
+```{mermaid}
+graph TD
+    A[Project Setup] --> B[Database Schema]
+    B --> C[Todo Model]
+    B --> D[Database Connection]
+    C --> E[REST API]
+    D --> E
+    E --> F[Validation]
+    E --> G[Error Handling]
+    A --> H[React Setup]
+    H --> I[UI Design]
+    I --> J[List Component]
+    I --> K[Item Component]
+    I --> L[Add Form]
+    J --> M[API Service]
+    K --> M
+    L --> M
+    M --> N[Connect Frontend]
+    E --> N
+    G --> N
+    E --> O[Authentication]
+    N --> P[Testing]
+    O --> P
+    P --> Q[Deployment]
+```
 
 ### Worker Specialization
 - **Backend Workers**: Handle Python, FastAPI, SQLAlchemy tasks

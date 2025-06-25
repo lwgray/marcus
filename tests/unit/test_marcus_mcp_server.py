@@ -161,7 +161,7 @@ class TestMarcusState:
         
         # Create state
         with patch('builtins.open', mock_open()):
-            state = PMAgentState()
+            state = MarcusState()
         
         # Initialize kanban
         await state.initialize_kanban()
@@ -175,7 +175,7 @@ class TestMarcusState:
         # Create state with mocked file
         mock_file = MagicMock()
         with patch('builtins.open', return_value=mock_file):
-            state = PMAgentState()
+            state = MarcusState()
         
         # Log event
         state.log_event("test_event", {"data": "test"})
@@ -251,7 +251,7 @@ class TestToolCallHandler:
         
     async def test_handle_call_tool_exception(self):
         """Test exception handling in tool calls"""
-        with patch('pm_agent_mcp_server_v2.ping', side_effect=Exception("Test error")):
+        with patch('marcus_mcp_server.ping', side_effect=Exception("Test error")):
             result = await handle_call_tool("ping", {})
             
             assert len(result) == 1
@@ -644,7 +644,7 @@ class TestIntegration:
         """Test complete agent workflow from registration to task completion"""
         with patch('builtins.open', mock_open()):
             # Create fresh state
-            test_state = PMAgentState()
+            test_state = MarcusState()
             
             # Mock dependencies
             test_state.kanban_client = AsyncMock()
@@ -670,7 +670,7 @@ class TestIntegration:
             
             test_state.kanban_client.get_available_tasks.return_value = [test_task]
             
-            with patch('pm_agent_mcp_server_v2.state', test_state):
+            with patch('marcus_mcp_server.state', test_state):
                 # 1. Register agent
                 reg_result = await register_agent("test-agent", "Test Agent", "Developer", ["python"])
                 assert reg_result['success'] is True
