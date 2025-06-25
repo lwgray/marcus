@@ -1,14 +1,15 @@
-"""
-Multi-channel communication system for PM Agent.
+"""Multi-channel communication system for PM Agent.
 
-This module provides a unified communication hub that manages notifications
-across multiple channels including Slack, email, and kanban board comments.
-It handles task assignments, blocker notifications, escalations, and daily
-work plans for agents.
+This module provides the CommunicationHub class which manages notifications
+and messages across different communication channels to keep agents and
+managers informed about task assignments, blockers, and project status.
+
+The hub supports asynchronous message delivery through multiple channels
+including Slack, email, and kanban board comments.
 """
 
 import asyncio
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 import json
 

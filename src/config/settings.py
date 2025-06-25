@@ -1,13 +1,55 @@
+"""Configuration management for PM Agent.
+
+This module provides the Settings class which handles loading, validation,
+and management of configuration settings from multiple sources including
+JSON files, environment variables, and default values.
+"""
+
 import os
 import json
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 from pathlib import Path
 
 
 class Settings:
-    """Configuration management for PM Agent"""
+    """Configuration management system for PM Agent.
     
-    def __init__(self, config_path: Optional[str] = None):
+    Manages configuration loading from multiple sources with support for
+    hierarchical settings, environment variable overrides, and validation.
+    Provides specialized getters for different configuration categories.
+    
+    Parameters
+    ----------
+    config_path : Optional[str], default=None
+        Path to the configuration file. If None, uses PM_AGENT_CONFIG
+        environment variable or defaults to 'config/pm_agent_config.json'
+    
+    Attributes
+    ----------
+    config_path : str
+        Path to the configuration file
+    defaults : Dict[str, Any]
+        Default configuration values
+    config : Dict[str, Any]
+        Current loaded configuration
+    
+    Examples
+    --------
+    >>> settings = Settings()
+    >>> monitoring_interval = settings.get('monitoring_interval')
+    >>> risk_config = settings.get_risk_thresholds()
+    >>> settings.set('custom_setting', 'value')
+    >>> settings.save()
+    
+    Notes
+    -----
+    Configuration loading priority (highest to lowest):
+    1. Environment variables
+    2. Configuration file
+    3. Default values
+    """
+    
+    def __init__(self, config_path: Optional[str] = None) -> None:
         self.config_path = config_path or os.environ.get(
             "PM_AGENT_CONFIG",
             "config/pm_agent_config.json"
@@ -84,7 +126,21 @@ class Settings:
         self.config = self._load_config()
     
     def _load_config(self) -> Dict[str, Any]:
-        """Load configuration from file or environment"""
+        """Load configuration from file and environment variables.
+        
+        Loads configuration in priority order: defaults, then file config,
+        then environment variable overrides.
+        
+        Returns
+        -------
+        Dict[str, Any]
+            Complete merged configuration dictionary
+            
+        Notes
+        -----
+        If config file doesn't exist or has errors, falls back to defaults.
+        Environment variables always take precedence over file settings.
+        """
         config = self.defaults.copy()
         
         # Try to load from file
@@ -101,8 +157,32 @@ class Settings:
         
         return config
     
-    def _deep_merge(self, base: Dict, update: Dict) -> Dict:
-        """Deep merge two dictionaries"""
+    def _deep_merge(self, base: Dict[str, Any], update: Dict[str, Any]) -> Dict[str, Any]:
+        """Recursively merge two dictionaries.
+        
+        Performs deep merge where nested dictionaries are merged recursively
+        rather than replaced entirely.
+        
+        Parameters
+        ----------
+        base : Dict[str, Any]
+            Base dictionary to merge into
+        update : Dict[str, Any]
+            Dictionary with updates to merge
+            
+        Returns
+        -------
+        Dict[str, Any]
+            New dictionary with merged values
+            
+        Examples
+        --------
+        >>> base = {'a': {'x': 1}, 'b': 2}
+        >>> update = {'a': {'y': 3}, 'c': 4}
+        >>> result = settings._deep_merge(base, update)
+        >>> result
+        {'a': {'x': 1, 'y': 3}, 'b': 2, 'c': 4}
+        """
         result = base.copy()
         
         for key, value in update.items():
@@ -113,8 +193,31 @@ class Settings:
         
         return result
     
-    def _load_env_overrides(self, config: Dict) -> Dict:
-        """Load configuration overrides from environment variables"""
+    def _load_env_overrides(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Load configuration overrides from environment variables.
+        
+        Checks for specific environment variables and updates the configuration
+        with their values, performing type conversion as needed.
+        
+        Parameters
+        ----------
+        config : Dict[str, Any]
+            Base configuration to update
+            
+        Returns
+        -------
+        Dict[str, Any]
+            Configuration with environment variable overrides applied
+            
+        Notes
+        -----
+        Supported environment variables:
+        - PM_AGENT_MONITORING_INTERVAL: Monitoring interval in seconds
+        - PM_AGENT_SLACK_ENABLED: Enable/disable Slack (true/false)
+        - SLACK_WEBHOOK_URL: Slack webhook URL
+        - PM_AGENT_EMAIL_ENABLED: Enable/disable email (true/false)
+        - ANTHROPIC_API_KEY: API key for Anthropic services
+        """
         # Monitoring interval
         if "PM_AGENT_MONITORING_INTERVAL" in os.environ:
             config["monitoring_interval"] = int(os.environ["PM_AGENT_MONITORING_INTERVAL"])
@@ -137,7 +240,28 @@ class Settings:
         return config
     
     def get(self, key: str, default: Any = None) -> Any:
-        """Get configuration value by key"""
+        """Get configuration value using dot notation key.
+        
+        Supports nested key access using dot notation (e.g., 'risk_thresholds.high_risk').
+        
+        Parameters
+        ----------
+        key : str
+            Configuration key, supports dot notation for nested access
+        default : Any, default=None
+            Default value to return if key is not found
+            
+        Returns
+        -------
+        Any
+            Configuration value or default if not found
+            
+        Examples
+        --------
+        >>> value = settings.get('monitoring_interval')
+        >>> nested = settings.get('risk_thresholds.high_risk', 0.8)
+        >>> missing = settings.get('nonexistent.key', 'fallback')
+        """
         keys = key.split('.')
         value = self.config
         
@@ -149,8 +273,27 @@ class Settings:
         
         return value
     
-    def set(self, key: str, value: Any):
-        """Set configuration value"""
+    def set(self, key: str, value: Any) -> None:
+        """Set configuration value using dot notation key.
+        
+        Creates nested dictionary structure as needed when using dot notation.
+        
+        Parameters
+        ----------
+        key : str
+            Configuration key, supports dot notation for nested setting
+        value : Any
+            Value to set
+            
+        Examples
+        --------
+        >>> settings.set('monitoring_interval', 600)
+        >>> settings.set('custom.nested.setting', 'value')
+        
+        Notes
+        -----
+        Setting values does not automatically save to file. Call save() to persist.
+        """
         keys = key.split('.')
         config = self.config
         
@@ -161,36 +304,176 @@ class Settings:
         
         config[keys[-1]] = value
     
-    def save(self):
-        """Save current configuration to file"""
+    def save(self) -> None:
+        """Save current configuration to file.
+        
+        Writes the current configuration to the configured file path,
+        creating directories as needed.
+        
+        Raises
+        ------
+        OSError
+            If file cannot be written or directory cannot be created
+        json.JSONEncodeError
+            If configuration contains non-serializable values
+            
+        Examples
+        --------
+        >>> settings.set('new_setting', 'value')
+        >>> settings.save()
+        """
         os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
         
         with open(self.config_path, 'w') as f:
             json.dump(self.config, f, indent=2)
     
     def get_team_config(self, team_name: str = "default") -> Dict[str, Any]:
-        """Get configuration for a specific team"""
+        """Get configuration for a specific team.
+        
+        Retrieves team-specific configuration including skills, work patterns,
+        and communication preferences. Falls back to default team config.
+        
+        Parameters
+        ----------
+        team_name : str, default="default"
+            Name of the team to get configuration for
+            
+        Returns
+        -------
+        Dict[str, Any]
+            Team configuration containing:
+            - skills: List of team skills
+            - work_patterns: Work scheduling preferences
+            - communication_preferences: Notification settings
+            
+        Examples
+        --------
+        >>> backend_config = settings.get_team_config("backend_team")
+        >>> default_config = settings.get_team_config()
+        """
         team_configs = self.get("team_config", {})
         return team_configs.get(team_name, team_configs.get("default", {}))
     
     def get_risk_thresholds(self) -> Dict[str, float]:
-        """Get risk assessment thresholds"""
+        """Get risk assessment thresholds for project monitoring.
+        
+        Returns threshold values used for risk assessment calculations
+        in project monitoring and alerting systems.
+        
+        Returns
+        -------
+        Dict[str, float]
+            Risk thresholds containing:
+            - high_risk: Threshold for high risk classification (0.0-1.0)
+            - medium_risk: Threshold for medium risk classification (0.0-1.0)
+            - timeline_buffer: Buffer percentage for timeline calculations
+            
+        Examples
+        --------
+        >>> thresholds = settings.get_risk_thresholds()
+        >>> if project_risk > thresholds['high_risk']:
+        ...     send_alert()
+        """
         return self.get("risk_thresholds", self.defaults["risk_thresholds"])
     
     def get_escalation_rules(self) -> Dict[str, int]:
-        """Get escalation rules"""
+        """Get escalation rules for automated issue management.
+        
+        Returns timing rules that determine when issues should be
+        escalated to higher levels of management.
+        
+        Returns
+        -------
+        Dict[str, int]
+            Escalation rules containing:
+            - stuck_task_hours: Hours before escalating stuck tasks
+            - blocker_escalation_hours: Hours before escalating blockers
+            - critical_path_delay_hours: Hours before escalating critical delays
+            
+        Examples
+        --------
+        >>> rules = settings.get_escalation_rules()
+        >>> if task_stuck_hours > rules['stuck_task_hours']:
+        ...     escalate_task(task)
+        """
         return self.get("escalation_rules", self.defaults["escalation_rules"])
     
     def get_communication_rules(self) -> Dict[str, str]:
-        """Get communication timing rules"""
+        """Get communication timing rules for automated messaging.
+        
+        Returns scheduling rules that determine when different types
+        of automated communications should be sent.
+        
+        Returns
+        -------
+        Dict[str, str]
+            Communication timing rules containing:
+            - daily_plan_time: Time to send daily work plans (HH:MM format)
+            - progress_check_time: Time for progress check messages
+            - end_of_day_summary: Time to send daily summaries
+            
+        Examples
+        --------
+        >>> rules = settings.get_communication_rules()
+        >>> daily_time = rules['daily_plan_time']  # "08:00"
+        >>> schedule_daily_plans(daily_time)
+        """
         return self.get("communication_rules", self.defaults["communication_rules"])
     
     def get_ai_settings(self) -> Dict[str, Any]:
-        """Get AI model settings"""
+        """Get AI model configuration settings.
+        
+        Returns configuration for AI model integration including
+        model selection, parameters, and retry behavior.
+        
+        Returns
+        -------
+        Dict[str, Any]
+            AI settings containing:
+            - model: Model identifier string
+            - temperature: Sampling temperature (0.0-1.0)
+            - max_tokens: Maximum response tokens
+            - retry_attempts: Number of retry attempts
+            - retry_delay: Delay between retries in seconds
+            
+        Examples
+        --------
+        >>> ai_config = settings.get_ai_settings()
+        >>> client = AIClient(
+        ...     model=ai_config['model'],
+        ...     temperature=ai_config['temperature']
+        ... )
+        """
         return self.get("ai_settings", self.defaults["ai_settings"])
     
     def validate(self) -> bool:
-        """Validate configuration"""
+        """Validate current configuration for consistency and completeness.
+        
+        Performs validation checks on the loaded configuration to ensure
+        required settings are present and values are within acceptable ranges.
+        Prints warnings for potential issues.
+        
+        Returns
+        -------
+        bool
+            True if configuration is valid, False if critical issues found
+            
+        Notes
+        -----
+        Validation checks include:
+        - Presence of required API keys
+        - Reasonable monitoring intervals
+        - At least one communication channel enabled
+        
+        Warnings are printed to stdout for non-critical issues.
+        
+        Examples
+        --------
+        >>> if settings.validate():
+        ...     start_pm_agent()
+        ... else:
+        ...     fix_configuration()
+        """
         required_keys = []
         
         # Check for API key if AI is being used
