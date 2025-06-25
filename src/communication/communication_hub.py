@@ -1,3 +1,12 @@
+"""
+Multi-channel communication system for PM Agent.
+
+This module provides a unified communication hub that manages notifications
+across multiple channels including Slack, email, and kanban board comments.
+It handles task assignments, blocker notifications, escalations, and daily
+work plans for agents.
+"""
+
 import asyncio
 from typing import Dict, List, Optional, Any
 from datetime import datetime
@@ -8,9 +17,36 @@ from src.config.settings import Settings
 
 
 class CommunicationHub:
-    """Multi-channel communication system for team coordination"""
+    """
+    Multi-channel communication system for team coordination.
     
-    def __init__(self):
+    Manages notifications and messages across different communication channels
+    to keep agents and managers informed about task assignments, blockers,
+    and project status.
+    
+    Attributes
+    ----------
+    settings : Settings
+        Configuration settings instance
+    slack_enabled : bool
+        Whether Slack notifications are enabled
+    email_enabled : bool
+        Whether email notifications are enabled
+    kanban_comments_enabled : bool
+        Whether kanban board comments are enabled
+    message_queue : List[Dict[str, Any]]
+        Queue for async message processing
+    agent_preferences : Dict[str, Dict[str, Any]]
+        Communication preferences by agent ID
+    
+    Examples
+    --------
+    >>> hub = CommunicationHub()
+    >>> await hub.notify_task_assignment("agent-001", assignment)
+    >>> hub.set_agent_preferences("agent-001", {"daily_plan_channel": "email"})
+    """
+    
+    def __init__(self) -> None:
         self.settings = Settings()
         
         # Communication channels (to be initialized based on config)
@@ -28,8 +64,25 @@ class CommunicationHub:
         self,
         agent_id: str,
         assignment: TaskAssignment
-    ):
-        """Send task assignment notification through multiple channels"""
+    ) -> None:
+        """
+        Send task assignment notification through multiple channels.
+        
+        Formats and sends assignment notifications via enabled channels
+        (kanban comments, Slack, email) in parallel.
+        
+        Parameters
+        ----------
+        agent_id : str
+            ID of the agent receiving the assignment
+        assignment : TaskAssignment
+            The task assignment details
+        
+        Notes
+        -----
+        Notifications are sent asynchronously and exceptions are caught
+        to prevent one channel failure from affecting others.
+        """
         message = self._format_assignment_message(agent_id, assignment)
         
         # Send through enabled channels
@@ -53,8 +106,28 @@ class CommunicationHub:
         task_id: str,
         blocker_description: str,
         resolution_plan: Dict[str, Any]
-    ):
-        """Notify relevant parties about a blocker"""
+    ) -> None:
+        """
+        Notify relevant parties about a blocker.
+        
+        Sends blocker notifications to appropriate recipients based on
+        the resolution plan and configured escalation settings.
+        
+        Parameters
+        ----------
+        agent_id : str
+            ID of the agent reporting the blocker
+        task_id : str
+            ID of the blocked task
+        blocker_description : str
+            Description of what is blocking progress
+        resolution_plan : Dict[str, Any]
+            Plan containing:
+            - resolution_steps: List of steps to resolve
+            - impact_assessment: Impact description
+            - estimated_hours: Time to resolve
+            - required_resources: List of required resources/people
+        """
         message = self._format_blocker_message(
             agent_id, task_id, blocker_description, resolution_plan
         )
@@ -77,8 +150,20 @@ class CommunicationHub:
         self,
         agent_id: str,
         clarification: str
-    ):
-        """Send clarification response to an agent"""
+    ) -> None:
+        """
+        Send clarification response to an agent.
+        
+        Sends a clarification message to help an agent understand
+        task requirements or resolve questions.
+        
+        Parameters
+        ----------
+        agent_id : str
+            ID of the agent to receive clarification
+        clarification : str
+            The clarification message content
+        """
         message = {
             "type": "clarification",
             "content": clarification,
@@ -92,8 +177,27 @@ class CommunicationHub:
         self,
         blocker: BlockerReport,
         resolution: Dict[str, Any]
-    ):
-        """Escalate a blocker to management"""
+    ) -> None:
+        """
+        Escalate a blocker to management.
+        
+        Sends high-priority notifications to configured escalation
+        recipients when a blocker requires management intervention.
+        
+        Parameters
+        ----------
+        blocker : BlockerReport
+            The blocker report to escalate
+        resolution : Dict[str, Any]
+            Resolution details containing:
+            - required_actions: List of actions needed
+            - impact_assessment: Impact description
+        
+        Notes
+        -----
+        Escalation recipients are configured in settings under
+        'escalation_recipients' key.
+        """
         message = self._format_escalation_message(blocker, resolution)
         
         # Get escalation recipients
@@ -113,8 +217,18 @@ class CommunicationHub:
         
         await asyncio.gather(*tasks, return_exceptions=True)
     
-    async def notify_task_unblocked(self, task: Task):
-        """Notify when a task is unblocked"""
+    async def notify_task_unblocked(self, task: Task) -> None:
+        """
+        Notify when a task is unblocked.
+        
+        Sends positive notification to assigned agent when their
+        blocked task becomes available to work on again.
+        
+        Parameters
+        ----------
+        task : Task
+            The task that has been unblocked
+        """
         if task.assigned_to:
             message = f"✅ Good news! Task '{task.name}' is now unblocked and ready to proceed."
             
@@ -131,8 +245,28 @@ class CommunicationHub:
         self,
         agent_id: str,
         recommendations: List[Dict[str, Any]]
-    ):
-        """Send personalized daily work plan to agent"""
+    ) -> None:
+        """
+        Send personalized daily work plan to agent.
+        
+        Sends a formatted daily plan with recommended tasks through
+        the agent's preferred communication channel.
+        
+        Parameters
+        ----------
+        agent_id : str
+            ID of the agent to receive the plan
+        recommendations : List[Dict[str, Any]]
+            List of recommended tasks, each containing:
+            - task_name: Name of the task
+            - priority: Task priority level
+            - estimated_hours: Time estimate
+        
+        Notes
+        -----
+        Channel preference is read from agent_preferences. Defaults
+        to Slack if no preference is set.
+        """
         message = self._format_daily_plan_message(agent_id, recommendations)
         
         # Send through preferred channel
@@ -149,7 +283,26 @@ class CommunicationHub:
         agent_id: str,
         assignment: TaskAssignment
     ) -> Dict[str, str]:
-        """Format assignment message for different channels"""
+        """
+        Format assignment message for different channels.
+        
+        Creates channel-specific formatted messages for task assignments.
+        
+        Parameters
+        ----------
+        agent_id : str
+            ID of the assigned agent
+        assignment : TaskAssignment
+            Task assignment details
+            
+        Returns
+        -------
+        Dict[str, str]
+            Dictionary with keys:
+            - kanban: Markdown formatted for kanban comments
+            - slack: Slack markdown formatted message
+            - email: HTML formatted email body
+        """
         return {
             "kanban": f"""📋 Task assigned to {agent_id}
 **Priority:** {assignment.priority.value}
@@ -188,7 +341,27 @@ _Reply with `!help` if you need assistance or `!block` if you encounter issues._
         description: str,
         resolution_plan: Dict[str, Any]
     ) -> Dict[str, str]:
-        """Format blocker message for different channels"""
+        """
+        Format blocker message for different channels.
+        
+        Creates channel-specific formatted messages for blocker notifications.
+        
+        Parameters
+        ----------
+        agent_id : str
+            ID of the agent reporting the blocker
+        task_id : str
+            ID of the blocked task
+        description : str
+            Blocker description
+        resolution_plan : Dict[str, Any]
+            Resolution plan details
+            
+        Returns
+        -------
+        Dict[str, str]
+            Dictionary with formatted messages for kanban and slack
+        """
         steps = "\n".join([f"• {step}" for step in resolution_plan.get("resolution_steps", [])])
         
         return {
@@ -217,7 +390,23 @@ _This blocker is being actively addressed._"""
         blocker: BlockerReport,
         resolution: Dict[str, Any]
     ) -> Dict[str, str]:
-        """Format escalation message"""
+        """
+        Format escalation message for management.
+        
+        Creates urgent formatted messages for blocker escalations.
+        
+        Parameters
+        ----------
+        blocker : BlockerReport
+            The blocker being escalated
+        resolution : Dict[str, Any]
+            Resolution details with required_actions
+            
+        Returns
+        -------
+        Dict[str, str]
+            Dictionary with email and slack formatted messages
+        """
         return {
             "email": f"""<h2>Blocker Escalation Required</h2>
 <p><strong>Task ID:</strong> {blocker.task_id}</p>
@@ -248,7 +437,23 @@ Please address this blocker immediately."""
         agent_id: str,
         recommendations: List[Dict[str, Any]]
     ) -> Dict[str, str]:
-        """Format daily plan message"""
+        """
+        Format daily plan message.
+        
+        Creates motivational daily plan messages with task recommendations.
+        
+        Parameters
+        ----------
+        agent_id : str
+            ID of the agent
+        recommendations : List[Dict[str, Any]]
+            List of recommended tasks (up to 5 shown)
+            
+        Returns
+        -------
+        Dict[str, str]
+            Dictionary with slack and email formatted messages
+        """
         task_list = "\n".join([
             f"{i+1}. {rec['task_name']} ({rec['priority']}) - {rec['estimated_hours']}h"
             for i, rec in enumerate(recommendations[:5])
@@ -285,7 +490,24 @@ Have a productive day! 🚀""",
         reporter_id: str,
         resolution_plan: Dict[str, Any]
     ) -> List[str]:
-        """Determine who should be notified about a blocker"""
+        """
+        Determine who should be notified about a blocker.
+        
+        Builds recipient list including reporter, team lead, and any
+        specific resources mentioned in the resolution plan.
+        
+        Parameters
+        ----------
+        reporter_id : str
+            ID of the blocker reporter
+        resolution_plan : Dict[str, Any]
+            Plan potentially containing required_resources
+            
+        Returns
+        -------
+        List[str]
+            Unique list of recipient IDs
+        """
         recipients = [reporter_id]
         
         # Add team lead
@@ -301,20 +523,70 @@ Have a productive day! 🚀""",
         
         return list(set(recipients))  # Remove duplicates
     
-    async def _send_kanban_comment(self, task_id: str, comment: str):
-        """Send comment to kanban board"""
+    async def _send_kanban_comment(self, task_id: str, comment: str) -> None:
+        """
+        Send comment to kanban board.
+        
+        Posts a comment to the specified task on the kanban board.
+        
+        Parameters
+        ----------
+        task_id : str
+            ID of the task to comment on
+        comment : str
+            Comment text to post
+            
+        Notes
+        -----
+        Currently simulates the operation. In production, this would
+        integrate with the kanban client.
+        """
         # This would integrate with the kanban client
         # For now, we'll simulate it
         print(f"[KANBAN] Task {task_id}: {comment}")
     
-    async def _send_slack_message(self, recipient: str, message: str):
-        """Send Slack message"""
+    async def _send_slack_message(self, recipient: str, message: str) -> None:
+        """
+        Send Slack message.
+        
+        Sends a direct message to the specified recipient via Slack.
+        
+        Parameters
+        ----------
+        recipient : str
+            Slack user ID or channel
+        message : str
+            Message content with Slack markdown
+            
+        Notes
+        -----
+        Currently simulates the operation. In production, this would
+        integrate with Slack SDK.
+        """
         # This would integrate with Slack SDK
         # For now, we'll simulate it
         print(f"[SLACK] To {recipient}: {message}")
     
-    async def _send_email(self, recipient: str, subject: str, body: str):
-        """Send email"""
+    async def _send_email(self, recipient: str, subject: str, body: str) -> None:
+        """
+        Send email notification.
+        
+        Sends an HTML formatted email to the specified recipient.
+        
+        Parameters
+        ----------
+        recipient : str
+            Email address of recipient
+        subject : str
+            Email subject line
+        body : str
+            HTML formatted email body
+            
+        Notes
+        -----
+        Currently simulates the operation. In production, this would
+        integrate with an email service provider.
+        """
         # This would integrate with email service
         # For now, we'll simulate it
         print(f"[EMAIL] To {recipient} - Subject: {subject}")
@@ -324,6 +596,28 @@ Have a productive day! 🚀""",
         self,
         agent_id: str,
         preferences: Dict[str, Any]
-    ):
-        """Set communication preferences for an agent"""
+    ) -> None:
+        """
+        Set communication preferences for an agent.
+        
+        Stores agent-specific communication preferences to customize
+        how they receive notifications.
+        
+        Parameters
+        ----------
+        agent_id : str
+            ID of the agent
+        preferences : Dict[str, Any]
+            Preference dictionary, may contain:
+            - daily_plan_channel: "email" or "slack"
+            - notification_hours: Active hours for notifications
+            - quiet_mode: Boolean for reduced notifications
+            
+        Examples
+        --------
+        >>> hub.set_agent_preferences("agent-001", {
+        ...     "daily_plan_channel": "email",
+        ...     "quiet_mode": False
+        ... })
+        """
         self.agent_preferences[agent_id] = preferences

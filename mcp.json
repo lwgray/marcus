@@ -2,7 +2,7 @@
   "name": "pm-agent",
   "description": "AI Project Manager for autonomous development teams",
   "command": "python",
-  "args": ["-m", "src.pm_agent_mvp_fixed"],
+  "args": ["pm_agent_mcp_server_v2.py"],
   "env": {
     "PYTHONPATH": "."
   }

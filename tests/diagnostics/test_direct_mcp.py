@@ -1,20 +1,51 @@
 #!/usr/bin/env python3
 """
-Test direct MCP connection to isolate connection issues
-This bypasses all PM Agent wrappers and tests raw MCP connection
+Test direct MCP connection to isolate connection issues.
+
+This diagnostic test bypasses all PM Agent wrappers and tests raw MCP connection
+to help identify whether connection issues are in the PM Agent layer or the MCP layer.
+
+Notes
+-----
+This test is useful for troubleshooting when the main application cannot connect
+to the MCP server, as it eliminates PM Agent code as a potential cause.
 """
 
 import asyncio
 import os
 import sys
+from typing import Optional, List, Tuple
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 # Add parent directories to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-async def test_direct():
-    """Test direct connection to kanban-mcp server"""
+async def test_direct() -> None:
+    """
+    Test direct connection to kanban-mcp server.
+    
+    This function attempts to establish a direct MCP connection, bypassing all
+    PM Agent abstractions. It tests multiple node.js paths and kanban-mcp locations
+    to ensure maximum compatibility.
+    
+    Notes
+    -----
+    The test performs the following steps:
+    1. Locates node.js executable
+    2. Locates kanban-mcp distribution
+    3. Starts the MCP server process
+    4. Creates and initializes a session
+    5. Makes a test tool call
+    
+    Examples
+    --------
+    >>> asyncio.run(test_direct())
+    🔍 Testing Direct MCP Connection
+    ============================================================
+    Using node: /opt/homebrew/bin/node
+    Using kanban-mcp: /Users/lwgray/dev/kanban-mcp/dist/index.js
+    ..."""
     print("🔍 Testing Direct MCP Connection")
     print("=" * 60)
     

@@ -1,8 +1,21 @@
+"""
+Unit tests for the AI Analysis Engine.
+
+This module tests the AI-powered decision-making capabilities of PM Agent,
+including task assignment optimization, blocker analysis, and project risk assessment.
+
+Notes
+-----
+Tests use mocked Anthropic API calls to ensure reproducibility and avoid
+external dependencies during testing.
+"""
+
 import pytest
 import json
 import os
 from unittest.mock import Mock, patch, AsyncMock
 from datetime import datetime, timedelta
+from typing import List, Dict, Any, Optional
 
 from src.core.models import Task, TaskStatus, Priority, WorkerStatus, ProjectState, RiskLevel, BlockerReport, ProjectRisk
 from src.integrations.ai_analysis_engine_fixed import AIAnalysisEngine
@@ -17,14 +30,19 @@ class TestAIAnalysisEngine:
     """
     
     @pytest.fixture
-    def ai_engine(self):
+    def ai_engine(self) -> AIAnalysisEngine:
         """
-        STEP 1: Create a test instance of the AI Analysis Engine
+        Create a test instance of the AI Analysis Engine.
         
-        What's happening:
-        - We create an instance of our AI engine
-        - In tests, we'll mock the Anthropic client to avoid real API calls
-        - This fixture runs before each test method
+        Returns
+        -------
+        AIAnalysisEngine
+            An AI engine instance with mocked Anthropic client.
+        
+        Notes
+        -----
+        The Anthropic client is mocked to avoid real API calls during tests.
+        This fixture runs before each test method.
         """
         with patch('anthropic.Anthropic') as mock_anthropic:
             engine = AIAnalysisEngine()
@@ -33,14 +51,19 @@ class TestAIAnalysisEngine:
             return engine
     
     @pytest.fixture
-    def sample_tasks(self):
+    def sample_tasks(self) -> List[Task]:
         """
-        STEP 2: Create sample task data for testing
+        Create sample task data for testing.
         
-        What's happening:
-        - We create realistic task objects that represent different scenarios
-        - These tasks have varying priorities, skills requirements, and complexities
-        - This helps us test how the AI makes decisions with different inputs
+        Returns
+        -------
+        List[Task]
+            A list of task objects with varying priorities and requirements.
+        
+        Notes
+        -----
+        Tasks represent different scenarios including high-priority features,
+        bug fixes, and technical debt items to test various decision paths.
         """
         return [
             Task(

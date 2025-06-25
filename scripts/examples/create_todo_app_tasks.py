@@ -1,6 +1,42 @@
 #!/usr/bin/env python3
-"""
-Create Todo App tasks in Planka for testing PM Agent
+"""Create Todo App development tasks in Planka for testing PM Agent.
+
+This module creates a comprehensive set of tasks for building a Todo application,
+designed to test PM Agent's ability to manage and coordinate multiple AI workers
+on a realistic software development project. The tasks cover backend API development,
+frontend React development, and DevOps setup.
+
+The script creates tasks with:
+    - Detailed descriptions and requirements
+    - Appropriate labels for categorization
+    - Priority levels
+    - Estimated hours
+    - Dependencies between tasks
+
+Task Structure
+--------------
+The Todo App project is divided into phases:
+    1. Project Setup: Initialize backend, frontend, and Docker
+    2. Core API: Database models and CRUD endpoints
+    3. Frontend: React components and API integration
+    4. Testing: Unit and integration tests
+    5. Documentation: API docs and user guides
+
+Examples
+--------
+Create tasks in the default Task Master board:
+    $ python scripts/examples/create_todo_app_tasks.py
+
+The script will:
+    1. Connect to Planka using MCP
+    2. Find or use the configured board
+    3. Create all tasks in the "To Do" list
+    4. Add labels and priority comments
+
+Notes
+-----
+Requires config_pm_agent.json with board_id configured, or will attempt
+to find a board in the Task Master project automatically.
 """
 
 import asyncio
@@ -8,6 +44,7 @@ import json
 import sys
 import os
 from datetime import datetime, timedelta
+from typing import Dict, List, Optional
 
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
@@ -127,7 +164,34 @@ Include:
 
 
 def get_label_color(label: str) -> str:
-    """Get color for label based on type"""
+    """Get hex color code for a label based on its type.
+    
+    Maps label names to appropriate colors for visual distinction in the
+    task board. Uses a predefined color scheme that matches common development
+    categories.
+    
+    Parameters
+    ----------
+    label : str
+        The label name to get a color for (e.g., "backend", "frontend").
+        
+    Returns
+    -------
+    str
+        Hex color code including the # prefix (e.g., "#4CAF50").
+        Returns gray (#757575) for unknown labels.
+        
+    Examples
+    --------
+    >>> get_label_color("backend")
+    "#4CAF50"
+    
+    >>> get_label_color("frontend")
+    "#2196F3"
+    
+    >>> get_label_color("unknown")
+    "#757575"
+    """
     color_map = {
         "backend": "#4CAF50",      # Green
         "frontend": "#2196F3",     # Blue  
@@ -143,8 +207,54 @@ def get_label_color(label: str) -> str:
     return color_map.get(label, "#757575")  # Default gray
 
 
-async def create_tasks_in_planka():
-    """Create all tasks in Planka"""
+async def create_tasks_in_planka() -> None:
+    """Create all Todo App tasks in Planka board.
+    
+    Connects to Planka via MCP, finds the appropriate board and list,
+    then creates all tasks defined in the TASKS constant. Each task is
+    created with its description, labels, and priority information.
+    
+    The function performs the following steps:
+        1. Load board configuration from config_pm_agent.json
+        2. Connect to Planka using MCPKanbanClient
+        3. Find the "To Do" list in the board
+        4. Create each task with labels and comments
+        5. Report creation statistics
+    
+    Returns
+    -------
+    None
+    
+    Side Effects
+    ------------
+    - Creates multiple tasks in the Planka board
+    - Adds labels to cards (creates labels if they don't exist)
+    - Adds priority comments to cards
+    - Prints progress messages to console
+    
+    Raises
+    ------
+    Exception
+        If connection fails or no board/lists are found.
+        Individual task creation failures are caught and logged
+        but don't stop the overall process.
+        
+    Notes
+    -----
+    The function uses the Task Master project ID by default and attempts
+    to find a board automatically if not configured. Labels are created
+    with predefined colors based on their type.
+    
+    Examples
+    --------
+    >>> await create_tasks_in_planka()
+    🚀 Creating Todo App tasks in Planka...
+    📋 Project ID: 1533678301472621705
+    ✅ Connected. Board ID: 1533859887128249584
+    📝 Adding tasks to list: To Do
+    ...
+    🎉 Created 5/5 tasks successfully!
+    """
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
     config_path = os.path.join(project_root, 'config_pm_agent.json')
     

@@ -1,0 +1,20 @@
+[run]
+source = src
+omit = 
+    */tests/*
+    */test_*
+    */__pycache__/*
+    */venv/*
+    */visualization-ui/*
+
+[report]
+precision = 2
+show_missing = True
+skip_covered = False
+
+[html]
+directory = htmlcov/visualization
+
+[json]
+output = coverage-visualization.json
+pretty_print = True

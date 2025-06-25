@@ -1,19 +1,38 @@
+<!--
+  NodeDetailsPanel Component
+  
+  Purpose: Displays detailed information about a selected node in the workflow.
+  Shows node-specific properties, metrics, and connections to other nodes.
+  
+  Features:
+  - Dynamic content based on node type (worker, pm-agent, decision)
+  - Worker node: status, skills, current task with progress
+  - PM Agent node: decision metrics and confidence scores
+  - Decision node: decision details with confidence and rationale
+  - Connection information showing linked nodes
+  
+  Props:
+  - node: The selected node object containing type, id, and data
+-->
 <template>
   <div class="node-details-panel p-4">
+    <!-- Header with node label and close button -->
     <div class="flex items-center justify-between mb-4">
       <h3 class="text-lg font-medium">{{ node.data.label }}</h3>
       <button
         @click="workflowStore.setSelectedNode(null)"
         class="p-1 hover:bg-gray-700 rounded transition-colors"
       >
+        <!-- Close icon (X) -->
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
         </svg>
       </button>
     </div>
     
-    <!-- Node type specific content -->
+    <!-- Worker node specific content -->
     <div v-if="node.type === 'worker'" class="space-y-4">
+      <!-- Basic worker information -->
       <div>
         <h4 class="text-sm font-medium text-gray-400 mb-2">Worker Information</h4>
         <div class="space-y-2 text-sm">
@@ -32,6 +51,7 @@
         </div>
       </div>
       
+      <!-- Worker skills section -->
       <div v-if="node.data.skills && node.data.skills.length">
         <h4 class="text-sm font-medium text-gray-400 mb-2">Skills</h4>
         <div class="flex flex-wrap gap-1">
@@ -45,6 +65,7 @@
         </div>
       </div>
       
+      <!-- Current task with progress bar -->
       <div v-if="node.data.currentTask">
         <h4 class="text-sm font-medium text-gray-400 mb-2">Current Task</h4>
         <div class="p-3 bg-dark-surface rounded-lg">
@@ -68,14 +89,17 @@
       </div>
     </div>
     
+    <!-- PM Agent node specific content -->
     <div v-else-if="node.type === 'pm-agent'" class="space-y-4">
       <div>
         <h4 class="text-sm font-medium text-gray-400 mb-2">PM Agent Metrics</h4>
         <div class="grid grid-cols-2 gap-3">
+          <!-- Decisions today metric -->
           <div class="p-3 bg-dark-surface rounded-lg">
             <div class="text-2xl font-bold text-pm-primary">{{ node.data.metrics?.decisionsToday || 0 }}</div>
             <div class="text-xs text-gray-500">Decisions Today</div>
           </div>
+          <!-- Average confidence metric -->
           <div class="p-3 bg-dark-surface rounded-lg">
             <div class="text-2xl font-bold text-green-400">{{ Math.round((node.data.metrics?.avgConfidence || 0) * 100) }}%</div>
             <div class="text-xs text-gray-500">Avg Confidence</div>
@@ -84,6 +108,7 @@
       </div>
     </div>
     
+    <!-- Decision node specific content -->
     <div v-else-if="node.type === 'decision'" class="space-y-4">
       <div>
         <h4 class="text-sm font-medium text-gray-400 mb-2">Decision Details</h4>
@@ -97,7 +122,7 @@
       </div>
     </div>
     
-    <!-- Connection info -->
+    <!-- Connection information (shown for all node types) -->
     <div class="mt-6">
       <h4 class="text-sm font-medium text-gray-400 mb-2">Connections</h4>
       <div class="space-y-1 text-xs">
@@ -112,10 +137,28 @@
 </template>
 
 <script setup>
+/**
+ * NodeDetailsPanel - Displays detailed information about a selected workflow node
+ * 
+ * This component renders different content based on the node type:
+ * - Worker nodes: Shows status, skills, and current task progress
+ * - PM Agent nodes: Displays decision metrics and confidence scores
+ * - Decision nodes: Shows decision details with confidence and rationale
+ * 
+ * All node types show their connections to other nodes in the workflow.
+ */
+
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useWorkflowStore } from '@/stores/workflow'
 
+/**
+ * Component props
+ * @prop {Object} node - The selected node object
+ * @prop {string} node.id - Unique node identifier
+ * @prop {string} node.type - Node type (worker, pm-agent, decision)
+ * @prop {Object} node.data - Node-specific data including label, status, metrics, etc.
+ */
 const props = defineProps({
   node: {
     type: Object,
@@ -123,20 +166,43 @@ const props = defineProps({
   }
 })
 
+// Store instance for workflow state management
 const workflowStore = useWorkflowStore()
+
+// Reactive references to workflow nodes and edges
 const { edges, nodes } = storeToRefs(workflowStore)
 
+/**
+ * Computed property that finds all edges connected to the selected node
+ * Used to display connection information in the UI
+ * 
+ * @returns {Array<Object>} Array of edge objects where source or target matches the node ID
+ */
 const connectedEdges = computed(() => {
   return edges.value.filter(edge => 
     edge.source === props.node.id || edge.target === props.node.id
   )
 })
 
+/**
+ * Gets the display label for a node by its ID
+ * Falls back to showing the ID if no label is found
+ * 
+ * @param {string} nodeId - The ID of the node to get the label for
+ * @returns {string} The node's label or its ID as fallback
+ */
 const getNodeLabel = (nodeId) => {
   const node = nodes.value.find(n => n.id === nodeId)
   return node?.data?.label || nodeId
 }
 
+/**
+ * Returns the appropriate CSS class for a node status
+ * Used to color-code status text based on the current state
+ * 
+ * @param {string} status - The status value (available, working, blocked, idle, active)
+ * @returns {string} Tailwind CSS class for text color
+ */
 const getStatusClass = (status) => {
   const classes = {
     available: 'text-green-400',

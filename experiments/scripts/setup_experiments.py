@@ -187,9 +187,22 @@ scrape_configs:
         from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Float, DateTime, JSON
         from sqlalchemy.sql import func
         
-        # Create database engine
+        # Create database engine with fallback to SQLite
         db_url = os.getenv("DATABASE_URL", "sqlite:///experiments.db")
-        engine = create_engine(db_url)
+        
+        # If PostgreSQL URL is provided but psycopg2 has issues, fall back to SQLite
+        if db_url.startswith("postgresql://"):
+            try:
+                engine = create_engine(db_url)
+                # Test connection
+                engine.connect().close()
+            except ImportError as e:
+                console.print("[yellow]⚠ PostgreSQL driver issue detected, falling back to SQLite[/yellow]")
+                console.print(f"[dim]Error: {e}[/dim]")
+                db_url = "sqlite:///experiments.db"
+                engine = create_engine(db_url)
+        else:
+            engine = create_engine(db_url)
         metadata = MetaData()
         
         # Define tables

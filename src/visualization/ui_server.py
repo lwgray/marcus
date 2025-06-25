@@ -22,24 +22,68 @@ from jinja2 import Environment, FileSystemLoader
 from .conversation_stream import ConversationStreamProcessor, ConversationEvent
 from .decision_visualizer import DecisionVisualizer
 from .knowledge_graph import KnowledgeGraphBuilder
+from .health_monitor import HealthMonitor
 
 
 class VisualizationServer:
     """
-    Web server for PM Agent visualization interface
+    Web server for PM Agent visualization interface.
+    
+    Provides a real-time web UI for visualizing agent conversations,
+    decision-making processes, knowledge graphs, and system health metrics.
+    Uses Socket.IO for real-time bidirectional communication.
+    
+    Attributes
+    ----------
+    host : str
+        Server host address
+    port : int
+        Server port number
+    app : web.Application
+        aiohttp web application instance
+    sio : socketio.AsyncServer
+        Socket.IO server for real-time communication
+    conversation_processor : ConversationStreamProcessor
+        Processes conversation events
+    decision_visualizer : DecisionVisualizer
+        Visualizes decision-making processes
+    knowledge_graph : KnowledgeGraphBuilder
+        Builds and manages knowledge graph
+    health_monitor : HealthMonitor
+        Monitors system health metrics
+    active_sessions : Set[str]
+        Set of active client session IDs
+    
+    Examples
+    --------
+    >>> server = VisualizationServer(host="localhost", port=8080)
+    >>> await server.start()
     """
     
-    def __init__(self, host: str = "0.0.0.0", port: int = 8080):
+    def __init__(self, host: str = "0.0.0.0", port: int = 8080) -> None:
+        """
+        Initialize the visualization server.
+        
+        Parameters
+        ----------
+        host : str, default="0.0.0.0"
+            Host address to bind the server to
+        port : int, default=8080
+            Port number to listen on
+        """
         self.host = host
         self.port = port
         self.app = web.Application()
         self.sio = socketio.AsyncServer(async_mode='aiohttp', cors_allowed_origins='*')
-        self.sio.attach(self.app)
+        
+        # Attach socket.io AFTER route setup to avoid CORS conflicts
+        # self.sio.attach(self.app)  # Will be done after routes are set up
         
         # Components
         self.conversation_processor = ConversationStreamProcessor()
         self.decision_visualizer = DecisionVisualizer()
         self.knowledge_graph = KnowledgeGraphBuilder()
+        self.health_monitor = HealthMonitor()
         
         # Active connections
         self.active_sessions: Set[str] = set()
@@ -49,11 +93,20 @@ class VisualizationServer:
         self._setup_socketio()
         self._setup_templates()
         
+        # Attach socket.io after routes are set up
+        self.sio.attach(self.app)
+        
         # Add conversation event handler
         self.conversation_processor.add_event_handler(self._handle_conversation_event)
         
-    def _setup_routes(self):
-        """Setup HTTP routes"""
+    def _setup_routes(self) -> None:
+        """
+        Setup HTTP routes and CORS configuration.
+        
+        Configures static file serving, API endpoints, and CORS settings
+        for cross-origin requests. Socket.IO routes are excluded from
+        CORS setup as they handle it internally.
+        """
         # Static files
         static_dir = Path(__file__).parent / 'static'
         self.app.router.add_static('/static', static_dir)
@@ -67,6 +120,12 @@ class VisualizationServer:
         self.app.router.add_get('/api/knowledge/statistics', self._knowledge_stats_handler)
         self.app.router.add_post('/api/decisions/{decision_id}/outcome', self._update_decision_outcome)
         
+        # Health analysis routes
+        self.app.router.add_get('/api/health/current', self._health_current_handler)
+        self.app.router.add_get('/api/health/history', self._health_history_handler)
+        self.app.router.add_get('/api/health/summary', self._health_summary_handler)
+        self.app.router.add_post('/api/health/analyze', self._health_analyze_handler)
+        
         # Enable CORS
         cors = aiohttp_cors.setup(self.app, defaults={
             "*": aiohttp_cors.ResourceOptions(
@@ -78,10 +137,18 @@ class VisualizationServer:
         })
         
         for route in list(self.app.router.routes()):
-            cors.add(route)
+            # Skip socket.io routes as they handle CORS internally
+            if not str(route.resource).startswith('/socket.io'):
+                cors.add(route)
             
-    def _setup_socketio(self):
-        """Setup Socket.IO events"""
+    def _setup_socketio(self) -> None:
+        """
+        Setup Socket.IO event handlers.
+        
+        Defines handlers for client connections, disconnections,
+        subscriptions, and various data requests. Each handler is
+        decorated as a Socket.IO event.
+        """
         
         @self.sio.event
         async def connect(sid, environ):
@@ -147,13 +214,65 @@ class VisualizationServer:
                 'statistics': self.knowledge_graph.get_graph_statistics()
             }, room=sid)
             
-    def _setup_templates(self):
-        """Setup Jinja2 templates"""
+        @self.sio.event
+        async def subscribe_health_updates(sid, data):
+            """Subscribe to real-time health updates"""
+            await self.sio.emit('subscription_confirmed', {
+                'type': 'health',
+                'status': 'active'
+            }, room=sid)
+            
+            # Send current health if available
+            if self.health_monitor.last_analysis:
+                await self.sio.emit('health_update', 
+                    self.health_monitor.last_analysis, 
+                    room=sid)
+                    
+        @self.sio.event
+        async def request_health_analysis(sid, data):
+            """Request immediate health analysis"""
+            # In production, gather actual project state
+            # For now, send last analysis or error
+            if self.health_monitor.last_analysis:
+                await self.sio.emit('health_analysis_complete',
+                    self.health_monitor.last_analysis,
+                    room=sid)
+            else:
+                await self.sio.emit('health_analysis_error', {
+                    'error': 'No health data available',
+                    'message': 'Run a health analysis first'
+                }, room=sid)
+            
+    def _setup_templates(self) -> None:
+        """
+        Setup Jinja2 template environment.
+        
+        Configures the template loader to use the templates directory
+        relative to this module's location.
+        """
         template_dir = Path(__file__).parent / 'templates'
         self.jinja_env = Environment(loader=FileSystemLoader(template_dir))
         
-    async def _handle_conversation_event(self, event: ConversationEvent):
-        """Handle new conversation events and broadcast to clients"""
+    async def _handle_conversation_event(self, event: ConversationEvent) -> None:
+        """
+        Handle new conversation events and broadcast to clients.
+        
+        Processes different event types (PM decisions, worker messages,
+        task assignments) and updates relevant visualization components
+        before broadcasting to all connected clients.
+        
+        Parameters
+        ----------
+        event : ConversationEvent
+            The conversation event to process
+        
+        Notes
+        -----
+        Event types handled:
+        - pm_decision: Updates decision visualizer
+        - worker_message: Extracts worker registration info
+        - task_assignment: Updates knowledge graph
+        """
         # Process event for visualization components
         if event.event_type == 'pm_decision':
             self.decision_visualizer.add_decision({
@@ -194,8 +313,19 @@ class VisualizationServer:
         # Broadcast to all connected clients
         await self._broadcast_event(event)
         
-    async def _broadcast_event(self, event: ConversationEvent):
-        """Broadcast event to all connected clients"""
+    async def _broadcast_event(self, event: ConversationEvent) -> None:
+        """
+        Broadcast event to all connected clients.
+        
+        Converts the event to a dictionary and emits it through
+        Socket.IO. Also emits type-specific events for targeted
+        client-side handling.
+        
+        Parameters
+        ----------
+        event : ConversationEvent
+            The event to broadcast
+        """
         event_data = event.to_dict()
         
         # Emit to all connected clients
@@ -282,10 +412,92 @@ class VisualizationServer:
             
         return web.json_response({'success': True})
         
+    async def _health_current_handler(self, request):
+        """Get current health analysis"""
+        if self.health_monitor.last_analysis:
+            return web.json_response(self.health_monitor.last_analysis)
+        else:
+            return web.json_response({
+                'error': 'No health analysis available',
+                'message': 'Run a health analysis first'
+            }, status=404)
+            
+    async def _health_history_handler(self, request):
+        """Get health analysis history"""
+        hours = int(request.query.get('hours', 24))
+        history = self.health_monitor.get_health_history(hours)
+        
+        return web.json_response({
+            'history': history,
+            'count': len(history),
+            'hours': hours
+        })
+        
+    async def _health_summary_handler(self, request):
+        """Get health summary statistics"""
+        summary = self.health_monitor.get_health_summary()
+        return web.json_response(summary)
+        
+    async def _health_analyze_handler(self, request):
+        """Run health analysis with provided data"""
+        try:
+            data = await request.json()
+            
+            # Extract project state, activities, and team status from request
+            # In production, this would come from actual system state
+            from src.core.models import ProjectState, RiskLevel
+            
+            # Create ProjectState from request data
+            project_data = data.get('project_state', {})
+            project_state = ProjectState(
+                board_id=project_data.get('board_id', 'BOARD-001'),
+                project_name=project_data.get('project_name', 'Unknown Project'),
+                total_tasks=project_data.get('total_tasks', 0),
+                completed_tasks=project_data.get('completed_tasks', 0),
+                in_progress_tasks=project_data.get('in_progress_tasks', 0),
+                blocked_tasks=project_data.get('blocked_tasks', 0),
+                progress_percent=project_data.get('progress_percent', 0.0),
+                overdue_tasks=[],  # Would be populated from actual data
+                team_velocity=project_data.get('team_velocity', 0.0),
+                risk_level=RiskLevel[project_data.get('risk_level', 'MEDIUM').upper()],
+                last_updated=datetime.now()
+            )
+            
+            recent_activities = data.get('recent_activities', [])
+            team_status = data.get('team_status', [])
+            
+            # Run analysis
+            health_analysis = await self.health_monitor.get_project_health(
+                project_state,
+                recent_activities,
+                team_status
+            )
+            
+            # Broadcast to all connected clients
+            await self.sio.emit('health_update', health_analysis)
+            
+            return web.json_response(health_analysis)
+            
+        except Exception as e:
+            logging.error(f"Health analysis failed: {e}")
+            return web.json_response({
+                'error': 'Analysis failed',
+                'message': str(e)
+            }, status=500)
+        
     async def start(self):
         """Start the visualization server"""
+        # Initialize health monitor
+        await self.health_monitor.initialize()
+        
         # Start conversation streaming
         asyncio.create_task(self.conversation_processor.start_streaming())
+        
+        # Start health monitoring with callback to broadcast updates
+        async def health_update_callback(health_data):
+            await self.sio.emit('health_update', health_data)
+            
+        await self.health_monitor.start_monitoring(health_update_callback)
         
         # Start web server
         runner = web.AppRunner(self.app)

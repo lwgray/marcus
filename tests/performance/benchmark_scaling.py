@@ -26,8 +26,17 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class BenchmarkResult:
-    """Results from a benchmark run."""
-    scenario: str
+    """
+    Results from a benchmark run.
+    
+    This dataclass captures comprehensive performance metrics from
+    a benchmark scenario including connection statistics, response times,
+    and error tracking.
+    
+    Attributes
+    ----------
+    scenario : str
+        Name of the benchmark scenario.
     total_connections: int
     successful_connections: int
     failed_connections: int
@@ -46,7 +55,18 @@ class BenchmarkResult:
 
 
 class AgentSimulator:
-    """Simulates a PM Agent client."""
+    """
+    Simulate a PM Agent client for performance testing.
+    
+    This class simulates the behavior of a PM Agent client, including
+    registration, task requests, progress reporting, and blocker handling.
+    It's designed to stress test the PM Agent server under various load conditions.
+    
+    Notes
+    -----
+    The simulator generates realistic agent behavior patterns to ensure
+    benchmarks reflect actual usage scenarios.
+    """
     
     def __init__(self, agent_id: str, server_url: str):
         self.agent_id = agent_id

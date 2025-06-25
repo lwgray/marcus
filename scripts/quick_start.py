@@ -1,13 +1,33 @@
 #!/usr/bin/env python3
-"""
-Quick Start Script for PM Agent
-Creates a simple Hello World API project with tasks
+"""Quick start script for PM Agent.
+
+This module provides a quick start utility for PM Agent that creates a simple
+Hello World API project with predefined tasks on the configured task board
+provider (GitHub Projects, Trello, etc.). It demonstrates the basic workflow
+of creating a project board and populating it with tasks that AI workers can
+then pick up and complete.
+
+Examples
+--------
+Run the quick start script:
+    $ python scripts/quick_start.py
+
+The script will:
+    1. Connect to your configured task board provider
+    2. Create or find a "Hello World API" project board
+    3. Create 6 predefined tasks for building a simple API
+    4. Display next steps for running PM Agent
+
+Notes
+-----
+Requires valid API credentials in .env file for your chosen task board provider.
 """
 
 import os
 import sys
 import asyncio
 from datetime import datetime
+from typing import Dict, List, Optional, Any
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -16,8 +36,43 @@ from src.integrations.kanban_factory import KanbanFactory
 from src.config.settings import Settings
 
 
-async def create_hello_world_project():
-    """Create a simple Hello World API project with tasks."""
+async def create_hello_world_project() -> str:
+    """Create a simple Hello World API project with predefined tasks.
+    
+    This function connects to the configured task board provider, creates or
+    finds a project board named "Hello World API", and populates it with six
+    predefined tasks that guide AI workers through building a basic Express.js
+    API server.
+    
+    The tasks include:
+        - Setting up Node.js project structure
+        - Creating Express.js server
+        - Implementing GET /hello endpoint
+        - Adding error handling middleware
+        - Creating README documentation
+        - Adding basic tests
+    
+    Returns
+    -------
+    str
+        The board ID of the created or existing project board.
+    
+    Raises
+    ------
+    Exception
+        If no lists are available in the board or if board creation fails.
+        
+    Notes
+    -----
+    The function adapts to different task board providers:
+        - For GitHub: Uses the repository project format
+        - For others: Creates a "Hello World API" board
+    
+    Examples
+    --------
+    >>> board_id = await create_hello_world_project()
+    >>> print(f"Created board with ID: {board_id}")
+    """
     print("🚀 PM Agent Quick Start - Creating Hello World API Project")
     print("=" * 60)
     
@@ -166,8 +221,25 @@ async def create_hello_world_project():
         raise
 
 
-def main():
-    """Main entry point."""
+def main() -> None:
+    """Main entry point for the quick start script.
+    
+    Runs the asynchronous project creation function and handles errors
+    gracefully. Provides user-friendly messages for different exit conditions.
+    
+    Returns
+    -------
+    None
+    
+    Notes
+    -----
+    Exit codes:
+        - 0: Success
+        - 1: Error occurred during execution
+        
+    The function catches KeyboardInterrupt for graceful cancellation and
+    provides detailed error messages for troubleshooting.
+    """
     try:
         board_id = asyncio.run(create_hello_world_project())
         print(f"\n🚀 Project created successfully!")

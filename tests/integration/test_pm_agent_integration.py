@@ -1,8 +1,21 @@
+"""
+Integration tests for PM Agent server components.
+
+This module tests the integration between PM Agent components including the MCP server,
+AI engine, monitoring system, and communication hub.
+
+Notes
+-----
+These tests use mocked external dependencies to verify component interactions
+without requiring actual services to be running.
+"""
+
 import pytest
 import asyncio
 import json
 from unittest.mock import Mock, patch, AsyncMock
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
 
 from pm_agent_mcp_server_v2 import PMAgentServer
 from src.core.models import Task, TaskStatus, Priority, WorkerStatus, RiskLevel, ProjectState
@@ -12,22 +25,36 @@ class TestPMAgentIntegration:
     """
     Integration tests for the PM Agent Server.
     
-    These tests verify that all components work together correctly:
-    - MCP server receives requests
-    - AI engine makes decisions
-    - Monitoring tracks changes
-    - Communication sends notifications
+    These tests verify that all components work together correctly,
+    including MCP server request handling, AI decision making,
+    monitoring state tracking, and notification delivery.
+    
+    Notes
+    -----
+    Tests use mocked external services to ensure reproducibility and
+    avoid dependencies on running services.
     """
     
     @pytest.fixture
-    async def pm_agent(self):
+    async def pm_agent(self) -> AsyncMock:
         """
-        STEP 1: Set up a complete PM Agent instance with mocked external dependencies
+        Set up a complete PM Agent instance with mocked external dependencies.
         
-        What's happening:
-        - We create a real PM Agent server instance
-        - We mock external services (Kanban, Claude API) to avoid dependencies
-        - This lets us test the integration without needing real services
+        Creates a real PM Agent server instance with mocked external services
+        (Kanban, Claude API) to test component integration without requiring
+        actual services to be running.
+        
+        Returns
+        -------
+        PMAgentServer
+            A PM Agent server instance with mocked dependencies.
+        
+        Notes
+        -----
+        This fixture mocks:
+        - Kanban client for task management
+        - Anthropic client for AI decisions
+        - Monitoring and communication systems
         """
         with patch('src.integrations.mcp_kanban_client.MCPKanbanClient') as mock_kanban:
             with patch('anthropic.Anthropic') as mock_anthropic:

@@ -2,16 +2,20 @@
 """
 Setup script to prepare the "Task Master Test" project for testing.
 
-This script:
-1. Connects to the MCP kanban server
-2. Creates test tasks if needed
-3. Ensures proper test data exists
+This script initializes the test environment by connecting to the MCP kanban server,
+creating test tasks, and ensuring proper test data exists for integration testing.
+
+Notes
+-----
+This script should be run before running integration tests to ensure the test
+environment is properly configured with realistic test data.
 """
 
 import asyncio
 import sys
 import os
 from pathlib import Path
+from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -24,9 +28,29 @@ from src.integrations.mcp_kanban_client import MCPKanbanClient
 from src.core.models import Priority
 
 
-async def setup_test_project():
-    """Set up the Task Master Test project with test data."""
+async def setup_test_project() -> bool:
+    """
+    Set up the Task Master Test project with test data.
     
+    This function connects to the MCP kanban server, finds or creates the test project,
+    and populates it with sample tasks in various states for testing purposes.
+    
+    Returns
+    -------
+    bool
+        True if setup completed successfully, False otherwise.
+    
+    Notes
+    -----
+    Requires a running Planka instance and MCP kanban server.
+    Environment variables can be set via .env file or directly.
+    
+    Examples
+    --------
+    >>> success = asyncio.run(setup_test_project())
+    >>> if success:
+    ...     print("Test environment ready")
+    """
     print("Setting up Task Master Test project...")
     
     # Set environment variables for kanban-mcp to connect to Planka

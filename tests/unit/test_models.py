@@ -1,5 +1,18 @@
+"""
+Unit tests for PM Agent data models.
+
+This module tests the core data models used throughout the PM Agent system,
+including Task, ProjectState, WorkerStatus, and TaskAssignment models.
+
+Notes
+-----
+These tests verify model creation, validation, and business logic without
+requiring external dependencies.
+"""
+
 import pytest
 from datetime import datetime, timedelta
+from typing import List, Dict, Any, Optional
 
 from src.core.models import (
     Task, TaskStatus, Priority, RiskLevel,
@@ -8,7 +21,19 @@ from src.core.models import (
 
 
 class TestTaskModel:
-    def test_task_creation(self):
+    """
+    Test suite for the Task model.
+    
+    Tests task creation, validation, and management of task properties
+    including status, priority, dependencies, and time tracking.
+    """
+    def test_task_creation(self) -> None:
+        """
+        Test basic task creation with required and optional fields.
+        
+        Verifies that a task can be created with all standard fields and that
+        default values are properly set for optional fields.
+        """
         task = Task(
             id="TASK-001",
             name="Implement login feature",
@@ -29,7 +54,13 @@ class TestTaskModel:
         assert task.dependencies == []
         assert task.labels == []
     
-    def test_task_with_dependencies(self):
+    def test_task_with_dependencies(self) -> None:
+        """
+        Test task creation with dependencies.
+        
+        Verifies that tasks can be created with dependencies on other tasks,
+        which is crucial for task scheduling and ordering.
+        """
         task = Task(
             id="TASK-002",
             name="Deploy to production",
@@ -49,7 +80,20 @@ class TestTaskModel:
 
 
 class TestProjectState:
-    def test_project_state_creation(self):
+    """
+    Test suite for the ProjectState model.
+    
+    Tests project state tracking, including task counts, progress calculation,
+    risk assessment, and overdue task management.
+    """
+    
+    def test_project_state_creation(self) -> None:
+        """
+        Test project state creation with comprehensive metrics.
+        
+        Verifies that project state can track various metrics including task
+        counts by status, progress percentage, and overdue tasks.
+        """
         now = datetime.now()
         overdue_task = Task(
             id="TASK-001",
@@ -83,7 +127,13 @@ class TestProjectState:
         assert len(state.overdue_tasks) == 1
         assert state.risk_level == RiskLevel.MEDIUM
     
-    def test_project_health_calculation(self):
+    def test_project_health_calculation(self) -> None:
+        """
+        Test project health metrics for a healthy project.
+        
+        Verifies that project health indicators correctly reflect a project
+        with good progress and low risk.
+        """
         state = ProjectState(
             board_id="BOARD-001",
             project_name="Healthy Project",
@@ -104,7 +154,20 @@ class TestProjectState:
 
 
 class TestWorkerStatus:
-    def test_worker_creation(self):
+    """
+    Test suite for the WorkerStatus model.
+    
+    Tests worker profile management, including current task assignments,
+    capacity tracking, skills, and performance metrics.
+    """
+    
+    def test_worker_creation(self) -> None:
+        """
+        Test worker status creation with full profile.
+        
+        Verifies that worker profiles can store personal information, current
+        assignments, skills, and availability.
+        """
         task1 = Task(
             id="TASK-001",
             name="Current task",
@@ -135,7 +198,13 @@ class TestWorkerStatus:
         assert worker.performance_score == 1.0
         assert "python" in worker.skills
     
-    def test_worker_capacity_check(self):
+    def test_worker_capacity_check(self) -> None:
+        """
+        Test worker capacity and performance tracking.
+        
+        Verifies that worker capacity limits and performance scores are
+        properly tracked for workload management.
+        """
         worker = WorkerStatus(
             worker_id="worker2",
             name="Jane Smith",
@@ -155,7 +224,21 @@ class TestWorkerStatus:
 
 
 class TestTaskAssignment:
-    def test_assignment_creation(self):
+    """
+    Test suite for the TaskAssignment model.
+    
+    Tests task assignment creation, including assignment metadata,
+    instructions, and scheduling information.
+    """
+    
+    def test_assignment_creation(self) -> None:
+        """
+        Test task assignment creation with full details.
+        
+        Verifies that task assignments properly capture all necessary
+        information for a worker to complete the task, including
+        instructions, dependencies, and deadlines.
+        """
         now = datetime.now()
         due_date = now + timedelta(days=5)
         

@@ -14,14 +14,37 @@ from src.core.models import Task, WorkerStatus
 
 
 class CodeAnalyzer:
-    """Analyzes code changes and provides insights for task coordination"""
+    """
+    Analyzes code changes and provides insights for task coordination.
     
-    def __init__(self, mcp_caller=None):
+    This class provides functionality to analyze GitHub repositories, PRs,
+    and code changes to help coordinate tasks between workers by understanding
+    what features have been implemented.
+    
+    Attributes
+    ----------
+    mcp_caller : Optional[callable]
+        Function to call GitHub MCP tools for API interactions
+    endpoint_patterns : List[str]
+        Regular expression patterns for detecting API endpoints
+    
+    Examples
+    --------
+    >>> analyzer = CodeAnalyzer(mcp_caller=github_client)
+    >>> details = await analyzer.get_implementation_details(
+    ...     "owner", "repo", "endpoints"
+    ... )
+    """
+    
+    def __init__(self, mcp_caller: Optional[callable] = None) -> None:
         """
-        Initialize the code analyzer
+        Initialize the code analyzer.
         
-        Args:
-            mcp_caller: Function to call GitHub MCP tools
+        Parameters
+        ----------
+        mcp_caller : Optional[callable], default=None
+            Function to call GitHub MCP tools. Should accept tool name
+            and parameters dict.
         """
         self.mcp_caller = mcp_caller
         self.endpoint_patterns = [
@@ -45,16 +68,38 @@ class CodeAnalyzer:
         repo: str
     ) -> Dict[str, Any]:
         """
-        Analyze what was accomplished when a task is completed
+        Analyze what was accomplished when a task is completed.
         
-        Args:
-            task: The completed task
-            worker: The worker who completed it
-            owner: Repository owner
-            repo: Repository name
+        Examines commits, PRs, and code changes to understand what was
+        implemented and generate recommendations for subsequent workers.
+        
+        Parameters
+        ----------
+        task : Task
+            The completed task to analyze
+        worker : WorkerStatus
+            The worker who completed the task
+        owner : str
+            GitHub repository owner username or organization
+        repo : str
+            GitHub repository name
             
-        Returns:
-            Analysis of the completed work
+        Returns
+        -------
+        Dict[str, Any]
+            Analysis containing:
+            - task_id: ID of the analyzed task
+            - task_name: Name of the task
+            - worker_id: ID of the worker
+            - findings: Dict with commits, PRs, and implementations
+            - recommendations: List of recommendations for next workers
+            
+        Examples
+        --------
+        >>> analysis = await analyzer.analyze_task_completion(
+        ...     task, worker, "myorg", "myrepo"
+        ... )
+        >>> print(analysis["recommendations"])
         """
         analysis = {
             "task_id": task.id,
@@ -95,15 +140,37 @@ class CodeAnalyzer:
         feature_type: str
     ) -> Dict[str, Any]:
         """
-        Get details about existing implementations
+        Get details about existing implementations in the repository.
         
-        Args:
-            owner: Repository owner
-            repo: Repository name
-            feature_type: Type of feature to look for (e.g., "endpoints", "models")
+        Searches for and analyzes specific types of implementations
+        to help workers understand the current codebase state.
+        
+        Parameters
+        ----------
+        owner : str
+            GitHub repository owner
+        repo : str
+            GitHub repository name
+        feature_type : str
+            Type of feature to search for. Supported values:
+            - "endpoints": API endpoints
+            - "models": Data models/schemas
+            - "schemas": Database schemas
             
-        Returns:
-            Details about existing implementations
+        Returns
+        -------
+        Dict[str, Any]
+            Dictionary containing:
+            - feature_type: The requested feature type
+            - implementations: List of found implementations
+            
+        Examples
+        --------
+        >>> details = await analyzer.get_implementation_details(
+        ...     "owner", "repo", "endpoints"
+        ... )
+        >>> for endpoint in details["implementations"]:
+        ...     print(f"{endpoint['method']} {endpoint['path']}")
         """
         details = {
             "feature_type": feature_type,
@@ -125,7 +192,27 @@ class CodeAnalyzer:
         repo: str, 
         author: str
     ) -> List[Dict[str, Any]]:
-        """Get recent commits by a specific author"""
+        """
+        Get recent commits by a specific author.
+        
+        Parameters
+        ----------
+        owner : str
+            Repository owner
+        repo : str
+            Repository name
+        author : str
+            Author name to filter commits
+            
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of commit dictionaries containing:
+            - sha: Commit SHA
+            - message: Commit message
+            - date: Commit date
+            - files_changed: Number of files changed
+        """
         if not self.mcp_caller:
             return []
             
@@ -159,7 +246,29 @@ class CodeAnalyzer:
         repo: str, 
         author: str
     ) -> List[Dict[str, Any]]:
-        """Get PRs created by a worker"""
+        """
+        Get pull requests created by a specific worker.
+        
+        Parameters
+        ----------
+        owner : str
+            Repository owner
+        repo : str
+            Repository name  
+        author : str
+            PR author name to filter
+            
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of PR dictionaries containing:
+            - number: PR number
+            - title: PR title
+            - state: PR state (open/closed)
+            - merged: Whether PR was merged
+            - branch: Source branch name
+            - created_at: Creation timestamp
+        """
         if not self.mcp_caller:
             return []
             
@@ -196,7 +305,30 @@ class CodeAnalyzer:
         repo: str, 
         pr_number: int
     ) -> Dict[str, Any]:
-        """Analyze changes in a PR to understand implementations"""
+        """
+        Analyze changes in a PR to understand implementations.
+        
+        Examines files changed in a PR to extract information about
+        endpoints, models, configurations, and tests that were added.
+        
+        Parameters
+        ----------
+        owner : str
+            Repository owner
+        repo : str
+            Repository name
+        pr_number : int
+            Pull request number to analyze
+            
+        Returns
+        -------
+        Dict[str, Any]
+            Analysis results containing:
+            - endpoints: List of API endpoints found
+            - models: List of data models found
+            - configurations: List of config changes
+            - tests: List of test files added
+        """
         if not self.mcp_caller:
             return {}
             
@@ -250,7 +382,24 @@ class CodeAnalyzer:
             return {}
             
     async def _find_endpoints(self, owner: str, repo: str) -> List[Dict[str, Any]]:
-        """Find API endpoints in the repository"""
+        """
+        Find API endpoints in the repository.
+        
+        Searches common API file patterns and extracts endpoint definitions
+        using regex patterns.
+        
+        Parameters
+        ----------
+        owner : str
+            Repository owner
+        repo : str
+            Repository name
+            
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of endpoint dictionaries with method, path, and implementation
+        """
         if not self.mcp_caller:
             return []
             
@@ -290,7 +439,25 @@ class CodeAnalyzer:
             return []
             
     def _extract_endpoints(self, content: str) -> List[Dict[str, Any]]:
-        """Extract API endpoints from code content"""
+        """
+        Extract API endpoints from code content.
+        
+        Uses regex patterns to find endpoint definitions in various
+        web framework formats.
+        
+        Parameters
+        ----------
+        content : str
+            Source code content to analyze
+            
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of endpoints with:
+            - method: HTTP method (GET, POST, etc.)
+            - path: Endpoint path
+            - implementation: Function name if found
+        """
         endpoints = []
         
         for pattern in self.endpoint_patterns:
@@ -312,7 +479,25 @@ class CodeAnalyzer:
         return endpoints
         
     def _extract_models(self, content: str) -> List[Dict[str, Any]]:
-        """Extract data models from code"""
+        """
+        Extract data models from code.
+        
+        Identifies database models, interfaces, and schema definitions
+        in Python and TypeScript/JavaScript code.
+        
+        Parameters
+        ----------
+        content : str
+            Source code content to analyze
+            
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of models with:
+            - name: Model/interface name
+            - type: Type of model (database_model, interface)
+            - language: Programming language
+        """
         models = []
         
         # Python/SQLAlchemy models
@@ -342,7 +527,24 @@ class CodeAnalyzer:
         task: Task, 
         findings: Dict[str, Any]
     ) -> List[str]:
-        """Generate recommendations for next workers based on findings"""
+        """
+        Generate recommendations for next workers based on findings.
+        
+        Creates actionable recommendations based on what was implemented
+        to help subsequent workers understand dependencies.
+        
+        Parameters
+        ----------
+        task : Task
+            The completed task
+        findings : Dict[str, Any]
+            Analysis findings from commits and PRs
+            
+        Returns
+        -------
+        List[str]
+            List of recommendation strings for next workers
+        """
         recommendations = []
         
         # If endpoints were created
@@ -383,26 +585,90 @@ class CodeAnalyzer:
         return recommendations
         
     def _is_api_file(self, filename: str) -> bool:
-        """Check if file is likely an API file"""
+        """
+        Check if file is likely an API file.
+        
+        Parameters
+        ----------
+        filename : str
+            File path to check
+            
+        Returns
+        -------
+        bool
+            True if filename contains API-related keywords
+        """
         api_indicators = ['api', 'route', 'controller', 'endpoint', 'view']
         return any(indicator in filename.lower() for indicator in api_indicators)
         
     def _is_model_file(self, filename: str) -> bool:
-        """Check if file is likely a model file"""
+        """
+        Check if file is likely a model file.
+        
+        Parameters
+        ----------
+        filename : str
+            File path to check
+            
+        Returns
+        -------
+        bool
+            True if filename contains model-related keywords
+        """
         model_indicators = ['model', 'schema', 'entity', 'domain']
         return any(indicator in filename.lower() for indicator in model_indicators)
         
     def _is_config_file(self, filename: str) -> bool:
-        """Check if file is a configuration file"""
+        """
+        Check if file is a configuration file.
+        
+        Parameters
+        ----------
+        filename : str
+            File path to check
+            
+        Returns
+        -------
+        bool
+            True if filename has config-related extension
+        """
         config_extensions = ['.json', '.yaml', '.yml', '.env', '.config']
         return any(filename.endswith(ext) for ext in config_extensions)
         
     def _is_test_file(self, filename: str) -> bool:
-        """Check if file is a test file"""
+        """
+        Check if file is a test file.
+        
+        Parameters
+        ----------
+        filename : str
+            File path to check
+            
+        Returns
+        -------
+        bool
+            True if filename contains 'test' or 'spec'
+        """
         return 'test' in filename.lower() or 'spec' in filename.lower()
         
     def _extract_function_name(self, content: str, path: str) -> Optional[str]:
-        """Try to extract the function name handling an endpoint"""
+        """
+        Try to extract the function name handling an endpoint.
+        
+        Searches for function definitions near endpoint declarations.
+        
+        Parameters
+        ----------
+        content : str
+            Source code content
+        path : str
+            Endpoint path to search near
+            
+        Returns
+        -------
+        Optional[str]
+            Function name if found, None otherwise
+        """
         # Look for function definition near the path
         lines = content.split('\n')
         for i, line in enumerate(lines):
@@ -415,7 +681,19 @@ class CodeAnalyzer:
         return None
         
     def _decode_content(self, content: str) -> str:
-        """Decode base64 content from GitHub API"""
+        """
+        Decode base64 content from GitHub API.
+        
+        Parameters
+        ----------
+        content : str
+            Base64 encoded content from GitHub
+            
+        Returns
+        -------
+        str
+            Decoded UTF-8 string content
+        """
         import base64
         try:
             return base64.b64decode(content).decode('utf-8')
@@ -423,7 +701,21 @@ class CodeAnalyzer:
             return content
             
     def _summarize_config_changes(self, patch: str) -> str:
-        """Summarize configuration changes from a patch"""
+        """
+        Summarize configuration changes from a patch.
+        
+        Counts additions and deletions in a diff patch.
+        
+        Parameters
+        ----------
+        patch : str
+            Git diff patch content
+            
+        Returns
+        -------
+        str
+            Summary string like "5 additions, 3 deletions"
+        """
         added = len(re.findall(r'^\+[^+]', patch, re.MULTILINE))
         removed = len(re.findall(r'^-[^-]', patch, re.MULTILINE))
         return f"{added} additions, {removed} deletions"

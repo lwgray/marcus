@@ -30,9 +30,27 @@
 
       <!-- Right Sidebar -->
       <aside class="w-80 bg-dark-surface border-l border-dark-border flex flex-col">
+        <!-- Tab Navigation -->
+        <div class="flex border-b border-dark-border">
+          <button
+            v-for="tab in rightSidebarTabs"
+            :key="tab.id"
+            @click="activeRightTab = tab.id"
+            :class="[
+              'flex-1 py-2 px-4 text-sm transition-colors',
+              activeRightTab === tab.id
+                ? 'bg-dark-hover text-pm-primary border-b-2 border-pm-primary'
+                : 'text-gray-400 hover:text-gray-200'
+            ]"
+          >
+            {{ tab.label }}
+          </button>
+        </div>
+        
         <div class="flex-1 overflow-hidden flex flex-col">
-          <NodeDetailsPanel v-if="selectedNode" :node="selectedNode" />
-          <MetricsPanel v-else />
+          <NodeDetailsPanel v-if="selectedNode && activeRightTab === 'details'" :node="selectedNode" />
+          <MetricsPanel v-else-if="activeRightTab === 'metrics'" />
+          <HealthAnalysisPanel v-else-if="activeRightTab === 'health'" />
         </div>
         <EventLog class="h-48 border-t border-dark-border" />
       </aside>
@@ -41,7 +59,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useWorkflowStore } from '@/stores/workflow'
 import { useWebSocketStore } from '@/stores/websocket'
@@ -55,10 +73,19 @@ import MetricsPanel from '@/components/sidebar/MetricsPanel.vue'
 import EventLog from '@/components/EventLog.vue'
 import ExecutionControls from '@/components/ExecutionControls.vue'
 import ConnectionStatus from '@/components/ConnectionStatus.vue'
+import HealthAnalysisPanel from '@/components/HealthAnalysisPanel.vue'
 
 const workflowStore = useWorkflowStore()
 const wsStore = useWebSocketStore()
 const { selectedNode } = storeToRefs(workflowStore)
+
+// Tab navigation for right sidebar
+const activeRightTab = ref('metrics')
+const rightSidebarTabs = [
+  { id: 'details', label: 'Details' },
+  { id: 'metrics', label: 'Metrics' },
+  { id: 'health', label: 'Health' }
+]
 
 onMounted(() => {
   console.log('App mounted successfully')

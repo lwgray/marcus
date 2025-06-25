@@ -1,14 +1,66 @@
 #!/usr/bin/env python3
-"""
-Generate visual diagrams of the PM Agent conversation flow
+"""Generate visual diagrams and documentation of PM Agent conversation flow.
+
+This module creates comprehensive documentation of the conversation flow between
+Workers, PM Agent, and the Kanban Board. It generates Mermaid diagrams showing
+system architecture, sequence flows, state transitions, and data flow patterns,
+along with detailed conversation examples.
+
+The generated documentation helps developers understand:
+    - How workers communicate with PM Agent
+    - How PM Agent interacts with the Kanban board
+    - The decision-making process for task assignment
+    - Error handling and blocker resolution flows
+    - Complete conversation examples with thinking processes
+
+Output Structure
+----------------
+The script creates the following files in docs/conversation-flow/:
+    - DIAGRAMS.md: Mermaid diagrams of system flows
+    - EXAMPLES.md: Detailed conversation examples with annotations
+    - README.md: Overview and guide to the documentation
+
+Examples
+--------
+Generate conversation flow documentation:
+    $ python scripts/visualize_conversation_flow.py
+
+The documentation will be created in the docs/conversation-flow/ directory.
+
+Notes
+-----
+The Mermaid diagrams can be viewed in GitHub, VS Code with extensions,
+or online at mermaid.live. They provide a visual understanding of the
+complex interactions in the PM Agent system.
 """
 
 import os
 from datetime import datetime
 
 
-def generate_mermaid_diagram():
-    """Generate Mermaid diagram of conversation flow"""
+def generate_mermaid_diagram() -> str:
+    """Generate comprehensive Mermaid diagrams of PM Agent conversation flow.
+    
+    Creates multiple Mermaid diagrams documenting different aspects of the
+    system architecture and communication patterns, including:
+        - Overview diagram showing all components
+        - Detailed sequence diagram of conversation flow
+        - Communication patterns between components
+        - State transition diagrams
+        - Data flow visualization
+        - Error handling flow
+    
+    Returns
+    -------
+    str
+        A markdown document containing all Mermaid diagrams with explanatory
+        text and section headers.
+        
+    Notes
+    -----
+    The diagrams use Mermaid syntax which is automatically rendered by
+    many markdown viewers including GitHub, GitLab, and VS Code extensions.
+    """
     
     diagram = """
 # PM Agent Conversation Flow
@@ -237,9 +289,35 @@ graph TB
     return diagram
 
 
-def generate_conversation_examples():
-    """Generate example conversations"""
+def generate_conversation_examples() -> str:
+    """Generate detailed example conversations with annotations.
     
+    Creates realistic conversation examples showing the complete message flow
+    between Workers, PM Agent, and Kanban Board. Each example includes:
+        - The actual message payloads
+        - PM Agent's thinking process (when relevant)
+        - Response messages
+        - Error handling scenarios
+    
+    The examples cover all major interaction patterns:
+        1. Worker registration
+        2. Task request and assignment
+        3. Progress updates
+        4. Blocker reporting and resolution
+        5. Task completion
+    
+    Returns
+    -------
+    str
+        A markdown document containing formatted conversation examples
+        with JSON message payloads and explanatory text.
+        
+    Notes
+    -----
+    The examples use realistic data structures and field names that
+    match the actual PM Agent implementation, making them useful as
+    both documentation and implementation reference.
+    """
     examples = """
 # Example Conversations
 
@@ -472,9 +550,41 @@ def generate_conversation_examples():
     return examples
 
 
-def main():
-    """Generate documentation files"""
+def main() -> None:
+    """Generate PM Agent conversation flow documentation.
     
+    Creates a complete documentation package in the docs/conversation-flow/
+    directory, including Mermaid diagrams, conversation examples, and a
+    comprehensive README file. The documentation provides both visual and
+    textual representations of how the PM Agent system components interact.
+    
+    The function performs the following steps:
+        1. Creates the output directory if it doesn't exist
+        2. Generates and saves Mermaid diagrams
+        3. Generates and saves conversation examples
+        4. Creates a README with overview and usage instructions
+        5. Prints summary of created files
+    
+    Returns
+    -------
+    None
+    
+    Side Effects
+    ------------
+    Creates the following files:
+        - docs/conversation-flow/DIAGRAMS.md
+        - docs/conversation-flow/EXAMPLES.md
+        - docs/conversation-flow/README.md
+    
+    Examples
+    --------
+    >>> main()
+    ✅ Conversation flow documentation generated!
+    📁 Files created in: docs/conversation-flow/
+       - DIAGRAMS.md (Mermaid diagrams)
+       - EXAMPLES.md (Conversation examples)
+       - README.md (Overview)
+    """
     # Create output directory
     os.makedirs("docs/conversation-flow", exist_ok=True)
     
