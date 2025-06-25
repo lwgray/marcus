@@ -15,9 +15,15 @@ fi
 if [ ! -f .env ]; then
     echo "📝 Creating .env file from template..."
     
-    if [ "$1" = "remote" ] || [ "$DEPLOYMENT" = "remote" ]; then
-        # Remote deployment template (no Planka)
-        cat > .env << EOF
+    # Check if .env.example exists and use it
+    if [ -f .env.example ]; then
+        cp .env.example .env
+        echo "✅ Created .env from .env.example"
+    else
+        # Fallback: create basic .env
+        if [ "$1" = "remote" ] || [ "$DEPLOYMENT" = "remote" ]; then
+            # Remote deployment template (no Planka)
+            cat > .env << EOF
 # Kanban Provider (github or linear ONLY for remote deployment)
 KANBAN_PROVIDER=github
 
@@ -37,9 +43,9 @@ OPENAI_API_KEY=your_openai_api_key
 # Security (for remote deployment)
 MCP_AUTH_TOKENS=token1,token2,token3
 EOF
-    else
-        # Local deployment template (all providers available)
-        cat > .env << EOF
+        else
+            # Local deployment template (all providers available)
+            cat > .env << EOF
 # Kanban Provider (github, linear, or planka)
 KANBAN_PROVIDER=github
 
@@ -60,6 +66,7 @@ PLANKA_SECRET_KEY=your-secret-key
 ANTHROPIC_API_KEY=your_anthropic_api_key
 OPENAI_API_KEY=your_openai_api_key
 EOF
+        fi
     fi
     
     echo "✅ .env file created. Please edit it with your API keys!"

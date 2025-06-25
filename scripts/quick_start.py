@@ -1,117 +1,182 @@
 #!/usr/bin/env python3
 """
-Quick start script for PM Agent
+Quick Start Script for PM Agent
+Creates a simple Hello World API project with tasks
 """
 
 import os
 import sys
-import subprocess
 import asyncio
+from datetime import datetime
+
+# Add parent directory to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.integrations.kanban_factory import KanbanFactory
+from src.config.settings import Settings
 
 
-def check_prerequisites():
-    """Check all prerequisites are met"""
-    print("🔍 Checking prerequisites...")
+async def create_hello_world_project():
+    """Create a simple Hello World API project with tasks."""
+    print("🚀 PM Agent Quick Start - Creating Hello World API Project")
+    print("=" * 60)
     
-    # Check Python version
-    if sys.version_info < (3, 8):
-        print("❌ Python 3.8+ required")
-        return False
-    print("✅ Python version OK")
-    
-    # Check environment variables
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        print("⚠️  ANTHROPIC_API_KEY not set - AI features will use fallback mode")
-    else:
-        print("✅ ANTHROPIC_API_KEY found")
-    
-    # Check Planka
     try:
-        result = subprocess.run(
-            ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "http://localhost:3333"],
-            capture_output=True,
-            text=True
+        # Initialize settings and kanban client
+        settings = Settings()
+        kanban = KanbanFactory.create(
+            provider=settings.KANBAN_PROVIDER,
+            config=settings.get_provider_config()
         )
-        if result.stdout == "200":
-            print("✅ Planka is running")
+        
+        print(f"📋 Using {settings.KANBAN_PROVIDER} as task board provider")
+        
+        # Get or create the project/board
+        print("🔍 Finding or creating project board...")
+        
+        if settings.KANBAN_PROVIDER == "github":
+            # For GitHub, we'll use the main repo project
+            project_name = f"{settings.GITHUB_OWNER}/{settings.GITHUB_REPO}"
         else:
-            print("❌ Planka not accessible at http://localhost:3333")
-            return False
-    except:
-        print("⚠️  Could not check Planka status")
-    
-    # Check config
-    if os.path.exists("config_pm_agent.json"):
-        print("✅ Configuration file found")
-    else:
-        print("❌ config_pm_agent.json not found")
-        print("   Run: python scripts/setup/configure_board.py YOUR_BOARD_ID")
-        return False
-    
-    return True
-
-
-async def quick_test_connection():
-    """Quick test of kanban connection"""
-    print("\n🔌 Testing Kanban connection...")
-    
-    try:
-        from src.integrations.mcp_kanban_client_refactored import MCPKanbanClient
-        import json
+            project_name = "Hello World API"
         
-        with open("config_pm_agent.json", "r") as f:
-            config = json.load(f)
+        boards = await kanban.get_boards()
+        board = None
         
-        client = MCPKanbanClient()
-        client.project_id = config.get("project_id")
-        client.board_id = config.get("board_id")
+        for b in boards:
+            if b["name"] == project_name:
+                board = b
+                break
         
-        async with asyncio.timeout(5):
-            async with client.connect() as conn:
-                print("✅ Kanban connection successful")
-                return True
+        if not board:
+            print(f"📝 Creating new board: {project_name}")
+            board = await kanban.create_board(project_name)
+        else:
+            print(f"✅ Using existing board: {project_name}")
+        
+        board_id = board["id"]
+        
+        # Define the tasks for a Hello World API
+        tasks = [
+            {
+                "name": "Set up Node.js project structure",
+                "description": "Initialize a new Node.js project with package.json, create src directory structure, and set up basic configuration files (.gitignore, .env.example)",
+                "labels": ["setup", "backend"],
+                "priority": "high"
+            },
+            {
+                "name": "Create Express.js server",
+                "description": "Set up Express.js server with basic middleware (cors, body-parser, helmet). Server should listen on port 3000 with environment variable support.",
+                "labels": ["backend", "api"],
+                "priority": "high"
+            },
+            {
+                "name": "Implement GET /hello endpoint",
+                "description": "Create a GET endpoint at /hello that returns JSON response: {\"message\": \"Hello, World!\", \"timestamp\": \"<current-time>\"}",
+                "labels": ["backend", "api", "endpoint"],
+                "priority": "medium"
+            },
+            {
+                "name": "Add error handling middleware",
+                "description": "Implement global error handling middleware that catches all errors and returns proper HTTP status codes with error messages in JSON format",
+                "labels": ["backend", "error-handling"],
+                "priority": "medium"
+            },
+            {
+                "name": "Create README documentation",
+                "description": "Write comprehensive README.md with: project description, installation instructions, API documentation, example usage with curl commands",
+                "labels": ["documentation"],
+                "priority": "low"
+            },
+            {
+                "name": "Add basic tests",
+                "description": "Set up Jest testing framework and write tests for the /hello endpoint. Include test for successful response and error cases.",
+                "labels": ["testing", "backend"],
+                "priority": "low"
+            }
+        ]
+        
+        # Get the lists/columns
+        lists = await kanban.get_lists(board_id)
+        
+        # Find the "To Do" list (or equivalent)
+        todo_list = None
+        for lst in lists:
+            if lst["name"].lower() in ["to do", "todo", "backlog", "open"]:
+                todo_list = lst
+                break
+        
+        if not todo_list and lists:
+            todo_list = lists[0]  # Use first list if no "To Do" found
+        
+        if not todo_list:
+            print("❌ No lists found in board. Creating default lists...")
+            # This would need to be implemented based on provider
+            raise Exception("No lists available in board")
+        
+        # Create the tasks
+        print(f"\n📝 Creating {len(tasks)} tasks in {todo_list['name']} list...")
+        created_count = 0
+        
+        for i, task_data in enumerate(tasks, 1):
+            try:
+                print(f"  [{i}/{len(tasks)}] Creating: {task_data['name']}")
                 
-    except asyncio.TimeoutError:
-        print("❌ Kanban connection timed out")
-        print("\nTry starting Kanban MCP manually:")
-        print("cd /Users/lwgray/dev/kanban-mcp")
-        print("node dist/index.js")
-        return False
+                # Prepare card data
+                card_data = {
+                    "name": task_data["name"],
+                    "description": task_data["description"]
+                }
+                
+                # Add labels if supported
+                if hasattr(kanban, 'create_label'):
+                    for label in task_data.get("labels", []):
+                        try:
+                            await kanban.create_label(board_id, label, "#0066cc")
+                        except:
+                            pass  # Label might already exist
+                
+                # Create the card
+                await kanban.create_card(
+                    board_id=board_id,
+                    list_id=todo_list["id"],
+                    **card_data
+                )
+                
+                created_count += 1
+                
+            except Exception as e:
+                print(f"    ⚠️  Failed: {str(e)}")
+        
+        print(f"\n✅ Successfully created {created_count}/{len(tasks)} tasks!")
+        print(f"\n🎯 Next steps:")
+        print(f"  1. Start PM Agent if not already running: ./start.sh")
+        print(f"  2. Watch AI workers pick up and complete tasks: docker-compose logs -f pm-agent")
+        print(f"  3. Check your {settings.KANBAN_PROVIDER} board to see progress")
+        print(f"  4. Find generated code in: output/hello-world-api/")
+        
+        return board_id
+        
     except Exception as e:
-        print(f"❌ Kanban connection failed: {e}")
-        return False
+        print(f"\n❌ Error: {str(e)}")
+        print("\n💡 Troubleshooting tips:")
+        print("  1. Check your .env file has valid API keys")
+        print("  2. Ensure your task board provider is accessible")
+        print("  3. Run: docker-compose logs pm-agent")
+        raise
 
 
 def main():
-    """Main quick start function"""
-    print("🚀 PM Agent Quick Start")
-    print("=" * 50)
-    
-    # Check prerequisites
-    if not check_prerequisites():
-        print("\n❌ Prerequisites not met. Please fix the issues above.")
-        return 1
-    
-    # Test connection
-    if not asyncio.run(quick_test_connection()):
-        print("\n❌ Connection test failed. Please check Kanban MCP.")
-        return 1
-    
-    print("\n✅ All checks passed!")
-    print("\n📋 Starting PM Agent...")
-    print("-" * 50)
-    
-    # Start PM Agent
+    """Main entry point."""
     try:
-        subprocess.run([sys.executable, "pm_agent_mvp_fixed.py"])
+        board_id = asyncio.run(create_hello_world_project())
+        print(f"\n🚀 Project created successfully!")
     except KeyboardInterrupt:
-        print("\n\n👋 PM Agent stopped by user")
+        print("\n\n👋 Quick start cancelled.")
     except Exception as e:
-        print(f"\n❌ Error: {e}")
-        return 1
-    
-    return 0
+        print(f"\n❌ Quick start failed: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
