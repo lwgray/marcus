@@ -8,9 +8,12 @@ Step-by-step guides to help you get the most out of PM Agent.
    :caption: Available Tutorials
    
    demo_guide
+   beginner_todo_app_tutorial
+   interactive_examples
    todo_app_example
    custom_workers
    real_world_examples
+   advanced_tutorials_roadmap
 
 Getting Started
 ---------------
@@ -18,8 +21,9 @@ Getting Started
 If you're new to PM Agent, we recommend starting with:
 
 1. :doc:`demo_guide` - See PM Agent in action with mock workers
-2. :doc:`todo_app_example` - Build a complete todo application
-3. :doc:`custom_workers` - Create your own AI worker agents
+2. :doc:`beginner_todo_app_tutorial` - Comprehensive step-by-step tutorial for building your first Todo app
+3. :doc:`interactive_examples` - Hands-on examples demonstrating PM Agent capabilities
+4. :doc:`custom_workers` - Create your own AI worker agents
 
 What You'll Learn
 -----------------
@@ -29,6 +33,21 @@ What You'll Learn
    * Understanding the conversation flow
    * Monitoring task progress
    * Debugging common issues
+
+**Beginner Todo App Tutorial**
+   * Complete walkthrough from empty project to working app
+   * Watch AI workers collaborate in real-time
+   * Understand task dependencies and flow
+   * Debug and iterate on generated code
+   * Experience the magic of autonomous development
+
+**Interactive Examples**
+   * Quick API endpoint creation
+   * Full CRUD system development
+   * Frontend component libraries
+   * Microservices architecture
+   * Real-time features with WebSockets
+   * Handling blockers and failures
 
 **Todo App Example**
    * Creating a real project from scratch
@@ -47,6 +66,13 @@ What You'll Learn
    * SaaS application creation
    * API service building
    * Mobile app backend
+
+**Advanced Tutorials Roadmap**
+   * Future tutorial plans
+   * Enterprise-scale projects
+   * Machine learning pipelines
+   * Game development
+   * Infrastructure automation
 
 Prerequisites
 -------------

@@ -260,10 +260,24 @@ Identify risks and provide JSON:
             "completed_tasks": agent.completed_tasks_count
         }
         
+        # Serialize ProjectState dataclass to JSON
+        project_state_data = {
+            "board_id": project_state.board_id,
+            "project_name": project_state.project_name,
+            "total_tasks": project_state.total_tasks,
+            "completed_tasks": project_state.completed_tasks,
+            "in_progress_tasks": project_state.in_progress_tasks,
+            "blocked_tasks": project_state.blocked_tasks,
+            "progress_percent": project_state.progress_percent,
+            "team_velocity": project_state.team_velocity,
+            "risk_level": project_state.risk_level.value,  # RiskLevel is an Enum
+            "last_updated": project_state.last_updated.isoformat()
+        }
+        
         prompt = self.prompts["task_assignment"].format(
             tasks=json.dumps(tasks_data, indent=2),
             agent=json.dumps(agent_data, indent=2),
-            project_state=project_state.value
+            project_state=json.dumps(project_state_data, indent=2)
         )
         
         try:
@@ -650,8 +664,22 @@ Provide a helpful clarification that guides the developer."""
             for w in team_status
         ]
         
+        # Serialize ProjectState dataclass to JSON
+        project_state_data = {
+            "board_id": project_state.board_id,
+            "project_name": project_state.project_name,
+            "total_tasks": project_state.total_tasks,
+            "completed_tasks": project_state.completed_tasks,
+            "in_progress_tasks": project_state.in_progress_tasks,
+            "blocked_tasks": project_state.blocked_tasks,
+            "progress_percent": project_state.progress_percent,
+            "team_velocity": project_state.team_velocity,
+            "risk_level": project_state.risk_level.value,  # RiskLevel is an Enum
+            "last_updated": project_state.last_updated.isoformat()
+        }
+        
         prompt = self.prompts["project_risk"].format(
-            project_state=project_state.value,
+            project_state=json.dumps(project_state_data, indent=2),
             recent_blockers=json.dumps(blockers_data, indent=2),
             team_status=json.dumps(team_data, indent=2)
         )
@@ -708,7 +736,7 @@ Provide a helpful clarification that guides the developer."""
         """
         risks = []
         
-        if project_state == ProjectState.AT_RISK:
+        if project_state.risk_level == RiskLevel.HIGH:
             risks.append(ProjectRisk(
                 risk_type="timeline",
                 description="Project timeline at risk",
@@ -720,6 +748,193 @@ Provide a helpful clarification that guides the developer."""
             ))
         
         return risks
+    
+    async def analyze_project_health(
+        self,
+        project_state: ProjectState,
+        recent_activities: List[Dict[str, Any]],
+        team_status: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Analyze overall project health using AI.
+        
+        Parameters
+        ----------
+        project_state : ProjectState
+            Current project state
+        recent_activities : List[Dict[str, Any]]
+            Recent project activities/events
+        team_status : Dict[str, Any]
+            Current team status information
+            
+        Returns
+        -------
+        Dict[str, Any]
+            Project health analysis with overall health, timeline prediction,
+            risk factors, recommendations, and resource optimization
+        """
+        if not self.client:
+            return self._generate_fallback_health_analysis(project_state, team_status)
+        
+        # Serialize ProjectState dataclass to JSON
+        project_state_data = {
+            "board_id": project_state.board_id,
+            "project_name": project_state.project_name,
+            "total_tasks": project_state.total_tasks,
+            "completed_tasks": project_state.completed_tasks,
+            "in_progress_tasks": project_state.in_progress_tasks,
+            "blocked_tasks": project_state.blocked_tasks,
+            "progress_percent": project_state.progress_percent,
+            "team_velocity": project_state.team_velocity,
+            "risk_level": project_state.risk_level.value,
+            "last_updated": project_state.last_updated.isoformat(),
+            "overdue_tasks": len(project_state.overdue_tasks)
+        }
+        
+        # Create project health analysis prompt
+        prompt = f"""Analyze the health of this software project and provide comprehensive insights.
+
+Project State:
+{json.dumps(project_state_data, indent=2)}
+
+Recent Activities:
+{json.dumps(recent_activities, indent=2)}
+
+Team Status:
+{json.dumps(team_status, indent=2)}
+
+Provide a detailed analysis including:
+1. Overall project health assessment (green/yellow/red)
+2. Timeline prediction with confidence level
+3. Key risk factors
+4. Actionable recommendations
+5. Resource optimization suggestions
+
+Return JSON in this format:
+{{
+    "overall_health": "green|yellow|red",
+    "timeline_prediction": {{
+        "on_track": true|false,
+        "estimated_completion": "date or description",
+        "confidence": 0.0-1.0,
+        "critical_path_risks": ["risk1", "risk2"]
+    }},
+    "risk_factors": [
+        {{
+            "type": "resource|timeline|technical|quality",
+            "description": "detailed description",
+            "severity": "low|medium|high",
+            "mitigation": "suggested action"
+        }}
+    ],
+    "recommendations": [
+        {{
+            "priority": "high|medium|low",
+            "action": "specific action to take",
+            "expected_impact": "what this will achieve"
+        }}
+    ],
+    "resource_optimization": [
+        {{
+            "suggestion": "optimization suggestion",
+            "impact": "expected improvement"
+        }}
+    ]
+}}"""
+        
+        try:
+            response = await self._call_claude(prompt)
+            result = json.loads(response)
+            return result
+            
+        except Exception as e:
+            print(f"AI health analysis failed: {e}", file=sys.stderr)
+            return self._generate_fallback_health_analysis(project_state, team_status)
+    
+    def _generate_fallback_health_analysis(
+        self, 
+        project_state: ProjectState,
+        team_status: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Generate fallback health analysis without AI.
+        
+        Parameters
+        ----------
+        project_state : ProjectState
+            Current project state
+        team_status : Dict[str, Any]
+            Team status information
+            
+        Returns
+        -------
+        Dict[str, Any]
+            Basic health analysis based on metrics
+        """
+        # Determine overall health based on metrics
+        overall_health = "green"
+        if project_state.risk_level == RiskLevel.HIGH:
+            overall_health = "red"
+        elif project_state.risk_level == RiskLevel.MEDIUM or project_state.blocked_tasks > 2:
+            overall_health = "yellow"
+        
+        # Calculate timeline prediction
+        completion_rate = project_state.completed_tasks / max(project_state.total_tasks, 1)
+        on_track = completion_rate >= (project_state.progress_percent / 100.0)
+        
+        risk_factors = []
+        
+        # Check for resource risks
+        if project_state.blocked_tasks > 0:
+            risk_factors.append({
+                "type": "resource",
+                "description": f"{project_state.blocked_tasks} tasks are currently blocked",
+                "severity": "high" if project_state.blocked_tasks > 2 else "medium",
+                "mitigation": "Review and resolve blockers urgently"
+            })
+        
+        # Check for timeline risks
+        if len(project_state.overdue_tasks) > 0:
+            risk_factors.append({
+                "type": "timeline",
+                "description": f"{len(project_state.overdue_tasks)} tasks are overdue",
+                "severity": "high",
+                "mitigation": "Reassign or reprioritize overdue tasks"
+            })
+        
+        # Generate recommendations
+        recommendations = []
+        if project_state.team_velocity < 3.0:
+            recommendations.append({
+                "priority": "high",
+                "action": "Review team capacity and task complexity",
+                "expected_impact": "Improve velocity by 20-30%"
+            })
+        
+        if project_state.blocked_tasks > 0:
+            recommendations.append({
+                "priority": "high",
+                "action": "Conduct blocker review session",
+                "expected_impact": "Unblock tasks and restore progress"
+            })
+        
+        return {
+            "overall_health": overall_health,
+            "timeline_prediction": {
+                "on_track": on_track,
+                "estimated_completion": "Based on current velocity",
+                "confidence": 0.6 if on_track else 0.3,
+                "critical_path_risks": ["Resource constraints"] if project_state.blocked_tasks > 0 else []
+            },
+            "risk_factors": risk_factors,
+            "recommendations": recommendations,
+            "resource_optimization": [
+                {
+                    "suggestion": "Balance workload across team members",
+                    "impact": "Reduce bottlenecks and improve throughput"
+                }
+            ]
+        }
     
     async def _call_claude(self, prompt: str) -> str:
         """
