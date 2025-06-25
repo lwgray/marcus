@@ -1,7 +1,7 @@
 """
-Diagnostic tests for PM Agent.
+Diagnostic tests for Marcus.
 
-This package contains diagnostic and troubleshooting tests for the PM Agent system,
+This package contains diagnostic and troubleshooting tests for the Marcus system,
 including MCP protocol verification, board ID testing, and workspace integration checks.
 
 Notes

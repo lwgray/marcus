@@ -12,7 +12,7 @@
   
   Available Node Types:
   - Worker: Claude AI agents that perform tasks
-  - Decision: PM Agent decision points in the workflow
+  - Decision: Marcus decision points in the workflow
 -->
 <template>
   <div class="node-palette">
@@ -91,7 +91,7 @@ const availableNodes = [
   {
     type: 'decision',
     label: 'Decision',
-    description: 'PM Agent decision point',
+    description: 'Marcus decision point',
     color: '#f39c12'
   }
 ]

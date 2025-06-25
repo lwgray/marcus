@@ -1,8 +1,8 @@
 """
-Performance benchmarking suite for PM Agent scaling.
+Performance benchmarking suite for Marcus scaling.
 
 This module provides comprehensive benchmarking tools to test
-PM Agent's performance at different scales.
+Marcus's performance at different scales.
 """
 
 import asyncio
@@ -56,11 +56,11 @@ class BenchmarkResult:
 
 class AgentSimulator:
     """
-    Simulate a PM Agent client for performance testing.
+    Simulate a Marcus client for performance testing.
     
-    This class simulates the behavior of a PM Agent client, including
+    This class simulates the behavior of a Marcus client, including
     registration, task requests, progress reporting, and blocker handling.
-    It's designed to stress test the PM Agent server under various load conditions.
+    It's designed to stress test the Marcus server under various load conditions.
     
     Notes
     -----
@@ -503,7 +503,7 @@ async def main():
     """Main entry point."""
     import argparse
     
-    parser = argparse.ArgumentParser(description="PM Agent Performance Benchmarking")
+    parser = argparse.ArgumentParser(description="Marcus Performance Benchmarking")
     parser.add_argument("--server", default="http://localhost:8000", help="Server URL")
     parser.add_argument("--scenario", help="Run specific scenario")
     parser.add_argument("--agents", type=int, default=10, help="Number of agents")

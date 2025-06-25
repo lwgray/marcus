@@ -1,7 +1,7 @@
 """
 Unit tests for the visualization system.
 
-This package contains unit tests for the PM Agent visualization components,
+This package contains unit tests for the Marcus visualization components,
 including the UI server, health monitor, knowledge graph, and real-time
 streaming capabilities.
 

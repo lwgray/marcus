@@ -7,7 +7,7 @@ including mock data, temporary directories, and simulated Socket.IO connections.
 Notes
 -----
 These fixtures create realistic test data that matches the actual data structures
-used by the PM Agent visualization system.
+used by the Marcus visualization system.
 
 IMPORTANT: These tests must be run separately by file due to event loop conflicts.
 Use ./run_tests.sh or run each test file individually.

@@ -1,8 +1,8 @@
 """
-Integration tests for PM Agent.
+Integration tests for Marcus.
 
 This package contains integration tests that verify the interaction between
-multiple PM Agent components and external services like the MCP kanban server.
+multiple Marcus components and external services like the MCP kanban server.
 
 Notes
 -----

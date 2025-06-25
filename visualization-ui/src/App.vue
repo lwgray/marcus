@@ -2,7 +2,7 @@
   <div class="app-container h-screen flex flex-col bg-[#1a1a1a] text-gray-200">
     <!-- Header -->
     <header class="h-14 bg-dark-surface border-b border-dark-border flex items-center px-4">
-      <h1 class="text-xl font-light text-pm-primary">PM Agent Visualization</h1>
+      <h1 class="text-xl font-light text-pm-primary">Marcus Visualization</h1>
       <div class="ml-auto flex items-center gap-4">
         <ConnectionStatus />
         <button 

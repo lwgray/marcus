@@ -220,7 +220,7 @@ class TestWorkerMCPClient:
     @pytest.mark.asyncio
     async def test_no_session_error(self, client):
         """Test error when no session is established"""
-        with pytest.raises(RuntimeError, match="Not connected to PM Agent"):
+        with pytest.raises(RuntimeError, match="Not connected to Marcus"):
             await client.register_agent("test", "Test", "Developer", [])
             
     @pytest.mark.asyncio
@@ -244,7 +244,7 @@ class TestWorkerMCPClient:
     @patch('src.worker.mcp_client.stdio_client')
     @patch('src.worker.mcp_client.ClientSession')
     async def test_connect_to_pm_agent(self, mock_client_session, mock_stdio_client, client):
-        """Test connecting to PM Agent"""
+        """Test connecting to Marcus"""
         # Setup mocks
         mock_read_stream = AsyncMock()
         mock_write_stream = AsyncMock()

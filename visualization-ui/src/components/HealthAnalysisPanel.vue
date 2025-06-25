@@ -334,7 +334,7 @@ export default {
         const mockData = {
           project_state: {
             board_id: 'BOARD-001',
-            project_name: 'PM Agent Development',
+            project_name: 'Marcus Development',
             total_tasks: 50,
             completed_tasks: 20,
             in_progress_tasks: 15,

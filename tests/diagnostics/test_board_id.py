@@ -2,7 +2,7 @@
 """
 Test if board_id is loaded correctly from configuration.
 
-This diagnostic test verifies that the PM Agent can successfully load board and project
+This diagnostic test verifies that Marcus can successfully load board and project
 IDs from the configuration, which is essential for kanban integration.
 
 Notes
@@ -24,7 +24,7 @@ def test_board_config() -> None:
     """
     Test that board_id and project_id are loaded correctly.
     
-    This function creates a PM Agent instance and verifies that both the board_id
+    This function creates a Marcus instance and verifies that both the board_id
     and project_id are successfully loaded from the configuration files.
     
     Raises
@@ -44,7 +44,7 @@ def test_board_config() -> None:
     Kanban client project_id: 1533678301472621705
     ✅ Board configuration loaded successfully
     """
-    # Create PM Agent instance
+    # Create Marcus instance
     agent = PMAgentMVP()
     
     print(f"Kanban client board_id: {agent.kanban_client.board_id}")

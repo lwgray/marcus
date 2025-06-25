@@ -1,6 +1,6 @@
-# Building PM Agent Documentation
+# Building Marcus Documentation
 
-This guide explains how to build the PM Agent documentation using Sphinx.
+This guide explains how to build the Marcus documentation using Sphinx.
 
 ## Prerequisites
 

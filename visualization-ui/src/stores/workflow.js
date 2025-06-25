@@ -3,10 +3,10 @@ import { ref, computed } from 'vue'
 import { MarkerType } from '@vue-flow/core'
 
 /**
- * Workflow store for managing the PM Agent workflow visualization
+ * Workflow store for managing the Marcus workflow visualization
  * 
  * This Pinia store manages the state of the workflow visualization including
- * nodes (PM Agent, workers, Kanban board, knowledge base), edges (connections),
+ * nodes (Marcus, workers, Kanban board, knowledge base), edges (connections),
  * execution state, and various operations like adding/updating nodes, 
  * animating data flow, and managing the visual workflow canvas.
  * 
@@ -47,7 +47,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
   // State
   
   /**
-   * Reactive array of workflow nodes (PM Agent, workers, services)
+   * Reactive array of workflow nodes (Marcus, workers, services)
    * @type {import('vue').Ref<Array<Object>>}
    */
   const nodes = ref([])
@@ -82,7 +82,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
   /**
    * Initializes the workflow with default nodes and connections
    * 
-   * Sets up the base workflow structure with PM Agent, Kanban Board,
+   * Sets up the base workflow structure with Marcus, Kanban Board,
    * and Knowledge Base nodes, along with their initial connections.
    * This provides the foundation for the workflow visualization.
    * 
@@ -99,7 +99,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
         type: 'pm-agent',
         position: { x: 400, y: 200 },
         data: { 
-          label: 'PM Agent',
+          label: 'Marcus',
           status: 'idle',
           metrics: {
             decisionsToday: 0,
@@ -318,14 +318,14 @@ export const useWorkflowStore = defineStore('workflow', () => {
    * 
    * @example
    * ```javascript
-   * // Animate task assignment from PM Agent to worker
+   * // Animate task assignment from Marcus to worker
    * animateDataFlow('pm-agent', 'worker-123', {
    *   type: 'request',
    *   message: 'New task assigned: Implement user login',
    *   metadata: { taskId: 'task-456', priority: 'high' }
    * })
    * 
-   * // Animate progress update from worker to PM Agent
+   * // Animate progress update from worker to Marcus
    * animateDataFlow('worker-123', 'pm-agent', {
    *   type: 'update',
    *   message: 'Task 75% complete',

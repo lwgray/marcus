@@ -1,7 +1,7 @@
 """
-Unit tests for PM Agent components.
+Unit tests for Marcus components.
 
-This package contains unit tests for individual PM Agent components and modules,
+This package contains unit tests for individual Marcus components and modules,
 testing them in isolation with mocked dependencies.
 
 Notes

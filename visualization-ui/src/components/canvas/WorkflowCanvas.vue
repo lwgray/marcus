@@ -1,7 +1,7 @@
 <!-- 
   WorkflowCanvas Component
   
-  Purpose: Main canvas for visualizing and interacting with the PM Agent workflow.
+  Purpose: Main canvas for visualizing and interacting with the Marcus workflow.
   Provides a drag-and-drop interface for creating nodes and connections between them.
   
   Features:
@@ -9,7 +9,7 @@
   - Interactive node positioning and connection
   - Zoom and pan controls
   - Minimap for navigation
-  - Auto-connection of worker nodes to PM Agent
+  - Auto-connection of worker nodes to Marcus
   
   Dependencies:
   - @vue-flow/core for flow diagram functionality
@@ -44,7 +44,7 @@
 
 <script setup>
 /**
- * WorkflowCanvas - Main canvas component for PM Agent workflow visualization
+ * WorkflowCanvas - Main canvas component for Marcus workflow visualization
  * 
  * This component manages the interactive flow diagram where users can:
  * - Add nodes by dragging from the NodePalette
@@ -97,7 +97,7 @@ console.log('WorkflowCanvas - Node types:', nodeTypes)
 
 /**
  * Handles drop events when dragging nodes from the NodePalette
- * Creates a new node at the drop position and auto-connects workers to PM Agent
+ * Creates a new node at the drop position and auto-connects workers to Marcus
  * 
  * @param {DragEvent} event - The drop event containing node data
  */
@@ -124,7 +124,7 @@ const onDrop = (event) => {
     data: nodeData.data || {}
   })
   
-  // Auto-connect worker nodes to the PM Agent node
+  // Auto-connect worker nodes to the Marcus node
   if (nodeData.type === 'worker') {
     workflowStore.addEdge({
       source: newNode.id,

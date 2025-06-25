@@ -625,16 +625,16 @@ class TestPingEndpoint(TestPMAgentMVP):
         assert result["success"] is True
         assert result["pong"] is True
         assert result["status"] == "online"
-        assert result["service"] == "PM Agent MVP"
+        assert result["service"] == "Marcus MVP"
         assert "timestamp" in result
         assert result["version"] == "1.0.0"
     
     async def test_ping_with_echo(self, pm_agent):
         """Test ping with echo message"""
-        result = await pm_agent._ping("Hello PM Agent")
+        result = await pm_agent._ping("Hello Marcus")
         
         assert result["success"] is True
-        assert result["echo"] == "Hello PM Agent"
+        assert result["echo"] == "Hello Marcus"
         assert result["echo_received"] is True
     
     async def test_ping_health_status(self, pm_agent, mock_ai_engine):

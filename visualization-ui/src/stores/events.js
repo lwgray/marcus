@@ -2,10 +2,10 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
 /**
- * Events store for managing real-time event data in the PM Agent visualization
+ * Events store for managing real-time event data in the Marcus visualization
  * 
  * This Pinia store handles the collection, filtering, and display of various event types
- * from the PM Agent system including worker messages, decisions, Kanban updates,
+ * from the Marcus system including worker messages, decisions, Kanban updates,
  * progress updates, and thinking processes. It provides reactive state management
  * for the event stream visualization.
  * 
@@ -39,7 +39,7 @@ export const useEventStore = defineStore('events', () => {
   // State
   
   /**
-   * Reactive array containing all events from the PM Agent system
+   * Reactive array containing all events from the Marcus system
    * @type {import('vue').Ref<Array<Object>>}
    */
   const events = ref([])
@@ -54,10 +54,10 @@ export const useEventStore = defineStore('events', () => {
    * Filter settings for controlling which event types are displayed
    * @type {import('vue').Ref<Object>}
    * @property {boolean} showWorkerMessages - Show worker communication events
-   * @property {boolean} showDecisions - Show PM Agent decision events
+   * @property {boolean} showDecisions - Show Marcus decision events
    * @property {boolean} showKanbanUpdates - Show Kanban board update events
    * @property {boolean} showProgressUpdates - Show task progress events
-   * @property {boolean} showThinking - Show PM Agent thinking process events
+   * @property {boolean} showThinking - Show Marcus thinking process events
    */
   const filters = ref({
     showWorkerMessages: true,

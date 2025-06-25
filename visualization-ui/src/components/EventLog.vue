@@ -1,8 +1,8 @@
 <!--
   EventLog Component
   
-  Purpose: Displays a real-time log of system events from the PM Agent workflow.
-  Shows communication between workers, PM Agent decisions, and system activities.
+  Purpose: Displays a real-time log of system events from the Marcus workflow.
+  Shows communication between workers, Marcus decisions, and system activities.
   
   Features:
   - Real-time event stream with timestamps
@@ -14,7 +14,7 @@
   
   Event Types:
   - Worker messages and communication
-  - PM Agent decisions and thinking states
+  - Marcus decisions and thinking states
   - Kanban board requests and responses
   - Task assignments and progress updates
   - Blocker reports and system notifications
@@ -64,11 +64,11 @@
 
 <script setup>
 /**
- * EventLog - Real-time display of PM Agent system events
+ * EventLog - Real-time display of Marcus system events
  * 
  * Provides a chronological view of all system activities including:
  * - Inter-agent communication
- * - PM Agent decision-making processes
+ * - Marcus decision-making processes
  * - Task assignments and progress updates
  * - System state changes and notifications
  * 

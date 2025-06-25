@@ -1,7 +1,7 @@
 """
-Shared pytest fixtures and configuration for PM Agent tests.
+Shared pytest fixtures and configuration for Marcus tests.
 
-This module provides common fixtures and configuration for the PM Agent test suite,
+This module provides common fixtures and configuration for the Marcus test suite,
 including MCP session management, test board creation, and custom pytest markers.
 
 Notes

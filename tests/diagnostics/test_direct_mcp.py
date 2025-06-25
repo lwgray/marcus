@@ -2,13 +2,13 @@
 """
 Test direct MCP connection to isolate connection issues.
 
-This diagnostic test bypasses all PM Agent wrappers and tests raw MCP connection
-to help identify whether connection issues are in the PM Agent layer or the MCP layer.
+This diagnostic test bypasses all Marcus wrappers and tests raw MCP connection
+to help identify whether connection issues are in the Marcus layer or the MCP layer.
 
 Notes
 -----
 This test is useful for troubleshooting when the main application cannot connect
-to the MCP server, as it eliminates PM Agent code as a potential cause.
+to the MCP server, as it eliminates Marcus code as a potential cause.
 """
 
 import asyncio
@@ -26,7 +26,7 @@ async def test_direct() -> None:
     Test direct connection to kanban-mcp server.
     
     This function attempts to establish a direct MCP connection, bypassing all
-    PM Agent abstractions. It tests multiple node.js paths and kanban-mcp locations
+    Marcus abstractions. It tests multiple node.js paths and kanban-mcp locations
     to ensure maximum compatibility.
     
     Notes

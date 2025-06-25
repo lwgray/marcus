@@ -1,13 +1,13 @@
 <!--
   MetricsPanel Component
   
-  Purpose: Displays real-time system metrics and KPIs for the PM Agent workflow.
+  Purpose: Displays real-time system metrics and KPIs for the Marcus workflow.
   Shows aggregate data about workers, tasks, decisions, and system activity.
   
   Features:
   - Active worker count with total registered
   - Task progress tracking with completion rate
-  - Decision confidence metrics from PM Agent
+  - Decision confidence metrics from Marcus
   - Real-time event rate monitoring
   - Visual indicators with progress bars and icons
   
@@ -90,12 +90,12 @@
 
 <script setup>
 /**
- * MetricsPanel - Displays key performance indicators for the PM Agent system
+ * MetricsPanel - Displays key performance indicators for the Marcus system
  * 
  * Aggregates and displays real-time metrics from various nodes in the workflow:
  * - Worker status and activity
  * - Task progress from Kanban board
- * - Decision metrics from PM Agent
+ * - Decision metrics from Marcus
  * - System event rate
  */
 
@@ -123,10 +123,10 @@ const activeWorkerCount = computed(() =>
 )
 
 /**
- * Gets the PM Agent node from the workflow
- * Used to access PM Agent metrics like decisions and confidence
+ * Gets the Marcus node from the workflow
+ * Used to access Marcus metrics like decisions and confidence
  * 
- * @returns {Object|undefined} PM Agent node or undefined if not found
+ * @returns {Object|undefined} Marcus node or undefined if not found
  */
 const pmAgent = computed(() => 
   nodes.value.find(n => n.id === 'pm-agent')
@@ -166,7 +166,7 @@ const completionRate = computed(() => {
 
 /**
  * Computes the average decision confidence percentage
- * Converts the PM Agent's confidence score (0-1) to percentage
+ * Converts Marcus's confidence score (0-1) to percentage
  * 
  * @returns {number} Average confidence as percentage (0-100)
  */
@@ -176,7 +176,7 @@ const avgConfidence = computed(() =>
 
 /**
  * Gets the total number of decisions made today
- * Retrieved from the PM Agent node's metrics
+ * Retrieved from the Marcus node's metrics
  * 
  * @returns {number} Total decisions made today
  */

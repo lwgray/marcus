@@ -1,5 +1,5 @@
 """
-Integration tests for the PM Agent visualization system
+Integration tests for the Marcus visualization system
 """
 import pytest
 import asyncio
@@ -214,7 +214,7 @@ class TestVisualizationIntegration:
                 id=f"event-{i}",
                 timestamp=datetime.now(),
                 source=f"worker-{i % 10}",
-                target="pm_agent",
+                target="marcus",
                 event_type="progress_update",
                 message=f"Progress update {i}",
                 metadata={"progress": i}

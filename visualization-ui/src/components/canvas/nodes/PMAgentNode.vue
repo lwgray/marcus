@@ -1,7 +1,7 @@
 <!--
   PMAgentNode Component
   
-  Purpose: Represents the central PM Agent node in the workflow visualization.
+  Purpose: Represents the central Marcus node in the workflow visualization.
   This is the main decision-making hub that coordinates all worker agents.
   
   Features:
@@ -12,7 +12,7 @@
   - Multiple connection points for different types of outputs
   
   Props:
-  - data: Node data containing status and other PM Agent information
+  - data: Node data containing status and other Marcus information
 -->
 <template>
   <div class="pm-agent-node">
@@ -23,13 +23,13 @@
     <!-- Main Node Content -->
     <div class="node-header">
       <div class="node-icon">
-        <!-- Checkmark circle icon representing PM Agent -->
+        <!-- Checkmark circle icon representing Marcus -->
         <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
         </svg>
       </div>
       <div class="node-info">
-        <h3 class="node-title">PM Agent</h3>
+        <h3 class="node-title">Marcus</h3>
         <p class="node-subtitle">Project Manager</p>
       </div>
     </div>
@@ -61,9 +61,9 @@
 
 <script setup>
 /**
- * PMAgentNode - Visual representation of the PM Agent in the workflow
+ * PMAgentNode - Visual representation of Marcus in the workflow
  * 
- * The PM Agent is the central coordinator that:
+ * Marcus is the central coordinator that:
  * - Makes decisions about task assignment
  * - Analyzes project state
  * - Maintains project memory
@@ -79,8 +79,8 @@ import { Handle, Position } from '@vue-flow/core'
 /**
  * Component props
  * @prop {Object} data - Node data from the workflow
- * @prop {string} data.status - Current status of PM Agent (e.g., 'thinking', 'idle')
- * @prop {Object} data.metrics - Performance metrics for the PM Agent
+ * @prop {string} data.status - Current status of Marcus (e.g., 'thinking', 'idle')
+ * @prop {Object} data.metrics - Performance metrics for Marcus
  */
 const props = defineProps({
   data: {
@@ -132,7 +132,7 @@ const TaskIcon = {
 
 /**
  * Sub-resources configuration
- * Each resource represents a different output type from the PM Agent
+ * Each resource represents a different output type from Marcus
  * 
  * @property {string} name - Display name of the sub-resource
  * @property {number} position - Horizontal position as percentage (0-100)

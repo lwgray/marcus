@@ -1,7 +1,7 @@
 """
 Unit tests for the AI Analysis Engine.
 
-This module tests the AI-powered decision-making capabilities of PM Agent,
+This module tests the AI-powered decision-making capabilities of Marcus,
 including task assignment optimization, blocker analysis, and project risk assessment.
 
 Notes
@@ -25,7 +25,7 @@ class TestAIAnalysisEngine:
     """
     Test suite for the AI Analysis Engine.
     
-    This tests the core intelligence of our PM Agent - how it makes decisions
+    This tests the core intelligence of Marcus - how it makes decisions
     about task assignments, analyzes blockers, and provides recommendations.
     """
     

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test workspace security and integration with PM Agent
+Test workspace security and integration with Marcus
 Verifies that workspace isolation is working correctly
 """
 
@@ -16,16 +16,16 @@ from src.core.workspace_manager import WorkspaceSecurityError
 
 
 def test_workspace_integration():
-    """Test that PM Agent properly assigns and protects workspaces"""
+    """Test that Marcus properly assigns and protects workspaces"""
     
     print("🔍 Testing Workspace Security Integration")
     print("=" * 60)
     
-    # Initialize PM Agent
+    # Initialize Marcus
     pm_agent = PMAgentMVP()
     
-    print("\n1. PM Agent Root Detection:")
-    print(f"   PM Agent root: {pm_agent.workspace_manager.pm_agent_root}")
+    print("\n1. Marcus Root Detection:")
+    print(f"   Marcus root: {pm_agent.workspace_manager.pm_agent_root}")
     print(f"   Forbidden paths: {len(pm_agent.workspace_manager.forbidden_paths)}")
     for path in list(pm_agent.workspace_manager.forbidden_paths)[:3]:
         print(f"     - {path}")
@@ -42,9 +42,9 @@ def test_workspace_integration():
     # Test forbidden path protection
     print("\n3. Security Tests - Path Protection:")
     test_paths = [
-        (pm_agent.workspace_manager.pm_agent_root, "PM Agent root", True),
-        (os.path.join(pm_agent.workspace_manager.pm_agent_root, "src"), "PM Agent src", True),
-        (os.path.join(pm_agent.workspace_manager.pm_agent_root, "config"), "PM Agent config", True),
+        (pm_agent.workspace_manager.pm_agent_root, "Marcus root", True),
+        (os.path.join(pm_agent.workspace_manager.pm_agent_root, "src"), "Marcus src", True),
+        (os.path.join(pm_agent.workspace_manager.pm_agent_root, "config"), "Marcus config", True),
         ("/tmp/safe_path", "External safe path", False),
         (os.path.expanduser("~/Downloads"), "User Downloads", False)
     ]
@@ -74,7 +74,7 @@ def test_workspace_integration():
             print(f"   Workspace: {workspace_data.get('workspace_path', 'None')}")
             print(f"   Forbidden paths: {len(workspace_data.get('forbidden_paths', []))}")
             
-            # Verify PM Agent root is forbidden
+            # Verify Marcus root is forbidden
             forbidden_paths = workspace_data.get('forbidden_paths', [])
             pm_root_protected = any(
                 pm_agent.workspace_manager.pm_agent_root in path or 
@@ -83,9 +83,9 @@ def test_workspace_integration():
             )
             
             if pm_root_protected:
-                print("   ✅ PM Agent root is protected from this agent")
+                print("   ✅ Marcus root is protected from this agent")
             else:
-                print("   ❌ PM Agent root is NOT protected!")
+                print("   ❌ Marcus root is NOT protected!")
                 
         except Exception as e:
             print(f"   ⚠️  {agent_id}: {e}")
@@ -93,10 +93,10 @@ def test_workspace_integration():
     # Test invalid workspace access attempt
     print("\n5. Invalid Access Simulation:")
     try:
-        # Simulate an agent trying to access PM Agent files
+        # Simulate an agent trying to access Marcus files
         test_file = os.path.join(pm_agent.workspace_manager.pm_agent_root, "src", "core", "models.py")
         pm_agent.workspace_manager.validate_path(test_file)
-        print("   ❌ SECURITY BREACH: Agent could access PM Agent source!")
+        print("   ❌ SECURITY BREACH: Agent could access Marcus source!")
     except WorkspaceSecurityError as e:
         print(f"   ✅ Access denied: {e}")
     
@@ -105,7 +105,7 @@ def test_workspace_integration():
     
     # Summary
     print("\nSummary:")
-    print(f"- PM Agent is installed at: {pm_agent.workspace_manager.pm_agent_root}")
+    print(f"- Marcus is installed at: {pm_agent.workspace_manager.pm_agent_root}")
     print(f"- {len(pm_agent.workspace_manager.forbidden_paths)} paths are protected")
     print("- Workspace isolation is " + 
           ("ACTIVE" if pm_agent.workspace_manager.forbidden_paths else "INACTIVE"))

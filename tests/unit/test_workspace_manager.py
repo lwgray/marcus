@@ -18,21 +18,21 @@ class TestWorkspaceManager:
     """Test suite for WorkspaceManager"""
     
     def test_pm_agent_root_detection(self):
-        """Test that PM Agent root is correctly detected"""
+        """Test that Marcus root is correctly detected"""
         manager = WorkspaceManager()
         
-        # Should detect the PM Agent root directory
+        # Should detect the Marcus root directory
         assert manager.pm_agent_root.endswith('pm-agent')
         assert os.path.exists(manager.pm_agent_root)
         
-        # PM Agent root should be in forbidden paths
+        # Marcus root should be in forbidden paths
         assert manager.pm_agent_root in manager.forbidden_paths
     
     def test_forbidden_paths_initialization(self):
         """Test that forbidden paths are properly initialized"""
         manager = WorkspaceManager()
         
-        # PM Agent root and its parent should be forbidden
+        # Marcus root and its parent should be forbidden
         assert manager.pm_agent_root in manager.forbidden_paths
         assert os.path.dirname(manager.pm_agent_root) in manager.forbidden_paths
         
@@ -43,11 +43,11 @@ class TestWorkspaceManager:
         """Test that forbidden paths are rejected"""
         manager = WorkspaceManager()
         
-        # Try to access PM Agent directory
+        # Try to access Marcus directory
         with pytest.raises(WorkspaceSecurityError):
             manager.validate_path(manager.pm_agent_root)
         
-        # Try to access subdirectory of PM Agent
+        # Try to access subdirectory of Marcus
         pm_agent_subdir = os.path.join(manager.pm_agent_root, 'src', 'core')
         with pytest.raises(WorkspaceSecurityError):
             manager.validate_path(pm_agent_subdir)
@@ -56,7 +56,7 @@ class TestWorkspaceManager:
         """Test that allowed paths pass validation"""
         manager = WorkspaceManager()
         
-        # Create a temporary directory outside PM Agent
+        # Create a temporary directory outside Marcus
         with tempfile.TemporaryDirectory() as tmpdir:
             # This should be allowed
             validated_path = manager.validate_path(tmpdir)
@@ -85,7 +85,7 @@ class TestWorkspaceManager:
         """Test that forbidden paths cannot be assigned as workspaces"""
         manager = WorkspaceManager()
         
-        # Try to assign PM Agent directory as workspace
+        # Try to assign Marcus directory as workspace
         with pytest.raises(WorkspaceSecurityError):
             manager.assign_agent_workspace('agent1', manager.pm_agent_root)
     
@@ -124,7 +124,7 @@ class TestWorkspaceManager:
         manager = WorkspaceManager()
         
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Create config that tries to use PM Agent directory
+            # Create config that tries to use Marcus directory
             config = {
                 "project": {
                     "workspaces": {

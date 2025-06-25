@@ -192,7 +192,7 @@ class TestVisualizationServerAPI(AioHTTPTestCase):
         assert resp.status == 200
         
         content = await resp.text()
-        assert "PM Agent Visualization" in content
+        assert "Marcus Visualization" in content
 
 
 class TestVisualizationServerIntegration:

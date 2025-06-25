@@ -1,7 +1,7 @@
 """
-Unit tests for PM Agent data models.
+Unit tests for Marcus data models.
 
-This module tests the core data models used throughout the PM Agent system,
+This module tests the core data models used throughout the Marcus system,
 including Task, ProjectState, WorkerStatus, and TaskAssignment models.
 
 Notes

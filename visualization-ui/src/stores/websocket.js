@@ -5,11 +5,11 @@ import { useWorkflowStore } from './workflow'
 import { useEventStore } from './events'
 
 /**
- * WebSocket store for real-time communication with PM Agent server
+ * WebSocket store for real-time communication with Marcus server
  * 
- * Manages Socket.IO connection to the PM Agent visualization server,
+ * Manages Socket.IO connection to the Marcus visualization server,
  * handles incoming events, and coordinates updates to the workflow
- * and event stores. Provides real-time visualization of PM Agent
+ * and event stores. Provides real-time visualization of Marcus
  * activities including worker registration, task assignments,
  * progress updates, and decision-making processes.
  * 
@@ -64,10 +64,10 @@ export const useWebSocketStore = defineStore('websocket', () => {
   const connectionError = ref(null)
   
   /**
-   * Establishes WebSocket connection to the PM Agent server
+   * Establishes WebSocket connection to the Marcus server
    * 
    * Creates a new Socket.IO connection with automatic reconnection settings
-   * and sets up all event handlers for the various PM Agent events.
+   * and sets up all event handlers for the various Marcus events.
    * 
    * @example
    * ```javascript
@@ -77,7 +77,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
    * 
    * // Check connection status
    * if (wsStore.isConnected.value) {
-   *   console.log('Connected to PM Agent server')
+   *   console.log('Connected to Marcus server')
    * }
    * ```
    */
@@ -93,7 +93,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
   }
 
   /**
-   * Sets up all Socket.IO event handlers for PM Agent communication
+   * Sets up all Socket.IO event handlers for Marcus communication
    * 
    * Registers handlers for connection events, conversation events, worker
    * registration, task assignments, progress updates, decisions, and system
@@ -113,7 +113,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     socket.value.on('connect', () => {
       isConnected.value = true
       connectionError.value = null
-      console.log('Connected to PM Agent server')
+      console.log('Connected to Marcus server')
       
       // Subscribe to events
       socket.value.emit('subscribe_conversations', {})
@@ -158,7 +158,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
   // Event Handlers
   
   /**
-   * Handles conversation events between PM Agent and workers
+   * Handles conversation events between Marcus and workers
    * 
    * Processes conversation events to update workflow visualization,
    * create worker nodes if they don't exist, and animate data flow
@@ -214,7 +214,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
           }
         })
         
-        // Connect to PM Agent
+        // Connect to Marcus
         workflowStore.addEdge({
           source: workerNode.id,
           target: 'pm-agent'
@@ -274,10 +274,10 @@ export const useWebSocketStore = defineStore('websocket', () => {
   }
 
   /**
-   * Handles task assignment events from PM Agent to workers
+   * Handles task assignment events from Marcus to workers
    * 
    * Updates worker nodes with current task information and creates
-   * visual animation showing task flow from PM Agent to the assigned worker.
+   * visual animation showing task flow from Marcus to the assigned worker.
    * 
    * @param {Object} data - Task assignment data
    * @param {string} data.workerId - ID of worker receiving the task
@@ -369,7 +369,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
       }
     })
     
-    // Connect to PM Agent
+    // Connect to Marcus
     workflowStore.addEdge({
       source: 'pm-agent',
       target: decisionNode.id
@@ -384,7 +384,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
   const handleSystemMetrics = (data) => {
     const workflowStore = useWorkflowStore()
     
-    // Update PM Agent metrics
+    // Update Marcus metrics
     workflowStore.updateNode('pm-agent', {
       data: {
         metrics: {
@@ -410,11 +410,11 @@ export const useWebSocketStore = defineStore('websocket', () => {
   // Outbound Event Methods
   
   /**
-   * Requests decision tree data from the PM Agent server
+   * Requests decision tree data from the Marcus server
    * 
    * Sends a request to the server to retrieve detailed decision tree
    * information for a specific decision ID. Used for drilling down
-   * into PM Agent's decision-making process.
+   * into Marcus's decision-making process.
    * 
    * @param {string} decisionId - Unique identifier for the decision
    * 
@@ -433,11 +433,11 @@ export const useWebSocketStore = defineStore('websocket', () => {
   }
 
   /**
-   * Requests knowledge graph data from the PM Agent server
+   * Requests knowledge graph data from the Marcus server
    * 
    * Sends a request to retrieve knowledge graph data with optional
    * filters for visualization. The knowledge graph shows relationships
-   * between tasks, workers, and decisions in the PM Agent system.
+   * between tasks, workers, and decisions in the Marcus system.
    * 
    * @param {Object} [filters={}] - Optional filters for the knowledge graph
    * @param {Array<string>} [filters.nodeTypes] - Types of nodes to include
@@ -464,7 +464,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
   }
 
   /**
-   * Disconnects from the PM Agent server
+   * Disconnects from the Marcus server
    * 
    * Safely closes the Socket.IO connection and resets the connection state.
    * Should be called when the component unmounts or the app shuts down.

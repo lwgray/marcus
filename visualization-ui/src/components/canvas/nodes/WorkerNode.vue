@@ -78,7 +78,7 @@
  * WorkerNode - Visual representation of a Claude AI worker agent
  * 
  * Each worker node represents an autonomous AI agent that can:
- * - Execute assigned tasks from the PM Agent
+ * - Execute assigned tasks from Marcus
  * - Report progress on current work
  * - Display its specialized skills
  * - Show implementation context awareness

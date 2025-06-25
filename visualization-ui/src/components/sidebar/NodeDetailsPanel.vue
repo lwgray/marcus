@@ -7,7 +7,7 @@
   Features:
   - Dynamic content based on node type (worker, pm-agent, decision)
   - Worker node: status, skills, current task with progress
-  - PM Agent node: decision metrics and confidence scores
+  - Marcus node: decision metrics and confidence scores
   - Decision node: decision details with confidence and rationale
   - Connection information showing linked nodes
   
@@ -89,10 +89,10 @@
       </div>
     </div>
     
-    <!-- PM Agent node specific content -->
+    <!-- Marcus node specific content -->
     <div v-else-if="node.type === 'pm-agent'" class="space-y-4">
       <div>
-        <h4 class="text-sm font-medium text-gray-400 mb-2">PM Agent Metrics</h4>
+        <h4 class="text-sm font-medium text-gray-400 mb-2">Marcus Metrics</h4>
         <div class="grid grid-cols-2 gap-3">
           <!-- Decisions today metric -->
           <div class="p-3 bg-dark-surface rounded-lg">
@@ -142,7 +142,7 @@
  * 
  * This component renders different content based on the node type:
  * - Worker nodes: Shows status, skills, and current task progress
- * - PM Agent nodes: Displays decision metrics and confidence scores
+ * - Marcus nodes: Displays decision metrics and confidence scores
  * - Decision nodes: Shows decision details with confidence and rationale
  * 
  * All node types show their connections to other nodes in the workflow.

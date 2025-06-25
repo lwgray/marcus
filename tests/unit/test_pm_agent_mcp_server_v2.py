@@ -1,5 +1,5 @@
 """
-Unit tests for PM Agent MCP Server v2
+Unit tests for Marcus MCP Server v2
 """
 
 import pytest

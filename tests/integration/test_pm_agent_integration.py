@@ -1,7 +1,7 @@
 """
-Integration tests for PM Agent server components.
+Integration tests for Marcus server components.
 
-This module tests the integration between PM Agent components including the MCP server,
+This module tests the integration between Marcus components including the MCP server,
 AI engine, monitoring system, and communication hub.
 
 Notes
@@ -23,7 +23,7 @@ from src.core.models import Task, TaskStatus, Priority, WorkerStatus, RiskLevel,
 
 class TestPMAgentIntegration:
     """
-    Integration tests for the PM Agent Server.
+    Integration tests for the Marcus Server.
     
     These tests verify that all components work together correctly,
     including MCP server request handling, AI decision making,
@@ -38,16 +38,16 @@ class TestPMAgentIntegration:
     @pytest.fixture
     async def pm_agent(self) -> AsyncMock:
         """
-        Set up a complete PM Agent instance with mocked external dependencies.
+        Set up a complete Marcus instance with mocked external dependencies.
         
-        Creates a real PM Agent server instance with mocked external services
+        Creates a real Marcus server instance with mocked external services
         (Kanban, Claude API) to test component integration without requiring
         actual services to be running.
         
         Returns
         -------
         PMAgentServer
-            A PM Agent server instance with mocked dependencies.
+            A Marcus server instance with mocked dependencies.
         
         Notes
         -----
@@ -58,7 +58,7 @@ class TestPMAgentIntegration:
         """
         with patch('src.integrations.mcp_kanban_client.MCPKanbanClient') as mock_kanban:
             with patch('anthropic.Anthropic') as mock_anthropic:
-                # Create the PM Agent
+                # Create Marcus
                 agent = PMAgentServer()
                 
                 # Mock the Kanban client methods
@@ -86,7 +86,7 @@ class TestPMAgentIntegration:
         
         This test simulates:
         1. An agent requesting work
-        2. PM Agent finding the best task
+        2. Marcus finding the best task
         3. AI generating instructions
         4. Task being assigned on kanban board
         5. Notifications being sent

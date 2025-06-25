@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  pm-agent:
+  marcus:
     build: .
-    container_name: pm-agent-mcp-server
+    container_name: marcus-mcp-server
     environment:
       # Kanban provider selection (github, linear, or planka)
       - KANBAN_PROVIDER=${KANBAN_PROVIDER:-github}
@@ -25,8 +25,8 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       
       # Original config
-      - PM_AGENT_CONFIG=/app/config/pm_agent_config.json
-      - PM_AGENT_MONITORING_INTERVAL=900
+      - MARCUS_CONFIG=/app/config/pm_agent_config.json
+      - MARCUS_MONITORING_INTERVAL=900
     volumes:
       - ./config:/app/config
       - ./logs:/app/logs
@@ -37,12 +37,12 @@ services:
     stdin_open: true
     tty: true
     networks:
-      - pm-network
+      - marcus-network
 
   # Development version with live code reload
-  pm-agent-dev:
+  marcus-dev:
     build: .
-    container_name: pm-agent-dev
+    container_name: marcus-dev
     environment:
       # Kanban provider selection
       - KANBAN_PROVIDER=${KANBAN_PROVIDER:-github}
@@ -64,8 +64,8 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       
       # Original config
-      - PM_AGENT_CONFIG=/app/config/pm_agent_config.json
-      - PM_AGENT_MONITORING_INTERVAL=900
+      - MARCUS_CONFIG=/app/config/pm_agent_config.json
+      - MARCUS_MONITORING_INTERVAL=900
     volumes:
       # Mount source code for live updates
       - ./src:/app/src
@@ -80,14 +80,14 @@ services:
     stdin_open: true
     tty: true
     networks:
-      - pm-network
+      - marcus-network
   
   # Visualization UI (optional)
   visualization:
     build:
       context: ./visualization-ui
       dockerfile: Dockerfile
-    container_name: pm-visualization
+    container_name: marcus-visualization
     ports:
       - "4298:4298"  # Vite dev server
       - "8080:8080"  # WebSocket server
@@ -97,55 +97,55 @@ services:
       - ./visualization-ui/src:/app/src
       - ./visualization-ui/public:/app/public
     networks:
-      - pm-network
+      - marcus-network
     depends_on:
-      - pm-agent
+      - marcus
     profiles:
       - full  # Only start when --profile full is used
   
   # Demo workers for testing
   worker-backend:
     build: .
-    container_name: pm-worker-backend
+    container_name: marcus-worker-backend
     environment:
       - PYTHONPATH=/app
     volumes:
       - ./logs:/app/logs
     command: ["python", "mock_claude_worker.py", "--name", "backend-developer", "--role", "Backend Developer", "--skills", "python,api,database,backend"]
     networks:
-      - pm-network
+      - marcus-network
     depends_on:
-      - pm-agent
+      - marcus
     profiles:
       - demo  # Only start when --profile demo is used
   
   worker-frontend:
     build: .
-    container_name: pm-worker-frontend
+    container_name: marcus-worker-frontend
     environment:
       - PYTHONPATH=/app
     volumes:
       - ./logs:/app/logs
     command: ["python", "mock_claude_worker.py", "--name", "frontend-developer", "--role", "Frontend Developer", "--skills", "javascript,react,vue,css,frontend"]
     networks:
-      - pm-network
+      - marcus-network
     depends_on:
-      - pm-agent
+      - marcus
     profiles:
       - demo
   
   worker-qa:
     build: .
-    container_name: pm-worker-qa
+    container_name: marcus-worker-qa
     environment:
       - PYTHONPATH=/app
     volumes:
       - ./logs:/app/logs
     command: ["python", "mock_claude_worker.py", "--name", "qa-engineer", "--role", "QA Engineer", "--skills", "testing,automation,qa,selenium"]
     networks:
-      - pm-network
+      - marcus-network
     depends_on:
-      - pm-agent
+      - marcus
     profiles:
       - demo
 
@@ -154,7 +154,7 @@ services:
   # Use --profile local-planka to enable
   planka:
     image: ghcr.io/plankanban/planka:latest
-    container_name: pm-planka
+    container_name: marcus-planka
     command: >
       bash -c
         "for i in `seq 1 30`; do
@@ -177,13 +177,13 @@ services:
     depends_on:
       - planka-db
     networks:
-      - pm-network
+      - marcus-network
     profiles:
       - local-planka  # Must explicitly enable
 
   planka-db:
     image: postgres:14-alpine
-    container_name: pm-planka-db
+    container_name: marcus-planka-db
     restart: unless-stopped
     volumes:
       - planka-db-data:/var/lib/postgresql/data
@@ -192,12 +192,12 @@ services:
       - POSTGRES_USER=planka
       - POSTGRES_PASSWORD=planka
     networks:
-      - pm-network
+      - marcus-network
     profiles:
       - local-planka  # Must explicitly enable
 
 networks:
-  pm-network:
+  marcus-network:
     driver: bridge
 
 volumes:
