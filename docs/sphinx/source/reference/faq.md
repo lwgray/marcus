@@ -52,7 +52,7 @@ Yes! Use `./start.sh remote` for server deployments. Just don't use Planka onlin
 As many as you want! Each worker needs its own API key and costs money to run.
 
 ### Can workers talk to each other?
-Not directly, but PM Agent shares information between them. When Worker A creates an API, PM Agent tells Worker B about it!
+Not directly, but Marcus shares information between them. When Worker A creates an API, Marcus tells Worker B about it!
 
 ### How do I see what workers are doing?
 Check the logs:
@@ -74,16 +74,16 @@ Or use visualization mode:
 4. Look for errors in logs
 
 ### Can I pause/resume work?
-Yes! Just stop and start PM Agent:
+Yes! Just stop and start Marcus:
 ```bash
 docker-compose down  # Stop
 ./start.sh          # Resume
 ```
 
 ### What if a worker gets stuck?
-Workers will report blockers to PM Agent, which uses AI to suggest solutions. Check logs to see the suggestions!
+Workers will report blockers to Marcus, which uses AI to suggest solutions. Check logs to see the suggestions!
 
-### How do I update PM Agent?
+### How do I update Marcus?
 ```bash
 git pull
 docker-compose build --no-cache
@@ -93,7 +93,7 @@ docker-compose build --no-cache
 ## Cost Questions
 
 ### How much does it cost?
-- **PM Agent**: Free!
+- **Marcus**: Free!
 - **GitHub**: Free!
 - **Anthropic API**: About $0.01-0.10 per task (depends on complexity)
 - **Linear**: $8/user/month (optional)
@@ -102,7 +102,7 @@ docker-compose build --no-cache
 1. Use smaller, simpler tasks
 2. Run fewer workers
 3. Use Claude Haiku (cheaper model) when available
-4. Stop PM Agent when not using it
+4. Stop Marcus when not using it
 
 ## Advanced Questions
 
@@ -110,9 +110,9 @@ docker-compose build --no-cache
 Yes! Edit `prompts/system_prompts.md` to change how workers act.
 
 ### Can I add my own tools?
-Yes, but it requires Python knowledge. Check the [Contributing Guide](../CONTRIBUTING.md).
+Yes, but it requires Python knowledge. Check the Contributing Guide in the repository.
 
-### Can PM Agent work with my existing project?
+### Can Marcus work with my existing project?
 Absolutely! Just point it to your GitHub repo and create issues for what needs to be done.
 
 ### Is my code private?
@@ -123,7 +123,7 @@ Absolutely! Just point it to your GitHub repo and create issues for what needs t
 ## Legal Questions
 
 ### Can I use this for commercial projects?
-Yes! PM Agent is MIT licensed - use it for anything!
+Yes! Marcus is MIT licensed - use it for anything!
 
 ### What about Planka licensing?
 Planka uses AGPL license - only use it locally, never online. Use GitHub or Linear for commercial/online use.
@@ -134,9 +134,9 @@ You do! Workers are just tools you're using.
 ## Still Have Questions?
 
 1. Check [Troubleshooting](troubleshooting.md) for technical issues
-2. Read [How It Works](how-it-works.md) for deeper understanding
+2. Read How It Works for deeper understanding
 3. Ask on GitHub Issues for help
 
 ---
 
-=� **Pro Tip**: Most questions are answered by just trying it! Run `./start.sh demo` to see PM Agent in action.
+=� **Pro Tip**: Most questions are answered by just trying it! Run `./start.sh demo` to see Marcus in action.

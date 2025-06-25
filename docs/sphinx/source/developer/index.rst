@@ -119,7 +119,7 @@ Marcus exposes MCP tools for worker agents:
 * ``list_registered_agents`` - Active workers
 * ``ping`` - Health check
 
-See :doc:`/reference/api_reference` for complete details.
+See the API documentation for complete details.
 
 Debugging Tips
 --------------

@@ -1,16 +1,16 @@
-# Claude Desktop Setup for PM Agent
+# Claude Desktop Setup for Marcus
 
 ## Overview
 
-Claude Desktop uses a different configuration format than Claude Code. This guide shows how to set up PM Agent as an MCP server in Claude Desktop.
+Claude Desktop uses a different configuration format than Claude Code. This guide shows how to set up Marcus as an MCP server in Claude Desktop.
 
 ## Prerequisites
 
-1. **PM Agent installed and working**:
+1. **Marcus installed and working**:
    ```bash
    cd /path/to/pm-agent
    python -m src.pm_agent_mvp_fixed
-   # Should see "PM Agent MVP is ready!" message
+   # Should see "Marcus MVP is ready!" message
    ```
 
 2. **Planka running** (for kanban board):
@@ -34,7 +34,7 @@ Claude Desktop uses a different configuration format than Claude Code. This guid
 3. Navigate to "Developer" section
 4. Click "Edit Config" under MCP Servers
 
-### 2. Add PM Agent Configuration
+### 2. Add Marcus Configuration
 
 Add this to your config file:
 
@@ -60,7 +60,7 @@ Add this to your config file:
 
 Replace the paths with your actual paths:
 - `/path/to/your/python`: Your Python executable
-- `/path/to/pm-agent`: Where you cloned/installed PM Agent
+- `/path/to/pm-agent`: Where you cloned/installed Marcus
 
 ### Alternative Configurations
 
@@ -121,7 +121,7 @@ Replace the paths with your actual paths:
 After saving the configuration:
 1. Quit Claude Desktop completely (⌘+Q on Mac, Alt+F4 on Windows)
 2. Restart Claude Desktop
-3. The PM Agent server should connect automatically
+3. The Marcus server should connect automatically
 
 ## Finding Your Python Path
 
@@ -166,19 +166,19 @@ where python
 ### Check Connection
 In a new Claude Desktop conversation, ask:
 ```
-Can you use the pm-agent ping tool to check if the PM Agent is running?
+Can you use the pm-agent ping tool to check if the Marcus is running?
 ```
 
 You should see:
 - Status: online
-- Service: PM Agent MVP
+- Service: Marcus MVP
 - Health: healthy
 
 ### Available Tools
 
-Once connected, Claude Desktop has access to these PM Agent tools:
+Once connected, Claude Desktop has access to these Marcus tools:
 
-1. **`ping`** - Check PM Agent health
+1. **`ping`** - Check Marcus health
 2. **`register_agent`** - Register as a worker agent
 3. **`request_next_task`** - Get task assignment
 4. **`report_task_progress`** - Update task progress
@@ -217,20 +217,20 @@ Use the pm-agent report_task_progress tool with:
 
 Claude Desktop runs MCP servers with different security constraints than Claude Code:
 
-1. **Working Directory**: Set to PM Agent directory for module imports
+1. **Working Directory**: Set to Marcus directory for module imports
 2. **File Access**: Claude Desktop has its own file access controls
-3. **Workspace Protection**: PM Agent's WorkspaceManager still protects source files
+3. **Workspace Protection**: Marcus's WorkspaceManager still protects source files
 
 The security boundaries work differently:
 - Claude Desktop doesn't have direct file system access like Claude Code
-- PM Agent tools return sanitized data
+- Marcus tools return sanitized data
 - Workspace paths in task assignments are informational
 
 ## Troubleshooting
 
 ### "MCP Server failed to start"
 1. Check Python path is correct
-2. Verify PM Agent works standalone:
+2. Verify Marcus works standalone:
    ```bash
    cd /path/to/pm-agent
    /path/to/your/python -m src.pm_agent_mvp_fixed
@@ -238,12 +238,12 @@ The security boundaries work differently:
 3. Check logs in Claude Desktop developer console
 
 ### "No module named src"
-1. Ensure `cwd` is set to PM Agent directory
+1. Ensure `cwd` is set to Marcus directory
 2. Add `PYTHONPATH` to env if needed
 3. Try absolute path: `"args": ["/path/to/pm-agent/src/pm_agent_mvp_fixed.py"]`
 
 ### "Board ID not set"
-1. Check `config_pm_agent.json` exists in PM Agent directory
+1. Check `config_pm_agent.json` exists in Marcus directory
 2. Verify Planka is running
 3. Use diagnostic tools to test configuration:
    ```bash
@@ -262,7 +262,7 @@ The security boundaries work differently:
 
 ## Environment Variables
 
-PM Agent reads from `.env` file in its directory:
+Marcus reads from `.env` file in its directory:
 
 ```bash
 # /path/to/pm-agent/.env
@@ -274,7 +274,7 @@ ANTHROPIC_API_KEY=your-api-key-here
 
 ## Best Practices
 
-1. **Test Standalone First**: Always verify PM Agent works in terminal before adding to Claude Desktop
+1. **Test Standalone First**: Always verify Marcus works in terminal before adding to Claude Desktop
 2. **Use Absolute Paths**: Avoid path resolution issues
 3. **Check Logs**: Enable developer mode to see MCP communication
 4. **One Agent Per Session**: Register once per Claude Desktop conversation

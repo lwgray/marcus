@@ -103,7 +103,7 @@ Another service is using the port:
 lsof -i :8000  # Mac/Linux
 netstat -ano | findstr :8000  # Windows
 
-# Kill the process or change PM Agent port
+# Kill the process or change Marcus port
 ```
 
 ### Workers aren't connecting (Demo mode)
@@ -134,7 +134,7 @@ pm-agent-mcp-server     Up
 docker-compose logs pm-agent | grep -i error
 ```
 
-### 3. Test PM Agent Manually
+### 3. Test Marcus Manually
 ```bash
 docker-compose exec pm-agent python -c "
 from pm_agent_mcp_server_v2 import ping
@@ -183,7 +183,7 @@ uname -a
 # Stop everything
 docker-compose down -v
 
-# Remove all PM Agent containers/images
+# Remove all Marcus containers/images
 docker rm -f $(docker ps -a | grep pm-agent | awk '{print $1}')
 docker rmi -f $(docker images | grep pm-agent | awk '{print $3}')
 
@@ -195,7 +195,7 @@ rm .env
 ## 💡 Prevention Tips
 
 1. **Always use ./start.sh** - It handles setup correctly
-2. **Check Docker is running** before starting PM Agent  
+2. **Check Docker is running** before starting Marcus  
 3. **Keep your .env file safe** - Back it up!
 4. **Update regularly**:
    ```bash

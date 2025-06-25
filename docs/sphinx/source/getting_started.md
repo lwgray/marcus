@@ -8,13 +8,13 @@
 <div class="path-selector">
 
 ### 🚀 I want to try it quickly
-→ [Jump to Quick Start](#quick-start)
+→ Jump to Quick Start section below
 
 ### 📚 I want to understand first  
-→ [Read the Overview](#overview)
+→ Read the Overview section below
 
 ### 🛠️ I'm ready for production
-→ [Go to Full Installation](#full-installation)
+→ See [Installation Guide](installation)
 
 </div>
 
@@ -201,7 +201,7 @@ docker-compose logs pm-agent
 
 ### 1. Create a Simple API Project
 
-Let's build a "Hello World" API to see PM Agent in action:
+Let's build a "Hello World" API to see Marcus in action:
 
 ```bash
 # Start Marcus with visualization
@@ -376,19 +376,19 @@ create_task("Build API endpoints", depends_on=["database"])
 ## What's Next?
 
 ### Learn More
-- 📖 [Core Concepts](../concepts/core-concepts) - Deep dive into how Marcus works
-- 🎓 [Todo App Tutorial](../tutorials/beginner/todo-app) - Build a complete application step-by-step
-- 🔧 [Configuration Guide](../reference/configuration) - Customize Marcus for your needs
+- 📖 Core Concepts - Deep dive into how Marcus works
+- 🎓 [Todo App Tutorial](tutorials/beginner_todo_app_tutorial) - Build a complete application step-by-step
+- 🔧 [Configuration Guide](configuration) - Customize Marcus for your needs
 
 ### Explore Advanced Features
-- 🤖 [Custom AI Workers](../tutorials/custom_workers) - Create specialized workers
-- 📊 [Monitoring & Analytics](../user_guide/monitoring_progress) - Track productivity
-- 🔄 [CI/CD Integration](../developer/integration) - Automate your workflow
+- 🤖 [Custom AI Workers](tutorials/custom_workers) - Create specialized workers
+- 📊 [Monitoring & Analytics](user_guide/monitoring_progress) - Track productivity
+- 🔄 CI/CD Integration - Automate your workflow
 
 ### Get Help
 - 💬 [Join our Discord](https://discord.gg/pm-agent)
 - 🐛 [Report Issues](https://github.com/lwgray/pm-agent/issues)
-- 📧 [Email Support](mailto:support@pm-agent.ai)
+- 📧 [Email Support](mailto:support@marcus.ai)
 
 ## Troubleshooting Quick Fixes
 

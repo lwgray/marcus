@@ -1,6 +1,6 @@
 # 📋 Choosing Your Task Board
 
-PM Agent needs a place to get tasks from - like choosing between different brands of notebooks for your homework!
+Marcus needs a place to get tasks from - like choosing between different brands of notebooks for your homework!
 
 ## 🎯 Quick Comparison
 
@@ -114,7 +114,7 @@ PLANKA_PROJECT_NAME=my-project
 ## 🤔 Which Should I Choose?
 
 ### Choose GitHub if:
-- ✅ You're new to PM Agent
+- ✅ You're new to Marcus
 - ✅ You want free
 - ✅ You might host online
 - ✅ You want smart features
@@ -137,7 +137,7 @@ Yes, but it's manual work:
 1. Export your tasks from old system
 2. Import into new system
 3. Update your `.env` file
-4. Restart PM Agent
+4. Restart Marcus
 
 ## 💡 Pro Tip
 
@@ -151,4 +151,4 @@ You can always switch later if needed.
 
 ---
 
-Next: Set up your chosen provider with our [Configuration Guide](configuration.md)!
+Next: Set up your chosen provider with our [Configuration Guide](../configuration)!

@@ -202,4 +202,4 @@ curl https://api.anthropic.com/v1/messages \
 
 ---
 
-Need help? Check [Troubleshooting](troubleshooting.md) or [FAQ](faq.md)!
+Need help? Check [Troubleshooting](reference/troubleshooting) or [FAQ](reference/faq)!

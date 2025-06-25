@@ -52,9 +52,9 @@ Workers:
 - Report progress ("I'm 50% done!")
 - Ask for help if stuck
 
-### 5. Teacher Tracks Progress (PM Agent Monitors)
+### 5. Teacher Tracks Progress (Marcus Monitors)
 
-PM Agent:
+Marcus:
 - Watches who's working on what
 - Helps when someone's stuck
 - Updates the task board
@@ -64,21 +64,21 @@ PM Agent:
 
 ### 🧩 Knowledge Sharing
 
-When using GitHub, PM Agent is extra smart:
+When using GitHub, Marcus is extra smart:
 
 - Worker 1 creates an API endpoint: `/api/login`
-- PM Agent remembers this
-- Worker 2 needs to use login? PM Agent says: "Use `/api/login` that Worker 1 made!"
+- Marcus remembers this
+- Worker 2 needs to use login? Marcus says: "Use `/api/login` that Worker 1 made!"
 
 ### 🤖 AI-Powered Help
 
 When a worker gets stuck:
 1. Worker: "I don't know how to connect to the database"
-2. PM Agent: "Try using the connection string in config.js, here's an example..."
+2. Marcus: "Try using the connection string in config.js, here's an example..."
 
 ### 📊 Smart Task Assignment
 
-PM Agent assigns tasks based on:
+Marcus assigns tasks based on:
 - **Skills** - What the worker is good at
 - **Priority** - What's most important
 - **Dependencies** - What needs to be done first
@@ -98,14 +98,14 @@ Let's say you want to build a todo app:
    - Frontend Dev (good at: UI, React)
    - Full Stack Dev (good at: everything)
 
-3. **PM Agent assigns**:
+3. **Marcus assigns**:
    - Backend Dev → "Set up database" (best match!)
    - Full Stack Dev → "Add authentication" (needs both skills)
    - Frontend Dev → waits for API to be ready
 
 4. **Work happens**:
    - Backend Dev finishes database
-   - PM Agent tells Frontend Dev: "Database is ready at `postgres://localhost/todos`"
+   - Marcus tells Frontend Dev: "Database is ready at `postgres://localhost/todos`"
    - Frontend Dev can now build UI
 
 ## 📁 What Gets Created
@@ -120,7 +120,7 @@ Your Project/
 
 ## 💡 Why This Is Cool
 
-1. **No Manual Coordination** - PM Agent handles who does what
+1. **No Manual Coordination** - Marcus handles who does what
 2. **Knowledge Transfer** - Workers know what others built
 3. **Automatic Progress** - Everything is tracked
 4. **Smart Help** - AI assists when workers get stuck
@@ -129,9 +129,9 @@ Your Project/
 
 For the curious, here's what actually happens:
 
-1. **MCP Protocol** - Workers and PM Agent talk using a standard language
+1. **MCP Protocol** - Workers and Marcus talk using a standard language
 2. **Docker Containers** - Everything runs in isolated boxes
-3. **API Connections** - PM Agent connects to GitHub/Linear to get/update tasks
+3. **API Connections** - Marcus connects to GitHub/Linear to get/update tasks
 4. **AI Analysis** - Uses AI to understand tasks and worker capabilities
 
 ## 🎮 Try It Yourself!

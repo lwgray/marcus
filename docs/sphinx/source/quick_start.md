@@ -28,7 +28,7 @@ This starts Planka at http://localhost:3333
 ## Step 2: Setup Marcus
 
 ```bash
-# Clone PM Agent (in parent directory)
+# Clone Marcus (in parent directory)
 cd ..
 git clone https://github.com/lwgray/pm-agent.git
 cd pm-agent
@@ -101,7 +101,7 @@ npm run down
 
 ## Next Steps
 
-- Read the [Architecture Guide](architecture.md)
-- Learn about [Worker Agents](worker-agents.md)
-- See [Configuration Options](configuration.md)
-- Understand [Kanban MCP Integration](kanban-mcp-integration.md)
+- Read the [Architecture Guide](developer/architecture)
+- Learn about [Worker Agents](developer/worker_agents)
+- See [Configuration Options](configuration)
+- Understand Kanban MCP Integration

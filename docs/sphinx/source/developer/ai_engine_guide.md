@@ -1,13 +1,9 @@
 # PM Agent AI Engine: Comprehensive Guide
 
-## Table of Contents
-1. [Overview](#overview)
-2. [Current Capabilities](#current-capabilities)
-3. [Architecture Deep Dive](#architecture-deep-dive)
-4. [How All Components Work Together](#how-all-components-work-together)
-5. [Future Development Possibilities](#future-development-possibilities)
-6. [Maintaining Project Awareness](#maintaining-project-awareness)
-7. [Implementation Recommendations](#implementation-recommendations)
+```{contents}
+:local:
+:depth: 2
+```
 
 ## Overview
 

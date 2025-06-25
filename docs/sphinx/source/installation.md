@@ -363,18 +363,18 @@ source ~/.bashrc
 <� **Congratulations!** Marcus is now installed and ready to use.
 
 ### Quick Start Guide
-� Continue to our [5-minute quickstart](quickstart.md) to create your first AI-managed project
+� Continue to our [5-minute quickstart](quick_start) to create your first AI-managed project
 
 ### Learn the Concepts
-� Read [Core Concepts](../concepts/core-concepts.md) to understand how Marcus works
+� Read Core Concepts to understand how Marcus works
 
 ### Configure Your Workspace
-� See [Configuration Guide](../reference/configuration.md) for advanced settings
+� See [Configuration Guide](configuration) for advanced settings
 
 ### Get Help
 - =� [Join our Discord](https://discord.gg/pm-agent)
 - = [Report Issues](https://github.com/lwgray/pm-agent/issues)
-- =� [Email Support](mailto:support@pm-agent.ai)
+- =� [Email Support](mailto:support@marcus.ai)
 
 ---
 

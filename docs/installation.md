@@ -1,4 +1,4 @@
-# =æ Installing PM Agent
+# =æ Installing Marcus
 
 > **Time to complete**: 5-15 minutes  
 > **Difficulty**: Beginner friendly
@@ -7,10 +7,10 @@
 
 ### Quick Install (Recommended for Most Users)
 
-The fastest way to get PM Agent running:
+The fastest way to get Marcus running:
 
 ```bash
-# Download and start PM Agent with one command
+# Download and start Marcus with one command
 curl -sSL https://raw.githubusercontent.com/lwgray/pm-agent/main/setup.sh | bash
 ```
 
@@ -18,7 +18,7 @@ This script will:
 -  Check system requirements
 -  Install dependencies
 -  Set up configuration files
--  Start PM Agent
+-  Start Marcus
 
 ### Manual Installation
 
@@ -87,7 +87,7 @@ sudo usermod -aG docker $USER
 
 3. **Inside WSL2 Ubuntu**, follow the Ubuntu instructions above
 
-### Step 2: Clone PM Agent
+### Step 2: Clone Marcus
 
 ```bash
 # Clone the repository
@@ -107,12 +107,12 @@ pip install --upgrade pip
 pip install -r requirements.txt
 
 # Verify installation
-python -c "import pm_agent; print('PM Agent modules loaded successfully')"
+python -c "import pm_agent; print('Marcus modules loaded successfully')"
 ```
 
 ### Step 4: Set Up Kanban Provider
 
-PM Agent needs a kanban board to manage tasks. Choose one:
+Marcus needs a kanban board to manage tasks. Choose one:
 
 #### Option A: Planka (Local, No Account Needed)
 
@@ -129,7 +129,7 @@ npm run build
 # Start Planka
 npm run up
 
-# Return to PM Agent directory
+# Return to Marcus directory
 cd ../pm-agent
 ```
 
@@ -153,7 +153,7 @@ Planka will be available at http://localhost:3333
    - Navigate to API
    - Create a personal API key
 
-### Step 5: Configure PM Agent
+### Step 5: Configure Marcus
 
 ```bash
 # Copy example configuration
@@ -200,7 +200,7 @@ You should see:
  Configuration files found
  Dependencies installed
  Kanban provider configured
- PM Agent ready to start!
+ Marcus ready to start!
 ```
 
 ### Step 7: Initialize Your First Project
@@ -213,7 +213,7 @@ python scripts/setup/configure_board.py
 python scripts/quick_start.py
 ```
 
-## =€ Starting PM Agent
+## =€ Starting Marcus
 
 ### As MCP Server (For Claude Desktop/Code)
 
@@ -225,7 +225,7 @@ python pm_agent_mcp_server_v2.py
 ### As Standalone Service
 
 ```bash
-# Start PM Agent server
+# Start Marcus server
 python scripts/start_pm_agent_task_master.py
 ```
 
@@ -258,7 +258,7 @@ docker-compose logs -f pm-agent
 - [ ] Kanban provider accessible
 - [ ] API keys added
 - [ ] Verification script passes
-- [ ] Can start PM Agent without errors
+- [ ] Can start Marcus without errors
 
 ## =' Troubleshooting Common Issues
 
@@ -331,10 +331,10 @@ npm run up
 | `GITHUB_OWNER` | GitHub username/org | If using GitHub | - |
 | `GITHUB_REPO` | GitHub repository name | If using GitHub | - |
 | `LINEAR_API_KEY` | Linear API key | If using Linear | - |
-| `PM_AGENT_PORT` | Port for PM Agent server | No | 3000 |
+| `PM_AGENT_PORT` | Port for Marcus server | No | 3000 |
 | `LOG_LEVEL` | Logging verbosity (DEBUG/INFO/WARN) | No | INFO |
 
-## = Updating PM Agent
+## = Updating Marcus
 
 ```bash
 # Pull latest changes
@@ -350,7 +350,7 @@ docker-compose restart  # If using Docker
 
 ## <‰ Next Steps
 
-Congratulations! PM Agent is now installed. Here's what to do next:
+Congratulations! Marcus is now installed. Here's what to do next:
 
 1. **Quick Start Tutorial** - Create your first AI-assisted project in 5 minutes
    ```bash
@@ -377,7 +377,7 @@ Congratulations! PM Agent is now installed. Here's what to do next:
 - =Ö [Troubleshooting Guide](troubleshooting.md) - Detailed solutions
 - =¬ [GitHub Discussions](https://github.com/lwgray/pm-agent/discussions) - Ask questions
 - = [Issue Tracker](https://github.com/lwgray/pm-agent/issues) - Report bugs
-- =ç Email: support@pm-agent.ai
+- =ç Email: support@marcus.ai
 
 ---
 

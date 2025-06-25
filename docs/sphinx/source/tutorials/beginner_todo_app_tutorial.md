@@ -31,7 +31,7 @@ The final app will let users:
 ## Before You Begin
 
 Make sure you have:
-- [ ] PM Agent installed ([Installation Guide](/getting-started/installation))
+- [ ] PM Agent installed ([Installation Guide](../installation))
 - [ ] Your API keys configured in `.env`
 - [ ] Docker running on your machine
 - [ ] A GitHub repository (if using GitHub as your task board)
@@ -351,9 +351,9 @@ Congratulations! 🎉 You've successfully:
 ## Next Steps
 
 Now that you've completed this tutorial, you can:
-- 📖 Learn about [Advanced PM Agent Features](/concepts/advanced-features)
-- 🔧 Try the [Custom Workers Tutorial](/tutorials/custom-workers)
-- 🚀 Explore the [Production Deployment Guide](/how-to/deploy-production)
+- 📖 Learn about Advanced PM Agent Features
+- 🔧 Try the [Custom Workers Tutorial](custom_workers)
+- 🚀 Explore the Production Deployment Guide
 
 ### Experiment Ideas
 1. **Add Features**: Create new tasks to add features like:
@@ -375,7 +375,7 @@ Now that you've completed this tutorial, you can:
 ## Get Help
 
 If you run into issues:
-- Check our [Troubleshooting Guide](/how-to/troubleshooting)
+- Check our [Troubleshooting Guide](../how-to/troubleshoot-common-issues)
 - Ask in our [Discord Community](https://discord.gg/pm-agent)
 - Open an [issue on GitHub](https://github.com/lwgray/pm-agent/issues)
 
