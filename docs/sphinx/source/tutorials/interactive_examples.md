@@ -1,25 +1,25 @@
-# Interactive PM Agent Examples
+# Interactive Marcus Examples
 
 > **Time to complete**: 15-20 minutes per example  
 > **Difficulty**: Beginner to Intermediate  
-> **Prerequisites**: PM Agent installed and running
+> **Prerequisites**: Marcus installed and running
 
 ## What You'll Learn
 
 These interactive examples will show you how to:
-- Create different types of projects with PM Agent
+- Create different types of projects with Marcus
 - Understand task dependencies and worker coordination
 - Experiment with various development scenarios
-- See PM Agent handle real-world challenges
+- See Marcus handle real-world challenges
 
 ## Example 1: Quick API Endpoint
 
-**What it demonstrates**: How PM Agent handles a simple, focused task
+**What it demonstrates**: How Marcus handles a simple, focused task
 
 ### Create the Task
 
 ```python
-# Run this in PM Agent
+# Run this in Marcus
 docker-compose exec pm-agent python << 'EOF'
 from pm_agent import create_task
 
@@ -105,7 +105,7 @@ Open the visualization dashboard to see:
 - Search endpoint waits for CRUD API
 - Tests wait for all features
 
-**Key Learning**: PM Agent respects dependencies and parallelizes when possible!
+**Key Learning**: Marcus respects dependencies and parallelizes when possible!
 
 ## Example 3: Frontend Component Library
 
@@ -164,7 +164,7 @@ EOF
 
 ## Example 4: Handling Blockers
 
-**What it demonstrates**: How PM Agent handles and recovers from issues
+**What it demonstrates**: How Marcus handles and recovers from issues
 
 ### Create a Challenging Task
 
@@ -360,7 +360,7 @@ EOF
 
 ## Running Multiple Examples
 
-You can run multiple examples simultaneously to see how PM Agent handles concurrent projects:
+You can run multiple examples simultaneously to see how Marcus handles concurrent projects:
 
 ```bash
 # Terminal 1: Start the API endpoint example
@@ -438,7 +438,7 @@ create_task(
    "Task complete when: endpoint returns 200, handles errors, has tests"
    ```
 
-4. **Use Dependencies**: Let PM Agent optimize
+4. **Use Dependencies**: Let Marcus optimize
    ```
    "depends_on": ["database-setup", "auth-system"]
    ```
@@ -446,7 +446,7 @@ create_task(
 ## Summary
 
 These interactive examples demonstrate:
-- ✅ How PM Agent handles various project types
+- ✅ How Marcus handles various project types
 - ✅ Task dependency management
 - ✅ Worker coordination and specialization
 - ✅ Blocker handling and recovery
@@ -461,4 +461,4 @@ Try creating your own examples:
 4. **Game**: Simple web-based game
 5. **Analytics Dashboard**: Real-time metrics display
 
-Remember: The key to PM Agent is clear task definition and letting the AI workers handle the implementation details!
+Remember: The key to Marcus is clear task definition and letting the AI workers handle the implementation details!

@@ -1,13 +1,13 @@
-# How to Deploy PM Agent with Docker
+# How to Deploy Marcus with Docker
 
-> **Goal**: Deploy PM Agent using Docker for consistent, reproducible environments  
+> **Goal**: Deploy Marcus using Docker for consistent, reproducible environments  
 > **Time**: 10-20 minutes for basic setup  
 > **When to use**: Production deployments, team environments, or when you want isolation
 
 ## Prerequisites
 
 Before starting, ensure you have:
-- PM Agent version 1.0 or higher
+- Marcus version 1.0 or higher
 - Docker Engine 20.10+ installed
 - Docker Compose 2.0+ installed
 - 4GB free disk space
@@ -15,7 +15,7 @@ Before starting, ensure you have:
 
 ## Quick Answer
 
-Deploy PM Agent with Docker in one command:
+Deploy Marcus with Docker in one command:
 ```bash
 # Clone and deploy
 git clone https://github.com/your-org/pm-agent.git
@@ -61,7 +61,7 @@ PLANKA_PASSWORD=admin
 
 ### 2. Build Docker Image
 
-Build the PM Agent Docker image:
+Build the Marcus Docker image:
 
 ```bash
 # Build with default settings
@@ -76,7 +76,7 @@ docker-compose -f docker-compose.prod.yml build
 
 ### 3. Deploy with Docker Compose
 
-Deploy PM Agent based on your provider:
+Deploy Marcus based on your provider:
 
 ```bash
 # For GitHub/Linear (remote providers)
@@ -140,7 +140,7 @@ Verify your deployment is running correctly:
 # Check all services are up
 docker-compose ps
 
-# Test PM Agent health
+# Test Marcus health
 curl http://localhost:3100/health
 
 # Check logs for errors
@@ -342,6 +342,6 @@ docker-compose up -d
 ## References
 
 - [Docker Compose Documentation](https://docs.docker.com/compose/)
-- [PM Agent Configuration Reference](/reference/configuration)
+- [Marcus Configuration Reference](/reference/configuration)
 - [Environment Variables Reference](/reference/environment-variables)
 - [Docker Best Practices](https://docs.docker.com/develop/dev-best-practices/)

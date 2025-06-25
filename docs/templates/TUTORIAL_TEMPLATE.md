@@ -18,7 +18,7 @@ In this tutorial, you'll learn how to:
 ## Before You Begin
 
 Make sure you have:
-- [ ] PM Agent installed ([Installation Guide](/getting-started/installation))
+- [ ] Marcus installed ([Installation Guide](/getting-started/installation))
 - [ ] [Any other requirements]
 - [ ] [Required accounts or API keys]
 

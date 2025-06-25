@@ -1,8 +1,8 @@
-# PM Agent Architecture
+# Marcus Architecture
 
 ## System Design
 
-PM Agent implements a dual MCP (Model Context Protocol) architecture, serving as both a server and client to enable seamless coordination between AI workers and project management tools.
+Marcus implements a dual MCP (Model Context Protocol) architecture, serving as both a server and client to enable seamless coordination between AI workers and project management tools.
 
 ```{note}
 For a comprehensive visual guide to the complete system architecture, see [System Architecture Overview](system_architecture.md).
@@ -83,7 +83,7 @@ class WorkerStatus:
 
 ### 1. Worker Registration Flow
 ```
-Worker Agent ──register_agent──► PM Agent
+Worker Agent ──register_agent──► Marcus
                                      │
                                      ├─► Create WorkerStatus
                                      │
@@ -92,7 +92,7 @@ Worker Agent ──register_agent──► PM Agent
 
 ### 2. Task Assignment Flow
 ```
-Worker Agent ──request_next_task──► PM Agent
+Worker Agent ──request_next_task──► Marcus
                                         │
                                         ├─► Query Kanban MCP
                                         │
@@ -107,7 +107,7 @@ Worker Agent ──request_next_task──► PM Agent
 
 ### 3. Progress Reporting Flow
 ```
-Worker Agent ──report_progress──► PM Agent
+Worker Agent ──report_progress──► Marcus
                                       │
                                       ├─► Add comment to Kanban
                                       │
@@ -149,7 +149,7 @@ ANTHROPIC_API_KEY=your-api-key
 ### Local Development
 ```
 ┌─────────────────┐
-│  PM Agent MVP   │
+│  Marcus MVP   │
 │  (Python)       │
 ├─────────────────┤
 │ MCP Server:8765 │
@@ -166,7 +166,7 @@ ANTHROPIC_API_KEY=your-api-key
 ### Production Deployment
 ```
 ┌─────────────────────┐
-│    PM Agent         │
+│    Marcus         │
 │  Container/Service  │
 ├─────────────────────┤
 │ • Auto-scaling      │
@@ -196,7 +196,7 @@ Worker Pool 1  Worker Pool 2  Worker Pool N
 ## Scalability Considerations
 
 ### Horizontal Scaling
-- Multiple PM Agent instances can manage different projects
+- Multiple Marcus instances can manage different projects
 - Worker agents can be distributed across machines
 - Kanban MCP can be load-balanced
 

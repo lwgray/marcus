@@ -1,13 +1,13 @@
-# How to Deploy PM Agent on Kubernetes
+# How to Deploy Marcus on Kubernetes
 
-> **Goal**: Deploy PM Agent on Kubernetes for scalable, production-grade environments  
+> **Goal**: Deploy Marcus on Kubernetes for scalable, production-grade environments  
 > **Time**: 30-45 minutes  
 > **When to use**: Production deployments, auto-scaling needs, or multi-region setups
 
 ## Prerequisites
 
 Before starting, ensure you have:
-- PM Agent version 1.0 or higher
+- Marcus version 1.0 or higher
 - Kubernetes cluster (1.20+) with kubectl configured
 - Helm 3.0+ installed (optional but recommended)
 - Docker registry access for images
@@ -15,7 +15,7 @@ Before starting, ensure you have:
 
 ## Quick Answer
 
-Deploy PM Agent on Kubernetes:
+Deploy Marcus on Kubernetes:
 ```bash
 # Using kubectl
 kubectl create namespace pm-agent
@@ -30,7 +30,7 @@ helm install pm-agent pm-agent/pm-agent -n pm-agent --create-namespace
 
 ### 1. Prepare Container Image
 
-Build and push PM Agent Docker image:
+Build and push Marcus Docker image:
 
 ```bash
 # Build image with proper tag
@@ -538,12 +538,12 @@ velero restore create --from-backup pm-agent-daily-20240115020000
 
 - [How to Deploy with Docker](/how-to/deploy-with-docker)
 - [How to Configure Kubernetes Security](/how-to/k8s-security)
-- [How to Monitor PM Agent](/how-to/monitor-pm-agent)
+- [How to Monitor Marcus](/how-to/monitor-pm-agent)
 - [Kubernetes Best Practices](/reference/k8s-best-practices)
 
 ## References
 
 - [Kubernetes Documentation](https://kubernetes.io/docs/)
 - [Helm Documentation](https://helm.sh/docs/)
-- [PM Agent Helm Chart](/reference/helm-chart)
+- [Marcus Helm Chart](/reference/helm-chart)
 - [Kubernetes Patterns](https://k8spatterns.io/)

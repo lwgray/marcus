@@ -5,16 +5,16 @@
 
 ## Introduction
 
-Kanban Provider Abstraction is PM Agent's clever way of working with different task board systems (GitHub Projects, Linear, Planka) through one unified interface. It's like having a universal remote that works with any TV brand - write code once, work with any board.
+Kanban Provider Abstraction is Marcus's clever way of working with different task board systems (GitHub Projects, Linear, Planka) through one unified interface. It's like having a universal remote that works with any TV brand - write code once, work with any board.
 
 ## The Big Picture
 
-Instead of writing different code for each task board system, PM Agent uses an abstraction layer. This means Worker Agents and PM Agent's core logic don't need to know whether tasks are stored in GitHub, Linear, or Planka - they all look the same from the inside.
+Instead of writing different code for each task board system, Marcus uses an abstraction layer. This means Worker Agents and Marcus's core logic don't need to know whether tasks are stored in GitHub, Linear, or Planka - they all look the same from the inside.
 
 ```mermaid
 graph TB
-    subgraph "PM Agent Core"
-        PM[PM Agent Logic]
+    subgraph "Marcus Core"
+        PM[Marcus Logic]
         WA[Worker Agents]
     end
     
@@ -53,7 +53,7 @@ A common set of operations that all kanban providers must implement. This is lik
 
 A design pattern that creates the right provider instance based on configuration. The factory decides which concrete implementation to use without the rest of the system knowing.
 
-**In Practice**: When PM Agent starts, it reads `KANBAN_PROVIDER=github` and the factory creates a GitHub client, but the rest of PM Agent just sees a "kanban client".
+**In Practice**: When Marcus starts, it reads `KANBAN_PROVIDER=github` and the factory creates a GitHub client, but the rest of Marcus just sees a "kanban client".
 
 ### Unified Data Model
 
@@ -65,7 +65,7 @@ Common data structures that work across all providers. Tasks, boards, and lists 
 
 ### Step 1: Configuration
 
-PM Agent reads which provider to use from environment variables:
+Marcus reads which provider to use from environment variables:
 
 ```bash
 # Option 1: GitHub Projects
@@ -138,7 +138,7 @@ class KanbanInterface:
 
 ### Step 4: Provider Translation
 
-Each provider translates between its native format and PM Agent's unified model:
+Each provider translates between its native format and Marcus's unified model:
 
 ```mermaid
 graph LR
@@ -146,7 +146,7 @@ graph LR
         GH["{<br/>  'node_id': 'PVI_123',<br/>  'content': {...},<br/>  'fieldValues': {...}<br/>}"]
     end
     
-    subgraph "PM Agent Format"
+    subgraph "Marcus Format"
         PM["{<br/>  'id': 'task-123',<br/>  'title': 'Build API',<br/>  'status': 'in_progress',<br/>  'assignee': 'agent-001'<br/>}"]
     end
     
@@ -166,11 +166,11 @@ The Kanban Provider Abstraction is like a universal power adapter for internatio
 
 - **Power Adapter = Abstraction Layer**: Provides a standard interface
 - **Different Outlets = Different Providers**: US, UK, EU outlets (GitHub, Linear, Planka)
-- **Your Device = PM Agent**: Doesn't care about outlet type, just needs power
+- **Your Device = Marcus**: Doesn't care about outlet type, just needs power
 - **Electricity = Task Data**: Same purpose, different delivery methods
 
 Just like your laptop doesn't need to know about different outlet standards:
-- PM Agent doesn't know about GitHub's GraphQL API
+- Marcus doesn't know about GitHub's GraphQL API
 - Worker Agents don't know about Linear's data structure  
 - The system just knows about "tasks" and "boards"
 
@@ -233,7 +233,7 @@ Choose your provider based on your needs:
 Let's see how the same task operation works across providers:
 
 ```python
-# PM Agent creates a task - same code for any provider
+# Marcus creates a task - same code for any provider
 async def create_development_task():
     kanban = KanbanFactory.create_client(
         os.getenv("KANBAN_PROVIDER", "github")
@@ -348,12 +348,12 @@ class PlankaKanbanClient(KanbanInterface):
 
 Ready to learn more? Explore:
 - 📚 [Provider Comparison Guide](/reference/provider-comparison) - Detailed feature matrix
-- 🔧 [Adding New Providers](/how-to/add-kanban-provider) - Extend PM Agent
+- 🔧 [Adding New Providers](/how-to/add-kanban-provider) - Extend Marcus
 - 📖 [Provider API Reference](/reference/kanban-providers-api) - Technical details
 
 ## Summary
 
-Kanban Provider Abstraction lets PM Agent work with different task board systems through one unified interface. This design pattern provides flexibility to choose the right tool for your needs while keeping the codebase clean and maintainable.
+Kanban Provider Abstraction lets Marcus work with different task board systems through one unified interface. This design pattern provides flexibility to choose the right tool for your needs while keeping the codebase clean and maintainable.
 
 ## Further Reading
 

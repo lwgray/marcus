@@ -1,15 +1,15 @@
-# Building Your First Todo App with PM Agent
+# Building Your First Todo App with Marcus
 
 > **Time to complete**: 30-45 minutes  
 > **Difficulty**: Beginner  
-> **Prerequisites**: PM Agent installed and configured
+> **Prerequisites**: Marcus installed and configured
 
 ## What You'll Learn
 
 In this tutorial, you'll learn how to:
-- Use PM Agent to manage an AI-powered development team
+- Use Marcus to manage an AI-powered development team
 - Watch AI workers collaborate to build a complete Todo application
-- Understand how tasks flow through the PM Agent system
+- Understand how tasks flow through the Marcus system
 - Debug and iterate on AI-generated code
 - Experience the magic of autonomous development
 
@@ -31,31 +31,31 @@ The final app will let users:
 ## Before You Begin
 
 Make sure you have:
-- [ ] PM Agent installed ([Installation Guide](../installation))
+- [ ] Marcus installed ([Installation Guide](../installation))
 - [ ] Your API keys configured in `.env`
 - [ ] Docker running on your machine
 - [ ] A GitHub repository (if using GitHub as your task board)
 
-## Step 1: Start PM Agent
+## Step 1: Start Marcus
 
-First, let's start PM Agent with full visualization so you can watch the magic happen:
+First, let's start Marcus with full visualization so you can watch the magic happen:
 
 ```bash
-# Navigate to PM Agent directory
+# Navigate to Marcus directory
 cd ~/pm-agent
 
-# Start PM Agent with visualization
+# Start Marcus with visualization
 ./start.sh full
 ```
 
 **Expected output:**
 ```
-🚀 PM Agent - Easy Docker Setup
+🚀 Marcus - Easy Docker Setup
 ================================
-🔧 Starting PM Agent in full mode...
+🔧 Starting Marcus in full mode...
 
-📦 Starting PM Agent with visualization UI...
-✅ PM Agent is starting up!
+📦 Starting Marcus with visualization UI...
+✅ Marcus is starting up!
 
 🌐 Visualization UI will be available at:
   http://localhost:4298
@@ -65,7 +65,7 @@ cd ~/pm-agent
 
 ## Step 2: Create the Todo App Project
 
-Now we'll create all the tasks needed to build our Todo app. PM Agent comes with a pre-built script that creates a complete set of tasks:
+Now we'll create all the tasks needed to build our Todo app. Marcus comes with a pre-built script that creates a complete set of tasks:
 
 ```bash
 # In a new terminal, create the Todo app tasks
@@ -130,7 +130,7 @@ You've just created 17 interconnected tasks that define the entire Todo app proj
 
 ## Step 3: Watch AI Workers Build Your App
 
-Now the exciting part begins! PM Agent will start assigning tasks to AI workers who will build your app autonomously.
+Now the exciting part begins! Marcus will start assigning tasks to AI workers who will build your app autonomously.
 
 ### Monitor Progress in Real-Time
 
@@ -220,7 +220,7 @@ python main.py
 # In another terminal, test creating a todo
 curl -X POST http://localhost:8000/todos \
   -H "Content-Type: application/json" \
-  -d '{"title": "Learn PM Agent", "completed": false}'
+  -d '{"title": "Learn Marcus", "completed": false}'
 
 # Get all todos
 curl http://localhost:8000/todos
@@ -251,31 +251,31 @@ Open http://localhost:3000 to see your Todo app!
 Let's examine how the AI workers collaborated:
 
 ### Task Dependencies
-```mermaid
-graph TD
-    A[Project Setup] --> B[Database Schema]
-    B --> C[Todo Model]
-    B --> D[Database Connection]
-    C --> E[REST API]
-    D --> E
-    E --> F[Validation]
-    E --> G[Error Handling]
-    A --> H[React Setup]
-    H --> I[UI Design]
-    I --> J[List Component]
-    I --> K[Item Component]
-    I --> L[Add Form]
-    J --> M[API Service]
-    K --> M
-    L --> M
-    M --> N[Connect Frontend]
-    E --> N
-    G --> N
-    E --> O[Authentication]
-    N --> P[Testing]
-    O --> P
-    P --> Q[Deployment]
-```
+.. mermaid::
+
+   graph TD
+       A[Project Setup] --> B[Database Schema]
+       B --> C[Todo Model]
+       B --> D[Database Connection]
+       C --> E[REST API]
+       D --> E
+       E --> F[Validation]
+       E --> G[Error Handling]
+       A --> H[React Setup]
+       H --> I[UI Design]
+       I --> J[List Component]
+       I --> K[Item Component]
+       I --> L[Add Form]
+       J --> M[API Service]
+       K --> M
+       L --> M
+       M --> N[Connect Frontend]
+       E --> N
+       G --> N
+       E --> O[Authentication]
+       N --> P[Testing]
+       O --> P
+       P --> Q[Deployment]
 
 ### Worker Specialization
 - **Backend Workers**: Handle Python, FastAPI, SQLAlchemy tasks
@@ -342,7 +342,7 @@ npm test
 ## Summary
 
 Congratulations! 🎉 You've successfully:
-- ✅ Used PM Agent to orchestrate AI workers
+- ✅ Used Marcus to orchestrate AI workers
 - ✅ Built a complete Todo application without writing code
 - ✅ Learned how tasks flow through the system
 - ✅ Watched AI workers collaborate autonomously
@@ -351,7 +351,7 @@ Congratulations! 🎉 You've successfully:
 ## Next Steps
 
 Now that you've completed this tutorial, you can:
-- 📖 Learn about Advanced PM Agent Features
+- 📖 Learn about Advanced Marcus Features
 - 🔧 Try the [Custom Workers Tutorial](custom_workers)
 - 🚀 Explore the Production Deployment Guide
 
@@ -375,10 +375,10 @@ Now that you've completed this tutorial, you can:
 ## Get Help
 
 If you run into issues:
-- Check our [Troubleshooting Guide](../how-to/troubleshoot-common-issues)
+- Check our [Troubleshooting Guide](../reference/troubleshooting)
 - Ask in our [Discord Community](https://discord.gg/pm-agent)
 - Open an [issue on GitHub](https://github.com/lwgray/pm-agent/issues)
 
 ---
 
-🎯 **Pro Tip**: The real magic of PM Agent isn't just that it builds code - it's that it manages the entire development process, handling dependencies, blockers, and coordination automatically. You've just experienced the future of AI-assisted development!
+🎯 **Pro Tip**: The real magic of Marcus isn't just that it builds code - it's that it manages the entire development process, handling dependencies, blockers, and coordination automatically. You've just experienced the future of AI-assisted development!

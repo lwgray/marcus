@@ -1,6 +1,6 @@
 # Community Showcase Template
 
-Use this template to share your PM Agent success story with the community! Copy this template and fill in your project details.
+Use this template to share your Marcus success story with the community! Copy this template and fill in your project details.
 
 ---
 
@@ -8,13 +8,13 @@ Use this template to share your PM Agent success story with the community! Copy 
 
 **Author**: [Your Name/Organization]  
 **Date**: [Month Year]  
-**PM Agent Version**: [e.g., v1.2.0]  
+**Marcus Version**: [e.g., v1.2.0]  
 **Project Duration**: [e.g., 2 weeks, 1 month]  
 
 ## 📋 Project Overview
 
 ### What We Built
-[Describe what you built with PM Agent in 2-3 sentences. What problem did it solve?]
+[Describe what you built with Marcus in 2-3 sentences. What problem did it solve?]
 
 ### Technology Stack
 - **Languages**: [e.g., Python, JavaScript, Go]
@@ -26,9 +26,9 @@ Use this template to share your PM Agent success story with the community! Copy 
 - **Human Developers**: [Number]
 - **Worker Agents**: [Number and types]
 
-## 🎯 Why We Chose PM Agent
+## 🎯 Why We Chose Marcus
 
-[Explain why you selected PM Agent for this project. What specific features attracted you?]
+[Explain why you selected Marcus for this project. What specific features attracted you?]
 
 ## 📊 Project Setup
 
@@ -82,7 +82,7 @@ Provide 2-3 examples of tasks you created:
 - **Code Review Iterations**: [Average per task]
 
 ### Cost Comparison
-- **PM Agent Development Cost**: $[Amount] (API costs)
+- **Marcus Development Cost**: $[Amount] (API costs)
 - **Estimated Traditional Dev Cost**: $[Amount]
 - **Savings**: [Percentage or amount]
 
@@ -112,7 +112,7 @@ Provide 2-3 examples of tasks you created:
 
 ```mermaid
 graph LR
-    A[PM Agent] --> B[Backend Agent]
+    A[Marcus] --> B[Backend Agent]
     A --> C[Frontend Agent]
     A --> D[DevOps Agent]
     
@@ -131,7 +131,7 @@ graph LR
 
 Share any useful configurations that others might benefit from:
 
-### Custom PM Agent Settings
+### Custom Marcus Settings
 ```python
 # Example: Custom task assignment logic
 PM_AGENT_CONFIG = {
@@ -164,7 +164,7 @@ template:
 [List technical milestones reached]
 
 ### Future Plans
-[How you plan to use PM Agent going forward]
+[How you plan to use Marcus going forward]
 
 ## 🙏 Acknowledgments
 
@@ -181,7 +181,7 @@ Want to know more about our experience?
 
 ---
 
-*Would you recommend PM Agent to others?* **[Yes/No]**  
+*Would you recommend Marcus to others?* **[Yes/No]**  
 *Rating:* ⭐⭐⭐⭐⭐ **[X/5 stars]**
 
 ---

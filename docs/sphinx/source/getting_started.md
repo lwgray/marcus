@@ -63,17 +63,17 @@ Marcus is like a smart project manager for AI workers. It assigns coding tasks t
 
 ### How It Works
 
-```mermaid
-graph LR
-    You[You] --> Marcus[Marcus]
-    Marcus --> AI1[AI Worker 1]
-    Marcus --> AI2[AI Worker 2]
-    Marcus --> AI3[AI Worker 3]
-    AI1 --> Code[Your Project]
-    AI2 --> Code
-    AI3 --> Code
-    Marcus --> Track[Progress Tracking]
-```
+.. mermaid::
+
+   graph LR
+       You[You] --> Marcus[Marcus]
+       Marcus --> AI1[AI Worker 1]
+       Marcus --> AI2[AI Worker 2]
+       Marcus --> AI3[AI Worker 3]
+       AI1 --> Code[Your Project]
+       AI2 --> Code
+       AI3 --> Code
+       Marcus --> Track[Progress Tracking]
 
 1. **You** create tasks describing what needs to be built
 2. **Marcus** assigns tasks to available AI workers
@@ -152,7 +152,7 @@ The first run creates a `.env` file:
 
 Edit `.env` with your settings:
 
-```env
+```text
 # Required: AI Configuration
 ANTHROPIC_API_KEY=sk-ant-your-key-here
 
@@ -275,17 +275,17 @@ The AI workers will build each component, creating a production-ready applicatio
 
 ### How Tasks Move Through the System
 
-```mermaid
-stateDiagram-v2
-    [*] --> Created: You create task
-    Created --> Assigned: Marcus assigns to worker
-    Assigned --> InProgress: Worker starts
-    InProgress --> Review: Worker completes
-    Review --> Completed: Task verified
-    Review --> InProgress: Needs revision
-    InProgress --> Blocked: Worker hits issue
-    Blocked --> InProgress: Issue resolved
-```
+.. mermaid::
+
+   stateDiagram-v2
+       [*] --> Created: You create task
+       Created --> Assigned: Marcus assigns to worker
+       Assigned --> InProgress: Worker starts
+       InProgress --> Review: Worker completes
+       Review --> Completed: Task verified
+       Review --> InProgress: Needs revision
+       InProgress --> Blocked: Worker hits issue
+       Blocked --> InProgress: Issue resolved
 
 ### Task Priorities
 

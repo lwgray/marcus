@@ -1,4 +1,4 @@
-# PM Agent AI Analysis Engine API Reference
+# Marcus AI Analysis Engine API Reference
 
 > **Type**: API  
 > **Version**: 1.0.0  
@@ -6,7 +6,7 @@
 
 ## Overview
 
-Complete reference for the AI Analysis Engine that powers intelligent task assignment, instruction generation, and blocker resolution in PM Agent.
+Complete reference for the AI Analysis Engine that powers intelligent task assignment, instruction generation, and blocker resolution in Marcus.
 
 ## Synopsis
 

@@ -1,27 +1,27 @@
-# PM Agent How-To Guides
+# Marcus How-To Guides
 
-Task-oriented guides for common PM Agent operations. Each guide provides step-by-step instructions to accomplish specific tasks.
+Task-oriented guides for common Marcus operations. Each guide provides step-by-step instructions to accomplish specific tasks.
 
 ## 🔧 Troubleshooting
 
 - [**Troubleshoot Common Issues**](troubleshoot-common-issues.md)  
-  Diagnose and fix the most common PM Agent problems quickly
+  Diagnose and fix the most common Marcus problems quickly
 
 ## 🚀 Deployment Guides
 
 - [**Deploy with Docker**](deploy-with-docker.md)  
-  Deploy PM Agent using Docker for consistent, reproducible environments
+  Deploy Marcus using Docker for consistent, reproducible environments
 
 - [**Deploy with Python**](deploy-with-python.md)  
-  Deploy PM Agent directly using Python for development or lightweight production
+  Deploy Marcus directly using Python for development or lightweight production
 
 - [**Deploy on Kubernetes**](deploy-on-kubernetes.md)  
-  Deploy PM Agent on Kubernetes for scalable, production-grade environments
+  Deploy Marcus on Kubernetes for scalable, production-grade environments
 
 ## 🔒 Security
 
 - [**Security Best Practices**](security-best-practices.md)  
-  Implement security best practices for PM Agent in production
+  Implement security best practices for Marcus in production
 
 ## 📋 Quick Reference
 
@@ -63,10 +63,10 @@ Which deployment method should I use?
 
 ## 📚 Related Documentation
 
-- [Getting Started Guide](/getting-started) - New to PM Agent? Start here
-- [Tutorials](/tutorials) - Learn PM Agent through examples
+- [Getting Started Guide](/getting-started) - New to Marcus? Start here
+- [Tutorials](/tutorials) - Learn Marcus through examples
 - [API Reference](/reference/api) - Detailed API documentation
-- [Concepts](/concepts) - Understand PM Agent architecture
+- [Concepts](/concepts) - Understand Marcus architecture
 
 ## 💡 Tips
 
@@ -74,7 +74,7 @@ Which deployment method should I use?
 - Keep your API keys secure - never commit them to git
 - Enable logging and monitoring from day one
 - Regular backups are essential for production
-- Update PM Agent regularly for security patches
+- Update Marcus regularly for security patches
 
 ## 🆘 Need Help?
 

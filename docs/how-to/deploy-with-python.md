@@ -1,13 +1,13 @@
-# How to Deploy PM Agent with Python
+# How to Deploy Marcus with Python
 
-> **Goal**: Deploy PM Agent directly using Python for development or lightweight production  
+> **Goal**: Deploy Marcus directly using Python for development or lightweight production  
 > **Time**: 5-15 minutes  
 > **When to use**: Development environments, debugging, or when Docker isn't available
 
 ## Prerequisites
 
 Before starting, ensure you have:
-- PM Agent source code
+- Marcus source code
 - Python 3.8 or higher
 - pip package manager
 - Virtual environment tool (venv or virtualenv)
@@ -15,7 +15,7 @@ Before starting, ensure you have:
 
 ## Quick Answer
 
-Deploy PM Agent with Python:
+Deploy Marcus with Python:
 ```bash
 # Clone, install, and run
 git clone https://github.com/your-org/pm-agent.git
@@ -52,7 +52,7 @@ which python  # Should show venv path
 
 ### 2. Install Dependencies
 
-Install PM Agent and its dependencies:
+Install Marcus and its dependencies:
 
 ```bash
 # Upgrade pip first
@@ -64,7 +64,7 @@ pip install -r requirements.txt
 # For development (includes testing tools)
 pip install -r requirements-dev.txt
 
-# Install PM Agent as editable package
+# Install Marcus as editable package
 pip install -e .
 
 # Verify installation
@@ -102,9 +102,9 @@ mkdir -p config
 python -m pm_agent_mcp_server_v2 --generate-config
 ```
 
-### 4. Run PM Agent
+### 4. Run Marcus
 
-Start PM Agent with various options:
+Start Marcus with various options:
 
 ```bash
 # Basic start
@@ -126,14 +126,14 @@ watchmedo auto-restart -d src -p "*.py" -- python -m pm_agent_mcp_server_v2
 
 ### 5. Set Up as System Service
 
-Configure PM Agent to run as a system service:
+Configure Marcus to run as a system service:
 
 #### Linux (systemd)
 ```bash
 # Create service file
 sudo tee /etc/systemd/system/pm-agent.service << EOF
 [Unit]
-Description=PM Agent MCP Server
+Description=Marcus MCP Server
 After=network.target
 
 [Service]
@@ -194,15 +194,15 @@ $action = New-ScheduledTaskAction -Execute "C:\path\to\pm-agent\venv\Scripts\pyt
 
 $trigger = New-ScheduledTaskTrigger -AtStartup
 
-Register-ScheduledTask -TaskName "PM Agent" -Action $action -Trigger $trigger `
-    -RunLevel Highest -Description "PM Agent MCP Server"
+Register-ScheduledTask -TaskName "Marcus" -Action $action -Trigger $trigger `
+    -RunLevel Highest -Description "Marcus MCP Server"
 ```
 
 ## Verification
 
 Verify your deployment is working:
 ```bash
-# Check if PM Agent is running
+# Check if Marcus is running
 curl http://localhost:3100/health
 
 # Test MCP tools
@@ -336,7 +336,7 @@ root:
 
 while true; do
     if ! curl -f http://localhost:3100/health > /dev/null 2>&1; then
-        echo "PM Agent is down, restarting..."
+        echo "Marcus is down, restarting..."
         source venv/bin/activate
         python -m pm_agent_mcp_server_v2 &
     fi
@@ -383,12 +383,12 @@ cp /path/to/pm-agent/.env "$BACKUP_DIR/.env.backup"
 
 - [How to Deploy with Docker](/how-to/deploy-with-docker)
 - [How to Deploy on Kubernetes](/how-to/deploy-kubernetes)
-- [How to Configure PM Agent](/how-to/configure-pm-agent)
+- [How to Configure Marcus](/how-to/configure-pm-agent)
 - [Python Best Practices](/reference/python-best-practices)
 
 ## References
 
 - [Python Virtual Environments](https://docs.python.org/3/tutorial/venv.html)
-- [PM Agent Configuration Reference](/reference/configuration)
+- [Marcus Configuration Reference](/reference/configuration)
 - [Python Deployment Guide](https://packaging.python.org/guides/deploying/)
 - [Systemd Service Management](https://www.freedesktop.org/software/systemd/man/systemd.service.html)

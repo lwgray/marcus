@@ -83,7 +83,7 @@ Task Sizing Guidelines
 Using Labels Effectively
 ------------------------
 
-Labels help PM Agent match tasks to the right workers:
+Labels help Marcus match tasks to the right workers:
 
 **Skill Labels**
    * ``python``, ``javascript``, ``typescript``
@@ -268,7 +268,7 @@ Monitoring Task Progress
 Once you've created tasks:
 
 1. **Watch for Assignment**
-   PM Agent will assign tasks to workers based on skills
+   Marcus will assign tasks to workers based on skills
 
 2. **Check Progress Comments**
    Workers report progress at 25%, 50%, 75%, and completion

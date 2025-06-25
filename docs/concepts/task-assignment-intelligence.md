@@ -5,11 +5,11 @@
 
 ## Introduction
 
-Task Assignment Intelligence is PM Agent's AI-powered brain that decides which Worker Agent should handle each task. It's like a smart matchmaking system that pairs the right developer with the right job based on skills, availability, and task requirements.
+Task Assignment Intelligence is Marcus's AI-powered brain that decides which Worker Agent should handle each task. It's like a smart matchmaking system that pairs the right developer with the right job based on skills, availability, and task requirements.
 
 ## The Big Picture
 
-In a traditional development team, a project manager assigns tasks based on their knowledge of team members' skills and workload. PM Agent's Task Assignment Intelligence does this automatically using AI, analyzing task requirements and agent capabilities to make optimal matches.
+In a traditional development team, a project manager assigns tasks based on their knowledge of team members' skills and workload. Marcus's Task Assignment Intelligence does this automatically using AI, analyzing task requirements and agent capabilities to make optimal matches.
 
 ```mermaid
 graph LR
@@ -45,7 +45,7 @@ The process of comparing task requirements with agent capabilities to find the b
 
 ### Confidence Scoring
 
-A percentage indicating how well-suited an agent is for a task. Higher scores mean better matches, helping PM Agent make informed assignment decisions.
+A percentage indicating how well-suited an agent is for a task. Higher scores mean better matches, helping Marcus make informed assignment decisions.
 
 **In Practice**: An agent with Python and FastAPI skills might get a 95% confidence score for a "Build REST API" task, while a frontend specialist might score only 40%.
 
@@ -59,7 +59,7 @@ Custom instructions generated for each agent-task pairing, taking into account t
 
 ### Step 1: Gathering Context
 
-When a task needs assignment, PM Agent collects comprehensive data:
+When a task needs assignment, Marcus collects comprehensive data:
 
 ```python
 # Data collected for assignment decision
@@ -100,7 +100,7 @@ The AI engine processes this context through a sophisticated prompt:
 
 ```mermaid
 sequenceDiagram
-    participant PM as PM Agent
+    participant PM as Marcus
     participant AI as Claude AI
     participant DB as Decision
     
@@ -132,7 +132,7 @@ The AI returns a structured decision with reasoning:
 
 ### Step 4: Instruction Generation
 
-Based on the match, PM Agent generates tailored instructions:
+Based on the match, Marcus generates tailored instructions:
 
 ```python
 # Instructions customized for the selected agent
@@ -172,7 +172,7 @@ The recruiter considers:
 **Reality**: The system balances skill match with workload, preventing agent burnout and ensuring parallel progress.
 
 ### Misconception 3: Assignments are permanent
-**Reality**: If an agent gets blocked or can't complete a task, PM Agent can reassign it with context from the previous attempt.
+**Reality**: If an agent gets blocked or can't complete a task, Marcus can reassign it with context from the previous attempt.
 
 ## When to Use This
 
@@ -290,7 +290,7 @@ Ready to learn more? Explore:
 
 ## Summary
 
-Task Assignment Intelligence is PM Agent's smart matching system that pairs the right Worker Agent with the right task. It considers skills, workload, project context, and task requirements to make optimal assignments, then generates custom instructions for each pairing.
+Task Assignment Intelligence is Marcus's smart matching system that pairs the right Worker Agent with the right task. It considers skills, workload, project context, and task requirements to make optimal assignments, then generates custom instructions for each pairing.
 
 ## Further Reading
 

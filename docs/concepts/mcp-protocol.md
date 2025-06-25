@@ -5,7 +5,7 @@
 
 ## Introduction
 
-MCP (Model Context Protocol) is the communication standard that lets AI assistants like Claude work with external tools and systems. In PM Agent, it's the language Worker Agents use to talk to PM Agent - like a phone line that connects AI workers to their AI manager.
+MCP (Model Context Protocol) is the communication standard that lets AI assistants like Claude work with external tools and systems. In Marcus, it's the language Worker Agents use to talk to Marcus - like a phone line that connects AI workers to their AI manager.
 
 ## The Big Picture
 
@@ -18,7 +18,7 @@ graph LR
         MC[MCP Client<br/>Sends Requests]
     end
     
-    subgraph "PM Agent"
+    subgraph "Marcus"
         MS[MCP Server<br/>Receives Requests]
         TOOLS[Available Tools<br/>- register_agent<br/>- request_task<br/>- report_progress]
     end
@@ -41,15 +41,15 @@ graph LR
 
 ### MCP Server
 
-A program that exposes tools and resources to AI assistants. PM Agent runs an MCP server that Worker Agents can connect to.
+A program that exposes tools and resources to AI assistants. Marcus runs an MCP server that Worker Agents can connect to.
 
-**Example**: PM Agent's MCP server exposes tools like `register_agent`, `request_next_task`, and `report_task_progress` that Worker Agents can call.
+**Example**: Marcus's MCP server exposes tools like `register_agent`, `request_next_task`, and `report_task_progress` that Worker Agents can call.
 
 ### MCP Client
 
 The AI assistant's ability to connect to and use MCP servers. Claude has built-in MCP client capabilities.
 
-**In Practice**: When you configure Claude with PM Agent's connection details, Claude becomes a Worker Agent that can request and complete tasks.
+**In Practice**: When you configure Claude with Marcus's connection details, Claude becomes a Worker Agent that can request and complete tasks.
 
 ### Tools
 
@@ -61,7 +61,7 @@ Specific functions that an MCP server makes available. Each tool has a name, des
 
 ### Step 1: Connection Setup
 
-Worker Agents (Claude) connect to PM Agent's MCP server:
+Worker Agents (Claude) connect to Marcus's MCP server:
 
 ```json
 {
@@ -84,7 +84,7 @@ When connected, the Worker Agent can see available tools:
 ```mermaid
 sequenceDiagram
     participant W as Worker Agent<br/>(Claude)
-    participant M as MCP Server<br/>(PM Agent)
+    participant M as MCP Server<br/>(Marcus)
     
     W->>M: List available tools
     M-->>W: Tool definitions
@@ -111,7 +111,7 @@ Worker Agents call tools using JSON-RPC format:
     "id": 1
 }
 
-// PM Agent responds:
+// Marcus responds:
 {
     "jsonrpc": "2.0",
     "result": {
@@ -127,7 +127,7 @@ Worker Agents call tools using JSON-RPC format:
 Worker Agents use MCP tools throughout their lifecycle:
 
 ```python
-# 1. Register with PM Agent
+# 1. Register with Marcus
 register_agent({
     "agent_id": "worker-123",
     "skills": ["python", "api", "testing"]
@@ -164,7 +164,7 @@ report_task_progress({
 MCP Protocol is like a restaurant's order system:
 
 - **Waiter = Worker Agent (Claude)**: Takes orders and serves food
-- **Kitchen = PM Agent**: Prepares orders and manages workflow  
+- **Kitchen = Marcus**: Prepares orders and manages workflow  
 - **Order Slips = MCP Messages**: Standardized communication
 - **Menu = Available Tools**: What the kitchen can make
 
@@ -179,8 +179,8 @@ Just like order slips have a standard format (table number, items, special reque
 
 ## Common Misconceptions
 
-### Misconception 1: MCP is specific to PM Agent
-**Reality**: MCP is an open standard by Anthropic. PM Agent is just one implementation. The same protocol works with many other tools and systems.
+### Misconception 1: MCP is specific to Marcus
+**Reality**: MCP is an open standard by Anthropic. Marcus is just one implementation. The same protocol works with many other tools and systems.
 
 ### Misconception 2: Worker Agents can do anything
 **Reality**: Worker Agents can only use the tools exposed by the MCP server. They can't access systems or perform actions outside of these defined tools.
@@ -231,7 +231,7 @@ Here's a complete Worker Agent session using MCP:
 ```typescript
 // Worker Agent (Claude) perspective
 async function workOnTasks() {
-    // 1. Introduce myself to PM Agent
+    // 1. Introduce myself to Marcus
     await mcp.callTool("register_agent", {
         agent_id: "claude-backend-01",
         name: "Backend Specialist",
@@ -297,10 +297,10 @@ async function workOnTasks() {
 
 ### Code Example
 
-Here's how PM Agent implements its MCP server:
+Here's how Marcus implements its MCP server:
 
 ```python
-# PM Agent's MCP Server Implementation
+# Marcus's MCP Server Implementation
 class PMAgentMCPServer:
     def __init__(self):
         self.tools = {
@@ -355,11 +355,11 @@ class PMAgentMCPServer:
 Ready to learn more? Explore:
 - 📚 [MCP Official Documentation](https://modelcontextprotocol.io) - Complete protocol specification
 - 🔧 [Creating MCP Tools](/how-to/create-mcp-tools) - Build your own tools
-- 📖 [PM Agent Tools Reference](/reference/mcp-tools-api) - All available PM Agent tools
+- 📖 [Marcus Tools Reference](/reference/mcp-tools-api) - All available Marcus tools
 
 ## Summary
 
-MCP Protocol is the standardized communication layer that enables Worker Agents to interact with PM Agent. It provides a secure, simple, and flexible way for AI assistants to use tools and complete tasks while maintaining clear boundaries on capabilities.
+MCP Protocol is the standardized communication layer that enables Worker Agents to interact with Marcus. It provides a secure, simple, and flexible way for AI assistants to use tools and complete tasks while maintaining clear boundaries on capabilities.
 
 ## Further Reading
 

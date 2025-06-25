@@ -1,4 +1,4 @@
-# PM Agent MCP Tools API Reference
+# Marcus MCP Tools API Reference
 
 > **Type**: API  
 > **Version**: 2.0.0  
@@ -6,7 +6,7 @@
 
 ## Overview
 
-The PM Agent MCP (Model Context Protocol) Tools API provides a comprehensive set of tools for worker agents to interact with the PM Agent system. These tools enable autonomous agents to register themselves, request tasks, report progress, and handle blockers.
+The Marcus MCP (Model Context Protocol) Tools API provides a comprehensive set of tools for worker agents to interact with the Marcus system. These tools enable autonomous agents to register themselves, request tasks, report progress, and handle blockers.
 
 ## Synopsis
 
@@ -22,7 +22,7 @@ await mcp_client.call_tool("register_agent", {
 
 ## Description
 
-The PM Agent MCP Tools API is designed to facilitate autonomous agent workflows. Worker agents can register with the system, continuously request new tasks, report their progress, and handle blockers with AI-powered suggestions. The API follows a stateless design pattern where each tool call is independent.
+The Marcus MCP Tools API is designed to facilitate autonomous agent workflows. Worker agents can register with the system, continuously request new tasks, report their progress, and handle blockers with AI-powered suggestions. The API follows a stateless design pattern where each tool call is independent.
 
 ## Parameters
 
@@ -136,7 +136,7 @@ Lists all currently registered agents.
 
 ### ping
 
-Checks PM Agent connectivity and status.
+Checks Marcus connectivity and status.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|

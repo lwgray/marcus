@@ -1,4 +1,4 @@
-# PM Agent Kanban Providers API Reference
+# Marcus Kanban Providers API Reference
 
 > **Type**: API  
 > **Version**: 1.0.0  
@@ -6,7 +6,7 @@
 
 ## Overview
 
-Complete reference for integrating kanban board providers with PM Agent, including the provider interface, factory pattern, and provider-specific implementations.
+Complete reference for integrating kanban board providers with Marcus, including the provider interface, factory pattern, and provider-specific implementations.
 
 ## Synopsis
 
@@ -24,7 +24,7 @@ tasks = await kanban_client.get_available_tasks()
 
 ## Description
 
-PM Agent supports multiple kanban board providers through a unified interface. The system uses a factory pattern to instantiate the appropriate provider based on configuration, allowing seamless switching between different kanban systems without code changes.
+Marcus supports multiple kanban board providers through a unified interface. The system uses a factory pattern to instantiate the appropriate provider based on configuration, allowing seamless switching between different kanban systems without code changes.
 
 ## Parameters
 
@@ -337,7 +337,7 @@ class JiraProvider(KanbanInterface):
         return tasks
     
     def _map_priority(self, jira_priority: str) -> Priority:
-        """Map Jira priority to PM Agent priority"""
+        """Map Jira priority to Marcus priority"""
         mapping = {
             "Highest": Priority.URGENT,
             "High": Priority.HIGH,

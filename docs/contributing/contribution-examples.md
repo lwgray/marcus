@@ -1,6 +1,6 @@
 # Contribution Examples & Case Studies
 
-This page showcases real examples of contributions to PM Agent, demonstrating different ways people have helped improve the project. Use these as inspiration for your own contributions!
+This page showcases real examples of contributions to Marcus, demonstrating different ways people have helped improve the project. Use these as inspiration for your own contributions!
 
 ## 🌟 Featured Contributions
 
@@ -88,18 +88,18 @@ all_comments = api.batch_get_comments(task_ids)  # 1 API call!
 Think of Worker Agents like employees at a company:
 
 1. **Clock In** (Registration)
-   - Agent introduces itself to PM Agent
+   - Agent introduces itself to Marcus
    - Declares skills and availability
 
 2. **Get Assignment** (Task Request)
    - Agent asks for work
-   - PM Agent assigns best-fit task
+   - Marcus assigns best-fit task
 
 [Visual diagram showing the flow]
 ```
 
 ### Example: Tutorial Creation
-**What**: "Build Your First PM Agent Project" tutorial  
+**What**: "Build Your First Marcus Project" tutorial  
 **Why**: No hands-on guide for beginners existed  
 **How**: Created step-by-step tutorial with code examples
 
@@ -229,33 +229,33 @@ docs/
 **How**: 5-part series covering setup to advanced usage
 
 Series outline:
-1. What is PM Agent? (5 min intro)
+1. What is Marcus? (5 min intro)
 2. Setting Up Your First Project (15 min)
 3. Understanding Worker Agents (20 min)
-4. Customizing PM Agent (25 min)
+4. Customizing Marcus (25 min)
 5. Production Deployment (30 min)
 
 ## 🔧 Tool Integration
 
 ### Example: VS Code Extension
-**What**: Created VS Code extension for PM Agent  
+**What**: Created VS Code extension for Marcus  
 **Why**: Developers wanted IDE integration  
 **How**: Built extension using VS Code API
 
 Features added:
 - View task status in sidebar
 - Quick commands for common operations
-- Syntax highlighting for PM Agent configs
+- Syntax highlighting for Marcus configs
 - IntelliSense for configuration files
 
 ### Example: GitHub Action
-**What**: Created GitHub Action for PM Agent  
-**Why**: Automate PM Agent in CI/CD pipelines  
+**What**: Created GitHub Action for Marcus  
+**Why**: Automate Marcus in CI/CD pipelines  
 **How**: Built reusable action
 
 ```yaml
 # Usage example
-- name: Run PM Agent
+- name: Run Marcus
   uses: pm-agent/action@v1
   with:
     provider: github
@@ -298,7 +298,7 @@ These examples show that contributions come in all shapes and sizes. Whether you
 - Create a tutorial
 - Build a major feature
 
-Every contribution matters and makes PM Agent better for everyone!
+Every contribution matters and makes Marcus better for everyone!
 
 ### Getting Started with Your Contribution
 

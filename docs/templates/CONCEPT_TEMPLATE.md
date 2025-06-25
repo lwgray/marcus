@@ -9,7 +9,7 @@
 
 ## The Big Picture
 
-[Explain how this concept fits into the broader PM Agent system. Use analogies if helpful.]
+[Explain how this concept fits into the broader Marcus system. Use analogies if helpful.]
 
 ```mermaid
 graph LR
@@ -30,7 +30,7 @@ graph LR
 
 [Definition and explanation]
 
-**In Practice**: [How this manifests in PM Agent]
+**In Practice**: [How this manifests in Marcus]
 
 ### [Key Term 3]
 

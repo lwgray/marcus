@@ -140,7 +140,7 @@
 
 ---
 
-## PM Agent Metadata
+## Marcus Metadata
 
 ### Automation Hints
 ```yaml

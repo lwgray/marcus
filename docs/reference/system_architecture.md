@@ -1,4 +1,4 @@
-# PM Agent System Architecture Reference
+# Marcus System Architecture Reference
 
 > **Type**: Component  
 > **Version**: 2.0.0  
@@ -6,13 +6,13 @@
 
 ## Overview
 
-This document provides a comprehensive technical reference for the PM Agent system architecture, detailing all components, their interactions, data flows, and integration points.
+This document provides a comprehensive technical reference for the Marcus system architecture, detailing all components, their interactions, data flows, and integration points.
 
 ## Synopsis
 
 ```
 ┌─────────────────┐     MCP Protocol      ┌──────────────────┐
-│  Worker Agents  │◄────────────────────►│    PM Agent      │
+│  Worker Agents  │◄────────────────────►│    Marcus      │
 │  (Claude, etc)  │                       │   MCP Server     │
 └─────────────────┘                       └────────┬─────────┘
                                                    │
@@ -24,11 +24,11 @@ This document provides a comprehensive technical reference for the PM Agent syst
 
 ## Description
 
-PM Agent is a sophisticated project management system that orchestrates autonomous AI agents to complete software development tasks. The system uses the Model Context Protocol (MCP) for agent communication, integrates with various kanban providers for task management, and employs AI for intelligent task assignment and blocker resolution.
+Marcus is a sophisticated project management system that orchestrates autonomous AI agents to complete software development tasks. The system uses the Model Context Protocol (MCP) for agent communication, integrates with various kanban providers for task management, and employs AI for intelligent task assignment and blocker resolution.
 
 ## Core Components
 
-### PM Agent MCP Server
+### Marcus MCP Server
 
 The central orchestration component that manages all agent interactions.
 

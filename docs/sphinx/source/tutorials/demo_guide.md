@@ -1,6 +1,6 @@
-# PM Agent Demo Guide
+# Marcus Demo Guide
 
-This guide explains how to run demonstrations of PM Agent with mock Claude workers, showing the detailed conversation and decision-making process between Workers, PM Agent, and the Kanban Board.
+This guide explains how to run demonstrations of Marcus with mock Claude workers, showing the detailed conversation and decision-making process between Workers, Marcus, and the Kanban Board.
 
 ## Available Demo Scripts
 
@@ -21,13 +21,13 @@ This guide explains how to run demonstrations of PM Agent with mock Claude worke
 - Good for understanding the communication pattern
 
 ### 4. **Full Demo Runner** (`scripts/run_verbose_demo.py`)
-- Orchestrates PM Agent + Workers
+- Orchestrates Marcus + Workers
 - Optional screen recording
 - Multiple demo presets
 
 ### 5. **Full Conversation Test** (`scripts/test_full_conversation.py`)
 - Shows complete three-way conversation
-- Worker ↔ PM Agent ↔ Kanban Board
+- Worker ↔ Marcus ↔ Kanban Board
 - Demonstrates all interaction patterns
 - No external dependencies needed
 
@@ -43,11 +43,11 @@ This guide explains how to run demonstrations of PM Agent with mock Claude worke
 python scripts/test_conversation.py
 ```
 
-This shows a simulated conversation between PM Agent and a worker without needing the full system running.
+This shows a simulated conversation between Marcus and a worker without needing the full system running.
 
 ### Run Single Verbose Worker
 ```bash
-# Make sure PM Agent is running first
+# Make sure Marcus is running first
 python pm_agent_mcp_server.py
 
 # In another terminal, run a worker
@@ -81,26 +81,26 @@ Demo options:
 
 The system shows conversations between three components:
 
-1. **Worker ↔ PM Agent**
+1. **Worker ↔ Marcus**
    - Workers request tasks and report progress
-   - PM Agent assigns tasks and provides guidance
+   - Marcus assigns tasks and provides guidance
    
-2. **PM Agent ↔ Kanban Board**  
+2. **Marcus ↔ Kanban Board**  
    - PM queries available tasks and board state
    - PM updates task assignments and progress
    - Kanban returns task data and metrics
 
 3. **Internal Processing**
-   - PM Agent thinking and decision logic
+   - Marcus thinking and decision logic
    - Kanban board processing operations
 
-### PM Agent Output
+### Marcus Output
 ```
-🧠 PM Agent thinking: New agent wants to register: Claude Backend Dev
+🧠 Marcus thinking: New agent wants to register: Claude Backend Dev
 📋 PM Decision: Register Claude Backend Dev
    Reason: Skills match project requirements
 
-🧠 PM Agent thinking: Finding optimal task for agent
+🧠 Marcus thinking: Finding optimal task for agent
    Agent: claude-backend-001
    Skills: python, api, database, testing
    Available tasks: 5
@@ -111,9 +111,9 @@ The system shows conversations between three components:
 
 ### Worker Output
 ```
-💭 Claude Backend Dev thinking: Time to register with PM Agent
-📤 Claude Backend Dev → PM Agent: Hello PM Agent! I'm Claude Backend Dev...
-📥 PM Agent → Claude Backend Dev: Welcome! You're registered...
+💭 Claude Backend Dev thinking: Time to register with Marcus
+📤 Claude Backend Dev → Marcus: Hello Marcus! I'm Claude Backend Dev...
+📥 Marcus → Claude Backend Dev: Welcome! You're registered...
 
 💭 Claude Backend Dev thinking: Let me check if there's any work for me
 🔧 Claude Backend Dev action: Starting work on task
@@ -122,7 +122,7 @@ The system shows conversations between three components:
 
 ### Kanban Board Interactions
 ```
-🔌 PM Agent → Kanban Board:
+🔌 Marcus → Kanban Board:
    Action: Get available tasks
    Criteria: Unassigned, in Backlog or Ready
 
@@ -131,7 +131,7 @@ The system shows conversations between three components:
    2. Filtering unassigned tasks
    3. Sorting by priority
 
-📋 Kanban Board → PM Agent:
+📋 Kanban Board → Marcus:
    Found: 3 available tasks
    • Implement user authentication (High priority)
    • Create API documentation (Medium priority)
@@ -140,20 +140,20 @@ The system shows conversations between three components:
 ### Conversation Flow
 1. **Worker Registration**
    - Worker introduces itself with skills
-   - PM Agent evaluates and accepts
+   - Marcus evaluates and accepts
    
 2. **Task Assignment**
    - Worker requests work
-   - PM Agent analyzes available tasks
-   - PM Agent assigns best match
+   - Marcus analyzes available tasks
+   - Marcus assigns best match
    
 3. **Progress Updates**
    - Worker reports progress at 25%, 50%, 75%, 100%
-   - PM Agent acknowledges and tracks
+   - Marcus acknowledges and tracks
    
 4. **Blocker Handling** (10% chance)
    - Worker reports blocker
-   - PM Agent provides solutions
+   - Marcus provides solutions
    - Worker attempts resolution
 
 ## Screen Recording
@@ -206,15 +206,15 @@ work_time = (estimated_hours * 0.25 * self.work_speed * 2)
 
 ## Troubleshooting
 
-### PM Agent Not Receiving Messages
-- Check that PM Agent is running: `ps aux | grep pm_agent`
+### Marcus Not Receiving Messages
+- Check that Marcus is running: `ps aux | grep pm_agent`
 - Verify MCP connection in logs
 - Ensure Planka is accessible
 
 ### Workers Not Finding Tasks
 - Verify tasks exist in Planka Backlog
 - Check task labels match worker skills
-- Ensure PM Agent has board access
+- Ensure Marcus has board access
 
 ### Recording Issues
 - **macOS**: Grant terminal permission for screen recording
@@ -263,7 +263,7 @@ work_time = (estimated_hours * 0.25 * self.work_speed * 2)
 ```bash
 # Increase blocker_tendency to 0.3
 # Run workers to see blocker handling
-# Shows PM Agent problem-solving
+# Shows Marcus problem-solving
 ```
 
 ## Next Steps
@@ -271,7 +271,7 @@ work_time = (estimated_hours * 0.25 * self.work_speed * 2)
 After running demos, you can:
 1. Analyze conversation logs for improvement
 2. Test with real AI workers (Claude, GPT-4)
-3. Customize PM Agent decision logic
+3. Customize Marcus decision logic
 4. Add more sophisticated task routing
 
-The demo system provides a foundation for testing and showcasing PM Agent's autonomous project management capabilities!
+The demo system provides a foundation for testing and showcasing Marcus's autonomous project management capabilities!

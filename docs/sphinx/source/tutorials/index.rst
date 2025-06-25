@@ -1,7 +1,7 @@
 Tutorials
 =========
 
-Step-by-step guides to help you get the most out of PM Agent.
+Step-by-step guides to help you get the most out of Marcus.
 
 .. toctree::
    :maxdepth: 2
@@ -18,18 +18,18 @@ Step-by-step guides to help you get the most out of PM Agent.
 Getting Started
 ---------------
 
-If you're new to PM Agent, we recommend starting with:
+If you're new to Marcus, we recommend starting with:
 
-1. :doc:`demo_guide` - See PM Agent in action with mock workers
+1. :doc:`demo_guide` - See Marcus in action with mock workers
 2. :doc:`beginner_todo_app_tutorial` - Comprehensive step-by-step tutorial for building your first Todo app
-3. :doc:`interactive_examples` - Hands-on examples demonstrating PM Agent capabilities
+3. :doc:`interactive_examples` - Hands-on examples demonstrating Marcus capabilities
 4. :doc:`custom_workers` - Create your own AI worker agents
 
 What You'll Learn
 -----------------
 
 **Demo Guide**
-   * How to run PM Agent with simulated workers
+   * How to run Marcus with simulated workers
    * Understanding the conversation flow
    * Monitoring task progress
    * Debugging common issues
@@ -56,7 +56,7 @@ What You'll Learn
    * Seeing workers collaborate
 
 **Custom Workers**
-   * Building worker agents that connect to PM Agent
+   * Building worker agents that connect to Marcus
    * Implementing task execution logic
    * Handling blockers and errors
    * Creating specialized workers
@@ -79,7 +79,7 @@ Prerequisites
 
 Before starting these tutorials:
 
-* PM Agent installed and configured
+* Marcus installed and configured
 * Basic understanding of software development
 * Familiarity with your chosen task board (GitHub/Linear/Planka)
 
@@ -116,4 +116,4 @@ Tips for Success
 Ready to Start?
 ---------------
 
-Choose a tutorial above and let's build something with PM Agent!
+Choose a tutorial above and let's build something with Marcus!

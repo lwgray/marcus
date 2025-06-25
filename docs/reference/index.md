@@ -1,11 +1,11 @@
-# PM Agent Reference Documentation
+# Marcus Reference Documentation
 
 > **Last Updated**: 2025-06-25  
 > **Version**: 2.0.0
 
 ## Overview
 
-This section contains comprehensive technical reference documentation for all PM Agent components, APIs, and configurations. Each reference document follows a consistent format with complete parameter documentation, examples, and error handling information.
+This section contains comprehensive technical reference documentation for all Marcus components, APIs, and configurations. Each reference document follows a consistent format with complete parameter documentation, examples, and error handling information.
 
 ## API References
 
@@ -120,7 +120,7 @@ Complete reference for all supported environment variables.
 ## Architecture References
 
 ### [System Architecture](./system_architecture.md)
-Technical deep-dive into PM Agent's architecture.
+Technical deep-dive into Marcus's architecture.
 
 **Architectural Components:**
 - MCP Server implementation
@@ -203,7 +203,7 @@ export PLANKA_PASSWORD="password"
 
 ## Version Compatibility
 
-| PM Agent Version | API Version | Breaking Changes |
+| Marcus Version | API Version | Breaking Changes |
 |-----------------|-------------|------------------|
 | 2.0.0 | 2.0.0 | Added workspace isolation |
 | 1.5.0 | 1.5.0 | New provider interface |
@@ -230,7 +230,7 @@ Found an error or want to improve the documentation?
 - [Getting Started Guide](/getting-started) - New user introduction
 - [How-To Guides](/how-to) - Task-oriented guides
 - [Tutorials](/tutorials) - Step-by-step learning
-- [Conceptual Guides](/concepts) - Understanding PM Agent
+- [Conceptual Guides](/concepts) - Understanding Marcus
 
 ---
 

@@ -1,14 +1,14 @@
 Creating Custom Workers
 =======================
 
-Learn how to build AI worker agents that integrate with PM Agent.
+Learn how to build AI worker agents that integrate with Marcus.
 
 Overview
 --------
 
 This tutorial shows you how to create custom worker agents that can:
 
-* Register with PM Agent
+* Register with Marcus
 * Request and complete tasks
 * Report progress
 * Handle blockers
@@ -18,7 +18,7 @@ Prerequisites
 -------------
 
 * Python 3.8+ installed
-* PM Agent running and accessible
+* Marcus running and accessible
 * Basic Python knowledge
 * Understanding of async programming (helpful)
 
@@ -27,11 +27,11 @@ Basic Worker Structure
 
 Every worker needs these components:
 
-1. **MCP Client** - Connects to PM Agent
+1. **MCP Client** - Connects to Marcus
 2. **Registration** - Declares capabilities
 3. **Work Loop** - Continuously seeks tasks
 4. **Task Execution** - Does the actual work
-5. **Progress Reporting** - Updates PM Agent
+5. **Progress Reporting** - Updates Marcus
 
 Simple Worker Example
 ---------------------
@@ -55,18 +55,18 @@ Let's create a basic documentation worker:
            
        async def start(self):
            """Main entry point for the worker"""
-           # Configure connection to PM Agent
+           # Configure connection to Marcus
            server_params = StdioServerParameters(
                command="python",
                args=["pm_agent_mcp_server.py"]
            )
            
-           # Connect to PM Agent
+           # Connect to Marcus
            async with stdio_client(server_params) as (read, write):
                async with ClientSession(read, write) as session:
                    await session.initialize()
                    
-                   # Register with PM Agent
+                   # Register with Marcus
                    await self.register(session)
                    
                    # Start work loop
@@ -75,7 +75,7 @@ Let's create a basic documentation worker:
                        await asyncio.sleep(30)  # Rest between cycles
 
        async def register(self, session):
-           """Register this worker with PM Agent"""
+           """Register this worker with Marcus"""
            result = await session.call_tool("register_agent", {
                "agent_id": self.agent_id,
                "name": self.name,
@@ -151,7 +151,7 @@ Let's create a basic documentation worker:
            print("📝 API documentation completed")
 
        async def report_progress(self, session, task_id, progress, message, status="in_progress"):
-           """Report task progress to PM Agent"""
+           """Report task progress to Marcus"""
            await session.call_tool("report_task_progress", {
                "agent_id": self.agent_id,
                "task_id": task_id,
@@ -161,7 +161,7 @@ Let's create a basic documentation worker:
            })
 
        async def report_blocker(self, session, task_id, description):
-           """Report a blocker to PM Agent"""
+           """Report a blocker to Marcus"""
            result = await session.call_tool("report_blocker", {
                "agent_id": self.agent_id,
                "task_id": task_id,
@@ -402,7 +402,7 @@ Create a Claude-compatible worker:
 .. code-block:: python
 
    CLAUDE_WORKER_SYSTEM_PROMPT = """
-   You are an autonomous AI worker connected to PM Agent.
+   You are an autonomous AI worker connected to Marcus.
    
    Your identity:
    - Agent ID: {agent_id}
@@ -410,7 +410,7 @@ Create a Claude-compatible worker:
    - Skills: {skills}
    
    Available tools:
-   - register_agent: Register with PM Agent (do once)
+   - register_agent: Register with Marcus (do once)
    - request_next_task: Get assigned work
    - report_task_progress: Update task status
    - report_blocker: Report issues
@@ -472,7 +472,7 @@ Integration Test
 
    @pytest.mark.asyncio
    async def test_full_work_cycle():
-       # Start PM Agent in test mode
+       # Start Marcus in test mode
        pm_agent = PMAgent(test_mode=True)
        pm_agent_task = asyncio.create_task(pm_agent.run())
        
@@ -560,7 +560,7 @@ Best Practices
 
 5. **Testing**
    - Unit test core functions
-   - Integration test with PM Agent
+   - Integration test with Marcus
    - Simulate error conditions
 
 Next Steps

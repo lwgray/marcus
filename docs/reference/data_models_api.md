@@ -1,4 +1,4 @@
-# PM Agent Data Models API Reference
+# Marcus Data Models API Reference
 
 > **Type**: API  
 > **Version**: 1.0.0  
@@ -6,7 +6,7 @@
 
 ## Overview
 
-Complete reference for all data models used in the PM Agent system, including enumerations, dataclasses, and their relationships.
+Complete reference for all data models used in the Marcus system, including enumerations, dataclasses, and their relationships.
 
 ## Synopsis
 
@@ -36,7 +36,7 @@ task = Task(
 
 ## Description
 
-The PM Agent data models provide strongly-typed, validated data structures for representing all aspects of the project management system. These models ensure consistency across the codebase and provide clear contracts for data exchange between components.
+The Marcus data models provide strongly-typed, validated data structures for representing all aspects of the project management system. These models ensure consistency across the codebase and provide clear contracts for data exchange between components.
 
 ## Parameters
 

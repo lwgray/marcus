@@ -1,4 +1,4 @@
-# Advanced PM Agent Tutorials Roadmap
+# Advanced Marcus Tutorials Roadmap
 
 > **Status**: Planning Document  
 > **Purpose**: Guide for future tutorial development  
@@ -6,7 +6,7 @@
 
 ## Overview
 
-This document outlines planned advanced tutorials that showcase PM Agent's full capabilities and teach users how to leverage it for complex, real-world projects.
+This document outlines planned advanced tutorials that showcase Marcus's full capabilities and teach users how to leverage it for complex, real-world projects.
 
 ## Planned Advanced Tutorials
 
@@ -34,7 +34,7 @@ This document outlines planned advanced tutorials that showcase PM Agent's full 
 
 ### 2. Machine Learning Pipeline
 
-**Title**: "AI Building AI: Creating ML Pipelines with PM Agent"
+**Title**: "AI Building AI: Creating ML Pipelines with Marcus"
 
 **What it covers**:
 - Data collection and preprocessing
@@ -78,7 +78,7 @@ This document outlines planned advanced tutorials that showcase PM Agent's full 
 
 ### 4. Real-Time Collaborative Application
 
-**Title**: "Building Google Docs: Real-Time Collaboration with PM Agent"
+**Title**: "Building Google Docs: Real-Time Collaboration with Marcus"
 
 **What it covers**:
 - Operational Transformation (OT) or CRDTs
@@ -100,7 +100,7 @@ This document outlines planned advanced tutorials that showcase PM Agent's full 
 
 ### 5. Custom Worker Development
 
-**Title**: "Extending PM Agent: Building Specialized AI Workers"
+**Title**: "Extending Marcus: Building Specialized AI Workers"
 
 **What it covers**:
 - Worker architecture deep dive
@@ -112,7 +112,7 @@ This document outlines planned advanced tutorials that showcase PM Agent's full 
 - Worker deployment strategies
 
 **Key Learning Points**:
-- PM Agent internals
+- Marcus internals
 - Extending core functionality
 - Custom language models
 - Worker orchestration
@@ -122,7 +122,7 @@ This document outlines planned advanced tutorials that showcase PM Agent's full 
 
 ### 6. DevSecOps Automation
 
-**Title**: "Secure by Design: Automated Security with PM Agent"
+**Title**: "Secure by Design: Automated Security with Marcus"
 
 **What it covers**:
 - Security scanning automation
@@ -144,7 +144,7 @@ This document outlines planned advanced tutorials that showcase PM Agent's full 
 
 ### 7. Mobile App Development
 
-**Title**: "Cross-Platform Mobile Apps: React Native with PM Agent"
+**Title**: "Cross-Platform Mobile Apps: React Native with Marcus"
 
 **What it covers**:
 - React Native setup and configuration
@@ -350,4 +350,4 @@ Encourage community-created tutorials by providing:
 
 ## Conclusion
 
-These advanced tutorials will position PM Agent as the premier platform for AI-assisted development of complex, production-ready systems. They showcase not just the tool's capabilities but teach architectural thinking and best practices.
+These advanced tutorials will position Marcus as the premier platform for AI-assisted development of complex, production-ready systems. They showcase not just the tool's capabilities but teach architectural thinking and best practices.

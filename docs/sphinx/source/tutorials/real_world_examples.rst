@@ -1,12 +1,12 @@
 Real World Examples
 ===================
 
-Complete examples of using PM Agent for real projects.
+Complete examples of using Marcus for real projects.
 
 E-Commerce Platform
 -------------------
 
-Building a full e-commerce platform with PM Agent coordinating multiple AI workers.
+Building a full e-commerce platform with Marcus coordinating multiple AI workers.
 
 Project Overview
 ~~~~~~~~~~~~~~~~

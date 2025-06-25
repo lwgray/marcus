@@ -1,4 +1,4 @@
-# PM Agent Configuration Guide
+# Marcus Configuration Guide
 
 > **Type**: Configuration  
 > **Version**: 1.0.0  
@@ -6,7 +6,7 @@
 
 ## Overview
 
-This guide provides comprehensive documentation for configuring the PM Agent system, including all available options, environment variables, and configuration files.
+This guide provides comprehensive documentation for configuring the Marcus system, including all available options, environment variables, and configuration files.
 
 ## Synopsis
 
@@ -28,7 +28,7 @@ This guide provides comprehensive documentation for configuring the PM Agent sys
 
 ## Description
 
-PM Agent uses a hierarchical configuration system that supports JSON configuration files, environment variables, and runtime overrides. Configuration is loaded in the following order (later sources override earlier ones):
+Marcus uses a hierarchical configuration system that supports JSON configuration files, environment variables, and runtime overrides. Configuration is loaded in the following order (later sources override earlier ones):
 
 1. Default configuration (built-in)
 2. Configuration file (JSON)
@@ -48,7 +48,7 @@ PM Agent uses a hierarchical configuration system that supports JSON configurati
 ### Parameter Details
 
 #### `monitoring_interval`
-Controls how often PM Agent refreshes project state from the kanban board. Lower values provide more real-time updates but increase API calls.
+Controls how often Marcus refreshes project state from the kanban board. Lower values provide more real-time updates but increase API calls.
 - Minimum: 60 seconds
 - Maximum: 3600 seconds
 - Recommended: 900 seconds (15 minutes)

@@ -99,7 +99,7 @@ nano .env  # or vim, code, etc.
 
 Required configurations:
 
-```env
+```text
 # Choose your task board provider
 KANBAN_PROVIDER=github  # or 'linear' or 'planka'
 
@@ -243,7 +243,7 @@ Marcus requires API keys for AI services and your chosen task board.
 
 Choose your task board provider in `.env`:
 
-```env
+```text
 KANBAN_PROVIDER=github  # Recommended for most users
 ```
 

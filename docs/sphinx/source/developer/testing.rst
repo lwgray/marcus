@@ -1,12 +1,12 @@
 Testing Guide
 =============
 
-Comprehensive guide to testing PM Agent components.
+Comprehensive guide to testing Marcus components.
 
 Test Structure
 --------------
 
-PM Agent uses pytest for all testing:
+Marcus uses pytest for all testing:
 
 ::
 
@@ -90,7 +90,7 @@ Unit Test Example
        
        @pytest.fixture
        def pm_agent(self):
-           """Create PM Agent instance for testing"""
+           """Create Marcus instance for testing"""
            return PMAgentMVP()
        
        @pytest.fixture
@@ -175,11 +175,11 @@ Integration Test Example
 
    @pytest.mark.asyncio
    class TestKanbanIntegration:
-       """Test PM Agent integration with Kanban board"""
+       """Test Marcus integration with Kanban board"""
        
        @pytest.fixture
        async def pm_agent_with_mocks(self):
-           """Create PM Agent with mocked Kanban client"""
+           """Create Marcus with mocked Kanban client"""
            pm_agent = PMAgentMVP()
            
            # Mock Kanban client
@@ -262,8 +262,8 @@ E2E Test Example
        
        @pytest.fixture
        async def running_system(self):
-           """Start PM Agent and workers"""
-           # Start PM Agent
+           """Start Marcus and workers"""
+           # Start Marcus
            pm_agent = PMAgentMVP()
            pm_task = asyncio.create_task(pm_agent.run())
            

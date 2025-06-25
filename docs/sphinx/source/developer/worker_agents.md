@@ -1,11 +1,11 @@
-# Building Worker Agents for PM Agent
+# Building Worker Agents for Marcus
 
-This guide explains how to build AI worker agents that integrate with PM Agent for autonomous software development.
+This guide explains how to build AI worker agents that integrate with Marcus for autonomous software development.
 
 ## Worker Agent Architecture
 
 ### Core Requirements
-1. **MCP Client**: Ability to connect to PM Agent's MCP server
+1. **MCP Client**: Ability to connect to Marcus's MCP server
 2. **Autonomous Loop**: Continuous task-seeking behavior
 3. **Skill Declaration**: Clear capabilities for task matching
 4. **Progress Reporting**: Regular updates on task status
@@ -34,10 +34,10 @@ class WorkerAgent:
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 
-                # Check PM Agent health
+                # Check Marcus health
                 await self._check_health(session)
                 
-                # Register with PM Agent
+                # Register with Marcus
                 await self._register(session)
                 
                 # Continuous work loop
@@ -46,12 +46,12 @@ class WorkerAgent:
                     await asyncio.sleep(30)  # Brief pause between cycles
     
     async def _check_health(self, session):
-        """Check PM Agent connectivity and health"""
+        """Check Marcus connectivity and health"""
         result = await session.call_tool("ping", {"echo": f"Hello from {self.agent_id}"})
         response = json.loads(result.content[0].text)
         
         if not response.get("pong"):
-            raise ConnectionError("PM Agent not responding to ping")
+            raise ConnectionError("Marcus not responding to ping")
         
         print(f"✅ Connected to {response.get('service')} v{response.get('version')}")
         print(f"   Uptime: {response.get('uptime')}")
@@ -307,14 +307,14 @@ class LearningAgent(WorkerAgent):
 
 ### Claude Worker Agent Template
 ```python
-CLAUDE_WORKER_PROMPT = """You are an autonomous software development agent integrated with PM Agent.
+CLAUDE_WORKER_PROMPT = """You are an autonomous software development agent integrated with Marcus.
 
 Your capabilities:
 - Role: {role}
 - Skills: {skills}
 - Agent ID: {agent_id}
 
-Available PM Agent tools:
+Available Marcus tools:
 - register_agent: Register yourself (do this first)
 - request_next_task: Get your next assignment
 - report_task_progress: Update task status
@@ -392,7 +392,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 @pytest.mark.asyncio
 async def test_worker_registration():
-    # Mock PM Agent session
+    # Mock Marcus session
     mock_session = AsyncMock()
     mock_session.call_tool.return_value = {
         "success": True,
@@ -417,7 +417,7 @@ async def test_worker_registration():
 ### Integration Test
 ```python
 async def test_worker_full_cycle():
-    # Start PM Agent
+    # Start Marcus
     pm_agent = PMAgentMVP()
     pm_agent_task = asyncio.create_task(pm_agent.start())
     

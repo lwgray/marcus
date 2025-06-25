@@ -1,7 +1,7 @@
-Contributing to PM Agent
+Contributing to Marcus
 ========================
 
-Thank you for your interest in contributing to PM Agent! This guide will help you get started.
+Thank you for your interest in contributing to Marcus! This guide will help you get started.
 
 Getting Started
 ---------------
@@ -423,7 +423,7 @@ Development Tips
       # Test with local Planka
       docker-compose up -d planka
       
-      # Run PM Agent locally
+      # Run Marcus locally
       python pm_agent_mcp_server_logged.py
       
       # Test with mock workers
@@ -476,4 +476,4 @@ By contributing, you agree that your contributions will be licensed under the sa
 Thank You!
 ----------
 
-Your contributions make PM Agent better for everyone. We appreciate your time and effort!
+Your contributions make Marcus better for everyone. We appreciate your time and effort!

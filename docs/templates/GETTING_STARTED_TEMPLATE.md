@@ -27,7 +27,7 @@ Get up and running in 60 seconds:
 curl -sSL https://get.pm-agent.ai | bash
 ```
 
-That's it! You now have PM Agent running locally. Try:
+That's it! You now have Marcus running locally. Try:
 ```bash
 pm-agent demo
 ```
@@ -48,7 +48,7 @@ pm-agent demo
 
 ```mermaid
 graph LR
-    You[You] --> PM[PM Agent]
+    You[You] --> PM[Marcus]
     PM --> AI[AI Workers]
     AI --> Code[Your Project]
 ```
@@ -92,7 +92,7 @@ python -m pip install --upgrade pip
 </tab>
 </tabs>
 
-### Step 2: Install PM Agent
+### Step 2: Install Marcus
 
 ```bash
 pip install pm-agent
@@ -118,7 +118,7 @@ pm-agent doctor  # Checks your setup
 
 ## Your First Project
 
-### 1. Initialize PM Agent
+### 1. Initialize Marcus
 
 ```bash
 pm-agent init my-first-project
@@ -148,14 +148,14 @@ Your AI worker will:
 ## What's Next?
 
 ### Learn More
-- 📖 [Core Concepts](/concepts/core-concepts) - Understand how PM Agent works
+- 📖 [Core Concepts](/concepts/core-concepts) - Understand how Marcus works
 - 🎓 [Todo App Tutorial](/tutorials/beginner/todo-app) - Build something real
 - 🔧 [Configuration Guide](/reference/configuration) - Customize your setup
 
 ### Get Help
 - 💬 [Join our Discord](https://discord.gg/pm-agent)
 - 🐛 [Report Issues](https://github.com/lwgray/pm-agent/issues)
-- 📧 [Email Support](mailto:support@pm-agent.ai)
+- 📧 [Email Support](mailto:support@marcus.ai)
 
 ## Troubleshooting Quick Fixes
 
@@ -178,4 +178,4 @@ pm-agent task list    # Verify tasks exist
 
 ---
 
-🎉 **Welcome to PM Agent!** You're ready to build amazing things with AI-powered development.
+🎉 **Welcome to Marcus!** You're ready to build amazing things with AI-powered development.

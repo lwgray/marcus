@@ -40,7 +40,7 @@ Key Concepts
 ------------
 
 **Worker Agents**
-   AI agents (like Claude) that register with PM Agent and complete tasks
+   AI agents (like Claude) that register with Marcus and complete tasks
 
 **Task Assignment**
    Marcus intelligently matches tasks to workers based on skills and priorities

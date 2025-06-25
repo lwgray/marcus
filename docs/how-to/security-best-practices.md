@@ -1,13 +1,13 @@
-# How to Secure PM Agent Deployment
+# How to Secure Marcus Deployment
 
-> **Goal**: Implement security best practices for PM Agent in production  
+> **Goal**: Implement security best practices for Marcus in production  
 > **Time**: 30-60 minutes depending on requirements  
 > **When to use**: Any production deployment or when handling sensitive data
 
 ## Prerequisites
 
 Before starting, ensure you have:
-- PM Agent deployed (Docker, Python, or Kubernetes)
+- Marcus deployed (Docker, Python, or Kubernetes)
 - Admin access to your deployment environment
 - SSL/TLS certificates (or ability to generate them)
 - Understanding of your security requirements
@@ -100,7 +100,7 @@ openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem \
 certbot certonly --standalone -d pm-agent.yourdomain.com
 ```
 
-#### Configure PM Agent
+#### Configure Marcus
 ```python
 # config/security.py
 SSL_CONFIG = {
@@ -451,8 +451,8 @@ GDPR_COMPLIANCE = {
 
 ## Related Guides
 
-- [How to Monitor PM Agent](/how-to/monitor-pm-agent)
-- [How to Backup PM Agent](/how-to/backup-restore)
+- [How to Monitor Marcus](/how-to/monitor-pm-agent)
+- [How to Backup Marcus](/how-to/backup-restore)
 - [Security Reference](/reference/security)
 - [Compliance Guide](/reference/compliance)
 
@@ -461,4 +461,4 @@ GDPR_COMPLIANCE = {
 - [OWASP Security Practices](https://owasp.org/www-project-web-security-testing-guide/)
 - [NIST Cybersecurity Framework](https://www.nist.gov/cyberframework)
 - [CIS Security Benchmarks](https://www.cisecurity.org/cis-benchmarks/)
-- [PM Agent Security Documentation](/reference/security)
+- [Marcus Security Documentation](/reference/security)

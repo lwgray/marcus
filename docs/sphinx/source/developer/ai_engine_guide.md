@@ -1,4 +1,4 @@
-# PM Agent AI Engine: Comprehensive Guide
+# Marcus AI Engine: Comprehensive Guide
 
 ```{contents}
 :local:
@@ -7,7 +7,7 @@
 
 ## Overview
 
-The AI Engine is the cognitive core of PM Agent, providing intelligent decision-making capabilities that transform PM Agent from a simple task distributor into an adaptive project management system. It leverages Claude (Anthropic's AI) to understand context, make optimal decisions, and provide actionable guidance.
+The AI Engine is the cognitive core of Marcus, providing intelligent decision-making capabilities that transform Marcus from a simple task distributor into an adaptive project management system. It leverages Claude (Anthropic's AI) to understand context, make optimal decisions, and provide actionable guidance.
 
 ## Current Capabilities
 
@@ -93,11 +93,11 @@ async def analyze_project_risks(self, project_state, recent_blockers, team_statu
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     PM Agent System                          │
+│                     Marcus System                          │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  ┌─────────────┐     ┌──────────────┐    ┌──────────────┐ │
-│  │   Worker    │────▶│   PM Agent   │◀───│   Kanban     │ │
+│  │   Worker    │────▶│   Marcus   │◀───│   Kanban     │ │
 │  │   Agents    │     │  MCP Server  │    │   Board      │ │
 │  └─────────────┘     └──────┬───────┘    └──────────────┘ │
 │                             │                               │
@@ -119,7 +119,7 @@ async def analyze_project_risks(self, project_state, recent_blockers, team_statu
 
 1. **Worker Registration Flow**
    ```
-   Worker Agent → register_agent(skills, capacity) → PM Agent
+   Worker Agent → register_agent(skills, capacity) → Marcus
                                                         ↓
                                                   Store in memory
                                                         ↓
@@ -128,7 +128,7 @@ async def analyze_project_risks(self, project_state, recent_blockers, team_statu
 
 2. **Task Assignment Flow**
    ```
-   Worker → request_next_task() → PM Agent
+   Worker → request_next_task() → Marcus
                                       ↓
                                   Get available tasks from Kanban
                                       ↓
@@ -146,7 +146,7 @@ async def analyze_project_risks(self, project_state, recent_blockers, team_statu
 
 3. **Blocker Resolution Flow**
    ```
-   Worker → report_blocker(description) → PM Agent
+   Worker → report_blocker(description) → Marcus
                                               ↓
                                           AI Engine analyzes
                                               ↓
@@ -159,7 +159,7 @@ async def analyze_project_risks(self, project_state, recent_blockers, team_statu
 
 ## How All Components Work Together
 
-### 1. PM Agent MCP Server (Central Coordinator)
+### 1. Marcus MCP Server (Central Coordinator)
 - **Role**: Orchestrates all interactions between workers and systems
 - **Responsibilities**:
   - Maintains worker registry and task assignments
@@ -170,7 +170,7 @@ async def analyze_project_risks(self, project_state, recent_blockers, team_statu
 ### 2. AI Analysis Engine (Intelligence Layer)
 - **Role**: Provides cognitive capabilities for decision-making
 - **Integration Points**:
-  - Called by PM Agent for task matching
+  - Called by Marcus for task matching
   - Generates instructions during assignment
   - Analyzes blockers when reported
   - Monitors project health continuously
@@ -518,7 +518,7 @@ class AIEngineValidator:
 
 ## Conclusion
 
-The AI Engine transforms PM Agent from a simple task management tool into an intelligent project orchestration system. Its current capabilities provide significant value through smart task matching, contextual instructions, and proactive problem resolution.
+The AI Engine transforms Marcus from a simple task management tool into an intelligent project orchestration system. Its current capabilities provide significant value through smart task matching, contextual instructions, and proactive problem resolution.
 
 Future development should focus on:
 1. Learning from historical data to improve predictions

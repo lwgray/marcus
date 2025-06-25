@@ -1,7 +1,7 @@
 Reference
 =========
 
-Complete reference documentation for PM Agent.
+Complete reference documentation for Marcus.
 
 .. toctree::
    :maxdepth: 2
@@ -15,8 +15,6 @@ Complete reference documentation for PM Agent.
 Quick Links
 -----------
 
-* :doc:`api_reference` - Complete API documentation
-* :doc:`mcp_tools` - Available MCP tools for workers
 * :doc:`troubleshooting` - Common issues and solutions
 * :doc:`faq` - Frequently asked questions
 * :doc:`glossary` - Terms and definitions
@@ -25,7 +23,7 @@ Quick Links
 API Overview
 ------------
 
-PM Agent provides 8 MCP tools for worker agents:
+Marcus provides 8 MCP tools for worker agents:
 
 1. **register_agent** - Register a new worker
 2. **request_next_task** - Get task assignment
@@ -36,7 +34,7 @@ PM Agent provides 8 MCP tools for worker agents:
 7. **list_registered_agents** - List all workers
 8. **ping** - Health check
 
-See :doc:`mcp_tools` for detailed usage.
+See the API documentation for detailed usage.
 
 Common Tasks
 ------------
@@ -90,6 +88,5 @@ Common error responses:
 Next Steps
 ----------
 
-* Review :doc:`api_reference` for detailed API docs
 * Check :doc:`troubleshooting` for issue resolution
 * See :doc:`glossary` for term definitions

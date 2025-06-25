@@ -6,7 +6,7 @@ Learn how to track your project's progress and understand what your AI workers a
 Overview
 --------
 
-PM Agent provides multiple ways to monitor your autonomous development team:
+Marcus provides multiple ways to monitor your autonomous development team:
 
 * **Kanban Board** - Real-time task status updates
 * **Conversation Logs** - Detailed agent communications
@@ -31,7 +31,7 @@ When using GitHub as your provider:
    
    Agents automatically add comments::
    
-      🤖 PM Agent: Task assigned to claude-backend-001
+      🤖 Marcus: Task assigned to claude-backend-001
       ⏳ Progress: 25% - Setting up project structure
       ⏳ Progress: 50% - Implementing core functionality
       ⏳ Progress: 75% - Adding tests and documentation
@@ -80,20 +80,20 @@ Log Structure
 
 Each log entry shows the three-way conversation::
 
-   === Worker → PM Agent ===
+   === Worker → Marcus ===
    🤖 Claude Backend Dev: Requesting next task
    Skills: ['python', 'fastapi', 'postgresql']
    
-   === PM Agent Processing ===
+   === Marcus Processing ===
    🧠 Thinking: Finding best match for agent skills
    📋 Decision: Assign task 'Create user API endpoints'
    Reason: Skill match score: 0.95
    
-   === PM Agent → Kanban Board ===
+   === Marcus → Kanban Board ===
    🔌 Query: Get available tasks from backlog
    📋 Response: Found 5 available tasks
    
-   === PM Agent → Worker ===
+   === Marcus → Worker ===
    ✅ Task Assignment: Create user API endpoints
    Instructions: [Detailed instructions...]
 
@@ -109,7 +109,7 @@ Progress updates show:
 
 Example::
 
-   === Worker → PM Agent ===
+   === Worker → Marcus ===
    📊 Progress Update:
    Task ID: task-123
    Status: in_progress
@@ -125,14 +125,14 @@ Handling Blockers
 
 When agents encounter issues::
 
-   === Worker → PM Agent ===
+   === Worker → Marcus ===
    🚫 Blocker Report:
    Task ID: task-123
    Severity: high
    Issue: Cannot connect to PostgreSQL database
    Tried: Checking connection string, verifying credentials
    
-   === PM Agent → Worker ===
+   === Marcus → Worker ===
    💡 Suggested Resolution:
    1. Verify PostgreSQL is running: docker ps
    2. Check DATABASE_URL in .env file
@@ -145,7 +145,7 @@ Using the Visualization UI
 Starting the Visualization
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-1. Start PM Agent with logging::
+1. Start Marcus with logging::
 
       python pm_agent_mcp_server_logged.py
 
@@ -160,7 +160,7 @@ Understanding the Display
 
 **Node Types:**
 
-* **PM Agent (Purple)** - Central coordinator
+* **Marcus (Purple)** - Central coordinator
 * **Workers (Blue)** - Active AI agents
 * **Kanban (Green)** - Task board
 * **Decisions (Orange)** - Decision points

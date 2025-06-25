@@ -1,4 +1,4 @@
-# PM Agent Environment Variables Reference
+# Marcus Environment Variables Reference
 
 > **Type**: Configuration  
 > **Version**: 1.0.0  
@@ -6,7 +6,7 @@
 
 ## Overview
 
-Complete reference for all environment variables used by the PM Agent system, including required variables, provider-specific settings, and optional configurations.
+Complete reference for all environment variables used by the Marcus system, including required variables, provider-specific settings, and optional configurations.
 
 ## Synopsis
 
@@ -21,7 +21,7 @@ export PLANKA_PASSWORD="secure-password"
 
 ## Description
 
-PM Agent uses environment variables for sensitive configuration values and deployment-specific settings. Variables are loaded from the system environment and can be supplemented with a `.env` file in the project root. Environment variables take precedence over configuration file settings.
+Marcus uses environment variables for sensitive configuration values and deployment-specific settings. Variables are loaded from the system environment and can be supplemented with a `.env` file in the project root. Environment variables take precedence over configuration file settings.
 
 ## Parameters
 

@@ -1,7 +1,7 @@
 # Test Project: Simple Todo API with Web Frontend
 
 ## Project Overview
-A simple Todo application with REST API backend and web frontend. Perfect for testing PM Agent because it requires multiple specialized workers and has clear, decomposable tasks.
+A simple Todo application with REST API backend and web frontend. Perfect for testing Marcus because it requires multiple specialized workers and has clear, decomposable tasks.
 
 ## Architecture
 - **Backend**: Python FastAPI REST API
@@ -10,7 +10,7 @@ A simple Todo application with REST API backend and web frontend. Perfect for te
 - **Testing**: Pytest for backend, Jest for frontend
 - **DevOps**: Docker compose for easy deployment
 
-## Why This Is Perfect for Testing PM Agent
+## Why This Is Perfect for Testing Marcus
 
 1. **Multiple Skill Sets Required**:
    - Backend developer (Python, FastAPI, SQLite)

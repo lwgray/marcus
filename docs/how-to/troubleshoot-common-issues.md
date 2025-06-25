@@ -1,13 +1,13 @@
-# How to Troubleshoot Common PM Agent Issues
+# How to Troubleshoot Common Marcus Issues
 
-> **Goal**: Diagnose and fix common problems with PM Agent quickly  
+> **Goal**: Diagnose and fix common problems with Marcus quickly  
 > **Time**: 5-15 minutes depending on issue  
-> **When to use**: When PM Agent isn't working as expected or showing errors
+> **When to use**: When Marcus isn't working as expected or showing errors
 
 ## Prerequisites
 
 Before starting, ensure you have:
-- PM Agent version 1.0 or higher
+- Marcus version 1.0 or higher
 - Access to terminal/command line
 - Docker installed (if using Docker setup)
 - Admin/sudo access for permission issues
@@ -32,7 +32,7 @@ cat .env | grep -E "(API_KEY|TOKEN)"
 First, identify which category your issue falls into:
 
 ```bash
-# Check if PM Agent is running
+# Check if Marcus is running
 docker-compose ps
 
 # Check recent logs for errors
@@ -44,10 +44,10 @@ curl http://localhost:3100/health
 
 ### 2. Fix Connection Issues
 
-#### Cannot Connect to PM Agent
+#### Cannot Connect to Marcus
 
 ```bash
-# Verify PM Agent is running
+# Verify Marcus is running
 docker ps | grep pm-agent
 
 # Check if port is accessible
@@ -125,10 +125,10 @@ curl -H "Authorization: token $GITHUB_TOKEN" \
 docker-compose exec planka-db psql -U planka -c \
   "SELECT COUNT(*) FROM card WHERE list_id IN (SELECT id FROM list WHERE name='TODO');"
 
-# Create test task via PM Agent
+# Create test task via Marcus
 curl -X POST http://localhost:3100/tasks \
   -H "Content-Type: application/json" \
-  -d '{"title":"Test Task","description":"Testing PM Agent"}'
+  -d '{"title":"Test Task","description":"Testing Marcus"}'
 ```
 
 #### Tasks Not Being Assigned
@@ -253,7 +253,7 @@ rm -rf logs/ temp/
 ```
 
 ### Option 3: Manual Mode
-Run PM Agent without Docker for debugging:
+Run Marcus without Docker for debugging:
 ```bash
 # Install dependencies
 pip install -r requirements.txt
@@ -277,7 +277,7 @@ python -m pm_agent_mcp_server_v2 --debug
 
 ## Related Guides
 
-- [How to Deploy PM Agent](/how-to/deploy-pm-agent)
+- [How to Deploy Marcus](/how-to/deploy-pm-agent)
 - [How to Configure Security](/how-to/security-best-practices)
 - [How to Monitor Performance](/how-to/monitor-performance)
 - [Troubleshooting Reference](/reference/troubleshooting)

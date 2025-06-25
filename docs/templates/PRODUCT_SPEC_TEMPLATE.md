@@ -312,7 +312,7 @@ deploy:
 
 ---
 
-## PM Agent Metadata
+## Marcus Metadata
 
 ### Task Generation Hints
 ```yaml

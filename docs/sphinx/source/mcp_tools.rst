@@ -185,7 +185,7 @@ All tools return structured error responses on failure:
      "success": false,
      "error": "Detailed error message",
      "tool": "tool_name",
-     "arguments": {...}
+     "arguments": {}
    }
 
 Common errors:

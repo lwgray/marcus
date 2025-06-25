@@ -1,6 +1,6 @@
-# PM Agent Community Showcases
+# Marcus Community Showcases
 
-Welcome to the PM Agent Community Showcases! Here you'll find real-world examples of projects built with PM Agent, demonstrating its capabilities across different domains and team sizes.
+Welcome to the Marcus Community Showcases! Here you'll find real-world examples of projects built with Marcus, demonstrating its capabilities across different domains and team sizes.
 
 ## 🌟 Featured Projects
 
@@ -30,7 +30,7 @@ Across all community showcases:
 
 ## 🚀 Add Your Project
 
-Built something amazing with PM Agent? We'd love to feature your story!
+Built something amazing with Marcus? We'd love to feature your story!
 
 1. Use our [Showcase Template](../SHOWCASE_TEMPLATE.md)
 2. Fill in your project details
@@ -39,14 +39,14 @@ Built something amazing with PM Agent? We'd love to feature your story!
 ### What Makes a Great Showcase?
 
 - **Specific Metrics**: Development time, cost savings, quality metrics
-- **Clear Problem/Solution**: What challenge did PM Agent help solve?
+- **Clear Problem/Solution**: What challenge did Marcus help solve?
 - **Lessons Learned**: Both successes and challenges
 - **Technical Details**: Configuration examples and architecture
 - **Visual Elements**: Screenshots, diagrams, or demos
 
 ## 💡 Common Success Patterns
 
-From our showcases, we've identified patterns for PM Agent success:
+From our showcases, we've identified patterns for Marcus success:
 
 ### Best Use Cases
 1. **MVP Development**: Rapid prototyping and validation

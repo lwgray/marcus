@@ -1,8 +1,8 @@
-# PM Agent Data Flow Visualization System
+# Marcus Data Flow Visualization System
 
 ## Overview
 
-The PM Agent Visualization System provides real-time monitoring and analysis of the autonomous agent coordination system. It visualizes conversations, decisions, and knowledge relationships between PM Agent, Claude Workers, and the Kanban Board.
+The Marcus Visualization System provides real-time monitoring and analysis of the autonomous agent coordination system. It visualizes conversations, decisions, and knowledge relationships between Marcus, Claude Workers, and the Kanban Board.
 
 ## Architecture
 
@@ -15,7 +15,7 @@ The system consists of four main components:
 - Provides real-time streaming to UI clients
 
 ### 2. Decision Visualizer (`src/visualization/decision_visualizer.py`)
-- Tracks PM Agent's decision-making process
+- Tracks Marcus's decision-making process
 - Generates decision trees showing alternatives considered
 - Calculates decision analytics and confidence trends
 - Identifies decision patterns
@@ -55,14 +55,14 @@ python run_visualization.py
 
 ### Prerequisites
 
-1. PM Agent server must be running and generating logs
+1. Marcus server must be running and generating logs
 2. Log directory must exist at `logs/conversations/`
 3. Structured logging must be enabled (uses `ConversationLogger`)
 
-### Running with PM Agent
+### Running with Marcus
 
 ```bash
-# Terminal 1: Start PM Agent with logging
+# Terminal 1: Start Marcus with logging
 python pm_agent_mcp_server_logged.py
 
 # Terminal 2: Start visualization server
@@ -81,7 +81,7 @@ python scripts/mock_claude_worker_verbose.py
 - Interactive drag-and-drop layout
 
 ### Decision Tree Visualization
-- Explore PM Agent's decision-making process
+- Explore Marcus's decision-making process
 - View alternatives considered
 - See confidence scores and decision factors
 - Track decision outcomes
@@ -149,7 +149,7 @@ ConversationLogger → Log Files → ConversationStreamProcessor
 - Progress updates
 - Blocker reports
 
-### PM Agent Events
+### Marcus Events
 - Internal thinking
 - Decision making
 - Task assignments
@@ -206,7 +206,7 @@ ConversationLogger → Log Files → ConversationStreamProcessor
 ## Troubleshooting
 
 ### No events appearing
-1. Check PM Agent is using `ConversationLogger`
+1. Check Marcus is using `ConversationLogger`
 2. Verify log files exist in `logs/conversations/`
 3. Check browser console for WebSocket errors
 

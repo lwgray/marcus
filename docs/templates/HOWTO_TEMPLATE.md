@@ -7,7 +7,7 @@
 ## Prerequisites
 
 Before starting, ensure you have:
-- PM Agent version [X.X] or higher
+- Marcus version [X.X] or higher
 - [Other requirements]
 - Access to [required resources]
 
