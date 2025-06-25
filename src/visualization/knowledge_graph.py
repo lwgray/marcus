@@ -131,9 +131,10 @@ class KnowledgeGraphBuilder:
     def assign_task(self, task_id: str, worker_id: str, assignment_score: float):
         """Create assignment relationship between worker and task"""
         if task_id in self.nodes and worker_id in self.nodes:
+            # Add edge from worker to task (as expected by tests)
             self._add_edge(KnowledgeEdge(
-                source=task_id,
-                target=worker_id,
+                source=worker_id,
+                target=task_id,
                 edge_type='assigned_to',
                 properties={
                     'assignment_score': assignment_score,
@@ -141,9 +142,10 @@ class KnowledgeGraphBuilder:
                 }
             ))
             
-            # Update node properties
-            self.nodes[task_id].properties['status'] = 'in_progress'
+            # Update task properties
             self.nodes[task_id].properties['assigned_to'] = worker_id
+            self.nodes[task_id].properties['status'] = 'in_progress'
+            self.nodes[task_id].updated_at = datetime.now()
             self.nodes[worker_id].properties['status'] = 'working'
             self.nodes[worker_id].properties['current_task'] = task_id
             
@@ -376,7 +378,7 @@ class KnowledgeGraphBuilder:
     def export_graph_json(self) -> str:
         """Export graph as JSON"""
         import networkx as nx
-        graph_data = nx.node_link_data(self.graph)
+        graph_data = nx.node_link_data(self.graph, edges="edges")
         
         # Add node details
         for node in graph_data['nodes']:
@@ -391,8 +393,15 @@ class KnowledgeGraphBuilder:
         return json.dumps(graph_data, indent=2)
     
     def visualize_graph(self, output_file: str = "graph.html") -> str:
-        """Generate graph visualization (wrapper for generate_interactive_graph)"""
-        return self.generate_interactive_graph(output_file)
+        """Generate graph visualization using pyvis"""
+        # Create network from networkx graph
+        net = Network(height="750px", width="100%", directed=True)
+        net.from_nx(self.graph)
+        
+        # Save the visualization
+        net.save_graph(output_file)
+        
+        return output_file
         
     def get_task_dependencies_tree(self, task_id: str) -> Dict[str, Any]:
         """Get dependency tree for a task"""

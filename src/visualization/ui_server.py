@@ -98,6 +98,8 @@ class VisualizationServer:
         # Add conversation event handler
         self.conversation_processor.add_event_handler(self._handle_conversation_event)
         
+        # Routes will be set up via setup_routes() method
+        
     async def setup_routes(self) -> None:
         """
         Setup HTTP routes and CORS configuration.
@@ -108,7 +110,8 @@ class VisualizationServer:
         """
         # Static files
         static_dir = Path(__file__).parent / 'static'
-        self.app.router.add_static('/static', static_dir)
+        if static_dir.exists():
+            self.app.router.add_static('/static', static_dir)
         
         # API routes
         self.app.router.add_get('/', self._index_handler)
@@ -282,10 +285,6 @@ class VisualizationServer:
         """Emit health update to all clients"""
         await self.sio.emit('health_update', health_data)
     
-    async def setup_routes(self) -> None:
-        """Setup routes (wrapper for _setup_routes for tests)"""
-        # Routes are already set up in __init__, but this exists for test compatibility
-        pass
         
     async def _handle_conversation_event(self, event: ConversationEvent) -> None:
         """
@@ -398,7 +397,7 @@ class VisualizationServer:
         history = self.conversation_processor.conversation_history[-limit:]
         
         return web.json_response({
-            'history': [event.to_dict() for event in history],
+            'events': [event.to_dict() for event in history],  # Changed from 'history' to 'events'
             'total': len(self.conversation_processor.conversation_history)
         })
         
@@ -408,6 +407,7 @@ class VisualizationServer:
         trends = self.decision_visualizer.get_confidence_trends()
         
         return web.json_response({
+            'decisions': self.decision_visualizer.decisions,  # Add decisions list
             'analytics': analytics,
             'confidence_trends': [
                 {'timestamp': t.isoformat(), 'confidence': c}
@@ -452,9 +452,12 @@ class VisualizationServer:
             return web.json_response(self.health_monitor.last_analysis)
         else:
             return web.json_response({
-                'error': 'No health analysis available',
-                'message': 'Run a health analysis first'
-            }, status=404)
+                'status': 'no_data',
+                'message': 'No health analysis available yet',
+                'overall_health': 'unknown',
+                'trends': [],
+                'alerts': []
+            })
             
     async def _health_history_handler(self, request):
         """Get health analysis history"""
