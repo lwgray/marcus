@@ -1,4 +1,4 @@
-# Getting Started with PM Agent
+# Getting Started with Marcus
 
 > **Time to first success**: 5 minutes  
 > **What you'll achieve**: AI workers building real code for your projects
@@ -40,7 +40,7 @@ docker-compose restart
 ./start.sh demo
 ```
 
-That's it! You now have PM Agent running with demo workers. Watch them build a Hello World API:
+That's it! You now have Marcus running with demo workers. Watch them build a Hello World API:
 
 ```bash
 # See the magic happen
@@ -49,9 +49,9 @@ docker-compose logs -f pm-agent
 
 ## Overview
 
-### What is PM Agent?
+### What is Marcus?
 
-PM Agent is like a smart project manager for AI workers. It assigns coding tasks to AI agents (like Claude), monitors their progress, and helps them work together to build real software projects. Think of it as having a teacher who gives homework to AI students and makes sure they complete it properly!
+Marcus is like a smart project manager for AI workers. It assigns coding tasks to AI agents (like Claude), monitors their progress, and helps them work together to build real software projects. Think of it as having a teacher who gives homework to AI students and makes sure they complete it properly!
 
 ### Why Use It?
 
@@ -65,18 +65,18 @@ PM Agent is like a smart project manager for AI workers. It assigns coding tasks
 
 ```mermaid
 graph LR
-    You[You] --> PM[PM Agent]
-    PM --> AI1[AI Worker 1]
-    PM --> AI2[AI Worker 2]
-    PM --> AI3[AI Worker 3]
+    You[You] --> Marcus[Marcus]
+    Marcus --> AI1[AI Worker 1]
+    Marcus --> AI2[AI Worker 2]
+    Marcus --> AI3[AI Worker 3]
     AI1 --> Code[Your Project]
     AI2 --> Code
     AI3 --> Code
-    PM --> Track[Progress Tracking]
+    Marcus --> Track[Progress Tracking]
 ```
 
 1. **You** create tasks describing what needs to be built
-2. **PM Agent** assigns tasks to available AI workers
+2. **Marcus** assigns tasks to available AI workers
 3. **AI Workers** write actual code and report progress
 4. **You** review and use the generated code
 
@@ -131,7 +131,7 @@ sudo apt install python3.11 python3-pip
 </tab>
 </tabs>
 
-### Step 2: Get PM Agent
+### Step 2: Get Marcus
 
 ```bash
 # Clone the repository
@@ -204,7 +204,7 @@ docker-compose logs pm-agent
 Let's build a "Hello World" API to see PM Agent in action:
 
 ```bash
-# Start PM Agent with visualization
+# Start Marcus with visualization
 ./start.sh full
 
 # In another terminal, create tasks
@@ -278,7 +278,7 @@ The AI workers will build each component, creating a production-ready applicatio
 ```mermaid
 stateDiagram-v2
     [*] --> Created: You create task
-    Created --> Assigned: PM Agent assigns to worker
+    Created --> Assigned: Marcus assigns to worker
     Assigned --> InProgress: Worker starts
     InProgress --> Review: Worker completes
     Review --> Completed: Task verified
@@ -289,7 +289,7 @@ stateDiagram-v2
 
 ### Task Priorities
 
-PM Agent intelligently prioritizes tasks:
+Marcus intelligently prioritizes tasks:
 
 1. **Dependencies First**: Database before API endpoints
 2. **Blocking Issues**: Resolves blockers immediately  
@@ -301,7 +301,7 @@ PM Agent intelligently prioritizes tasks:
 ### Starting Fresh Each Day
 
 ```bash
-# Start PM Agent
+# Start Marcus
 ./start.sh
 
 # Check overnight progress
@@ -376,9 +376,9 @@ create_task("Build API endpoints", depends_on=["database"])
 ## What's Next?
 
 ### Learn More
-- 📖 [Core Concepts](../concepts/core-concepts) - Deep dive into how PM Agent works
+- 📖 [Core Concepts](../concepts/core-concepts) - Deep dive into how Marcus works
 - 🎓 [Todo App Tutorial](../tutorials/beginner/todo-app) - Build a complete application step-by-step
-- 🔧 [Configuration Guide](../reference/configuration) - Customize PM Agent for your needs
+- 🔧 [Configuration Guide](../reference/configuration) - Customize Marcus for your needs
 
 ### Explore Advanced Features
 - 🤖 [Custom AI Workers](../tutorials/custom_workers) - Create specialized workers
@@ -422,6 +422,6 @@ PM_AGENT_PORT=4299 ./start.sh full
 
 ---
 
-🎉 **Welcome to PM Agent!** You're now ready to build amazing things with AI-powered development.
+🎉 **Welcome to Marcus!** You're now ready to build amazing things with AI-powered development.
 
-> **Remember**: PM Agent augments your development process - always review and understand the generated code before using it in production.
+> **Remember**: Marcus augments your development process - always review and understand the generated code before using it in production.

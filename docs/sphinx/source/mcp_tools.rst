@@ -1,12 +1,12 @@
 MCP Tools Reference
 ===================
 
-This page provides detailed information about all MCP tools available in PM Agent.
+This page provides detailed information about all MCP tools available in Marcus.
 
 Overview
 --------
 
-PM Agent exposes 8 MCP tools that agents can use to interact with the project management system:
+Marcus exposes 8 MCP tools that agents can use to interact with the project management system:
 
 * **register_agent** - Register a new agent with the system
 * **request_next_task** - Get the next optimal task assignment
@@ -23,7 +23,7 @@ Tool Details
 register_agent
 ~~~~~~~~~~~~~~
 
-Register a new agent with the PM system.
+Register a new agent with Marcus.
 
 **Parameters:**
 

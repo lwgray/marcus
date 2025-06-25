@@ -1,6 +1,6 @@
 {
-  "name": "pm-agent",
-  "description": "AI Project Manager for autonomous development teams",
+  "name": "marcus",
+  "description": "Marcus - AI Project Coordination System for autonomous development teams",
   "command": "python",
   "args": ["pm_agent_mcp_server_v2.py"],
   "env": {

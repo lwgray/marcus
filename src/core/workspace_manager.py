@@ -269,20 +269,21 @@ class WorkspaceManager:
         
         Notes
         -----
-        Configuration format:
-        {
-            "project": {
-                "workspaces": {
-                    "main": "/path/to/project",
-                    "agents": {
-                        "agent-001": "/path/to/agent1/workspace"
+        Configuration format::
+        
+            {
+                "project": {
+                    "workspaces": {
+                        "main": "/path/to/project",
+                        "agents": {
+                            "agent-001": "/path/to/agent1/workspace"
+                        }
                     }
+                },
+                "security": {
+                    "additional_forbidden_paths": ["/sensitive/data"]
                 }
-            },
-            "security": {
-                "additional_forbidden_paths": ["/sensitive/data"]
             }
-        }
         """
         config_path = os.path.expanduser(config_path)
         

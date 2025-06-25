@@ -1,10 +1,10 @@
 version: '3.8'
 
 services:
-  pm-agent:
+  marcus:
     build: .
-    image: pm-agent:latest
-    container_name: pm-agent
+    image: marcus:latest
+    container_name: marcus
     environment:
       # Anthropic API
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
@@ -14,9 +14,9 @@ services:
       - PLANKA_AGENT_EMAIL=${PLANKA_AGENT_EMAIL:-demo@demo.demo}
       - PLANKA_AGENT_PASSWORD=${PLANKA_AGENT_PASSWORD:-demo}
       
-      # PM Agent configuration
-      - PM_AGENT_PROJECT_ID=${PM_AGENT_PROJECT_ID}
-      - PM_AGENT_BOARD_ID=${PM_AGENT_BOARD_ID}
+      # Marcus configuration
+      - MARCUS_PROJECT_ID=${MARCUS_PROJECT_ID}
+      - MARCUS_BOARD_ID=${MARCUS_BOARD_ID}
       
       # Python settings
       - PYTHONUNBUFFERED=1
@@ -81,4 +81,4 @@ services:
 
 networks:
   default:
-    name: pm-agent-network
+    name: marcus-network

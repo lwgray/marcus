@@ -1,9 +1,9 @@
-.. PM Agent documentation master file
+.. Marcus documentation master file
 
-PM Agent Documentation
-======================
+Marcus Documentation
+====================
 
-PM Agent is an AI-powered project manager for autonomous development teams using the Model Context Protocol (MCP).
+Marcus is an AI-powered project manager for autonomous development teams using the Model Context Protocol (MCP).
 
 .. toctree::
    :maxdepth: 1
@@ -51,8 +51,6 @@ PM Agent is an AI-powered project manager for autonomous development teams using
    :caption: 📖 API Reference
    
    api/modules
-   reference/api_reference
-   reference/mcp_tools
    api/pm_agent
    api/models
    api/integrations
@@ -78,13 +76,11 @@ PM Agent is an AI-powered project manager for autonomous development teams using
    reference/faq
    reference/glossary
    reference/environment_variables
-   changelog
-   license
 
 Overview
 --------
 
-PM Agent acts as an intelligent project manager that:
+Marcus acts as an intelligent project manager that:
 
 * 🤖 Coordinates multiple AI worker agents
 * 📋 Manages tasks on Kanban boards (Planka)
@@ -115,7 +111,7 @@ Quick Example
 .. code-block:: python
 
    # Register an agent
-   await pm_agent.register_agent(
+   await marcus.register_agent(
        agent_id="agent-001",
        name="Alice",
        role="Backend Developer",
@@ -123,10 +119,10 @@ Quick Example
    )
 
    # Request a task
-   task = await pm_agent.request_next_task("agent-001")
+   task = await marcus.request_next_task("agent-001")
 
    # Report progress
-   await pm_agent.report_task_progress(
+   await marcus.report_task_progress(
        agent_id="agent-001",
        task_id=task.id,
        status="in_progress",

@@ -7,8 +7,6 @@ Complete reference documentation for PM Agent.
    :maxdepth: 2
    :caption: Contents
    
-   api_reference
-   mcp_tools
    troubleshooting
    faq
    glossary

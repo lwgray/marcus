@@ -1,7 +1,7 @@
 User Guide
 ==========
 
-This guide covers everything you need to know to use PM Agent effectively.
+This guide covers everything you need to know to use Marcus effectively.
 
 .. toctree::
    :maxdepth: 2
@@ -13,13 +13,14 @@ This guide covers everything you need to know to use PM Agent effectively.
    claude_code_setup
    creating_tasks
    monitoring_progress
+   ../mcp_tools
 
 Overview
 --------
 
-PM Agent is designed to coordinate autonomous AI workers to complete software development tasks. This guide will help you:
+Marcus is designed to coordinate autonomous AI workers to complete software development tasks. This guide will help you:
 
-* Understand how PM Agent works
+* Understand how Marcus works
 * Set up your preferred task management provider
 * Configure Claude Desktop or Claude Code for worker agents
 * Create effective tasks that AI agents can complete
@@ -28,7 +29,7 @@ PM Agent is designed to coordinate autonomous AI workers to complete software de
 Getting Started
 ---------------
 
-If you're new to PM Agent, we recommend reading these sections in order:
+If you're new to Marcus, we recommend reading these sections in order:
 
 1. :doc:`concepts` - Understand the core concepts and workflow
 2. :doc:`providers` - Choose your task management system (GitHub, Linear, or Planka)
@@ -42,17 +43,17 @@ Key Concepts
    AI agents (like Claude) that register with PM Agent and complete tasks
 
 **Task Assignment**
-   PM Agent intelligently matches tasks to workers based on skills and priorities
+   Marcus intelligently matches tasks to workers based on skills and priorities
 
 **Progress Tracking**
    Real-time updates as workers complete tasks, visible on your kanban board
 
 **Blocker Resolution**
-   When workers get stuck, PM Agent provides AI-powered assistance
+   When workers get stuck, Marcus provides AI-powered assistance
 
 Next Steps
 ----------
 
-* Follow the :doc:`/tutorials/demo_guide` to see PM Agent in action
+* Follow the :doc:`/tutorials/demo_guide` to see Marcus in action
 * Check out :doc:`/templates/index` for project templates
 * Read :doc:`/reference/troubleshooting` if you encounter issues

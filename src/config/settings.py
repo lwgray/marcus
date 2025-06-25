@@ -1,4 +1,4 @@
-"""Configuration management for PM Agent.
+"""Configuration management for Marcus.
 
 This module provides the Settings class which handles loading, validation,
 and management of configuration settings from multiple sources including
@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 class Settings:
-    """Configuration management system for PM Agent.
+    """Configuration management system for Marcus.
     
     Manages configuration loading from multiple sources with support for
     hierarchical settings, environment variable overrides, and validation.
@@ -21,7 +21,7 @@ class Settings:
     Parameters
     ----------
     config_path : Optional[str], default=None
-        Path to the configuration file. If None, uses PM_AGENT_CONFIG
+        Path to the configuration file. If None, uses MARCUS_CONFIG
         environment variable or defaults to 'config/pm_agent_config.json'
     
     Attributes
@@ -51,7 +51,7 @@ class Settings:
     
     def __init__(self, config_path: Optional[str] = None) -> None:
         self.config_path = config_path or os.environ.get(
-            "PM_AGENT_CONFIG",
+            "MARCUS_CONFIG",
             "config/pm_agent_config.json"
         )
         
@@ -212,26 +212,26 @@ class Settings:
         Notes
         -----
         Supported environment variables:
-        - PM_AGENT_MONITORING_INTERVAL: Monitoring interval in seconds
-        - PM_AGENT_SLACK_ENABLED: Enable/disable Slack (true/false)
+        - MARCUS_MONITORING_INTERVAL: Monitoring interval in seconds
+        - MARCUS_SLACK_ENABLED: Enable/disable Slack (true/false)
         - SLACK_WEBHOOK_URL: Slack webhook URL
-        - PM_AGENT_EMAIL_ENABLED: Enable/disable email (true/false)
+        - MARCUS_EMAIL_ENABLED: Enable/disable email (true/false)
         - ANTHROPIC_API_KEY: API key for Anthropic services
         """
         # Monitoring interval
-        if "PM_AGENT_MONITORING_INTERVAL" in os.environ:
-            config["monitoring_interval"] = int(os.environ["PM_AGENT_MONITORING_INTERVAL"])
+        if "MARCUS_MONITORING_INTERVAL" in os.environ:
+            config["monitoring_interval"] = int(os.environ["MARCUS_MONITORING_INTERVAL"])
         
         # Slack integration
-        if "PM_AGENT_SLACK_ENABLED" in os.environ:
-            config["slack_enabled"] = os.environ["PM_AGENT_SLACK_ENABLED"].lower() == "true"
+        if "MARCUS_SLACK_ENABLED" in os.environ:
+            config["slack_enabled"] = os.environ["MARCUS_SLACK_ENABLED"].lower() == "true"
         
         if "SLACK_WEBHOOK_URL" in os.environ:
             config["slack_webhook_url"] = os.environ["SLACK_WEBHOOK_URL"]
         
         # Email integration
-        if "PM_AGENT_EMAIL_ENABLED" in os.environ:
-            config["email_enabled"] = os.environ["PM_AGENT_EMAIL_ENABLED"].lower() == "true"
+        if "MARCUS_EMAIL_ENABLED" in os.environ:
+            config["email_enabled"] = os.environ["MARCUS_EMAIL_ENABLED"].lower() == "true"
         
         # API keys
         if "ANTHROPIC_API_KEY" in os.environ:
@@ -470,7 +470,7 @@ class Settings:
         Examples
         --------
         >>> if settings.validate():
-        ...     start_pm_agent()
+        ...     start_marcus()
         ... else:
         ...     fix_configuration()
         """

@@ -2,11 +2,11 @@
 
 ## General Questions
 
-### What is PM Agent?
-PM Agent is like a smart teacher that helps AI workers (like Claude) work together on coding projects. It assigns tasks, tracks progress, and helps when workers get stuck.
+### What is Marcus?
+Marcus is like a smart teacher that helps AI workers (like Claude) work together on coding projects. It assigns tasks, tracks progress, and helps when workers get stuck.
 
 ### Is it free?
-Yes! PM Agent itself is completely free and open source. You just need:
+Yes! Marcus itself is completely free and open source. You just need:
 - Free GitHub account (recommended)
 - API key from Anthropic (costs money when you use it)
 
@@ -17,7 +17,7 @@ Not really! You just need to:
 - Edit a text file (.env)
 
 ### What can I build with it?
-Anything! People use PM Agent to build:
+Anything! People use Marcus to build:
 - Websites
 - Mobile apps
 - APIs
@@ -30,10 +30,10 @@ Anything! People use PM Agent to build:
 **Use GitHub!** It's free, easy, and has the most features. Only consider others if you have specific needs.
 
 ### Can I use ChatGPT instead of Claude?
-Not yet, but it's planned! PM Agent currently works best with Anthropic's Claude.
+Not yet, but it's planned! Marcus currently works best with Anthropic's Claude.
 
 ### Do I need a powerful computer?
-No! PM Agent runs in Docker, which works on most computers. You need:
+No! Marcus runs in Docker, which works on most computers. You need:
 - 4GB RAM (8GB better)
 - 10GB free disk space
 - Internet connection
@@ -139,4 +139,4 @@ You do! Workers are just tools you're using.
 
 ---
 
-=¡ **Pro Tip**: Most questions are answered by just trying it! Run `./start.sh demo` to see PM Agent in action.
+=ï¿½ **Pro Tip**: Most questions are answered by just trying it! Run `./start.sh demo` to see PM Agent in action.

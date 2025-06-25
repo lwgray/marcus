@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Unified PM Agent MCP Server v2 - Corrected tool registration pattern
+Marcus AI Project Coordination System - MCP Server v2
+Unified Marcus MCP Server - Corrected tool registration pattern
 """
 
 import asyncio
@@ -39,10 +40,10 @@ from src.logging.conversation_logger import conversation_logger, log_conversatio
 import atexit
 
 # Global server instance
-server = Server("pm-agent")
+server = Server("marcus")
 
 # State storage
-class PMAgentState:
+class MarcusState:
     def __init__(self):
         load_dotenv()
         self.settings = Settings()
@@ -114,7 +115,7 @@ class PMAgentState:
 
 
 # Create global state instance
-state = PMAgentState()
+state = MarcusState()
 
 
 # Tool registration using correct MCP pattern
@@ -124,7 +125,7 @@ async def handle_list_tools() -> list[types.Tool]:
     return [
         types.Tool(
             name="register_agent",
-            description="Register a new agent with the PM system",
+            description="Register a new agent with the Marcus system",
             inputSchema={
                 "type": "object",
                 "properties": {

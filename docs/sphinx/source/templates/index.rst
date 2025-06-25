@@ -1,12 +1,12 @@
 Project Templates
 =================
 
-These templates help you structure your projects for optimal results with PM Agent.
+These templates help you structure your projects for optimal results with Marcus.
 
 Why Use Templates?
 ------------------
 
-PM Agent works best when it has clear, structured information about your project:
+Marcus works best when it has clear, structured information about your project:
 
 * **PRD Template**: Define your project's goals, users, and requirements
 * **Product Spec Template**: Technical specifications for implementation
@@ -31,16 +31,16 @@ Best Practices
 4. **Use clear language**: Avoid ambiguity in requirements
 5. **Include examples**: Show expected inputs/outputs where possible
 
-PM Agent Metadata
------------------
+Marcus Metadata
+---------------
 
-Both templates include a special section for PM Agent configuration::
+Both templates include a special section for Marcus configuration::
 
-    ## PM Agent Metadata
+    ## Marcus Metadata
     
     ### Automation Hints
     ```yaml
-    pm_agent:
+    marcus:
       project_type: "web-application"
       complexity: "medium"
       team_size: "3-5"
@@ -50,7 +50,7 @@ Both templates include a special section for PM Agent configuration::
         - qa_engineer
     ```
 
-This helps PM Agent understand your project needs and assign appropriate workers.
+This helps Marcus understand your project needs and assign appropriate workers.
 
 Using Templates with GitHub
 ---------------------------
@@ -102,7 +102,7 @@ Example Workflow
       - Task 4: Build product listing component
       - Task 5: Add search functionality
 
-4. **Let PM Agent Coordinate**
+4. **Let Marcus Coordinate**
    
    * Workers will pick up tasks based on skills
    * Progress tracked automatically
@@ -188,4 +188,4 @@ Next Steps
 * Download and customize the templates
 * Create your first project specification
 * Generate tasks from your specifications
-* Start PM Agent and watch your project come to life!
+* Start Marcus and watch your project come to life!

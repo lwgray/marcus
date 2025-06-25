@@ -1,7 +1,7 @@
 Developer Guide
 ===============
 
-Technical documentation for developers working on or extending PM Agent.
+Technical documentation for developers working on or extending Marcus.
 
 .. toctree::
    :maxdepth: 2
@@ -14,41 +14,42 @@ Technical documentation for developers working on or extending PM Agent.
    visualization
    testing
    contributing
+   build_docs
 
 Overview
 --------
 
 This guide provides in-depth technical information for:
 
-* Understanding PM Agent's architecture
+* Understanding Marcus's architecture
 * Building custom worker agents
 * Extending the visualization system
-* Contributing to PM Agent development
+* Contributing to Marcus development
 * Running tests and ensuring quality
 
 For Developers
 --------------
 
 **Architecture**
-   Deep dive into PM Agent's dual MCP architecture, data flow, and design decisions.
+   Deep dive into Marcus's dual MCP architecture, data flow, and design decisions.
 
 **Worker Agents**
-   Complete guide to building AI agents that integrate with PM Agent, including examples and best practices.
+   Complete guide to building AI agents that integrate with Marcus, including examples and best practices.
 
 **Visualization System**
    Technical details of the real-time visualization system, including extending and customizing it.
 
 **Testing**
-   How to test PM Agent components, write new tests, and ensure code quality.
+   How to test Marcus components, write new tests, and ensure code quality.
 
 **Contributing**
-   Guidelines for contributing to PM Agent, including code style, PR process, and development setup.
+   Guidelines for contributing to Marcus, including code style, PR process, and development setup.
 
 Key Concepts
 ------------
 
 **MCP (Model Context Protocol)**
-   PM Agent uses MCP for both server (worker interface) and client (kanban interface) roles.
+   Marcus uses MCP for both server (worker interface) and client (kanban interface) roles.
 
 **Worker Registration**
    Agents declare their capabilities when joining the system.
@@ -95,7 +96,7 @@ Code Organization
 
    pm-agent/
    ├── src/
-   │   ├── pm_agent_mvp_fixed.py      # Main PM Agent server
+   │   ├── pm_agent_mvp_fixed.py      # Main Marcus server
    │   ├── models/                    # Data models
    │   ├── integrations/              # External integrations
    │   ├── visualization/             # Visualization system
@@ -107,7 +108,7 @@ Code Organization
 API Development
 ---------------
 
-PM Agent exposes MCP tools for worker agents:
+Marcus exposes MCP tools for worker agents:
 
 * ``register_agent`` - Worker registration
 * ``request_next_task`` - Task assignment

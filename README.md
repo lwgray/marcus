@@ -1,10 +1,10 @@
-# 🤖 PM Agent - Your AI Project Manager
+# 🏛️ Marcus - AI Project Coordination System
 
-Think of PM Agent as a smart project manager that helps AI workers build software together. It's like having a teacher who assigns homework to different students based on what they're good at!
+Think of Marcus as a smart project manager that helps AI workers build software together. It's like having a teacher who assigns homework to different students based on what they're good at!
 
 ## 🎯 What Does It Do?
 
-PM Agent helps AI workers (like Claude) work together on coding projects by:
+Marcus helps AI workers (like Claude) work together on coding projects by:
 - 📋 **Giving out tasks** - Like a teacher assigning homework
 - 👀 **Watching progress** - Making sure work gets done
 - 🧩 **Sharing knowledge** - Telling workers what others have built
@@ -13,7 +13,7 @@ PM Agent helps AI workers (like Claude) work together on coding projects by:
 ## 🚀 Super Quick Start (30 seconds!)
 
 ```bash
-# 1. Download PM Agent
+# 1. Download Marcus
 git clone <this-repo>
 cd pm-agent
 
@@ -27,28 +27,28 @@ nano .env  # (or open .env in any text editor)
 docker-compose restart
 ```
 
-That's it! PM Agent is now running.
+That's it! Marcus is now running.
 
 ## 📚 Documentation
 
 ### For Beginners
 - [**Getting Started**](docs/getting-started.md) - Your first time? Start here!
-- [**How It Works**](docs/how-it-works.md) - Simple explanation of PM Agent
+- [**How It Works**](docs/how-it-works.md) - Simple explanation of Marcus
 
 ### Setting It Up  
 - [**Installation Guide**](docs/installation.md) - Detailed setup instructions
 - [**Choosing Your Task Board**](docs/providers.md) - GitHub, Linear, or Planka?
 - [**Configuration**](docs/configuration.md) - All the settings explained
 
-### Using PM Agent
+### Using Marcus
 - [**Quick Commands**](docs/commands.md) - Common commands reference
 - [**Deployment Options**](docs/deployment.md) - Local vs Remote hosting
 - [**Troubleshooting**](docs/troubleshooting.md) - When things go wrong
 
 ### Advanced Topics
-- [**Architecture**](docs/architecture.md) - How PM Agent is built
+- [**Architecture**](docs/architecture.md) - How Marcus is built
 - [**API Reference**](docs/api.md) - For developers
-- [**Contributing**](CONTRIBUTING.md) - Help make PM Agent better!
+- [**Contributing**](CONTRIBUTING.md) - Help make Marcus better!
 
 ## 🎮 Different Ways to Run
 
@@ -61,7 +61,7 @@ That's it! PM Agent is now running.
 
 ## 📋 Task Board Options
 
-PM Agent works with different task boards (like different brands of notebooks):
+Marcus works with different task boards (like different brands of notebooks):
 
 | Task Board | Good For | Cost | Setup Time |
 |------------|----------|------|------------|
@@ -83,7 +83,7 @@ PM Agent works with different task boards (like different brands of notebooks):
 
 ## 📄 License
 
-PM Agent is open source (MIT License) - you can use it for anything!
+Marcus is open source (MIT License) - you can use it for anything!
 
 ---
 

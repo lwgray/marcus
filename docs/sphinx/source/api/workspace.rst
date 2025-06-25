@@ -2,9 +2,7 @@ Workspace Management
 ====================
 
 .. automodule:: core.workspace_manager
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   :no-members:
 
 WorkspaceManager
 ----------------
@@ -15,6 +13,7 @@ WorkspaceManager
    :special-members: __init__
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 WorkspaceConfig
 ---------------
@@ -23,6 +22,7 @@ WorkspaceConfig
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 ProjectWorkspaces
 -----------------
@@ -31,6 +31,7 @@ ProjectWorkspaces
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 WorkspaceSecurityError
 ----------------------
@@ -38,3 +39,4 @@ WorkspaceSecurityError
 .. autoexception:: core.workspace_manager.WorkspaceSecurityError
    :members:
    :show-inheritance:
+   :no-index:

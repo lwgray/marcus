@@ -1,10 +1,10 @@
 # ⚙️ Configuration Guide
 
-This guide explains all the settings you can change in PM Agent.
+This guide explains all the settings you can change in Marcus.
 
 ## 📄 The .env File
 
-All settings live in a file called `.env`. It's like a settings menu for PM Agent!
+All settings live in a file called `.env`. It's like a settings menu for Marcus!
 
 ### Creating .env
 
@@ -39,7 +39,7 @@ GITHUB_REPO=your-repo-name
 **Getting a GitHub Token:**
 1. Go to https://github.com/settings/tokens
 2. Click "Generate new token (classic)"
-3. Name it "PM Agent"
+3. Name it "Marcus"
 4. Check these boxes:
    - ✅ repo (all)
    - ✅ project

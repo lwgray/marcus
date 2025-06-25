@@ -6,13 +6,14 @@
 import os
 import sys
 sys.path.insert(0, os.path.abspath('../../../src'))
+sys.path.insert(0, os.path.abspath('../../..'))
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'PM Agent'
-copyright = '2024, PM Agent Team'
-author = 'PM Agent Team'
+project = 'Marcus'
+copyright = '2024, Marcus Team'
+author = 'Marcus Team'
 release = '1.0.0'
 
 # -- General configuration ---------------------------------------------------
@@ -57,14 +58,13 @@ exclude_patterns = []
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_theme = 'sphinx_rtd_theme'
-html_static_path = ['_static']
+html_static_path = []
 
 # -- Options for autodoc -----------------------------------------------------
 
 autodoc_default_options = {
     'members': True,
     'member-order': 'bysource',
-    'special-members': '__init__',
     'undoc-members': True,
     'exclude-members': '__weakref__'
 }

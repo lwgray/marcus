@@ -1,12 +1,12 @@
-# 🧠 How PM Agent Works
+# 🧠 How Marcus Works
 
-Let's understand PM Agent using a simple analogy: imagine a classroom!
+Let's understand Marcus using a simple analogy: imagine a classroom!
 
 ## 📚 The Classroom Analogy
 
-Think of PM Agent like this:
+Think of Marcus like this:
 
-- **PM Agent** = The Teacher 👩‍🏫
+- **Marcus** = The Teacher 👩‍🏫
 - **AI Workers** = Students 👨‍🎓👩‍🎓
 - **GitHub Issues** = Homework Assignments 📝
 - **Your Code** = The Class Project 🏗️
@@ -32,9 +32,9 @@ Frontend Developer: "I can make web pages!"
 QA Engineer: "I can write tests!"
 ```
 
-### 3. Teacher Assigns Homework (PM Agent Matches Tasks)
+### 3. Teacher Assigns Homework (Marcus Matches Tasks)
 
-PM Agent looks at:
+Marcus looks at:
 - What each student is good at
 - What assignments are available
 - Which is most important

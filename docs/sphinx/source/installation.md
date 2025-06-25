@@ -1,11 +1,11 @@
 # Installation Guide
 
 > **Time to first success**: 5 minutes  
-> **What you'll achieve**: A fully configured PM Agent managing AI workers on your projects
+> **What you'll achieve**: A fully configured Marcus managing AI workers on your projects
 
 ## System Requirements
 
-Before installing PM Agent, ensure your system meets these requirements:
+Before installing Marcus, ensure your system meets these requirements:
 
 ### Minimum Requirements
 
@@ -25,13 +25,13 @@ Before installing PM Agent, ensure your system meets these requirements:
 | Linux (Ubuntu/Debian) |  | Primary development platform |
 | Linux (RHEL/CentOS) |  | Tested on CentOS 8+ |
 | Windows 10/11 |  | WSL2 recommended |
-| Windows (Native) |   | Use Docker Desktop |
+| Windows (Native) | ï¿½ | Use Docker Desktop |
 
 ## Installation Methods
 
 ### Method 1: Docker Installation (Recommended)
 
-The easiest way to get started with PM Agent is using Docker.
+The easiest way to get started with Marcus is using Docker.
 
 #### Step 1: Install Docker
 
@@ -112,10 +112,10 @@ GITHUB_OWNER=your_github_username
 GITHUB_REPO=your_repo_name
 ```
 
-#### Step 5: Start PM Agent
+#### Step 5: Start Marcus
 
 ```bash
-# Start core PM Agent
+# Start core Marcus
 ./start.sh
 
 # Or start with visualization UI
@@ -179,7 +179,7 @@ source pm-agent-env/bin/activate
 pm-agent-env\Scripts\activate
 ```
 
-#### Step 3: Install PM Agent
+#### Step 3: Install Marcus
 
 ```bash
 # Clone the repository
@@ -202,7 +202,7 @@ cp .env.example .env
 nano .env
 ```
 
-#### Step 5: Run PM Agent
+#### Step 5: Run Marcus
 
 ```bash
 # Start the MCP server
@@ -213,7 +213,7 @@ python pm_agent_mcp_server_v2.py
 
 ### API Keys
 
-PM Agent requires API keys for AI services and your chosen task board.
+Marcus requires API keys for AI services and your chosen task board.
 
 #### Anthropic API Key (Required)
 
@@ -225,7 +225,7 @@ PM Agent requires API keys for AI services and your chosen task board.
 
 #### GitHub Token (If using GitHub)
 
-1. Go to GitHub Settings ’ Developer settings ’ Personal access tokens
+1. Go to GitHub Settings ï¿½ Developer settings ï¿½ Personal access tokens
 2. Click "Generate new token (classic)"
 3. Select scopes:
    - `repo` (full control)
@@ -234,7 +234,7 @@ PM Agent requires API keys for AI services and your chosen task board.
 
 #### Linear API Key (If using Linear)
 
-1. Go to Linear Settings ’ API
+1. Go to Linear Settings ï¿½ API
 2. Create a personal API key
 3. Copy the key and your Team ID
 4. Add both to your `.env` file
@@ -269,13 +269,13 @@ docker-compose ps
 python -c "import mcp; print('MCP installed successfully')"
 ```
 
-### Test PM Agent
+### Test Marcus
 
 Run a simple test:
 
 ```bash
 # Docker
-docker-compose exec pm-agent python -c "print('PM Agent is ready!')"
+docker-compose exec pm-agent python -c "print('Marcus is ready!)"
 
 # Python
 python scripts/test_connection.py
@@ -288,7 +288,7 @@ python scripts/test_connection.py
 ./start.sh demo
 ```
 
-This runs PM Agent with mock workers to verify your setup.
+This runs Marcus with mock workers to verify your setup.
 
 ## Troubleshooting
 
@@ -328,7 +328,7 @@ sudo chown -R $USER:$USER .
 # Find what's using the port
 lsof -i :8000  # or the port number shown in error
 
-# Stop PM Agent if running
+# Stop Marcus if running
 docker-compose down
 ```
 
@@ -360,21 +360,21 @@ source ~/.bashrc
 
 ## Next Steps
 
-<‰ **Congratulations!** PM Agent is now installed and ready to use.
+<ï¿½ **Congratulations!** Marcus is now installed and ready to use.
 
 ### Quick Start Guide
-’ Continue to our [5-minute quickstart](quickstart.md) to create your first AI-managed project
+ï¿½ Continue to our [5-minute quickstart](quickstart.md) to create your first AI-managed project
 
 ### Learn the Concepts
-’ Read [Core Concepts](../concepts/core-concepts.md) to understand how PM Agent works
+ï¿½ Read [Core Concepts](../concepts/core-concepts.md) to understand how Marcus works
 
 ### Configure Your Workspace
-’ See [Configuration Guide](../reference/configuration.md) for advanced settings
+ï¿½ See [Configuration Guide](../reference/configuration.md) for advanced settings
 
 ### Get Help
-- =¬ [Join our Discord](https://discord.gg/pm-agent)
+- =ï¿½ [Join our Discord](https://discord.gg/pm-agent)
 - = [Report Issues](https://github.com/lwgray/pm-agent/issues)
-- =ç [Email Support](mailto:support@pm-agent.ai)
+- =ï¿½ [Email Support](mailto:support@pm-agent.ai)
 
 ---
 

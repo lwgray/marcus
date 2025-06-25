@@ -2,9 +2,7 @@ Core Data Models
 ================
 
 .. automodule:: core.models
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   :no-members:
 
 Enumerations
 ------------
@@ -16,6 +14,7 @@ TaskStatus
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 Priority
 ~~~~~~~~
@@ -24,6 +23,7 @@ Priority
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 RiskLevel
 ~~~~~~~~~
@@ -32,6 +32,7 @@ RiskLevel
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 Data Classes
 ------------
@@ -43,6 +44,7 @@ Task
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 WorkerStatus
 ~~~~~~~~~~~~
@@ -51,6 +53,7 @@ WorkerStatus
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 TaskAssignment
 ~~~~~~~~~~~~~~
@@ -59,6 +62,7 @@ TaskAssignment
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 ProjectState
 ~~~~~~~~~~~~
@@ -67,6 +71,7 @@ ProjectState
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 BlockerReport
 ~~~~~~~~~~~~~
@@ -75,6 +80,7 @@ BlockerReport
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 ProjectRisk
 ~~~~~~~~~~~
@@ -83,3 +89,4 @@ ProjectRisk
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:

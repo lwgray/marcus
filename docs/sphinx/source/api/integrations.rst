@@ -5,9 +5,7 @@ SimpleMCPKanbanClient
 ---------------------
 
 .. automodule:: integrations.mcp_kanban_client_simple
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   :no-members:
 
 .. autoclass:: integrations.mcp_kanban_client_simple.SimpleMCPKanbanClient
    :members:
@@ -15,14 +13,13 @@ SimpleMCPKanbanClient
    :special-members: __init__
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 AIAnalysisEngine
 ----------------
 
 .. automodule:: integrations.ai_analysis_engine_fixed
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   :no-members:
 
 .. autoclass:: integrations.ai_analysis_engine_fixed.AIAnalysisEngine
    :members:
@@ -30,3 +27,4 @@ AIAnalysisEngine
    :special-members: __init__
    :undoc-members:
    :show-inheritance:
+   :no-index:

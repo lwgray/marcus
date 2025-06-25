@@ -1,6 +1,6 @@
 # Quick Start Guide
 
-This guide will get you up and running with PM Agent in 5 minutes.
+This guide will get you up and running with Marcus in 5 minutes.
 
 ## Prerequisites
 
@@ -25,7 +25,7 @@ npm run up
 This starts Planka at http://localhost:3333
 - Login: `demo@demo.demo` / `demo`
 
-## Step 2: Setup PM Agent
+## Step 2: Setup Marcus
 
 ```bash
 # Clone PM Agent (in parent directory)
@@ -63,7 +63,7 @@ python scripts/reset_todo_board_auto.py
 python scripts/testing/working_select_board_fixed.py
 ```
 
-## Step 5: Test PM Agent
+## Step 5: Test Marcus
 
 ```bash
 # View current board state
@@ -76,7 +76,7 @@ python scripts/utilities/interactive_test.py
 python scripts/test_pm_agent_end_to_end.py
 ```
 
-## Step 6: Start PM Agent Server
+## Step 6: Start Marcus Server
 
 For worker agents to connect:
 
