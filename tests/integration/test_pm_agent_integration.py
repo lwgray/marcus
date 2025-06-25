@@ -17,7 +17,7 @@ from unittest.mock import Mock, patch, AsyncMock
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from pm_agent_mcp_server_v2 import PMAgentServer
+from pm_agent_mcp_server_v2 import PMAgentState
 from src.core.models import Task, TaskStatus, Priority, WorkerStatus, RiskLevel, ProjectState
 
 

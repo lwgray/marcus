@@ -13,14 +13,14 @@ a full MCP connection.
 
 import sys
 import os
-from typing import None as NoneType
+from typing import Optional
 
 # Add parent directories to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from src.pm_agent_mvp_fixed import PMAgentMVP
 
-def test_board_config() -> NoneType:
+def test_board_config() -> None:
     """
     Test that board_id and project_id are loaded correctly.
     
