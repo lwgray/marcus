@@ -1,0 +1,168 @@
+# PM Agent Experiment Configuration
+
+experiments:
+  baseline_performance:
+    description: "Establish PM Agent's task completion rate on standard benchmarks"
+    datasets:
+      - name: "swe-bench-lite"
+        source: "princeton-nlp/SWE-bench_Lite"
+        size: 300
+      - name: "custom-tasks"
+        source: "local"
+        path: "./data/custom_tasks.json"
+    configurations:
+      - agents: 1
+        parallel: false
+        timeout: 3600
+      - agents: 3
+        parallel: true
+        timeout: 3600
+      - agents: 5
+        parallel: true
+        timeout: 3600
+      - agents: 10
+        parallel: true
+        timeout: 3600
+    success_criteria:
+      completion_rate_target: 40.0
+      quality_threshold: 0.8
+
+  failure_recovery:
+    description: "Test PM Agent's ability to recover from common failures"
+    failure_scenarios:
+      - type: "missing_dependency"
+        frequency: 0.2
+        recoverable: true
+      - type: "api_timeout"
+        frequency: 0.15
+        recoverable: true
+      - type: "test_failure"
+        frequency: 0.25
+        recoverable: true
+      - type: "merge_conflict"
+        frequency: 0.1
+        recoverable: true
+      - type: "resource_limit"
+        frequency: 0.05
+        recoverable: false
+      - type: "unclear_requirements"
+        frequency: 0.25
+        recoverable: true
+    max_recovery_attempts: 3
+    recovery_timeout: 600
+
+  scalability_stress:
+    description: "Find optimal agent configurations and breaking points"
+    scaling_steps:
+      - agents: 1
+        tasks: 50
+      - agents: 5
+        tasks: 250
+      - agents: 10
+        tasks: 500
+      - agents: 20
+        tasks: 1000
+      - agents: 30
+        tasks: 1500
+      - agents: 50
+        tasks: 2500
+    monitoring:
+      metrics:
+        - cpu_usage
+        - memory_usage
+        - api_rate_limit
+        - database_latency
+        - task_throughput
+      collection_interval: 10
+
+  real_world_project:
+    description: "Build a complete application from scratch"
+    project_type: "todo_app"
+    requirements:
+      backend:
+        framework: "express"
+        database: "postgresql"
+        auth: "jwt"
+        testing: "jest"
+      frontend:
+        framework: "react"
+        styling: "tailwind"
+        testing: "react-testing-library"
+      infrastructure:
+        containerization: "docker"
+        ci_cd: "github_actions"
+      quality:
+        test_coverage: 80
+        linting: "eslint"
+        type_checking: "typescript"
+
+  coordination_efficiency:
+    description: "Measure multi-agent coordination overhead"
+    test_project: "e-commerce-api"
+    team_sizes: [1, 2, 3, 5, 10]
+    metrics:
+      - coordination_time
+      - rework_rate
+      - parallel_efficiency
+      - conflict_rate
+
+  human_ai_collaboration:
+    description: "Optimize human oversight levels"
+    autonomy_levels:
+      - name: "full_human_control"
+        approval_points: ["task_start", "implementation", "testing", "completion"]
+        expected_intervention: 1.0
+      - name: "high_risk_approval"
+        approval_points: ["database_changes", "api_changes", "security_changes"]
+        expected_intervention: 0.3
+      - name: "pr_approval_only"
+        approval_points: ["pull_request"]
+        expected_intervention: 0.1
+      - name: "full_autonomy"
+        approval_points: []
+        expected_intervention: 0.0
+
+  cost_benefit:
+    description: "Track costs and ROI"
+    duration_days: 30
+    cost_categories:
+      - infrastructure
+      - api_calls
+      - human_time
+    value_metrics:
+      - features_delivered
+      - bugs_fixed
+      - developer_hours_saved
+      - code_quality_improvement
+
+  integration_complexity:
+    description: "Test on existing codebases"
+    repositories:
+      - name: "django"
+        url: "https://github.com/django/django"
+        task_types: ["bug_fix", "small_feature"]
+      - name: "express"
+        url: "https://github.com/expressjs/express"
+        task_types: ["bug_fix", "api_endpoint"]
+      - name: "react-admin"
+        url: "https://github.com/marmelab/react-admin"
+        task_types: ["ui_fix", "component_addition"]
+
+# Global settings
+global:
+  output_dir: "./results"
+  log_level: "INFO"
+  parallel_execution: true
+  retry_failed_experiments: true
+  max_retries: 3
+  
+# Benchmark URLs
+benchmarks:
+  swe_bench:
+    leaderboard: "https://www.swebench.com/"
+    documentation: "https://www.swebench.com/SWE-bench/"
+    datasets:
+      full: "princeton-nlp/SWE-bench"
+      lite: "princeton-nlp/SWE-bench_Lite"
+      verified: "princeton-nlp/SWE-bench_Verified"
+      multimodal: "princeton-nlp/SWE-bench_Multimodal"

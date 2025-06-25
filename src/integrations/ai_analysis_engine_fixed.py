@@ -323,7 +323,7 @@ Identify risks and provide JSON:
         best_task = None
         
         priority_scores = {
-            Priority.URGENT: 4,
+            Priority.URGENT: 10,  # Heavily prioritize urgent tasks in fallback mode
             Priority.HIGH: 3,
             Priority.MEDIUM: 2,
             Priority.LOW: 1
@@ -791,6 +791,24 @@ Provide a helpful clarification that guides the developer."""
             "overdue_tasks": len(project_state.overdue_tasks)
         }
         
+        # Serialize team status if it's a list of WorkerStatus objects
+        if isinstance(team_status, list) and len(team_status) > 0:
+            # Assume it's a list of WorkerStatus objects
+            team_status_data = [
+                {
+                    "worker_id": worker.worker_id,
+                    "name": worker.name,
+                    "role": worker.role,
+                    "current_tasks_count": len(worker.current_tasks),
+                    "completed_tasks_count": worker.completed_tasks_count,
+                    "capacity": worker.capacity,
+                    "performance_score": getattr(worker, 'performance_score', 1.0)
+                }
+                for worker in team_status
+            ]
+        else:
+            team_status_data = team_status
+        
         # Create project health analysis prompt
         prompt = f"""Analyze the health of this software project and provide comprehensive insights.
 
@@ -801,7 +819,7 @@ Recent Activities:
 {json.dumps(recent_activities, indent=2)}
 
 Team Status:
-{json.dumps(team_status, indent=2)}
+{json.dumps(team_status_data, indent=2)}
 
 Provide a detailed analysis including:
 1. Overall project health assessment (green/yellow/red)
