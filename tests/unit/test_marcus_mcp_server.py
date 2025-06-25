@@ -122,19 +122,19 @@ def sample_worker():
     )
 
 
-class TestPMAgentState:
-    """Test PMAgentState class"""
+class TestMarcusState:
+    """Test MarcusState class"""
     
-    @patch('pm_agent_mcp_server_v2.load_dotenv')
-    @patch('pm_agent_mcp_server_v2.Settings')
-    @patch('pm_agent_mcp_server_v2.AIAnalysisEngine')
-    @patch('pm_agent_mcp_server_v2.ProjectMonitor')
-    @patch('pm_agent_mcp_server_v2.CommunicationHub')
+    @patch('marcus_mcp_server.load_dotenv')
+    @patch('marcus_mcp_server.Settings')
+    @patch('marcus_mcp_server.AIAnalysisEngine')
+    @patch('marcus_mcp_server.ProjectMonitor')
+    @patch('marcus_mcp_server.CommunicationHub')
     @patch('builtins.open', new_callable=mock_open)
     def test_init(self, mock_file, mock_comm, mock_monitor, mock_ai, mock_settings, mock_dotenv, mock_env_vars):
-        """Test PMAgentState initialization"""
+        """Test MarcusState initialization"""
         # Create instance
-        state = PMAgentState()
+        state = MarcusState()
         
         # Verify initialization
         assert state.provider == 'planka'
@@ -152,7 +152,7 @@ class TestPMAgentState:
         # Verify log file was opened
         mock_file.assert_called()
         
-    @patch('pm_agent_mcp_server_v2.KanbanFactory')
+    @patch('marcus_mcp_server.KanbanFactory')
     async def test_initialize_kanban(self, mock_factory, mock_env_vars):
         """Test kanban initialization"""
         # Mock factory
@@ -223,7 +223,7 @@ class TestToolRegistration:
 class TestToolCallHandler:
     """Test tool call handler"""
     
-    @patch('pm_agent_mcp_server_v2.register_agent')
+    @patch('marcus_mcp_server.register_agent')
     async def test_handle_call_tool_register_agent(self, mock_register):
         """Test calling register_agent tool"""
         mock_register.return_value = {"success": True}
@@ -262,8 +262,8 @@ class TestToolCallHandler:
 class TestRegisterAgent:
     """Test agent registration"""
     
-    @patch('pm_agent_mcp_server_v2.state')
-    @patch('pm_agent_mcp_server_v2.conversation_logger')
+    @patch('marcus_mcp_server.state')
+    @patch('marcus_mcp_server.conversation_logger')
     async def test_register_agent_success(self, mock_logger, mock_state):
         """Test successful agent registration"""
         mock_state.agent_status = {}
@@ -288,8 +288,8 @@ class TestRegisterAgent:
         mock_logger.log_worker_message.assert_called()
         mock_logger.log_pm_decision.assert_called()
         
-    @patch('pm_agent_mcp_server_v2.state')
-    @patch('pm_agent_mcp_server_v2.conversation_logger')
+    @patch('marcus_mcp_server.state')
+    @patch('marcus_mcp_server.conversation_logger')
     async def test_register_agent_exception(self, mock_logger, mock_state):
         """Test agent registration with exception"""
         mock_state.agent_status = None  # Force AttributeError
@@ -303,10 +303,10 @@ class TestRegisterAgent:
 class TestRequestNextTask:
     """Test task request functionality"""
     
-    @patch('pm_agent_mcp_server_v2.state')
-    @patch('pm_agent_mcp_server_v2.refresh_project_state')
-    @patch('pm_agent_mcp_server_v2.find_optimal_task_for_agent')
-    @patch('pm_agent_mcp_server_v2.conversation_logger')
+    @patch('marcus_mcp_server.state')
+    @patch('marcus_mcp_server.refresh_project_state')
+    @patch('marcus_mcp_server.find_optimal_task_for_agent')
+    @patch('marcus_mcp_server.conversation_logger')
     async def test_request_next_task_success(self, mock_logger, mock_find_task, 
                                            mock_refresh, mock_state, sample_task, sample_worker):
         """Test successful task request"""
@@ -337,10 +337,10 @@ class TestRequestNextTask:
         # Verify kanban update
         mock_state.kanban_client.update_task.assert_called_once()
         
-    @patch('pm_agent_mcp_server_v2.state')
-    @patch('pm_agent_mcp_server_v2.refresh_project_state')
-    @patch('pm_agent_mcp_server_v2.find_optimal_task_for_agent')
-    @patch('pm_agent_mcp_server_v2.conversation_logger')
+    @patch('marcus_mcp_server.state')
+    @patch('marcus_mcp_server.refresh_project_state')
+    @patch('marcus_mcp_server.find_optimal_task_for_agent')
+    @patch('marcus_mcp_server.conversation_logger')
     async def test_request_next_task_no_tasks(self, mock_logger, mock_find_task, mock_refresh, mock_state, sample_worker):
         """Test task request when no tasks available"""
         mock_state.agent_status = {"agent-1": sample_worker}
@@ -357,9 +357,9 @@ class TestRequestNextTask:
 class TestReportTaskProgress:
     """Test task progress reporting"""
     
-    @patch('pm_agent_mcp_server_v2.state')
-    @patch('pm_agent_mcp_server_v2.refresh_project_state')
-    @patch('pm_agent_mcp_server_v2.conversation_logger')
+    @patch('marcus_mcp_server.state')
+    @patch('marcus_mcp_server.refresh_project_state')
+    @patch('marcus_mcp_server.conversation_logger')
     async def test_report_progress_completed(self, mock_logger, mock_refresh, mock_state, sample_worker):
         """Test reporting task completion"""
         # Setup mocks
@@ -385,9 +385,9 @@ class TestReportTaskProgress:
         assert sample_worker.completed_tasks_count == 1
         assert "agent-1" not in mock_state.agent_tasks
         
-    @patch('pm_agent_mcp_server_v2.state')
-    @patch('pm_agent_mcp_server_v2.refresh_project_state')
-    @patch('pm_agent_mcp_server_v2.conversation_logger')
+    @patch('marcus_mcp_server.state')
+    @patch('marcus_mcp_server.refresh_project_state')
+    @patch('marcus_mcp_server.conversation_logger')
     async def test_report_progress_blocked(self, mock_logger, mock_refresh, mock_state):
         """Test reporting blocked status"""
         mock_state.kanban_client = AsyncMock()
@@ -404,8 +404,8 @@ class TestReportTaskProgress:
 class TestReportBlocker:
     """Test blocker reporting"""
     
-    @patch('pm_agent_mcp_server_v2.state')
-    @patch('pm_agent_mcp_server_v2.conversation_logger')
+    @patch('marcus_mcp_server.state')
+    @patch('marcus_mcp_server.conversation_logger')
     async def test_report_blocker_success(self, mock_logger, mock_state, sample_task, sample_worker):
         """Test successful blocker report"""
         # Setup mocks
@@ -435,8 +435,8 @@ class TestReportBlocker:
 class TestProjectStatus:
     """Test project status functionality"""
     
-    @patch('pm_agent_mcp_server_v2.state')
-    @patch('pm_agent_mcp_server_v2.refresh_project_state')
+    @patch('marcus_mcp_server.state')
+    @patch('marcus_mcp_server.refresh_project_state')
     async def test_get_project_status_success(self, mock_refresh, mock_state, sample_task):
         """Test getting project status"""
         # Setup state
@@ -470,7 +470,7 @@ class TestProjectStatus:
 class TestAgentStatus:
     """Test agent status functionality"""
     
-    @patch('pm_agent_mcp_server_v2.state')
+    @patch('marcus_mcp_server.state')
     async def test_get_agent_status_exists(self, mock_state, sample_worker, sample_task):
         """Test getting status for existing agent"""
         sample_worker.current_tasks = [sample_task]
@@ -498,7 +498,7 @@ class TestAgentStatus:
         assert len(result['agent']['current_tasks']) == 1
         assert 'current_assignment' in result
         
-    @patch('pm_agent_mcp_server_v2.state')
+    @patch('marcus_mcp_server.state')
     async def test_get_agent_status_not_found(self, mock_state):
         """Test getting status for non-existent agent"""
         mock_state.agent_status = {}
@@ -512,7 +512,7 @@ class TestAgentStatus:
 class TestListAgents:
     """Test listing agents"""
     
-    @patch('pm_agent_mcp_server_v2.state')
+    @patch('marcus_mcp_server.state')
     async def test_list_registered_agents(self, mock_state, sample_worker):
         """Test listing all registered agents"""
         mock_state.agent_status = {
@@ -546,8 +546,8 @@ class TestListAgents:
 class TestPing:
     """Test ping functionality"""
     
-    @patch('pm_agent_mcp_server_v2.state')
-    @patch('pm_agent_mcp_server_v2.conversation_logger')
+    @patch('marcus_mcp_server.state')
+    @patch('marcus_mcp_server.conversation_logger')
     async def test_ping_with_echo(self, mock_logger, mock_state):
         """Test ping with echo message"""
         mock_state.log_event = Mock()
@@ -564,7 +564,7 @@ class TestPing:
         # Verify logging
         assert mock_state.log_event.call_count == 2  # request and response
         
-    @patch('pm_agent_mcp_server_v2.state')
+    @patch('marcus_mcp_server.state')
     async def test_ping_without_echo(self, mock_state):
         """Test ping without echo message"""
         mock_state.log_event = Mock()
@@ -578,8 +578,8 @@ class TestPing:
 class TestHelperFunctions:
     """Test helper functions"""
     
-    @patch('pm_agent_mcp_server_v2.state')
-    @patch('pm_agent_mcp_server_v2.conversation_logger')
+    @patch('marcus_mcp_server.state')
+    @patch('marcus_mcp_server.conversation_logger')
     async def test_refresh_project_state(self, mock_logger, mock_state, sample_task):
         """Test refreshing project state"""
         # Setup mocks
@@ -599,7 +599,7 @@ class TestHelperFunctions:
         mock_state.log_event.assert_called()
         mock_logger.log_system_state.assert_called_once()
         
-    @patch('pm_agent_mcp_server_v2.state')
+    @patch('marcus_mcp_server.state')
     async def test_find_optimal_task_no_agent(self, mock_state):
         """Test finding task when agent doesn't exist"""
         mock_state.agent_status = {}
@@ -608,7 +608,7 @@ class TestHelperFunctions:
         
         assert result is None
         
-    @patch('pm_agent_mcp_server_v2.state')
+    @patch('marcus_mcp_server.state')
     async def test_find_optimal_task_with_skills(self, mock_state, sample_worker, sample_task):
         """Test finding optimal task based on skills"""
         # Setup
@@ -622,7 +622,7 @@ class TestHelperFunctions:
         
         assert result == sample_task
         
-    @patch('pm_agent_mcp_server_v2.state')
+    @patch('marcus_mcp_server.state')
     async def test_find_optimal_task_already_assigned(self, mock_state, sample_worker, sample_task):
         """Test finding task when all tasks are assigned"""
         mock_state.agent_status = {"agent-1": sample_worker}
