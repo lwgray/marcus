@@ -184,6 +184,8 @@ class TestVisualizationIntegration:
         
         # Complete task1
         graph.update_task_status(task1, "completed")
+        # Also complete task2 to free worker2
+        graph.update_task_status(task2, "completed")
         
         # Add new task depending on completed one
         task3 = graph.add_task("t3", "Integration", {

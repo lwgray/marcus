@@ -310,6 +310,13 @@ class KnowledgeGraphBuilder:
             self.nodes[task_id].properties['status'] = status
             self.nodes[task_id].updated_at = datetime.now()
             self.graph.nodes[task_id]['status'] = status
+            
+            # If task is completed, free up the assigned worker
+            if status == 'completed':
+                worker_id = self.nodes[task_id].properties.get('assigned_to')
+                if worker_id and worker_id in self.nodes:
+                    self.nodes[worker_id].properties['status'] = 'available'
+                    self.nodes[worker_id].properties['current_task'] = None
     
     def get_worker_tasks(self, worker_id: str) -> List[str]:
         """Get all tasks assigned to a worker"""
@@ -330,9 +337,13 @@ class KnowledgeGraphBuilder:
         candidates = []
         for node_id, node in self.nodes.items():
             if node.node_type == 'worker':
-                worker_skills = set(node.properties.get('skills', []))
-                if all(skill in worker_skills for skill in required_skills):
-                    candidates.append(node_id)
+                # Check if worker is available
+                if node.properties.get('status') == 'available':
+                    worker_skills = set(node.properties.get('skills', []))
+                    required_skills_set = set(required_skills)
+                    # Return workers with any matching skills (partial match)
+                    if worker_skills.intersection(required_skills_set):
+                        candidates.append(node_id)
         
         return candidates
     
