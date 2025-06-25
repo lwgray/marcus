@@ -28,7 +28,7 @@ class TestConsentManager:
     def consent_manager_with_data(self):
         """Create consent manager with some existing consent data"""
         existing_data = {
-            'failure_prediction': {
+            InsightCategory.FAILURE_PREDICTION.value: {
                 'consent_level': ConsentLevel.BASIC.value,
                 'granted_at': datetime.now().isoformat(),
                 'version': '1.0',
@@ -119,14 +119,14 @@ class TestConsentManager:
         """Test consent decision storage and update"""
         consent_response = {
             'categories': {
-                'failure_prediction': {
+                InsightCategory.FAILURE_PREDICTION.value: {
                     'level': ConsentLevel.BASIC.value,
                     'conditions': ['review_annually']
                 },
-                'team_optimization': {
+                InsightCategory.TEAM_OPTIMIZATION.value: {
                     'level': ConsentLevel.DENIED.value
                 },
-                'workflow_efficiency': {
+                InsightCategory.WORKFLOW_EFFICIENCY.value: {
                     'level': ConsentLevel.ENHANCED.value,
                     'conditions': ['anonymize_extra']
                 }
@@ -185,13 +185,13 @@ class TestConsentManager:
         
         # Check category-specific status
         categories_status = status['categories']
-        assert categories_status['failure_prediction']['has_consent'] is True
-        assert categories_status['failure_prediction']['level'] == ConsentLevel.BASIC.value
-        assert categories_status['failure_prediction']['explicit'] is True
+        assert categories_status[InsightCategory.FAILURE_PREDICTION.value]['has_consent'] is True
+        assert categories_status[InsightCategory.FAILURE_PREDICTION.value]['level'] == ConsentLevel.BASIC.value
+        assert categories_status[InsightCategory.FAILURE_PREDICTION.value]['explicit'] is True
         
         # Other categories should be denied by default
-        assert categories_status['team_optimization']['has_consent'] is False
-        assert categories_status['team_optimization']['level'] == ConsentLevel.DENIED.value
+        assert categories_status[InsightCategory.TEAM_OPTIMIZATION.value]['has_consent'] is False
+        assert categories_status[InsightCategory.TEAM_OPTIMIZATION.value]['level'] == ConsentLevel.DENIED.value
     
     def test_consent_revocation(self, consent_manager_with_data):
         """Test consent revocation functionality"""
@@ -299,7 +299,7 @@ class TestConsentManager:
         # 1. Initial consent
         consent_response = {
             'categories': {
-                'failure_prediction': {'level': ConsentLevel.BASIC.value}
+                InsightCategory.FAILURE_PREDICTION.value: {'level': ConsentLevel.BASIC.value}
             }
         }
         consent_manager.update_consent(consent_response)
@@ -307,8 +307,8 @@ class TestConsentManager:
         # 2. Update consent
         updated_response = {
             'categories': {
-                'failure_prediction': {'level': ConsentLevel.ENHANCED.value},
-                'team_optimization': {'level': ConsentLevel.BASIC.value}
+                InsightCategory.FAILURE_PREDICTION.value: {'level': ConsentLevel.ENHANCED.value},
+                InsightCategory.TEAM_OPTIMIZATION.value: {'level': ConsentLevel.BASIC.value}
             }
         }
         consent_manager.update_consent(updated_response)
@@ -363,7 +363,7 @@ class TestConsentManager:
         
         # Consent data should be complete
         consent_data = exported_data['consent_data']
-        assert 'failure_prediction' in consent_data
+        assert InsightCategory.FAILURE_PREDICTION.value in consent_data
         assert 'global' in consent_data
         
         # Explanations should include category details
@@ -385,8 +385,8 @@ class TestConsentManager:
             manager1 = ConsentManager()
             consent_response = {
                 'categories': {
-                    'failure_prediction': {'level': ConsentLevel.BASIC.value},
-                    'ai_effectiveness': {'level': ConsentLevel.ENHANCED.value}
+                    InsightCategory.FAILURE_PREDICTION.value: {'level': ConsentLevel.BASIC.value},
+                    InsightCategory.AI_EFFECTIVENESS.value: {'level': ConsentLevel.ENHANCED.value}
                 }
             }
             manager1.update_consent(consent_response)
@@ -550,12 +550,12 @@ class TestConsentManager:
         # Should be able to give consent to some categories but not others
         mixed_consent = {
             'categories': {
-                'failure_prediction': {'level': ConsentLevel.BASIC.value},
-                'team_optimization': {'level': ConsentLevel.DENIED.value},
-                'workflow_efficiency': {'level': ConsentLevel.ENHANCED.value},
-                'ai_effectiveness': {'level': ConsentLevel.BASIC.value},
-                'resource_optimization': {'level': ConsentLevel.DENIED.value},
-                'market_trends': {'level': ConsentLevel.DENIED.value}
+                InsightCategory.FAILURE_PREDICTION.value: {'level': ConsentLevel.BASIC.value},
+                InsightCategory.TEAM_OPTIMIZATION.value: {'level': ConsentLevel.DENIED.value},
+                InsightCategory.WORKFLOW_EFFICIENCY.value: {'level': ConsentLevel.ENHANCED.value},
+                InsightCategory.AI_EFFECTIVENESS.value: {'level': ConsentLevel.BASIC.value},
+                InsightCategory.RESOURCE_OPTIMIZATION.value: {'level': ConsentLevel.DENIED.value},
+                InsightCategory.MARKET_TRENDS.value: {'level': ConsentLevel.DENIED.value}
             }
         }
         
@@ -574,6 +574,6 @@ class TestConsentManager:
         assert status['any_consent_given'] is True
         
         categories_status = status['categories']
-        assert categories_status['failure_prediction']['has_consent'] is True
-        assert categories_status['team_optimization']['has_consent'] is False
-        assert categories_status['workflow_efficiency']['has_consent'] is True
+        assert categories_status[InsightCategory.FAILURE_PREDICTION.value]['has_consent'] is True
+        assert categories_status[InsightCategory.TEAM_OPTIMIZATION.value]['has_consent'] is False
+        assert categories_status[InsightCategory.WORKFLOW_EFFICIENCY.value]['has_consent'] is True

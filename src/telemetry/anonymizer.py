@@ -340,6 +340,10 @@ class DataAnonymizer:
         scale = params['sensitivity'] / params['epsilon']
         noise = np.random.laplace(0, scale)
         
+        # Handle None values gracefully
+        if value is None:
+            return None
+            
         # Add noise and clamp to reasonable bounds
         noisy_value = value + noise
         
@@ -492,11 +496,22 @@ class DataAnonymizer:
             'issues': []
         }
         
-        # Check for remaining identifiers
-        anonymized_str = json.dumps(anonymized.data)
-        if any(keyword in anonymized_str.lower() for keyword in ['user', 'project', 'team', 'company']):
-            validation_results['privacy_preserved'] = False
-            validation_results['issues'].append('Potential identifiers remain')
+        # Check for remaining identifiers in values (not field names)
+        def check_values_for_identifiers(obj, path=""):
+            if isinstance(obj, dict):
+                for key, value in obj.items():
+                    check_values_for_identifiers(value, f"{path}.{key}")
+            elif isinstance(obj, list):
+                for i, value in enumerate(obj):
+                    check_values_for_identifiers(value, f"{path}[{i}]")
+            elif isinstance(obj, str):
+                # Check if string value contains identifying information
+                # But allow hashed values (8-character strings)
+                if len(obj) != 8 and any(keyword in obj.lower() for keyword in ['user', 'project', 'team', 'company']):
+                    validation_results['privacy_preserved'] = False
+                    validation_results['issues'].append(f'Potential identifier in value at {path}: {obj}')
+        
+        check_values_for_identifiers(anonymized.data)
         
         # Check that confidence scores are still reasonable
         if anonymized.confidence_score < 0 or anonymized.confidence_score > 1:

@@ -99,7 +99,7 @@ class ConsentManager:
                     "Get recommendations for optimal team composition",
                     "Understand industry best practices for team structure",
                     "Help other teams build high-performing organizations",
-                    "Receive personalized team optimization suggestions"
+                    "Improve team effectiveness with personalized optimization suggestions"
                 ],
                 "retention": "Pattern data retained for continuous improvement",
                 "sharing": "Only aggregated insights shared across user base"
@@ -118,7 +118,7 @@ class ConsentManager:
                     "Get workflow optimization recommendations",
                     "Compare your processes to industry standards",
                     "Help identify common bottleneck patterns",
-                    "Receive proactive efficiency suggestions"
+                    "Improve process efficiency with proactive suggestions"
                 ],
                 "retention": "Workflow patterns kept for optimization algorithms",
                 "sharing": "Process insights shared to benefit all users"
@@ -201,10 +201,10 @@ class ConsentManager:
                 "title": "Help Improve PM Agent While Protecting Your Privacy",
                 "description": "PM Agent can collect anonymous insights to improve project management for everyone. Your privacy is our priority - all data is anonymized, aggregated, and encrypted.",
                 "key_principles": [
-                    "🔒 Your project data stays private - only statistical patterns are shared",
+                    "🔒 Your project data stays private - only anonymous statistical patterns are shared",
                     "🎯 Granular control - choose exactly what to share",
                     "🚪 Easy exit - revoke consent anytime with one click",
-                    "📊 Transparency - see exactly what data helps improve PM Agent",
+                    "📊 Transparent and clear - see exactly what data helps improve PM Agent",
                     "🏆 Mutual benefit - your insights help build better tools for everyone"
                 ]
             },
@@ -326,6 +326,7 @@ class ConsentManager:
         for category in InsightCategory:
             self.consent_data[category.value] = {
                 "consent_level": ConsentLevel.DENIED.value,
+                "granted_at": None,
                 "revoked_at": timestamp.isoformat(),
                 "version": self.consent_version,
                 "explicit_consent": True,
@@ -355,6 +356,7 @@ class ConsentManager:
         
         self.consent_data[category.value] = {
             "consent_level": ConsentLevel.DENIED.value,
+            "granted_at": None,
             "revoked_at": timestamp.isoformat(),
             "version": self.consent_version,
             "explicit_consent": True,

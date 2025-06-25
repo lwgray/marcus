@@ -19,34 +19,35 @@ This document outlines our path to unassailable validation - not just to silence
 
 ### **Core Research Hypothesis**
 
-**"An AI project manager (Marcus) coordinating multiple autonomous AI workers can deliver software projects more effectively than traditional human teams, achieving superior outcomes through intelligent task allocation, real-time coordination, and adaptive multi-agent optimization."**
+**"An AI project manager (Marcus) coordinating mixed teams of human developers and autonomous AI workers can deliver software projects more effectively than human-only teams, achieving superior outcomes through intelligent task allocation, optimal human-AI collaboration, and adaptive multi-agent coordination."**
 
-This is testable, falsifiable, and addresses the fundamental question of whether AI-to-AI coordination can outperform human project management.
+This is testable, falsifiable, and addresses the fundamental question of whether human-AI augmented teams can outperform traditional human-only development teams.
 
 ### **Research Questions That Matter**
 
-1. **AI Team Efficacy**: Can Marcus + autonomous AI workers complete projects more successfully than human teams?
-2. **Coordination Intelligence**: How does AI-to-AI coordination differ from human-to-human coordination?
-3. **Multi-Agent Learning**: Can AI workers coordinated by Marcus improve through collective experience?
-4. **Scalability**: Do AI teams scale more effectively than human teams as project complexity increases?
-5. **Emergence**: What novel capabilities emerge from AI-AI coordination that are impossible with human teams?
+1. **Augmented Team Efficacy**: Can Marcus coordinating human+AI mixed teams outperform human-only teams?
+2. **Human-AI Coordination**: How does Marcus optimize task allocation between humans and AI workers?
+3. **Collaborative Learning**: How do humans and AI workers learn from each other under Marcus coordination?
+4. **Optimal Team Composition**: What human-to-AI ratios produce the best outcomes for different project types?
+5. **Synergistic Emergence**: What capabilities emerge from human-AI collaboration that neither can achieve alone?
 
 ### **Methodological Approach**
 
 #### **Phase 1: Controlled Laboratory Studies (Months 1-6)**
 
 **Randomized Controlled Trials (RCTs)**
-- **Control Group**: Traditional human development teams (human PM + human developers)
-- **Treatment Group**: Marcus-coordinated AI worker teams (Marcus PM + autonomous AI workers)
-- **Hybrid Group**: Marcus coordinating human developers (to isolate coordination vs. worker effects)
+- **Control Group**: Traditional human-only teams (human PM + human developers)
+- **Treatment Group 1**: Marcus-coordinated human teams (Marcus PM + human developers)
+- **Treatment Group 2**: Marcus-coordinated mixed teams (Marcus PM + humans + AI workers)
+- **Treatment Group 3**: Marcus-coordinated AI-heavy teams (Marcus PM + few humans + many AI workers)
 - **Projects**: Standardized web application development tasks
 - **Duration**: 4-week sprints, measured over 6 months
 
 **Key Metrics**:
 - **Primary**: Project completion rate, time-to-delivery, defect density, code quality
-- **AI-Specific**: Inter-agent communication efficiency, autonomous decision accuracy, collective learning rate
-- **Coordination**: Task handoff success rate, blocker resolution speed, resource optimization
-- **Emergence**: Novel solutions discovered, adaptation to unexpected requirements
+- **Human-AI Collaboration**: Task handoff success between humans and AI, knowledge transfer effectiveness
+- **Team Dynamics**: Human satisfaction, AI worker utilization, collaboration patterns
+- **Augmentation Effects**: Capabilities achieved by mixed teams vs. human-only teams
 
 **Statistical Power**:
 - Power analysis for 80% chance of detecting 20% improvement
@@ -80,16 +81,17 @@ This is testable, falsifiable, and addresses the fundamental question of whether
 
 ### **Study 1: The Fundamental Efficacy Trial**
 
-**"Autonomous AI Teams vs. Human Development Teams: A Randomized Controlled Trial"**
+**"Human-AI Augmented Teams vs. Traditional Development Teams: A Randomized Controlled Trial"**
 
 **Design**:
-- **N = 300 projects** (100 human teams, 100 Marcus+AI workers, 100 Marcus+humans)
+- **N = 400 projects** across 4 conditions (100 each)
 - **Project Type**: Standardized e-commerce application development
 - **Duration**: 12 weeks per project
 - **Conditions**: 
-  - **Control**: Human PM + Human developers
-  - **Treatment 1**: Marcus AI PM + Autonomous AI workers (Claude, GPT-4)
-  - **Treatment 2**: Marcus AI PM + Human developers (to isolate coordination effects)
+  - **Control**: Human PM + Human developers only
+  - **Treatment 1**: Marcus AI PM + Human developers (AI coordination effect)
+  - **Treatment 2**: Marcus AI PM + Mixed human+AI teams (augmentation effect)
+  - **Treatment 3**: Marcus AI PM + AI-heavy teams with human oversight (scalability effect)
 - **Blinding**: Code quality assessors blinded to team composition
 
 **Primary Endpoints**:
@@ -98,12 +100,12 @@ This is testable, falsifiable, and addresses the fundamental question of whether
 - **Quality Metrics**: Bug density, technical debt, maintainability scores
 
 **Secondary Endpoints**:
-- **AI Worker Efficiency**: Task completion rates, error rates, adaptation speed
-- **Coordination Patterns**: Inter-agent communication, decision synchronization
-- **Emergent Behaviors**: Novel solutions, autonomous problem-solving capabilities
-- **Cost Efficiency**: Computational cost vs. human labor cost
+- **Human-AI Synergy**: Task allocation optimization, knowledge transfer between humans and AI
+- **Team Satisfaction**: Human developer experience working with AI augmentation
+- **Skill Development**: How humans learn from AI workers and vice versa
+- **Scalability Benefits**: Performance gains as AI worker ratio increases
 
-**Innovation**: First RCT comparing fully autonomous AI teams to human development teams
+**Innovation**: First RCT comparing human-AI augmented teams to traditional human-only development teams
 
 ### **Study 2: The Scaling and Learning Study**
 
@@ -116,12 +118,12 @@ This is testable, falsifiable, and addresses the fundamental question of whether
 - **Complexity analysis**: How benefits scale with team size and project difficulty
 
 **Key Research Questions**:
-- Does Marcus improve its coordination of AI workers over time?
-- What patterns emerge in successful autonomous AI team coordination?
-- How do AI workers adapt and learn collectively under Marcus coordination?
-- Can AI teams develop emergent capabilities not present in individual workers?
+- Does Marcus improve its coordination of mixed human-AI teams over time?
+- What patterns emerge in successful human-AI collaboration under Marcus coordination?
+- How do humans and AI workers adapt and learn from each other?
+- Can mixed teams develop emergent capabilities not present in human-only or AI-only teams?
 
-**Innovation**: First longitudinal study of multi-agent AI learning in autonomous software development
+**Innovation**: First longitudinal study of human-AI collaborative learning in software development
 
 ### **Study 3: The Generalization Challenge**
 
@@ -132,7 +134,7 @@ This is testable, falsifiable, and addresses the fundamental question of whether
 - **Transfer Learning**: How Marcus adapts to new domains
 - **Cross-Domain Insights**: Universal principles of effective coordination
 
-**Innovation**: Establishing general principles of autonomous AI team coordination across domains
+**Innovation**: Establishing general principles of human-AI augmented team coordination across domains
 
 ---
 
@@ -186,27 +188,27 @@ This is testable, falsifiable, and addresses the fundamental question of whether
 
 ### **The Singular Insight That Changes Everything**
 
-**"The Autonomous AI Team Coordination Hypothesis"**
+**"The Human-AI Augmentation Coordination Hypothesis"**
 
-Traditional software development assumes human intelligence is required for creative problem-solving. Marcus demonstrates that **AI-coordinated autonomous AI teams can deliver complete software projects** without human intervention, achieving superior outcomes through perfect information sharing and coordination.
+Traditional software development treats humans and AI as separate tools. Marcus demonstrates that **AI-coordinated mixed teams of humans and autonomous AI workers can achieve synergistic outcomes** that neither human-only nor AI-only teams can match, creating novel capabilities through optimal task allocation and collaborative intelligence.
 
-**Key Insight**: When AI systems coordinate other AI systems, they transcend the limitations of human team dynamics - no ego conflicts, perfect memory, instant knowledge transfer, and 24/7 availability - enabling a fundamental leap in software development capability.
+**Key Insight**: When AI systems coordinate mixed human-AI teams, they enable complementary strengths - human creativity and judgment combined with AI speed and consistency - while mitigating individual weaknesses, creating augmented intelligence that transcends either alone.
 
 ### **The Paper That Changes Project Management Forever**
 
-**Title**: *"Beyond Human Teams: Autonomous AI Coordination for Software Development"*
+**Title**: *"Augmented Intelligence: AI Coordination of Human-AI Teams in Software Development"*
 
 **Target Venue**: *Nature* or *Science* (for broad impact) or *Management Science* (for domain authority)
 
 **Core Contributions**:
 
-1. **Theoretical Framework**: "Autonomous AI Team Theory" - mathematical model of how AI-to-AI coordination transcends human team limitations
+1. **Theoretical Framework**: "Human-AI Augmentation Theory" - mathematical model of how AI coordination optimizes mixed human-AI team performance
 
-2. **Empirical Validation**: Large-scale evidence that autonomous AI teams outperform human teams in software development
+2. **Empirical Validation**: Large-scale evidence that Marcus-coordinated human-AI teams outperform traditional human-only teams
 
-3. **Mechanistic Understanding**: Identification of the specific coordination mechanisms that enable AI team superiority
+3. **Mechanistic Understanding**: Identification of the specific coordination mechanisms that enable human-AI synergy
 
-4. **Practical Implementation**: Open-source framework for deploying autonomous AI teams in software development
+4. **Practical Implementation**: Open-source framework for deploying human-AI augmented teams in software development
 
 **Why This Won't Get Laughed At**:
 - **Rigorous Methodology**: Pre-registered studies, replication protocols, open data

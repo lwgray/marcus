@@ -452,8 +452,12 @@ class TelemetryClient:
         config_file.parent.mkdir(parents=True, exist_ok=True)
         
         try:
+            # Include consent data in config
+            config_with_consent = self.config.copy()
+            config_with_consent['consent'] = self.consent_manager.consent_data
+            
             with open(config_file, 'w') as f:
-                json.dump(self.config, f, indent=2)
+                json.dump(config_with_consent, f, indent=2)
         except Exception as e:
             self.logger.error(f"Failed to save config: {e}")
     
