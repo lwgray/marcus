@@ -12,7 +12,7 @@ from pathlib import Path
 from src.visualization.conversation_stream import ConversationStreamProcessor, ConversationEvent
 from src.visualization.decision_visualizer import DecisionVisualizer
 from src.visualization.knowledge_graph import KnowledgeGraphBuilder
-from src.visualization.health_monitor_fixed import HealthMonitor
+from src.visualization.health_monitor import HealthMonitor
 from src.visualization.ui_server import VisualizationServer
 from tests.unit.visualization.factories import (
     create_mock_conversation_event,

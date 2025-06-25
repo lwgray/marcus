@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime, timedelta
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 
-from src.visualization.health_monitor_fixed import HealthMonitor
+from src.visualization.health_monitor import HealthMonitor
 from src.core.models import ProjectState, RiskLevel, WorkerStatus
 from tests.unit.visualization.factories import (
     create_mock_project_state,

@@ -22,7 +22,7 @@ from jinja2 import Environment, FileSystemLoader
 from .conversation_stream import ConversationStreamProcessor, ConversationEvent
 from .decision_visualizer import DecisionVisualizer
 from .knowledge_graph import KnowledgeGraphBuilder
-from .health_monitor_fixed import HealthMonitor
+from .health_monitor import HealthMonitor
 
 
 class VisualizationServer:

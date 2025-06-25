@@ -119,36 +119,6 @@ class Settings:
                 "max_tokens": 2000,
                 "retry_attempts": 3,
                 "retry_delay": 1.0
-            },
-            
-            # Privacy-preserving telemetry settings
-            "telemetry": {
-                "enabled": False,  # Opt-in only by default
-                "auto_transmit": True,
-                "transmission_interval": 86400,  # 24 hours
-                "min_batch_size": 10,
-                "max_queue_size": 1000,
-                "endpoint": "https://telemetry.pm-agent.dev/v1/insights",
-                "privacy_level": "maximum",  # maximum, high, medium
-                "consent_categories": {
-                    "failure_prediction": False,
-                    "team_optimization": False,
-                    "workflow_efficiency": False,
-                    "ai_effectiveness": False,
-                    "resource_optimization": False,
-                    "market_trends": False
-                },
-                "data_retention": {
-                    "local_cache_days": 7,
-                    "server_aggregation_only": True,
-                    "auto_expire": True
-                },
-                "privacy_controls": {
-                    "differential_privacy": True,
-                    "k_anonymity": 5,
-                    "data_minimization": True,
-                    "encryption_required": True
-                }
             }
         }
         
@@ -266,16 +236,6 @@ class Settings:
         # API keys
         if "ANTHROPIC_API_KEY" in os.environ:
             config["anthropic_api_key"] = os.environ["ANTHROPIC_API_KEY"]
-        
-        # Telemetry settings
-        if "PM_AGENT_TELEMETRY_ENABLED" in os.environ:
-            config["telemetry"]["enabled"] = os.environ["PM_AGENT_TELEMETRY_ENABLED"].lower() == "true"
-        
-        if "PM_AGENT_TELEMETRY_ENDPOINT" in os.environ:
-            config["telemetry"]["endpoint"] = os.environ["PM_AGENT_TELEMETRY_ENDPOINT"]
-        
-        if "PM_AGENT_TELEMETRY_INTERVAL" in os.environ:
-            config["telemetry"]["transmission_interval"] = int(os.environ["PM_AGENT_TELEMETRY_INTERVAL"])
         
         return config
     
@@ -485,127 +445,6 @@ class Settings:
         ... )
         """
         return self.get("ai_settings", self.defaults["ai_settings"])
-    
-    def get_telemetry_settings(self) -> Dict[str, Any]:
-        """Get privacy-preserving telemetry configuration settings.
-        
-        Returns configuration for telemetry data collection including
-        privacy controls, consent settings, and transmission parameters.
-        
-        Returns
-        -------
-        Dict[str, Any]
-            Telemetry settings containing:
-            - enabled: Whether telemetry is globally enabled
-            - auto_transmit: Automatic transmission flag
-            - transmission_interval: Interval between transmissions (seconds)
-            - min_batch_size: Minimum insights before transmission
-            - max_queue_size: Maximum queued insights
-            - endpoint: Telemetry server endpoint URL
-            - privacy_level: Privacy protection level
-            - consent_categories: Per-category consent flags
-            - data_retention: Data retention policies
-            - privacy_controls: Technical privacy controls
-            
-        Examples
-        --------
-        >>> telemetry_config = settings.get_telemetry_settings()
-        >>> if telemetry_config['enabled']:
-        ...     client = TelemetryClient(telemetry_config)
-        
-        Notes
-        -----
-        Telemetry is opt-in only and disabled by default. All data collection
-        respects user privacy through anonymization, aggregation, and encryption.
-        Users have full control over what data categories are shared.
-        """
-        return self.get("telemetry", self.defaults["telemetry"])
-    
-    def update_telemetry_consent(self, category: str, enabled: bool) -> None:
-        """Update consent for a specific telemetry category.
-        
-        Updates the consent setting for a specific data collection category
-        and saves the configuration to persist the user's choice.
-        
-        Parameters
-        ----------
-        category : str
-            Telemetry category name (e.g., 'failure_prediction', 'team_optimization')
-        enabled : bool
-            Whether to enable or disable data collection for this category
-            
-        Examples
-        --------
-        >>> settings.update_telemetry_consent('failure_prediction', True)
-        >>> settings.update_telemetry_consent('market_trends', False)
-        
-        Notes
-        -----
-        This method automatically saves the configuration to persist the change.
-        Valid categories are defined in the telemetry.consent_categories config.
-        """
-        consent_path = f"telemetry.consent_categories.{category}"
-        self.set(consent_path, enabled)
-        self.save()
-    
-    def enable_telemetry(self, categories: Optional[List[str]] = None) -> None:
-        """Enable telemetry with optional specific categories.
-        
-        Enables telemetry collection either globally or for specific categories.
-        If no categories specified, enables basic health monitoring categories.
-        
-        Parameters
-        ----------
-        categories : Optional[List[str]], default=None
-            List of specific categories to enable. If None, enables recommended
-            basic categories (failure_prediction, workflow_efficiency)
-            
-        Examples
-        --------
-        >>> # Enable basic telemetry
-        >>> settings.enable_telemetry()
-        >>> 
-        >>> # Enable specific categories
-        >>> settings.enable_telemetry(['failure_prediction', 'ai_effectiveness'])
-        
-        Notes
-        -----
-        This method automatically saves the configuration. Users can always
-        modify or revoke consent later through the consent management interface.
-        """
-        # Enable telemetry globally
-        self.set("telemetry.enabled", True)
-        
-        # Enable specific categories or defaults
-        if categories is None:
-            # Enable recommended basic categories
-            categories = ["failure_prediction", "workflow_efficiency"]
-        
-        for category in categories:
-            self.update_telemetry_consent(category, True)
-    
-    def disable_telemetry(self) -> None:
-        """Disable all telemetry collection.
-        
-        Disables telemetry globally and revokes consent for all categories.
-        This is a complete opt-out that stops all data collection.
-        
-        Examples
-        --------
-        >>> settings.disable_telemetry()
-        
-        Notes
-        -----
-        This method automatically saves the configuration. Any queued telemetry
-        data will be discarded and no further collection will occur.
-        """
-        # Disable telemetry globally
-        self.set("telemetry.enabled", False)
-        
-        # Revoke consent for all categories
-        categories = self.get("telemetry.consent_categories", {})
-        for category in categories:
-            self.update_telemetry_consent(category, False)
     
     def validate(self) -> bool:
         """Validate current configuration for consistency and completeness.

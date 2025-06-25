@@ -5,7 +5,7 @@ import pytest
 import asyncio
 import json
 from datetime import datetime
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from unittest.mock import Mock, AsyncMock, patch, MagicMock, ANY
 from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase, unittest_run_loop
 
@@ -70,7 +70,7 @@ class TestVisualizationServerUnit:
         
         server.sio.emit.assert_called_with(
             'decision_update',
-            {'decision_id': decision_id, 'data': mock.ANY}
+            {'decision_id': decision_id, 'data': ANY}
         )
     
     @pytest.mark.asyncio
