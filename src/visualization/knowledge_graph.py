@@ -9,7 +9,7 @@ Builds and maintains a graph of:
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Set, Tuple
 from dataclasses import dataclass, field
 from collections import defaultdict
@@ -301,6 +301,98 @@ class KnowledgeGraphBuilder:
                 gaps['balanced'].append(skill)
                 
         return gaps
+    
+    def update_task_status(self, task_id: str, status: str) -> None:
+        """Update the status of a task"""
+        if task_id in self.nodes:
+            self.nodes[task_id].properties['status'] = status
+            self.nodes[task_id].updated_at = datetime.now()
+            self.graph.nodes[task_id]['status'] = status
+    
+    def get_worker_tasks(self, worker_id: str) -> List[str]:
+        """Get all tasks assigned to a worker"""
+        tasks = []
+        for edge in self.graph.edges(worker_id, data=True):
+            if edge[2].get('edge_type') == 'assigned_to':
+                tasks.append(edge[1])
+        return tasks
+    
+    def get_task_candidates(self, task_id: str) -> List[str]:
+        """Get suitable worker candidates for a task"""
+        if task_id not in self.nodes:
+            return []
+        
+        task = self.nodes[task_id]
+        required_skills = task.properties.get('required_skills', [])
+        
+        candidates = []
+        for node_id, node in self.nodes.items():
+            if node.node_type == 'worker':
+                worker_skills = set(node.properties.get('skills', []))
+                if all(skill in worker_skills for skill in required_skills):
+                    candidates.append(node_id)
+        
+        return candidates
+    
+    def find_shortest_path(self, source: str, target: str) -> Optional[List[str]]:
+        """Find shortest path between two nodes"""
+        try:
+            import networkx as nx
+            # Convert to undirected for path finding
+            undirected = self.graph.to_undirected()
+            return nx.shortest_path(undirected, source, target)
+        except (nx.NetworkXNoPath, nx.NodeNotFound):
+            return None
+    
+    def get_node_centrality(self) -> Dict[str, float]:
+        """Calculate node centrality scores"""
+        import networkx as nx
+        return nx.degree_centrality(self.graph)
+    
+    def get_connected_components(self) -> List[Set[str]]:
+        """Get connected components in the graph"""
+        import networkx as nx
+        # Convert to undirected for component analysis
+        undirected = self.graph.to_undirected()
+        return list(nx.connected_components(undirected))
+    
+    def prune_old_nodes(self, days: int = 30) -> int:
+        """Remove old completed tasks from the graph"""
+        cutoff_date = datetime.now() - timedelta(days=days)
+        nodes_to_remove = []
+        
+        for node_id, node in self.nodes.items():
+            if (node.node_type == 'task' and 
+                node.properties.get('status') == 'completed' and
+                node.created_at < cutoff_date):
+                nodes_to_remove.append(node_id)
+        
+        for node_id in nodes_to_remove:
+            self.graph.remove_node(node_id)
+            del self.nodes[node_id]
+        
+        return len(nodes_to_remove)
+    
+    def export_graph_json(self) -> str:
+        """Export graph as JSON"""
+        import networkx as nx
+        graph_data = nx.node_link_data(self.graph)
+        
+        # Add node details
+        for node in graph_data['nodes']:
+            node_id = node['id']
+            if node_id in self.nodes:
+                node['details'] = {
+                    'type': self.nodes[node_id].node_type,
+                    'label': self.nodes[node_id].label,
+                    'properties': self.nodes[node_id].properties
+                }
+        
+        return json.dumps(graph_data, indent=2)
+    
+    def visualize_graph(self, output_file: str = "graph.html") -> str:
+        """Generate graph visualization (wrapper for generate_interactive_graph)"""
+        return self.generate_interactive_graph(output_file)
         
     def get_task_dependencies_tree(self, task_id: str) -> Dict[str, Any]:
         """Get dependency tree for a task"""
@@ -392,6 +484,14 @@ class KnowledgeGraphBuilder:
         
         net.save_graph(output_file)
         return output_file
+    
+    def export_graph_data(self, format: str = 'json') -> str:
+        """Export graph data in specified format"""
+        if format == 'json':
+            return self.export_graph_json()
+        else:
+            # For now, only JSON is supported
+            return self.export_graph_json()
         
     def _create_node_tooltip(self, node_id: str, node_data: Dict[str, Any]) -> str:
         """Create detailed tooltip for node"""

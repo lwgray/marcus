@@ -239,7 +239,7 @@ class TestConversationStreamProcessor:
         for i in range(5):
             event = create_mock_conversation_event(
                 event_type=EventType.WORKER_MESSAGE.value,
-                source=f"worker-{i % 2}"
+                source=f"worker_{i % 2}"  # Changed from worker- to worker_
             )
             processor.conversation_history.append(event)
         

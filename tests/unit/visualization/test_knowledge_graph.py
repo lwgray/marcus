@@ -40,6 +40,7 @@ class TestKnowledgeGraphBuilder:
         worker_id = builder.add_worker(
             worker_id="worker-123",
             name="John Doe",
+            role="Developer",
             skills=["python", "javascript", "docker"]
         )
         
@@ -98,11 +99,11 @@ class TestKnowledgeGraphBuilder:
     def test_assign_task(self, builder):
         """Test assigning a task to a worker"""
         # Add worker and task
-        worker_id = builder.add_worker("worker-1", "Worker 1", ["python"])
+        worker_id = builder.add_worker("worker-1", "Worker 1", "Developer", ["python"])
         task_id = builder.add_task("task-1", "Task 1", {})
         
         # Assign task
-        builder.assign_task(task_id, worker_id, confidence=0.85)
+        builder.assign_task(task_id, worker_id, assignment_score=0.85)
         
         # Check assignment edge
         assert builder.graph.has_edge(worker_id, task_id)
@@ -124,13 +125,13 @@ class TestKnowledgeGraphBuilder:
     
     def test_get_worker_tasks(self, builder):
         """Test getting tasks assigned to a worker"""
-        worker_id = builder.add_worker("worker-1", "Worker 1", ["python"])
+        worker_id = builder.add_worker("worker-1", "Worker 1", "Developer", ["python"])
         
         # Add and assign multiple tasks
         task_ids = []
         for i in range(3):
             task_id = builder.add_task(f"task-{i}", f"Task {i}", {})
-            builder.assign_task(task_id, worker_id)
+            builder.assign_task(task_id, worker_id, assignment_score=0.85)
             task_ids.append(task_id)
         
         # Get worker tasks
@@ -142,9 +143,9 @@ class TestKnowledgeGraphBuilder:
     def test_get_task_candidates(self, builder):
         """Test finding suitable workers for a task"""
         # Add workers with different skills
-        builder.add_worker("worker-1", "Worker 1", ["python", "api"])
-        builder.add_worker("worker-2", "Worker 2", ["javascript", "react"])
-        builder.add_worker("worker-3", "Worker 3", ["python", "docker"])
+        builder.add_worker("worker-1", "Worker 1", "Developer", ["python", "api"])
+        builder.add_worker("worker-2", "Worker 2", "Frontend Dev", ["javascript", "react"])
+        builder.add_worker("worker-3", "Worker 3", "DevOps", ["python", "docker"])
         
         # Add task requiring python
         task_id = builder.add_task(
@@ -165,7 +166,7 @@ class TestKnowledgeGraphBuilder:
     def test_visualize_graph(self, mock_network, builder):
         """Test graph visualization"""
         # Add some nodes
-        builder.add_worker("worker-1", "Worker 1", ["python"])
+        builder.add_worker("worker-1", "Worker 1", "Developer", ["python"])
         builder.add_task("task-1", "Task 1", {})
         
         # Mock network instance
@@ -186,9 +187,9 @@ class TestKnowledgeGraphBuilder:
     def test_export_graph_json(self, builder):
         """Test exporting graph as JSON"""
         # Add some nodes
-        builder.add_worker("worker-1", "Worker 1", ["python"])
+        builder.add_worker("worker-1", "Worker 1", "Developer", ["python"])
         builder.add_task("task-1", "Task 1", {})
-        builder.assign_task("task-1", "worker-1")
+        builder.assign_task("task-1", "worker-1", assignment_score=0.85)
         
         # Export
         json_data = builder.export_graph_json()
@@ -202,10 +203,10 @@ class TestKnowledgeGraphBuilder:
     def test_find_shortest_path(self, builder):
         """Test finding shortest path between nodes"""
         # Create a simple graph
-        builder.add_worker("worker-1", "Worker 1", ["python"])
+        builder.add_worker("worker-1", "Worker 1", "Developer", ["python"])
         builder.add_task("task-1", "Task 1", {})
         builder.add_task("task-2", "Task 2", {"dependencies": ["task-1"]})
-        builder.assign_task("task-1", "worker-1")
+        builder.assign_task("task-1", "worker-1", assignment_score=0.85)
         
         # Find path from worker to task-2
         path = builder.find_shortest_path("worker-1", "task-2")
@@ -218,11 +219,11 @@ class TestKnowledgeGraphBuilder:
     def test_get_node_centrality(self, builder):
         """Test calculating node centrality"""
         # Create a connected graph
-        worker_id = builder.add_worker("worker-1", "Worker 1", ["python", "api"])
+        worker_id = builder.add_worker("worker-1", "Worker 1", "Developer", ["python", "api"])
         task1_id = builder.add_task("task-1", "Task 1", {"required_skills": ["python"]})
         task2_id = builder.add_task("task-2", "Task 2", {"required_skills": ["api"]})
-        builder.assign_task(task1_id, worker_id)
-        builder.assign_task(task2_id, worker_id)
+        builder.assign_task(task1_id, worker_id, assignment_score=0.85)
+        builder.assign_task(task2_id, worker_id, assignment_score=0.85)
         
         centrality = builder.get_node_centrality()
         
@@ -232,13 +233,13 @@ class TestKnowledgeGraphBuilder:
     def test_get_connected_components(self, builder):
         """Test finding connected components"""
         # Create two separate subgraphs
-        builder.add_worker("worker-1", "Worker 1", ["python"])
+        builder.add_worker("worker-1", "Worker 1", "Developer", ["python"])
         builder.add_task("task-1", "Task 1", {})
-        builder.assign_task("task-1", "worker-1")
+        builder.assign_task("task-1", "worker-1", assignment_score=0.85)
         
-        builder.add_worker("worker-2", "Worker 2", ["javascript"])
+        builder.add_worker("worker-2", "Worker 2", "Frontend Dev", ["javascript"])
         builder.add_task("task-2", "Task 2", {})
-        builder.assign_task("task-2", "worker-2")
+        builder.assign_task("task-2", "worker-2", assignment_score=0.85)
         
         # Skills nodes might connect them, so let's check
         components = builder.get_connected_components()

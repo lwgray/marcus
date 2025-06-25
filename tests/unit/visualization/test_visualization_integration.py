@@ -12,7 +12,7 @@ from pathlib import Path
 from src.visualization.conversation_stream import ConversationStreamProcessor, ConversationEvent
 from src.visualization.decision_visualizer import DecisionVisualizer
 from src.visualization.knowledge_graph import KnowledgeGraphBuilder
-from src.visualization.health_monitor import HealthMonitor
+from src.visualization.health_monitor_fixed import HealthMonitor
 from src.visualization.ui_server import VisualizationServer
 from tests.unit.visualization.factories import (
     create_mock_conversation_event,
@@ -96,7 +96,7 @@ class TestVisualizationIntegration:
         assert len(monitor.analysis_history) > 0
         
         # Stop monitoring
-        monitor.stop_monitoring()
+        await monitor.stop_monitoring()
     
     @pytest.mark.asyncio
     async def test_health_monitoring_integration(self):
@@ -164,8 +164,8 @@ class TestVisualizationIntegration:
         graph = KnowledgeGraphBuilder()
         
         # Initial state
-        worker1 = graph.add_worker("w1", "Alice", ["python", "api"])
-        worker2 = graph.add_worker("w2", "Bob", ["javascript", "react"])
+        worker1 = graph.add_worker("w1", "Alice", "Developer", ["python", "api"])
+        worker2 = graph.add_worker("w2", "Bob", "Frontend Dev", ["javascript", "react"])
         
         task1 = graph.add_task("t1", "Backend API", {
             "required_skills": ["python", "api"]
@@ -175,8 +175,8 @@ class TestVisualizationIntegration:
         })
         
         # Assign tasks
-        graph.assign_task(task1, worker1)
-        graph.assign_task(task2, worker2)
+        graph.assign_task(task1, worker1, assignment_score=0.85)
+        graph.assign_task(task2, worker2, assignment_score=0.85)
         
         # Verify graph structure
         assert len(graph.get_worker_tasks(worker1)) == 1

@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime, timedelta
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 
-from src.visualization.health_monitor import HealthMonitor
+from src.visualization.health_monitor_fixed import HealthMonitor
 from src.core.models import ProjectState, RiskLevel, WorkerStatus
 from tests.unit.visualization.factories import (
     create_mock_project_state,
@@ -133,8 +133,7 @@ class TestHealthMonitor:
         assert get_state_func.call_count >= 1
         
         # Stop monitoring
-        monitor.stop_monitoring()
-        await asyncio.sleep(0.1)
+        await monitor.stop_monitoring()
         assert monitor._monitoring_task.cancelled()
     
     @pytest.mark.asyncio
@@ -144,7 +143,7 @@ class TestHealthMonitor:
         monitor._monitoring_task = asyncio.create_task(asyncio.sleep(10))
         
         # Stop monitoring
-        monitor.stop_monitoring()
+        await monitor.stop_monitoring()
         
         # Task should be cancelled
         assert monitor._monitoring_task.cancelled()
