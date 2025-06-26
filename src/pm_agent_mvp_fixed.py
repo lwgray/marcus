@@ -1,10 +1,10 @@
 """
-PM Agent MVP Implementation - MCP Server.
+Marcus MVP Implementation - MCP Server.
 
-This module implements the Model Context Protocol (MCP) server for PM Agent,
+This module implements the Model Context Protocol (MCP) server for Marcus,
 providing tools for autonomous agents to interact with the project management system.
 
-The PM Agent acts as an intelligent project manager that:
+The Marcus acts as an intelligent project manager that:
 - Coordinates task assignments to worker agents
 - Tracks progress and handles blockers
 - Provides AI-powered assistance for problem resolution
@@ -79,7 +79,7 @@ class PMAgentMVP:
     
     def __init__(self) -> None:
         """
-        Initialize the PM Agent MVP server.
+        Initialize the Marcus MVP server.
         
         Sets up core components including the MCP server, Kanban client,
         AI engine, and workspace manager.
@@ -211,7 +211,7 @@ class PMAgentMVP:
                 ),
                 Tool(
                     name="ping",
-                    description="Check PM Agent status and connectivity",
+                    description="Check Marcus status and connectivity",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -828,7 +828,7 @@ Provide 3-5 concrete steps to resolve this blocker. Be specific and actionable."
     
     def _get_memory_usage(self) -> Dict[str, float]:
         """
-        Get current memory usage of the PM Agent process.
+        Get current memory usage of the Marcus process.
         
         Returns
         -------
@@ -847,7 +847,7 @@ Provide 3-5 concrete steps to resolve this blocker. Be specific and actionable."
     
     async def _ping(self, echo: str = "") -> Dict[str, Any]:
         """
-        Health check endpoint for PM Agent.
+        Health check endpoint for Marcus.
         
         Parameters
         ----------
@@ -867,10 +867,10 @@ Provide 3-5 concrete steps to resolve this blocker. Be specific and actionable."
         >>> print(result["status"])  # "online"
         """
         try:
-            # Basic PM Agent health status
+            # Basic Marcus health status
             status = {
                 "status": "online",
-                "service": "PM Agent MVP",
+                "service": "Marcus MVP",
                 "timestamp": datetime.utcnow().isoformat(),
                 "version": "1.0.0",
                 "uptime": self._get_uptime() if hasattr(self, '_start_time') else "unknown",
@@ -911,12 +911,12 @@ Provide 3-5 concrete steps to resolve this blocker. Be specific and actionable."
                 "pong": False,
                 "error": str(e),
                 "status": "error",
-                "service": "PM Agent MVP"
+                "service": "Marcus MVP"
             }
     
     async def initialize(self) -> None:
         """
-        Initialize PM Agent components and verify connectivity.
+        Initialize Marcus components and verify connectivity.
         
         This method sets up connections to external services and
         initializes the AI engine.
@@ -928,18 +928,18 @@ Provide 3-5 concrete steps to resolve this blocker. Be specific and actionable."
         """
         try:
             # Initialize components
-            print("🚀 Starting PM Agent MVP...", file=sys.stderr)
+            print("🚀 Starting Marcus MVP...", file=sys.stderr)
             
             # Note: With the refactored client, we don't keep a persistent connection
             # Each operation will create its own connection context
-            print("✅ PM Agent ready to connect to Kanban on demand", file=sys.stderr)
+            print("✅ Marcus ready to connect to Kanban on demand", file=sys.stderr)
             
             # Initialize AI engine
             print("🤖 Initializing AI engine...", file=sys.stderr)
             await self.ai_engine.initialize()
             print("✅ AI engine ready", file=sys.stderr)
             
-            print("🎯 PM Agent MVP is ready!", file=sys.stderr)
+            print("🎯 Marcus MVP is ready!", file=sys.stderr)
             print("📋 Available tools:", file=sys.stderr)
             print("   - ping", file=sys.stderr)
             print("   - register_agent", file=sys.stderr)
@@ -951,7 +951,7 @@ Provide 3-5 concrete steps to resolve this blocker. Be specific and actionable."
             print("   - list_registered_agents", file=sys.stderr)
             
         except Exception as e:
-            print(f"❌ Failed to initialize PM Agent MVP: {e}", file=sys.stderr)
+            print(f"❌ Failed to initialize Marcus MVP: {e}", file=sys.stderr)
             import traceback
             traceback.print_exc(file=sys.stderr)
             raise
@@ -959,9 +959,9 @@ Provide 3-5 concrete steps to resolve this blocker. Be specific and actionable."
 
 async def main() -> None:
     """
-    Main entry point for the PM Agent MCP server.
+    Main entry point for the Marcus MCP server.
     
-    Initializes the PM Agent and runs it as an stdio server,
+    Initializes the Marcus and runs it as an stdio server,
     allowing it to communicate with MCP clients.
     """
     agent = PMAgentMVP()
