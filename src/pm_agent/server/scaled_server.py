@@ -1,5 +1,5 @@
 """
-Scaled PM Agent Server Implementation
+Scaled Marcus Server Implementation
 
 This module provides a scalable HTTP/WebSocket server implementation
 that can handle multiple concurrent agent connections.
@@ -19,17 +19,17 @@ import redis.asyncio as redis
 from prometheus_client import Counter, Gauge, Histogram, generate_latest
 from starlette.responses import Response
 
-from pm_agent.core.agent_manager import PMAgentState
-from pm_agent.tools.mcp_tools import AgentTools
-from pm_agent.config import settings
+from marcus.core.agent_manager import PMAgentState
+from marcus.tools.mcp_tools import AgentTools
+from marcus.config import settings
 
 
 # Metrics
-active_connections = Gauge('pm_agent_active_connections', 'Number of active WebSocket connections')
-total_connections = Counter('pm_agent_total_connections', 'Total number of connections')
-messages_received = Counter('pm_agent_messages_received', 'Total messages received')
-messages_sent = Counter('pm_agent_messages_sent', 'Total messages sent')
-request_duration = Histogram('pm_agent_request_duration', 'Request duration in seconds')
+active_connections = Gauge('marcus_active_connections', 'Number of active WebSocket connections')
+total_connections = Counter('marcus_total_connections', 'Total number of connections')
+messages_received = Counter('marcus_messages_received', 'Total messages received')
+messages_sent = Counter('marcus_messages_sent', 'Total messages sent')
+request_duration = Histogram('marcus_request_duration', 'Request duration in seconds')
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +103,7 @@ class ConnectionManager:
 
 
 class StateManager:
-    """Manages PM Agent state with Redis backing."""
+    """Manages Marcus state with Redis backing."""
     
     def __init__(self, redis_client: Optional[redis.Redis] = None):
         self.redis = redis_client
@@ -189,7 +189,7 @@ class BlockerReport(BaseModel):
 async def lifespan(app: FastAPI):
     """Manage application lifespan."""
     # Startup
-    logger.info("Starting PM Agent Scaled Server...")
+    logger.info("Starting Marcus Scaled Server...")
     
     # Initialize Redis connection
     try:
@@ -207,13 +207,13 @@ async def lifespan(app: FastAPI):
     # Initialize managers
     app.state.connection_manager = ConnectionManager(app.state.redis)
     app.state.state_manager = StateManager(app.state.redis)
-    app.state.pm_agent_state = PMAgentState()
-    app.state.agent_tools = AgentTools(app.state.pm_agent_state)
+    app.state.marcus_state = PMAgentState()
+    app.state.agent_tools = AgentTools(app.state.marcus_state)
     
     yield
     
     # Shutdown
-    logger.info("Shutting down PM Agent Scaled Server...")
+    logger.info("Shutting down Marcus Scaled Server...")
     
     # Close all WebSocket connections
     for agent_id in list(app.state.connection_manager.active_connections.keys()):
@@ -226,7 +226,7 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app
 app = FastAPI(
-    title="PM Agent Scaled Server",
+    title="Marcus Scaled Server",
     version="2.0.0",
     lifespan=lifespan
 )

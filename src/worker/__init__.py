@@ -23,7 +23,7 @@ Basic usage for creating a worker agent:
 
 >>> from src.worker.mcp_client import WorkerMCPClient
 >>> client = WorkerMCPClient()
->>> async with client.connect_to_pm_agent() as session:
+>>> async with client.connect_to_marcus() as session:
 ...     await client.register_agent("worker-1", "Test Worker", "Developer", ["python"])
 ...     task = await client.request_next_task("worker-1")
 

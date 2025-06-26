@@ -194,9 +194,9 @@ class ConversationStreamProcessor:
         # Determine source and target based on event type
         if event_type == 'ping_request':
             source = data.get('source', 'mcp_client')
-            target = 'pm_agent'
+            target = 'marcus'
         elif event_type == 'ping_response':
-            source = 'pm_agent'
+            source = 'marcus'
             target = 'mcp_client'
         else:
             source = data.get('source', 'unknown')
@@ -228,9 +228,9 @@ class ConversationStreamProcessor:
         conversation_type = data.get('conversation_type', '')
         
         if 'worker_to_pm' in conversation_type:
-            source, target = worker_id, 'pm_agent'
+            source, target = worker_id, 'marcus'
         else:
-            source, target = 'pm_agent', worker_id
+            source, target = 'marcus', worker_id
             
         return ConversationEvent(
             id=f"event_{self._event_counter}",
@@ -247,7 +247,7 @@ class ConversationStreamProcessor:
         return ConversationEvent(
             id=f"event_{self._event_counter}",
             timestamp=timestamp,
-            source='pm_agent',
+            source='marcus',
             target='internal',
             event_type=EventType.PM_THINKING.value,
             message=data.get('thought', ''),
@@ -259,7 +259,7 @@ class ConversationStreamProcessor:
         return ConversationEvent(
             id=f"event_{self._event_counter}",
             timestamp=timestamp,
-            source='pm_agent',
+            source='marcus',
             target='decision',
             event_type=EventType.PM_DECISION.value,
             message=data.get('decision', ''),
@@ -276,10 +276,10 @@ class ConversationStreamProcessor:
         direction = data.get('conversation_type', '')
         
         if 'pm_to_kanban' in direction:
-            source, target = 'pm_agent', 'kanban_board'
+            source, target = 'marcus', 'kanban_board'
             event_type = EventType.KANBAN_REQUEST
         else:
-            source, target = 'kanban_board', 'pm_agent'
+            source, target = 'kanban_board', 'marcus'
             event_type = EventType.KANBAN_RESPONSE
             
         return ConversationEvent(
@@ -300,7 +300,7 @@ class ConversationStreamProcessor:
         return ConversationEvent(
             id=f"event_{self._event_counter}",
             timestamp=timestamp,
-            source='pm_agent',
+            source='marcus',
             target=data.get('worker_id', 'unknown'),
             event_type=EventType.TASK_ASSIGNMENT.value,
             message=f"Task {data.get('task_id')} assigned",
@@ -317,7 +317,7 @@ class ConversationStreamProcessor:
             id=f"event_{self._event_counter}",
             timestamp=timestamp,
             source=data.get('worker_id', 'unknown'),
-            target='pm_agent',
+            target='marcus',
             event_type=EventType.PROGRESS_UPDATE.value,
             message=f"{data.get('progress', 0)}% - {data.get('message', '')}",
             metadata={
@@ -333,7 +333,7 @@ class ConversationStreamProcessor:
             id=f"event_{self._event_counter}",
             timestamp=timestamp,
             source=data.get('worker_id', 'unknown'),
-            target='pm_agent',
+            target='marcus',
             event_type=EventType.BLOCKER_REPORT.value,
             message=data.get('blocker_description', ''),
             metadata={
@@ -348,7 +348,7 @@ class ConversationStreamProcessor:
         return ConversationEvent(
             id=f"event_{self._event_counter}",
             timestamp=timestamp,
-            source='pm_agent',
+            source='marcus',
             target='system',
             event_type=EventType.SYSTEM_STATE.value,
             message="System state update",

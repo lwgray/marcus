@@ -87,7 +87,7 @@
             color: white;
         }
         
-        .flow-node.pm-agent {
+        .flow-node.marcus {
             background-color: #9b59b6;
             color: white;
         }
@@ -286,7 +286,7 @@
                 </label>
                 <label class="filter-checkbox">
                     <input type="checkbox" id="filter-decision" checked>
-                    <span>PM Decisions</span>
+                    <span>Marcus Decisions</span>
                 </label>
                 <label class="filter-checkbox">
                     <input type="checkbox" id="filter-kanban" checked>
@@ -302,7 +302,7 @@
                 <h3>View Options</h3>
                 <label class="filter-checkbox">
                     <input type="checkbox" id="show-thinking" checked>
-                    <span>Show PM Thinking</span>
+                    <span>Show Marcus Thinking</span>
                 </label>
                 <label class="filter-checkbox">
                     <input type="checkbox" id="animate-flow" checked>
@@ -463,7 +463,7 @@
         
         function getNodeType(nodeId) {
             if (nodeId.startsWith('worker_')) return 'worker';
-            if (nodeId === 'pm_agent') return 'pm-agent';
+            if (nodeId === 'marcus') return 'marcus';
             if (nodeId === 'kanban_board') return 'kanban';
             if (nodeId === 'decision') return 'decision';
             return 'unknown';

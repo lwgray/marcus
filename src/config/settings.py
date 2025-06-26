@@ -22,7 +22,7 @@ class Settings:
     ----------
     config_path : Optional[str], default=None
         Path to the configuration file. If None, uses MARCUS_CONFIG
-        environment variable or defaults to 'config/pm_agent_config.json'
+        environment variable or defaults to 'config/marcus_config.json'
     
     Attributes
     ----------
@@ -52,7 +52,7 @@ class Settings:
     def __init__(self, config_path: Optional[str] = None) -> None:
         self.config_path = config_path or os.environ.get(
             "MARCUS_CONFIG",
-            "config/pm_agent_config.json"
+            "config/marcus_config.json"
         )
         
         # Default configuration

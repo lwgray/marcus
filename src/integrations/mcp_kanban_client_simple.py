@@ -54,14 +54,14 @@ class SimpleMCPKanbanClient:
     Notes
     -----
     Planka credentials are loaded from environment variables or set to defaults.
-    Board and project IDs are loaded from config_pm_agent.json if available.
+    Board and project IDs are loaded from config_marcus.json if available.
     """
     
     def __init__(self) -> None:
         """
         Initialize the Simple MCP Kanban Client.
         
-        Loads configuration from config_pm_agent.json and sets up
+        Loads configuration from config_marcus.json and sets up
         Planka environment variables.
         """
         # Load config
@@ -79,7 +79,7 @@ class SimpleMCPKanbanClient:
     
     def _load_config(self) -> None:
         """
-        Load configuration from config_pm_agent.json file.
+        Load configuration from config_marcus.json file.
         
         Reads project_id and board_id from the configuration file if it exists.
         Prints confirmation message to stderr for debugging.
@@ -89,8 +89,8 @@ class SimpleMCPKanbanClient:
         The config file should be in the current working directory.
         If the file doesn't exist, board_id and project_id remain None.
         """
-        if os.path.exists('config_pm_agent.json'):
-            with open('config_pm_agent.json', 'r') as f:
+        if os.path.exists('config_marcus.json'):
+            with open('config_marcus.json', 'r') as f:
                 config = json.load(f)
                 self.project_id = config.get("project_id")
                 self.board_id = config.get("board_id")

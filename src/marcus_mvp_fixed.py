@@ -39,7 +39,7 @@ from src.config.settings import Settings
 from src.core.workspace_manager import WorkspaceManager
 
 
-class PMAgentMVP:
+class MarcusMVP:
     """
     MVP Version of the AI Project Manager Agent MCP Server.
     
@@ -65,7 +65,7 @@ class PMAgentMVP:
     
     Examples
     --------
-    >>> agent = PMAgentMVP()
+    >>> agent = MarcusMVP()
     >>> await agent.initialize()
     >>> # Server is now ready to handle MCP requests
     
@@ -84,7 +84,7 @@ class PMAgentMVP:
         Sets up core components including the MCP server, Kanban client,
         AI engine, and workspace manager.
         """
-        self.server = Server("pm-agent-mvp")
+        self.server = Server("marcus-mvp")
         self.settings = Settings()
         
         # Core components (simplified)
@@ -327,7 +327,7 @@ class PMAgentMVP:
         
         Examples
         --------
-        >>> result = await pm_agent._register_agent(
+        >>> result = await marcus._register_agent(
         ...     "agent-001", "Alice", "Frontend Developer", ["React", "TypeScript"]
         ... )
         >>> print(result["success"])  # True
@@ -613,7 +613,7 @@ This task is now blocked and requires attention."""
         
         Examples
         --------
-        >>> status = await pm_agent._get_project_status()
+        >>> status = await marcus._get_project_status()
         >>> print(f"Completion: {status['project_status']['completion_percentage']}%")
         """
         try:
@@ -862,7 +862,7 @@ Provide 3-5 concrete steps to resolve this blocker. Be specific and actionable."
         
         Examples
         --------
-        >>> result = await pm_agent._ping("hello")
+        >>> result = await marcus._ping("hello")
         >>> print(result["echo"])  # "hello"
         >>> print(result["status"])  # "online"
         """
@@ -964,7 +964,7 @@ async def main() -> None:
     Initializes the Marcus and runs it as an stdio server,
     allowing it to communicate with MCP clients.
     """
-    agent = PMAgentMVP()
+    agent = MarcusMVP()
     await agent.initialize()
     
     # Run as stdio server

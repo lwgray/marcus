@@ -28,7 +28,7 @@ Basic worker agent workflow:
 >>> 
 >>> async def worker_main():
 ...     client = WorkerMCPClient()
-...     async with client.connect_to_pm_agent() as session:
+...     async with client.connect_to_marcus() as session:
 ...         # Register agent
 ...         result = await client.register_agent(
 ...             "worker-001", 
@@ -94,7 +94,7 @@ class WorkerMCPClient:
         
     Methods
     -------
-    connect_to_pm_agent()
+    connect_to_marcus()
         Async context manager for establishing MCP connection
     register_agent(agent_id, name, role, skills)
         Register worker agent with Marcus system
@@ -112,7 +112,7 @@ class WorkerMCPClient:
     Basic usage pattern:
     
     >>> client = WorkerMCPClient()
-    >>> async with client.connect_to_pm_agent() as session:
+    >>> async with client.connect_to_marcus() as session:
     ...     # Register with Marcus
     ...     await client.register_agent(
     ...         "dev-worker-1", 
@@ -141,7 +141,7 @@ class WorkerMCPClient:
     Error handling example:
     
     >>> try:
-    ...     async with client.connect_to_pm_agent() as session:
+    ...     async with client.connect_to_marcus() as session:
     ...         await client.register_agent("worker-1", "Worker", "Dev", [])
     ... except RuntimeError as e:
     ...     print(f"Connection failed: {e}")
@@ -150,7 +150,7 @@ class WorkerMCPClient:
     
     Notes
     -----
-    - All methods require an active connection established via connect_to_pm_agent()
+    - All methods require an active connection established via connect_to_marcus()
     - The client automatically handles JSON serialization/deserialization
     - Connection failures raise RuntimeError with descriptive messages
     - Workers should implement retry logic for transient failures
@@ -162,7 +162,7 @@ class WorkerMCPClient:
         Initialize the WorkerMCPClient.
         
         Creates a new MCP client instance with no active connection.
-        The session will be established when using the connect_to_pm_agent()
+        The session will be established when using the connect_to_marcus()
         context manager.
         
         Parameters
@@ -183,7 +183,7 @@ class WorkerMCPClient:
         self.session: Optional[ClientSession] = None
         
     @asynccontextmanager
-    async def connect_to_pm_agent(self) -> AsyncIterator[ClientSession]:
+    async def connect_to_marcus(self) -> AsyncIterator[ClientSession]:
         """
         Establish connection to Marcus MCP server.
         
@@ -215,7 +215,7 @@ class WorkerMCPClient:
         Basic connection usage:
         
         >>> client = WorkerMCPClient()
-        >>> async with client.connect_to_pm_agent() as session:
+        >>> async with client.connect_to_marcus() as session:
         ...     # Session is active and ready for use
         ...     tools = await session.list_tools()
         ...     print(f"Available tools: {[t.name for t in tools]}")
@@ -223,7 +223,7 @@ class WorkerMCPClient:
         Connection with error handling:
         
         >>> try:
-        ...     async with client.connect_to_pm_agent() as session:
+        ...     async with client.connect_to_marcus() as session:
         ...         await client.register_agent("worker-1", "Test", "Developer", [])
         ... except RuntimeError as e:
         ...     print(f"Failed to connect: {e}")
@@ -241,7 +241,7 @@ class WorkerMCPClient:
         # Marcus server command
         server_cmd = [
             "python",
-            os.path.join(os.path.dirname(__file__), "..", "..", "pm_agent_mcp_server.py")
+            os.path.join(os.path.dirname(__file__), "..", "..", "marcus_mcp_server.py")
         ]
         
         server_params = StdioServerParameters(
@@ -317,7 +317,7 @@ class WorkerMCPClient:
         Register a backend developer:
         
         >>> client = WorkerMCPClient()
-        >>> async with client.connect_to_pm_agent() as session:
+        >>> async with client.connect_to_marcus() as session:
         ...     result = await client.register_agent(
         ...         agent_id="backend-dev-001",
         ...         name="Backend Developer Alpha", 
@@ -416,7 +416,7 @@ class WorkerMCPClient:
         Request task in work loop:
         
         >>> client = WorkerMCPClient()
-        >>> async with client.connect_to_pm_agent() as session:
+        >>> async with client.connect_to_marcus() as session:
         ...     # Register first
         ...     await client.register_agent("dev-001", "Developer", "Engineer", ["python"])
         ...     

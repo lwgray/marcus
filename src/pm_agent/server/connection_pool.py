@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 import subprocess
 import json
 
-from pm_agent.config import settings
+from marcus.config import settings
 
 logger = logging.getLogger(__name__)
 

@@ -30,13 +30,13 @@ Examples
 --------
 Basic usage for logging conversations:
 
->>> from pm_agent.logging import log_conversation, log_thinking
->>> log_conversation("worker_1", "pm_agent", "Task completed", {"task_id": "123"})
->>> log_thinking("pm_agent", "Analyzing task assignment priorities")
+>>> from marcus.logging import log_conversation, log_thinking
+>>> log_conversation("worker_1", "marcus", "Task completed", {"task_id": "123"})
+>>> log_thinking("marcus", "Analyzing task assignment priorities")
 
 Using the main logger class:
 
->>> from pm_agent.logging import ConversationLogger
+>>> from marcus.logging import ConversationLogger
 >>> logger = ConversationLogger(log_dir="custom_logs")
 >>> logger.log_pm_decision("Assign task to worker_2", "Best skills match")
 

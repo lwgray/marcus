@@ -7,7 +7,7 @@ management across different environments.
 
 Examples
 --------
->>> agent = ConfigurablePMAgent("config_pm_agent.json")
+>>> agent = ConfigurablePMAgent("config_marcus.json")
 >>> await agent.start()
 
 >>> # Using environment variables
@@ -20,7 +20,7 @@ Examples
 import json
 import os
 from typing import Optional, Dict, Any, Union
-from pm_agent_mvp_fixed import PMAgentMVP
+from marcus_mvp_fixed import PMAgentMVP
 
 
 class ConfigurablePMAgent(PMAgentMVP):
@@ -32,9 +32,9 @@ class ConfigurablePMAgent(PMAgentMVP):
     
     Parameters
     ----------
-    config_file : Optional[str], default "config_pm_agent.json"
+    config_file : Optional[str], default "config_marcus.json"
         Path to the JSON configuration file. If None, defaults to
-        "config_pm_agent.json" in the current directory.
+        "config_marcus.json" in the current directory.
         
     Attributes
     ----------
@@ -70,7 +70,7 @@ class ConfigurablePMAgent(PMAgentMVP):
         Parameters
         ----------
         config_file : Optional[str], default None
-            Path to JSON configuration file. If None, uses "config_pm_agent.json".
+            Path to JSON configuration file. If None, uses "config_marcus.json".
             
         Examples
         --------
@@ -78,7 +78,7 @@ class ConfigurablePMAgent(PMAgentMVP):
         >>> agent = ConfigurablePMAgent("/path/to/config.json")
         """
         super().__init__()
-        self.config_file = config_file or "config_pm_agent.json"
+        self.config_file = config_file or "config_marcus.json"
         self._load_configuration()
     
     def _load_configuration(self) -> None:
@@ -238,5 +238,5 @@ if __name__ == "__main__":
     import asyncio
     
     # Start with configuration file
-    agent = ConfigurablePMAgent("config_pm_agent.json")
+    agent = ConfigurablePMAgent("config_marcus.json")
     asyncio.run(agent.start())

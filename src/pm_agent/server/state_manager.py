@@ -21,7 +21,7 @@ from sqlalchemy.orm import sessionmaker
 from cachetools import TTLCache
 import pickle
 
-from pm_agent.config import settings
+from marcus.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -556,7 +556,7 @@ async def example_usage():
     """Example of using the state manager."""
     # Initialize components
     redis_client = await redis.from_url("redis://localhost:6379")
-    db_engine = create_async_engine("postgresql+asyncpg://user:pass@localhost/pmagent")
+    db_engine = create_async_engine("postgresql+asyncpg://user:pass@localhost/marcus")
     
     state_manager = StateManager(
         redis_client=redis_client,

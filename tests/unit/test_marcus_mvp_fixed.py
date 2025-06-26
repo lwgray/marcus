@@ -1,5 +1,5 @@
 """
-Unit tests for PMAgentMVP - the MCP server implementation
+Unit tests for MarcusMVP - the MCP server implementation
 """
 
 import pytest
@@ -9,7 +9,7 @@ from unittest.mock import Mock, AsyncMock, patch, MagicMock, PropertyMock
 from datetime import datetime, timedelta
 from typing import Dict, Any, List
 
-from src.pm_agent_mvp_fixed import PMAgentMVP
+from src.marcus_mvp_fixed import MarcusMVP
 from src.core.models import (
     Task, TaskStatus, Priority, RiskLevel,
     ProjectState, WorkerStatus, TaskAssignment
@@ -17,8 +17,8 @@ from src.core.models import (
 from mcp.types import TextContent
 
 
-class TestPMAgentMVP:
-    """Test suite for PMAgentMVP class"""
+class TestMarcusMVP:
+    """Test suite for MarcusMVP class"""
     
     @pytest.fixture
     def mock_kanban_client(self):
@@ -47,8 +47,8 @@ class TestPMAgentMVP:
     
     @pytest.fixture
     async def pm_agent(self, mock_kanban_client, mock_ai_engine, mock_workspace_manager):
-        """Create PMAgentMVP instance with mocked dependencies"""
-        agent = PMAgentMVP()
+        """Create MarcusMVP instance with mocked dependencies"""
+        agent = MarcusMVP()
         agent.kanban_client = mock_kanban_client
         agent.ai_engine = mock_ai_engine
         agent.workspace_manager = mock_workspace_manager
@@ -116,7 +116,7 @@ class TestPMAgentMVP:
         ]
 
 
-class TestAgentRegistration(TestPMAgentMVP):
+class TestAgentRegistration(TestMarcusMVP):
     """Test agent registration functionality"""
     
     async def test_register_agent_success(self, pm_agent):
@@ -204,7 +204,7 @@ class TestAgentRegistration(TestPMAgentMVP):
         }
 
 
-class TestTaskAssignment(TestPMAgentMVP):
+class TestTaskAssignment(TestMarcusMVP):
     """Test task assignment functionality"""
     
     async def test_request_task_unregistered_agent(self, pm_agent):
@@ -297,7 +297,7 @@ class TestTaskAssignment(TestPMAgentMVP):
         assert "Connection error" in result["error"]
 
 
-class TestProgressReporting(TestPMAgentMVP):
+class TestProgressReporting(TestMarcusMVP):
     """Test progress reporting functionality"""
     
     async def test_report_progress_in_progress(self, pm_agent, mock_kanban_client):
@@ -381,7 +381,7 @@ class TestProgressReporting(TestPMAgentMVP):
         assert "Network error" in result["error"]
 
 
-class TestBlockerReporting(TestPMAgentMVP):
+class TestBlockerReporting(TestMarcusMVP):
     """Test blocker reporting functionality"""
     
     async def test_report_blocker_success(self, pm_agent, mock_kanban_client):
@@ -448,7 +448,7 @@ class TestBlockerReporting(TestPMAgentMVP):
         assert "API error" in result["error"]
 
 
-class TestProjectStatus(TestPMAgentMVP):
+class TestProjectStatus(TestMarcusMVP):
     """Test project status functionality"""
     
     async def test_get_project_status_success(self, pm_agent, mock_kanban_client):
@@ -496,7 +496,7 @@ class TestProjectStatus(TestPMAgentMVP):
         assert "Connection timeout" in result["error"]
 
 
-class TestAgentStatus(TestPMAgentMVP):
+class TestAgentStatus(TestMarcusMVP):
     """Test agent status functionality"""
     
     async def test_get_agent_status_not_found(self, pm_agent):
@@ -564,7 +564,7 @@ class TestAgentStatus(TestPMAgentMVP):
         assert "Attribute error" in result["error"]
 
 
-class TestListAgents(TestPMAgentMVP):
+class TestListAgents(TestMarcusMVP):
     """Test listing registered agents"""
     
     async def test_list_agents_empty(self, pm_agent):
@@ -615,7 +615,7 @@ class TestListAgents(TestPMAgentMVP):
         assert "error" in result
 
 
-class TestPingEndpoint(TestPMAgentMVP):
+class TestPingEndpoint(TestMarcusMVP):
     """Test ping/health check functionality"""
     
     async def test_ping_basic(self, pm_agent):
@@ -702,7 +702,7 @@ class TestPingEndpoint(TestPMAgentMVP):
         assert "error" in result
 
 
-class TestHelperMethods(TestPMAgentMVP):
+class TestHelperMethods(TestMarcusMVP):
     """Test helper methods"""
     
     async def test_generate_basic_instructions_with_ai(self, pm_agent, mock_ai_engine, sample_task):
@@ -760,7 +760,7 @@ class TestHelperMethods(TestPMAgentMVP):
     
     def test_get_uptime_no_start_time(self):
         """Test uptime when start time not set"""
-        agent = PMAgentMVP()
+        agent = MarcusMVP()
         delattr(agent, '_start_time')
         
         uptime = agent._get_uptime()
@@ -793,8 +793,8 @@ class TestHelperMethods(TestPMAgentMVP):
 
 
 
-class TestInitialization(TestPMAgentMVP):
-    """Test PMAgentMVP initialization"""
+class TestInitialization(TestMarcusMVP):
+    """Test MarcusMVP initialization"""
     
     async def test_initialize_success(self, pm_agent, mock_ai_engine, capsys):
         """Test successful initialization"""
@@ -820,8 +820,8 @@ class TestInitialization(TestPMAgentMVP):
         assert "Failed to initialize PM Agent MVP" in captured.err
     
     def test_constructor_initialization(self):
-        """Test PMAgentMVP constructor properly initializes"""
-        agent = PMAgentMVP()
+        """Test MarcusMVP constructor properly initializes"""
+        agent = MarcusMVP()
         
         assert agent.server.name == "pm-agent-mvp"
         assert hasattr(agent, 'settings')

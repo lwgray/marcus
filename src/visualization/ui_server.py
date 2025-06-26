@@ -290,7 +290,7 @@ class VisualizationServer:
         """
         Handle new conversation events and broadcast to clients.
         
-        Processes different event types (PM decisions, worker messages,
+        Processes different event types (Marcus decisions, worker messages,
         task assignments) and updates relevant visualization components
         before broadcasting to all connected clients.
         
