@@ -2,10 +2,10 @@
 Workspace isolation and security management for autonomous agents.
 
 This module ensures that client agents only operate within their designated
-project directories and cannot access the PM Agent installation or system files.
+project directories and cannot access the Marcus installation or system files.
 
 The WorkspaceManager provides:
-- Automatic detection of PM Agent installation directory
+- Automatic detection of Marcus installation directory
 - Configuration-based workspace assignment
 - Path validation and security enforcement
 - Audit logging of security violations
@@ -110,16 +110,16 @@ class ProjectWorkspaces:
 
 class WorkspaceManager:
     """
-    Manages workspace isolation and security boundaries for PM Agent.
+    Manages workspace isolation and security boundaries for Marcus.
     
     This class enforces security by maintaining a list of forbidden paths
-    (including the PM Agent installation) and validating all agent workspace
+    (including the Marcus installation) and validating all agent workspace
     assignments against these restrictions.
     
     Attributes
     ----------
     pm_agent_root : str
-        Automatically detected PM Agent installation directory
+        Automatically detected Marcus installation directory
     forbidden_paths : Set[str]
         Set of paths that agents are not allowed to access
     agent_workspaces : Dict[str, WorkspaceConfig]
@@ -136,23 +136,23 @@ class WorkspaceManager:
     
     Notes
     -----
-    The PM Agent installation directory is automatically detected and added
-    to the forbidden paths list to prevent agents from modifying PM Agent itself.
+    The Marcus installation directory is automatically detected and added
+    to the forbidden paths list to prevent agents from modifying Marcus itself.
     """
     
     def __init__(self, config_path: Optional[str] = None) -> None:
         """
-        Initialize WorkspaceManager with automatic PM Agent detection.
+        Initialize WorkspaceManager with automatic Marcus detection.
         
         Parameters
         ----------
         config_path : Optional[str], default=None
             Path to configuration file. If not provided, searches default locations.
         """
-        # Auto-detect PM Agent installation directory
+        # Auto-detect Marcus installation directory
         self.pm_agent_root: str = self._detect_pm_agent_root()
         
-        # Initialize forbidden paths - PM Agent directory is always forbidden
+        # Initialize forbidden paths - Marcus directory is always forbidden
         self.forbidden_paths: Set[str] = {
             self.pm_agent_root,
         }
@@ -175,22 +175,22 @@ class WorkspaceManager:
     
     def _detect_pm_agent_root(self) -> str:
         """
-        Automatically detect PM Agent installation directory.
+        Automatically detect Marcus installation directory.
         
         Returns
         -------
         str
-            Absolute path to PM Agent root directory
+            Absolute path to Marcus root directory
         
         Notes
         -----
-        This works by finding the root of the PM Agent package structure
+        This works by finding the root of the Marcus package structure
         relative to this file's location.
         """
         # Get the directory of this file
         current_file = os.path.abspath(__file__)
         
-        # Navigate up to find the PM Agent root
+        # Navigate up to find the Marcus root
         # We're in src/core/workspace_manager.py, so go up 2 levels
         pm_agent_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
         
@@ -229,13 +229,13 @@ class WorkspaceManager:
         
         Searches in order:
         1. XDG config directory (~/.config/pm-agent/config.json)
-        2. Local config in PM Agent root
+        2. Local config in Marcus root
         3. Path from PM_AGENT_CONFIG environment variable
         """
         config_locations = [
             # XDG config directory (preferred)
             os.path.expanduser("~/.config/pm-agent/config.json"),
-            # Local config in PM Agent root
+            # Local config in Marcus root
             os.path.join(self.pm_agent_root, "config_pm_agent.json"),
             # Environment variable
             os.environ.get("PM_AGENT_CONFIG", "")

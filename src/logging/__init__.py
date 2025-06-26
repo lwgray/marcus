@@ -1,7 +1,7 @@
 """
-Logging package for PM Agent system.
+Logging package for Marcus system.
 
-This package provides comprehensive logging capabilities for the PM Agent system,
+This package provides comprehensive logging capabilities for the Marcus system,
 including structured conversation logging, decision tracking, and system state
 monitoring. The logging system is designed to capture all interactions between
 workers, PM agents, and kanban boards for real-time visualization and analysis.

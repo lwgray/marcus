@@ -1,5 +1,5 @@
 """
-Knowledge graph builder for PM Agent system
+Knowledge graph builder for Marcus system
 
 Builds and maintains a graph of:
 - Workers and their skills
@@ -41,7 +41,7 @@ class KnowledgeEdge:
 
 class KnowledgeGraphBuilder:
     """
-    Builds and maintains a knowledge graph of the PM Agent system
+    Builds and maintains a knowledge graph of the Marcus system
     """
     
     def __init__(self):

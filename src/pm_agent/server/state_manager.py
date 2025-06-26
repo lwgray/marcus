@@ -1,5 +1,5 @@
 """
-State management and persistence layer for PM Agent.
+State management and persistence layer for Marcus.
 
 This module provides a scalable state management solution with
 support for Redis, PostgreSQL, and distributed caching.

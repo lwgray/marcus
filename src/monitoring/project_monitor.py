@@ -2,7 +2,7 @@
 
 This module implements comprehensive project monitoring capabilities including
 real-time health tracking, risk assessment, performance metrics collection,
-and automated alerting for the PM Agent system.
+and automated alerting for the Marcus system.
 
 Classes
 -------

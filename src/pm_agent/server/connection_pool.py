@@ -1,5 +1,5 @@
 """
-Connection pooling implementation for PM Agent.
+Connection pooling implementation for Marcus.
 
 This module provides connection pooling for external services
 to reduce overhead and improve performance at scale.
@@ -316,7 +316,7 @@ class KanbanConnectionPool:
 
 
 class ConnectionPoolManager:
-    """Manages all connection pools for the PM Agent."""
+    """Manages all connection pools for the Marcus."""
     
     def __init__(self):
         self.pools: Dict[str, Any] = {}

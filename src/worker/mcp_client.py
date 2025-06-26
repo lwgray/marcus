@@ -1,8 +1,8 @@
 """
-MCP Client for Worker Agents to connect to PM Agent Server.
+MCP Client for Worker Agents to connect to Marcus Server.
 
 This module provides a comprehensive client implementation for worker agents to
-communicate with the PM Agent server using the Model Context Protocol (MCP).
+communicate with the Marcus server using the Model Context Protocol (MCP).
 It handles all aspects of worker-server communication including connection
 management, task lifecycle operations, and error recovery.
 
@@ -17,7 +17,7 @@ The client supports:
 Classes
 -------
 WorkerMCPClient
-    Main client class for MCP communication with PM Agent server
+    Main client class for MCP communication with Marcus server
 
 Examples
 --------
@@ -57,7 +57,7 @@ Basic worker agent workflow:
 
 Notes
 -----
-This client requires the PM Agent MCP server to be running and accessible.
+This client requires the Marcus MCP server to be running and accessible.
 All communication is asynchronous and uses the MCP stdio transport protocol.
 Workers should handle connection failures gracefully and implement retry logic.
 """
@@ -75,15 +75,15 @@ from mcp.client.stdio import stdio_client
 
 class WorkerMCPClient:
     """
-    MCP Client for workers to communicate with PM Agent.
+    MCP Client for workers to communicate with Marcus.
     
     This class provides a high-level interface for worker agents to communicate
-    with the PM Agent server using the Model Context Protocol (MCP). It manages
-    connection lifecycle, handles all PM Agent operations, and provides robust
+    with the Marcus server using the Model Context Protocol (MCP). It manages
+    connection lifecycle, handles all Marcus operations, and provides robust
     error handling and recovery mechanisms.
     
     The client operates asynchronously and maintains a persistent connection
-    to the PM Agent server through stdio pipes. It supports the full workflow
+    to the Marcus server through stdio pipes. It supports the full workflow
     of agent registration, task management, progress reporting, and status
     monitoring required for autonomous worker operation.
     
@@ -97,7 +97,7 @@ class WorkerMCPClient:
     connect_to_pm_agent()
         Async context manager for establishing MCP connection
     register_agent(agent_id, name, role, skills)
-        Register worker agent with PM Agent system
+        Register worker agent with Marcus system
     request_next_task(agent_id)
         Request next available task assignment
     report_task_progress(agent_id, task_id, status, progress, message)
@@ -113,7 +113,7 @@ class WorkerMCPClient:
     
     >>> client = WorkerMCPClient()
     >>> async with client.connect_to_pm_agent() as session:
-    ...     # Register with PM Agent
+    ...     # Register with Marcus
     ...     await client.register_agent(
     ...         "dev-worker-1", 
     ...         "Development Worker", 
@@ -185,21 +185,21 @@ class WorkerMCPClient:
     @asynccontextmanager
     async def connect_to_pm_agent(self) -> AsyncIterator[ClientSession]:
         """
-        Establish connection to PM Agent MCP server.
+        Establish connection to Marcus MCP server.
         
         This async context manager handles the complete lifecycle of connecting
-        to the PM Agent server using the Model Context Protocol (MCP) over stdio.
+        to the Marcus server using the Model Context Protocol (MCP) over stdio.
         It spawns the server process, establishes communication streams, initializes
         the session, and ensures proper cleanup on exit.
         
-        The connection uses stdio pipes to communicate with the PM Agent server
+        The connection uses stdio pipes to communicate with the Marcus server
         process. The server command is dynamically constructed relative to the
         current module location to ensure portability.
         
         Yields
         ------
         ClientSession
-            An active MCP client session for communication with PM Agent
+            An active MCP client session for communication with Marcus
             
         Raises
         ------
@@ -238,7 +238,7 @@ class WorkerMCPClient:
         - The connection verifies available tools upon successful initialization
         - Multiple concurrent connections from the same client are not supported
         """
-        # PM Agent server command
+        # Marcus server command
         server_cmd = [
             "python",
             os.path.join(os.path.dirname(__file__), "..", "..", "pm_agent_mcp_server.py")
@@ -257,7 +257,7 @@ class WorkerMCPClient:
                 
                 # List available tools to verify connection
                 tools = await session.list_tools()
-                print(f"Connected to PM Agent. Available tools: {[t.name for t in tools]}")
+                print(f"Connected to Marcus. Available tools: {[t.name for t in tools]}")
                 
                 yield session
                 
@@ -269,15 +269,15 @@ class WorkerMCPClient:
         skills: List[str]
     ) -> Dict[str, Any]:
         """
-        Register worker agent with the PM Agent system.
+        Register worker agent with the Marcus system.
         
-        This method registers a new worker agent with the PM Agent server,
+        This method registers a new worker agent with the Marcus server,
         providing identification, role information, and skill capabilities.
         Registration is required before an agent can request tasks or participate
         in the project workflow.
         
         The registration process validates agent information and creates a new
-        agent record in the PM Agent system. Agents can only be registered once
+        agent record in the Marcus system. Agents can only be registered once
         per session; subsequent registrations with the same agent_id will update
         the existing record.
         
@@ -285,7 +285,7 @@ class WorkerMCPClient:
         ----------
         agent_id : str
             Unique identifier for the worker agent (e.g., "backend-dev-001")
-            Must be unique across the PM Agent system
+            Must be unique across the Marcus system
         name : str
             Human-readable display name for the agent (e.g., "Backend Developer")
         role : str
@@ -306,11 +306,11 @@ class WorkerMCPClient:
         Raises
         ------
         RuntimeError
-            If no active connection exists to PM Agent server
+            If no active connection exists to Marcus server
         ValueError
             If required parameters are missing or invalid
         ConnectionError
-            If communication with PM Agent server fails
+            If communication with Marcus server fails
             
         Examples
         --------
@@ -347,12 +347,12 @@ class WorkerMCPClient:
         Notes
         -----
         - Agent IDs should follow a consistent naming convention
-        - Skills list helps PM Agent with optimal task assignment
+        - Skills list helps Marcus with optimal task assignment
         - Role information is used for task categorization and routing
         - Registration must complete before requesting tasks
         """
         if not self.session:
-            raise RuntimeError("Not connected to PM Agent")
+            raise RuntimeError("Not connected to Marcus")
             
         result = await self.session.call_tool(
             "register_agent",
@@ -368,10 +368,10 @@ class WorkerMCPClient:
         
     async def request_next_task(self, agent_id: str) -> Dict[str, Any]:
         """
-        Request next available task assignment from PM Agent.
+        Request next available task assignment from Marcus.
         
         This method requests the next optimal task assignment for the specified
-        agent from the PM Agent server. The PM Agent uses intelligent task
+        agent from the Marcus server. The Marcus uses intelligent task
         routing based on agent skills, current workload, task priorities, and
         dependencies to assign the most appropriate task.
         
@@ -405,11 +405,11 @@ class WorkerMCPClient:
         Raises
         ------
         RuntimeError
-            If no active connection exists to PM Agent server
+            If no active connection exists to Marcus server
         ValueError
             If agent_id is invalid or agent not registered
         ConnectionError
-            If communication with PM Agent server fails
+            If communication with Marcus server fails
             
         Examples
         --------
@@ -462,10 +462,10 @@ class WorkerMCPClient:
         - Task assignment considers agent skills and current workload
         - Empty responses indicate no suitable tasks are currently available
         - Agents must report progress before requesting additional tasks
-        - Task dependencies are automatically resolved by PM Agent
+        - Task dependencies are automatically resolved by Marcus
         """
         if not self.session:
-            raise RuntimeError("Not connected to PM Agent")
+            raise RuntimeError("Not connected to Marcus")
             
         result = await self.session.call_tool(
             "request_next_task",
@@ -483,7 +483,7 @@ class WorkerMCPClient:
         message: str = ""
     ) -> Dict[str, Any]:
         """
-        Report task progress and status updates to PM Agent.
+        Report task progress and status updates to Marcus.
         
         This method allows agents to report their progress on assigned tasks,
         including status changes, completion percentages, and descriptive messages.
@@ -491,7 +491,7 @@ class WorkerMCPClient:
         and providing visibility into agent activities.
         
         Agents should report progress at key milestones (25%, 50%, 75%, 100%)
-        and whenever status changes occur. The PM Agent uses this information
+        and whenever status changes occur. The Marcus uses this information
         for real-time project tracking, dependency management, and resource
         allocation decisions.
         
@@ -530,12 +530,12 @@ class WorkerMCPClient:
         Raises
         ------
         RuntimeError
-            If no active connection exists to PM Agent server
+            If no active connection exists to Marcus server
         ValueError
             If agent_id, task_id, or status values are invalid
             If progress is not between 0 and 100
         ConnectionError
-            If communication with PM Agent server fails
+            If communication with Marcus server fails
             
         Examples
         --------
@@ -604,7 +604,7 @@ class WorkerMCPClient:
         - Frequent updates provide better visibility but avoid spam reporting
         """
         if not self.session:
-            raise RuntimeError("Not connected to PM Agent")
+            raise RuntimeError("Not connected to Marcus")
             
         result = await self.session.call_tool(
             "report_task_progress",
@@ -627,10 +627,10 @@ class WorkerMCPClient:
         severity: str = "medium"
     ) -> Dict[str, Any]:
         """
-        Report task blockers to PM Agent for AI assistance and resolution.
+        Report task blockers to Marcus for AI assistance and resolution.
         
         This method allows agents to report issues that prevent task completion,
-        triggering AI-powered analysis and recommendation systems. The PM Agent
+        triggering AI-powered analysis and recommendation systems. The Marcus
         can provide suggested solutions, escalate to human oversight, or
         reassign tasks based on blocker severity and type.
         
@@ -672,12 +672,12 @@ class WorkerMCPClient:
         Raises
         ------
         RuntimeError
-            If no active connection exists to PM Agent server
+            If no active connection exists to Marcus server
         ValueError
             If agent_id, task_id, or severity values are invalid
             If blocker_description is empty or too short
         ConnectionError
-            If communication with PM Agent server fails
+            If communication with Marcus server fails
             
         Examples
         --------
@@ -767,7 +767,7 @@ class WorkerMCPClient:
         - Related blockers help identify systemic project issues
         """
         if not self.session:
-            raise RuntimeError("Not connected to PM Agent")
+            raise RuntimeError("Not connected to Marcus")
             
         result = await self.session.call_tool(
             "report_blocker",
@@ -783,7 +783,7 @@ class WorkerMCPClient:
         
     async def get_project_status(self) -> Dict[str, Any]:
         """
-        Retrieve current project status and metrics from PM Agent.
+        Retrieve current project status and metrics from Marcus.
         
         This method fetches comprehensive project status information including
         task progress, agent activities, performance metrics, and overall
@@ -838,9 +838,9 @@ class WorkerMCPClient:
         Raises
         ------
         RuntimeError
-            If no active connection exists to PM Agent server
+            If no active connection exists to Marcus server
         ConnectionError
-            If communication with PM Agent server fails
+            If communication with Marcus server fails
         PermissionError
             If agent doesn't have permission to view project status
             
@@ -916,7 +916,7 @@ class WorkerMCPClient:
         - Large projects may have paginated or summarized data
         """
         if not self.session:
-            raise RuntimeError("Not connected to PM Agent")
+            raise RuntimeError("Not connected to Marcus")
             
         result = await self.session.call_tool(
             "get_project_status",

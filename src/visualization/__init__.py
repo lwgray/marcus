@@ -1,4 +1,4 @@
-"""Data flow visualization system for PM Agent"""
+"""Data flow visualization system for Marcus"""
 
 from .conversation_stream import ConversationStreamProcessor
 from .decision_visualizer import DecisionVisualizer

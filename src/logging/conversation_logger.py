@@ -1,8 +1,8 @@
 """
-Structured conversation logging for PM Agent system.
+Structured conversation logging for Marcus system.
 
 This module provides a comprehensive structured logging system designed to capture
-all conversations, decisions, and interactions between Workers, PM Agent, and
+all conversations, decisions, and interactions between Workers, Marcus, and
 Kanban Board components. The logging system supports real-time visualization,
 decision replay, performance analysis, and debugging capabilities.
 
@@ -14,7 +14,7 @@ Classes
 -------
 ConversationType : Enum
     Enumeration defining different types of conversations and interactions
-    in the PM Agent ecosystem.
+    in the Marcus ecosystem.
 ConversationLogger : class
     Main logging class providing structured conversation and event logging
     with comprehensive metadata capture and analysis capabilities.
@@ -72,10 +72,10 @@ from pathlib import Path
 
 class ConversationType(Enum):
     """
-    Enumeration of conversation types in the PM Agent system.
+    Enumeration of conversation types in the Marcus system.
     
     This enum defines the different categories of interactions and communications
-    that occur between components in the PM Agent ecosystem. Each type represents
+    that occur between components in the Marcus ecosystem. Each type represents
     a specific communication pattern that requires different handling and analysis.
     
     Attributes
@@ -129,10 +129,10 @@ class ConversationType(Enum):
 
 class ConversationLogger:
     """
-    Comprehensive structured logger for PM Agent system conversations.
+    Comprehensive structured logger for Marcus system conversations.
     
     This class provides a centralized logging system that captures all interactions,
-    decisions, and state changes within the PM Agent ecosystem. It implements
+    decisions, and state changes within the Marcus ecosystem. It implements
     structured JSON logging with automatic file rotation, hierarchical organization,
     and rich metadata capture for analysis and visualization.
     
@@ -263,7 +263,7 @@ class ConversationLogger:
         )
         
         # Create separate loggers for different components
-        self.pm_logger = structlog.get_logger("pm_agent")
+        self.pm_logger = structlog.get_logger("marcus")
         self.worker_logger = structlog.get_logger("worker")
         self.kanban_logger = structlog.get_logger("kanban")
         
@@ -293,7 +293,7 @@ class ConversationLogger:
         )
         conversation_handler.setLevel(logging.DEBUG)
         
-        # Decision log for PM Agent decisions
+        # Decision log for Marcus decisions
         decision_handler = logging.FileHandler(
             self.log_dir / f"decisions_{datetime.now():%Y%m%d_%H%M%S}.jsonl"
         )
@@ -325,8 +325,8 @@ class ConversationLogger:
             Format typically follows pattern like 'worker_backend_1' or 'worker_ui_2'.
         direction : str
             Direction of communication flow. Valid values:
-            - 'to_pm': Message from worker to PM agent
-            - 'from_pm': Message from PM agent to worker
+            - 'to_pm': Message from worker to Marcus
+            - 'from_pm': Message from Marcus to worker
         message : str
             The actual communication message content. Can include status updates,
             task completion reports, questions, or blocker descriptions.
@@ -355,7 +355,7 @@ class ConversationLogger:
         ...     }
         ... )
         
-        PM agent assigning new task:
+        Marcus assigning new task:
         
         >>> logger.log_worker_message(
         ...     worker_id="worker_frontend_2",
@@ -416,9 +416,9 @@ class ConversationLogger:
         context: Optional[Dict[str, Any]] = None
     ) -> None:
         """
-        Log PM Agent's internal reasoning and decision-making processes.
+        Log Marcus' internal reasoning and decision-making processes.
         
-        Captures the internal cognitive processes of the PM agent including
+        Captures the internal cognitive processes of Marcus including
         analysis, evaluation, planning, and reasoning steps. This enables
         debugging of decision-making logic and optimization of AI reasoning.
         
@@ -504,9 +504,9 @@ class ConversationLogger:
         decision_factors: Optional[Dict[str, Any]] = None
     ) -> None:
         """
-        Log formal PM Agent decisions with comprehensive context and analysis.
+        Log formal Marcus decisions with comprehensive context and analysis.
         
-        Records important decisions made by the PM agent including the decision
+        Records important decisions made by Marcus including the decision
         itself, reasoning, alternatives considered, confidence levels, and
         contributing factors. This enables decision auditing, pattern analysis,
         and optimization of decision-making algorithms.
@@ -643,7 +643,7 @@ class ConversationLogger:
         processing_steps: Optional[List[str]] = None
     ) -> None:
         """
-        Log interactions between PM Agent and Kanban board system.
+        Log interactions between Marcus and Kanban board system.
         
         Captures all communications with the kanban board including task updates,
         status changes, board queries, and synchronization activities. Tracks
@@ -662,7 +662,7 @@ class ConversationLogger:
             - 'batch_update': Multiple operations
         direction : str
             Direction of the interaction:
-            - 'to_kanban': PM agent sending data to kanban board
+            - 'to_kanban': Marcus sending data to kanban board
             - 'from_kanban': Receiving data from kanban board
         data : Dict[str, Any]
             The actual data being exchanged with the kanban board. Structure
@@ -1281,7 +1281,7 @@ class ConversationLogger:
         """
         Log comprehensive system state for monitoring and analysis.
         
-        Captures a snapshot of the entire PM Agent system state including
+        Captures a snapshot of the entire Marcus system state including
         worker activity, task distribution, performance metrics, and resource
         utilization. This data enables system health monitoring and optimization.
         
@@ -1472,7 +1472,7 @@ class ConversationLogger:
             Each entry contains:
             - timestamp: ISO format timestamp of the conversation
             - conversation_type: Type of conversation (from ConversationType)
-            - participants: Involved parties (worker_id, pm_agent, kanban)
+            - participants: Involved parties (worker_id, marcus, kanban)
             - message: The conversation content
             - metadata: Additional context and structured data
             - log_level: Logging level of the entry
@@ -1490,7 +1490,7 @@ class ConversationLogger:
         ... )
         >>> print(f"Retrieved {len(conversations)} conversations")
         
-        Retrieve only PM agent decisions:
+        Retrieve only Marcus decisions:
         
         >>> decisions = logger.get_conversation_replay(
         ...     filter_type=ConversationType.DECISION
@@ -1529,7 +1529,7 @@ class ConversationLogger:
         Export comprehensive decision metrics for analysis and optimization.
         
         Analyzes logged decision data to extract key performance indicators,
-        patterns, and metrics that enable optimization of the PM Agent's
+        patterns, and metrics that enable optimization of the Marcus'
         decision-making algorithms and overall system performance.
         
         Returns
@@ -1630,7 +1630,7 @@ def log_conversation(
     sender : str
         Identifier of the message sender. Common patterns:
         - 'worker_{type}_{id}': Worker agents (e.g., 'worker_backend_1')
-        - 'pm_agent': PM Agent system
+        - 'marcus': Marcus system
         - 'kanban': Kanban board system
         - 'system': System-level messages
     receiver : str
@@ -1647,38 +1647,38 @@ def log_conversation(
     
     Examples
     --------
-    Worker reporting to PM Agent:
+    Worker reporting to Marcus:
     
     >>> log_conversation(
     ...     sender="worker_backend_1",
-    ...     receiver="pm_agent",
+    ...     receiver="marcus",
     ...     message="Task TASK-123 completed successfully",
     ...     metadata={"task_id": "TASK-123", "completion_time": "2024-01-15T16:30:00Z"}
     ... )
     
-    PM Agent communicating with worker:
+    Marcus communicating with worker:
     
     >>> log_conversation(
-    ...     sender="pm_agent",
+    ...     sender="marcus",
     ...     receiver="worker_frontend_2",
     ...     message="New high-priority UI task assigned",
     ...     metadata={"task_id": "TASK-456", "priority": "high", "deadline": "2024-01-18"}
     ... )
     
-    PM Agent updating Kanban board:
+    Marcus updating Kanban board:
     
     >>> log_conversation(
-    ...     sender="pm_agent",
+    ...     sender="marcus",
     ...     receiver="kanban",
     ...     message="Updating task status to completed",
     ...     metadata={"action": "update_task", "task_id": "TASK-789", "new_status": "Done"}
     ... )
     
-    Kanban board notifying PM Agent:
+    Kanban board notifying Marcus:
     
     >>> log_conversation(
     ...     sender="kanban",
-    ...     receiver="pm_agent",
+    ...     receiver="marcus",
     ...     message="Board state synchronized, 3 new tasks added",
     ...     metadata={"action": "sync_complete", "new_tasks": 3, "total_tasks": 47}
     ... )
@@ -1700,13 +1700,13 @@ def log_conversation(
         conversation_logger.log_worker_message(sender, "to_pm", message, metadata)
     elif receiver.startswith("worker"):
         conversation_logger.log_worker_message(receiver, "from_pm", message, metadata)
-    elif sender == "pm_agent" and receiver == "kanban":
+    elif sender == "marcus" and receiver == "kanban":
         conversation_logger.log_kanban_interaction(
             action=metadata.get("action", "unknown"),
             direction="to_kanban",
             data={"message": message, **(metadata or {})}
         )
-    elif sender == "kanban" and receiver == "pm_agent":
+    elif sender == "kanban" and receiver == "marcus":
         conversation_logger.log_kanban_interaction(
             action=metadata.get("action", "unknown"),
             direction="from_kanban",
@@ -1730,7 +1730,7 @@ def log_thinking(
     ----------
     component : str
         Identifier of the component doing the thinking:
-        - 'pm_agent': PM Agent reasoning and decision-making
+        - 'marcus': Marcus reasoning and decision-making
         - 'worker_{type}_{id}': Worker agent internal processing
         - 'kanban': Kanban board processing and analysis
         - 'system': System-level analysis and monitoring
@@ -1750,10 +1750,10 @@ def log_thinking(
     
     Examples
     --------
-    PM Agent task assignment reasoning:
+    Marcus task assignment reasoning:
     
     >>> log_thinking(
-    ...     component="pm_agent",
+    ...     component="marcus",
     ...     thought="Evaluating worker capacity and skills for urgent security task",
     ...     context={
     ...         "available_workers": 5,
@@ -1811,18 +1811,18 @@ def log_thinking(
     Notes
     -----
     Thinking logs are typically recorded at DEBUG level.
-    PM Agent thoughts use specialized logging for enhanced analysis.
+    Marcus thoughts use specialized logging for enhanced analysis.
     Other components use general structured logging with component identification.
     Context should include data that influenced the reasoning process.
     These logs are essential for AI/algorithm debugging and optimization.
     
     See Also
     --------
-    ConversationLogger.log_pm_thinking : Direct PM Agent thinking logs
+    ConversationLogger.log_pm_thinking : Direct Marcus thinking logs
     ConversationLogger.log_pm_decision : Log formal decisions
     log_conversation : Convenience function for inter-component communication
     """
-    if component == "pm_agent":
+    if component == "marcus":
         conversation_logger.log_pm_thinking(thought, context)
     else:
         # Log as general debug info

@@ -1,8 +1,8 @@
 """
-Configuration Module for PM Agent
+Configuration Module for Marcus
 ==================================
 
-This module provides comprehensive configuration management for the PM Agent system.
+This module provides comprehensive configuration management for the Marcus system.
 It handles loading, validation, and management of settings from multiple sources
 including configuration files, environment variables, and default values.
 

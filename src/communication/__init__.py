@@ -1,8 +1,8 @@
 """
-Communication Module for PM Agent
+Communication Module for Marcus
 ==================================
 
-This module provides multi-channel communication capabilities for the PM Agent system.
+This module provides multi-channel communication capabilities for the Marcus system.
 It enables coordinated notifications and messaging across different platforms to keep
 agents and managers informed about task assignments, blockers, and project status.
 

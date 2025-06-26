@@ -1,5 +1,5 @@
 """
-AI-powered analysis and decision engine for PM Agent.
+AI-powered analysis and decision engine for Marcus.
 
 This module provides intelligent task assignment, blocker resolution, and project
 risk analysis using Claude API. It includes comprehensive fallback mechanisms

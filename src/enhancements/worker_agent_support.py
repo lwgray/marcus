@@ -247,9 +247,9 @@ class WorkerAgentManager:
         return active_agents
 
 
-# Enhanced PM Agent methods to support autonomous workers
+# Enhanced Marcus methods to support autonomous workers
 class EnhancedPMAgentMethods:
-    """Additional methods for PM Agent to support autonomous workers"""
+    """Additional methods for Marcus to support autonomous workers"""
     
     def __init__(self, worker_manager: WorkerAgentManager):
         self.worker_manager = worker_manager

@@ -1,7 +1,7 @@
 """
-Decision visualization component for PM Agent
+Decision visualization component for Marcus
 
-Visualizes PM Agent's decision-making process including:
+Visualizes Marcus's decision-making process including:
 - Decision trees
 - Alternative paths considered
 - Confidence scores
@@ -19,7 +19,7 @@ from pyvis.network import Network
 
 @dataclass
 class Decision:
-    """Represents a single decision made by PM Agent"""
+    """Represents a single decision made by Marcus"""
     id: str
     timestamp: datetime
     decision: str
@@ -59,7 +59,7 @@ class DecisionNode:
 
 class DecisionVisualizer:
     """
-    Visualizes PM Agent's decision-making process
+    Visualizes Marcus's decision-making process
     """
     
     def __init__(self):

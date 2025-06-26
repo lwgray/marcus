@@ -1,7 +1,7 @@
 """
-Core data models for PM Agent.
+Core data models for Marcus.
 
-This module defines the fundamental data structures used throughout the PM Agent system,
+This module defines the fundamental data structures used throughout the Marcus system,
 including tasks, workers, assignments, and project state tracking.
 """
 

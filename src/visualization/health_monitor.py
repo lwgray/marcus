@@ -1,5 +1,5 @@
 """
-Health Analysis Monitor for PM Agent visualization
+Health Analysis Monitor for Marcus visualization
 
 Integrates AI health analysis with the visualization UI to provide
 real-time project health monitoring and insights.

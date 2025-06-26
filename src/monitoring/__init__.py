@@ -1,7 +1,7 @@
 """
-PM Agent Monitoring Module.
+Marcus Monitoring Module.
 
-This module provides comprehensive project monitoring capabilities for the PM Agent
+This module provides comprehensive project monitoring capabilities for the Marcus
 system, including real-time project health tracking, risk assessment, performance
 metrics collection, and automated alerting systems.
 

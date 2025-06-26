@@ -1,5 +1,5 @@
 """
-Web UI server for PM Agent visualization
+Web UI server for Marcus visualization
 
 Provides real-time visualization of:
 - Agent conversations
@@ -27,7 +27,7 @@ from .health_monitor import HealthMonitor
 
 class VisualizationServer:
     """
-    Web server for PM Agent visualization interface.
+    Web server for Marcus visualization interface.
     
     Provides a real-time web UI for visualizing agent conversations,
     decision-making processes, knowledge graphs, and system health metrics.

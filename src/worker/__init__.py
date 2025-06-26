@@ -1,16 +1,16 @@
 """
-Worker package for PM Agent.
+Worker package for Marcus.
 
 This package provides the core infrastructure for worker agents to communicate
-with the PM Agent server through the Model Context Protocol (MCP). It handles
+with the Marcus server through the Model Context Protocol (MCP). It handles
 agent registration, task requests, progress reporting, and error handling.
 
 The worker package is designed to enable autonomous agents to:
-- Register themselves with the PM Agent system
+- Register themselves with the Marcus system
 - Request and receive task assignments
 - Report progress and completion status
 - Handle blockers and errors gracefully
-- Maintain reliable communication with the PM Agent server
+- Maintain reliable communication with the Marcus server
 
 Modules
 -------
@@ -29,7 +29,7 @@ Basic usage for creating a worker agent:
 
 Notes
 -----
-This package requires an active PM Agent MCP server to be running for
+This package requires an active Marcus MCP server to be running for
 proper functionality. Workers operate in isolation and cannot directly
 communicate with each other.
 """

@@ -1,7 +1,7 @@
 """
-Enhanced PM Agent with project/board configuration support.
+Enhanced Marcus with project/board configuration support.
 
-This module provides a configurable PM Agent that extends the base PMAgentMVP
+This module provides a configurable Marcus that extends the base PMAgentMVP
 with configuration file and environment variable support for project and board
 management across different environments.
 
@@ -24,7 +24,7 @@ from pm_agent_mvp_fixed import PMAgentMVP
 
 
 class ConfigurablePMAgent(PMAgentMVP):
-    """PM Agent with configuration file and environment variable support.
+    """Marcus with configuration file and environment variable support.
     
     This class extends PMAgentMVP to provide flexible configuration management
     through JSON files and environment variables, enabling different deployment
@@ -91,7 +91,7 @@ class ConfigurablePMAgent(PMAgentMVP):
         Environment Variables
         ---------------------
         PM_AGENT_PROJECT_ID : str
-            Project ID for the PM Agent to work with.
+            Project ID for the Marcus to work with.
         PM_AGENT_BOARD_ID : str
             Board ID within the project.
             
@@ -154,7 +154,7 @@ class ConfigurablePMAgent(PMAgentMVP):
                 self.kanban_client._env["PLANKA_AGENT_PASSWORD"] = planka_config["password"]
     
     async def start(self) -> None:
-        """Start the PM Agent with automatic configuration and board discovery.
+        """Start the Marcus with automatic configuration and board discovery.
         
         Performs enhanced startup sequence that includes:
         1. Board discovery if project_id is set but board_id is not
@@ -173,7 +173,7 @@ class ConfigurablePMAgent(PMAgentMVP):
         >>> await agent.start()
         # 🔍 Finding board for project...
         # ✅ Found board: board-123
-        # 🚀 PM Agent started successfully!
+        # 🚀 Marcus started successfully!
         """
         # If board_id not set but project_id is, try to find the board
         if self.kanban_client.project_id and not self.kanban_client.board_id:

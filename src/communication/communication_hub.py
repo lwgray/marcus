@@ -1,4 +1,4 @@
-"""Multi-channel communication system for PM Agent.
+"""Multi-channel communication system for Marcus.
 
 This module provides the CommunicationHub class which manages notifications
 and messages across different communication channels to keep agents and
