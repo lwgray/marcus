@@ -118,7 +118,7 @@ class WorkspaceManager:
     
     Attributes
     ----------
-    pm_agent_root : str
+    marcus_root : str
         Automatically detected Marcus installation directory
     forbidden_paths : Set[str]
         Set of paths that agents are not allowed to access
@@ -150,11 +150,11 @@ class WorkspaceManager:
             Path to configuration file. If not provided, searches default locations.
         """
         # Auto-detect Marcus installation directory
-        self.pm_agent_root: str = self._detect_pm_agent_root()
+        self.marcus_root: str = self._detect_marcus_root()
         
         # Initialize forbidden paths - Marcus directory is always forbidden
         self.forbidden_paths: Set[str] = {
-            self.pm_agent_root,
+            self.marcus_root,
         }
         
         # Add common Python installation paths to forbidden list
@@ -173,7 +173,7 @@ class WorkspaceManager:
             # Try to load from default locations
             self._load_default_config()
     
-    def _detect_pm_agent_root(self) -> str:
+    def _detect_marcus_root(self) -> str:
         """
         Automatically detect Marcus installation directory.
         
@@ -192,17 +192,17 @@ class WorkspaceManager:
         
         # Navigate up to find the Marcus root
         # We're in src/core/workspace_manager.py, so go up 2 levels
-        pm_agent_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
+        marcus_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
         
         # Validate that we found the correct directory
-        expected_markers = ['src', 'scripts', 'config_pm_agent.json']
+        expected_markers = ['src', 'scripts', 'config_marcus.json']
         for marker in expected_markers:
-            if not os.path.exists(os.path.join(pm_agent_root, marker)):
+            if not os.path.exists(os.path.join(marcus_root, marker)):
                 # If marker is missing, we might be in a different structure
                 # Try alternative detection methods
                 break
         
-        return pm_agent_root
+        return marcus_root
     
     def _add_system_paths_to_forbidden(self) -> None:
         """
@@ -228,17 +228,17 @@ class WorkspaceManager:
         Try to load configuration from default locations.
         
         Searches in order:
-        1. XDG config directory (~/.config/pm-agent/config.json)
+        1. XDG config directory (~/.config/marcus/config.json)
         2. Local config in Marcus root
-        3. Path from PM_AGENT_CONFIG environment variable
+        3. Path from MARCUS_CONFIG environment variable
         """
         config_locations = [
             # XDG config directory (preferred)
-            os.path.expanduser("~/.config/pm-agent/config.json"),
+            os.path.expanduser("~/.config/marcus/config.json"),
             # Local config in Marcus root
-            os.path.join(self.pm_agent_root, "config_pm_agent.json"),
+            os.path.join(self.marcus_root, "config_marcus.json"),
             # Environment variable
-            os.environ.get("PM_AGENT_CONFIG", "")
+            os.environ.get("MARCUS_CONFIG", "")
         ]
         
         for location in config_locations:
@@ -571,7 +571,7 @@ class WorkspaceManager:
             'agent_id': agent_id,
             'attempted_path': attempted_path,
             'operation': operation,
-            'pm_agent_root': self.pm_agent_root
+            'marcus_root': self.marcus_root
         }
         
         # In production, this would log to a security audit file
