@@ -65,23 +65,41 @@ Marcus is like a smart project manager for AI workers. It assigns coding tasks t
 
 ```{mermaid}
 graph LR
-    Kanban[Kanban Board<br/>GitHub/Linear/Planka] --> Marcus[Marcus]
-    Worker1[AI Worker 1] -->|requests work| Marcus
-    Worker2[AI Worker 2] -->|requests work| Marcus
-    Worker3[Human Dev] -->|requests work| Marcus
-    Marcus -->|assigns tasks| Worker1
-    Marcus -->|assigns tasks| Worker2
-    Marcus -->|assigns tasks| Worker3
+    Kanban[Kanban Board] --> Marcus[Marcus]
+    Worker1[AI Worker 1] --> Marcus
+    Worker2[AI Worker 2] --> Marcus
+    Worker3[Human Dev] --> Marcus
+    Marcus --> Worker1
+    Marcus --> Worker2
+    Marcus --> Worker3
     Worker1 --> Code[Your Project]
     Worker2 --> Code
     Worker3 --> Code
-    Marcus -->|tracks progress| Kanban
+    Marcus --> Kanban
+    
+    linkStyle 0 stroke:#333,stroke-width:2px
+    linkStyle 1 stroke:#ff6600,stroke-width:3px
+    linkStyle 2 stroke:#ff6600,stroke-width:3px
+    linkStyle 3 stroke:#ff6600,stroke-width:3px
+    linkStyle 4 stroke:#00aa00,stroke-width:3px
+    linkStyle 5 stroke:#00aa00,stroke-width:3px
+    linkStyle 6 stroke:#00aa00,stroke-width:3px
+    linkStyle 7 stroke:#000000,stroke-width:3px
+    linkStyle 8 stroke:#000000,stroke-width:3px
+    linkStyle 9 stroke:#000000,stroke-width:3px
+    linkStyle 10 stroke:#ff0000,stroke-width:3px
 ```
 
-1. **You** create tasks on your Kanban board (GitHub Projects, Linear, or Planka)
-2. **Workers** (both AI and human) request work from Marcus when ready
-3. **Marcus** matches the best task to each worker based on their skills
-4. **Workers** build your project and Marcus tracks progress on the Kanban board
+**Legend:**
+- 🟠 **Orange** = Requests work
+- 🟢 **Green** = Assigns tasks  
+- ⚫ **Black** = Performs work
+- 🔴 **Red** = Tracks progress
+
+1. **You** create tasks on your Kanban board
+2. **Workers** request work when ready (pull-based)
+3. **Marcus** intelligently assigns tasks
+4. **Progress** flows back to your Kanban board
 
 ## Full Installation
 
