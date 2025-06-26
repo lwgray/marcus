@@ -64,60 +64,24 @@ Marcus is like a smart project manager for AI workers. It assigns coding tasks t
 ### How It Works
 
 ```{mermaid}
-graph TB
-    subgraph "Kanban Board (GitHub/Linear/Planka)"
-        T1[Task: Create API]
-        T2[Task: Build UI]
-        T3[Task: Write Tests]
-        T4[Task: Fix Bug]
-    end
-    
-    subgraph "Mixed Team Members"
-        H1[Human Dev 1<br/>Skills: React, UI]
-        H2[Human Dev 2<br/>Skills: Python, API]
-        AI1[AI Worker 1<br/>Skills: Testing, Docs]
-        AI2[AI Worker 2<br/>Skills: Backend, DB]
-    end
-    
-    subgraph "Marcus (AI Coordinator)"
-        REG[Worker Registry]
-        MATCH[AI Task Matcher]
-        TRACK[Progress Tracker]
-    end
-    
-    subgraph "Code Repository"
-        CODE[Your Project Code]
-    end
-    
-    H1 -->|"What should I work on?"| MATCH
-    H2 -->|"request_next_task()"| MATCH
-    AI1 -->|"request_next_task()"| MATCH
-    AI2 -->|"request_next_task()"| MATCH
-    
-    MATCH -->|"Analyzes skills & available tasks"| T1
-    MATCH -->|"Matches best task to worker"| T2
-    MATCH -->|"Returns optimal assignment"| T3
-    MATCH -->|"Considers dependencies"| T4
-    
-    H1 -.->|"Assigned: Build UI"| CODE
-    H2 -.->|"Assigned: Create API"| CODE
-    AI1 -.->|"Assigned: Write Tests"| CODE
-    AI2 -.->|"Works on tasks"| CODE
-    
-    TRACK -->|"Updates status"| T1
-    TRACK -->|"Monitors progress"| T2
-    
-    style Marcus fill:#f9f,stroke:#333,stroke-width:4px
-    style H1 fill:#bbf,stroke:#333,stroke-width:2px
-    style H2 fill:#bbf,stroke:#333,stroke-width:2px
-    style AI1 fill:#bfb,stroke:#333,stroke-width:2px
-    style AI2 fill:#bfb,stroke:#333,stroke-width:2px
+graph LR
+    Kanban[Kanban Board<br/>GitHub/Linear/Planka] --> Marcus[Marcus]
+    Worker1[AI Worker 1] -->|requests work| Marcus
+    Worker2[AI Worker 2] -->|requests work| Marcus
+    Worker3[Human Dev] -->|requests work| Marcus
+    Marcus -->|assigns tasks| Worker1
+    Marcus -->|assigns tasks| Worker2
+    Marcus -->|assigns tasks| Worker3
+    Worker1 --> Code[Your Project]
+    Worker2 --> Code
+    Worker3 --> Code
+    Marcus -->|tracks progress| Kanban
 ```
 
-1. **You and Marcus** collaborate to create tasks on your Kanban board (GitHub Projects, Linear, or Planka)
-2. **Workers** (both human and AI) request work when they're available
-3. **Marcus** intelligently matches the best available task to each worker based on their skills
-4. **Workers** complete tasks and update progress, while Marcus tracks everything on the Kanban board
+1. **You** create tasks on your Kanban board (GitHub Projects, Linear, or Planka)
+2. **Workers** (both AI and human) request work from Marcus when ready
+3. **Marcus** matches the best task to each worker based on their skills
+4. **Workers** build your project and Marcus tracks progress on the Kanban board
 
 ## Full Installation
 
@@ -315,56 +279,15 @@ The AI workers will build each component, creating a production-ready applicatio
 ### How Tasks Move Through the System
 
 ```{mermaid}
-sequenceDiagram
-    participant U as You/Team
-    participant KB as Kanban Board
-    participant M as Marcus
-    participant AI as AI Engine
-    participant W as Worker (Human/AI)
-    participant GH as GitHub/Code Repo
-    
-    Note over U,GH: Task Creation & Setup
-    U->>KB: Create task with requirements
-    U->>M: "New tasks available"
-    
-    Note over W,GH: Worker Requests Work (Pull-based)
-    W->>M: register_agent(skills, capacity)
-    W->>M: request_next_task()
-    M->>KB: Fetch available tasks
-    KB-->>M: List of open tasks
-    M->>AI: match_task_to_agent(tasks, worker_skills)
-    AI-->>M: Best match + confidence score
-    M->>AI: generate_instructions(task, worker)
-    AI-->>M: Contextual instructions
-    M-->>W: Task assignment + instructions
-    M->>KB: Move task to "In Progress"
-    
-    Note over W,GH: Work Execution
-    W->>W: Work on task
-    W->>M: report_task_progress(25%)
-    M->>KB: Update task progress
-    W->>M: report_task_progress(50%)
-    W->>GH: Commit code changes
-    W->>M: report_task_progress(75%)
-    
-    Note over W,GH: Blocker Handling (if needed)
-    W->>M: report_blocker("Can't access API")
-    M->>AI: analyze_blocker(issue)
-    AI-->>M: Suggested solutions
-    M-->>W: Resolution steps
-    M->>KB: Add blocker comment
-    W->>W: Apply solution
-    
-    Note over W,GH: Completion & Verification
-    W->>M: report_task_progress(100%)
-    M->>GH: Verify implementation (if GitHub)
-    GH-->>M: Code analysis results
-    M->>KB: Move task to "Done"
-    W->>M: request_next_task()
-    
-    Note over U,GH: Continuous Flow
-    U->>KB: Review completed work
-    U->>KB: Create new tasks as needed
+stateDiagram-v2
+    [*] --> Backlog: You create task
+    Backlog --> Ready: Worker requests work
+    Ready --> InProgress: Marcus assigns task
+    InProgress --> Review: Worker completes
+    Review --> Done: Task verified
+    Review --> InProgress: Needs revision
+    InProgress --> Blocked: Worker hits issue
+    Blocked --> InProgress: Marcus helps resolve
 ```
 
 ### Task Priorities
