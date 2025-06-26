@@ -18,11 +18,10 @@ python -m pytest tests/unit/visualization/test_conversation_stream.py -v
 python -m pytest tests/unit/visualization/test_decision_visualizer.py -v
 python -m pytest tests/unit/visualization/test_health_monitor.py -v
 python -m pytest tests/unit/visualization/test_knowledge_graph.py -v
+python -m pytest tests/unit/visualization/test_ui_server_unit.py -v
+python -m pytest tests/unit/visualization/test_ui_server_api.py -v
+python -m pytest tests/unit/visualization/test_ui_server_integration.py -v
 python -m pytest tests/unit/visualization/test_visualization_integration.py -v
-
-# For UI server tests, run unit/API and integration tests separately:
-python -m pytest tests/unit/visualization/test_ui_server.py::TestVisualizationServerUnit tests/unit/visualization/test_ui_server.py::TestVisualizationServerAPI -v
-python -m pytest tests/unit/visualization/test_ui_server.py::TestVisualizationServerIntegration -v
 ```
 
 ### ❌ This Will Cause Failures

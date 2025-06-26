@@ -376,7 +376,7 @@ class VisualizationServer:
         """Serve main visualization page"""
         template = self.jinja_env.get_template('index.html')
         html = template.render(
-            title="PM Agent Visualization",
+            title="Marcus Visualization",
             server_url=f"http://{self.host}:{self.port}"
         )
         return web.Response(text=html, content_type='text/html')
