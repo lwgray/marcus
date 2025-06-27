@@ -95,6 +95,9 @@ class SimpleMCPKanbanClient:
                 self.project_id = config.get("project_id")
                 self.board_id = config.get("board_id")
                 print(f"✅ Loaded config: project_id={self.project_id}, board_id={self.board_id}", file=sys.stderr)
+        else:
+            print(f"❌ config_marcus.json not found in {os.getcwd()}", file=sys.stderr)
+            print(f"   Files in directory: {[f for f in os.listdir('.') if 'config' in f]}", file=sys.stderr)
     
     async def get_available_tasks(self) -> List[Task]:
         """

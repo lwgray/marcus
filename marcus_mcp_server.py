@@ -94,8 +94,11 @@ class MarcusState:
     async def initialize_kanban(self):
         """Initialize the kanban client"""
         if not self.kanban_client:
+            print(f"[Marcus] Creating kanban client...")
             self.kanban_client = KanbanFactory.create_default()
+            print(f"[Marcus] Kanban client created: {type(self.kanban_client).__name__}")
             await self.kanban_client.connect()
+            print(f"[Marcus] Kanban client connected")
             
     async def _mcp_function_caller(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
         """Function to call MCP tools for kanban integrations"""
@@ -482,8 +485,7 @@ async def request_next_task(agent_id: str) -> dict:
             # Generate detailed instructions with AI
             instructions = await state.ai_engine.generate_task_instructions(
                 optimal_task,
-                state.agent_status.get(agent_id),
-                previous_implementations
+                state.agent_status.get(agent_id)
             )
             
             # Log decision process

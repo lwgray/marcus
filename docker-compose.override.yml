@@ -1,0 +1,26 @@
+# Docker Compose Override for Development
+# This file is automatically loaded by docker-compose
+# and overrides settings in docker-compose.yml
+
+version: '3.8'
+
+services:
+  marcus:
+    # Mount additional files for development
+    volumes:
+      - ./config_marcus.json:/app/config_marcus.json:ro
+      - ./config_pm_agent.json:/app/config_pm_agent.json:ro
+      
+  marcus-dev:
+    # Ensure the updated script name is used
+    command: python marcus_mcp_server.py
+    
+  marcus-mcp:
+    # Mount config files for MCP server
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./prompts:/app/prompts
+      - ./config_marcus.json:/app/config_marcus.json:ro
+      - ./config_pm_agent.json:/app/config_pm_agent.json:ro

@@ -32,6 +32,7 @@ services:
       - ./logs:/app/logs
       - ./data:/app/data
       - ./prompts:/app/prompts
+      - ./config_marcus.json:/app/config_marcus.json:ro
     command: python marcus_mcp_server.py
     restart: unless-stopped
     stdin_open: true
@@ -69,12 +70,13 @@ services:
     volumes:
       # Mount source code for live updates
       - ./src:/app/src
-      - ./marcus_mcp_server_v2.py:/app/marcus_mcp_server_v2.py
+      - ./marcus_mcp_server.py:/app/marcus_mcp_server.py
       - ./main.py:/app/main.py
       - ./config:/app/config
       - ./logs:/app/logs
       - ./data:/app/data
       - ./prompts:/app/prompts
+      - ./config_marcus.json:/app/config_marcus.json:ro
     command: python marcus_mcp_server.py
     restart: unless-stopped
     stdin_open: true
@@ -218,6 +220,7 @@ services:
       - ./logs:/app/logs
       - ./data:/app/data
       - ./prompts:/app/prompts
+      - ./config_marcus.json:/app/config_marcus.json:ro
     command: python marcus_mcp_server.py
     stdin_open: true
     tty: false  # Important: MCP uses stdio, not TTY

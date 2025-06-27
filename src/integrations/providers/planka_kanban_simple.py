@@ -26,6 +26,7 @@ class PlankaKanbanSimple(KanbanInterface):
         self.provider = KanbanProvider.PLANKA
         self.client = SimpleMCPKanbanClient()
         self.connected = False
+        print(f"[PlankaKanbanSimple] Initialized with board_id={self.client.board_id}, project_id={self.client.project_id}")
         
     async def connect(self) -> bool:
         """Connect to Planka via MCP"""
@@ -53,8 +54,13 @@ class PlankaKanbanSimple(KanbanInterface):
     async def get_task_by_id(self, task_id: str) -> Optional[Task]:
         """Get specific task by ID"""
         try:
-            task = await self.client.get_task_details(task_id)
-            return task
+            # SimpleMCPKanbanClient doesn't have get_task_details
+            # We need to get all tasks and find the one with matching ID
+            tasks = await self.client.get_available_tasks()
+            for task in tasks:
+                if task.id == task_id:
+                    return task
+            return None
         except Exception as e:
             print(f"Error getting task {task_id}: {e}")
             return None
@@ -78,7 +84,7 @@ class PlankaKanbanSimple(KanbanInterface):
                     await self.client.complete_task(task_id)
             
             # Get and return the updated task
-            task = await self.client.get_task_details(task_id)
+            task = await self.get_task_by_id(task_id)
             return task
         except Exception as e:
             print(f"Error updating task {task_id}: {e}")
