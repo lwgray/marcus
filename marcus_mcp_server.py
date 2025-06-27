@@ -50,7 +50,7 @@ class MarcusState:
         
         # Get kanban provider from environment
         self.provider = os.getenv('KANBAN_PROVIDER', 'planka')
-        print(f"Initializing PM Agent with {self.provider.upper()} kanban provider...")
+        print(f"Initializing Marcus with {self.provider.upper()} kanban provider...")
         
         # Quick fix: Create realtime log with line buffering
         log_dir = Path("logs/conversations")
@@ -94,14 +94,7 @@ class MarcusState:
     async def initialize_kanban(self):
         """Initialize the kanban client"""
         if not self.kanban_client:
-            # Pass mcp_function_caller in config for Planka
-            config = None
-            if self.provider == 'planka':
-                config = {
-                    'project_name': os.getenv('PLANKA_PROJECT_NAME', 'Task Master Test'),
-                    'mcp_function_caller': self._mcp_function_caller
-                }
-            self.kanban_client = KanbanFactory.create_default(config)
+            self.kanban_client = KanbanFactory.create_default()
             await self.kanban_client.connect()
             
     async def _mcp_function_caller(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
@@ -111,12 +104,19 @@ class MarcusState:
         print(f"MCP Call: {tool_name} with args: {arguments}")
         
         # Mock responses for testing
-        if tool_name == "mcp_kanban_project_manager":
-            if arguments.get("action") == "get_all":
-                return [{"id": "test-board", "name": "Task Master Test"}]
-        elif tool_name == "mcp_kanban_board_manager":
-            if arguments.get("action") == "get_all":
-                return [{"id": "test-board", "name": "Task Master Test", "projectId": "test-project"}]
+        if tool_name == "mcp_kanban_project_board_manager":
+            if arguments.get("action") == "get_projects":
+                return {
+                    "items": [
+                        {"id": "test-project", "name": "Task Master Test"}
+                    ]
+                }
+            elif arguments.get("action") == "get_boards":
+                return {
+                    "items": [
+                        {"id": "test-board", "name": "Task Master Test Board", "projectId": "test-project"}
+                    ]
+                }
         elif tool_name == "mcp_kanban_list_manager":
             if arguments.get("action") == "get_all":
                 return [
@@ -143,6 +143,9 @@ class MarcusState:
                         "boardId": "test-board"
                     }
                 ]
+        elif tool_name == "mcp_kanban_comment_manager":
+            if arguments.get("action") == "create":
+                return {"id": "comment-1", "text": arguments.get("text", "")}
                 
         return {"success": True, "message": "Mock response"}
     
@@ -255,7 +258,7 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="ping",
-            description="Check PM Agent status and connectivity",
+            description="Check Marcus status and connectivity",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -334,7 +337,7 @@ async def handle_call_tool(
 
 # Tool implementations
 async def register_agent(agent_id: str, name: str, role: str, skills: List[str]) -> dict:
-    """Register a new agent with the PM system"""
+    """Register a new agent with the Marcus system"""
     # Log incoming registration request
     conversation_logger.log_worker_message(
         agent_id,
@@ -344,7 +347,7 @@ async def register_agent(agent_id: str, name: str, role: str, skills: List[str])
     )
     
     try:
-        # Log PM thinking
+        # Log Marcus thinking
         log_thinking("marcus", f"New agent registration request from {name}", {
             "agent_id": agent_id,
             "role": role,
@@ -445,7 +448,7 @@ async def request_next_task(agent_id: str) -> dict:
         # Initialize kanban if needed
         await state.initialize_kanban()
         
-        # Log PM thinking about refreshing state
+        # Log Marcus thinking about refreshing state
         log_thinking("marcus", "Need to check current project state")
         
         # Get current project state
@@ -591,7 +594,7 @@ async def report_task_progress(
         # Initialize kanban if needed
         await state.initialize_kanban()
         
-        # Log PM thinking
+        # Log Marcus thinking
         log_thinking("marcus", f"Processing progress update from {agent_id}", {
             "task_id": task_id,
             "status": status,
@@ -695,7 +698,7 @@ async def report_blocker(
         # Initialize kanban if needed
         await state.initialize_kanban()
         
-        # Log PM thinking
+        # Log Marcus thinking
         log_thinking("marcus", f"Analyzing blocker from {agent_id}", {
             "task_id": task_id,
             "severity": severity,
@@ -727,7 +730,7 @@ async def report_blocker(
         
         await state.kanban_client.add_comment(task_id, comment)
         
-        # Log PM decision
+        # Log Marcus decision
         conversation_logger.log_pm_decision(
             decision=f"Acknowledge blocker and provide suggestions",
             rationale="Help agent overcome the blocker with AI guidance",
@@ -882,7 +885,7 @@ async def list_registered_agents() -> dict:
 
 
 async def ping(echo: str) -> dict:
-    """Check PM Agent status and connectivity"""
+    """Check Marcus status and connectivity"""
     # Log the ping request immediately
     state.log_event("ping_request", {
         "echo": echo,
@@ -1049,9 +1052,9 @@ async def find_optimal_task_for_agent(agent_id: str) -> Optional[Task]:
 
 
 async def main():
-    """Run the PM Agent server"""
+    """Run the Marcus server"""
     provider = os.getenv('KANBAN_PROVIDER', 'planka')
-    print(f"\\nPM Agent MCP Server v2 Running")
+    print(f"\nMarcus MCP Server Running")
     print(f"Kanban Provider: {provider.upper()}")
     print(f"Logs: logs/conversations/")
     print("="*50)
