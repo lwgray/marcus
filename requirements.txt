@@ -1,5 +1,5 @@
 # Core dependencies
-mcp==1.10.0  # Updated from 1.1.0 - verify protocol compatibility
+mcp==1.10.0
 anthropic>=0.18.0,<1.0.0
 asyncio==3.4.3
 aiohttp==3.12.13
@@ -14,16 +14,19 @@ python-dateutil==2.9.0.post0
 structlog==25.4.0
 prometheus-client==0.22.1
 
-# Testing
-pytest==8.4.1
-pytest-asyncio==1.0.0
-pytest-mock==3.14.1
+# Web UI and visualization
+python-socketio>=5.11.0
+aiohttp-cors>=0.7.0
+jinja2>=3.1.3
+networkx>=3.2.1
+pyvis>=0.3.2
+plotly>=5.18.0
 
-# Development tools
+# Development tools (minimal for production)
 black==25.1.0
 ruff==0.12.1
 mypy==1.16.1
 
-# Communication integrations (optional, add as needed)
+# Optional communication integrations (uncomment as needed)
 # slack-sdk==3.26.1
 # sendgrid==6.11.0

@@ -328,6 +328,15 @@ class VisualizationServer:
                     metadata['role'],
                     metadata.get('skills', [])
                 )
+        
+        elif event.event_type == 'worker_registration':
+            # Handle direct worker registration events
+            self.knowledge_graph.add_worker(
+                event.metadata.get('worker_id', event.source),
+                event.metadata.get('name', 'Unknown'),
+                event.metadata.get('role', 'Agent'),
+                event.metadata.get('skills', [])
+            )
                 
         elif event.event_type == 'task_assignment':
             # Update knowledge graph with assignment
@@ -406,8 +415,23 @@ class VisualizationServer:
         analytics = self.decision_visualizer.get_decision_analytics()
         trends = self.decision_visualizer.get_confidence_trends()
         
+        # Convert Decision objects to dictionaries
+        decisions_dict = {}
+        for decision_id, decision in self.decision_visualizer.decisions.items():
+            decisions_dict[decision_id] = {
+                'id': decision.id,
+                'timestamp': decision.timestamp.isoformat(),
+                'decision': decision.decision,
+                'rationale': decision.rationale,
+                'confidence_score': decision.confidence_score,
+                'alternatives': decision.alternatives,
+                'decision_factors': decision.decision_factors,
+                'outcome': decision.outcome,
+                'outcome_timestamp': decision.outcome_timestamp.isoformat() if decision.outcome_timestamp else None
+            }
+        
         return web.json_response({
-            'decisions': self.decision_visualizer.decisions,  # Add decisions list
+            'decisions': decisions_dict,
             'analytics': analytics,
             'confidence_trends': [
                 {'timestamp': t.isoformat(), 'confidence': c}
@@ -524,17 +548,17 @@ class VisualizationServer:
         
     async def start(self):
         """Start the visualization server"""
+        # Setup routes first
+        await self.setup_routes()
+        
         # Initialize health monitor
         await self.health_monitor.initialize()
         
         # Start conversation streaming
         asyncio.create_task(self.conversation_processor.start_streaming())
         
-        # Start health monitoring with callback to broadcast updates
-        async def health_update_callback(health_data):
-            await self.sio.emit('health_update', health_data)
-            
-        await self.health_monitor.start_monitoring(health_update_callback)
+        # Start health monitoring (it runs independently)
+        await self.health_monitor.start_monitoring()
         
         # Start web server
         runner = web.AppRunner(self.app)

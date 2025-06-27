@@ -378,9 +378,9 @@ class ConversationStreamProcessor:
             summary['event_types'][event_type] = summary['event_types'].get(event_type, 0) + 1
             
             # Track active workers
-            if event.source.startswith('worker_'):
+            if event.source.startswith('worker_') or event.source.startswith('agent'):
                 summary['active_workers'].add(event.source)
-            elif event.target.startswith('worker_'):
+            elif event.target.startswith('worker_') or event.target.startswith('agent'):
                 summary['active_workers'].add(event.target)
                 
             # Count specific events
@@ -408,7 +408,13 @@ class LogFileHandler(FileSystemEventHandler):
             file_path = Path(event.src_path)
             last_position = self.processor._file_positions.get(str(file_path), 0)
             
-            # Process new content
-            asyncio.create_task(
-                self.processor._process_log_file(file_path, from_position=last_position)
-            )
+            # Process new content - schedule it to run in the event loop
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(
+                        self.processor._process_log_file(file_path, from_position=last_position)
+                    )
+            except RuntimeError:
+                # If no event loop, skip real-time processing
+                pass

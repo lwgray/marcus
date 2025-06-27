@@ -243,7 +243,7 @@ class TestWorkerMCPClient:
     @pytest.mark.asyncio
     @patch('src.worker.mcp_client.stdio_client')
     @patch('src.worker.mcp_client.ClientSession')
-    async def test_connect_to_pm_agent(self, mock_client_session, mock_stdio_client, client):
+    async def test_connect_to_marcus(self, mock_client_session, mock_stdio_client, client):
         """Test connecting to Marcus"""
         # Setup mocks
         mock_read_stream = AsyncMock()
@@ -262,7 +262,7 @@ class TestWorkerMCPClient:
         mock_client_session.return_value = mock_session_context(None, None)
         
         # Test connection
-        async with client.connect_to_pm_agent() as session:
+        async with client.connect_to_marcus() as session:
             assert session == mock_session_instance
             assert client.session == mock_session_instance
             mock_session_instance.initialize.assert_called_once()

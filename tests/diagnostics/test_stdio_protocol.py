@@ -77,7 +77,7 @@ async def test_stdio_protocol():
         "jsonrpc": "2.0",
         "method": "initialize",
         "params": {
-            "protocolVersion": "2024-11-05",
+            "protocolVersion": "0.1.0",
             "capabilities": {},
             "clientInfo": {
                 "name": "test-client",

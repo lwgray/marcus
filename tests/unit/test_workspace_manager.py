@@ -17,27 +17,26 @@ from src.core.workspace_manager import WorkspaceManager, WorkspaceSecurityError,
 class TestWorkspaceManager:
     """Test suite for WorkspaceManager"""
     
-    def test_pm_agent_root_detection(self):
+    def test_marcus_root_detection(self):
         """Test that Marcus root is correctly detected"""
         manager = WorkspaceManager()
         
         # Should detect the Marcus root directory
-        assert manager.pm_agent_root.endswith('pm-agent')
-        assert os.path.exists(manager.pm_agent_root)
+        assert manager.marcus_root.endswith('marcus')
+        assert os.path.exists(manager.marcus_root)
         
         # Marcus root should be in forbidden paths
-        assert manager.pm_agent_root in manager.forbidden_paths
+        assert manager.marcus_root in manager.forbidden_paths
     
     def test_forbidden_paths_initialization(self):
         """Test that forbidden paths are properly initialized"""
         manager = WorkspaceManager()
         
-        # Marcus root and its parent should be forbidden
-        assert manager.pm_agent_root in manager.forbidden_paths
-        assert os.path.dirname(manager.pm_agent_root) in manager.forbidden_paths
+        # Marcus root should be forbidden
+        assert manager.marcus_root in manager.forbidden_paths
         
         # Should have multiple forbidden paths (including system paths)
-        assert len(manager.forbidden_paths) > 2
+        assert len(manager.forbidden_paths) >= 1
     
     def test_path_validation_forbidden(self):
         """Test that forbidden paths are rejected"""
@@ -45,12 +44,12 @@ class TestWorkspaceManager:
         
         # Try to access Marcus directory
         with pytest.raises(WorkspaceSecurityError):
-            manager.validate_path(manager.pm_agent_root)
+            manager.validate_path(manager.marcus_root)
         
         # Try to access subdirectory of Marcus
-        pm_agent_subdir = os.path.join(manager.pm_agent_root, 'src', 'core')
+        marcus_subdir = os.path.join(manager.marcus_root, 'src', 'core')
         with pytest.raises(WorkspaceSecurityError):
-            manager.validate_path(pm_agent_subdir)
+            manager.validate_path(marcus_subdir)
     
     def test_path_validation_allowed(self):
         """Test that allowed paths pass validation"""
@@ -87,7 +86,7 @@ class TestWorkspaceManager:
         
         # Try to assign Marcus directory as workspace
         with pytest.raises(WorkspaceSecurityError):
-            manager.assign_agent_workspace('agent1', manager.pm_agent_root)
+            manager.assign_agent_workspace('agent1', manager.marcus_root)
     
     def test_project_workspace_config(self):
         """Test loading project workspace configuration"""

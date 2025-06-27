@@ -182,7 +182,7 @@ class HealthMonitor:
             'ai_insights': ['error']  # Direct field for test
         }
     
-    def start_monitoring(
+    async def start_monitoring(
         self, 
         get_project_state_func: Optional[Callable] = None,
         interval: Optional[int] = None

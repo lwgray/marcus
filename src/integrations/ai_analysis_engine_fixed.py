@@ -97,7 +97,7 @@ class AIAnalysisEngine:
             print("   AI features will use fallback responses", file=sys.stderr)
             self.client = None
         
-        self.model: str = "claude-3-sonnet-20241022"  # Using Sonnet for speed/cost balance
+        self.model: str = "claude-3-5-sonnet-20241022"  # Using Sonnet 3.5 for speed/cost balance
         
         # Analysis prompts
         self.prompts: Dict[str, str] = {

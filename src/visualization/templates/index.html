@@ -462,7 +462,7 @@
         }
         
         function getNodeType(nodeId) {
-            if (nodeId.startsWith('worker_')) return 'worker';
+            if (nodeId.startsWith('worker_') || nodeId.startsWith('agent')) return 'worker';
             if (nodeId === 'marcus') return 'marcus';
             if (nodeId === 'kanban_board') return 'kanban';
             if (nodeId === 'decision') return 'decision';
