@@ -11,7 +11,7 @@ import os
 # Add parent directories to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from src.pm_agent_mvp_fixed import PMAgentMVP
+from marcus_mcp_server import MarcusState
 from src.core.workspace_manager import WorkspaceSecurityError
 
 
@@ -22,36 +22,36 @@ def test_workspace_integration():
     print("=" * 60)
     
     # Initialize Marcus
-    pm_agent = PMAgentMVP()
+    marcus_state = MarcusState()
     
     print("\n1. Marcus Root Detection:")
-    print(f"   Marcus root: {pm_agent.workspace_manager.pm_agent_root}")
-    print(f"   Forbidden paths: {len(pm_agent.workspace_manager.forbidden_paths)}")
-    for path in list(pm_agent.workspace_manager.forbidden_paths)[:3]:
+    print(f"   Marcus root: {marcus_state.workspace_manager.marcus_state_root}")
+    print(f"   Forbidden paths: {len(marcus_state.workspace_manager.forbidden_paths)}")
+    for path in list(marcus_state.workspace_manager.forbidden_paths)[:3]:
         print(f"     - {path}")
     
     # Test workspace manager initialization
     print("\n2. WorkspaceManager Configuration:")
-    print(f"   Config loaded: {pm_agent.workspace_manager.project_config is not None}")
-    if pm_agent.workspace_manager.project_config:
-        print(f"   Main workspace: {pm_agent.workspace_manager.project_config.main_workspace}")
-        print(f"   Agent workspaces: {len(pm_agent.workspace_manager.project_config.agent_workspaces)}")
-        for agent_id, workspace in list(pm_agent.workspace_manager.project_config.agent_workspaces.items())[:3]:
+    print(f"   Config loaded: {marcus_state.workspace_manager.project_config is not None}")
+    if marcus_state.workspace_manager.project_config:
+        print(f"   Main workspace: {marcus_state.workspace_manager.project_config.main_workspace}")
+        print(f"   Agent workspaces: {len(marcus_state.workspace_manager.project_config.agent_workspaces)}")
+        for agent_id, workspace in list(marcus_state.workspace_manager.project_config.agent_workspaces.items())[:3]:
             print(f"     - {agent_id}: {workspace}")
     
     # Test forbidden path protection
     print("\n3. Security Tests - Path Protection:")
     test_paths = [
-        (pm_agent.workspace_manager.pm_agent_root, "Marcus root", True),
-        (os.path.join(pm_agent.workspace_manager.pm_agent_root, "src"), "Marcus src", True),
-        (os.path.join(pm_agent.workspace_manager.pm_agent_root, "config"), "Marcus config", True),
+        (marcus_state.workspace_manager.marcus_state_root, "Marcus root", True),
+        (os.path.join(marcus_state.workspace_manager.marcus_state_root, "src"), "Marcus src", True),
+        (os.path.join(marcus_state.workspace_manager.marcus_state_root, "config"), "Marcus config", True),
         ("/tmp/safe_path", "External safe path", False),
         (os.path.expanduser("~/Downloads"), "User Downloads", False)
     ]
     
     for path, description, should_be_forbidden in test_paths:
         try:
-            pm_agent.workspace_manager.validate_path(path)
+            marcus_state.workspace_manager.validate_path(path)
             if should_be_forbidden:
                 print(f"   ❌ FAILED: {description} was NOT protected!")
             else:
@@ -68,7 +68,7 @@ def test_workspace_integration():
     
     for agent_id in test_agents:
         try:
-            workspace_data = pm_agent.workspace_manager.get_task_assignment_data(agent_id)
+            workspace_data = marcus_state.workspace_manager.get_task_assignment_data(agent_id)
             
             print(f"\n   Agent: {agent_id}")
             print(f"   Workspace: {workspace_data.get('workspace_path', 'None')}")
@@ -77,8 +77,8 @@ def test_workspace_integration():
             # Verify Marcus root is forbidden
             forbidden_paths = workspace_data.get('forbidden_paths', [])
             pm_root_protected = any(
-                pm_agent.workspace_manager.pm_agent_root in path or 
-                path in pm_agent.workspace_manager.pm_agent_root
+                marcus_state.workspace_manager.marcus_state_root in path or 
+                path in marcus_state.workspace_manager.marcus_state_root
                 for path in forbidden_paths
             )
             
@@ -94,8 +94,8 @@ def test_workspace_integration():
     print("\n5. Invalid Access Simulation:")
     try:
         # Simulate an agent trying to access Marcus files
-        test_file = os.path.join(pm_agent.workspace_manager.pm_agent_root, "src", "core", "models.py")
-        pm_agent.workspace_manager.validate_path(test_file)
+        test_file = os.path.join(marcus_state.workspace_manager.marcus_state_root, "src", "core", "models.py")
+        marcus_state.workspace_manager.validate_path(test_file)
         print("   ❌ SECURITY BREACH: Agent could access Marcus source!")
     except WorkspaceSecurityError as e:
         print(f"   ✅ Access denied: {e}")
@@ -105,10 +105,10 @@ def test_workspace_integration():
     
     # Summary
     print("\nSummary:")
-    print(f"- Marcus is installed at: {pm_agent.workspace_manager.pm_agent_root}")
-    print(f"- {len(pm_agent.workspace_manager.forbidden_paths)} paths are protected")
+    print(f"- Marcus is installed at: {marcus_state.workspace_manager.marcus_state_root}")
+    print(f"- {len(marcus_state.workspace_manager.forbidden_paths)} paths are protected")
     print("- Workspace isolation is " + 
-          ("ACTIVE" if pm_agent.workspace_manager.forbidden_paths else "INACTIVE"))
+          ("ACTIVE" if marcus_state.workspace_manager.forbidden_paths else "INACTIVE"))
 
 
 if __name__ == "__main__":

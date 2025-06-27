@@ -12,7 +12,7 @@ Examples
 
 >>> # Using environment variables
 >>> import os
->>> os.environ["PM_AGENT_PROJECT_ID"] = "project-123"
+>>> os.environ["MARCUS_PROJECT_ID"] = "project-123"
 >>> agent = ConfigurablePMAgent()
 >>> await agent.start()
 """
@@ -90,9 +90,9 @@ class ConfigurablePMAgent(PMAgentMVP):
         
         Environment Variables
         ---------------------
-        PM_AGENT_PROJECT_ID : str
+        MARCUS_PROJECT_ID : str
             Project ID for the Marcus to work with.
-        PM_AGENT_BOARD_ID : str
+        MARCUS_BOARD_ID : str
             Board ID within the project.
             
         Configuration File Format
@@ -129,10 +129,10 @@ class ConfigurablePMAgent(PMAgentMVP):
                 print(f"📋 Loaded configuration from {self.config_file}")
         
         # Override with environment variables if present
-        if os.getenv("PM_AGENT_PROJECT_ID"):
-            config["project_id"] = os.getenv("PM_AGENT_PROJECT_ID")
-        if os.getenv("PM_AGENT_BOARD_ID"):
-            config["board_id"] = os.getenv("PM_AGENT_BOARD_ID")
+        if os.getenv("MARCUS_PROJECT_ID"):
+            config["project_id"] = os.getenv("MARCUS_PROJECT_ID")
+        if os.getenv("MARCUS_BOARD_ID"):
+            config["board_id"] = os.getenv("MARCUS_BOARD_ID")
         
         # Apply configuration
         if config.get("project_id"):

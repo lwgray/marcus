@@ -342,7 +342,7 @@ To use GitHub as your kanban provider, follow these steps:
 
 3. **Verify Connection**
    ```bash
-   python -m pm_agent verify-connection
+   python -m marcus verify-connection
    ```
 
 # Bad: Vague, unstructured

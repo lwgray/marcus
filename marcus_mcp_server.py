@@ -94,14 +94,56 @@ class MarcusState:
     async def initialize_kanban(self):
         """Initialize the kanban client"""
         if not self.kanban_client:
-            self.kanban_client = KanbanFactory.create_default()
+            # Pass mcp_function_caller in config for Planka
+            config = None
+            if self.provider == 'planka':
+                config = {
+                    'project_name': os.getenv('PLANKA_PROJECT_NAME', 'Task Master Test'),
+                    'mcp_function_caller': self._mcp_function_caller
+                }
+            self.kanban_client = KanbanFactory.create_default(config)
             await self.kanban_client.connect()
             
     async def _mcp_function_caller(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
         """Function to call MCP tools for kanban integrations"""
-        # This would be used to call external MCP servers
-        # For now, return mock response
+        # For now, we'll use a simple mock that returns test data
+        # In production, this would connect to the actual kanban MCP server
         print(f"MCP Call: {tool_name} with args: {arguments}")
+        
+        # Mock responses for testing
+        if tool_name == "mcp_kanban_project_manager":
+            if arguments.get("action") == "get_all":
+                return [{"id": "test-board", "name": "Task Master Test"}]
+        elif tool_name == "mcp_kanban_board_manager":
+            if arguments.get("action") == "get_all":
+                return [{"id": "test-board", "name": "Task Master Test", "projectId": "test-project"}]
+        elif tool_name == "mcp_kanban_list_manager":
+            if arguments.get("action") == "get_all":
+                return [
+                    {"id": "list-1", "name": "Backlog", "boardId": "test-board"},
+                    {"id": "list-2", "name": "In Progress", "boardId": "test-board"},
+                    {"id": "list-3", "name": "Done", "boardId": "test-board"}
+                ]
+        elif tool_name == "mcp_kanban_card_manager":
+            if arguments.get("action") == "get_all":
+                # Return test tasks
+                return [
+                    {
+                        "id": "task-1",
+                        "name": "Setup Development Environment",
+                        "description": "Configure the development environment with required tools",
+                        "listId": "list-1",
+                        "boardId": "test-board"
+                    },
+                    {
+                        "id": "task-2", 
+                        "name": "Create User Authentication",
+                        "description": "Implement user login and registration",
+                        "listId": "list-1",
+                        "boardId": "test-board"
+                    }
+                ]
+                
         return {"success": True, "message": "Mock response"}
     
     def log_event(self, event_type: str, data: dict):
@@ -303,7 +345,7 @@ async def register_agent(agent_id: str, name: str, role: str, skills: List[str])
     
     try:
         # Log PM thinking
-        log_thinking("pm_agent", f"New agent registration request from {name}", {
+        log_thinking("marcus", f"New agent registration request from {name}", {
             "agent_id": agent_id,
             "role": role,
             "skills": skills
@@ -340,7 +382,7 @@ async def register_agent(agent_id: str, name: str, role: str, skills: List[str])
             "role": role,
             "skills": skills,
             "source": "mcp_client",
-            "target": "pm_agent"
+            "target": "marcus"
         })
         
         # Log decision
@@ -397,14 +439,14 @@ async def request_next_task(agent_id: str) -> dict:
         state.log_event("task_request", {
             "worker_id": agent_id,
             "source": agent_id,
-            "target": "pm_agent"
+            "target": "marcus"
         })
         
         # Initialize kanban if needed
         await state.initialize_kanban()
         
         # Log PM thinking about refreshing state
-        log_thinking("pm_agent", "Need to check current project state")
+        log_thinking("marcus", "Need to check current project state")
         
         # Get current project state
         await refresh_project_state()
@@ -412,7 +454,7 @@ async def request_next_task(agent_id: str) -> dict:
         # Log thinking about finding task
         agent = state.agent_status.get(agent_id)
         if agent:
-            log_thinking("pm_agent", f"Finding optimal task for {agent.name}", {
+            log_thinking("marcus", f"Finding optimal task for {agent.name}", {
                 "agent_skills": agent.skills,
                 "current_workload": len(agent.current_tasks)
             })
@@ -550,7 +592,7 @@ async def report_task_progress(
         await state.initialize_kanban()
         
         # Log PM thinking
-        log_thinking("pm_agent", f"Processing progress update from {agent_id}", {
+        log_thinking("marcus", f"Processing progress update from {agent_id}", {
             "task_id": task_id,
             "status": status,
             "progress": progress
@@ -654,7 +696,7 @@ async def report_blocker(
         await state.initialize_kanban()
         
         # Log PM thinking
-        log_thinking("pm_agent", f"Analyzing blocker from {agent_id}", {
+        log_thinking("marcus", f"Analyzing blocker from {agent_id}", {
             "task_id": task_id,
             "severity": severity,
             "description": blocker_description
@@ -848,7 +890,7 @@ async def ping(echo: str) -> dict:
     })
     
     # Also use structured logging
-    log_thinking("pm_agent", f"Received ping request with echo: {echo}")
+    log_thinking("marcus", f"Received ping request with echo: {echo}")
     
     response = {
         "success": True,

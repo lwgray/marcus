@@ -23,7 +23,7 @@ services:
       
     volumes:
       # Mount config file
-      - ./config_pm_agent.json:/app/config_pm_agent.json
+      - ./config_marcus.json:/app/config_marcus.json
       
       # Mount logs directory
       - ./logs:/app/logs

@@ -25,7 +25,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       
       # Original config
-      - MARCUS_CONFIG=/app/config/pm_agent_config.json
+      - MARCUS_CONFIG=/app/config/marcus_config.json
       - MARCUS_MONITORING_INTERVAL=900
     volumes:
       - ./config:/app/config
@@ -64,7 +64,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       
       # Original config
-      - MARCUS_CONFIG=/app/config/pm_agent_config.json
+      - MARCUS_CONFIG=/app/config/marcus_config.json
       - MARCUS_MONITORING_INTERVAL=900
     volumes:
       # Mount source code for live updates
@@ -211,7 +211,7 @@ services:
       - PLANKA_PROJECT_NAME=${PLANKA_PROJECT_NAME}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - MARCUS_CONFIG=/app/config/pm_agent_config.json
+      - MARCUS_CONFIG=/app/config/marcus_config.json
       - MARCUS_MONITORING_INTERVAL=900
     volumes:
       - ./config:/app/config
