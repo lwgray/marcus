@@ -6,6 +6,7 @@ Check board quality using Marcus standards
 import asyncio
 from pathlib import Path
 import sys
+from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -229,7 +230,7 @@ def demo_quality_levels():
     ]:
         score, issues = validator.validate_task(task)
         print(f"\n{expected_level} Quality Example:")
-        print(f"  Task: {task.title}")
+        print(f"  Task: {task.name}")
         print(f"  Score: {score:.2f}")
         print(f"  Issues: {len(issues)}")
         if issues:

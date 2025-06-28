@@ -155,7 +155,7 @@ class BoardQualityValidator:
                 task_id=task.id,
                 issue_type="missing_description",
                 severity="error",
-                message=f"Task '{task.title}' has no description",
+                message=f"Task '{task.name}' has no description",
                 suggestion="Add a description explaining what needs to be done and why"
             ))
             return 0.0, issues
@@ -165,7 +165,7 @@ class BoardQualityValidator:
                 task_id=task.id,
                 issue_type="short_description",
                 severity="warning",
-                message=f"Task '{task.title}' has a very short description ({len(task.description)} chars)",
+                message=f"Task '{task.name}' has a very short description ({len(task.description)} chars)",
                 suggestion=f"Expand description to at least {self.MIN_DESCRIPTION_LENGTH} characters with context"
             ))
             return 0.5, issues
@@ -177,7 +177,7 @@ class BoardQualityValidator:
                 task_id=task.id,
                 issue_type="missing_acceptance_criteria",
                 severity="info",
-                message=f"Task '{task.title}' lacks acceptance criteria",
+                message=f"Task '{task.name}' lacks acceptance criteria",
                 suggestion="Add acceptance criteria to define 'done'"
             ))
             return 0.8, issues
@@ -193,7 +193,7 @@ class BoardQualityValidator:
                 task_id=task.id,
                 issue_type="missing_labels",
                 severity="error",
-                message=f"Task '{task.title}' has no labels",
+                message=f"Task '{task.name}' has no labels",
                 suggestion="Add labels for phase, component, type, and skills"
             ))
             return 0.0, issues
@@ -203,7 +203,7 @@ class BoardQualityValidator:
                 task_id=task.id,
                 issue_type="insufficient_labels",
                 severity="warning",
-                message=f"Task '{task.title}' has only {len(task.labels)} label(s)",
+                message=f"Task '{task.name}' has only {len(task.labels)} label(s)",
                 suggestion=f"Add at least {self.MIN_LABELS_PER_TASK} labels for better categorization"
             ))
             return 0.5, issues
@@ -217,7 +217,7 @@ class BoardQualityValidator:
                 task_id=task.id,
                 issue_type="missing_label_categories",
                 severity="info",
-                message=f"Task '{task.title}' missing label categories: {', '.join(missing_categories)}",
+                message=f"Task '{task.name}' missing label categories: {', '.join(missing_categories)}",
                 suggestion=f"Add labels for: {', '.join(missing_categories)}"
             ))
             return 0.7, issues
@@ -233,7 +233,7 @@ class BoardQualityValidator:
                 task_id=task.id,
                 issue_type="missing_estimate",
                 severity="error",
-                message=f"Task '{task.title}' has no time estimate",
+                message=f"Task '{task.name}' has no time estimate",
                 suggestion="Add estimated hours based on complexity"
             ))
             return 0.0, issues
@@ -244,7 +244,7 @@ class BoardQualityValidator:
                 task_id=task.id,
                 issue_type="large_estimate",
                 severity="warning",
-                message=f"Task '{task.title}' estimated at {task.estimated_hours} hours",
+                message=f"Task '{task.name}' estimated at {task.estimated_hours} hours",
                 suggestion="Consider breaking into smaller sub-tasks"
             ))
             return 0.7, issues
@@ -254,7 +254,7 @@ class BoardQualityValidator:
                 task_id=task.id,
                 issue_type="tiny_estimate",
                 severity="info",
-                message=f"Task '{task.title}' estimated at {task.estimated_hours} hours",
+                message=f"Task '{task.name}' estimated at {task.estimated_hours} hours",
                 suggestion="Verify if task is too granular or estimate is realistic"
             ))
             return 0.9, issues
@@ -270,7 +270,7 @@ class BoardQualityValidator:
                 task_id=task.id,
                 issue_type="missing_priority",
                 severity="warning",
-                message=f"Task '{task.title}' has no priority set",
+                message=f"Task '{task.name}' has no priority set",
                 suggestion="Set priority (urgent/high/medium/low) to guide sequencing"
             ))
             return 0.0, issues
