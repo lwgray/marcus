@@ -14,7 +14,7 @@ import json
 
 from src.core.models import Task, TaskStatus, Priority
 from src.ai.providers.llm_abstraction import LLMAbstraction
-from src.ai.intelligence.dependency_inferer import DependencyInferer
+from src.intelligence.dependency_inferer import DependencyInferer
 from src.ai.types import AnalysisContext
 
 logger = logging.getLogger(__name__)

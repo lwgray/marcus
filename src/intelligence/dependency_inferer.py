@@ -212,9 +212,9 @@ class DependencyInferer:
             # Component-specific dependencies
             DependencyPattern(
                 name="component_implementation_order",
-                description="Component A implementation before A testing",
-                condition_pattern=r"test.*(\w+)",
-                dependency_pattern=r"implement.*\1",
+                description="Component implementation before component testing",
+                condition_pattern=r"test",
+                dependency_pattern=r"(implement|build|create|develop)",
                 confidence=0.90,
                 mandatory=True
             )
