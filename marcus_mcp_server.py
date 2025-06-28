@@ -38,6 +38,7 @@ from src.config.settings import Settings
 from src.logging.conversation_logger import conversation_logger, log_conversation, log_thinking
 from src.core.assignment_persistence import AssignmentPersistence
 from src.monitoring.assignment_monitor import AssignmentMonitor, AssignmentHealthChecker
+from src.visualization.conversation_adapter import log_agent_event
 
 import atexit
 
@@ -426,6 +427,14 @@ async def register_agent(agent_id: str, name: str, role: str, skills: List[str])
             "target": "marcus"
         })
         
+        # Log conversation event for visualization
+        log_agent_event("worker_registration", {
+            "worker_id": agent_id,
+            "name": name,
+            "role": role,
+            "skills": skills
+        })
+        
         # Log decision
         conversation_logger.log_pm_decision(
             decision=f"Register agent {name}",
@@ -481,6 +490,11 @@ async def request_next_task(agent_id: str) -> dict:
             "worker_id": agent_id,
             "source": agent_id,
             "target": "marcus"
+        })
+        
+        # Log conversation event for visualization
+        log_agent_event("task_request", {
+            "worker_id": agent_id
         })
         
         # Initialize kanban if needed
@@ -591,6 +605,17 @@ async def request_next_task(agent_id: str) -> dict:
                     }
                 )
                 
+                # Log conversation event for visualization
+                log_agent_event("task_assignment", {
+                    "worker_id": agent_id,
+                    "task": {
+                        "id": optimal_task.id,
+                        "name": optimal_task.name,
+                        "priority": optimal_task.priority.value,
+                        "estimated_hours": optimal_task.estimated_hours
+                    }
+                })
+                
                 return {
                     "success": True,
                     "task": {
@@ -658,6 +683,15 @@ async def report_task_progress(
             "progress": progress
         }
     )
+    
+    # Log conversation event for visualization
+    log_agent_event("progress_update", {
+        "agent_id": agent_id,
+        "task_id": task_id,
+        "status": status,
+        "progress": progress,
+        "message": message
+    })
     
     try:
         # Initialize kanban if needed
@@ -782,10 +816,11 @@ async def report_blocker(
         task = await state.kanban_client.get_task_by_id(task_id)
         
         suggestions = await state.ai_engine.analyze_blocker(
+            task_id,
             blocker_description,
-            task,
+            severity,
             agent,
-            severity
+            task
         )
         
         # Update task status
@@ -960,6 +995,12 @@ async def ping(echo: str) -> dict:
     """Check Marcus status and connectivity"""
     # Log the ping request immediately
     state.log_event("ping_request", {
+        "echo": echo,
+        "source": "mcp_client"
+    })
+    
+    # Log conversation event for visualization
+    log_agent_event("ping_request", {
         "echo": echo,
         "source": "mcp_client"
     })

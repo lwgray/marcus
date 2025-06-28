@@ -133,6 +133,9 @@ class VisualizationServer:
         self.app.router.add_get('/api/health/summary', self._health_summary_handler)
         self.app.router.add_post('/api/health/analyze', self._health_analyze_handler)
         
+        # Debug endpoint for streaming
+        self.app.router.add_get('/api/debug/streaming', self._debug_streaming_handler)
+        
         # Enable CORS
         cors = aiohttp_cors.setup(self.app, defaults={
             "*": aiohttp_cors.ResourceOptions(
@@ -411,34 +414,64 @@ class VisualizationServer:
         })
         
     async def _decision_analytics_handler(self, request):
-        """Get decision analytics"""
-        analytics = self.decision_visualizer.get_decision_analytics()
-        trends = self.decision_visualizer.get_confidence_trends()
-        
-        # Convert Decision objects to dictionaries
-        decisions_dict = {}
-        for decision_id, decision in self.decision_visualizer.decisions.items():
-            decisions_dict[decision_id] = {
-                'id': decision.id,
-                'timestamp': decision.timestamp.isoformat(),
-                'decision': decision.decision,
-                'rationale': decision.rationale,
-                'confidence_score': decision.confidence_score,
-                'alternatives': decision.alternatives,
-                'decision_factors': decision.decision_factors,
-                'outcome': decision.outcome,
-                'outcome_timestamp': decision.outcome_timestamp.isoformat() if decision.outcome_timestamp else None
+        """Handle analytics data requests with proper error handling"""
+        try:
+            # Get analytics from decision visualizer
+            analytics = self.decision_visualizer.get_analytics()
+            
+            # Ensure we have valid data
+            if not analytics:
+                analytics = {
+                    'total_decisions': 0,
+                    'average_confidence': 0.0,
+                    'decision_distribution': {},
+                    'confidence_trends': []
+                }
+            
+            # Convert Decision objects to dictionaries if needed
+            decisions_dict = {}
+            if hasattr(self.decision_visualizer, 'decisions'):
+                for decision_id, decision in self.decision_visualizer.decisions.items():
+                    if hasattr(decision, '__dict__'):
+                        # It's an object, convert to dict
+                        decisions_dict[decision_id] = {
+                            'id': getattr(decision, 'id', decision_id),
+                            'timestamp': getattr(decision, 'timestamp', datetime.now()).isoformat(),
+                            'decision': getattr(decision, 'decision', ''),
+                            'rationale': getattr(decision, 'rationale', ''),
+                            'confidence_score': getattr(decision, 'confidence_score', 0.0),
+                            'alternatives': getattr(decision, 'alternatives', []),
+                            'decision_factors': getattr(decision, 'decision_factors', {}),
+                            'outcome': getattr(decision, 'outcome', None),
+                            'outcome_timestamp': getattr(decision, 'outcome_timestamp', datetime.now()).isoformat() if getattr(decision, 'outcome_timestamp', None) else None
+                        }
+                    else:
+                        # It's already a dict
+                        decisions_dict[decision_id] = decision
+            
+            # Prepare response
+            response_data = {
+                'analytics': analytics,
+                'decisions': decisions_dict,
+                'confidence_trends': analytics.get('confidence_trends', [])
             }
-        
-        return web.json_response({
-            'decisions': decisions_dict,
-            'analytics': analytics,
-            'confidence_trends': [
-                {'timestamp': t.isoformat(), 'confidence': c}
-                for t, c in trends
-            ]
-        })
-        
+            
+            return web.json_response(response_data)
+            
+        except Exception as e:
+            logging.error(f"Error in analytics handler: {str(e)}")
+            # Return valid JSON error response
+            return web.json_response({
+                'error': 'Internal server error',
+                'analytics': {
+                    'total_decisions': 0,
+                    'average_confidence': 0.0,
+                    'decision_distribution': {},
+                    'confidence_trends': []
+                },
+                'decisions': {},
+                'confidence_trends': []
+            }, status=500)
     async def _knowledge_graph_handler(self, request):
         """Get knowledge graph data"""
         format = request.query.get('format', 'json')
@@ -470,6 +503,25 @@ class VisualizationServer:
             
         return web.json_response({'success': True})
         
+    
+    
+    async def _debug_streaming_handler(self, request: web.Request) -> web.Response:
+        """Debug endpoint to check streaming status"""
+        return web.json_response({
+            'streaming_active': self.conversation_processor._running,
+            'event_handlers': len(self.conversation_processor.event_handlers),
+            'history_size': len(self.conversation_processor.conversation_history),
+            'last_events': [
+                {
+                    'type': e.event_type,
+                    'source': e.source,
+                    'target': e.target,
+                    'message': e.message[:50] if e.message else 'No message'
+                }
+                for e in self.conversation_processor.conversation_history[-5:]
+            ] if self.conversation_processor.conversation_history else []
+        })
+
     async def _health_current_handler(self, request):
         """Get current health analysis"""
         if self.health_monitor.last_analysis:
@@ -555,7 +607,15 @@ class VisualizationServer:
         await self.health_monitor.initialize()
         
         # Start conversation streaming
-        asyncio.create_task(self.conversation_processor.start_streaming())
+        # Start streaming and capture any errors
+        async def start_streaming_with_logging():
+            try:
+                await self.conversation_processor.start_streaming()
+            except Exception as e:
+                logging.error(f"Conversation streaming failed: {e}")
+        
+        asyncio.create_task(start_streaming_with_logging())
+        logging.info("Started conversation streaming task")
         
         # Start health monitoring (it runs independently)
         await self.health_monitor.start_monitoring()

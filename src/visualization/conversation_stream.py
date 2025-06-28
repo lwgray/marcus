@@ -6,6 +6,8 @@ for real-time visualization in the UI.
 """
 
 import asyncio
+import logging
+import queue
 import json
 from datetime import datetime
 from pathlib import Path
@@ -64,6 +66,7 @@ class ConversationStreamProcessor:
         self._event_counter = 0
         self._file_positions: Dict[str, int] = {}
         self._running = False
+        self._event_queue = queue.Queue()
         
     def add_event_handler(self, handler: Callable[[ConversationEvent], None]):
         """Add a handler to be called when new events are processed"""
@@ -74,9 +77,20 @@ class ConversationStreamProcessor:
         if handler in self.event_handlers:
             self.event_handlers.remove(handler)
             
+    
+    async def _process_queue(self):
+        """Process queued file change events"""
+        try:
+            while not self._event_queue.empty():
+                file_path, last_position = self._event_queue.get_nowait()
+                await self._process_log_file(file_path, from_position=last_position)
+        except queue.Empty:
+            pass
+            
     async def start_streaming(self):
         """Start streaming conversation events from log files"""
         self._running = True
+        logging.info(f"ConversationStreamProcessor: Starting streaming from {self.log_dir}")
         
         # Start file watcher for new log entries
         event_handler = LogFileHandler(self)
@@ -86,10 +100,13 @@ class ConversationStreamProcessor:
         
         try:
             # Process existing log files
+            logging.info("ConversationStreamProcessor: Processing existing logs...")
             await self._process_existing_logs()
             
             # Keep running until stopped
             while self._running:
+                # Process queued file changes
+                await self._process_queue()
                 await asyncio.sleep(0.1)
                 
         finally:
@@ -405,16 +422,9 @@ class LogFileHandler(FileSystemEventHandler):
     def on_modified(self, event):
         """Handle file modification events"""
         if isinstance(event, FileModifiedEvent) and event.src_path.endswith('.jsonl'):
+            logging.info(f"ConversationStreamProcessor: File modified: {event.src_path}")
             file_path = Path(event.src_path)
             last_position = self.processor._file_positions.get(str(file_path), 0)
             
-            # Process new content - schedule it to run in the event loop
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    asyncio.create_task(
-                        self.processor._process_log_file(file_path, from_position=last_position)
-                    )
-            except RuntimeError:
-                # If no event loop, skip real-time processing
-                pass
+            # Queue the file for processing in the async context
+            self.processor._event_queue.put((file_path, last_position))

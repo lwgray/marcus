@@ -140,16 +140,24 @@ Format as structured text the developer can follow.""",
 Task ID: {task_id}
 Blocker: {description}
 Severity: {severity}
+{agent_context}
+{task_context}
+
+Consider the agent's skills, experience level, and current workload when providing suggestions.
+Tailor resolution steps to their capabilities and provide learning opportunities if appropriate.
 
 Provide JSON response:
 {{
     "root_cause": "analysis",
-    "impact_assessment": "description",
-    "resolution_steps": ["step1", "step2"],
+    "impact_assessment": "description", 
+    "resolution_steps": ["step1 tailored to agent skills", "step2"],
     "required_resources": ["resource1"],
     "estimated_hours": number,
     "escalation_needed": boolean,
-    "prevention_measures": ["measure1"]
+    "prevention_measures": ["measure1"],
+    "learning_opportunities": ["skill gaps identified"],
+    "recommended_collaborators": ["team members with needed skills"],
+    "skill_match_confidence": "high/medium/low"
 }}""",
 
             "project_risk": """Analyze project risks based on current state:
@@ -473,7 +481,9 @@ Good luck with your task!"""
         self,
         task_id: str,
         description: str,
-        severity: str
+        severity: str,
+        agent: Optional['WorkerStatus'] = None,
+        task: Optional['Task'] = None
     ) -> Dict[str, Any]:
         """
         Analyze a blocker and suggest resolution steps.
@@ -486,6 +496,10 @@ Good luck with your task!"""
             Detailed description of the blocker
         severity : str
             Severity level (low, medium, high, urgent)
+        agent : Optional[WorkerStatus]
+            Agent who reported the blocker (for context-aware suggestions)
+        task : Optional[Task]
+            Full task details (for enhanced analysis)
         
         Returns
         -------
@@ -493,29 +507,62 @@ Good luck with your task!"""
             Analysis results including:
             - root_cause: Identified cause
             - impact_assessment: Impact description
-            - resolution_steps: List of steps
+            - resolution_steps: List of steps tailored to agent skills
             - required_resources: Needed resources
             - estimated_hours: Time to resolve
             - escalation_needed: Boolean
             - prevention_measures: Future prevention steps
+            - learning_opportunities: Skills/knowledge gaps identified
+            - recommended_collaborators: Team members who could help
         
         Examples
         --------
         >>> analysis = await engine.analyze_blocker(
         ...     "TASK-123", 
         ...     "Database connection timeout",
-        ...     "high"
+        ...     "high",
+        ...     agent=worker_status,
+        ...     task=task_obj
         ... )
         >>> print(analysis['resolution_steps'])
         ['Check database server status', ...]
         """
         if not self.client:
-            return self._generate_fallback_blocker_analysis(description, severity)
+            return self._generate_fallback_blocker_analysis(description, severity, agent, task)
+        
+        # Prepare agent context
+        agent_context = ""
+        if agent:
+            agent_context = f"""
+Agent Profile:
+- ID: {agent.id}
+- Name: {agent.name}
+- Role: {agent.role}
+- Skills: {', '.join(agent.skills) if agent.skills else 'None specified'}
+- Current Tasks: {len(agent.current_tasks)} active tasks
+- Completed Tasks: {agent.total_completed}
+- Performance Score: {agent.performance_score}
+"""
+        
+        # Prepare task context
+        task_context = ""
+        if task:
+            task_context = f"""
+Task Details:
+- Name: {task.name}
+- Description: {task.description}
+- Priority: {task.priority.value if task.priority else 'Not set'}
+- Estimated Hours: {task.estimated_hours}
+- Dependencies: {', '.join(task.dependencies) if task.dependencies else 'None'}
+- Labels: {', '.join(task.labels) if task.labels else 'None'}
+"""
         
         prompt = self.prompts["blocker_analysis"].format(
             task_id=task_id,
             description=description,
-            severity=severity
+            severity=severity,
+            agent_context=agent_context,
+            task_context=task_context
         )
         
         try:
@@ -523,9 +570,15 @@ Good luck with your task!"""
             return json.loads(response)
         except Exception as e:
             print(f"AI blocker analysis failed: {e}", file=sys.stderr)
-            return self._generate_fallback_blocker_analysis(description, severity)
+            return self._generate_fallback_blocker_analysis(description, severity, agent, task)
     
-    def _generate_fallback_blocker_analysis(self, description: str, severity: str) -> Dict[str, Any]:
+    def _generate_fallback_blocker_analysis(
+        self, 
+        description: str, 
+        severity: str,
+        agent: Optional['WorkerStatus'] = None,
+        task: Optional['Task'] = None
+    ) -> Dict[str, Any]:
         """
         Generate fallback blocker analysis without AI.
         
@@ -535,30 +588,57 @@ Good luck with your task!"""
             Blocker description
         severity : str
             Severity level
+        agent : Optional[WorkerStatus]
+            Agent who reported the blocker
+        task : Optional[Task]
+            Task details
         
         Returns
         -------
         Dict[str, Any]
-            Basic analysis with generic resolution steps
+            Basic analysis with agent-aware resolution steps
         """
+        # Basic analysis
+        base_steps = [
+            "Review the blocker description",
+            "Identify required resources",
+            "Research potential solutions",
+            "Document resolution steps"
+        ]
+        
+        # Add agent-specific guidance if available
+        if agent and agent.skills:
+            skill_based_steps = []
+            if "python" in [s.lower() for s in agent.skills]:
+                skill_based_steps.append("Check Python documentation and Stack Overflow")
+            if "database" in [s.lower() for s in agent.skills]:
+                skill_based_steps.append("Review database logs and connection settings")
+            if "frontend" in [s.lower() for s in agent.skills]:
+                skill_based_steps.append("Check browser console and network requests")
+            
+            if skill_based_steps:
+                base_steps = skill_based_steps + base_steps
+        
+        # Adjust resources based on agent experience
+        resources = ["Team lead", "Subject matter expert"]
+        if agent and agent.performance_score < 0.7:
+            resources.insert(0, "Senior developer (mentoring)")
+        
         return {
             "root_cause": "Analysis needed",
             "impact_assessment": f"Blocker reported: {description}",
-            "needs_coordination": severity in ["high", "urgent"],
-            "resolution_steps": [
-                "Review the blocker description",
-                "Identify required resources",
-                "Escalate if necessary",
-                "Document resolution steps"
-            ],
-            "required_resources": ["Team lead", "Subject matter expert"],
+            "resolution_steps": base_steps,
+            "required_resources": resources,
             "estimated_hours": 2 if severity == "low" else 4,
             "escalation_needed": severity in ["high", "urgent"],
             "prevention_measures": [
                 "Improve documentation",
                 "Add monitoring",
                 "Review process"
-            ]
+            ],
+            "learning_opportunities": ["Root cause analysis", "Problem solving"],
+            "recommended_collaborators": ["Team lead", "Senior developer"],
+            "skill_match_confidence": "medium"
         }
     
     async def generate_clarification(

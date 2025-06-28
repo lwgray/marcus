@@ -106,7 +106,7 @@
             align-items: center;
             padding: 0 32px;
             border-bottom: 1px solid var(--border-color);
-            backdrop-filter: blur(10px);
+            /* backdrop-filter removed for clarity */
             position: relative;
             overflow: hidden;
         }
@@ -273,11 +273,11 @@
         /* Node Styles */
         .node-group {
             cursor: move;
-            transition: transform 0.1s ease-out;
+            /* Remove ALL transitions that affect transform */
         }
         
         .node-group:hover {
-            transform: scale(1.05);
+            /* No transform effects at all - only visual style changes */
         }
         
         .node-rect {
@@ -506,7 +506,8 @@
             bottom: 24px;
             left: 344px;
             right: 404px;
-            max-height: 240px;
+            max-height: 200px;
+            min-height: 100px;
             background: linear-gradient(to bottom, 
                 rgba(15, 22, 41, 0.95), 
                 rgba(10, 14, 26, 0.98)
@@ -515,8 +516,16 @@
             border-radius: 16px;
             padding: 20px;
             overflow-y: auto;
-            backdrop-filter: blur(20px);
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            z-index: 100;
+            display: block !important;
+        }
+        
+        /* Make sure it's visible even if empty */
+        .event-log:empty::before {
+            content: 'Waiting for messages...';
+            color: var(--text-tertiary);
+            font-style: italic;
         }
         
         .event-entry {
@@ -580,7 +589,7 @@
             height: 100%;
             background-color: rgba(0, 0, 0, 0.85);
             z-index: 1000;
-            backdrop-filter: blur(10px);
+            /* backdrop-filter removed for clarity */
             animation: fadeIn 0.3s ease;
         }
         
@@ -728,6 +737,176 @@
                 transform: translate(calc(var(--tx) * 2), calc(var(--ty) * 2)) scale(0.5);
             }
         }
+    
+        /* Node Details Modal Improvements */
+        .node-details-header {
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .node-details-header h2 {
+            margin-bottom: 15px;
+            font-size: 28px;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .node-details-stats {
+            display: flex;
+            gap: 30px;
+        }
+        
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+        }
+        
+        .stat-value {
+            font-size: 16px;
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+        
+        .messages-section {
+            margin-bottom: 30px;
+        }
+        
+        .messages-section h3 {
+            font-size: 18px;
+            margin-bottom: 15px;
+            color: var(--text-secondary);
+        }
+        
+        .messages-list {
+            max-height: 300px;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+        
+        .messages-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .messages-list::-webkit-scrollbar-track {
+            background: var(--bg-tertiary);
+            border-radius: 3px;
+        }
+        
+        .messages-list::-webkit-scrollbar-thumb {
+            background: var(--accent-primary);
+            border-radius: 3px;
+        }
+        
+        .message-item {
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 12px;
+            border: 1px solid var(--border-color);
+            transition: var(--transition-base);
+        }
+        
+        .message-item:hover {
+            background: var(--bg-hover);
+            transform: translateX(5px);
+        }
+        
+        .message-item.outgoing {
+            border-left: 3px solid var(--accent-primary);
+        }
+        
+        .message-item.incoming {
+            border-left: 3px solid var(--accent-success);
+        }
+        
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: var(--text-tertiary);
+        }
+        
+        .message-direction {
+            font-family: monospace;
+        }
+        
+        .message-content {
+            font-size: 14px;
+            color: var(--text-primary);
+            line-height: 1.5;
+        }
+        
+        .no-messages {
+            text-align: center;
+            color: var(--text-tertiary);
+            font-style: italic;
+            padding: 20px;
+        }
+        
+        /* Modal animation fix */
+        .modal.show {
+            animation: fadeIn 0.3s ease;
+        }
+        
+        .modal.show .modal-content {
+            animation: slideIn 0.3s ease;
+        }
+
+        /* Enhanced edge visibility */
+        .flow-edge {
+            stroke-width: 3;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .flow-edge:hover {
+            stroke-width: 5;
+            filter: drop-shadow(0 0 10px currentColor);
+        }
+        
+        .edge-pulse {
+            fill: var(--accent-info);
+            filter: drop-shadow(0 0 20px var(--accent-info));
+        }
+
+        /* Stability improvements - NO TRANSFORMS */
+        .node-group {
+            cursor: pointer;
+            position: relative;
+            /* No transitions or transforms */
+        }
+        
+        .node-group.dragging {
+            cursor: grabbing;
+        }
+        
+        .node-group.dragging * {
+            pointer-events: none;
+        }
+        
+        /* Hover effects using only non-transform properties */
+        .node-group:hover .node-rect {
+            filter: brightness(1.3) drop-shadow(0 0 20px rgba(99, 102, 241, 0.6));
+            stroke: var(--accent-primary);
+            stroke-width: 3;
+        }
+        
+        /* Remove any GPU acceleration hints that might cause issues */
+        .node-group {
+            /* No will-change or translateZ */
+        }
+
     </style>
 </head>
 <body>
@@ -888,7 +1067,11 @@
         </div>
     </div>
     
-    <div class="event-log" id="event-log"></div>
+    <div class="event-log" id="event-log">
+        <div style="color: #64748b; font-size: 12px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;">
+            Message Flow Log
+        </div>
+    </div>
     
     <div class="modal" id="modal">
         <div class="modal-content">
@@ -951,10 +1134,34 @@
             .force('collision', d3.forceCollide().radius(80))
             .force('x', d3.forceX(width / 2).strength(0.05))
             .force('y', d3.forceY(height / 2).strength(0.05));
+            
+        // Define tick handler
+        simulation.on('tick', () => {
+            // Update node positions using style for better browser compatibility
+            nodeGroup.selectAll('.node-group')
+                .style('transform', d => `translate(${d.x}px,${d.y}px)`);
+            
+            // Update edge positions with validation
+            edgeGroup.selectAll('.flow-edge')
+                .attr('d', d => {
+                    const source = state.nodes.get(d.source);
+                    const target = state.nodes.get(d.target);
+                    if (source && target && 
+                        isFinite(source.x) && isFinite(source.y) && 
+                        isFinite(target.x) && isFinite(target.y)) {
+                        return createCurvedPath(source, target);
+                    }
+                    return '';
+                })
+                .style('display', d => {
+                    const source = state.nodes.get(d.source);
+                    const target = state.nodes.get(d.target);
+                    return (source && target) ? null : 'none';
+                });
+        });
         
         // Socket event handlers
         socket.on('connect', () => {
-            console.log('Connected to visualization server');
             document.getElementById('connection-status').textContent = 'Connected';
             document.getElementById('connection-status').style.color = 'var(--accent-success)';
         });
@@ -991,7 +1198,96 @@
             status: 'Orchestrating'
         });
         
+        // Add some test nodes immediately in demo mode
+        if (window.location.search.includes('demo=true')) {
+            state.nodes.set('worker_1', {
+                id: 'worker_1',
+                type: 'worker',
+                label: 'Worker 1',
+                icon: '⚙️',
+                x: width / 2 - 200,
+                y: height / 2,
+                progress: 75,
+                status: 'Active'
+            });
+            
+            state.nodes.set('worker_2', {
+                id: 'worker_2',
+                type: 'worker',
+                label: 'Worker 2',
+                icon: '⚙️',
+                x: width / 2 + 200,
+                y: height / 2,
+                progress: 50,
+                status: 'Active'
+            });
+            
+            state.nodes.set('kanban_board', {
+                id: 'kanban_board',
+                type: 'kanban',
+                label: 'Kanban Board',
+                icon: '📋',
+                x: width / 2,
+                y: height / 2 - 200,
+                progress: 100,
+                status: 'Connected'
+            });
+            
+            // Add some test edges
+            state.edges.push({
+                source: 'marcus',
+                target: 'worker_1',
+                id: 'edge1',
+                message: 'Initial connection established',
+                timestamp: new Date()
+            });
+            
+            state.edges.push({
+                source: 'marcus', 
+                target: 'worker_2',
+                id: 'edge2',
+                message: 'Worker 2 initialized',
+                timestamp: new Date()
+            });
+            
+            state.edges.push({
+                source: 'marcus',
+                target: 'kanban_board', 
+                id: 'edge3',
+                message: 'Connected to Kanban board',
+                timestamp: new Date()
+            });
+            
+            // Add some initial test messages
+            const initialMessages = [
+                { source: 'marcus', target: 'worker_1', message: 'Initialize worker agent' },
+                { source: 'worker_1', target: 'marcus', message: 'Worker ready for tasks' },
+                { source: 'marcus', target: 'worker_2', message: 'Assign task: Process data' },
+                { source: 'worker_2', target: 'marcus', message: 'Task accepted, starting processing' },
+                { source: 'marcus', target: 'kanban_board', message: 'Update task status: In Progress' },
+                { source: 'kanban_board', target: 'marcus', message: 'Status updated successfully' }
+            ];
+            
+            initialMessages.forEach((msg, i) => {
+                setTimeout(() => {
+                    handleConversationEvent({
+                        ...msg,
+                        timestamp: new Date().toISOString()
+                    });
+                }, 1000 + i * 500);
+            });
+        }
+        
         updateVisualization();
+        
+        // Force a second update after a brief delay to ensure rendering
+        setTimeout(() => {
+            updateVisualization();
+            // Also try to reset view to ensure nodes are visible
+            if (typeof resetView === 'function') {
+                resetView();
+            }
+        }, 500);
         
         // Event handling
         function handleConversationEvent(event) {
@@ -1002,17 +1298,17 @@
             ensureNode(event.source);
             ensureNode(event.target);
             
-            // Add edge
+            // Add edge with message content
             const edge = {
                 source: event.source,
                 target: event.target,
+                message: event.message || event.content || 'No message content',
                 event: event,
-                timestamp: new Date(event.timestamp),
+                timestamp: new Date(event.timestamp || Date.now()),
                 id: `${event.source}-${event.target}-${Date.now()}`
             };
             
             state.edges.push(edge);
-            
             // Keep only recent edges (last 5 minutes)
             const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
             state.edges = state.edges.filter(e => e.timestamp > fiveMinutesAgo);
@@ -1032,6 +1328,7 @@
             
             // Add to event log
             addToEventLog(event);
+
         }
         
         function ensureNode(nodeId) {
@@ -1078,21 +1375,38 @@
         }
         
         function updateVisualization() {
-            // Update nodes
+            // Get current nodes array
+            const nodesArray = Array.from(state.nodes.values());
+            
+            // Update simulation with current nodes
+            simulation.nodes(nodesArray);
+            
+            // Update visual nodes with key function for proper data binding
             const nodeSelection = nodeGroup.selectAll('.node-group')
-                .data(Array.from(state.nodes.values()), d => d.id);
+                .data(nodesArray, d => d.id);
             
             // Enter new nodes
             const nodeEnter = nodeSelection.enter()
                 .append('g')
                 .attr('class', d => `node-group ${d.type}`)
+                .attr('transform', d => `translate(${d.x || width/2},${d.y || height/2})`)  // Set initial position
                 .call(d3.drag()
                     .on('start', dragstarted)
                     .on('drag', dragged)
                     .on('end', dragended))
-                .on('click', showNodeDetails)
-                .on('mouseenter', showTooltip)
-                .on('mouseleave', hideTooltip);
+                .on('click', function(event, d) {
+                    event.stopPropagation();
+                    showNodeDetails(event, d);
+                })
+                .style('cursor', 'pointer')
+                .on('mouseenter', function(event, d) {
+                    if (!d3.select(this).classed('dragging')) {
+                        showTooltip(event, d);
+                    }
+                })
+                .on('mouseleave', function(event, d) {
+                    hideTooltip();
+                });
             
             // Background rect
             nodeEnter.append('rect')
@@ -1103,6 +1417,20 @@
                 .attr('height', 70)
                 .attr('rx', 12)
                 .attr('ry', 12);
+                
+            // Add invisible click area
+            nodeEnter.append('rect')
+                .attr('class', 'node-clickarea')
+                .attr('x', -60)
+                .attr('y', -35)
+                .attr('width', 120)
+                .attr('height', 70)
+                .attr('fill', 'transparent')
+                .style('cursor', 'pointer')
+                .on('click', function(event, d) {
+                    event.stopPropagation();
+                    showNodeDetails(event, d);
+                });
             
             // Progress circle background
             nodeEnter.append('circle')
@@ -1137,12 +1465,62 @@
                 .attr('class', 'node-status')
                 .attr('y', 28)
                 .text(d => d.status);
+                
+            // Message count badge
+            nodeEnter.append('circle')
+                .attr('class', 'message-badge')
+                .attr('cx', 50)
+                .attr('cy', -25)
+                .attr('r', 12)
+                .attr('fill', '#ef4444')
+                .style('display', 'none');
+                
+            nodeEnter.append('text')
+                .attr('class', 'message-count')
+                .attr('x', 50)
+                .attr('y', -25)
+                .attr('text-anchor', 'middle')
+                .attr('dominant-baseline', 'middle')
+                .attr('fill', 'white')
+                .style('font-size', '11px')
+                .style('font-weight', 'bold');
             
-            // Update existing nodes
-            nodeSelection.merge(nodeEnter)
-                .transition()
-                .duration(300)
-                .attr('transform', d => `translate(${d.x},${d.y})`);
+            // Update existing nodes - ensure proper data binding
+            const nodeUpdate = nodeSelection.merge(nodeEnter);
+            
+            // Ensure click handlers are on all nodes
+            nodeUpdate
+                .on('click', function(event, d) {
+                    event.stopPropagation();
+                    showNodeDetails(event, d);
+                })
+                .style('cursor', 'pointer');
+            
+            // Update positions using both attr and style for compatibility
+            nodeUpdate
+                .attr('transform', d => `translate(${d.x || width/2},${d.y || height/2})`)
+                .style('transform', d => `translate(${d.x || width/2}px,${d.y || height/2}px)`);
+            
+            // Update progress indicators
+            nodeUpdate.select('.node-progress-fill')
+                .style('stroke-dashoffset', d => 75.4 - ((d.progress || 0) / 100 * 75.4));
+            
+            nodeUpdate.select('.node-status')
+                .text(d => d.status || 'Active');
+                
+            // Update message count
+            nodeUpdate.each(function(d) {
+                const messageCount = state.edges.filter(e => e.source === d.id || e.target === d.id).length;
+                const selection = d3.select(this);
+                
+                if (messageCount > 0) {
+                    selection.select('.message-badge').style('display', null);
+                    selection.select('.message-count').text(messageCount);
+                } else {
+                    selection.select('.message-badge').style('display', 'none');
+                    selection.select('.message-count').text('');
+                }
+            });
             
             // Update edges
             const edgeSelection = edgeGroup.selectAll('.flow-edge')
@@ -1184,12 +1562,26 @@
         }
         
         function createCurvedPath(source, target) {
+            // Validate inputs
+            if (!source || !target || !isFinite(source.x) || !isFinite(source.y) || 
+                !isFinite(target.x) || !isFinite(target.y)) {
+                return '';
+            }
+            
+            // Use fixed precision to avoid floating point issues
+            const sx = source.x.toFixed(2);
+            const sy = source.y.toFixed(2);
+            const tx = target.x.toFixed(2);
+            const ty = target.y.toFixed(2);
+            
+            // Calculate control point for quadratic bezier
             const dx = target.x - source.x;
             const dy = target.y - source.y;
-            const dr = Math.sqrt(dx * dx + dy * dy);
-            const sweep = dx * dy > 0 ? 0 : 1;
+            const cx = (source.x + target.x) / 2 + dy * 0.15;
+            const cy = (source.y + target.y) / 2 - dx * 0.15;
             
-            return `M ${source.x},${source.y} A ${dr},${dr} 0 0,${sweep} ${target.x},${target.y}`;
+            // Return quadratic bezier path with fixed precision
+            return `M ${sx},${sy} Q ${cx.toFixed(2)},${cy.toFixed(2)} ${tx},${ty}`;
         }
         
         function animateMessageFlow(edge) {
@@ -1247,45 +1639,44 @@
             }
         }
         
-        // Drag functions
+        // Drag functions with stability improvements
         function dragstarted(event, d) {
+            // Stop the simulation from interfering
             if (!event.active) simulation.alphaTarget(0.3).restart();
             d.fx = d.x;
             d.fy = d.y;
+            // Add dragging class to prevent hover effects
+            d3.select(this).classed('dragging', true);
+            // Disable any transitions during drag
+            d3.select(this).style('transition', 'none');
         }
         
         function dragged(event, d) {
             d.fx = Math.max(60, Math.min(width - 60, event.x));
             d.fy = Math.max(35, Math.min(height - 35, event.y));
+            // Update position immediately
+            d.x = d.fx;
+            d.y = d.fy;
         }
         
         function dragended(event, d) {
+            // Remove dragging class
+            d3.select(this).classed('dragging', false);
+            // Ensure no transitions remain
+            d3.select(this).style('transition', 'none');
+            
             if (!event.active) simulation.alphaTarget(0);
             if (!document.getElementById('auto-arrange').checked) {
+                // Keep the node fixed in place
                 d.fx = d.x;
                 d.fy = d.y;
             } else {
+                // Release the node
                 d.fx = null;
                 d.fy = null;
             }
         }
-        
-        // Simulation tick
-        simulation.on('tick', () => {
-            nodeGroup.selectAll('.node-group')
-                .attr('transform', d => `translate(${d.x},${d.y})`);
-            
-            edgeGroup.selectAll('.flow-edge')
-                .attr('d', d => {
-                    const source = state.nodes.get(d.source);
-                    const target = state.nodes.get(d.target);
-                    if (source && target) {
-                        return createCurvedPath(source, target);
-                    }
-                    return '';
-                });
-        });
-        
+
         // Event log
         function addToEventLog(event) {
             const logDiv = document.getElementById('event-log');
@@ -1298,7 +1689,7 @@
             
             const message = document.createElement('span');
             message.className = 'event-message';
-            message.textContent = `${event.source} → ${event.target}: ${event.message}`;
+            message.textContent = `${event.source} → ${event.target}: ${event.message || 'Message sent'}`;
             
             entry.appendChild(timestamp);
             entry.appendChild(message);
@@ -1344,17 +1735,75 @@
             pauseBtn.textContent = state.isPaused ? 'Resume' : 'Pause';
         }
         
+        // Reset view function to force all nodes visible
         function resetView() {
-            // Reset node positions
-            state.nodes.forEach((node, id) => {
-                if (id !== 'marcus') {
-                    node.fx = null;
-                    node.fy = null;
-                }
-            });
+            const allNodes = Array.from(state.nodes.values());
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const radius = Math.min(width, height) / 3;
             
-            simulation.alpha(1).restart();
-        }
+            // First, stop the simulation
+            simulation.stop();
+            
+            allNodes.forEach((node, i) => {
+                if (node.id === 'marcus') {
+                    node.x = centerX;
+                    node.y = centerY;
+                    node.fx = centerX;
+                    node.fy = centerY;
+                } else {
+                    const angle = (i / (allNodes.length - 1)) * Math.PI * 2;
+                    node.x = centerX + Math.cos(angle) * radius;
+                    node.y = centerY + Math.sin(angle) * radius;
+                    node.fx = node.x;  // Fix position
+                    node.fy = node.y;  // Fix position
+                }
+                });
+            
+            // Force immediate visual update by re-binding data
+            const nodeGroups = nodeGroup.selectAll('.node-group')
+                .data(allNodes, d => d.id);
+            
+            // Force position update
+            nodeGroups.attr('transform', d => `translate(${d.x},${d.y})`);
+            
+            // Also try to re-enter any missing nodes
+            const nodeEnter = nodeGroups.enter()
+                .append('g')
+                .attr('class', d => `node-group ${d.type}`)
+                .attr('transform', d => `translate(${d.x},${d.y})`);
+                
+            // Add visual elements to new nodes
+            nodeEnter.append('rect')
+                .attr('class', 'node-rect')
+                .attr('x', -60)
+                .attr('y', -35)
+                .attr('width', 120)
+                .attr('height', 70)
+                .attr('rx', 12)
+                .attr('ry', 12);
+                
+            nodeEnter.append('text')
+                .attr('class', 'node-label')
+                .attr('y', 15)
+                .text(d => d.label || d.id);
+            
+            // Update edges
+            edgeGroup.selectAll('.flow-edge')
+                .attr('d', d => {
+                    const source = state.nodes.get(d.source);
+                    const target = state.nodes.get(d.target);
+                    if (source && target) {
+                        return createCurvedPath(source, target);
+                    }
+                    return '';
+                });
+            
+            // Restart simulation
+            simulation.nodes(allNodes);
+            simulation.alpha(0.3).restart();
+            
+            }
         
         function showKnowledgeGraph() {
             socket.emit('request_knowledge_graph', {});
@@ -1366,25 +1815,81 @@
         
         function showNodeDetails(event, d) {
             const modalBody = document.getElementById('modal-body');
+            
+            // Get all messages for this node
+            const outgoingMessages = state.edges.filter(e => e.source === d.id);
+            const incomingMessages = state.edges.filter(e => e.target === d.id);
+            
+            if (!modalBody) {
+                return;
+            }
+            
+            // Create message list HTML
+            const formatMessage = (edge, isOutgoing) => {
+                const time = edge.timestamp ? new Date(edge.timestamp).toLocaleTimeString() : '';
+                const direction = isOutgoing ? '→' : '←';
+                const otherNode = isOutgoing ? edge.target : edge.source;
+                const messageText = edge.message || edge.event?.message || edge.event?.content || 'No message content';
+                
+                return `
+                    <div class="message-item ${isOutgoing ? 'outgoing' : 'incoming'}">
+                        <div class="message-header">
+                            <span class="message-time">${time}</span>
+                            <span class="message-direction">${d.id} ${direction} ${otherNode}</span>
+                        </div>
+                        <div class="message-content">${messageText}</div>
+                    </div>
+                `;
+            };
+            
             modalBody.innerHTML = `
-                <h2>${d.label}</h2>
-                <p><strong>Type:</strong> ${d.type}</p>
-                <p><strong>Status:</strong> ${d.status}</p>
-                <p><strong>Progress:</strong> ${d.progress}%</p>
-                <div class="metric-card" style="margin-top: 20px;">
-                    <div class="metric-value">${state.edges.filter(e => e.source === d.id).length}</div>
-                    <div class="metric-label">Outgoing Messages</div>
+                <div class="node-details-header">
+                    <h2>${d.label}</h2>
+                    <div class="node-details-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Type:</span>
+                            <span class="stat-value">${d.type}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Status:</span>
+                            <span class="stat-value">${d.status}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Progress:</span>
+                            <span class="stat-value">${d.progress}%</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="metric-card">
-                    <div class="metric-value">${state.edges.filter(e => e.target === d.id).length}</div>
-                    <div class="metric-label">Incoming Messages</div>
+                
+                <div class="messages-section">
+                    <h3>Outgoing Messages (${outgoingMessages.length})</h3>
+                    <div class="messages-list">
+                        ${outgoingMessages.map(e => formatMessage(e, true)).join('') || '<p class="no-messages">No outgoing messages</p>'}
+                    </div>
+                </div>
+                
+                <div class="messages-section">
+                    <h3>Incoming Messages (${incomingMessages.length})</h3>
+                    <div class="messages-list">
+                        ${incomingMessages.map(e => formatMessage(e, false)).join('') || '<p class="no-messages">No incoming messages</p>'}
+                    </div>
                 </div>
             `;
-            document.getElementById('modal').style.display = 'block';
-        }
+            
+            const modal = document.getElementById('modal');
+            if (!modal) {
+                return;
+            }
+            modal.style.display = 'block';
+            modal.classList.add('show');
+            }
         
         function closeModal() {
-            document.getElementById('modal').style.display = 'none';
+            const modal = document.getElementById('modal');
+            modal.classList.remove('show');
+            setTimeout(() => {
+                modal.style.display = 'none';
+            }, 300);
         }
         
         // Tooltip functions
@@ -1455,24 +1960,79 @@
             }
         });
         
-        // Update confidence chart periodically
-        setInterval(async () => {
-            try {
-                const response = await fetch('/api/decisions/analytics');
-                const data = await response.json();
-                
-                if (data.confidence_trends) {
-                    const trends = data.confidence_trends.slice(-20);
-                    confidenceChart.data.labels = trends.map(t => 
-                        new Date(t.timestamp).toLocaleTimeString()
-                    );
-                    confidenceChart.data.datasets[0].data = trends.map(t => t.confidence);
-                    confidenceChart.update();
+        // Update confidence chart periodically (skip in demo mode)
+        if (!window.location.search.includes('demo=true')) {
+            setInterval(async () => {
+                try {
+                    const response = await fetch('/api/decisions/analytics');
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    const data = await response.json();
+                    
+                    if (data.confidence_trends) {
+                        const trends = data.confidence_trends.slice(-20);
+                        confidenceChart.data.labels = trends.map(t => 
+                            new Date(t.timestamp).toLocaleTimeString()
+                        );
+                        confidenceChart.data.datasets[0].data = trends.map(t => t.confidence);
+                        confidenceChart.update();
+                        
+                        // Update average confidence metric
+                        if (data.analytics && data.analytics.average_confidence) {
+                            document.getElementById('avg-confidence').textContent = 
+                                Math.round(data.analytics.average_confidence * 100) + '%';
+                        }
+                    }
+                } catch (error) {
+                    // Silently fail in production, log in development
+                    if (window.location.hostname === 'localhost') {
+                        console.warn('Analytics update skipped:', error.message);
+                    }
                 }
-            } catch (error) {
-                console.error('Failed to update confidence chart:', error);
-            }
-        }, 5000);
+            }, 5000);
+        } else {
+            // Demo mode - use fake data
+            let demoConfidence = 0.5;
+            setInterval(() => {
+                // Generate fake trending data
+                const now = new Date();
+                const fakeData = [];
+                for (let i = 0; i < 20; i++) {
+                    const time = new Date(now.getTime() - (20 - i) * 5000);
+                    demoConfidence += (Math.random() - 0.5) * 0.1;
+                    demoConfidence = Math.max(0.1, Math.min(0.9, demoConfidence));
+                    fakeData.push({
+                        timestamp: time,
+                        confidence: demoConfidence
+                    });
+                }
+                
+                confidenceChart.data.labels = fakeData.map(t => 
+                    t.timestamp.toLocaleTimeString()
+                );
+                confidenceChart.data.datasets[0].data = fakeData.map(t => t.confidence);
+                confidenceChart.update();
+                
+                // Update metric
+                document.getElementById('avg-confidence').textContent = 
+                    Math.round(demoConfidence * 100) + '%';
+            }, 5000);
+        }
+        
+        // Handle clicks near nodes
+        svg.on('click', function(event) {
+            const [x, y] = d3.pointer(event);
+            const clickRadius = 60;
+            state.nodes.forEach((node, nodeId) => {
+                const dx = x - node.x;
+                const dy = y - node.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                if (distance < clickRadius) {
+                    showNodeDetails(event, node);
+                }
+            });
+        });
         
         // Window resize handler
         window.addEventListener('resize', () => {
@@ -1505,7 +2065,8 @@
             }
         });
         
-        // Test data generation for demo
+        // In production mode, real events come through WebSocket
+        // In demo mode, generate test data
         if (window.location.search.includes('demo=true')) {
             const testNodes = ['worker_1', 'worker_2', 'kanban_board', 'decision_engine'];
             
@@ -1517,15 +2078,30 @@
                     testNodes[Math.floor(Math.random() * testNodes.length)];
                 
                 if (source !== target) {
+                    const messages = [
+                        'Processing task request',
+                        'Analyzing requirements',
+                        'Task completed successfully',
+                        'Updating status',
+                        'Requesting next task',
+                        'Synchronizing with kanban board',
+                        'Decision confidence: 85%',
+                        'Executing workflow step',
+                        'Resource allocation complete',
+                        'Performance metrics updated'
+                    ];
+                    
                     handleConversationEvent({
                         source: source,
                         target: target,
-                        message: 'Test message',
+                        message: messages[Math.floor(Math.random() * messages.length)],
+                        content: `Detailed message from ${source} to ${target}`,
                         timestamp: new Date().toISOString()
                     });
                 }
             }, 2000);
         }
+
     </script>
 </body>
 </html>

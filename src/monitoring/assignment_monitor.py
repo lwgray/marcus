@@ -84,7 +84,14 @@ class AssignmentMonitor:
             assignments = await self.persistence.load_assignments()
             
             # Get current task states from kanban
-            all_tasks = await self.kanban_client.get_all_tasks()
+            try:
+                all_tasks = await self.kanban_client.get_all_tasks()
+            except AttributeError as e:
+                # Fallback: if get_all_tasks is not available, use available tasks only
+                logger.warning(f"get_all_tasks not available on {type(self.kanban_client)}: {e}")
+                logger.warning("Using get_available_tasks as fallback - health check will be limited")
+                all_tasks = await self.kanban_client.get_available_tasks()
+            
             task_map = {task.id: task for task in all_tasks}
             
             reversions_detected = []
@@ -237,7 +244,14 @@ class AssignmentHealthChecker:
             health["metrics"]["persisted_assignments"] = len(persisted)
             
             # Check kanban state
-            tasks = await self.kanban_client.get_all_tasks()
+            try:
+                tasks = await self.kanban_client.get_all_tasks()
+            except AttributeError as e:
+                # Fallback: if get_all_tasks is not available, use available tasks only
+                logger.warning(f"get_all_tasks not available on {type(self.kanban_client)}: {e}")
+                logger.warning("Using get_available_tasks as fallback - health check will be limited")
+                tasks = await self.kanban_client.get_available_tasks()
+            
             in_progress = [t for t in tasks if t.status == TaskStatus.IN_PROGRESS]
             health["metrics"]["in_progress_tasks"] = len(in_progress)
             

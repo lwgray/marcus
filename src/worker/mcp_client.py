@@ -256,7 +256,8 @@ class WorkerMCPClient:
                 await session.initialize()
                 
                 # List available tools to verify connection
-                tools = await session.list_tools()
+                tools_response = await session.list_tools()
+                tools = tools_response.tools if hasattr(tools_response, 'tools') else tools_response
                 print(f"Connected to Marcus. Available tools: {[t.name for t in tools]}")
                 
                 yield session
