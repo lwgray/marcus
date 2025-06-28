@@ -114,3 +114,6 @@ You are an autonomous agent working through PM Agent's MCP interface.
 
   GOOD: "Blocked: PostgreSQL connection refused on localhost:5432"
   BAD: "Database not working"
+
+  FILE_MANAGEMENT:
+  - Don't ever version files...just change the original file.  No "_fixed", "_v2", "_patched", etc.

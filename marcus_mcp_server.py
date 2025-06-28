@@ -40,6 +40,13 @@ from src.core.assignment_persistence import AssignmentPersistence
 from src.monitoring.assignment_monitor import AssignmentMonitor, AssignmentHealthChecker
 from src.visualization.conversation_adapter import log_agent_event
 
+# Natural Language Processing tools
+from mcp_natural_language_tools import (
+    create_project_from_natural_language,
+    add_feature_natural_language
+)
+from ai_powered_task_assignment import find_optimal_task_for_agent_ai_powered
+
 import atexit
 
 # Global server instance
@@ -302,6 +309,64 @@ async def handle_list_tools() -> list[types.Tool]:
                 "properties": {},
                 "required": []
             }
+        ),
+        types.Tool(
+            name="create_project",
+            description="Create a complete project from natural language description",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "description": {
+                        "type": "string",
+                        "description": "Natural language project description or requirements"
+                    },
+                    "project_name": {
+                        "type": "string",
+                        "description": "Name for the project board"
+                    },
+                    "options": {
+                        "type": "object",
+                        "description": "Optional project configuration",
+                        "properties": {
+                            "team_size": {
+                                "type": "integer",
+                                "description": "Number of developers",
+                                "default": 3
+                            },
+                            "tech_stack": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Technologies to use"
+                            },
+                            "deadline": {
+                                "type": "string",
+                                "description": "Project deadline (ISO date format)"
+                            }
+                        }
+                    }
+                },
+                "required": ["description", "project_name"]
+            }
+        ),
+        types.Tool(
+            name="add_feature",
+            description="Add a feature to existing project using natural language",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "feature_description": {
+                        "type": "string",
+                        "description": "Natural language description of the feature to add"
+                    },
+                    "integration_point": {
+                        "type": "string",
+                        "description": "How to integrate the feature",
+                        "enum": ["auto_detect", "after_current", "parallel", "new_phase"],
+                        "default": "auto_detect"
+                    }
+                },
+                "required": ["feature_description"]
+            }
         )
     ]
 
@@ -358,6 +423,19 @@ async def handle_call_tool(
         
         elif name == "check_assignment_health":
             result = await check_assignment_health()
+        
+        elif name == "create_project":
+            result = await create_project_from_natural_language(
+                description=arguments.get("description"),
+                project_name=arguments.get("project_name"),
+                options=arguments.get("options", {})
+            )
+        
+        elif name == "add_feature":
+            result = await add_feature_natural_language(
+                feature_description=arguments.get("feature_description"),
+                integration_point=arguments.get("integration_point", "auto_detect")
+            )
         
         else:
             result = {"error": f"Unknown tool: {name}"}
@@ -1122,41 +1200,17 @@ async def refresh_project_state():
 
 
 async def find_optimal_task_for_agent(agent_id: str) -> Optional[Task]:
-    """Find the best task for an agent based on skills and priority"""
+    """Find the best task for an agent using AI-powered analysis"""
     async with state.assignment_lock:
         agent = state.agent_status.get(agent_id)
-        
-        # Debug logging
-        state.log_event("debug_find_optimal_task", {
-            "agent_id": agent_id,
-            "agent_exists": agent is not None,
-            "project_state_exists": state.project_state is not None,
-            "project_tasks_count": len(state.project_tasks) if state.project_tasks else 0
-        })
         
         if not agent or not state.project_state:
             return None
             
         # Get available tasks
-        debug_info = {
-            "total_tasks": len(state.project_tasks),
-            "tasks": []
-        }
-        
-        for t in state.project_tasks:
-            debug_info["tasks"].append({
-                "name": t.name,
-                "id": t.id,
-                "status": str(t.status),
-                "is_todo": t.status == TaskStatus.TODO
-            })
-        
-        # Get assigned task IDs from both in-memory and persistent storage
         assigned_task_ids = [a.task_id for a in state.agent_tasks.values()]
         persisted_assigned_ids = await state.assignment_persistence.get_all_assigned_task_ids()
         all_assigned_ids = set(assigned_task_ids) | persisted_assigned_ids | state.tasks_being_assigned
-        
-        debug_info["assigned_task_ids"] = list(all_assigned_ids)
         
         available_tasks = [
             t for t in state.project_tasks
@@ -1164,45 +1218,66 @@ async def find_optimal_task_for_agent(agent_id: str) -> Optional[Task]:
             t.id not in all_assigned_ids
         ]
         
-        debug_info["available_tasks_count"] = len(available_tasks)
-        
-        # Log debug info to file
-        state.log_event("debug_task_finding", debug_info)
-        
         if not available_tasks:
             return None
-            
-        # Score tasks based on skill match and priority
-        best_task = None
-        best_score = -1
         
-        for task in available_tasks:
-            # Calculate skill match score
-            skill_score = 0
-            if agent.skills and task.labels:
-                matching_skills = set(agent.skills) & set(task.labels)
-                skill_score = len(matching_skills) / len(task.labels) if task.labels else 0
+        # Use AI-powered task selection if AI engine is available
+        if state.ai_engine:
+            try:
+                optimal_task = await find_optimal_task_for_agent_ai_powered(
+                    agent_id=agent_id,
+                    agent_status=agent.__dict__,
+                    project_tasks=state.project_tasks,
+                    available_tasks=available_tasks,
+                    assigned_task_ids=all_assigned_ids,
+                    ai_engine=state.ai_engine
+                )
                 
-            # Priority score
-            priority_score = {
-                Priority.URGENT: 1.0,
-                Priority.HIGH: 0.8,
-                Priority.MEDIUM: 0.5,
-                Priority.LOW: 0.2
-            }.get(task.priority, 0.5)
+                if optimal_task:
+                    state.tasks_being_assigned.add(optimal_task.id)
+                    return optimal_task
+            except Exception as e:
+                conversation_logger.error(f"AI task assignment failed, falling back to basic: {e}")
+        
+        # Fallback to basic assignment if AI fails
+        return await find_optimal_task_basic(agent_id, available_tasks)
+
+
+async def find_optimal_task_basic(agent_id: str, available_tasks: List[Task]) -> Optional[Task]:
+    """Basic task assignment logic (fallback)"""
+    agent = state.agent_status.get(agent_id)
+    if not agent:
+        return None
+        
+    best_task = None
+    best_score = -1
+    
+    for task in available_tasks:
+        # Calculate skill match score
+        skill_score = 0
+        if agent.skills and task.labels:
+            matching_skills = set(agent.skills) & set(task.labels)
+            skill_score = len(matching_skills) / len(task.labels) if task.labels else 0
             
-            # Combined score
-            total_score = (skill_score * 0.6) + (priority_score * 0.4)
+        # Priority score
+        priority_score = {
+            Priority.URGENT: 1.0,
+            Priority.HIGH: 0.8,
+            Priority.MEDIUM: 0.5,
+            Priority.LOW: 0.2
+        }.get(task.priority, 0.5)
+        
+        # Combined score
+        total_score = (skill_score * 0.6) + (priority_score * 0.4)
+        
+        if total_score > best_score:
+            best_score = total_score
+            best_task = task
             
-            if total_score > best_score:
-                best_score = total_score
-                best_task = task
-                
-        # Reserve the task immediately if found
-        if best_task:
-            state.tasks_being_assigned.add(best_task.id)
-                
-        return best_task
+    if best_task:
+        state.tasks_being_assigned.add(best_task.id)
+        
+    return best_task
 
 
 async def main():
