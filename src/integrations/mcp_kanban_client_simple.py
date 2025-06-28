@@ -191,6 +191,95 @@ class SimpleMCPKanbanClient:
                 
                 return tasks
     
+    async def get_all_tasks(self) -> List[Task]:
+        """
+        Get all tasks from the kanban board regardless of status or assignment.
+        
+        Retrieves tasks from all lists on the board, including assigned,
+        unassigned, completed, and blocked tasks.
+        
+        Returns
+        -------
+        List[Task]
+            List of all tasks on the board
+        
+        Raises
+        ------
+        RuntimeError
+            If board_id is not set in configuration
+        
+        Examples
+        --------
+        >>> client = SimpleMCPKanbanClient()
+        >>> tasks = await client.get_all_tasks()
+        >>> print(f"Total tasks on board: {len(tasks)}")
+        
+        Notes
+        -----
+        This method creates a new MCP session for the operation.
+        Unlike get_available_tasks(), this includes tasks in all states
+        and with any assignment status.
+        """
+        if not self.board_id:
+            raise RuntimeError("Board ID not set")
+        
+        # Use the exact same pattern as working scripts
+        server_params = StdioServerParameters(
+            command="node",
+            args=["../kanban-mcp/dist/index.js"],
+            env=os.environ.copy()
+        )
+        
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                
+                # First get all lists for the board
+                lists_result = await session.call_tool(
+                    "mcp_kanban_list_manager",
+                    {
+                        "action": "get_all",
+                        "boardId": self.board_id
+                    }
+                )
+                
+                all_cards = []
+                if lists_result and hasattr(lists_result, 'content') and lists_result.content:
+                    lists_data = json.loads(lists_result.content[0].text)
+                    lists = lists_data if isinstance(lists_data, list) else lists_data.get("items", [])
+                    
+                    # Get cards from each list
+                    for lst in lists:
+                        list_id = lst.get("id")
+                        if list_id:
+                            # Get cards for this list
+                            cards_result = await session.call_tool(
+                                "mcp_kanban_card_manager",
+                                {
+                                    "action": "get_all",
+                                    "listId": list_id
+                                }
+                            )
+                            
+                            if cards_result and hasattr(cards_result, 'content') and cards_result.content:
+                                cards_text = cards_result.content[0].text
+                                if cards_text and cards_text.strip():
+                                    cards_data = json.loads(cards_text)
+                                    cards_list = cards_data if isinstance(cards_data, list) else cards_data.get("items", [])
+                                    # Add list name to each card
+                                    for card in cards_list:
+                                        card["listName"] = lst.get("name", "")
+                                        all_cards.append(card)
+                
+                tasks = []
+                
+                # Convert all cards to tasks (no filtering)
+                for card in all_cards:
+                    task = self._card_to_task(card)
+                    tasks.append(task)
+                
+                return tasks
+    
     async def assign_task(self, task_id: str, agent_id: str) -> None:
         """
         Assign a task to an agent.
@@ -369,7 +458,7 @@ class SimpleMCPKanbanClient:
         - Status is determined by the list name (DONE, PROGRESS, BLOCKED, TODO)
         - Priority defaults to MEDIUM if not specified
         - Dates default to current time if not provided
-        - assigned_to is always None (unassigned tasks)
+        - assigned_to is extracted from card users/assignment fields
         """
         task_name = card.get("name") or card.get("title", "")
         
@@ -388,13 +477,28 @@ class SimpleMCPKanbanClient:
         else:
             status = TaskStatus.TODO
         
+        # Extract assignment information
+        # Check for assignments in the card data structure
+        assigned_to = None
+        
+        # Try different possible assignment fields
+        if card.get("users"):  # Planka assigns users to cards
+            users = card.get("users", [])
+            if users and len(users) > 0:
+                # Take the first assigned user as the assignee
+                assigned_to = users[0].get("username") or users[0].get("email") or users[0].get("name")
+        elif card.get("assignedTo"):  # Alternative field name
+            assigned_to = card.get("assignedTo")
+        elif card.get("assigned_to"):  # Another alternative
+            assigned_to = card.get("assigned_to")
+        
         return Task(
             id=card.get("id", ""),
             name=task_name,
             description=card.get("description", ""),
             status=status,
             priority=Priority.MEDIUM,
-            assigned_to=None,
+            assigned_to=assigned_to,
             created_at=created_at,
             updated_at=updated_at,
             due_date=None,

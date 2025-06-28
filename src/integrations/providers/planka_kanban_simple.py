@@ -50,6 +50,15 @@ class PlankaKanbanSimple(KanbanInterface):
         except Exception as e:
             print(f"Error getting tasks: {e}")
             return []
+    
+    async def get_all_tasks(self) -> List[Task]:
+        """Get all tasks from the board regardless of status or assignment"""
+        try:
+            tasks = await self.client.get_all_tasks()
+            return tasks
+        except Exception as e:
+            print(f"Error getting all tasks: {e}")
+            return []
         
     async def get_task_by_id(self, task_id: str) -> Optional[Task]:
         """Get specific task by ID"""

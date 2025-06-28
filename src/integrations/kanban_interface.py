@@ -67,6 +67,16 @@ class KanbanInterface(ABC):
         pass
         
     @abstractmethod
+    async def get_all_tasks(self) -> List[Task]:
+        """
+        Get all tasks from the board regardless of status or assignment
+        
+        Returns:
+            List of all Task objects on the board
+        """
+        pass
+        
+    @abstractmethod
     async def get_task_by_id(self, task_id: str) -> Optional[Task]:
         """
         Get a specific task by its ID
