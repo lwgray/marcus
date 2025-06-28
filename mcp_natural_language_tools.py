@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 from src.ai.advanced.prd.advanced_parser import AdvancedPRDParser, ProjectConstraints
 from src.detection.board_analyzer import BoardAnalyzer
-from src.detection.context_detector import ContextDetector
+from src.detection.context_detector import ContextDetector, MarcusMode
 from src.modes.adaptive.basic_adaptive import BasicAdaptiveMode
 from src.modes.enricher.enricher_mode import EnricherMode
 from src.ai.core.ai_engine import MarcusAIEngine
@@ -63,8 +63,8 @@ class NaturalLanguageProjectCreator:
                 tasks=[]
             )
             
-            if context.primary_mode != "creator":
-                logger.warning(f"Expected creator mode but got {context.primary_mode}")
+            if context.recommended_mode != MarcusMode.CREATOR:
+                logger.warning(f"Expected creator mode but got {context.recommended_mode}")
             
             # Step 2: Parse PRD with AI (Phase 4)
             constraints = self._build_constraints(options)
