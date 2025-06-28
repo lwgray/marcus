@@ -35,7 +35,7 @@ class NaturalLanguageProjectCreator:
         self.ai_engine = ai_engine
         self.prd_parser = AdvancedPRDParser()
         self.board_analyzer = BoardAnalyzer()
-        self.context_detector = ContextDetector()
+        self.context_detector = ContextDetector(self.board_analyzer)
         
     async def create_project_from_description(
         self,
@@ -56,8 +56,12 @@ class NaturalLanguageProjectCreator:
             logger.info(f"Creating project '{project_name}' from natural language")
             
             # Step 1: Detect context (Phase 1)
-            board_state = self.board_analyzer.analyze_board([])
-            context = self.context_detector.detect_context(board_state, [], [], {})
+            board_state = self.board_analyzer.analyze_board("default", [])
+            context = await self.context_detector.detect_optimal_mode(
+                user_id="system",
+                board_id="default",
+                tasks=[]
+            )
             
             if context.primary_mode != "creator":
                 logger.warning(f"Expected creator mode but got {context.primary_mode}")
