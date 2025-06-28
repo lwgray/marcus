@@ -36,6 +36,8 @@ from src.monitoring.project_monitor import ProjectMonitor
 from src.communication.communication_hub import CommunicationHub
 from src.config.settings import Settings
 from src.logging.conversation_logger import conversation_logger, log_conversation, log_thinking
+from src.core.assignment_persistence import AssignmentPersistence
+from src.monitoring.assignment_monitor import AssignmentMonitor, AssignmentHealthChecker
 
 import atexit
 
@@ -79,6 +81,14 @@ class MarcusState:
         self.project_state: Optional[ProjectState] = None
         self.project_tasks: List[Task] = []
         
+        # Assignment persistence and locking
+        self.assignment_persistence = AssignmentPersistence()
+        self.assignment_lock = asyncio.Lock()
+        self.tasks_being_assigned: set = set()
+        
+        # Assignment monitoring
+        self.assignment_monitor = None  # Will be initialized after kanban client
+        
         # Log startup
         conversation_logger.log_system_state(
             active_workers=0,
@@ -99,6 +109,19 @@ class MarcusState:
             print(f"[Marcus] Kanban client created: {type(self.kanban_client).__name__}")
             await self.kanban_client.connect()
             print(f"[Marcus] Kanban client connected")
+            
+        # Load persisted assignments
+        await self.assignment_persistence.load_assignments()
+        
+        # Initialize and start assignment monitor
+        if not self.assignment_monitor:
+            self.assignment_monitor = AssignmentMonitor(
+                self.assignment_persistence,
+                self.kanban_client,
+                check_interval=30  # Check every 30 seconds
+            )
+            await self.assignment_monitor.start()
+            print(f"[Marcus] Assignment monitor started")
             
     async def _mcp_function_caller(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
         """Function to call MCP tools for kanban integrations"""
@@ -269,6 +292,15 @@ async def handle_list_tools() -> list[types.Tool]:
                 },
                 "required": []
             }
+        ),
+        types.Tool(
+            name="check_assignment_health",
+            description="Check the health of the assignment tracking system",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
         )
     ]
 
@@ -322,6 +354,9 @@ async def handle_call_tool(
         
         elif name == "ping":
             result = await ping(arguments.get("echo", ""))
+        
+        elif name == "check_assignment_health":
+            result = await check_assignment_health()
         
         else:
             result = {"error": f"Unknown tool: {name}"}
@@ -469,89 +504,121 @@ async def request_next_task(agent_id: str) -> dict:
         optimal_task = await find_optimal_task_for_agent(agent_id)
         
         if optimal_task:
-            # Get implementation context if using GitHub
-            previous_implementations = None
-            if state.provider == 'github' and state.code_analyzer:
-                owner = os.getenv('GITHUB_OWNER')
-                repo = os.getenv('GITHUB_REPO')
-                impl_details = await state.code_analyzer.get_implementation_details(
-                    optimal_task.dependencies,
-                    owner,
-                    repo
+            try:
+                # Get implementation context if using GitHub
+                previous_implementations = None
+                if state.provider == 'github' and state.code_analyzer:
+                    owner = os.getenv('GITHUB_OWNER')
+                    repo = os.getenv('GITHUB_REPO')
+                    impl_details = await state.code_analyzer.get_implementation_details(
+                        optimal_task.dependencies,
+                        owner,
+                        repo
+                    )
+                    if impl_details:
+                        previous_implementations = impl_details
+                
+                # Generate detailed instructions with AI
+                instructions = await state.ai_engine.generate_task_instructions(
+                    optimal_task,
+                    state.agent_status.get(agent_id)
                 )
-                if impl_details:
-                    previous_implementations = impl_details
-            
-            # Generate detailed instructions with AI
-            instructions = await state.ai_engine.generate_task_instructions(
-                optimal_task,
-                state.agent_status.get(agent_id)
-            )
-            
-            # Log decision process
-            conversation_logger.log_pm_decision(
-                decision=f"Assign task '{optimal_task.name}' to {agent_id}",
-                rationale=f"Best skill match and highest priority",
-                alternatives_considered=[
-                    {"task": "Other Task 1", "score": 0.7},
-                    {"task": "Other Task 2", "score": 0.6}
-                ],
-                confidence_score=0.85,
-                decision_factors={
-                    "skill_match": 0.9,
-                    "priority": optimal_task.priority.value,
-                    "dependencies_clear": len(optimal_task.dependencies) == 0
+                
+                # Log decision process
+                conversation_logger.log_pm_decision(
+                    decision=f"Assign task '{optimal_task.name}' to {agent_id}",
+                    rationale=f"Best skill match and highest priority",
+                    alternatives_considered=[
+                        {"task": "Other Task 1", "score": 0.7},
+                        {"task": "Other Task 2", "score": 0.6}
+                    ],
+                    confidence_score=0.85,
+                    decision_factors={
+                        "skill_match": 0.9,
+                        "priority": optimal_task.priority.value,
+                        "dependencies_clear": len(optimal_task.dependencies) == 0
+                    }
+                )
+                
+                # Create assignment
+                assignment = TaskAssignment(
+                    task_id=optimal_task.id,
+                    task_name=optimal_task.name,
+                    description=optimal_task.description,
+                    instructions=instructions,
+                    estimated_hours=optimal_task.estimated_hours,
+                    priority=optimal_task.priority,
+                    dependencies=optimal_task.dependencies,
+                    assigned_to=agent_id,
+                    assigned_at=datetime.now(),
+                    due_date=optimal_task.due_date
+                )
+                
+                # Update kanban FIRST (fail fast if kanban is down)
+                await state.kanban_client.update_task(optimal_task.id, {
+                    "status": TaskStatus.IN_PROGRESS,
+                    "assigned_to": agent_id
+                })
+                
+                # If kanban update succeeded, track assignment
+                state.agent_tasks[agent_id] = assignment
+                agent = state.agent_status[agent_id]
+                agent.current_tasks = [optimal_task]
+                
+                # Persist assignment
+                await state.assignment_persistence.save_assignment(
+                    agent_id, 
+                    optimal_task.id,
+                    {
+                        "name": optimal_task.name,
+                        "priority": optimal_task.priority.value,
+                        "estimated_hours": optimal_task.estimated_hours
+                    }
+                )
+                
+                # Remove from pending assignments
+                state.tasks_being_assigned.discard(optimal_task.id)
+                
+                # Log task assignment
+                conversation_logger.log_worker_message(
+                    agent_id,
+                    "from_pm",
+                    f"Assigned task: {optimal_task.name}",
+                    {
+                        "task_id": optimal_task.id,
+                        "instructions": instructions,
+                        "priority": optimal_task.priority.value
+                    }
+                )
+                
+                return {
+                    "success": True,
+                    "task": {
+                        "id": optimal_task.id,
+                        "name": optimal_task.name,
+                        "description": optimal_task.description,
+                        "instructions": instructions,
+                        "priority": optimal_task.priority.value,
+                        "implementation_context": previous_implementations
+                    }
                 }
-            )
             
-            # Create assignment
-            assignment = TaskAssignment(
-                task_id=optimal_task.id,
-                task_name=optimal_task.name,
-                description=optimal_task.description,
-                instructions=instructions,
-                estimated_hours=optimal_task.estimated_hours,
-                priority=optimal_task.priority,
-                dependencies=optimal_task.dependencies,
-                assigned_to=agent_id,
-                assigned_at=datetime.now(),
-                due_date=optimal_task.due_date
-            )
-            
-            # Track assignment
-            state.agent_tasks[agent_id] = assignment
-            agent = state.agent_status[agent_id]
-            agent.current_tasks = [optimal_task]
-            
-            # Update kanban
-            await state.kanban_client.update_task(optimal_task.id, {
-                "status": TaskStatus.IN_PROGRESS,
-                "assigned_to": agent_id
-            })
-            
-            # Log task assignment
-            conversation_logger.log_worker_message(
-                agent_id,
-                "from_pm",
-                f"Assigned task: {optimal_task.name}",
-                {
-                    "task_id": optimal_task.id,
-                    "instructions": instructions,
-                    "priority": optimal_task.priority.value
+            except Exception as e:
+                # If anything fails, rollback the reservation
+                state.tasks_being_assigned.discard(optimal_task.id)
+                
+                conversation_logger.log_worker_message(
+                    agent_id,
+                    "from_pm", 
+                    f"Failed to assign task: {str(e)}",
+                    {"error": str(e)}
+                )
+                
+                return {
+                    "success": False,
+                    "error": f"Failed to assign task: {str(e)}"
                 }
-            )
-            
-            return {
-                "success": True,
-                "task": {
-                    "id": optimal_task.id,
-                    "name": optimal_task.name,
-                    "description": optimal_task.description,
-                    "instructions": instructions,
-                    "priority": optimal_task.priority.value,
-                    "implementation_context": previous_implementations
-                }
-            }
+                
         else:
             conversation_logger.log_worker_message(
                 agent_id,
@@ -616,9 +683,12 @@ async def report_task_progress(
                 agent.current_tasks = []
                 agent.completed_tasks_count += 1
                 
-                # Remove task assignment from state
+                # Remove task assignment from state and persistence
                 if agent_id in state.agent_tasks:
                     del state.agent_tasks[agent_id]
+                    
+                # Remove from persistent storage
+                await state.assignment_persistence.remove_assignment(agent_id)
                 
                 # Code analysis for GitHub
                 if state.provider == 'github' and state.code_analyzer:
@@ -918,6 +988,38 @@ async def ping(echo: str) -> dict:
     return response
 
 
+async def check_assignment_health() -> dict:
+    """Check the health of the assignment tracking system."""
+    try:
+        # Initialize health checker
+        health_checker = AssignmentHealthChecker(
+            state.assignment_persistence,
+            state.kanban_client,
+            state.assignment_monitor
+        )
+        
+        # Run health check
+        health_status = await health_checker.check_assignment_health()
+        
+        # Add current in-memory state info
+        health_status["in_memory_state"] = {
+            "agent_tasks": len(state.agent_tasks),
+            "tasks_being_assigned": len(state.tasks_being_assigned),
+            "monitor_running": state.assignment_monitor._running if state.assignment_monitor else False
+        }
+        
+        return {
+            "success": True,
+            **health_status
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
 # Helper functions
 async def refresh_project_state():
     """Refresh the current project state from kanban"""
@@ -980,77 +1082,86 @@ async def refresh_project_state():
 
 async def find_optimal_task_for_agent(agent_id: str) -> Optional[Task]:
     """Find the best task for an agent based on skills and priority"""
-    agent = state.agent_status.get(agent_id)
-    
-    # Debug logging
-    state.log_event("debug_find_optimal_task", {
-        "agent_id": agent_id,
-        "agent_exists": agent is not None,
-        "project_state_exists": state.project_state is not None,
-        "project_tasks_count": len(state.project_tasks) if state.project_tasks else 0
-    })
-    
-    if not agent or not state.project_state:
-        return None
+    async with state.assignment_lock:
+        agent = state.agent_status.get(agent_id)
         
-    # Get available tasks
-    debug_info = {
-        "total_tasks": len(state.project_tasks),
-        "tasks": []
-    }
-    
-    for t in state.project_tasks:
-        debug_info["tasks"].append({
-            "name": t.name,
-            "id": t.id,
-            "status": str(t.status),
-            "is_todo": t.status == TaskStatus.TODO
+        # Debug logging
+        state.log_event("debug_find_optimal_task", {
+            "agent_id": agent_id,
+            "agent_exists": agent is not None,
+            "project_state_exists": state.project_state is not None,
+            "project_tasks_count": len(state.project_tasks) if state.project_tasks else 0
         })
-    
-    assigned_task_ids = [a.task_id for a in state.agent_tasks.values()]
-    debug_info["assigned_task_ids"] = assigned_task_ids
-    
-    available_tasks = [
-        t for t in state.project_tasks
-        if t.status == TaskStatus.TODO and
-        t.id not in assigned_task_ids
-    ]
-    
-    debug_info["available_tasks_count"] = len(available_tasks)
-    
-    # Log debug info to file
-    state.log_event("debug_task_finding", debug_info)
-    
-    if not available_tasks:
-        return None
         
-    # Score tasks based on skill match and priority
-    best_task = None
-    best_score = -1
-    
-    for task in available_tasks:
-        # Calculate skill match score
-        skill_score = 0
-        if agent.skills and task.labels:
-            matching_skills = set(agent.skills) & set(task.labels)
-            skill_score = len(matching_skills) / len(task.labels) if task.labels else 0
+        if not agent or not state.project_state:
+            return None
             
-        # Priority score
-        priority_score = {
-            Priority.URGENT: 1.0,
-            Priority.HIGH: 0.8,
-            Priority.MEDIUM: 0.5,
-            Priority.LOW: 0.2
-        }.get(task.priority, 0.5)
+        # Get available tasks
+        debug_info = {
+            "total_tasks": len(state.project_tasks),
+            "tasks": []
+        }
         
-        # Combined score
-        total_score = (skill_score * 0.6) + (priority_score * 0.4)
+        for t in state.project_tasks:
+            debug_info["tasks"].append({
+                "name": t.name,
+                "id": t.id,
+                "status": str(t.status),
+                "is_todo": t.status == TaskStatus.TODO
+            })
         
-        if total_score > best_score:
-            best_score = total_score
-            best_task = task
+        # Get assigned task IDs from both in-memory and persistent storage
+        assigned_task_ids = [a.task_id for a in state.agent_tasks.values()]
+        persisted_assigned_ids = await state.assignment_persistence.get_all_assigned_task_ids()
+        all_assigned_ids = set(assigned_task_ids) | persisted_assigned_ids | state.tasks_being_assigned
+        
+        debug_info["assigned_task_ids"] = list(all_assigned_ids)
+        
+        available_tasks = [
+            t for t in state.project_tasks
+            if t.status == TaskStatus.TODO and
+            t.id not in all_assigned_ids
+        ]
+        
+        debug_info["available_tasks_count"] = len(available_tasks)
+        
+        # Log debug info to file
+        state.log_event("debug_task_finding", debug_info)
+        
+        if not available_tasks:
+            return None
             
-    return best_task
+        # Score tasks based on skill match and priority
+        best_task = None
+        best_score = -1
+        
+        for task in available_tasks:
+            # Calculate skill match score
+            skill_score = 0
+            if agent.skills and task.labels:
+                matching_skills = set(agent.skills) & set(task.labels)
+                skill_score = len(matching_skills) / len(task.labels) if task.labels else 0
+                
+            # Priority score
+            priority_score = {
+                Priority.URGENT: 1.0,
+                Priority.HIGH: 0.8,
+                Priority.MEDIUM: 0.5,
+                Priority.LOW: 0.2
+            }.get(task.priority, 0.5)
+            
+            # Combined score
+            total_score = (skill_score * 0.6) + (priority_score * 0.4)
+            
+            if total_score > best_score:
+                best_score = total_score
+                best_task = task
+                
+        # Reserve the task immediately if found
+        if best_task:
+            state.tasks_being_assigned.add(best_task.id)
+                
+        return best_task
 
 
 async def main():
