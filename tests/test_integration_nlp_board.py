@@ -15,7 +15,7 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.integrations.kanban_factory import KanbanFactory
-from mcp_natural_language_tools import (
+from src.integrations.mcp_natural_language_tools import (
     NaturalLanguageProjectCreator,
     NaturalLanguageFeatureAdder
 )

@@ -19,7 +19,7 @@ import os
 # Add parent directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from mcp_natural_language_tools import (
+from src.integrations.mcp_natural_language_tools import (
     add_feature_natural_language,
     NaturalLanguageFeatureAdder
 )

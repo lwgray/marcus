@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from dotenv import load_dotenv
 from src.integrations.kanban_factory import KanbanFactory
 from src.ai.core.ai_engine import MarcusAIEngine
-from mcp_natural_language_tools import NaturalLanguageProjectCreator
+from src.integrations.mcp_natural_language_tools import NaturalLanguageProjectCreator
 
 async def test_standalone_nlp_creation():
     """Test NLP project creation without running the full MCP server"""

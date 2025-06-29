@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
 from src.integrations.kanban_factory import KanbanFactory
-from mcp_natural_language_tools import create_project_from_natural_language
+from src.integrations.mcp_natural_language_tools import create_project_from_natural_language
 
 async def verify_board_creation():
     """Verify that natural language project creation works with real board"""

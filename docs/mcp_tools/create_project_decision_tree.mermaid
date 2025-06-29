@@ -1,0 +1,62 @@
+%%{init: {'theme':'base', 'themeVariables': { 'primaryColor': '#e8f5e9', 'primaryTextColor': '#1b5e20', 'primaryBorderColor': '#4caf50', 'lineColor': '#66bb6a', 'fontFamily': 'monospace'}}}%%
+
+graph TD
+    Start([create_project Tool Called]) --> Q1{Valid<br/>Description?}
+    
+    Q1 -->|No| E1[/"❌ ERROR:<br/>Description required"/]
+    Q1 -->|Yes| Q2{Valid Project<br/>Name?}
+    
+    Q2 -->|No| E2[/"❌ ERROR:<br/>Name required"/]
+    Q2 -->|Yes| Q3{Kanban Client<br/>Initialized?}
+    
+    Q3 -->|No| A1[Initialize Client]
+    A1 --> Q3A{Init<br/>Success?}
+    Q3A -->|No| E3[/"❌ ERROR:<br/>Init failed"/]
+    Q3A -->|Yes| Q4
+    Q3 -->|Yes| Q4{Client Supports<br/>create_task?}
+    
+    Q4 -->|No| E4[/"❌ ERROR:<br/>No create support"/]
+    Q4 -->|Yes| Q5{Board<br/>State?}
+    
+    Q5 -->|"Empty<br/>(< 3 tasks)"| M1[/"🎯 MODE:<br/>Creator"/]
+    Q5 -->|"Active<br/>(3-50 tasks)"| M2[/"🎯 MODE:<br/>Orchestrator"/]
+    Q5 -->|"Large<br/>(> 50 tasks)"| M3[/"🎯 MODE:<br/>Hybrid"/]
+    
+    M1 --> GenFull[Generate Full<br/>Project Plan]
+    M2 --> GenMin[Generate Minimal<br/>Starter Tasks]
+    M3 --> GenBal[Generate Balanced<br/>Task Set]
+    
+    GenFull --> Q6{Parse<br/>Success?}
+    GenMin --> Q6
+    GenBal --> Q6
+    
+    Q6 -->|No| E5[/"❌ ERROR:<br/>Parse failed"/]
+    Q6 -->|Yes| Q7{Has Deploy<br/>Tasks?}
+    
+    Q7 -->|Yes| A2[Add Safety<br/>Dependencies]
+    Q7 -->|No| Q8
+    A2 --> Q8{Create Tasks<br/>on Board?}
+    
+    Q8 -->|All Failed| E6[/"❌ ERROR:<br/>Creation failed"/]
+    Q8 -->|Some Failed| W1[/"⚠️ WARNING:<br/>Partial success"/]
+    Q8 -->|All Success| S1[/"✅ SUCCESS:<br/>Project created"/]
+    
+    W1 --> UpdatePartial[Update State<br/>Partial]
+    S1 --> UpdateFull[Update State<br/>Full]
+    
+    UpdatePartial --> Return1[Return Partial<br/>Success Result]
+    UpdateFull --> Return2[Return Full<br/>Success Result]
+    
+    %% Style definitions
+    style Start fill:#4caf50,stroke:#2e7d32,stroke-width:3px,color:#fff
+    style E1 fill:#f44336,stroke:#c62828,stroke-width:2px,color:#fff
+    style E2 fill:#f44336,stroke:#c62828,stroke-width:2px,color:#fff
+    style E3 fill:#f44336,stroke:#c62828,stroke-width:2px,color:#fff
+    style E4 fill:#f44336,stroke:#c62828,stroke-width:2px,color:#fff
+    style E5 fill:#f44336,stroke:#c62828,stroke-width:2px,color:#fff
+    style E6 fill:#f44336,stroke:#c62828,stroke-width:2px,color:#fff
+    style W1 fill:#ff9800,stroke:#e65100,stroke-width:2px,color:#fff
+    style S1 fill:#4caf50,stroke:#2e7d32,stroke-width:2px,color:#fff
+    style M1 fill:#9c27b0,stroke:#6a1b9a,stroke-width:2px,color:#fff
+    style M2 fill:#9c27b0,stroke:#6a1b9a,stroke-width:2px,color:#fff
+    style M3 fill:#9c27b0,stroke:#6a1b9a,stroke-width:2px,color:#fff

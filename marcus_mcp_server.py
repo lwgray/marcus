@@ -41,7 +41,7 @@ from src.monitoring.assignment_monitor import AssignmentMonitor, AssignmentHealt
 from src.visualization.conversation_adapter import log_agent_event
 
 # Natural Language Processing tools
-from mcp_natural_language_tools import (
+from src.integrations.mcp_natural_language_tools import (
     create_project_from_natural_language,
     add_feature_natural_language
 )

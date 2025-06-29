@@ -16,7 +16,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from src.integrations.ai_analysis_engine_fixed import AIAnalysisEngine
-from mcp_natural_language_tools import NaturalLanguageFeatureAdder
+from src.integrations.mcp_natural_language_tools import NaturalLanguageFeatureAdder
 from src.core.models import Task, TaskStatus, Priority
 from datetime import datetime
 

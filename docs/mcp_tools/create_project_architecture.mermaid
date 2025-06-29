@@ -1,0 +1,99 @@
+%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor': '#ff6b6b', 'primaryTextColor': '#fff', 'primaryBorderColor': '#ff4757', 'lineColor': '#5f27cd', 'secondaryColor': '#4834d4', 'tertiaryColor': '#3742fa', 'background': '#2d3436', 'mainBkg': '#2d3436', 'secondBkg': '#34495e', 'tertiaryBkg': '#2c3e50'}}}%%
+
+graph TB
+    %% Entry Points
+    User([User/Claude]) -->|"Natural Language<br/>Project Description"| MCP[MCP Tool:<br/>create_project]
+    
+    %% Validation Layer
+    MCP --> Validate{Input<br/>Validation}
+    Validate -->|"Empty description"| ErrorDesc[❌ Error:<br/>Description required]
+    Validate -->|"Empty name"| ErrorName[❌ Error:<br/>Project name required]
+    Validate -->|Valid| InitCheck{Kanban<br/>Client<br/>Ready?}
+    
+    %% Initialization Layer
+    InitCheck -->|No| InitKanban[Initialize<br/>Kanban Client]
+    InitKanban --> InitResult{Success?}
+    InitResult -->|No| ErrorInit[❌ Error:<br/>Init failed]
+    InitResult -->|Yes| FeatureCheck
+    InitCheck -->|Yes| FeatureCheck{Supports<br/>create_task?}
+    
+    FeatureCheck -->|No| ErrorFeature[❌ Error:<br/>No create support]
+    FeatureCheck -->|Yes| CreateFlow[Create<br/>NaturalLanguageProjectCreator]
+    
+    %% AI Processing Layer
+    CreateFlow --> AIEngine[AI Engine<br/>Processing]
+    
+    subgraph AI_Processing [AI Processing Pipeline]
+        AIEngine --> BoardAnalyzer[Board<br/>Analyzer]
+        BoardAnalyzer --> ContextDetect{Board<br/>Context}
+        
+        ContextDetect -->|"< 3 tasks"| CreatorMode[Creator Mode:<br/>Full Project]
+        ContextDetect -->|"3-50 tasks"| OrchMode[Orchestrator Mode:<br/>Minimal Tasks]
+        ContextDetect -->|"> 50 tasks"| HybridMode[Hybrid Mode:<br/>Balanced]
+        
+        CreatorMode --> PRDParser
+        OrchMode --> PRDParser
+        HybridMode --> PRDParser
+        
+        PRDParser[Advanced<br/>PRD Parser] --> GenerateTasks[Generate<br/>Task List]
+        GenerateTasks --> ApplyConstraints[Apply<br/>Constraints]
+        
+        subgraph Constraints [Constraint Application]
+            ApplyConstraints --> MaxTasks[Max Tasks:<br/>Based on team]
+            ApplyConstraints --> TechStack[Tech Stack<br/>Alignment]
+            ApplyConstraints --> Timeline[Timeline<br/>Feasibility]
+        end
+    end
+    
+    %% Safety & Creation Layer
+    AI_Processing --> SafetyChecks[Safety<br/>Checks]
+    
+    subgraph Safety [Safety Mechanisms]
+        SafetyChecks --> DepCheck{Has<br/>Deploy<br/>Tasks?}
+        DepCheck -->|Yes| AddDeps[Add Dependencies:<br/>impl→test→deploy]
+        DepCheck -->|No| SkipDeps[Skip<br/>Dependencies]
+        AddDeps --> ValidateSafe
+        SkipDeps --> ValidateSafe[Validate<br/>No Cycles]
+    end
+    
+    %% Task Creation Layer
+    Safety --> CreateTasks[Task<br/>Creation<br/>Loop]
+    
+    subgraph Creation [Kanban Creation]
+        CreateTasks --> FindList[Find Target<br/>List]
+        FindList --> CreateCard[Create Card<br/>via MCP]
+        CreateCard -->|Success| AddMeta[Add Metadata<br/>Comment]
+        CreateCard -->|Failed| LogError[Log Error]
+        AddMeta --> NextTask{More<br/>Tasks?}
+        LogError --> NextTask
+        NextTask -->|Yes| CreateTasks
+        NextTask -->|No| CheckSuccess
+    end
+    
+    %% Result Layer
+    Creation --> CheckSuccess{All Tasks<br/>Created?}
+    CheckSuccess -->|Yes| UpdateState[Update<br/>Marcus State]
+    CheckSuccess -->|Partial| PartialResult[Partial<br/>Success]
+    
+    UpdateState --> RefreshState[Refresh<br/>Project State]
+    RefreshState --> ReturnSuccess[✅ Return Success<br/>with Metadata]
+    PartialResult --> ReturnPartial[⚠️ Return Partial<br/>Success]
+    
+    %% Error Aggregation
+    ErrorDesc --> ErrorReturn[Return Error<br/>Response]
+    ErrorName --> ErrorReturn
+    ErrorInit --> ErrorReturn
+    ErrorFeature --> ErrorReturn
+    
+    %% Style Classes
+    classDef errorNode fill:#e74c3c,stroke:#c0392b,stroke-width:2px,color:#fff
+    classDef successNode fill:#27ae60,stroke:#229954,stroke-width:2px,color:#fff
+    classDef processNode fill:#3498db,stroke:#2980b9,stroke-width:2px,color:#fff
+    classDef decisionNode fill:#f39c12,stroke:#d68910,stroke-width:2px,color:#fff
+    classDef aiNode fill:#9b59b6,stroke:#7d3c98,stroke-width:2px,color:#fff
+    
+    class ErrorDesc,ErrorName,ErrorInit,ErrorFeature,ErrorReturn errorNode
+    class ReturnSuccess,ReturnPartial successNode
+    class MCP,InitKanban,CreateFlow,CreateTasks,UpdateState,RefreshState processNode
+    class Validate,InitCheck,InitResult,FeatureCheck,ContextDetect,DepCheck,CheckSuccess,NextTask decisionNode
+    class AIEngine,BoardAnalyzer,PRDParser,GenerateTasks,ApplyConstraints aiNode
