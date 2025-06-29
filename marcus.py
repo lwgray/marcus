@@ -7,6 +7,12 @@ It delegates to the modularized implementation in src/marcus_mcp/
 """
 
 import asyncio
+import sys
+from pathlib import Path
+
+# Add the project root to Python path
+sys.path.insert(0, str(Path(__file__).parent))
+
 from src.marcus_mcp import main
 
 if __name__ == "__main__":

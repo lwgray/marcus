@@ -262,6 +262,50 @@ class MCPKanbanClientSimplified:
             dependencies=[],
             labels=[]  # You'd extract from card labels
         )
+    
+    async def get_board_summary(self) -> Dict[str, Any]:
+        """Get board summary statistics"""
+        if not self.board_id:
+            raise RuntimeError("Not initialized. Call initialize() first.")
+        
+        try:
+            # Get board stats using the board manager
+            result = await self.mcp_call("mcp_kanban_board_manager", {
+                "action": "get_stats",
+                "boardId": self.board_id
+            })
+            
+            # Return the stats in expected format
+            if isinstance(result, dict) and "stats" in result:
+                stats = result["stats"]
+                return {
+                    "totalCards": stats.get("totalCards", 0),
+                    "doneCount": stats.get("doneCount", 0),
+                    "inProgressCount": stats.get("inProgressCount", 0),
+                    "backlogCount": stats.get("totalCards", 0) - stats.get("doneCount", 0) - stats.get("inProgressCount", 0)
+                }
+            else:
+                # Fallback: count cards by status
+                cards = await self._get_cards()
+                done_count = len([c for c in cards if "done" in str(c.get("list", {}).get("name", "")).lower()])
+                in_progress_count = len([c for c in cards if "progress" in str(c.get("list", {}).get("name", "")).lower()])
+                total_count = len(cards)
+                
+                return {
+                    "totalCards": total_count,
+                    "doneCount": done_count,
+                    "inProgressCount": in_progress_count,
+                    "backlogCount": total_count - done_count - in_progress_count
+                }
+                
+        except Exception as e:
+            # Return empty stats on error
+            return {
+                "totalCards": 0,
+                "doneCount": 0,
+                "inProgressCount": 0,
+                "backlogCount": 0
+            }
 
 
 # For backwards compatibility, you could alias the old class name
