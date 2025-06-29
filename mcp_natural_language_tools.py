@@ -278,26 +278,15 @@ class NaturalLanguageFeatureAdder:
     async def _parse_feature_to_tasks(self, feature_description: str) -> List[Task]:
         """Parse feature description into tasks using AI"""
         # Use AI to understand the feature if available
-        if hasattr(self.ai_engine, 'analyze_feature_request'):
-            feature_analysis = await self.ai_engine.analyze_feature_request(feature_description)
+        if hasattr(self.ai_engine, 'analyze_feature_request') and self.ai_engine is not None:
+            try:
+                feature_analysis = await self.ai_engine.analyze_feature_request(feature_description)
+            except Exception as e:
+                logger.warning(f"AI analysis failed, using fallback: {str(e)}")
+                feature_analysis = self._generate_fallback_tasks(feature_description)
         else:
-            # Fallback: Simple task generation based on feature description
-            feature_analysis = {
-                "required_tasks": [
-                    {
-                        "name": f"Implement {feature_description}",
-                        "description": f"Implementation task for: {feature_description}",
-                        "estimated_hours": 8,
-                        "labels": ["feature", "implementation"]
-                    },
-                    {
-                        "name": f"Test {feature_description}",
-                        "description": f"Testing task for: {feature_description}",
-                        "estimated_hours": 4,
-                        "labels": ["feature", "testing"]
-                    }
-                ]
-            }
+            # Fallback: Intelligent task generation based on feature description
+            feature_analysis = self._generate_fallback_tasks(feature_description)
         
         # Generate tasks based on analysis
         tasks = []
@@ -329,17 +318,18 @@ class NaturalLanguageFeatureAdder:
     ) -> Dict[str, Any]:
         """Detect where feature should integrate with existing project"""
         # Use AI to analyze integration points if available
-        if hasattr(self.ai_engine, 'analyze_integration_points'):
-            integration_analysis = await self.ai_engine.analyze_integration_points(
-                feature_tasks,
-                existing_tasks
-            )
+        if hasattr(self.ai_engine, 'analyze_integration_points') and self.ai_engine is not None:
+            try:
+                integration_analysis = await self.ai_engine.analyze_integration_points(
+                    feature_tasks,
+                    existing_tasks
+                )
+            except Exception as e:
+                logger.warning(f"AI integration analysis failed, using fallback: {str(e)}")
+                integration_analysis = self._analyze_integration_fallback(feature_tasks, existing_tasks)
         else:
-            # Fallback: Simple integration analysis
-            integration_analysis = {
-                "suggested_phase": "current",
-                "confidence": 0.7
-            }
+            # Fallback: Enhanced integration analysis
+            integration_analysis = self._analyze_integration_fallback(feature_tasks, existing_tasks)
         
         # Find related existing tasks
         integration_tasks = []
@@ -374,6 +364,130 @@ class NaturalLanguageFeatureAdder:
                 return True
                 
         return False
+    
+    def _analyze_integration_fallback(self, feature_tasks: List[Task], existing_tasks: List[Task]) -> Dict[str, Any]:
+        """Analyze integration points without AI"""
+        # Determine project phase based on existing tasks
+        completed_tasks = [t for t in existing_tasks if t.status == TaskStatus.DONE]
+        in_progress_tasks = [t for t in existing_tasks if t.status == TaskStatus.IN_PROGRESS]
+        todo_tasks = [t for t in existing_tasks if t.status == TaskStatus.TODO]
+        
+        # Analyze existing task labels to understand project structure
+        all_labels = []
+        for task in existing_tasks:
+            all_labels.extend(task.labels)
+        
+        # Determine phase
+        if len(completed_tasks) == 0:
+            phase = "initial"
+            confidence = 0.9
+        elif any("deploy" in t.name.lower() for t in completed_tasks):
+            phase = "post-deployment"
+            confidence = 0.8
+        elif any("test" in t.name.lower() for t in in_progress_tasks):
+            phase = "testing"
+            confidence = 0.85
+        elif any("implement" in t.name.lower() or "build" in t.name.lower() for t in in_progress_tasks):
+            phase = "development"
+            confidence = 0.85
+        else:
+            phase = "current"
+            confidence = 0.7
+        
+        return {
+            "suggested_phase": phase,
+            "confidence": confidence,
+            "project_maturity": len(completed_tasks) / len(existing_tasks) if existing_tasks else 0
+        }
+    
+    def _generate_fallback_tasks(self, feature_description: str) -> Dict[str, Any]:
+        """Generate intelligent fallback tasks based on feature description keywords"""
+        feature_lower = feature_description.lower()
+        tasks = []
+        
+        # Analyze feature type
+        is_api = any(word in feature_lower for word in ['api', 'endpoint', 'rest', 'graphql'])
+        is_ui = any(word in feature_lower for word in ['ui', 'interface', 'screen', 'page', 'component', 'frontend'])
+        is_auth = any(word in feature_lower for word in ['auth', 'login', 'user', 'permission', 'security'])
+        is_data = any(word in feature_lower for word in ['database', 'model', 'schema', 'data', 'storage'])
+        is_integration = any(word in feature_lower for word in ['integrate', 'connect', 'sync', 'webhook'])
+        
+        # Always start with design/planning task
+        tasks.append({
+            "name": f"Design {feature_description}",
+            "description": f"Create technical design and plan for implementing {feature_description}",
+            "estimated_hours": 4,
+            "labels": ["feature", "design", "planning"],
+            "critical": False
+        })
+        
+        # Add appropriate implementation tasks based on type
+        if is_data:
+            tasks.append({
+                "name": f"Create database schema for {feature_description}",
+                "description": f"Design and implement database models and migrations",
+                "estimated_hours": 6,
+                "labels": ["feature", "database", "backend"],
+                "critical": True
+            })
+        
+        if is_api or not is_ui:  # Default to backend if not explicitly UI
+            tasks.append({
+                "name": f"Implement backend for {feature_description}",
+                "description": f"Create backend services, APIs, and business logic",
+                "estimated_hours": 12,
+                "labels": ["feature", "backend", "api"],
+                "critical": True
+            })
+        
+        if is_ui:
+            tasks.append({
+                "name": f"Build UI components for {feature_description}",
+                "description": f"Create frontend components and user interface",
+                "estimated_hours": 10,
+                "labels": ["feature", "frontend", "ui"],
+                "critical": True
+            })
+        
+        if is_auth:
+            tasks.append({
+                "name": f"Implement security for {feature_description}",
+                "description": f"Add authentication, authorization, and security measures",
+                "estimated_hours": 8,
+                "labels": ["feature", "security", "auth"],
+                "critical": True
+            })
+        
+        if is_integration:
+            tasks.append({
+                "name": f"Build integration layer for {feature_description}",
+                "description": f"Implement integration points and data synchronization",
+                "estimated_hours": 8,
+                "labels": ["feature", "integration", "backend"],
+                "critical": True
+            })
+        
+        # Always add testing task
+        tasks.append({
+            "name": f"Test {feature_description}",
+            "description": f"Write unit tests, integration tests, and perform QA",
+            "estimated_hours": 6,
+            "labels": ["feature", "testing", "qa"],
+            "critical": False
+        })
+        
+        # Add documentation task
+        tasks.append({
+            "name": f"Document {feature_description}",
+            "description": f"Create user documentation and API documentation",
+            "estimated_hours": 3,
+            "labels": ["feature", "documentation"],
+            "critical": False
+        })
+        
+        return {
+            "required_tasks": tasks
+        }
     
     async def _apply_feature_safety_checks(self, tasks: List[Task]) -> List[Task]:
         """Apply safety checks to feature tasks"""
@@ -483,27 +597,66 @@ async def add_feature_natural_language(
     
     This is the main entry point that Claude will call.
     """
-    from marcus_mcp_server import state
-    
-    # Initialize kanban client if needed
-    if not state.kanban_client:
-        await state.initialize_kanban()
-    
-    # Initialize feature adder
-    adder = NaturalLanguageFeatureAdder(
-        kanban_client=state.kanban_client,
-        ai_engine=state.ai_engine,
-        project_tasks=state.project_tasks
-    )
-    
-    # Add feature
-    result = await adder.add_feature_from_description(
-        feature_description=feature_description,
-        integration_point=integration_point
-    )
-    
-    # Update Marcus state if successful
-    if result["success"]:
-        await state.refresh_project_state()
-    
-    return result
+    try:
+        # Validate required parameters
+        if not feature_description or not feature_description.strip():
+            return {
+                "success": False,
+                "error": "Feature description is required and cannot be empty"
+            }
+        
+        from marcus_mcp_server import state
+        
+        # Initialize kanban client if needed
+        if not state.kanban_client:
+            try:
+                await state.initialize_kanban()
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": f"Failed to initialize kanban client: {str(e)}"
+                }
+        
+        # Verify kanban client supports create_task
+        if not hasattr(state.kanban_client, 'create_task'):
+            return {
+                "success": False,
+                "error": "Kanban client does not support task creation. Please ensure KanbanClientWithCreate is being used."
+            }
+        
+        # Check if there are existing tasks (required for feature addition)
+        if not state.project_tasks or len(state.project_tasks) == 0:
+            return {
+                "success": False,
+                "error": "No existing project found. Please create a project first before adding features."
+            }
+        
+        # Initialize feature adder
+        adder = NaturalLanguageFeatureAdder(
+            kanban_client=state.kanban_client,
+            ai_engine=state.ai_engine,
+            project_tasks=state.project_tasks
+        )
+        
+        # Add feature
+        result = await adder.add_feature_from_description(
+            feature_description=feature_description,
+            integration_point=integration_point
+        )
+        
+        # Update Marcus state if successful
+        if result.get("success"):
+            try:
+                await state.refresh_project_state()
+            except Exception as e:
+                # Log but don't fail the operation
+                logger.warning(f"Failed to refresh project state: {str(e)}")
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Unexpected error in add_feature_natural_language: {str(e)}")
+        return {
+            "success": False,
+            "error": f"Unexpected error: {str(e)}"
+        }
