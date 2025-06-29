@@ -88,7 +88,6 @@ class MarcusServer:
         self.assignment_monitor = None
         
         # Log startup
-        conversation_logger.info(f"Marcus MCP Server starting with {self.provider} provider")
         self.log_event("server_startup", {
             "provider": self.provider,
             "timestamp": datetime.now().isoformat()

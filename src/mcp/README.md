@@ -33,7 +33,7 @@ The server can be run using either:
 
 ```bash
 # Using the new entry point
-python marcus_mcp_server_new.py
+python marcus.py
 
 # Or directly
 python -m src.mcp.server

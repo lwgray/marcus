@@ -206,7 +206,7 @@ nano .env
 
 ```bash
 # Start the MCP server
-python marcus_mcp_server.py
+python marcus.py
 ```
 
 ## Configuration

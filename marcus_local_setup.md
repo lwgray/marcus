@@ -56,12 +56,12 @@ PLANKA_PROJECT_NAME=your-project-name
 conda create -n marcus python=3.11 pip
 pip install -r requirements.txt
 
-python marcus_mcp_server.py &
+python marcus.py &
 ```
 ## Step 4: Add Marcus to Claude Code
 
 ```bash
-claude mcp add marcus python marcus_mcp_server.py
+claude mcp add marcus python marcus.py
 ```
 
 ## Step 5: Test the Connection
@@ -108,7 +108,7 @@ Use the marcus report_task_progress tool with:
 
 ### Stop Marcus
 ```bash
-pkill -f marcus_mcp_server.py
+pkill -f marcus.py
 ```
 
 ## Troubleshooting

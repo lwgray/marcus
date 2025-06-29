@@ -77,7 +77,7 @@ You should see the `marcus-mcp-stdio` container running.
 ## Step 6: Add Marcus to Claude Code
 
 ```bash
-claude mcp add marcus -- docker exec -i marcus-mcp-stdio python marcus_mcp_server.py
+claude mcp add marcus -- docker exec -i marcus-mcp-stdio python marcus.py
 ```
 
 ## Step 7: Test the Connection
@@ -169,7 +169,7 @@ docker-compose --profile mcp up -d marcus-mcp
 1. Ensure the container built successfully
 2. Check that `marcus_mcp_server.py` exists in the container:
    ```bash
-   docker exec marcus-mcp-stdio ls -la marcus_mcp_server.py
+   docker exec marcus-mcp-stdio ls -la marcus.py
    ```
 
 ### "Connection refused" or timeout errors
@@ -183,7 +183,7 @@ docker-compose --profile mcp up -d marcus-mcp
 2. Verify environment variables are set correctly
 3. Test Marcus locally first:
    ```bash
-   docker run -it --rm --env-file .env pm-agent python marcus_mcp_server.py
+   docker run -it --rm --env-file .env pm-agent python marcus.py
    ```
 
 ## Environment Variables Reference
@@ -214,7 +214,7 @@ marcus-mcp:
     - ./logs:/app/logs
     - ./data:/app/data
     - ./prompts:/app/prompts
-  command: python marcus_mcp_server.py
+  command: python marcus.py
   stdin_open: true    # Required for MCP
   tty: false         # MCP uses stdio, not TTY
   networks:

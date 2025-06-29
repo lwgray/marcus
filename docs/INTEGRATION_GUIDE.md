@@ -93,7 +93,7 @@ When agents request tasks, Marcus now:
 1. **Test Project Creation**:
 ```bash
 # Start Marcus
-python marcus_mcp_server.py
+python marcus.py
 
 # In another terminal
 python test_natural_language_integration.py
