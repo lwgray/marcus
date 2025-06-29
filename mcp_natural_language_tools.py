@@ -410,30 +410,68 @@ async def create_project_from_natural_language(
     
     This is the main entry point that Claude will call.
     """
-    from marcus_mcp_server import state
-    
-    # Initialize kanban client if needed
-    if not state.kanban_client:
-        await state.initialize_kanban()
-    
-    # Initialize project creator
-    creator = NaturalLanguageProjectCreator(
-        kanban_client=state.kanban_client,
-        ai_engine=state.ai_engine
-    )
-    
-    # Create project
-    result = await creator.create_project_from_description(
-        description=description,
-        project_name=project_name,
-        options=options
-    )
-    
-    # Update Marcus state if successful
-    if result["success"]:
-        await state.refresh_project_state()
-    
-    return result
+    try:
+        # Validate required parameters
+        if not description or not description.strip():
+            return {
+                "success": False,
+                "error": "Description is required and cannot be empty"
+            }
+        
+        if not project_name or not project_name.strip():
+            return {
+                "success": False,
+                "error": "Project name is required and cannot be empty"
+            }
+        
+        from marcus_mcp_server import state
+        
+        # Initialize kanban client if needed
+        if not state.kanban_client:
+            try:
+                await state.initialize_kanban()
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": f"Failed to initialize kanban client: {str(e)}"
+                }
+        
+        # Verify kanban client supports create_task
+        if not hasattr(state.kanban_client, 'create_task'):
+            return {
+                "success": False,
+                "error": "Kanban client does not support task creation. Please ensure KanbanClientWithCreate is being used."
+            }
+        
+        # Initialize project creator
+        creator = NaturalLanguageProjectCreator(
+            kanban_client=state.kanban_client,
+            ai_engine=state.ai_engine
+        )
+        
+        # Create project
+        result = await creator.create_project_from_description(
+            description=description,
+            project_name=project_name,
+            options=options
+        )
+        
+        # Update Marcus state if successful
+        if result.get("success"):
+            try:
+                await state.refresh_project_state()
+            except Exception as e:
+                # Log but don't fail the operation
+                logger.warning(f"Failed to refresh project state: {str(e)}")
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Unexpected error in create_project_from_natural_language: {str(e)}")
+        return {
+            "success": False,
+            "error": f"Unexpected error: {str(e)}"
+        }
 
 
 async def add_feature_natural_language(

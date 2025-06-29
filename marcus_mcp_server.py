@@ -966,8 +966,8 @@ async def get_project_status() -> dict:
             in_progress = len([t for t in state.project_tasks if t.status == TaskStatus.IN_PROGRESS])
             blocked = len([t for t in state.project_tasks if t.status == TaskStatus.BLOCKED])
             
-            # Worker metrics
-            active_workers = len([w for w in state.agent_status.values() if len(w.current_tasks) > 0])
+            # Worker metrics - create snapshot to avoid dictionary mutation during iteration
+            active_workers = len([w for w in list(state.agent_status.values()) if len(w.current_tasks) > 0])
             
             return {
                 "success": True,
@@ -1045,7 +1045,7 @@ async def list_registered_agents() -> dict:
     """List all registered agents"""
     try:
         agents = []
-        for agent in state.agent_status.values():
+        for agent in list(state.agent_status.values()):
             agents.append({
                 "id": agent.worker_id,
                 "name": agent.name,
@@ -1181,7 +1181,7 @@ async def refresh_project_state():
         
         # Log system state
         conversation_logger.log_system_state(
-            active_workers=len([w for w in state.agent_status.values() if len(w.current_tasks) > 0]),
+            active_workers=len([w for w in list(state.agent_status.values()) if len(w.current_tasks) > 0]),
             tasks_in_progress=len([t for t in tasks if t.status == TaskStatus.IN_PROGRESS]),
             tasks_completed=len([t for t in tasks if t.status == TaskStatus.DONE]),
             tasks_blocked=len([t for t in tasks if t.status == TaskStatus.BLOCKED]),

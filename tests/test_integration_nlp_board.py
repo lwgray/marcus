@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.integrations.kanban_factory import KanbanFactory
 from mcp_natural_language_tools import (
     NaturalLanguageProjectCreator,
-    FeatureAdder
+    NaturalLanguageFeatureAdder
 )
 
 class BoardIntegrationTest:
@@ -110,7 +110,7 @@ class BoardIntegrationTest:
         print(f"\n📝 Test 2: Add feature using natural language")
         
         # Create feature adder with real kanban client
-        adder = FeatureAdder(self.kanban_client)
+        adder = NaturalLanguageFeatureAdder(self.kanban_client)
         
         # Add a feature
         feature_description = """
