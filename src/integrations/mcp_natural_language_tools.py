@@ -103,15 +103,17 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             classified_tasks = self.classify_tasks(created_tasks)
             
             # Create project metadata (specific to project creation)
+            # Create a snapshot of the dictionary to avoid modification during iteration
+            task_breakdown = {}
+            for task_type, tasks in list(classified_tasks.items()):
+                if tasks:
+                    task_breakdown[task_type.value] = len(tasks)
+            
             result = {
                 "success": True,
                 "project_name": project_name,
                 "tasks_created": len(created_tasks),
-                "task_breakdown": {
-                    task_type.value: len(tasks)
-                    for task_type, tasks in classified_tasks.items()
-                    if tasks
-                },
+                "task_breakdown": task_breakdown,
                 "phases": self._extract_phases(created_tasks),
                 "estimated_days": self._estimate_duration(created_tasks),
                 "dependencies_mapped": self._count_dependencies(created_tasks),
@@ -170,7 +172,8 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
     
     def _assess_risk(self, classified_tasks: Dict[TaskType, List[Task]]) -> str:
         """Assess project risk level"""
-        total_tasks = sum(len(tasks) for tasks in classified_tasks.values())
+        # Create a list to avoid modification during iteration
+        total_tasks = sum(len(tasks) for tasks in list(classified_tasks.values()))
         
         if total_tasks > 50:
             return "high"
@@ -261,14 +264,16 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
             classified_tasks = self.classify_tasks(created_tasks)
             
             # Create feature-specific result
+            # Create a snapshot of the dictionary to avoid modification during iteration
+            task_breakdown = {}
+            for task_type, tasks in list(classified_tasks.items()):
+                if tasks:
+                    task_breakdown[task_type.value] = len(tasks)
+            
             result = {
                 "success": True,
                 "tasks_created": len(created_tasks),
-                "task_breakdown": {
-                    task_type.value: len(tasks)
-                    for task_type, tasks in classified_tasks.items()
-                    if tasks
-                },
+                "task_breakdown": task_breakdown,
                 "integration_points": self._integration_info.get("tasks", []),
                 "integration_detected": integration_point == "auto_detect",
                 "confidence": self._integration_info.get("confidence", 0.8),
