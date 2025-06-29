@@ -127,7 +127,7 @@ class TestWorkspaceManager:
             config = {
                 "project": {
                     "workspaces": {
-                        "main": manager.pm_agent_root,  # Forbidden!
+                        "main": manager.marcus_root,  # Forbidden!
                         "agents": {}
                     }
                 }
@@ -155,7 +155,7 @@ class TestWorkspaceManager:
             assert 'workspace_path' in data
             assert 'forbidden_paths' in data
             assert data['workspace_path'] == os.path.abspath(tmpdir)
-            assert manager.pm_agent_root in data['forbidden_paths']
+            assert manager.marcus_root in data['forbidden_paths']
     
     def test_add_forbidden_path(self):
         """Test adding custom forbidden paths"""

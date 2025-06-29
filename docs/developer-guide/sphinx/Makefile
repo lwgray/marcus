@@ -24,5 +24,5 @@ help:
 github:
 	@make clean
 	@make html
-	@cp -a build/html/. ../../
+	@cp -a build/html/. ../../../../
 	@echo "Documentation built and copied to root for GitHub Pages"

@@ -503,7 +503,8 @@ async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Tas
                     state.tasks_being_assigned.add(optimal_task.id)
                     return optimal_task
             except Exception as e:
-                conversation_logger.error(f"AI task assignment failed, falling back to basic: {e}")
+                # Log error using log_pm_thinking instead
+                conversation_logger.log_pm_thinking(f"AI task assignment failed, falling back to basic: {e}")
         
         # Fallback to basic assignment if AI fails
         return await find_optimal_task_basic(agent_id, available_tasks, state)

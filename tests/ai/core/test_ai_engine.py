@@ -6,6 +6,7 @@ with AI intelligence while maintaining safety guarantees.
 """
 
 import pytest
+import pytest_asyncio
 import os
 from unittest.mock import AsyncMock, Mock, patch
 from dataclasses import dataclass
@@ -31,7 +32,7 @@ class MockAnalysisContext:
 class TestMarcusAIEngine:
     """Test the core AI engine with hybrid intelligence"""
     
-    @pytest.fixture
+    @pytest_asyncio.fixture
     async def ai_engine(self):
         """Create AI engine with mocked dependencies"""
         # Set environment variable to disable real AI for testing

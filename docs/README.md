@@ -1,177 +1,122 @@
-# Marcus Documentation Hub
+# Marcus Documentation
 
-Welcome to the Marcus documentation! This guide will help you navigate our comprehensive documentation.
+Welcome to the Marcus documentation! All documentation is now organized into clear categories.
 
-## 📚 Documentation Structure
+## 📁 Documentation Structure
 
-### Getting Started
-Start here if you're new to Marcus:
+```
+docs/
+├── README.md                    # This file - Documentation hub
+├── user-guide/                  # For users of Marcus
+│   ├── README.md               # User guide navigation
+│   ├── getting-started.md       # Quick start guide
+│   ├── installation.md          # Detailed installation
+│   ├── how-it-works.md         # Conceptual overview
+│   ├── commands.md             # Command reference
+│   ├── add_feature_usage.md    # Using the add_feature tool
+│   ├── START_PM_AGENT.md       # Starting PM Agent
+│   ├── troubleshooting.md      # Common issues
+│   ├── concepts/               # Conceptual documentation
+│   ├── reference/              # Configuration & settings
+│   ├── how-to/                # Step-by-step guides
+│   └── community/              # Community examples
+│
+├── developer-guide/            # For developers & contributors
+│   ├── README.md              # Developer guide navigation
+│   ├── api.md                  # API overview
+│   ├── contributing.md         # How to contribute
+│   ├── INTEGRATION_GUIDE.md    # Integration guide
+│   ├── BOARD_QUALITY_*.md      # Board quality standards
+│   ├── NATURAL_LANGUAGE_*.md   # NLP features
+│   ├── technical/              # Technical architecture
+│   ├── templates/              # Documentation templates
+│   ├── mcp_tools/             # MCP tools documentation
+│   ├── contributing/          # Contribution guides
+│   └── sphinx/                # 📖 SPHINX DOCS HERE! Technical documentation
+│
+├── operations-guide/          # For deployment & operations
+│   ├── README.md             # Operations guide navigation
+│   ├── deployment.md          # Deployment options
+│   ├── monitoring.md          # Monitoring guide
+│   └── setup/                # Setup guides
+│
+└── archive/                   # Internal & historical docs
+    ├── analysis/             # Documentation analyses
+    ├── planning/            # Planning documents
+    └── internal/           # Internal notes
 
-1. **[Getting Started Guide](getting-started.md)** - Set up Marcus in 5 minutes
-2. **[How Marcus Works](how-it-works.md)** - Understand the core concepts
-3. **[Quick Start Tutorial](sphinx/source/quick_start.md)** - Your first project
+```
 
-### User Guides
-For day-to-day usage:
+## 🎯 Quick Navigation
 
-- **[Installation](installation.md)** - Detailed installation instructions
-- **[Configuration Guide](reference/configuration_guide.md)** - Configure Marcus for your needs
-- **[Commands Reference](commands.md)** - All commands and operations
-- **[Provider Setup](sphinx/source/user_guide/providers.md)** - GitHub, Linear, or Planka setup
-- **[Troubleshooting](how-to/troubleshoot-common-issues.md)** - Common issues and solutions
+### I want to...
 
-### Deployment
-Deploy Marcus in various environments:
+**Get Started**
+- [Getting Started Guide](user-guide/getting-started.md) - 5 minute quickstart
+- [Installation Guide](user-guide/installation.md) - Detailed setup
+- [How It Works](user-guide/how-it-works.md) - Understand Marcus
 
-- **[Deployment Overview](deployment.md)** - All deployment options
-- **[Docker Deployment](how-to/deploy-with-docker.md)** - Container deployment
-- **[Kubernetes Guide](how-to/deploy-on-kubernetes.md)** - K8s deployment
-- **[Python Deployment](how-to/deploy-with-python.md)** - Direct Python setup
+**Use Marcus**
+- [Commands Reference](user-guide/commands.md) - All commands
+- [Configuration Guide](user-guide/reference/configuration_guide.md) - Settings
+- [Troubleshooting](user-guide/troubleshooting.md) - Fix issues
 
-### Developer Documentation
-For contributors and integrators:
+**Develop with Marcus**
+- [API Overview](developer-guide/api.md) - API documentation
+- [Architecture](developer-guide/sphinx/source/developer/architecture.md) - System design
+- [MCP Tools](developer-guide/mcp_tools/mcp_tools_quick_reference.md) - Tool reference
 
-- **[API Overview](api.md)** - API introduction and examples
-- **[Architecture](sphinx/source/developer/architecture.md)** - System design
-- **[MCP Tools Reference](mcp_tools/marcus_mcp_tools_reference.md)** - Agent integration tools
-- **[Contributing Guide](../CONTRIBUTING.md)** - How to contribute
+**Deploy Marcus**
+- [Deployment Guide](operations-guide/deployment.md) - Deployment options
+- [Setup Guides](operations-guide/setup/) - Provider-specific setup
 
-### Reference Documentation
-Detailed technical references:
+## 📚 Documentation by Role
 
-- **[API Reference](reference/index.md)** - Complete API documentation
-- **[Data Models](reference/data_models_api.md)** - Data structures
-- **[Environment Variables](reference/environment_variables.md)** - All env vars
-- **[System Architecture](reference/system_architecture.md)** - Technical architecture
+### 👤 **For Users**
+Start with the [user-guide/](user-guide/) directory. This contains everything you need to use Marcus effectively.
 
-### Tutorials & Examples
-Learn by doing:
+### 👨‍💻 **For Developers**
+Check out the [developer-guide/](developer-guide/) directory for API documentation, architecture details, and contribution guidelines.
 
-- **[TODO App Tutorial](sphinx/source/tutorials/beginner_todo_app_tutorial.md)** - Build a complete app
-- **[Interactive Examples](sphinx/source/tutorials/interactive_examples.md)** - Try Marcus online
-- **[Community Showcases](community/showcases/README.md)** - Real-world examples
+### 🔧 **For Operators**
+The [operations-guide/](operations-guide/) directory has deployment and monitoring information.
 
-### Advanced Topics
-Deep dives into specific areas:
+## 📖 About Sphinx Documentation
 
-- **[AI Analysis Engine](reference/ai_analysis_engine_api.md)** - Intelligence features
-- **[Task Assignment](concepts/task-assignment-intelligence.md)** - How tasks are assigned
-- **[Worker Agents](concepts/worker-agents.md)** - Agent architecture
-- **[MCP Protocol](concepts/mcp-protocol.md)** - Protocol details
+The Sphinx documentation is located at: **`developer-guide/sphinx/`**
 
-## 🗺️ Reading Paths
+Sphinx contains comprehensive technical documentation including:
+- Detailed API documentation
+- System architecture diagrams
+- Developer tutorials
+- Technical reference materials
 
-### For First-Time Users
-1. [Getting Started](getting-started.md)
-2. [How It Works](how-it-works.md)
-3. [TODO App Tutorial](sphinx/source/tutorials/beginner_todo_app_tutorial.md)
-4. [Commands Reference](commands.md)
-
-### For Developers
-1. [Architecture Overview](sphinx/source/developer/architecture.md)
-2. [API Overview](api.md)
-3. [MCP Tools Guide](mcp_tools/mcp_tools_quick_reference.md)
-4. [Contributing Guide](../CONTRIBUTING.md)
-
-### For DevOps/Deployment
-1. [Deployment Overview](deployment.md)
-2. [Docker Setup](how-to/deploy-with-docker.md)
-3. [Configuration Guide](reference/configuration_guide.md)
-4. [Security Best Practices](how-to/security-best-practices.md)
-
-### For AI/ML Engineers
-1. [AI Analysis Engine](reference/ai_analysis_engine_api.md)
-2. [Task Assignment Intelligence](concepts/task-assignment-intelligence.md)
-3. [Worker Agents](concepts/worker-agents.md)
-4. [NLP Features](NATURAL_LANGUAGE_AND_AI_FEATURES.md)
-
-## 📂 Documentation Categories
-
-### Concepts
-Understanding Marcus's core ideas:
-- [Kanban Provider Abstraction](concepts/kanban-provider-abstraction.md)
-- [MCP Protocol](concepts/mcp-protocol.md)
-- [Task Assignment Intelligence](concepts/task-assignment-intelligence.md)
-- [Worker Agents](concepts/worker-agents.md)
-
-### How-To Guides
-Step-by-step instructions:
-- [Deploy with Docker](how-to/deploy-with-docker.md)
-- [Deploy on Kubernetes](how-to/deploy-on-kubernetes.md)
-- [Security Best Practices](how-to/security-best-practices.md)
-- [Troubleshoot Issues](how-to/troubleshoot-common-issues.md)
-
-### Reference
-Technical specifications:
-- [Configuration Guide](reference/configuration_guide.md)
-- [Environment Variables](reference/environment_variables.md)
-- [API Documentation](reference/index.md)
-- [Data Models](reference/data_models_api.md)
-
-### Planning & Design
-Internal documentation:
-- [Documentation Improvement Plan](planning/DOCUMENTATION_IMPROVEMENT_ACTION_PLAN.md)
-- [MCP Implementation Plan](planning/mcp_implementation_plan.md)
-- [Quality Analysis](planning/DOCUMENTATION_QUALITY_ANALYSIS.md)
-
-### Community
-Learn from others:
-- [Showcases](community/showcases/README.md)
-- [Open Source Migration](community/showcases/open-source-migration.md)
-- [Startup MVP Builder](community/showcases/startup-mvp-builder.md)
+To build and view Sphinx docs:
+```bash
+cd docs/developer-guide/sphinx
+make html
+open build/html/index.html  # Or browse to this file
+```
 
 ## 🔍 Finding Information
 
-### Search Tips
-1. Use Ctrl+F (Cmd+F on Mac) to search within documents
-2. Check the [Documentation Index](DOCUMENTATION_INDEX.md) for all files
-3. Look for related links at the bottom of each document
-4. Use the category structure above to narrow your search
-
-### Can't Find Something?
-1. Check the [FAQ](sphinx/source/reference/faq.md)
-2. Search [GitHub Issues](https://github.com/your-org/marcus/issues)
-3. Ask in our [Discord Community](https://discord.gg/marcus)
-4. Create an issue for missing documentation
+1. **Use the directory structure** - Documentation is organized by role and purpose
+2. **Check the README files** - Each major directory has its own README with navigation help
+3. **Search within directories** - Related content is grouped together
+4. **Follow cross-references** - Documents link to related topics
+5. **For technical details** - Check the Sphinx documentation in `developer-guide/sphinx/`
 
 ## 📝 Documentation Standards
 
-All Marcus documentation follows these principles:
+- User documentation uses simple language and examples
+- Developer documentation includes technical details and code samples
+- All documentation includes clear headings and navigation
+- Examples are provided wherever possible
 
-1. **Clear and Concise** - Get to the point quickly
-2. **Example-Driven** - Show, don't just tell
-3. **Up-to-Date** - Regularly reviewed and updated
-4. **Accessible** - Written for various skill levels
-5. **Searchable** - Well-organized and indexed
+## 🚧 Documentation Status
 
-## 🤝 Contributing to Docs
-
-Help us improve the documentation:
-
-1. Found a typo? Submit a quick PR
-2. Missing information? Open an issue
-3. Have a tutorial idea? Share it with us
-4. Want to translate? We'd love your help
-
-See our [Contributing Guide](../CONTRIBUTING.md) for details.
-
-## 📊 Documentation Status
-
-- ✅ Core documentation complete
-- ✅ API references up-to-date
-- ✅ Deployment guides tested
-- 🚧 Video tutorials in progress
-- 🚧 Interactive examples being expanded
-- 📋 Translations planned
-
-## 🔗 Quick Links
-
-- [Marcus GitHub](https://github.com/your-org/marcus)
-- [Discord Community](https://discord.gg/marcus)
-- [Video Tutorials](https://youtube.com/marcus-ai)
-- [Blog](https://blog.marcus.ai)
-- [Status Page](https://status.marcus.ai)
+This documentation was reorganized on 2025-06-29 to improve clarity and discoverability. If you find any broken links or missing content, please report it.
 
 ---
 
-**Need help?** Start with [Getting Started](getting-started.md) or jump into our [Discord](https://discord.gg/marcus) for live support!
+For questions or improvements, see [Contributing](developer-guide/contributing.md).

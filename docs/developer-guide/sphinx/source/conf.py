@@ -5,8 +5,15 @@
 
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../../../src'))
-sys.path.insert(0, os.path.abspath('../../..'))
+
+# Get the project root directory
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(current_dir, '../../../..'))
+src_dir = os.path.join(project_root, 'src')
+
+# Add to Python path
+sys.path.insert(0, src_dir)
+sys.path.insert(0, project_root)
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information

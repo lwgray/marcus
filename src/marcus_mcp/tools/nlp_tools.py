@@ -37,9 +37,6 @@ async def create_project(
     Returns:
         Dict with created project details and task list
     """
-    # Initialize kanban client if needed
-    await state.initialize_kanban()
-    
     # Create project using natural language processing
     return await create_project_from_natural_language(
         description=description,
@@ -71,9 +68,6 @@ async def add_feature(
     Returns:
         Dict with created feature tasks and integration details
     """
-    # Initialize kanban client if needed
-    await state.initialize_kanban()
-    
     # Add feature using natural language processing
     return await add_feature_natural_language(
         feature_description=feature_description,

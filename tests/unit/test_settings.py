@@ -45,8 +45,8 @@ class TestSettings:
     
     def test_environment_overrides(self):
         """Test environment variable overrides"""
-        os.environ["PM_AGENT_MONITORING_INTERVAL"] = "1200"
-        os.environ["PM_AGENT_SLACK_ENABLED"] = "true"
+        os.environ["MARCUS_MONITORING_INTERVAL"] = "1200"
+        os.environ["MARCUS_SLACK_ENABLED"] = "true"
         
         try:
             settings = Settings(config_path="nonexistent.json")
@@ -54,8 +54,8 @@ class TestSettings:
             assert settings.get("monitoring_interval") == 1200
             assert settings.get("slack_enabled") is True
         finally:
-            del os.environ["PM_AGENT_MONITORING_INTERVAL"]
-            del os.environ["PM_AGENT_SLACK_ENABLED"]
+            del os.environ["MARCUS_MONITORING_INTERVAL"]
+            del os.environ["MARCUS_SLACK_ENABLED"]
     
     def test_get_nested_values(self):
         """Test getting nested configuration values"""

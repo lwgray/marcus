@@ -32,22 +32,22 @@ That's it! Marcus is now running.
 ## 📚 Documentation
 
 ### For Beginners
-- [**Getting Started**](docs/getting-started.md) - Your first time? Start here!
-- [**How It Works**](docs/how-it-works.md) - Simple explanation of Marcus
+- [**Getting Started**](docs/user-guide/getting-started.md) - Your first time? Start here!
+- [**How It Works**](docs/user-guide/how-it-works.md) - Simple explanation of Marcus
 
 ### Setting It Up  
-- [**Installation Guide**](docs/installation.md) - Detailed setup instructions
-- [**Choosing Your Task Board**](docs/sphinx/source/user_guide/providers.md) - GitHub, Linear, or Planka?
-- [**Configuration**](docs/reference/configuration_guide.md) - All the settings explained
+- [**Installation Guide**](docs/user-guide/installation.md) - Detailed setup instructions
+- [**Choosing Your Task Board**](docs/developer-guide/sphinx/source/user_guide/providers.md) - GitHub, Linear, or Planka?
+- [**Configuration**](docs/user-guide/reference/configuration_guide.md) - All the settings explained
 
 ### Using Marcus
-- [**Quick Commands**](docs/commands.md) - Common commands reference
-- [**Deployment Options**](docs/deployment.md) - Local vs Remote hosting
-- [**Troubleshooting**](docs/how-to/troubleshoot-common-issues.md) - When things go wrong
+- [**Quick Commands**](docs/user-guide/commands.md) - Common commands reference
+- [**Deployment Options**](docs/operations-guide/deployment.md) - Local vs Remote hosting
+- [**Troubleshooting**](docs/user-guide/how-to/troubleshoot-common-issues.md) - When things go wrong
 
 ### Advanced Topics
-- [**Architecture**](docs/sphinx/source/developer/architecture.md) - How Marcus is built
-- [**API Reference**](docs/api.md) - For developers
+- [**Architecture**](docs/developer-guide/sphinx/source/developer/architecture.md) - How Marcus is built
+- [**API Reference**](docs/developer-guide/api.md) - For developers
 - [**Contributing**](CONTRIBUTING.md) - Help make Marcus better!
 
 ## 🎮 Different Ways to Run
@@ -77,8 +77,8 @@ Marcus works with different task boards (like different brands of notebooks):
 
 ## 🆘 Need Help?
 
-1. Check [Troubleshooting](docs/how-to/troubleshoot-common-issues.md)
-2. Look at [Common Questions](docs/sphinx/source/reference/faq.md)
+1. Check [Troubleshooting](docs/user-guide/how-to/troubleshoot-common-issues.md)
+2. Look at [Common Questions](docs/developer-guide/sphinx/source/reference/faq.md)
 3. Open an issue on GitHub
 
 ## 📄 License

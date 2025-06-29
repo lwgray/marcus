@@ -5,6 +5,7 @@ Tests the client logic without real MCP connections
 """
 
 import pytest
+import pytest_asyncio
 import os
 import sys
 from datetime import datetime

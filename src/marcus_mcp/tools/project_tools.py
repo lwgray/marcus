@@ -105,15 +105,9 @@ async def refresh_project_state(state: Any) -> None:
         todo = len([t for t in tasks if t.status == TaskStatus.TODO])
         blocked = len([t for t in tasks if t.status == TaskStatus.BLOCKED])
         
-        # Create project state
+        # Get project state from monitor
         if state.monitor:
-            state.project_state = await state.monitor.analyze_project_state(
-                tasks=tasks,
-                agents=list(state.agent_status.values()),
-                completed_count=completed,
-                in_progress_count=in_progress,
-                todo_count=todo
-            )
+            state.project_state = await state.monitor.get_project_state()
         
         # Log state update
         state.log_event("refresh_project_state_complete", {
@@ -125,6 +119,7 @@ async def refresh_project_state(state: Any) -> None:
         })
         
     except Exception as e:
-        conversation_logger.error(f"Failed to refresh project state: {e}")
+        # Log error using log_pm_thinking instead
+        conversation_logger.log_pm_thinking(f"Failed to refresh project state: {e}")
         state.log_event("refresh_project_state_error", {"error": str(e)})
         raise
