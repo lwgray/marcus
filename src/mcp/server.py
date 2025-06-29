@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from dotenv import load_dotenv
 from mcp.server import Server
+from mcp.server.stdio import stdio_server
 import mcp.types as types
 
 from src.core.models import (
@@ -138,9 +139,17 @@ class MarcusServer:
     
     async def run(self):
         """Run the MCP server"""
-        async with self.server.run_stdio():
-            # Server will run until terminated
-            await asyncio.Event().wait()
+        print(f"\nMarcus MCP Server Running")
+        print(f"Kanban Provider: {self.provider.upper()}")
+        print(f"Logs: logs/conversations/")
+        print("="*50)
+        
+        async with stdio_server() as (read_stream, write_stream):
+            await self.server.run(
+                read_stream,
+                write_stream,
+                self.server.create_initialization_options()
+            )
 
 
 async def main():
