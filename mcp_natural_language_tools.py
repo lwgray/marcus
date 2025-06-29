@@ -56,7 +56,7 @@ class NaturalLanguageProjectCreator:
             logger.info(f"Creating project '{project_name}' from natural language")
             
             # Step 1: Detect context (Phase 1)
-            board_state = self.board_analyzer.analyze_board("default", [])
+            board_state = await self.board_analyzer.analyze_board("default", [])
             context = await self.context_detector.detect_optimal_mode(
                 user_id="system",
                 board_id="default",
@@ -77,17 +77,26 @@ class NaturalLanguageProjectCreator:
             
             # Step 4: Create tasks on board
             created_tasks = []
-            for task in safe_tasks:
-                # Create task on kanban board
-                kanban_task = await self.kanban_client.create_task({
-                    "name": task.name,
-                    "description": task.description,
-                    "priority": task.priority.value,
-                    "labels": task.labels,
-                    "estimated_hours": task.estimated_hours,
-                    "dependencies": task.dependencies
-                })
-                created_tasks.append(kanban_task)
+            # Check if kanban_client has create_task method
+            if hasattr(self.kanban_client, 'create_task'):
+                for task in safe_tasks:
+                    # Create task on kanban board
+                    kanban_task = await self.kanban_client.create_task({
+                        "name": task.name,
+                        "description": task.description,
+                        "priority": task.priority.value,
+                        "labels": task.labels,
+                        "estimated_hours": task.estimated_hours,
+                        "dependencies": task.dependencies
+                    })
+                    created_tasks.append(kanban_task)
+            else:
+                # Fallback: Log warning and return without creating tasks
+                logger.warning("Kanban client does not support create_task method")
+                return {
+                    "success": False,
+                    "error": "Kanban provider does not support task creation"
+                }
             
             # Step 5: Create project metadata
             result = {
@@ -180,6 +189,7 @@ class NaturalLanguageFeatureAdder:
         self.ai_engine = ai_engine
         self.project_tasks = project_tasks
         self.adaptive_mode = BasicAdaptiveMode()
+        from src.modes.enricher.basic_enricher import BasicEnricher
         self.enricher = BasicEnricher()
         
     async def add_feature_from_description(
@@ -200,6 +210,10 @@ class NaturalLanguageFeatureAdder:
             
             # Step 1: Parse feature into tasks
             feature_tasks = await self._parse_feature_to_tasks(feature_description)
+            
+            # Step 1.5: Enrich the parsed tasks
+            for i, task in enumerate(feature_tasks):
+                feature_tasks[i] = self.enricher.enrich_task(task)
             
             # Step 2: Detect integration points
             if integration_point == "auto_detect":
@@ -222,16 +236,25 @@ class NaturalLanguageFeatureAdder:
             
             # Step 5: Create tasks on board
             created_tasks = []
-            for task in safe_tasks:
-                kanban_task = await self.kanban_client.create_task({
-                    "name": task.name,
-                    "description": task.description,
-                    "priority": task.priority.value,
-                    "labels": task.labels,
-                    "estimated_hours": task.estimated_hours,
-                    "dependencies": task.dependencies
-                })
-                created_tasks.append(kanban_task)
+            # Check if kanban_client has create_task method
+            if hasattr(self.kanban_client, 'create_task'):
+                for task in safe_tasks:
+                    kanban_task = await self.kanban_client.create_task({
+                        "name": task.name,
+                        "description": task.description,
+                        "priority": task.priority.value,
+                        "labels": task.labels,
+                        "estimated_hours": task.estimated_hours,
+                        "dependencies": task.dependencies
+                    })
+                    created_tasks.append(kanban_task)
+            else:
+                # Fallback: Log warning and return without creating tasks
+                logger.warning("Kanban client does not support create_task method")
+                return {
+                    "success": False,
+                    "error": "Kanban provider does not support task creation"
+                }
             
             result = {
                 "success": True,
@@ -254,8 +277,27 @@ class NaturalLanguageFeatureAdder:
     
     async def _parse_feature_to_tasks(self, feature_description: str) -> List[Task]:
         """Parse feature description into tasks using AI"""
-        # Use AI to understand the feature
-        feature_analysis = await self.ai_engine.analyze_feature_request(feature_description)
+        # Use AI to understand the feature if available
+        if hasattr(self.ai_engine, 'analyze_feature_request'):
+            feature_analysis = await self.ai_engine.analyze_feature_request(feature_description)
+        else:
+            # Fallback: Simple task generation based on feature description
+            feature_analysis = {
+                "required_tasks": [
+                    {
+                        "name": f"Implement {feature_description}",
+                        "description": f"Implementation task for: {feature_description}",
+                        "estimated_hours": 8,
+                        "labels": ["feature", "implementation"]
+                    },
+                    {
+                        "name": f"Test {feature_description}",
+                        "description": f"Testing task for: {feature_description}",
+                        "estimated_hours": 4,
+                        "labels": ["feature", "testing"]
+                    }
+                ]
+            }
         
         # Generate tasks based on analysis
         tasks = []
@@ -286,11 +328,18 @@ class NaturalLanguageFeatureAdder:
         existing_tasks: List[Task]
     ) -> Dict[str, Any]:
         """Detect where feature should integrate with existing project"""
-        # Use AI to analyze integration points
-        integration_analysis = await self.ai_engine.analyze_integration_points(
-            feature_tasks,
-            existing_tasks
-        )
+        # Use AI to analyze integration points if available
+        if hasattr(self.ai_engine, 'analyze_integration_points'):
+            integration_analysis = await self.ai_engine.analyze_integration_points(
+                feature_tasks,
+                existing_tasks
+            )
+        else:
+            # Fallback: Simple integration analysis
+            integration_analysis = {
+                "suggested_phase": "current",
+                "confidence": 0.7
+            }
         
         # Find related existing tasks
         integration_tasks = []
@@ -363,6 +412,10 @@ async def create_project_from_natural_language(
     """
     from marcus_mcp_server import state
     
+    # Initialize kanban client if needed
+    if not state.kanban_client:
+        await state.initialize_kanban()
+    
     # Initialize project creator
     creator = NaturalLanguageProjectCreator(
         kanban_client=state.kanban_client,
@@ -393,6 +446,10 @@ async def add_feature_natural_language(
     This is the main entry point that Claude will call.
     """
     from marcus_mcp_server import state
+    
+    # Initialize kanban client if needed
+    if not state.kanban_client:
+        await state.initialize_kanban()
     
     # Initialize feature adder
     adder = NaturalLanguageFeatureAdder(

@@ -8,7 +8,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 from src.integrations.kanban_interface import KanbanInterface, KanbanProvider
-from src.integrations.mcp_kanban_client_simple import SimpleMCPKanbanClient
+from src.integrations.kanban_client_with_create import KanbanClientWithCreate
 from src.core.models import Task, TaskStatus, Priority
 
 
@@ -24,7 +24,7 @@ class PlankaKanbanSimple(KanbanInterface):
         """
         super().__init__(config)
         self.provider = KanbanProvider.PLANKA
-        self.client = SimpleMCPKanbanClient()
+        self.client = KanbanClientWithCreate()
         self.connected = False
         print(f"[PlankaKanbanSimple] Initialized with board_id={self.client.board_id}, project_id={self.client.project_id}")
         
@@ -76,8 +76,15 @@ class PlankaKanbanSimple(KanbanInterface):
         
     async def create_task(self, task_data: Dict[str, Any]) -> Task:
         """Create new task in Planka"""
-        # Not implemented in SimpleMCPKanbanClient
-        raise NotImplementedError("Create task not available in SimpleMCPKanbanClient")
+        if not self.connected:
+            await self.connect()
+        
+        try:
+            # Use the extended client's create_task method
+            return await self.client.create_task(task_data)
+        except Exception as e:
+            print(f"Error creating task: {e}")
+            raise
         
     async def update_task(self, task_id: str, updates: Dict[str, Any]) -> Task:
         """Update task status or properties"""
