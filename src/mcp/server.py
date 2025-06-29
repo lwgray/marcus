@@ -118,7 +118,11 @@ class MarcusServer:
     async def initialize_kanban(self):
         """Initialize kanban client if not already done"""
         if not self.kanban_client:
-            self.kanban_client = await KanbanFactory.create(self.provider)
+            self.kanban_client = KanbanFactory.create(self.provider)
+            
+            # Connect to the kanban board
+            if hasattr(self.kanban_client, 'connect'):
+                await self.kanban_client.connect()
             
             # Initialize assignment monitor
             if self.assignment_monitor is None:
@@ -136,6 +140,44 @@ class MarcusServer:
             **data
         }
         self.realtime_log.write(json.dumps(event) + '\n')
+    
+    async def refresh_project_state(self):
+        """Refresh project state from kanban board"""
+        if not self.kanban_client:
+            await self.initialize_kanban()
+        
+        try:
+            # Get all tasks from the board
+            self.project_tasks = await self.kanban_client.get_all_tasks()
+            
+            # Update project state
+            if self.project_tasks:
+                total_tasks = len(self.project_tasks)
+                completed_tasks = len([t for t in self.project_tasks if t.status == TaskStatus.DONE])
+                in_progress_tasks = len([t for t in self.project_tasks if t.status == TaskStatus.IN_PROGRESS])
+                
+                self.project_state = ProjectState(
+                    board_id=self.kanban_client.board_id,
+                    project_name="Current Project",  # Would need to get from board
+                    total_tasks=total_tasks,
+                    completed_tasks=completed_tasks,
+                    in_progress_tasks=in_progress_tasks,
+                    blocked_tasks=0,  # Would need to track this separately
+                    progress_percent=(completed_tasks / total_tasks * 100) if total_tasks > 0 else 0.0,
+                    overdue_tasks=[],  # Would need to check due dates
+                    team_velocity=0.0,  # Would need to calculate
+                    risk_level=RiskLevel.LOW,  # Simplified
+                    last_updated=datetime.now()
+                )
+            
+            self.log_event("project_state_refreshed", {
+                "task_count": len(self.project_tasks),
+                "project_state": self.project_state.__dict__ if self.project_state else None
+            })
+            
+        except Exception as e:
+            self.log_event("project_state_refresh_error", {"error": str(e)})
+            raise
     
     async def run(self):
         """Run the MCP server"""

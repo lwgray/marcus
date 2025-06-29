@@ -44,6 +44,20 @@ logs/
 Thumbs.db
 
 # Project specific
-data/
+data/assignments/*.json
+!data/assignments/.gitkeep
 temp/
 *.db
+coverage*.json
+marcus-fresh-env/
+main.py/
+todo-app/
+
+# Runtime
+pids/*.pid
+!pids/.gitkeep
+
+# Logs (keep directory structure)
+logs/*.log
+logs/*.jsonl
+!logs/.gitkeep

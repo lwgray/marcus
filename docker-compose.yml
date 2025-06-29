@@ -25,14 +25,13 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       
       # Original config
-      - MARCUS_CONFIG=/app/config/marcus_config.json
+      - MARCUS_CONFIG=/app/config/pm_agent_config.json
       - MARCUS_MONITORING_INTERVAL=900
     volumes:
       - ./config:/app/config
       - ./logs:/app/logs
       - ./data:/app/data
       - ./prompts:/app/prompts
-      - ./config_marcus.json:/app/config_marcus.json:ro
     command: python marcus_mcp_server.py
     restart: unless-stopped
     stdin_open: true
@@ -65,18 +64,17 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       
       # Original config
-      - MARCUS_CONFIG=/app/config/marcus_config.json
+      - MARCUS_CONFIG=/app/config/pm_agent_config.json
       - MARCUS_MONITORING_INTERVAL=900
     volumes:
       # Mount source code for live updates
       - ./src:/app/src
       - ./marcus_mcp_server.py:/app/marcus_mcp_server.py
-      - ./main.py:/app/main.py
+      - ./marcus.py:/app/marcus.py
       - ./config:/app/config
       - ./logs:/app/logs
       - ./data:/app/data
       - ./prompts:/app/prompts
-      - ./config_marcus.json:/app/config_marcus.json:ro
     command: python marcus_mcp_server.py
     restart: unless-stopped
     stdin_open: true
@@ -113,7 +111,8 @@ services:
       - PYTHONPATH=/app
     volumes:
       - ./logs:/app/logs
-    command: ["python", "mock_claude_worker.py", "--name", "backend-developer", "--role", "Backend Developer", "--skills", "python,api,database,backend"]
+      - ./examples:/app/examples
+    command: ["python", "examples/mock_agents/mock_claude_worker.py", "--name", "backend-developer", "--role", "Backend Developer", "--skills", "python,api,database,backend"]
     networks:
       - marcus-network
     depends_on:
@@ -128,7 +127,8 @@ services:
       - PYTHONPATH=/app
     volumes:
       - ./logs:/app/logs
-    command: ["python", "mock_claude_worker.py", "--name", "frontend-developer", "--role", "Frontend Developer", "--skills", "javascript,react,vue,css,frontend"]
+      - ./examples:/app/examples
+    command: ["python", "examples/mock_agents/mock_claude_worker.py", "--name", "frontend-developer", "--role", "Frontend Developer", "--skills", "javascript,react,vue,css,frontend"]
     networks:
       - marcus-network
     depends_on:
@@ -143,7 +143,8 @@ services:
       - PYTHONPATH=/app
     volumes:
       - ./logs:/app/logs
-    command: ["python", "mock_claude_worker.py", "--name", "qa-engineer", "--role", "QA Engineer", "--skills", "testing,automation,qa,selenium"]
+      - ./examples:/app/examples
+    command: ["python", "examples/mock_agents/mock_claude_worker.py", "--name", "qa-engineer", "--role", "QA Engineer", "--skills", "testing,automation,qa,selenium"]
     networks:
       - marcus-network
     depends_on:
@@ -213,14 +214,13 @@ services:
       - PLANKA_PROJECT_NAME=${PLANKA_PROJECT_NAME}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - MARCUS_CONFIG=/app/config/marcus_config.json
+      - MARCUS_CONFIG=/app/config/pm_agent_config.json
       - MARCUS_MONITORING_INTERVAL=900
     volumes:
       - ./config:/app/config
       - ./logs:/app/logs
       - ./data:/app/data
       - ./prompts:/app/prompts
-      - ./config_marcus.json:/app/config_marcus.json:ro
     command: python marcus_mcp_server.py
     stdin_open: true
     tty: false  # Important: MCP uses stdio, not TTY

@@ -497,6 +497,7 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
 async def create_project_from_natural_language(
     description: str,
     project_name: str,
+    state: Any = None,
     options: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
@@ -518,7 +519,9 @@ async def create_project_from_natural_language(
                 "error": "Project name is required and cannot be empty"
             }
         
-        from marcus_mcp_server import state
+        # Check if state was provided
+        if state is None:
+            raise ValueError("State parameter is required")
         
         # Initialize kanban client if needed
         if not state.kanban_client:
@@ -570,7 +573,8 @@ async def create_project_from_natural_language(
 
 async def add_feature_natural_language(
     feature_description: str,
-    integration_point: str = "auto_detect"
+    integration_point: str = "auto_detect",
+    state: Any = None
 ) -> Dict[str, Any]:
     """
     MCP tool to add a feature to existing project using natural language
@@ -585,7 +589,9 @@ async def add_feature_natural_language(
                 "error": "Feature description is required and cannot be empty"
             }
         
-        from marcus_mcp_server import state
+        # Check if state was provided
+        if state is None:
+            raise ValueError("State parameter is required")
         
         # Initialize kanban client if needed
         if not state.kanban_client:

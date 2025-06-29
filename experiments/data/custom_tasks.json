@@ -1,0 +1,46 @@
+[
+  {
+    "id": "custom_001",
+    "type": "feature",
+    "difficulty": "easy",
+    "description": "Add input validation to user registration endpoint",
+    "repository": "sample_app",
+    "files": [
+      "src/routes/auth.js",
+      "src/validators/user.js"
+    ],
+    "tests": [
+      "test/auth.test.js"
+    ],
+    "expected_changes": 3
+  },
+  {
+    "id": "custom_002",
+    "type": "bug_fix",
+    "difficulty": "medium",
+    "description": "Fix race condition in concurrent database updates",
+    "repository": "sample_app",
+    "files": [
+      "src/db/transactions.js"
+    ],
+    "tests": [
+      "test/db/concurrent.test.js"
+    ],
+    "expected_changes": 2
+  },
+  {
+    "id": "custom_003",
+    "type": "refactor",
+    "difficulty": "hard",
+    "description": "Refactor authentication middleware to use JWT tokens",
+    "repository": "sample_app",
+    "files": [
+      "src/middleware/auth.js",
+      "src/utils/jwt.js"
+    ],
+    "tests": [
+      "test/middleware/auth.test.js"
+    ],
+    "expected_changes": 5
+  }
+]

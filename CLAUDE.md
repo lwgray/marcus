@@ -117,6 +117,10 @@ You are an autonomous agent working through PM Agent's MCP interface.
 
   FILE_MANAGEMENT:
   - Don't ever version files...just change the original file.  No "_fixed", "_v2", "_patched", etc.
+  - When modifying files, always overwrite the original file. Never create new versions with suffixes like _fixed, _v2, _new, _updated, _patched, or similar naming patterns.
 
   COMMUNICATION_GUIDELINES:
   - Always tell me what you are going to do and why
+
+  CODE_DOCUMENTATION:
+  - Always document code with numpy-style docstrings
