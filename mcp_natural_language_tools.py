@@ -277,15 +277,11 @@ class NaturalLanguageFeatureAdder:
     
     async def _parse_feature_to_tasks(self, feature_description: str) -> List[Task]:
         """Parse feature description into tasks using AI"""
-        # Use AI to understand the feature if available
-        if hasattr(self.ai_engine, 'analyze_feature_request') and self.ai_engine is not None:
-            try:
-                feature_analysis = await self.ai_engine.analyze_feature_request(feature_description)
-            except Exception as e:
-                logger.warning(f"AI analysis failed, using fallback: {str(e)}")
-                feature_analysis = self._generate_fallback_tasks(feature_description)
-        else:
-            # Fallback: Intelligent task generation based on feature description
+        try:
+            # Use AI engine to analyze the feature request
+            feature_analysis = await self.ai_engine.analyze_feature_request(feature_description)
+        except Exception as e:
+            logger.warning(f"AI analysis failed, using fallback: {str(e)}")
             feature_analysis = self._generate_fallback_tasks(feature_description)
         
         # Generate tasks based on analysis
@@ -304,7 +300,8 @@ class NaturalLanguageFeatureAdder:
                 created_at=datetime.now(),
                 updated_at=datetime.now(),
                 estimated_hours=task_info.get("estimated_hours", 8),
-                dependencies=[]
+                dependencies=[],
+                due_date=None
             )
             tasks.append(task)
             task_id_counter += 1
@@ -317,31 +314,33 @@ class NaturalLanguageFeatureAdder:
         existing_tasks: List[Task]
     ) -> Dict[str, Any]:
         """Detect where feature should integrate with existing project"""
-        # Use AI to analyze integration points if available
-        if hasattr(self.ai_engine, 'analyze_integration_points') and self.ai_engine is not None:
-            try:
-                integration_analysis = await self.ai_engine.analyze_integration_points(
-                    feature_tasks,
-                    existing_tasks
-                )
-            except Exception as e:
-                logger.warning(f"AI integration analysis failed, using fallback: {str(e)}")
-                integration_analysis = self._analyze_integration_fallback(feature_tasks, existing_tasks)
-        else:
-            # Fallback: Enhanced integration analysis
+        try:
+            # Use AI engine to analyze integration points
+            integration_analysis = await self.ai_engine.analyze_integration_points(
+                feature_tasks,
+                existing_tasks
+            )
+        except Exception as e:
+            logger.warning(f"AI integration analysis failed, using fallback: {str(e)}")
             integration_analysis = self._analyze_integration_fallback(feature_tasks, existing_tasks)
         
-        # Find related existing tasks
-        integration_tasks = []
-        for existing_task in existing_tasks:
-            # Check if feature needs this functionality
-            if self._is_integration_dependency(feature_tasks, existing_task):
-                integration_tasks.append(existing_task.id)
+        # Use AI-detected dependencies or fall back to label matching
+        if "dependent_task_ids" in integration_analysis:
+            integration_tasks = integration_analysis["dependent_task_ids"]
+        else:
+            # Fallback: Find related existing tasks
+            integration_tasks = []
+            for existing_task in existing_tasks:
+                # Check if feature needs this functionality
+                if self._is_integration_dependency(feature_tasks, existing_task):
+                    integration_tasks.append(existing_task.id)
         
         return {
             "tasks": integration_tasks,
             "phase": integration_analysis.get("suggested_phase", "current"),
-            "confidence": integration_analysis.get("confidence", 0.8)
+            "confidence": integration_analysis.get("confidence", 0.8),
+            "complexity": integration_analysis.get("integration_complexity", "medium"),
+            "risks": integration_analysis.get("integration_risks", [])
         }
     
     def _is_integration_dependency(self, feature_tasks: List[Task], existing_task: Task) -> bool:

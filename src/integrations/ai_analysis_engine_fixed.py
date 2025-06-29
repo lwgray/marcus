@@ -1042,6 +1042,268 @@ Return JSON in this format:
             ]
         }
     
+    async def analyze_feature_request(self, feature_description: str) -> Dict[str, Any]:
+        """
+        Analyze a feature request and generate appropriate tasks.
+        
+        Parameters
+        ----------
+        feature_description : str
+            Natural language description of the feature to implement
+            
+        Returns
+        -------
+        Dict[str, Any]
+            Dictionary containing required tasks with details
+            
+        Examples
+        --------
+        >>> result = await engine.analyze_feature_request("Add user profile page")
+        >>> tasks = result["required_tasks"]
+        """
+        # Fallback for when Claude is unavailable
+        if not self.client:
+            return self._analyze_feature_request_fallback(feature_description)
+            
+        try:
+            prompt = f"""Analyze this feature request and generate a comprehensive task breakdown.
+
+Feature Request: {feature_description}
+
+Generate a detailed task list for implementing this feature. Consider:
+1. Design/planning tasks
+2. Backend implementation needs
+3. Frontend/UI requirements
+4. Database/data model changes
+5. API endpoints required
+6. Security considerations
+7. Testing requirements
+8. Documentation needs
+
+Return JSON with this exact format:
+{{
+    "required_tasks": [
+        {{
+            "name": "specific task name",
+            "description": "detailed description of what needs to be done",
+            "estimated_hours": integer,
+            "labels": ["appropriate", "labels"],
+            "critical": true/false,
+            "task_type": "design|backend|frontend|database|testing|documentation|security"
+        }}
+    ],
+    "feature_complexity": "simple|moderate|complex",
+    "technical_requirements": ["list", "of", "technical", "needs"],
+    "dependencies_on_existing": ["authentication", "api", "database"] // existing systems this feature depends on
+}}
+
+Be specific and actionable. Each task should be self-contained and assignable to a developer."""
+
+            response = await self._call_claude(prompt)
+            
+            # Parse JSON response
+            try:
+                result = json.loads(response)
+                return result
+            except json.JSONDecodeError:
+                # If JSON parsing fails, try to extract structured data
+                print(f"Failed to parse AI response as JSON, using fallback", file=sys.stderr)
+                return self._analyze_feature_request_fallback(feature_description)
+                
+        except Exception as e:
+            print(f"AI feature analysis failed: {e}, using fallback", file=sys.stderr)
+            return self._analyze_feature_request_fallback(feature_description)
+    
+    def _analyze_feature_request_fallback(self, feature_description: str) -> Dict[str, Any]:
+        """Fallback feature analysis when AI is unavailable."""
+        feature_lower = feature_description.lower()
+        tasks = []
+        
+        # Always start with design
+        tasks.append({
+            "name": f"Design {feature_description}",
+            "description": f"Create technical design and architecture for {feature_description}",
+            "estimated_hours": 4,
+            "labels": ["design", "planning"],
+            "critical": False,
+            "task_type": "design"
+        })
+        
+        # Analyze feature type and add appropriate tasks
+        if any(word in feature_lower for word in ['api', 'endpoint', 'service']):
+            tasks.append({
+                "name": f"Implement API for {feature_description}",
+                "description": f"Build backend API endpoints and business logic",
+                "estimated_hours": 12,
+                "labels": ["backend", "api"],
+                "critical": True,
+                "task_type": "backend"
+            })
+            
+        if any(word in feature_lower for word in ['ui', 'page', 'screen', 'interface']):
+            tasks.append({
+                "name": f"Build UI for {feature_description}",
+                "description": f"Create user interface components and interactions",
+                "estimated_hours": 10,
+                "labels": ["frontend", "ui"],
+                "critical": True,
+                "task_type": "frontend"
+            })
+            
+        # Always add testing and documentation
+        tasks.extend([
+            {
+                "name": f"Test {feature_description}",
+                "description": "Write unit tests and perform integration testing",
+                "estimated_hours": 6,
+                "labels": ["testing", "qa"],
+                "critical": False,
+                "task_type": "testing"
+            },
+            {
+                "name": f"Document {feature_description}",
+                "description": "Create user and technical documentation",
+                "estimated_hours": 3,
+                "labels": ["documentation"],
+                "critical": False,
+                "task_type": "documentation"
+            }
+        ])
+        
+        return {
+            "required_tasks": tasks,
+            "feature_complexity": "moderate",
+            "technical_requirements": [],
+            "dependencies_on_existing": []
+        }
+    
+    async def analyze_integration_points(
+        self, 
+        feature_tasks: List[Task], 
+        existing_tasks: List[Task]
+    ) -> Dict[str, Any]:
+        """
+        Analyze how new feature tasks should integrate with existing project tasks.
+        
+        Parameters
+        ----------
+        feature_tasks : List[Task]
+            Tasks for the new feature
+        existing_tasks : List[Task]
+            Current project tasks
+            
+        Returns
+        -------
+        Dict[str, Any]
+            Integration analysis including dependencies and phase
+            
+        Examples
+        --------
+        >>> integration = await engine.analyze_integration_points(new_tasks, project_tasks)
+        >>> phase = integration["suggested_phase"]
+        """
+        # Fallback for when Claude is unavailable
+        if not self.client:
+            return self._analyze_integration_fallback(feature_tasks, existing_tasks)
+            
+        try:
+            # Prepare task summaries
+            feature_summary = [
+                {"name": t.name, "labels": t.labels, "type": getattr(t, 'task_type', 'unknown')}
+                for t in feature_tasks
+            ]
+            
+            existing_summary = [
+                {
+                    "id": t.id,
+                    "name": t.name, 
+                    "labels": t.labels,
+                    "status": t.status.value,
+                    "description": t.description[:100] + "..." if len(t.description) > 100 else t.description
+                }
+                for t in existing_tasks
+            ]
+            
+            prompt = f"""Analyze how these new feature tasks should integrate with the existing project.
+
+New Feature Tasks:
+{json.dumps(feature_summary, indent=2)}
+
+Existing Project Tasks:
+{json.dumps(existing_summary, indent=2)}
+
+Determine:
+1. Which existing tasks the new feature depends on (by task ID)
+2. The appropriate project phase for these tasks
+3. Integration complexity and risks
+4. Recommended task ordering
+
+Return JSON with this format:
+{{
+    "dependent_task_ids": ["list", "of", "existing", "task", "ids"],
+    "suggested_phase": "initial|development|testing|deployment|maintenance",
+    "integration_complexity": "low|medium|high",
+    "confidence": 0.0-1.0,
+    "integration_risks": ["list", "of", "potential", "issues"],
+    "recommendations": [
+        {{
+            "type": "dependency|ordering|resource",
+            "description": "specific recommendation"
+        }}
+    ],
+    "rationale": "explanation of integration approach"
+}}"""
+
+            response = await self._call_claude(prompt)
+            
+            # Parse JSON response
+            try:
+                result = json.loads(response)
+                return result
+            except json.JSONDecodeError:
+                print(f"Failed to parse AI response as JSON, using fallback", file=sys.stderr)
+                return self._analyze_integration_fallback(feature_tasks, existing_tasks)
+                
+        except Exception as e:
+            print(f"AI integration analysis failed: {e}, using fallback", file=sys.stderr)
+            return self._analyze_integration_fallback(feature_tasks, existing_tasks)
+    
+    def _analyze_integration_fallback(self, feature_tasks: List[Task], existing_tasks: List[Task]) -> Dict[str, Any]:
+        """Fallback integration analysis when AI is unavailable."""
+        # Analyze existing task states
+        completed = [t for t in existing_tasks if t.status.value == "done"]
+        in_progress = [t for t in existing_tasks if t.status.value == "in_progress"]
+        
+        # Find potential dependencies based on labels
+        dependent_ids = []
+        for existing in existing_tasks:
+            for feature in feature_tasks:
+                # Check for label overlap
+                if existing.labels and feature.labels:
+                    if set(existing.labels) & set(feature.labels):
+                        dependent_ids.append(existing.id)
+                        break
+        
+        # Determine phase
+        if len(completed) == 0:
+            phase = "initial"
+        elif len(completed) / len(existing_tasks) > 0.8:
+            phase = "maintenance"
+        elif any("test" in t.name.lower() for t in in_progress):
+            phase = "testing"
+        else:
+            phase = "development"
+            
+        return {
+            "dependent_task_ids": list(set(dependent_ids)),
+            "suggested_phase": phase,
+            "integration_complexity": "medium",
+            "confidence": 0.7,
+            "integration_risks": [],
+            "recommendations": [],
+            "rationale": "Based on task label matching and project progress"
+        }
+    
     async def _call_claude(self, prompt: str) -> str:
         """
         Call Claude API with error handling.
