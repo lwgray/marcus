@@ -37,16 +37,16 @@ That's it! Marcus is now running.
 
 ### Setting It Up  
 - [**Installation Guide**](docs/installation.md) - Detailed setup instructions
-- [**Choosing Your Task Board**](docs/providers.md) - GitHub, Linear, or Planka?
-- [**Configuration**](docs/configuration.md) - All the settings explained
+- [**Choosing Your Task Board**](docs/sphinx/source/user_guide/providers.md) - GitHub, Linear, or Planka?
+- [**Configuration**](docs/reference/configuration_guide.md) - All the settings explained
 
 ### Using Marcus
 - [**Quick Commands**](docs/commands.md) - Common commands reference
 - [**Deployment Options**](docs/deployment.md) - Local vs Remote hosting
-- [**Troubleshooting**](docs/troubleshooting.md) - When things go wrong
+- [**Troubleshooting**](docs/how-to/troubleshoot-common-issues.md) - When things go wrong
 
 ### Advanced Topics
-- [**Architecture**](docs/architecture.md) - How Marcus is built
+- [**Architecture**](docs/sphinx/source/developer/architecture.md) - How Marcus is built
 - [**API Reference**](docs/api.md) - For developers
 - [**Contributing**](CONTRIBUTING.md) - Help make Marcus better!
 
@@ -77,8 +77,8 @@ Marcus works with different task boards (like different brands of notebooks):
 
 ## 🆘 Need Help?
 
-1. Check [Troubleshooting](docs/troubleshooting.md)
-2. Look at [Common Questions](docs/faq.md)
+1. Check [Troubleshooting](docs/how-to/troubleshoot-common-issues.md)
+2. Look at [Common Questions](docs/sphinx/source/reference/faq.md)
 3. Open an issue on GitHub
 
 ## 📄 License
