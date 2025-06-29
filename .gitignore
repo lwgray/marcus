@@ -60,4 +60,4 @@ pids/*.pid
 # Logs (keep directory structure)
 logs/*.log
 logs/*.jsonl
-!logs/.gitkeep
+!logs/.gitkeepknowledge_graph.html
