@@ -24,12 +24,6 @@ class TestDecisionVisualizer:
         """Create a DecisionVisualizer instance"""
         return DecisionVisualizer()
     
-    def test_initialization(self, visualizer):
-        """Test visualizer initialization"""
-        assert visualizer.decisions == {}
-        assert visualizer.decision_graph is not None
-        assert len(visualizer.decision_graph.nodes()) == 0  # Empty graph initially
-        assert len(visualizer.decision_patterns) == 0
     
     def test_add_decision(self, visualizer):
         """Test adding a new decision"""

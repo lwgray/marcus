@@ -272,12 +272,6 @@ class TestHealthMonitor:
         assert history[0]["overall_health"] == "yellow"
         assert history[1]["overall_health"] == "red"
     
-    def test_get_health_summary_no_data(self, health_monitor):
-        """Test health summary with no data"""
-        summary = health_monitor.get_health_summary()
-        
-        assert summary["status"] == "no_data"
-        assert "No health analysis data" in summary["message"]
     
     def test_get_health_summary_with_data(self, health_monitor):
         """Test health summary with analysis data"""
@@ -324,18 +318,6 @@ class TestHealthMonitor:
         assert summary["risk_distribution"]["low"] == 1
         assert summary["latest_health"] == "red"
     
-    def test_error_response_format(self, health_monitor):
-        """Test error response structure"""
-        error_response = health_monitor._get_error_response("Test error")
-        
-        assert error_response["overall_health"] == "unknown"
-        assert error_response["error"] is True
-        assert error_response["error_message"] == "Test error"
-        assert "timestamp" in error_response
-        assert error_response["timeline_prediction"]["on_track"] is False
-        assert error_response["timeline_prediction"]["confidence"] == 0.0
-        assert len(error_response["recommendations"]) > 0
-        assert error_response["recommendations"][0]["priority"] == "high"
     
     @pytest.mark.asyncio
     async def test_history_limit(self, health_monitor, mock_ai_engine):

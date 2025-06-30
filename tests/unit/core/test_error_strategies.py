@@ -65,40 +65,26 @@ class TestRetryHandler:
         self.handler = RetryHandler(self.config)
     
     @pytest.mark.asyncio
-    async def test_successful_operation_no_retry(self):
-        """Test successful operation that doesn't need retry"""
-        mock_func = AsyncMock(return_value="success")
+    @pytest.mark.parametrize("side_effect,expected_result,expected_calls,should_raise", [
+        # Test successful operation that doesn't need retry
+        (["success"], "success", 1, None),
+        # Test retry behavior with transient error
+        ([NetworkTimeoutError("test_service"), NetworkTimeoutError("test_service"), "success"], "success", 3, None),
+        # Test no retry on non-retryable error
+        ([AuthorizationError()], None, 1, AuthorizationError),
+    ])
+    async def test_retry_behavior(self, side_effect, expected_result, expected_calls, should_raise):
+        """Test retry behavior with various scenarios"""
+        mock_func = AsyncMock(side_effect=side_effect)
         
-        result = await self.handler.execute(mock_func)
+        if should_raise:
+            with pytest.raises(should_raise):
+                await self.handler.execute(mock_func)
+        else:
+            result = await self.handler.execute(mock_func)
+            assert result == expected_result
         
-        assert result == "success"
-        assert mock_func.call_count == 1
-    
-    @pytest.mark.asyncio
-    async def test_retry_on_transient_error(self):
-        """Test retry behavior with transient error"""
-        # Fail twice, then succeed
-        mock_func = AsyncMock(side_effect=[
-            NetworkTimeoutError("test_service"),
-            NetworkTimeoutError("test_service"),
-            "success"
-        ])
-        
-        result = await self.handler.execute(mock_func)
-        
-        assert result == "success"
-        assert mock_func.call_count == 3
-    
-    @pytest.mark.asyncio
-    async def test_no_retry_on_non_retryable_error(self):
-        """Test no retry on non-retryable error"""
-        
-        mock_func = AsyncMock(side_effect=AuthorizationError())
-        
-        with pytest.raises(AuthorizationError):
-            await self.handler.execute(mock_func)
-        
-        assert mock_func.call_count == 1
+        assert mock_func.call_count == expected_calls
     
     @pytest.mark.asyncio
     async def test_max_attempts_exceeded(self):

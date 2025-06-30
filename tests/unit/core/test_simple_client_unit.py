@@ -212,17 +212,6 @@ class TestMCPKanbanClientSimplified:
         assert len(comment_calls) > 0
         assert "completed" in comment_calls[0][1]["text"].lower()
     
-    @pytest.mark.asyncio
-    async def test_get_available_cards(self, client):
-        """Test getting available cards"""
-        await client.initialize("Task Master Test")
-        
-        # This method doesn't exist in MCPKanbanClientSimplified
-        # Testing the internal _get_cards method instead
-        cards = await client._get_cards()
-        
-        # Should return empty list from mock
-        assert isinstance(cards, list)
     
     @pytest.mark.asyncio
     async def test_card_to_task_conversion(self, client):

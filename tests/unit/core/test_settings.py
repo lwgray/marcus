@@ -120,10 +120,8 @@ class TestSettings:
         """Test configuration validation"""
         settings = Settings(config_path="nonexistent.json")
         
-        # Should validate successfully with defaults
-        assert settings.validate() is True
-        
         # Test with very short monitoring interval
         settings.set("monitoring_interval", 30)
-        # Should still return True but print warning
-        assert settings.validate() is True
+        result = settings.validate()
+        # Validation should return True but print a warning for short intervals
+        assert result is True

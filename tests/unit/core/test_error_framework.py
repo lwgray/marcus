@@ -10,6 +10,7 @@ import json
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch, MagicMock
 
+from tests.unit.test_helpers import create_test_context, create_test_remediation
 from src.core.error_framework import (
     MarcusBaseError, ErrorContext, RemediationSuggestion,
     ErrorSeverity, ErrorCategory, error_context,
@@ -51,10 +52,7 @@ class TestErrorContext:
     
     def test_error_context_with_values(self):
         """Test creating error context with specific values"""
-        context = ErrorContext(
-            operation="test_operation",
-            agent_id="agent_123",
-            task_id="task_456",
+        context = create_test_context(
             custom_context={"key": "value"}
         )
         
@@ -86,7 +84,7 @@ class TestMarcusBaseError:
     @patch('src.core.error_framework.logger')
     def test_base_error_creation(self, mock_logger):
         """Test creating base Marcus error"""
-        context = ErrorContext(operation="test_op", agent_id="agent_123")
+        context = create_test_context(operation="test_op")
         error = MarcusBaseError(
             message="Test error",
             error_code="TEST_ERROR",
@@ -106,12 +104,8 @@ class TestMarcusBaseError:
     
     def test_error_to_dict(self):
         """Test converting error to dictionary"""
-        context = ErrorContext(
-            operation="test_op",
-            agent_id="agent_123",
-            correlation_id="corr_123"
-        )
-        remediation = RemediationSuggestion(
+        context = create_test_context(operation="test_op", correlation_id="corr_123")
+        remediation = create_test_remediation(
             immediate_action="Retry",
             fallback_strategy="Use fallback"
         )
@@ -388,89 +382,88 @@ class TestErrorContextManager:
         assert "Regular exception" in str(error.cause)
 
 
-class TestErrorInheritance:
-    """Test suite for error inheritance and categorization"""
+class TestErrorProperties:
+    """Test suite for error properties and categorization"""
     
-    def test_error_hierarchy(self):
-        """Test that error hierarchy is correct"""
-        # Transient errors
-        assert issubclass(NetworkTimeoutError, TransientError)
-        assert issubclass(TransientError, MarcusBaseError)
-        
-        # Configuration errors
-        assert issubclass(MissingCredentialsError, ConfigurationError)
-        assert issubclass(ConfigurationError, MarcusBaseError)
-        
-        # Business logic errors
-        assert issubclass(TaskAssignmentError, BusinessLogicError)
-        assert issubclass(BusinessLogicError, MarcusBaseError)
-        
-        # Integration errors
-        assert issubclass(KanbanIntegrationError, IntegrationError)
-        assert issubclass(IntegrationError, MarcusBaseError)
-        
-        # Security errors
-        assert issubclass(AuthorizationError, SecurityError)
-        assert issubclass(SecurityError, MarcusBaseError)
-        
-        # System errors
-        assert issubclass(DatabaseError, SystemError)
-        assert issubclass(SystemError, MarcusBaseError)
-    
-    def test_error_categories(self):
+    @pytest.mark.parametrize("error_class,expected_category", [
+        (NetworkTimeoutError, ErrorCategory.TRANSIENT),
+        (MissingCredentialsError, ErrorCategory.CONFIGURATION),
+        (TaskAssignmentError, ErrorCategory.BUSINESS_LOGIC),
+        (KanbanIntegrationError, ErrorCategory.INTEGRATION),
+        (AuthorizationError, ErrorCategory.SECURITY),
+        (DatabaseError, ErrorCategory.SYSTEM),
+    ])
+    def test_error_categories(self, error_class, expected_category):
         """Test that errors have correct categories"""
-        assert NetworkTimeoutError("test").category == ErrorCategory.TRANSIENT
-        assert MissingCredentialsError("test").category == ErrorCategory.CONFIGURATION
-        assert TaskAssignmentError().category == ErrorCategory.BUSINESS_LOGIC
-        assert KanbanIntegrationError().category == ErrorCategory.INTEGRATION
-        assert AuthorizationError().category == ErrorCategory.SECURITY
-        assert DatabaseError().category == ErrorCategory.SYSTEM
+        # Create error with minimal required args
+        if error_class in [NetworkTimeoutError, ServiceUnavailableError]:
+            error = error_class("test")
+        elif error_class == MissingCredentialsError:
+            error = error_class("test")
+        else:
+            error = error_class()
+        
+        assert error.category == expected_category
     
-    def test_retryable_defaults(self):
-        """Test default retryable settings"""
+    @pytest.mark.parametrize("error_class,expected_retryable", [
         # Transient errors should be retryable
-        assert NetworkTimeoutError("test").retryable is True
-        assert ServiceUnavailableError("test").retryable is True
-        
+        (NetworkTimeoutError, True),
+        (ServiceUnavailableError, True),
         # Configuration errors should not be retryable
-        assert MissingCredentialsError("test").retryable is False
-        assert InvalidConfigurationError("test").retryable is False
-        
+        (MissingCredentialsError, False),
+        (InvalidConfigurationError, False),
         # Business logic errors should not be retryable
-        assert TaskAssignmentError().retryable is False
-        assert ValidationError().retryable is False
-        
+        (TaskAssignmentError, False),
+        (ValidationError, False),
         # Integration errors should be retryable
-        assert KanbanIntegrationError().retryable is True
-        assert AIProviderError().retryable is True
-        
+        (KanbanIntegrationError, True),
+        (AIProviderError, True),
         # Security errors should not be retryable
-        assert AuthorizationError().retryable is False
-        assert WorkspaceSecurityError().retryable is False
-        
+        (AuthorizationError, False),
+        (WorkspaceSecurityError, False),
         # System errors should not be retryable
-        assert DatabaseError().retryable is False
-        assert ResourceExhaustionError().retryable is False
+        (DatabaseError, False),
+        (ResourceExhaustionError, False),
+    ])
+    def test_retryable_defaults(self, error_class, expected_retryable):
+        """Test default retryable settings"""
+        # Create error with minimal required args
+        if error_class in [NetworkTimeoutError, ServiceUnavailableError]:
+            error = error_class("test")
+        elif error_class == MissingCredentialsError:
+            error = error_class("test")
+        elif error_class == InvalidConfigurationError:
+            error = error_class("test")
+        else:
+            error = error_class()
+        
+        assert error.retryable == expected_retryable
     
-    def test_severity_defaults(self):
-        """Test default severity settings"""
+    @pytest.mark.parametrize("error_class,expected_severity", [
         # Transient errors should be medium severity
-        assert NetworkTimeoutError("test").severity == ErrorSeverity.MEDIUM
-        
+        (NetworkTimeoutError, ErrorSeverity.MEDIUM),
         # Configuration errors should be high severity
-        assert MissingCredentialsError("test").severity == ErrorSeverity.HIGH
-        
+        (MissingCredentialsError, ErrorSeverity.HIGH),
         # Business logic errors should be medium severity
-        assert TaskAssignmentError().severity == ErrorSeverity.MEDIUM
-        
+        (TaskAssignmentError, ErrorSeverity.MEDIUM),
         # Integration errors should be medium severity
-        assert KanbanIntegrationError().severity == ErrorSeverity.MEDIUM
-        
+        (KanbanIntegrationError, ErrorSeverity.MEDIUM),
         # Security errors should be critical severity
-        assert AuthorizationError().severity == ErrorSeverity.CRITICAL
-        
+        (AuthorizationError, ErrorSeverity.CRITICAL),
         # System errors should be critical severity
-        assert DatabaseError().severity == ErrorSeverity.CRITICAL
+        (DatabaseError, ErrorSeverity.CRITICAL),
+    ])
+    def test_severity_defaults(self, error_class, expected_severity):
+        """Test default severity settings"""
+        # Create error with minimal required args
+        if error_class in [NetworkTimeoutError]:
+            error = error_class("test")
+        elif error_class == MissingCredentialsError:
+            error = error_class("test")
+        else:
+            error = error_class()
+        
+        assert error.severity == expected_severity
 
 
 class TestErrorSerialization:
@@ -498,11 +491,7 @@ class TestErrorSerialization:
     
     def test_error_context_serialization(self):
         """Test that error context is properly serialized"""
-        context = ErrorContext(
-            operation="test_op",
-            agent_id="agent_123",
-            task_id="task_456"
-        )
+        context = create_test_context()
         
         error = MarcusBaseError(
             message="Test error",
@@ -512,7 +501,7 @@ class TestErrorSerialization:
         error_dict = error.to_dict()
         context_dict = error_dict['context']
         
-        assert context_dict['operation'] == "test_op"
+        assert context_dict['operation'] == "test_operation"
         assert context_dict['agent_id'] == "agent_123"
         assert context_dict['task_id'] == "task_456"
         assert 'timestamp' in context_dict

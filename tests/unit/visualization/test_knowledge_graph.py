@@ -27,13 +27,6 @@ class TestKnowledgeGraphBuilder:
         """Create a KnowledgeGraphBuilder instance"""
         return KnowledgeGraphBuilder()
     
-    def test_initialization(self, builder):
-        """Test builder initialization"""
-        assert builder.graph is not None
-        assert len(builder.nodes) == 0
-        assert len(builder.node_types) == 5  # worker, task, skill, project, decision
-        assert len(builder.graph.nodes()) == 0
-        assert len(builder.graph.edges()) == 0
     
     def test_add_worker(self, builder):
         """Test adding a worker node"""

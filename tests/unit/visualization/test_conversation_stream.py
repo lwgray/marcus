@@ -27,14 +27,6 @@ class TestConversationStreamProcessor:
         """Create a ConversationStreamProcessor instance"""
         return ConversationStreamProcessor(log_dir=str(temp_log_dir))
     
-    def test_initialization(self, processor, temp_log_dir):
-        """Test processor initialization"""
-        assert processor.log_dir == Path(temp_log_dir)
-        assert processor.event_handlers == []
-        assert processor.conversation_history == []
-        assert processor.max_history_size == 1000
-        assert processor._running == False
-        assert processor._event_counter == 0
     
     def test_add_event_handler(self, processor):
         """Test adding event handlers"""

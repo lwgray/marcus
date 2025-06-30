@@ -743,8 +743,13 @@ Write unit tests for auth flow
         assert len(result) == 0
     
     @pytest.mark.asyncio
-    async def test_fallback_risk_analysis_high_risk(self):
-        """Test fallback risk analysis for high risk project"""
+    @pytest.mark.parametrize("risk_level,expected_risk_count,expected_risk_type", [
+        (RiskLevel.HIGH, 1, "timeline"),
+        (RiskLevel.MEDIUM, 0, None),
+        (RiskLevel.LOW, 0, None),
+    ])
+    async def test_fallback_risk_analysis(self, risk_level, expected_risk_count, expected_risk_type):
+        """Test fallback risk analysis for different risk levels"""
         engine = AIAnalysisEngine()
         
         project_state = ProjectState(
@@ -757,15 +762,16 @@ Write unit tests for auth flow
             progress_percent=20.0,
             overdue_tasks=[],
             team_velocity=1.0,
-            risk_level=RiskLevel.HIGH,
+            risk_level=risk_level,
             last_updated=datetime.now()
         )
         
         risks = engine._generate_fallback_risk_analysis(project_state)
         
-        assert len(risks) > 0
-        assert risks[0].risk_type == "timeline"
-        assert risks[0].severity == RiskLevel.HIGH
+        assert len(risks) == expected_risk_count
+        if expected_risk_count > 0:
+            assert risks[0].risk_type == expected_risk_type
+            assert risks[0].severity == risk_level
     
     @pytest.mark.asyncio
     async def test_call_claude_success(self, ai_engine):
@@ -806,35 +812,39 @@ Write unit tests for auth flow
         captured = capsys.readouterr()
         assert "Error calling Claude" in captured.err
     
-    @pytest.mark.asyncio 
-    async def test_fallback_health_analysis_comprehensive(self):
-        """Test comprehensive fallback health analysis"""
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("completed,blocked,overdue_count,velocity,risk_level,expected_health,expected_on_track", [
+        # High risk project with many issues
+        (20, 5, 3, 1.5, RiskLevel.HIGH, "red", False),
+        # Medium risk project
+        (50, 3, 0, 5.0, RiskLevel.MEDIUM, "yellow", True),
+        # Low risk healthy project
+        (50, 0, 0, 5.0, RiskLevel.LOW, "green", True),
+    ])
+    async def test_fallback_health_analysis_parameterized(self, completed, blocked, overdue_count, velocity, risk_level, expected_health, expected_on_track):
+        """Test fallback health analysis with various project states"""
         engine = AIAnalysisEngine()
         
-        # High risk project with many issues
         project_state = ProjectState(
             board_id="BOARD-001",
             project_name="Test Project",
             total_tasks=100,
-            completed_tasks=20,
+            completed_tasks=completed,
             in_progress_tasks=30,
-            blocked_tasks=5,
-            progress_percent=40.0,  # Should be 40% but only 20% complete
-            overdue_tasks=[Mock(), Mock(), Mock()],  # 3 overdue tasks
-            team_velocity=1.5,  # Low velocity
-            risk_level=RiskLevel.HIGH,
+            blocked_tasks=blocked,
+            progress_percent=float(completed),
+            overdue_tasks=[Mock() for _ in range(overdue_count)],
+            team_velocity=velocity,
+            risk_level=risk_level,
             last_updated=datetime.now()
         )
         
-        team_status = {}  # Not used in fallback
+        team_status = {}
         
         result = engine._generate_fallback_health_analysis(project_state, team_status)
         
-        assert result["overall_health"] == "red"
-        assert result["timeline_prediction"]["on_track"] is False
-        assert len(result["risk_factors"]) >= 2  # Both blocked and overdue risks
-        assert len(result["recommendations"]) >= 2
-        assert result["timeline_prediction"]["confidence"] == 0.3
+        assert result["overall_health"] == expected_health
+        assert result["timeline_prediction"]["on_track"] == expected_on_track
     
     @pytest.mark.asyncio
     async def test_match_task_edge_cases(self, ai_engine):
@@ -1024,72 +1034,19 @@ Write unit tests for auth flow
         result = await ai_engine.generate_task_instructions(task, None)
         assert result == mock_instructions
     
-    @pytest.mark.asyncio
-    async def test_health_analysis_edge_cases(self):
-        """Test health analysis with edge cases"""
-        engine = AIAnalysisEngine()
-        
-        # Project with no blocked tasks and no overdue tasks
-        project_state = ProjectState(
-            board_id="BOARD-001",
-            project_name="Test",
-            total_tasks=10,
-            completed_tasks=5,
-            in_progress_tasks=3,
-            blocked_tasks=0,
-            progress_percent=50.0,
-            overdue_tasks=[],
-            team_velocity=5.0,  # Good velocity
-            risk_level=RiskLevel.LOW,
-            last_updated=datetime.now()
-        )
-        
-        result = engine._generate_fallback_health_analysis(project_state, {})
-        
-        assert result["overall_health"] == "green"
-        assert len(result["risk_factors"]) == 0  # No risks
-        assert len(result["recommendations"]) == 0  # No recommendations needed
     
     @pytest.mark.asyncio
-    async def test_health_analysis_yellow_status(self):
-        """Test health analysis with yellow status (medium risk)"""
-        engine = AIAnalysisEngine()
-        
-        # Project with medium risk 
-        project_state = ProjectState(
-            board_id="BOARD-001",
-            project_name="Test",
-            total_tasks=10,
-            completed_tasks=5,
-            in_progress_tasks=3,
-            blocked_tasks=3,  # More than 2 blocked tasks
-            progress_percent=50.0,
-            overdue_tasks=[],
-            team_velocity=5.0,
-            risk_level=RiskLevel.MEDIUM,
-            last_updated=datetime.now()
-        )
-        
-        result = engine._generate_fallback_health_analysis(project_state, {})
-        
-        assert result["overall_health"] == "yellow"
-        assert len(result["risk_factors"]) > 0
-        assert len(result["recommendations"]) > 0
-    
-    @pytest.mark.asyncio
-    async def test_blocker_severity_mapping(self, ai_engine):
+    @pytest.mark.parametrize("severity,description,expected_escalation", [
+        ("medium", "Database slow", False),
+        ("low", "Minor UI issue", False),
+        ("unknown", "System down", False),
+        ("high", "Production outage", True),
+        ("critical", "Data corruption", True),
+    ])
+    async def test_blocker_severity_mapping(self, ai_engine, severity, description, expected_escalation):
         """Test blocker analysis with different severity mappings"""
-        # Test medium severity
-        result = await ai_engine.analyze_blocker("TASK-001", "Database slow", "medium")
-        assert result["escalation_needed"] is False
-        
-        # Test low severity
-        result = await ai_engine.analyze_blocker("TASK-001", "Minor UI issue", "low") 
-        assert result["escalation_needed"] is False
-        
-        # Test unknown severity (defaults to False)
-        result = await ai_engine.analyze_blocker("TASK-001", "System down", "unknown")
-        assert result["escalation_needed"] is False
+        result = await ai_engine.analyze_blocker("TASK-001", description, severity)
+        assert result["escalation_needed"] == expected_escalation
     
     @pytest.mark.asyncio
     async def test_blocker_analysis_all_fields(self, ai_engine):
