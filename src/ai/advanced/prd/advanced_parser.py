@@ -180,11 +180,12 @@ class AdvancedPRDParser:
         
         try:
             # Use AI to analyze PRD
-            context = AnalysisContext(
-                analysis_type='comprehensive_prd',
-                output_format='structured_json',
-                max_tokens=2000
-            )
+            # Create a simple context object that has max_tokens
+            class SimpleContext:
+                def __init__(self, max_tokens):
+                    self.max_tokens = max_tokens
+            
+            context = SimpleContext(max_tokens=2000)
             
             # Use the actual LLM to analyze the PRD
             analysis_result = await self.llm_client.analyze(

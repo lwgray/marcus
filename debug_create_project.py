@@ -25,8 +25,8 @@ async def debug_create_project():
     await server.initialize_kanban()
     
     # Test project description
-    description = "Create a simple todo list app with add, delete, and mark complete features"
-    project_name = "Debug Test Project"
+    description = "Create a Friday Night Funkin' clone HTML5 rhythm game with arrow key gameplay, music synchronization, character animations, and scoring system"
+    project_name = "FNF Clone Debug Test"
     
     print(f"1. Testing with simple project:")
     print(f"   Name: {project_name}")
@@ -45,6 +45,12 @@ async def debug_create_project():
         print(f"   Success: {result.get('success')}")
         print(f"   Tasks created: {result.get('tasks_created')}")
         print(f"   Error: {result.get('error', 'None')}")
+        
+        # Print task breakdown if available
+        if result.get('task_breakdown'):
+            print(f"\n   Task breakdown:")
+            for task_type, count in result.get('task_breakdown', {}).items():
+                print(f"     - {task_type}: {count}")
         
         if result.get('tasks_created') == 0:
             print("\n3. Debugging why 0 tasks were created...")

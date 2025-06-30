@@ -345,6 +345,20 @@ Suggestions should be:
 
 Respond only with valid JSON array."""
     
+    async def complete(self, prompt: str, max_tokens: int = 2000) -> str:
+        """
+        Generate a completion for the given prompt
+        
+        Args:
+            prompt: The prompt to complete
+            max_tokens: Maximum tokens in response
+            
+        Returns:
+            The completion text
+        """
+        self.max_tokens = max_tokens
+        return await self._call_claude(prompt)
+    
     async def _call_claude(self, prompt: str) -> str:
         """
         Make API call to Claude

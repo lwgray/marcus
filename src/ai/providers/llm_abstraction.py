@@ -225,6 +225,23 @@ class LLMAbstraction:
         logger.error(f"All providers failed for {method_name}")
         raise Exception(f"All LLM providers failed: {last_exception}")
     
+    async def analyze(self, prompt: str, context: Any) -> str:
+        """
+        Analyze content using LLM
+        
+        Args:
+            prompt: The prompt to analyze
+            context: Analysis context
+            
+        Returns:
+            Analysis result as string
+        """
+        return await self._execute_with_fallback(
+            'complete',
+            prompt=prompt,
+            max_tokens=context.max_tokens if hasattr(context, 'max_tokens') else 2000
+        )
+    
     async def switch_provider(self, provider_name: str) -> bool:
         """
         Switch to a different provider

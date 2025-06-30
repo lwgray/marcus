@@ -11,9 +11,17 @@ import sys
 import os
 import json
 from pathlib import Path
+from dotenv import load_dotenv
 
 def load_config():
-    """Load configuration and set environment variables"""
+    """Load configuration from .env file and config_marcus.json"""
+    # First, load .env file
+    env_path = Path(__file__).parent / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+        print(f"✅ Loaded .env file from {env_path}")
+    
+    # Then load config_marcus.json to override with specific settings
     config_path = Path(__file__).parent / "config_marcus.json"
     
     if config_path.exists():
@@ -27,11 +35,12 @@ def load_config():
             os.environ['PLANKA_AGENT_EMAIL'] = planka_config.get('email', 'demo@demo.demo')
             os.environ['PLANKA_AGENT_PASSWORD'] = planka_config.get('password', 'demo')
         
-        # Set kanban provider
-        os.environ['KANBAN_PROVIDER'] = 'planka'
+        # Set kanban provider (from .env or default to planka)
+        if 'KANBAN_PROVIDER' not in os.environ:
+            os.environ['KANBAN_PROVIDER'] = 'planka'
         
-        # Set Anthropic API key if present in config
-        if 'anthropic_api_key' in config:
+        # Only set API key from config if not already in environment (from .env)
+        if 'anthropic_api_key' in config and 'ANTHROPIC_API_KEY' not in os.environ:
             os.environ['ANTHROPIC_API_KEY'] = config['anthropic_api_key']
 
 # Add the project root to Python path
