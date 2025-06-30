@@ -14,6 +14,7 @@ from src.core.models import Task, TaskStatus, Priority
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 import os
+from src.integrations.label_manager_helper import LabelManagerHelper
 
 
 class KanbanClientWithCreate(SimpleMCPKanbanClient):
@@ -254,138 +255,17 @@ class KanbanClientWithCreate(SimpleMCPKanbanClient):
             List of label names to add
         """
         try:
-            # Get board ID from the first list
-            lists_result = await session.call_tool(
-                "mcp_kanban_list_manager",
-                {
-                    "action": "get_all",
-                    "boardId": self.board_id
-                }
-            )
+            # Use the label manager helper for simplified label management
+            label_helper = LabelManagerHelper(session, self.board_id)
             
-            if not lists_result or not hasattr(lists_result, 'content') or not lists_result.content:
-                return
+            # Add all labels to the card
+            # The helper will handle checking if they exist, creating them if needed,
+            # and adding them to the card
+            added_ids = await label_helper.add_labels_to_card(card_id, labels)
+            
+            if added_ids:
+                print(f"Successfully added {len(added_ids)} labels to card")
                 
-            try:
-                lists_data = json.loads(lists_result.content[0].text)
-            except (json.JSONDecodeError, IndexError) as e:
-                print(f"Failed to parse lists response: {e}")
-                return
-            lists = lists_data if isinstance(lists_data, list) else lists_data.get("items", [])
-            
-            if not lists:
-                return
-                
-            board_id = lists[0].get("boardId")
-            if not board_id:
-                return
-            
-            # Get existing labels
-            labels_result = await session.call_tool(
-                "mcp_kanban_label_manager",
-                {
-                    "action": "get_all",
-                    "boardId": board_id
-                }
-            )
-            
-            existing_labels = {}
-            if labels_result and hasattr(labels_result, 'content') and labels_result.content:
-                try:
-                    labels_data = json.loads(labels_result.content[0].text)
-                except (json.JSONDecodeError, IndexError) as e:
-                    print(f"Failed to parse labels response: {e}")
-                    labels_data = {}
-                existing_list = labels_data if isinstance(labels_data, list) else labels_data.get("items", [])
-                for label in existing_list:
-                    existing_labels[label["name"].lower()] = label["id"]
-            
-            # Define label colors based on Planka's allowed color names
-            label_colors = {
-                'frontend': 'lagoon-blue',
-                'backend': 'bright-moss',
-                'database': 'berry-red',
-                'api': 'egg-yellow',
-                'testing': 'morning-sky',
-                'bug': 'berry-red',
-                'feature': 'bright-moss',
-                'enhancement': 'lagoon-blue',
-                'documentation': 'light-concrete',
-                'high': 'berry-red',
-                'medium': 'egg-yellow',
-                'low': 'bright-moss',
-                'setup': 'pink-tulip',
-                'deployment': 'pumpkin-orange',
-                'security': 'berry-red',
-                'performance': 'coral-green',
-                'ui': 'pink-tulip',
-                'ux': 'pink-tulip',
-                'devops': 'midnight-blue',
-                'infrastructure': 'midnight-blue',
-                'priority': 'berry-red',    # For priority tags
-                'skill': 'lagoon-blue',     # For skill tags
-                'complexity': 'light-concrete', # For complexity tags
-                'component': 'bright-moss',     # For component tags
-                'type': 'pumpkin-orange'        # For type tags
-            }
-            
-            # Process each label
-            for label_name in labels:
-                label_lower = label_name.lower()
-                label_id = None
-                
-                # Check if label exists
-                if label_lower in existing_labels:
-                    label_id = existing_labels[label_lower]
-                else:
-                    # Create new label
-                    color = label_colors.get(label_lower, 'light-concrete')  # Default gray
-                    
-                    # Extract color from label taxonomy (e.g., "component:frontend" -> "frontend")
-                    if ':' in label_name:
-                        category, label_type = label_name.split(':', 1)
-                        # First try the full label, then the type, then the category
-                        color = label_colors.get(label_lower, 
-                                label_colors.get(label_type.lower(), 
-                                    label_colors.get(category.lower(), 'light-concrete')))
-                    
-                    try:
-                        create_label_result = await session.call_tool(
-                            "mcp_kanban_label_manager",
-                            {
-                                "action": "create",
-                                "boardId": board_id,
-                                "name": label_name,
-                                "color": color
-                            }
-                        )
-                        
-                        if create_label_result and hasattr(create_label_result, 'content') and create_label_result.content:
-                            try:
-                                label_data = json.loads(create_label_result.content[0].text)
-                                label_info = label_data if isinstance(label_data, dict) else label_data.get("item", {})
-                            except (json.JSONDecodeError, IndexError) as e:
-                                print(f"Failed to parse label creation response for '{label_name}': {e}")
-                                continue
-                            label_id = label_info.get("id")
-                    except Exception as e:
-                        print(f"Failed to create label '{label_name}': {e}")
-                        continue
-                
-                # Add label to card
-                if label_id:
-                    try:
-                        await session.call_tool(
-                            "mcp_kanban_label_manager",
-                            {
-                                "action": "add_to_card",
-                                "cardId": card_id,
-                                "labelId": label_id
-                            }
-                        )
-                    except Exception as e:
-                        print(f"Failed to add label '{label_name}' to card: {e}")
-                        
         except Exception as e:
             print(f"Error in _add_labels_to_card: {e}")
             # Don't fail task creation if labels fail

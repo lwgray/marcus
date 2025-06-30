@@ -289,6 +289,10 @@ class AdvancedPRDParser:
         if enhanced_details.get('acceptance_criteria'):
             task.acceptance_criteria = enhanced_details['acceptance_criteria']
         
+        # Add subtasks as a dynamic attribute
+        if enhanced_details.get('subtasks'):
+            task.subtasks = enhanced_details['subtasks']
+        
         return task
     
     async def _infer_smart_dependencies(
@@ -589,13 +593,17 @@ class AdvancedPRDParser:
         # Generate acceptance criteria based on task type
         acceptance_criteria = self._generate_acceptance_criteria(task_type, project_context, name)
         
+        # Generate subtasks to break down the work
+        subtasks = self._generate_subtasks(task_type, project_context, name)
+        
         return {
             'name': name,
             'description': description,
             'estimated_hours': estimated_hours,
             'labels': labels,
             'due_date': None,
-            'acceptance_criteria': acceptance_criteria
+            'acceptance_criteria': acceptance_criteria,
+            'subtasks': subtasks
         }
     
     def _determine_priority(self, task_info: Dict[str, Any], analysis: PRDAnalysis) -> Priority:
@@ -996,3 +1004,116 @@ class AdvancedPRDParser:
             criteria.append("Order workflow is thoroughly tested")
         
         return criteria[:5]  # Return top 5 most relevant criteria
+    
+    def _generate_subtasks(self, task_type: str, context: Dict[str, Any], task_name: str) -> List[str]:
+        """Generate subtasks to break down the work"""
+        subtasks = []
+        
+        if task_type == 'design':
+            subtasks = [
+                "Research existing solutions and best practices",
+                "Create initial wireframes and mockups",
+                "Design component hierarchy and data flow",
+                "Document API contracts and interfaces",
+                "Create design system tokens and components",
+                "Review design with stakeholders"
+            ]
+        elif task_type == 'implementation':
+            # Parse the task name to understand what we're implementing
+            if 'authentication' in task_name.lower():
+                subtasks = [
+                    "Set up authentication middleware",
+                    "Implement user registration endpoint",
+                    "Create login/logout functionality",
+                    "Add password reset flow",
+                    "Implement JWT token management",
+                    "Add session management",
+                    "Create user profile endpoints"
+                ]
+            elif 'database' in task_name.lower():
+                subtasks = [
+                    "Design database schema",
+                    "Create migration scripts",
+                    "Set up database connections",
+                    "Implement data models",
+                    "Add database indexes",
+                    "Create seed data scripts"
+                ]
+            elif 'api' in task_name.lower():
+                subtasks = [
+                    "Define API endpoints and routes",
+                    "Implement request validation",
+                    "Create response serializers",
+                    "Add error handling middleware",
+                    "Implement rate limiting",
+                    "Add API documentation"
+                ]
+            else:
+                # Generic implementation subtasks
+                subtasks = [
+                    "Create data models and schemas",
+                    "Implement business logic layer",
+                    "Create API endpoints",
+                    "Add input validation",
+                    "Implement error handling",
+                    "Write unit tests",
+                    "Add integration tests"
+                ]
+        elif task_type == 'testing':
+            subtasks = [
+                "Write unit test specifications",
+                "Implement unit tests for models",
+                "Create integration test suite",
+                "Add API endpoint tests",
+                "Write end-to-end test scenarios",
+                "Set up test data fixtures",
+                "Configure test automation"
+            ]
+        elif task_type == 'setup':
+            subtasks = [
+                "Initialize project repository",
+                "Set up development dependencies",
+                "Configure build tools",
+                "Create environment configuration",
+                "Set up database connections",
+                "Configure linting and formatting",
+                "Create development scripts"
+            ]
+        elif task_type == 'deployment':
+            subtasks = [
+                "Create deployment configuration",
+                "Set up CI/CD pipeline",
+                "Configure environment variables",
+                "Set up monitoring and alerts",
+                "Create deployment scripts",
+                "Configure load balancing",
+                "Set up backup procedures"
+            ]
+        else:
+            # Generic feature subtasks
+            subtasks = [
+                f"Plan {task_name} implementation",
+                "Implement core functionality",
+                "Add data persistence layer",
+                "Create user interface components",
+                "Write tests",
+                "Update documentation"
+            ]
+        
+        # Customize based on context
+        if context.get('tech_stack'):
+            tech = context['tech_stack']
+            if 'React' in tech and task_type == 'implementation':
+                subtasks.extend([
+                    "Create React components",
+                    "Set up component state management",
+                    "Add component styling"
+                ])
+            elif 'Django' in tech and task_type == 'implementation':
+                subtasks.extend([
+                    "Create Django models",
+                    "Add Django views and serializers",
+                    "Configure Django admin"
+                ])
+        
+        return subtasks[:7]  # Return top 7 most relevant subtasks
