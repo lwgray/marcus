@@ -65,7 +65,7 @@ class TaskClassifier:
         text_to_check = f"{task.name} {task.description}".lower()
         
         # Check each task type's keywords
-        for task_type, keywords in cls.TASK_KEYWORDS.items():
+        for task_type, keywords in list(cls.TASK_KEYWORDS.items()):
             if any(keyword in text_to_check for keyword in keywords):
                 return task_type
         

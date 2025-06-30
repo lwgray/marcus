@@ -174,7 +174,7 @@ class BoardOrganizer:
             task_phase = None
             
             # Classify task by phase
-            for phase_name, phase_config in self.development_phases.items():
+            for phase_name, phase_config in list(self.development_phases.items()):
                 for keyword in phase_config['keywords']:
                     if keyword in task_text:
                         task_phase = phase_name
@@ -211,7 +211,7 @@ class BoardOrganizer:
             confidence=confidence,
             structure={
                 "phases": dict(phase_distribution),
-                "phase_tasks": {k: [t.id for t in v] for k, v in phase_tasks.items()}
+                "phase_tasks": {k: [t.id for t in v] for k, v in list(phase_tasks.items())}
             },
             reasoning=f"Found {unique_phases} distinct phases across {total_tasks} tasks"
         )
@@ -226,7 +226,7 @@ class BoardOrganizer:
             task_components = []
             
             # Classify task by components
-            for component_name, component_config in self.component_types.items():
+            for component_name, component_config in list(self.component_types.items()):
                 for keyword in component_config['keywords']:
                     if keyword in task_text:
                         task_components.append(component_name)
@@ -269,7 +269,7 @@ class BoardOrganizer:
             confidence=confidence,
             structure={
                 "components": dict(component_distribution),
-                "component_tasks": {k: [t.id for t in v] for k, v in component_tasks.items()}
+                "component_tasks": {k: [t.id for t in v] for k, v in list(component_tasks.items())}
             },
             reasoning=f"Found {unique_components} distinct components across {total_tasks} tasks"
         )
@@ -339,7 +339,7 @@ class BoardOrganizer:
             confidence=confidence,
             structure={
                 "features": dict(feature_distribution),
-                "feature_tasks": {k: [t.id for t in v] for k, v in feature_tasks.items()}
+                "feature_tasks": {k: [t.id for t in v] for k, v in list(feature_tasks.items())}
             },
             reasoning=f"Identified {len(feature_distribution)} potential features with avg {avg_tasks_per_feature:.1f} tasks each"
         )
@@ -374,7 +374,7 @@ class BoardOrganizer:
             confidence=confidence,
             structure={
                 "priorities": dict(priority_distribution),
-                "priority_tasks": {k: [t.id for t in v] for k, v in priority_tasks.items()}
+                "priority_tasks": {k: [t.id for t in v] for k, v in list(priority_tasks.items())}
             },
             reasoning=f"Found {unique_priorities} priority levels across {total_tasks} tasks"
         )
@@ -393,7 +393,7 @@ class BoardOrganizer:
         phase_order = []
         
         # Initialize phases
-        for phase_name, phase_config in self.development_phases.items():
+        for phase_name, phase_config in list(self.development_phases.items()):
             phases[phase_name] = []
             phase_order.append(phase_name)
         
@@ -407,7 +407,7 @@ class BoardOrganizer:
             
             # Find best matching phase
             max_matches = 0
-            for phase_name, phase_config in self.development_phases.items():
+            for phase_name, phase_config in list(self.development_phases.items()):
                 matches = sum(1 for keyword in phase_config['keywords'] if keyword in task_text)
                 if matches > max_matches:
                     max_matches = matches
@@ -424,7 +424,7 @@ class BoardOrganizer:
         for task in tasks:
             task_phase = None
             # Find which phase this task is in
-            for phase_name, phase_tasks in phases.items():
+            for phase_name, phase_tasks in list(phases.items()):
                 if task in phase_tasks:
                     task_phase = phase_name
                     break
@@ -435,7 +435,7 @@ class BoardOrganizer:
                     dep_task = next((t for t in tasks if t.id == dep_id), None)
                     if dep_task:
                         dep_phase = None
-                        for phase_name, phase_tasks in phases.items():
+                        for phase_name, phase_tasks in list(phases.items()):
                             if dep_task in phase_tasks:
                                 dep_phase = phase_name
                                 break
@@ -473,7 +473,7 @@ class BoardOrganizer:
             matching_components = []
             
             # Find matching components
-            for component_name, component_config in self.component_types.items():
+            for component_name, component_config in list(self.component_types.items()):
                 for keyword in component_config['keywords']:
                     if keyword in task_text:
                         matching_components.append(component_name)
@@ -516,7 +516,7 @@ class BoardOrganizer:
             
             # Assign phase labels
             phase_tasks = strategy.structure.get("phase_tasks", {})
-            for phase, task_ids in phase_tasks.items():
+            for phase, task_ids in list(phase_tasks.items()):
                 for task_id in task_ids:
                     if task_id not in task_label_assignments:
                         task_label_assignments[task_id] = []
@@ -528,7 +528,7 @@ class BoardOrganizer:
             
             # Assign component labels
             component_tasks = strategy.structure.get("component_tasks", {})
-            for component, task_ids in component_tasks.items():
+            for component, task_ids in list(component_tasks.items()):
                 for task_id in task_ids:
                     if task_id not in task_label_assignments:
                         task_label_assignments[task_id] = []
@@ -540,7 +540,7 @@ class BoardOrganizer:
             
             # Assign priority labels
             priority_tasks = strategy.structure.get("priority_tasks", {})
-            for priority, task_ids in priority_tasks.items():
+            for priority, task_ids in list(priority_tasks.items()):
                 for task_id in task_ids:
                     if task_id not in task_label_assignments:
                         task_label_assignments[task_id] = []

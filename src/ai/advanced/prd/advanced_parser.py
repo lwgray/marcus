@@ -242,7 +242,7 @@ class AdvancedPRDParser:
         tasks = []
         task_counter = 1
         
-        for epic_id, task_ids in task_hierarchy.items():
+        for epic_id, task_ids in list(task_hierarchy.items()):
             for task_id in task_ids:
                 # Generate task based on ID and analysis
                 task = await self._generate_detailed_task(

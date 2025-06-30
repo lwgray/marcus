@@ -381,7 +381,7 @@ class DependencyInferer:
         
         # Keep the highest confidence dependency for each pair
         cleaned = []
-        for deps in dependency_groups.values():
+        for deps in list(dependency_groups.values()):
             best_dep = max(deps, key=lambda d: d.confidence)
             cleaned.append(best_dep)
         
@@ -552,7 +552,7 @@ class DependencyInferer:
         
         # Check for mandatory patterns
         missing_mandatory = []
-        for task in graph.nodes.values():
+        for task in list(graph.nodes.values()):
             task_text = f"{task.name} {task.description or ''}".lower()
             
             # Check if deployment tasks have testing dependencies

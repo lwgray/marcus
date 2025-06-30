@@ -133,7 +133,7 @@ class NaturalLanguageTaskCreator(ABC):
         Returns:
             Dictionary mapping task types to lists of tasks
         """
-        classified = {task_type: [] for task_type in TaskType}
+        classified = {task_type: [] for task_type in list(TaskType)}
         
         for task in tasks:
             task_type = self.task_classifier.classify(task)
@@ -219,7 +219,7 @@ class NaturalLanguageTaskCreator(ABC):
                 ],
                 "task_types": {
                     task_type.value: len(self.get_tasks_by_type(created_tasks, task_type))
-                    for task_type in TaskType
+                    for task_type in list(TaskType)
                 }
             }
             
