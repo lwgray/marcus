@@ -26,6 +26,22 @@ class KanbanClientWithCreate(SimpleMCPKanbanClient):
     project creation features.
     """
     
+    def __init__(self):
+        """Initialize the extended kanban client."""
+        super().__init__()
+        # Ensure Planka credentials are set for label operations
+        self._ensure_planka_credentials()
+    
+    def _ensure_planka_credentials(self):
+        """Ensure Planka credentials are set in environment."""
+        # These should already be set by parent class, but ensure they're available
+        if 'PLANKA_BASE_URL' not in os.environ:
+            os.environ['PLANKA_BASE_URL'] = 'http://localhost:3333'
+        if 'PLANKA_AGENT_EMAIL' not in os.environ:
+            os.environ['PLANKA_AGENT_EMAIL'] = 'demo@demo.demo'
+        if 'PLANKA_AGENT_PASSWORD' not in os.environ:
+            os.environ['PLANKA_AGENT_PASSWORD'] = 'demo'
+    
     async def create_task(self, task_data: Dict[str, Any]) -> Task:
         """
         Create a new task on the kanban board.

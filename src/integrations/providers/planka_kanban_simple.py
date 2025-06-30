@@ -26,7 +26,8 @@ class PlankaKanbanSimple(KanbanInterface):
         self.provider = KanbanProvider.PLANKA
         self.client = KanbanClientWithCreate()
         self.connected = False
-        print(f"[PlankaKanbanSimple] Initialized with board_id={self.client.board_id}, project_id={self.client.project_id}")
+        # Note: board_id and project_id are loaded from config by the client
+        print(f"[PlankaKanbanSimple] Initialized - config will be loaded from config_marcus.json")
         
     async def connect(self) -> bool:
         """Connect to Planka via MCP"""

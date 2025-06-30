@@ -132,14 +132,15 @@ class LabelManagerHelper:
         if color not in self.VALID_COLORS:
             raise ValueError(f"Invalid color '{color}'. Must be one of: {', '.join(self.VALID_COLORS)}")
         
-        # Create the label
+        # Create the label with required position parameter
         result = await self.session.call_tool(
             "mcp_kanban_label_manager",
             {
                 "action": "create",
                 "boardId": self.board_id,
                 "name": name,  # Use original name (preserves case)
-                "color": color
+                "color": color,
+                "position": 65536  # Required parameter for label creation
             }
         )
         

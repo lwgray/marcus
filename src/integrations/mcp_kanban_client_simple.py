@@ -62,14 +62,16 @@ class SimpleMCPKanbanClient:
         Initialize the Simple MCP Kanban Client.
         
         Loads configuration from config_marcus.json and sets up
-        Planka environment variables.
+        Planka environment variables. Config file takes precedence.
         """
-        # Load config
+        # Initialize attributes
         self.board_id: Optional[str] = None
         self.project_id: Optional[str] = None
+        
+        # Load config first - this may set environment variables
         self._load_config()
         
-        # Set environment for Planka from .env or use defaults
+        # Set environment for Planka from .env or use defaults (only if not already set by config)
         if 'PLANKA_BASE_URL' not in os.environ:
             os.environ['PLANKA_BASE_URL'] = 'http://localhost:3333'
         if 'PLANKA_AGENT_EMAIL' not in os.environ:
@@ -81,7 +83,7 @@ class SimpleMCPKanbanClient:
         """
         Load configuration from config_marcus.json file.
         
-        Reads project_id and board_id from the configuration file if it exists.
+        Reads project_id, board_id, and Planka credentials from the configuration file if it exists.
         Prints confirmation message to stderr for debugging.
         
         Notes
@@ -94,6 +96,16 @@ class SimpleMCPKanbanClient:
                 config = json.load(f)
                 self.project_id = config.get("project_id")
                 self.board_id = config.get("board_id")
+                
+                # Load Planka credentials from config if available
+                planka_config = config.get("planka", {})
+                if planka_config.get("base_url"):
+                    os.environ['PLANKA_BASE_URL'] = planka_config["base_url"]
+                if planka_config.get("email"):
+                    os.environ['PLANKA_AGENT_EMAIL'] = planka_config["email"]
+                if planka_config.get("password"):
+                    os.environ['PLANKA_AGENT_PASSWORD'] = planka_config["password"]
+                
                 print(f"✅ Loaded config: project_id={self.project_id}, board_id={self.board_id}", file=sys.stderr)
         else:
             print(f"❌ config_marcus.json not found in {os.getcwd()}", file=sys.stderr)
