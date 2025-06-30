@@ -421,7 +421,7 @@ class DependencyInferer:
         for dep in dependencies:
             # Check if there's an indirect path
             has_indirect_path = False
-            for intermediate in adjacency:
+            for intermediate in list(adjacency):
                 if (intermediate != dep.dependency_task_id and 
                     intermediate != dep.dependent_task_id):
                     
