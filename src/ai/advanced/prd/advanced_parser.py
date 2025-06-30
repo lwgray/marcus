@@ -225,11 +225,29 @@ class AdvancedPRDParser:
             )
             
         except Exception as e:
-            logger.error(f"PRD analysis failed: {e}", exc_info=True)
+            from src.core.error_framework import AIProviderError, ErrorContext
+            from src.core.error_monitoring import record_error_for_monitoring
+            
+            # Create AI provider error with context
+            ai_error = AIProviderError(
+                provider="LLM",
+                operation="prd_analysis",
+                details=f"LLM analysis failed: {str(e)}. Falling back to simulation.",
+                context=ErrorContext(
+                    operation="analyze_prd_deeply",
+                    service="advanced_prd_parser",
+                    prd_length=len(prd_content)
+                )
+            )
+            
+            # Record for monitoring but continue with fallback
+            record_error_for_monitoring(ai_error)
+            logger.error(f"PRD analysis failed: {ai_error}")
             logger.info("Attempting simulation fallback...")
+            
             try:
-                # Try simulation as last resort
-                analysis_data = await self._simulate_prd_analysis(prd_content)
+                # Try enhanced simulation with better pattern matching
+                analysis_data = await self._simulate_prd_analysis_enhanced(prd_content)
                 return PRDAnalysis(
                     functional_requirements=analysis_data.get('functional_requirements', []),
                     non_functional_requirements=analysis_data.get('non_functional_requirements', []),
@@ -240,11 +258,28 @@ class AdvancedPRDParser:
                     implementation_approach=analysis_data.get('implementation_approach', 'agile_iterative'),
                     complexity_assessment=analysis_data.get('complexity_assessment', {}),
                     risk_factors=analysis_data.get('risk_factors', []),
-                    confidence=analysis_data.get('confidence', 0.8)
+                    confidence=analysis_data.get('confidence', 0.6)  # Lower confidence for simulation
                 )
             except Exception as sim_error:
+                from src.core.error_framework import BusinessLogicError
+                
                 logger.error(f"Simulation also failed: {sim_error}")
-                return self._create_fallback_analysis(prd_content)
+                
+                # If both AI and simulation fail, raise a proper error
+                raise BusinessLogicError(
+                    operation="prd_analysis_fallback",
+                    details=f"Both AI analysis and simulation fallback failed for PRD. "
+                           f"Original error: {str(e)}. Simulation error: {str(sim_error)}. "
+                           f"The PRD content may be malformed or too complex to parse. "
+                           f"PRD preview: '{prd_content[:200]}...'",
+                    context=ErrorContext(
+                        operation="analyze_prd_deeply",
+                        service="advanced_prd_parser",
+                        prd_length=len(prd_content),
+                        original_error=str(e),
+                        simulation_error=str(sim_error)
+                    )
+                ) from e
     
     async def _generate_task_hierarchy(
         self, 
@@ -662,6 +697,155 @@ class AdvancedPRDParser:
             confidence=0.3
         )
     
+    async def _simulate_prd_analysis_enhanced(self, prd_content: str) -> Dict[str, Any]:
+        """Enhanced PRD simulation with better pattern matching"""
+        prd_lower = prd_content.lower()
+        logger.info(f"Running enhanced PRD simulation for content: {prd_content[:100]}...")
+        
+        # Enhanced pattern matching
+        functional_requirements = []
+        
+        # More comprehensive keyword matching
+        project_type_patterns = {
+            'web_app': ['web app', 'webapp', 'website', 'web application', 'frontend', 'backend'],
+            'mobile_app': ['mobile app', 'ios app', 'android app', 'mobile application'],
+            'api': ['api', 'rest api', 'graphql', 'endpoint', 'microservice'],
+            'dashboard': ['dashboard', 'analytics', 'reporting', 'metrics', 'charts'],
+            'ecommerce': ['e-commerce', 'ecommerce', 'shop', 'store', 'marketplace', 'payment'],
+            'todo_app': ['todo', 'task', 'tasks', 'to-do', 'checklist'],
+            'game': ['game', 'gaming', 'rhythm game', 'fnf', 'friday night funkin'],
+            'cms': ['cms', 'content management', 'blog', 'articles', 'publishing'],
+            'social': ['social', 'chat', 'messaging', 'forum', 'community'],
+            'auth': ['authentication', 'login', 'signup', 'user management', 'auth']
+        }
+        
+        detected_types = []
+        for project_type, keywords in project_type_patterns.items():
+            if any(keyword in prd_lower for keyword in keywords):
+                detected_types.append(project_type)
+        
+        # Generate requirements based on detected project types
+        for project_type in detected_types:
+            if project_type == 'web_app':
+                functional_requirements.extend([
+                    {'id': 'req_ui', 'description': 'Create responsive user interface', 'priority': 'high'},
+                    {'id': 'req_nav', 'description': 'Implement navigation system', 'priority': 'high'},
+                    {'id': 'req_layout', 'description': 'Design page layouts and components', 'priority': 'medium'}
+                ])
+            elif project_type == 'api':
+                functional_requirements.extend([
+                    {'id': 'req_endpoints', 'description': 'Design API endpoints', 'priority': 'high'},
+                    {'id': 'req_auth', 'description': 'Implement API authentication', 'priority': 'high'},
+                    {'id': 'req_docs', 'description': 'Create API documentation', 'priority': 'medium'}
+                ])
+            elif project_type == 'todo_app':
+                functional_requirements.extend([
+                    {'id': 'req_crud', 'description': 'Implement task CRUD operations', 'priority': 'high'},
+                    {'id': 'req_status', 'description': 'Add task status management', 'priority': 'high'},
+                    {'id': 'req_filter', 'description': 'Create task filtering and search', 'priority': 'medium'}
+                ])
+            elif project_type == 'dashboard':
+                functional_requirements.extend([
+                    {'id': 'req_viz', 'description': 'Create data visualizations', 'priority': 'high'},
+                    {'id': 'req_realtime', 'description': 'Implement real-time data updates', 'priority': 'high'},
+                    {'id': 'req_export', 'description': 'Add data export functionality', 'priority': 'medium'}
+                ])
+        
+        # Fallback: Use enhanced regex patterns if no specific type detected
+        if not functional_requirements:
+            # Multiple patterns for better extraction
+            patterns = [
+                r'(?i)(?:create|build|implement|add|develop|design)\s+(?:a\s+|an\s+)?([^,.\n!?]+)',
+                r'(?i)(?:need|want|should|must)\s+(?:to\s+)?(?:have\s+|be\s+able\s+to\s+)?([^,.\n!?]+)',
+                r'(?i)(?:user|admin|customer)\s+(?:can|should|must)\s+([^,.\n!?]+)',
+                r'(?i)(?:system|app|application)\s+(?:will|should|must)\s+([^,.\n!?]+)'
+            ]
+            
+            for pattern in patterns:
+                matches = re.findall(pattern, prd_content)
+                for i, match in enumerate(matches[:3]):  # Limit to 3 per pattern
+                    if match.strip() and len(match.strip()) > 5:  # Avoid short meaningless matches
+                        functional_requirements.append({
+                            'id': f'req_extracted_{len(functional_requirements)+1}',
+                            'description': match.strip().capitalize(),
+                            'priority': 'high'
+                        })
+        
+        # Ensure we have at least one requirement
+        if not functional_requirements:
+            functional_requirements.append({
+                'id': 'req_generic',
+                'description': 'Implement core application functionality',
+                'priority': 'high'
+            })
+        
+        # Enhanced non-functional requirements detection
+        non_functional_requirements = []
+        nfr_keywords = {
+            'performance': ['performance', 'fast', 'speed', 'optimize', 'efficient', 'latency'],
+            'security': ['secure', 'security', 'auth', 'encryption', 'safety', 'protection'],
+            'usability': ['user-friendly', 'intuitive', 'easy', 'accessible', 'ux', 'ui'],
+            'scalability': ['scalable', 'scale', 'growth', 'load', 'traffic', 'concurrent'],
+            'reliability': ['reliable', 'stable', 'robust', 'availability', 'uptime']
+        }
+        
+        for category, keywords in nfr_keywords.items():
+            if any(keyword in prd_lower for keyword in keywords):
+                non_functional_requirements.append({
+                    'id': f'nfr_{category}',
+                    'description': f'Ensure {category} requirements are met',
+                    'category': category
+                })
+        
+        return {
+            'functional_requirements': functional_requirements,
+            'non_functional_requirements': non_functional_requirements,
+            'technical_constraints': self._detect_tech_stack(prd_content),
+            'business_objectives': self._extract_business_objectives(prd_content),
+            'user_personas': [],
+            'success_metrics': [],
+            'implementation_approach': 'agile_iterative',
+            'complexity_assessment': {'overall': 'medium'},
+            'risk_factors': [],
+            'confidence': 0.7  # Higher confidence than basic simulation
+        }
+    
+    def _detect_tech_stack(self, prd_content: str) -> List[str]:
+        """Detect technology stack mentions"""
+        prd_lower = prd_content.lower()
+        tech_stack = []
+        
+        tech_keywords = {
+            'React': ['react', 'react.js', 'reactjs'],
+            'Vue.js': ['vue', 'vue.js', 'vuejs'],
+            'Angular': ['angular'],
+            'Node.js': ['node', 'node.js', 'nodejs'],
+            'Python': ['python', 'django', 'flask', 'fastapi'],
+            'JavaScript': ['javascript', 'js'],
+            'TypeScript': ['typescript', 'ts'],
+            'Database': ['database', 'db', 'sql', 'postgres', 'mysql', 'mongodb']
+        }
+        
+        for tech, keywords in tech_keywords.items():
+            if any(keyword in prd_lower for keyword in keywords):
+                tech_stack.append(tech)
+        
+        return tech_stack
+    
+    def _extract_business_objectives(self, prd_content: str) -> List[str]:
+        """Extract business objectives from content"""
+        objectives = []
+        prd_lower = prd_content.lower()
+        
+        if 'revenue' in prd_lower or 'profit' in prd_lower:
+            objectives.append('Increase revenue')
+        if 'user' in prd_lower and ('engagement' in prd_lower or 'retention' in prd_lower):
+            objectives.append('Improve user engagement')
+        if 'efficiency' in prd_lower or 'productivity' in prd_lower:
+            objectives.append('Improve operational efficiency')
+        
+        return objectives
+
     # Additional helper methods would be implemented here...
     async def _break_down_epic(self, req: Dict[str, Any], analysis: PRDAnalysis, constraints: ProjectConstraints) -> List[Dict[str, Any]]:
         """Break down epic into smaller tasks"""

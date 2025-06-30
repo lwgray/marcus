@@ -119,46 +119,132 @@ class MarcusServer:
     
     async def initialize_kanban(self):
         """Initialize kanban client if not already done"""
+        from src.core.error_framework import KanbanIntegrationError, ErrorContext
+        
         if not self.kanban_client:
-            # Ensure configuration is loaded before creating kanban client
-            self._ensure_environment_config()
-            
-            self.kanban_client = KanbanFactory.create(self.provider)
-            
-            # Connect to the kanban board
-            if hasattr(self.kanban_client, 'connect'):
-                await self.kanban_client.connect()
-            
-            # Initialize assignment monitor
-            if self.assignment_monitor is None:
-                self.assignment_monitor = AssignmentMonitor(
-                    self.assignment_persistence,
-                    self.kanban_client
-                )
-                await self.assignment_monitor.start()
+            try:
+                # Ensure configuration is loaded before creating kanban client
+                self._ensure_environment_config()
+                
+                # Create kanban client
+                self.kanban_client = KanbanFactory.create(self.provider)
+                
+                # Validate the client supports task creation
+                if not hasattr(self.kanban_client, 'create_task'):
+                    raise KanbanIntegrationError(
+                        board_name=self.provider,
+                        operation="client_initialization",
+                        details=f"Kanban client {type(self.kanban_client).__name__} does not support task creation. "
+                               f"Expected KanbanClientWithCreate or compatible implementation.",
+                        context=ErrorContext(
+                            operation="kanban_initialization",
+                            service="mcp_server",
+                            provider=self.provider
+                        )
+                    )
+                
+                # Connect to the kanban board
+                if hasattr(self.kanban_client, 'connect'):
+                    await self.kanban_client.connect()
+                
+                # Initialize assignment monitor
+                if self.assignment_monitor is None:
+                    self.assignment_monitor = AssignmentMonitor(
+                        self.assignment_persistence,
+                        self.kanban_client
+                    )
+                    await self.assignment_monitor.start()
+                    
+                print(f"✅ Kanban client initialized: {type(self.kanban_client).__name__}", file=sys.stderr)
+                
+            except Exception as e:
+                if isinstance(e, KanbanIntegrationError):
+                    raise
+                raise KanbanIntegrationError(
+                    board_name=self.provider,
+                    operation="client_initialization",
+                    details=f"Failed to initialize kanban client: {str(e)}",
+                    context=ErrorContext(
+                        operation="kanban_initialization",
+                        service="mcp_server",
+                        provider=self.provider
+                    )
+                ) from e
     
     def _ensure_environment_config(self):
-        """Ensure environment variables are set from config if needed"""
-        # Load from config_marcus.json if environment variables aren't set
-        import json
-        from pathlib import Path
+        """Ensure environment variables are set from marcus.config.json"""
+        from src.core.error_framework import ConfigurationError, ErrorContext
         
-        config_path = Path(__file__).parent.parent.parent / "config_marcus.json"
-        if config_path.exists():
-            with open(config_path, 'r') as f:
-                config = json.load(f)
+        try:
+            # Use the proper config loader to get kanban configuration
+            kanban_config = self.config.get_kanban_config()
+            provider = kanban_config.get('provider', 'planka')
             
-            # Set Planka environment variables if not already set
-            if 'planka' in config:
-                planka_config = config['planka']
+            # Set environment variables based on the selected provider
+            if provider == 'planka':
+                planka_config = kanban_config
                 if 'PLANKA_BASE_URL' not in os.environ:
                     os.environ['PLANKA_BASE_URL'] = planka_config.get('base_url', 'http://localhost:3333')
                 if 'PLANKA_AGENT_EMAIL' not in os.environ:
                     os.environ['PLANKA_AGENT_EMAIL'] = planka_config.get('email', 'demo@demo.demo')
                 if 'PLANKA_AGENT_PASSWORD' not in os.environ:
                     os.environ['PLANKA_AGENT_PASSWORD'] = planka_config.get('password', 'demo')
+                if 'PLANKA_PROJECT_NAME' not in os.environ:
+                    os.environ['PLANKA_PROJECT_NAME'] = planka_config.get('project_name', 'Task Master Test')
+                    
+                print(f"✅ Configured Planka environment from {self.config.config_path}", file=sys.stderr)
+                
+            elif provider == 'github':
+                github_config = kanban_config
+                if 'GITHUB_TOKEN' not in os.environ:
+                    token = github_config.get('token')
+                    if token:
+                        os.environ['GITHUB_TOKEN'] = token
+                if 'GITHUB_OWNER' not in os.environ:
+                    owner = github_config.get('owner')
+                    if owner:
+                        os.environ['GITHUB_OWNER'] = owner
+                if 'GITHUB_REPO' not in os.environ:
+                    repo = github_config.get('repo')
+                    if repo:
+                        os.environ['GITHUB_REPO'] = repo
+                        
+                print(f"✅ Configured GitHub environment from {self.config.config_path}", file=sys.stderr)
+                
+            elif provider == 'linear':
+                linear_config = kanban_config
+                if 'LINEAR_API_KEY' not in os.environ:
+                    api_key = linear_config.get('api_key')
+                    if api_key:
+                        os.environ['LINEAR_API_KEY'] = api_key
+                if 'LINEAR_TEAM_ID' not in os.environ:
+                    team_id = linear_config.get('team_id')
+                    if team_id:
+                        os.environ['LINEAR_TEAM_ID'] = team_id
+                        
+                print(f"✅ Configured Linear environment from {self.config.config_path}", file=sys.stderr)
             
-            print(f"✅ Loaded configuration from {config_path}", file=sys.stderr)
+        except FileNotFoundError as e:
+            raise ConfigurationError(
+                service_name="MCP Server",
+                config_type="marcus.config.json",
+                missing_field="configuration file",
+                context=ErrorContext(
+                    operation="environment_config_loading",
+                    service="mcp_server"
+                )
+            ) from e
+        except Exception as e:
+            raise ConfigurationError(
+                service_name="MCP Server", 
+                config_type="environment variables",
+                missing_field=f"kanban.{provider} configuration",
+                context=ErrorContext(
+                    operation="environment_config_loading",
+                    service="mcp_server",
+                    provider=provider
+                )
+            ) from e
     
     def log_event(self, event_type: str, data: dict):
         """Log events immediately to realtime log"""

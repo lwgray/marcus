@@ -98,32 +98,58 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             logger.debug(f"Options: {options}")
             
             # Parse tasks
-            tasks = await self.process_natural_language(description, project_name, options)
-            logger.info(f"process_natural_language returned {len(tasks)} tasks")
+            from src.core.error_framework import ErrorContext, error_context
+            
+            with error_context("task_parsing", project_name=project_name, description_length=len(description)):
+                tasks = await self.process_natural_language(description, project_name, options)
+                logger.info(f"process_natural_language returned {len(tasks)} tasks")
+                
+                # Log detailed task breakdown for debugging
+                if tasks:
+                    task_types = {}
+                    for task in tasks:
+                        task_type = getattr(task, 'task_type', 'unknown')
+                        task_types[task_type] = task_types.get(task_type, 0) + 1
+                    logger.info(f"Task type breakdown: {task_types}")
+                else:
+                    logger.warning(f"No tasks generated for project '{project_name}' with description length {len(description)}")
             
             if not tasks:
+                from src.core.error_framework import BusinessLogicError, ErrorContext
+                
                 logger.warning("No tasks generated from natural language processing!")
-                return {
-                    "success": False,
-                    "error": "Failed to generate tasks from description",
-                    "project_name": project_name,
-                    "tasks_created": 0,
-                    "task_breakdown": {},
-                    "phases": [],
-                    "estimated_days": 0,
-                    "dependencies_mapped": 0,
-                    "risk_level": "unknown",
-                    "confidence": 0,
-                    "created_at": datetime.now().isoformat()
-                }
+                
+                raise BusinessLogicError(
+                    operation="task_generation",
+                    details=f"Failed to generate any tasks from project description. "
+                           f"The description may be too vague, missing key details, or not match "
+                           f"expected patterns. Description: '{description[:200]}...'",
+                    context=ErrorContext(
+                        operation="create_project",
+                        service="mcp_natural_language_tools",
+                        project_name=project_name,
+                        description_length=len(description)
+                    )
+                )
             
             # Apply safety checks using base class
-            safe_tasks = await self.apply_safety_checks(tasks)
-            logger.info(f"Safety checks passed, {len(safe_tasks)} tasks ready")
+            with error_context("safety_checks", project_name=project_name, original_task_count=len(tasks)):
+                safe_tasks = await self.apply_safety_checks(tasks)
+                logger.info(f"Safety checks passed, {len(safe_tasks)} tasks ready")
+                
+                # Log safety check impact
+                added_tasks = len(safe_tasks) - len(tasks)
+                if added_tasks > 0:
+                    logger.info(f"Safety checks added {added_tasks} dependency tasks")
             
             # Create tasks on board using base class
-            created_tasks = await self.create_tasks_on_board(safe_tasks)
-            logger.info(f"Created {len(created_tasks)} tasks on board")
+            with error_context("kanban_task_creation", project_name=project_name, task_count=len(safe_tasks)):
+                created_tasks = await self.create_tasks_on_board(safe_tasks)
+                logger.info(f"Created {len(created_tasks)} tasks on board")
+                
+                # Log creation success rate
+                success_rate = (len(created_tasks) / len(safe_tasks)) * 100 if safe_tasks else 0
+                logger.info(f"Task creation success rate: {success_rate:.1f}%")
             
             # Get task classification
             classified_tasks = self.classify_tasks(created_tasks)
@@ -152,11 +178,38 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             return result
             
         except Exception as e:
-            logger.error(f"Error creating project: {str(e)}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            from src.core.error_framework import MarcusBaseError
+            from src.core.error_responses import handle_mcp_tool_error
+            
+            # If it's already a Marcus error, let it propagate properly
+            if isinstance(e, MarcusBaseError):
+                logger.error(f"Marcus error during project creation: {e}")
+                # Return proper MCP error response
+                return handle_mcp_tool_error(e, "create_project", {
+                    "description": description,
+                    "project_name": project_name,
+                    "options": options
+                })
+            else:
+                # Convert other exceptions to proper Marcus errors
+                from src.core.error_framework import UnexpectedError, ErrorContext
+                
+                unexpected_error = UnexpectedError(
+                    operation="create_project_from_description",
+                    details=f"Unexpected error during project creation: {str(e)}",
+                    context=ErrorContext(
+                        operation="create_project",
+                        service="mcp_natural_language_tools",
+                        project_name=project_name
+                    )
+                )
+                
+                logger.error(f"Unexpected error creating project: {unexpected_error}")
+                return handle_mcp_tool_error(unexpected_error, "create_project", {
+                    "description": description,
+                    "project_name": project_name,
+                    "options": options
+                })
     
     def _build_constraints(self, options: Optional[Dict[str, Any]]) -> ProjectConstraints:
         """Build project constraints from options"""

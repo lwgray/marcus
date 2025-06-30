@@ -69,9 +69,19 @@ class NaturalLanguageTaskCreator(ABC):
         
         # Check if kanban client supports task creation
         if not hasattr(self.kanban_client, 'create_task'):
-            raise RuntimeError(
-                "Kanban client does not support task creation. "
-                "Please ensure you're using KanbanClientWithCreate."
+            from src.core.error_framework import KanbanIntegrationError, ErrorContext
+            
+            raise KanbanIntegrationError(
+                board_name=getattr(self.kanban_client, 'board_id', 'unknown'),
+                operation="task_creation_validation",
+                details=f"Kanban client {type(self.kanban_client).__name__} does not support task creation. "
+                       f"Expected KanbanClientWithCreate or compatible implementation. "
+                       f"Current client type: {type(self.kanban_client).__module__}.{type(self.kanban_client).__name__}",
+                context=ErrorContext(
+                    operation="create_tasks_on_board",
+                    service="natural_language_tools",
+                    client_type=type(self.kanban_client).__name__
+                )
             )
         
         created_tasks = []
@@ -88,8 +98,26 @@ class NaturalLanguageTaskCreator(ABC):
                 created_tasks.append(kanban_task)
                 
             except Exception as e:
-                logger.error(f"Failed to create task '{task.name}': {str(e)}")
-                failed_tasks.append((task, str(e)))
+                from src.core.error_framework import KanbanIntegrationError, ErrorContext
+                from src.core.error_monitoring import record_error_for_monitoring
+                
+                # Create proper error with context
+                kanban_error = KanbanIntegrationError(
+                    board_name=getattr(self.kanban_client, 'board_id', 'unknown'),
+                    operation="individual_task_creation",
+                    details=f"Failed to create task '{task.name}': {str(e)}",
+                    context=ErrorContext(
+                        operation="create_tasks_on_board",
+                        service="natural_language_tools",
+                        task_name=task.name,
+                        task_type=getattr(task, 'task_type', 'unknown')
+                    )
+                )
+                
+                # Record for monitoring but continue processing
+                record_error_for_monitoring(kanban_error)
+                logger.error(f"Failed to create task '{task.name}': {kanban_error}")
+                failed_tasks.append((task, str(kanban_error)))
                 # Continue with other tasks even if one fails
         
         # Log summary
@@ -100,6 +128,23 @@ class NaturalLanguageTaskCreator(ABC):
         
         if failed_tasks:
             logger.error(f"Failed tasks: {[(t.name, e) for t, e in failed_tasks]}")
+        
+        # Check if no tasks were created at all
+        if not created_tasks and tasks:
+            from src.core.error_framework import KanbanIntegrationError, ErrorContext
+            
+            raise KanbanIntegrationError(
+                board_name=getattr(self.kanban_client, 'board_id', 'unknown'),
+                operation="batch_task_creation",
+                details=f"Failed to create any of {len(tasks)} tasks. All task creation attempts failed. "
+                       f"This indicates a fundamental issue with the kanban integration or board configuration.",
+                context=ErrorContext(
+                    operation="create_tasks_on_board",
+                    service="natural_language_tools",
+                    total_tasks=len(tasks),
+                    failed_tasks=len(failed_tasks)
+                )
+            )
         
         return created_tasks
     
