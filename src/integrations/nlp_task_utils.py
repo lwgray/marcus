@@ -103,6 +103,10 @@ class TaskBuilder:
             "labels": task.labels,
             "estimated_hours": task.estimated_hours,
             "dependencies": task.dependencies,
+            # Include acceptance criteria if available
+            "acceptance_criteria": getattr(task, 'acceptance_criteria', []),
+            # Include subtasks if available
+            "subtasks": getattr(task, 'subtasks', []),
             # Additional fields that might be needed
             "status": task.status.value if hasattr(task.status, 'value') else task.status,
             "created_at": task.created_at.isoformat() if task.created_at else None,

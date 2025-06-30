@@ -156,3 +156,82 @@ You are an autonomous agent working through PM Agent's MCP interface.
      - "X Architecture" → /docs/developer-guide/sphinx/source/developer/x-architecture.md
 
   Each directory has a README.md explaining what belongs there. When in doubt, check /docs/README.md for structure.
+
+  TEST_WRITING_INSTRUCTIONS:
+  When writing tests for Marcus, follow this systematic approach:
+
+  1. Test Placement Decision:
+     ```
+     Does the test require external services (DB, API, network, files)?
+     → NO: Write a UNIT test in tests/unit/
+     → YES: Is this testing unimplemented/future features (TDD)?
+            → YES: Place in tests/future_features/
+            → NO: Write INTEGRATION test in tests/integration/
+     ```
+
+  2. Unit Test Placement:
+     - AI/ML logic → tests/unit/ai/test_*.py
+     - Core models/logic → tests/unit/core/test_*.py
+     - MCP protocol → tests/unit/mcp/test_*.py
+     - UI/Visualization → tests/unit/visualization/test_*.py
+
+  3. Integration Test Placement:
+     - End-to-end workflow → tests/integration/e2e/test_*.py
+     - API endpoints → tests/integration/api/test_*.py
+     - External services → tests/integration/external/test_*.py
+     - Debugging/diagnostics → tests/integration/diagnostics/test_*.py
+     - Performance → tests/performance/test_*.py
+
+  4. Test Writing Rules:
+     ALWAYS:
+     - Mock ALL external dependencies in unit tests
+     - Use descriptive test names: test_[what]_[when]_[expected]
+     - Include docstrings explaining what each test verifies
+     - Follow Arrange-Act-Assert pattern
+     - One logical assertion per test
+     - Unit tests must run in < 100ms
+
+     NEVER:
+     - Use real services in unit tests
+     - Test implementation details
+     - Create test files in root tests/ directory
+     - Mix unit and integration tests
+     - Leave hardcoded values - use fixtures
+
+  5. Test Structure:
+     ```python
+     """
+     [Unit/Integration] tests for [ComponentName]
+     """
+     import pytest
+     from unittest.mock import Mock, AsyncMock, patch
+
+     class TestComponentName:
+         """Test suite for ComponentName"""
+         
+         @pytest.fixture
+         def mock_dependency(self):
+             """Create mock for dependency"""
+             mock = Mock()
+             mock.method = AsyncMock(return_value="expected")
+             return mock
+         
+         def test_successful_operation(self, component):
+             """Test component handles normal operation"""
+             # Arrange
+             # Act
+             # Assert
+     ```
+
+  6. Test Markers:
+     - @pytest.mark.unit - Fast, isolated unit test
+     - @pytest.mark.integration - Requires external services
+     - @pytest.mark.asyncio - Async test
+     - @pytest.mark.slow - Takes > 1 second
+     - @pytest.mark.kanban - Requires Kanban server
+
+  7. Response Format:
+     - State test location and reasoning
+     - Explain test strategy and what will be tested
+     - Show complete test file with all imports
+     - Explain key decisions (mocking strategy, assertions)

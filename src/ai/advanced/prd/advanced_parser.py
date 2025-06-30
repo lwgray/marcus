@@ -285,6 +285,10 @@ class AdvancedPRDParser:
             labels=enhanced_details.get('labels', [])
         )
         
+        # Add acceptance criteria as a dynamic attribute
+        if enhanced_details.get('acceptance_criteria'):
+            task.acceptance_criteria = enhanced_details['acceptance_criteria']
+        
         return task
     
     async def _infer_smart_dependencies(
@@ -582,12 +586,16 @@ class AdvancedPRDParser:
         # Generate appropriate labels based on context and requirements
         labels = self._generate_labels(task_type, project_context, constraints)
         
+        # Generate acceptance criteria based on task type
+        acceptance_criteria = self._generate_acceptance_criteria(task_type, project_context, name)
+        
         return {
             'name': name,
             'description': description,
             'estimated_hours': estimated_hours,
             'labels': labels,
-            'due_date': None
+            'due_date': None,
+            'acceptance_criteria': acceptance_criteria
         }
     
     def _determine_priority(self, task_info: Dict[str, Any], analysis: PRDAnalysis) -> Priority:
@@ -920,3 +928,71 @@ class AdvancedPRDParser:
             labels.append('complexity:moderate')
         
         return labels
+    
+    def _generate_acceptance_criteria(self, task_type: str, context: Dict[str, Any], task_name: str) -> List[str]:
+        """Generate acceptance criteria based on task type and context"""
+        criteria = []
+        
+        if task_type == 'design':
+            criteria = [
+                "Design documentation is complete with all components specified",
+                "User flows and wireframes are created and reviewed",
+                "Technical architecture is documented and approved",
+                "Design system components are defined",
+                "Accessibility requirements are documented"
+            ]
+        elif task_type == 'implementation':
+            criteria = [
+                "All functionality is implemented as per specifications",
+                "Code passes all unit tests with >80% coverage",
+                "Code follows project coding standards and conventions",
+                "API endpoints are documented and tested",
+                "Error handling and validation are implemented",
+                "Performance meets defined benchmarks"
+            ]
+        elif task_type == 'testing':
+            criteria = [
+                "All test cases are written and documented",
+                "Unit tests achieve >80% code coverage",
+                "Integration tests cover all API endpoints",
+                "End-to-end tests validate user workflows",
+                "Performance tests meet SLA requirements",
+                "Test results are documented and reviewed"
+            ]
+        elif task_type == 'setup':
+            criteria = [
+                "Development environment runs successfully",
+                "All dependencies are installed and documented",
+                "Configuration files are properly set up",
+                "Database migrations run without errors",
+                "README includes setup instructions",
+                "Team members can successfully run the project"
+            ]
+        elif task_type == 'deployment':
+            criteria = [
+                "Application deploys successfully to target environment",
+                "All environment variables are configured",
+                "Health checks pass in production",
+                "Monitoring and logging are operational",
+                "Rollback procedure is documented and tested",
+                "Performance meets production requirements"
+            ]
+        else:
+            # Generic criteria for feature tasks
+            criteria = [
+                f"{task_name} is fully implemented and functional",
+                "Feature works as specified in requirements",
+                "Code is tested and passes all tests",
+                "Documentation is updated",
+                "Code review is completed and approved"
+            ]
+        
+        # Add context-specific criteria
+        if context.get('domain') == 'user_management':
+            criteria.append("Security requirements are met (authentication, authorization)")
+            criteria.append("User data privacy is properly handled")
+        elif context.get('domain') == 'ecommerce':
+            criteria.append("Payment processing is secure and PCI compliant")
+            criteria.append("Order workflow is thoroughly tested")
+        
+        return criteria[:5]  # Return top 5 most relevant criteria

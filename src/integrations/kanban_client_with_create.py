@@ -5,7 +5,7 @@ This module extends the SimpleMCPKanbanClient to add create_task functionality
 for creating new tasks on the kanban board.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 import json
 
@@ -129,9 +129,27 @@ class KanbanClientWithCreate(SimpleMCPKanbanClient):
                 
                 # Add labels if provided
                 if task_data.get("labels"):
-                    labels = task_data["labels"]
-                    # TODO: Implement label creation/assignment via MCP
-                    # This would require additional MCP tool calls to create/assign labels
+                    await self._add_labels_to_card(session, created_card["id"], task_data["labels"])
+                
+                # Add subtasks/acceptance criteria if provided
+                if task_data.get("acceptance_criteria") or task_data.get("subtasks"):
+                    checklist_items = []
+                    
+                    # Add acceptance criteria as checklist items
+                    if task_data.get("acceptance_criteria"):
+                        print(f"DEBUG: Found {len(task_data['acceptance_criteria'])} acceptance criteria for task '{card_name}'")
+                        for criteria in task_data["acceptance_criteria"]:
+                            checklist_items.append(f"✓ {criteria}")
+                    
+                    # Add subtasks as checklist items
+                    if task_data.get("subtasks"):
+                        print(f"DEBUG: Found {len(task_data['subtasks'])} subtasks for task '{card_name}'")
+                        for subtask in task_data["subtasks"]:
+                            checklist_items.append(f"• {subtask}")
+                    
+                    if checklist_items:
+                        print(f"DEBUG: Adding {len(checklist_items)} checklist items to card")
+                        await self._add_checklist_items(session, created_card["id"], checklist_items)
                 
                 # Add initial comment with task metadata
                 metadata_comment = self._build_metadata_comment(task_data)
@@ -216,15 +234,199 @@ class KanbanClientWithCreate(SimpleMCPKanbanClient):
             deps = ", ".join(task_data["dependencies"])
             metadata_parts.append(f"🔗 Dependencies: {deps}")
         
-        if task_data.get("labels"):
-            labels = ", ".join(f"#{label}" for label in task_data["labels"])
-            metadata_parts.append(f"🏷️ Labels: {labels}")
-        
         if metadata_parts:
             header = "📋 Task Metadata (Auto-generated)\n"
             return header + "\n".join(metadata_parts)
         
         return None
+    
+    async def _add_labels_to_card(self, session: Any, card_id: str, labels: List[str]) -> None:
+        """
+        Add labels to a card, creating them if necessary.
+        
+        Parameters
+        ----------
+        session : Any
+            MCP client session
+        card_id : str
+            ID of the card to add labels to
+        labels : List[str]
+            List of label names to add
+        """
+        try:
+            # Get board ID from the first list
+            lists_result = await session.call_tool(
+                "mcp_kanban_list_manager",
+                {
+                    "action": "get_all",
+                    "boardId": self.board_id
+                }
+            )
+            
+            if not lists_result or not hasattr(lists_result, 'content') or not lists_result.content:
+                return
+                
+            try:
+                lists_data = json.loads(lists_result.content[0].text)
+            except (json.JSONDecodeError, IndexError) as e:
+                print(f"Failed to parse lists response: {e}")
+                return
+            lists = lists_data if isinstance(lists_data, list) else lists_data.get("items", [])
+            
+            if not lists:
+                return
+                
+            board_id = lists[0].get("boardId")
+            if not board_id:
+                return
+            
+            # Get existing labels
+            labels_result = await session.call_tool(
+                "mcp_kanban_label_manager",
+                {
+                    "action": "get_all",
+                    "boardId": board_id
+                }
+            )
+            
+            existing_labels = {}
+            if labels_result and hasattr(labels_result, 'content') and labels_result.content:
+                try:
+                    labels_data = json.loads(labels_result.content[0].text)
+                except (json.JSONDecodeError, IndexError) as e:
+                    print(f"Failed to parse labels response: {e}")
+                    labels_data = {}
+                existing_list = labels_data if isinstance(labels_data, list) else labels_data.get("items", [])
+                for label in existing_list:
+                    existing_labels[label["name"].lower()] = label["id"]
+            
+            # Define label colors based on Planka's allowed color names
+            label_colors = {
+                'frontend': 'lagoon-blue',
+                'backend': 'bright-moss',
+                'database': 'berry-red',
+                'api': 'egg-yellow',
+                'testing': 'morning-sky',
+                'bug': 'berry-red',
+                'feature': 'bright-moss',
+                'enhancement': 'lagoon-blue',
+                'documentation': 'light-concrete',
+                'high': 'berry-red',
+                'medium': 'egg-yellow',
+                'low': 'bright-moss',
+                'setup': 'pink-tulip',
+                'deployment': 'pumpkin-orange',
+                'security': 'berry-red',
+                'performance': 'coral-green',
+                'ui': 'pink-tulip',
+                'ux': 'pink-tulip',
+                'devops': 'midnight-blue',
+                'infrastructure': 'midnight-blue',
+                'priority': 'berry-red',    # For priority tags
+                'skill': 'lagoon-blue',     # For skill tags
+                'complexity': 'light-concrete', # For complexity tags
+                'component': 'bright-moss',     # For component tags
+                'type': 'pumpkin-orange'        # For type tags
+            }
+            
+            # Process each label
+            for label_name in labels:
+                label_lower = label_name.lower()
+                label_id = None
+                
+                # Check if label exists
+                if label_lower in existing_labels:
+                    label_id = existing_labels[label_lower]
+                else:
+                    # Create new label
+                    color = label_colors.get(label_lower, 'light-concrete')  # Default gray
+                    
+                    # Extract color from label taxonomy (e.g., "component:frontend" -> "frontend")
+                    if ':' in label_name:
+                        category, label_type = label_name.split(':', 1)
+                        # First try the full label, then the type, then the category
+                        color = label_colors.get(label_lower, 
+                                label_colors.get(label_type.lower(), 
+                                    label_colors.get(category.lower(), 'light-concrete')))
+                    
+                    try:
+                        create_label_result = await session.call_tool(
+                            "mcp_kanban_label_manager",
+                            {
+                                "action": "create",
+                                "boardId": board_id,
+                                "name": label_name,
+                                "color": color
+                            }
+                        )
+                        
+                        if create_label_result and hasattr(create_label_result, 'content') and create_label_result.content:
+                            try:
+                                label_data = json.loads(create_label_result.content[0].text)
+                                label_info = label_data if isinstance(label_data, dict) else label_data.get("item", {})
+                            except (json.JSONDecodeError, IndexError) as e:
+                                print(f"Failed to parse label creation response for '{label_name}': {e}")
+                                continue
+                            label_id = label_info.get("id")
+                    except Exception as e:
+                        print(f"Failed to create label '{label_name}': {e}")
+                        continue
+                
+                # Add label to card
+                if label_id:
+                    try:
+                        await session.call_tool(
+                            "mcp_kanban_label_manager",
+                            {
+                                "action": "add_to_card",
+                                "cardId": card_id,
+                                "labelId": label_id
+                            }
+                        )
+                    except Exception as e:
+                        print(f"Failed to add label '{label_name}' to card: {e}")
+                        
+        except Exception as e:
+            print(f"Error in _add_labels_to_card: {e}")
+            # Don't fail task creation if labels fail
+    
+    async def _add_checklist_items(self, session: Any, card_id: str, items: List[str]) -> None:
+        """
+        Add checklist items (subtasks/acceptance criteria) to a card.
+        
+        Parameters
+        ----------
+        session : Any
+            MCP client session
+        card_id : str
+            ID of the card to add items to
+        items : List[str]
+            List of checklist item names
+        """
+        try:
+            position = 65536
+            for item in items:
+                try:
+                    result = await session.call_tool(
+                        "mcp_kanban_task_manager",
+                        {
+                            "action": "create",
+                            "cardId": card_id,
+                            "name": item,
+                            "position": position
+                        }
+                    )
+                    if result and hasattr(result, 'content'):
+                        print(f"DEBUG: Created checklist item '{item[:30]}...' - response has content")
+                    else:
+                        print(f"DEBUG: Created checklist item '{item[:30]}...' - no response content")
+                    position += 65536
+                except Exception as e:
+                    print(f"Failed to create checklist item '{item}': {e}")
+                    
+        except Exception as e:
+            print(f"Error in _add_checklist_items: {e}")
+            # Don't fail task creation if checklist fails
     
     async def create_tasks_batch(self, tasks_data: list[Dict[str, Any]]) -> list[Task]:
         """
