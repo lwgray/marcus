@@ -416,7 +416,7 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
         }
         
         detected_types = []
-        for ftype, keywords in feature_types.items():
+        for ftype, keywords in list(feature_types.items()):
             if any(word in feature_lower for word in keywords):
                 detected_types.append(ftype)
         

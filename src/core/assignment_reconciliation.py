@@ -94,7 +94,7 @@ class AssignmentReconciler:
                     results["assignments_removed"] += 1
                     
             # Find orphaned IN_PROGRESS tasks (assigned in kanban but not persisted)
-            persisted_task_ids = {a["task_id"] for a in persisted.values()}
+            persisted_task_ids = {a["task_id"] for a in list(persisted.values())}
             
             for task in all_tasks:
                 if (task.status == TaskStatus.IN_PROGRESS and 
@@ -158,7 +158,7 @@ class AssignmentReconciler:
             health["kanban_assigned_count"] = len(kanban_assigned)
             
             # Check for mismatches
-            persisted_task_ids = {a["task_id"] for a in persisted.values()}
+            persisted_task_ids = {a["task_id"] for a in list(persisted.values())}
             kanban_task_ids = {t.id for t in kanban_assigned}
             
             # Tasks in persistence but not kanban

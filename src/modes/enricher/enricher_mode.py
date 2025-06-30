@@ -320,7 +320,7 @@ class EnricherMode:
             'deployment': ['deploy', 'release', 'launch']
         }
         
-        for phase, indicators in phase_indicators.items():
+        for phase, indicators in list(phase_indicators.items()):
             if any(indicator in all_text for indicator in indicators):
                 phases.append(phase)
         
@@ -339,7 +339,7 @@ class EnricherMode:
             'infrastructure': ['infra', 'devops', 'docker', 'k8s']
         }
         
-        for component, indicators in component_indicators.items():
+        for component, indicators in list(component_indicators.items()):
             if any(indicator in all_text for indicator in indicators):
                 components.append(component)
         
@@ -501,7 +501,7 @@ class EnricherMode:
                     "success": True,
                     "strategy": strategy.name,
                     "structure": {
-                        "phases": {k: len(v) for k, v in structure.phases.items()},
+                        "phases": {k: len(v) for k, v in list(structure.phases.items())},
                         "phase_order": structure.phase_order,
                         "cross_phase_dependencies": len(structure.cross_phase_dependencies)
                     },
@@ -514,7 +514,7 @@ class EnricherMode:
                     "success": True,
                     "strategy": strategy.name,
                     "structure": {
-                        "components": {k: len(v) for k, v in structure.components.items()},
+                        "components": {k: len(v) for k, v in list(structure.components.items())},
                         "integration_tasks": len(structure.integration_tasks),
                         "shared_tasks": len(structure.shared_tasks)
                     },

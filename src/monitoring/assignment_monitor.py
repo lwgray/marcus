@@ -96,7 +96,7 @@ class AssignmentMonitor:
             
             reversions_detected = []
             
-            for worker_id, assignment in assignments.items():
+            for worker_id, assignment in list(assignments.items()):
                 task_id = assignment["task_id"]
                 
                 # Check if task still exists
@@ -256,7 +256,7 @@ class AssignmentHealthChecker:
             health["metrics"]["in_progress_tasks"] = len(in_progress)
             
             # Check for mismatches
-            persisted_task_ids = {a["task_id"] for a in persisted.values()}
+            persisted_task_ids = {a["task_id"] for a in list(persisted.values())}
             kanban_assigned_ids = {t.id for t in in_progress if t.assigned_to}
             
             # Tasks only in persistence

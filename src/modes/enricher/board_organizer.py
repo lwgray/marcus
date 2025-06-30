@@ -329,7 +329,7 @@ class BoardOrganizer:
         confidence = min(0.8, avg_tasks_per_feature / 3)  # Max confidence if 3+ tasks per feature
         
         # Reduce confidence if too many single-task features
-        single_task_features = sum(1 for count in feature_distribution.values() if count == 1)
+        single_task_features = sum(1 for count in list(feature_distribution.values()) if count == 1)
         if single_task_features > len(feature_distribution) * 0.7:
             confidence *= 0.5
         

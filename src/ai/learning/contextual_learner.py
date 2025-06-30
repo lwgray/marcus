@@ -306,7 +306,7 @@ class ContextualLearningSystem:
         
         # Calculate average velocity per task type
         velocity_patterns = {}
-        for task_type, ratios in velocity_data.items():
+        for task_type, ratios in list(velocity_data.items()):
             if len(ratios) >= 2:  # Need at least 2 samples
                 velocity_patterns[task_type] = statistics.mean(ratios)
         
@@ -325,7 +325,7 @@ class ContextualLearningSystem:
         
         # Calculate average performance per skill
         skill_strengths = {}
-        for skill, performances in skill_performance.items():
+        for skill, performances in list(skill_performance.items()):
             if len(performances) >= 2:
                 skill_strengths[skill] = statistics.mean(performances)
         
@@ -347,7 +347,7 @@ class ContextualLearningSystem:
         
         # Calculate preferences
         preferences = {}
-        for task_type, scores in task_type_performance.items():
+        for task_type, scores in list(task_type_performance.items()):
             if len(scores) >= 2:
                 preferences[task_type] = statistics.mean(scores)
         
@@ -455,7 +455,7 @@ class ContextualLearningSystem:
                     task_type_ratios[task_type].append(ratio)
         
         # Calculate multipliers
-        for task_type, ratios in task_type_ratios.items():
+        for task_type, ratios in list(task_type_ratios.items()):
             if len(ratios) >= 2:
                 multipliers[task_type] = statistics.mean(ratios)
         
@@ -492,7 +492,7 @@ class ContextualLearningSystem:
         
         # Convert to probabilities
         risk_probabilities = {}
-        for risk, count in risks.items():
+        for risk, count in list(risks.items()):
             if count >= 2:  # Risk appeared in at least 2 projects
                 risk_probabilities[risk] = count / total_projects
         
