@@ -72,10 +72,12 @@ class AIAnalysisEngine:
         # Initialize Anthropic client with better error handling
         self.client: Optional[anthropic.Anthropic] = None
         try:
-            # Get API key from environment
-            api_key = os.environ.get("ANTHROPIC_API_KEY")
+            # Get API key from config first, fall back to environment
+            from src.config.config_loader import get_config
+            config = get_config()
+            api_key = config.get('ai.anthropic_api_key') or os.environ.get("ANTHROPIC_API_KEY")
             if not api_key:
-                print("⚠️  ANTHROPIC_API_KEY not found - AI features will use fallback mode", file=sys.stderr)
+                print("⚠️  Anthropic API key not found - AI features will use fallback mode", file=sys.stderr)
                 self.client = None
             else:
                 # Try different initialization approaches based on version
@@ -97,7 +99,7 @@ class AIAnalysisEngine:
             print("   AI features will use fallback responses", file=sys.stderr)
             self.client = None
         
-        self.model: str = "claude-3-5-sonnet-20241022"  # Using Sonnet 3.5 for speed/cost balance
+        self.model: str = config.get('ai.model', 'claude-3-5-sonnet-20241022') if 'config' in locals() else "claude-3-5-sonnet-20241022"  # Using Sonnet 3.5 for speed/cost balance
         
         # Analysis prompts
         self.prompts: Dict[str, str] = {

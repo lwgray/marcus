@@ -19,7 +19,6 @@ import atexit
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
-from dotenv import load_dotenv
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 import mcp.types as types
@@ -38,6 +37,7 @@ from src.config.settings import Settings
 from src.logging.conversation_logger import conversation_logger
 from src.core.assignment_persistence import AssignmentPersistence
 from src.monitoring.assignment_monitor import AssignmentMonitor
+from src.config.config_loader import get_config
 
 from .handlers import get_tool_definitions, handle_tool_call
 
@@ -47,11 +47,12 @@ class MarcusServer:
     
     def __init__(self):
         """Initialize Marcus server instance"""
-        load_dotenv()
+        # Config is already loaded by marcus.py, but ensure it's available
+        self.config = get_config()
         self.settings = Settings()
         
-        # Get kanban provider from environment
-        self.provider = os.getenv('KANBAN_PROVIDER', 'planka')
+        # Get kanban provider from config
+        self.provider = self.config.get('kanban.provider', 'planka')
         print(f"Initializing Marcus with {self.provider.upper()} kanban provider...")
         
         # Create realtime log with line buffering

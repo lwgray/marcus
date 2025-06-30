@@ -7,11 +7,11 @@ based on configuration.
 
 from typing import Dict, Any, Optional
 import os
-from dotenv import load_dotenv
 
 from src.integrations.kanban_interface import KanbanInterface, KanbanProvider
 from src.integrations.providers import PlankaKanban, LinearKanban, GitHubKanban
 from src.integrations.providers.planka_kanban_simple import PlankaKanbanSimple
+from src.config.config_loader import get_config
 
 
 class KanbanFactory:
@@ -32,7 +32,8 @@ class KanbanFactory:
         Raises:
             ValueError: If provider is not supported
         """
-        load_dotenv()
+        # Config is already loaded - just use it
+        config_loader = get_config()
         
         provider_lower = provider.lower()
         

@@ -157,7 +157,8 @@ class MarcusBaseError(Exception):
                 'task_id': self.context.task_id,
                 'correlation_id': self.context.correlation_id,
                 'timestamp': self.context.timestamp.isoformat(),
-                'integration_name': self.context.integration_name
+                'integration_name': self.context.integration_name,
+                'custom_context': self.context.custom_context
             },
             'remediation': {
                 'immediate': self.remediation.immediate_action,

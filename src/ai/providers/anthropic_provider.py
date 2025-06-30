@@ -27,13 +27,16 @@ class AnthropicProvider(BaseLLMProvider):
     """
     
     def __init__(self):
-        self.api_key = os.getenv('ANTHROPIC_API_KEY')
+        # Try to get API key from config first, fall back to env var
+        from src.config.config_loader import get_config
+        config = get_config()
+        self.api_key = config.get('ai.anthropic_api_key') or os.getenv('ANTHROPIC_API_KEY')
         if not self.api_key:
-            raise ValueError("ANTHROPIC_API_KEY environment variable not set")
+            raise ValueError("Anthropic API key not found in config or environment")
         
         self.base_url = "https://api.anthropic.com/v1"
-        self.model = os.getenv('ANTHROPIC_MODEL', 'claude-3-haiku-20240307')  # Fast model for quick responses
-        self.max_tokens = 2048
+        self.model = config.get('ai.model', 'claude-3-haiku-20240307')  # Fast model for quick responses
+        self.max_tokens = config.get('ai.max_tokens', 2048)
         self.timeout = 30.0
         
         # HTTP client with proper headers

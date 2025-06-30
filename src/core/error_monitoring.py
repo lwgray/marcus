@@ -628,7 +628,9 @@ class ErrorMonitor:
         
         # Integration-specific recommendations
         integration_errors = defaultdict(int)
-        for error in self.error_history[-1000:]:  # Last 1000 errors
+        # Get last 1000 errors from deque
+        recent_errors = list(self.error_history)[-1000:] if len(self.error_history) > 1000 else list(self.error_history)
+        for error in recent_errors:
             if error.get('integration_name'):
                 integration_errors[error['integration_name']] += 1
         

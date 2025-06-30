@@ -569,28 +569,40 @@ Remember: Take your time, test thoroughly, and ask questions!"""
         # Mock environment variable
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-api-key")
         
-        # Mock anthropic module
-        with patch('src.integrations.ai_analysis_engine_fixed.anthropic') as mock_anthropic:
-            mock_client = Mock()
-            mock_anthropic.Anthropic.return_value = mock_client
+        # Mock config loader to return test API key
+        with patch('src.config.config_loader.get_config') as mock_get_config:
+            mock_config = Mock()
+            mock_config.get.return_value = 'test-api-key'
+            mock_get_config.return_value = mock_config
             
-            # Create engine - should initialize client
-            engine = AIAnalysisEngine()
-            
-            assert engine.client == mock_client
-            mock_anthropic.Anthropic.assert_called_once_with(api_key="test-api-key")
+            # Mock anthropic module
+            with patch('src.integrations.ai_analysis_engine_fixed.anthropic') as mock_anthropic:
+                mock_client = Mock()
+                mock_anthropic.Anthropic.return_value = mock_client
+                
+                # Create engine - should initialize client
+                engine = AIAnalysisEngine()
+                
+                assert engine.client == mock_client
+                mock_anthropic.Anthropic.assert_called_once_with(api_key="test-api-key")
     
     @pytest.mark.asyncio
     async def test_client_initialization_failure(self, monkeypatch, capsys):
         """Test client initialization when Anthropic raises exception"""
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-api-key")
         
-        with patch('src.integrations.ai_analysis_engine_fixed.anthropic') as mock_anthropic:
-            mock_anthropic.Anthropic.side_effect = Exception("Connection failed")
+        # Mock config loader
+        with patch('src.config.config_loader.get_config') as mock_get_config:
+            mock_config = Mock()
+            mock_config.get.return_value = 'test-api-key'
+            mock_get_config.return_value = mock_config
             
-            engine = AIAnalysisEngine()
-            
-            assert engine.client is None
+            with patch('src.integrations.ai_analysis_engine_fixed.anthropic') as mock_anthropic:
+                mock_anthropic.Anthropic.side_effect = Exception("Connection failed")
+                
+                engine = AIAnalysisEngine()
+                
+                assert engine.client is None
             captured = capsys.readouterr()
             assert "Failed to initialize Anthropic client" in captured.err
     

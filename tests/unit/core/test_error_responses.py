@@ -76,7 +76,8 @@ class TestErrorResponseFormatter:
         remediation = RemediationSuggestion(
             immediate_action="Retry operation",
             fallback_strategy="Use cached data",
-            long_term_solution="Fix configuration"
+            long_term_solution="Fix configuration",
+            retry_strategy="Exponential backoff"
         )
         
         return NetworkTimeoutError(
@@ -153,7 +154,7 @@ class TestErrorResponseFormatter:
         assert "message" in response
         assert "What to do: Retry operation" in response["message"]
         assert "Alternative: Use cached data" in response["message"]
-        assert "Retry:" in response["message"]  # Should include retry info for retryable errors
+        assert "🔁 Retry:" in response["message"]  # Should include retry info for retryable errors
         
         assert response["severity"] == "medium"
         assert response["can_retry"] is True

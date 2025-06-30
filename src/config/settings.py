@@ -9,6 +9,7 @@ import os
 import json
 from typing import Dict, Any, Optional, Union, List
 from pathlib import Path
+from .config_loader import get_config
 
 
 class Settings:
@@ -50,9 +51,10 @@ class Settings:
     """
     
     def __init__(self, config_path: Optional[str] = None) -> None:
+        # Use the new marcus.config.json location
         self.config_path = config_path or os.environ.get(
             "MARCUS_CONFIG",
-            "config/marcus_config.json"
+            "marcus.config.json"
         )
         
         # Default configuration
@@ -138,21 +140,59 @@ class Settings:
             
         Notes
         -----
-        If config file doesn't exist or has errors, falls back to defaults.
-        Environment variables always take precedence over file settings.
+        Uses the centralized ConfigLoader for consistency.
         """
+        # Start with defaults
         config = self.defaults.copy()
         
-        # Try to load from file
-        if os.path.exists(self.config_path):
+        # If a specific config path was provided (e.g., in tests), load from it
+        if self.config_path and os.path.exists(self.config_path) and self.config_path != "marcus.config.json":
             try:
                 with open(self.config_path, 'r') as f:
                     file_config = json.load(f)
                     config = self._deep_merge(config, file_config)
             except Exception as e:
                 print(f"Error loading config file: {e}")
+        else:
+            try:
+                # Get configuration from centralized loader
+                config_loader = get_config()
+                
+                # Merge relevant settings from marcus.config.json
+                monitoring_config = config_loader.get('monitoring', {})
+                if monitoring_config:
+                    config['monitoring_interval'] = monitoring_config.get('interval', config['monitoring_interval'])
+                    config['stall_threshold_hours'] = monitoring_config.get('stall_threshold_hours', config['stall_threshold_hours'])
+                    config['health_check_interval'] = monitoring_config.get('health_check_interval', config['health_check_interval'])
+                    if 'risk_thresholds' in monitoring_config:
+                        config['risk_thresholds'].update(monitoring_config['risk_thresholds'])
+                
+                # Get escalation settings
+                escalation_config = config_loader.get('escalation', {})
+                if escalation_config:
+                    config['escalation_rules'].update(escalation_config)
+                
+                # Get communication settings
+                comm_config = config_loader.get('communication', {})
+                if comm_config:
+                    config['slack_enabled'] = comm_config.get('slack_enabled', config['slack_enabled'])
+                    config['email_enabled'] = comm_config.get('email_enabled', config['email_enabled'])
+                    config['kanban_comments_enabled'] = comm_config.get('kanban_comments_enabled', config['kanban_comments_enabled'])
+                    if 'rules' in comm_config:
+                        config['communication_rules'].update(comm_config['rules'])
+                
+                # Get AI settings
+                ai_config = config_loader.get('ai', {})
+                if ai_config:
+                    config['ai_settings']['model'] = ai_config.get('model', config['ai_settings']['model'])
+                    config['ai_settings']['temperature'] = ai_config.get('temperature', config['ai_settings']['temperature'])
+                    config['ai_settings']['max_tokens'] = ai_config.get('max_tokens', config['ai_settings']['max_tokens'])
+                    
+            except Exception as e:
+                # If config loader fails, just use defaults
+                print(f"Warning: Could not load from config loader: {e}")
         
-        # Override with environment variables
+        # Environment variables still override everything
         config = self._load_env_overrides(config)
         
         return config

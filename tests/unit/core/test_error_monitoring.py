@@ -437,6 +437,10 @@ class TestErrorMonitor:
         self.monitor.pattern_thresholds['frequency_threshold'] = 1
         self.monitor.record_error(self.create_test_error(NetworkTimeoutError))
         
+        # Manually add metrics to history (normally done by monitoring loop)
+        from dataclasses import asdict
+        self.monitor.metrics_history.append(ErrorMetrics(**asdict(self.monitor.current_metrics)))
+        
         # Save data
         self.monitor._save_to_storage()
         
