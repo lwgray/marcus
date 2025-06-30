@@ -16,6 +16,7 @@ from src.core.models import Task, TaskStatus, Priority, TaskAssignment
 from src.logging.conversation_logger import conversation_logger, log_thinking
 from src.logging.agent_events import log_agent_event
 from src.core.ai_powered_task_assignment import find_optimal_task_for_agent_ai_powered
+from src.marcus_mcp.utils import serialize_for_mcp, safe_serialize_task
 
 
 async def request_next_task(agent_id: str, state: Any) -> Dict[str, Any]:
@@ -174,7 +175,8 @@ async def request_next_task(agent_id: str, state: Any) -> Dict[str, Any]:
                     }
                 })
                 
-                return {
+                # Serialize the response properly
+                response = {
                     "success": True,
                     "task": {
                         "id": optimal_task.id,
@@ -185,6 +187,7 @@ async def request_next_task(agent_id: str, state: Any) -> Dict[str, Any]:
                         "implementation_context": previous_implementations
                     }
                 }
+                return serialize_for_mcp(response)
             
             except Exception as e:
                 # If anything fails, rollback the reservation

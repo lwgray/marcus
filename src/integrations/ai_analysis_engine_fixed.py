@@ -286,8 +286,8 @@ Identify risks and provide JSON:
             "blocked_tasks": project_state.blocked_tasks,
             "progress_percent": project_state.progress_percent,
             "team_velocity": project_state.team_velocity,
-            "risk_level": project_state.risk_level.value,  # RiskLevel is an Enum
-            "last_updated": project_state.last_updated.isoformat()
+            "risk_level": project_state.risk_level.value if hasattr(project_state.risk_level, 'value') else str(project_state.risk_level),
+            "last_updated": project_state.last_updated.isoformat() if hasattr(project_state.last_updated, 'isoformat') else str(project_state.last_updated)
         }
         
         prompt = self.prompts["task_assignment"].format(
@@ -762,8 +762,8 @@ Provide a helpful clarification that guides the developer."""
             "blocked_tasks": project_state.blocked_tasks,
             "progress_percent": project_state.progress_percent,
             "team_velocity": project_state.team_velocity,
-            "risk_level": project_state.risk_level.value,  # RiskLevel is an Enum
-            "last_updated": project_state.last_updated.isoformat()
+            "risk_level": project_state.risk_level.value if hasattr(project_state.risk_level, 'value') else str(project_state.risk_level),
+            "last_updated": project_state.last_updated.isoformat() if hasattr(project_state.last_updated, 'isoformat') else str(project_state.last_updated)
         }
         
         prompt = self.prompts["project_risk"].format(
@@ -875,7 +875,7 @@ Provide a helpful clarification that guides the developer."""
             "progress_percent": project_state.progress_percent,
             "team_velocity": project_state.team_velocity,
             "risk_level": project_state.risk_level.value,
-            "last_updated": project_state.last_updated.isoformat(),
+            "last_updated": project_state.last_updated.isoformat() if hasattr(project_state.last_updated, 'isoformat') else str(project_state.last_updated),
             "overdue_tasks": len(project_state.overdue_tasks)
         }
         

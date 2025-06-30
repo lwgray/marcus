@@ -8,6 +8,7 @@ This module contains tools for monitoring project progress and metrics:
 from typing import Dict, Any, List
 from src.core.models import TaskStatus
 from src.logging.conversation_logger import conversation_logger
+from src.marcus_mcp.utils import serialize_for_mcp
 
 
 async def get_project_status(state: Any) -> Dict[str, Any]:
@@ -26,6 +27,13 @@ async def get_project_status(state: Any) -> Dict[str, Any]:
         Dict with project metrics and status
     """
     try:
+        # Check if state is properly initialized
+        if not hasattr(state, 'kanban_client') or state.kanban_client is None:
+            return {
+                "success": False,
+                "error": "Not initialized. Call initialize() first."
+            }
+        
         # Initialize kanban if needed
         await state.initialize_kanban()
         
@@ -42,7 +50,7 @@ async def get_project_status(state: Any) -> Dict[str, Any]:
             # Worker metrics - create snapshot to avoid dictionary mutation during iteration
             active_workers = len([w for w in list(state.agent_status.values()) if len(w.current_tasks) > 0])
             
-            return {
+            response = {
                 "success": True,
                 "project": {
                     "total_tasks": total_tasks,
@@ -58,6 +66,7 @@ async def get_project_status(state: Any) -> Dict[str, Any]:
                 },
                 "provider": state.provider
             }
+            return serialize_for_mcp(response)
         else:
             return {
                 "success": False,
