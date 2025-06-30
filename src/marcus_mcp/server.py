@@ -172,62 +172,55 @@ class MarcusServer:
                 ) from e
     
     def _ensure_environment_config(self):
-        """Ensure environment variables are set from marcus.config.json"""
+        """Ensure environment variables are set from config_marcus.json"""
         from src.core.error_framework import ConfigurationError, ErrorContext
         
         try:
-            # Use the proper config loader to get kanban configuration
-            kanban_config = self.config.get_kanban_config()
-            provider = kanban_config.get('provider', 'planka')
+            # Load from config_marcus.json if environment variables aren't set
+            import json
+            from pathlib import Path
             
-            # Set environment variables based on the selected provider
-            if provider == 'planka':
-                planka_config = kanban_config
-                if 'PLANKA_BASE_URL' not in os.environ:
-                    os.environ['PLANKA_BASE_URL'] = planka_config.get('base_url', 'http://localhost:3333')
-                if 'PLANKA_AGENT_EMAIL' not in os.environ:
-                    os.environ['PLANKA_AGENT_EMAIL'] = planka_config.get('email', 'demo@demo.demo')
-                if 'PLANKA_AGENT_PASSWORD' not in os.environ:
-                    os.environ['PLANKA_AGENT_PASSWORD'] = planka_config.get('password', 'demo')
-                if 'PLANKA_PROJECT_NAME' not in os.environ:
-                    os.environ['PLANKA_PROJECT_NAME'] = planka_config.get('project_name', 'Task Master Test')
-                    
-                print(f"✅ Configured Planka environment from {self.config.config_path}", file=sys.stderr)
+            config_path = Path(__file__).parent.parent.parent / "config_marcus.json"
+            if config_path.exists():
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
                 
-            elif provider == 'github':
-                github_config = kanban_config
-                if 'GITHUB_TOKEN' not in os.environ:
-                    token = github_config.get('token')
-                    if token:
-                        os.environ['GITHUB_TOKEN'] = token
-                if 'GITHUB_OWNER' not in os.environ:
-                    owner = github_config.get('owner')
-                    if owner:
-                        os.environ['GITHUB_OWNER'] = owner
-                if 'GITHUB_REPO' not in os.environ:
-                    repo = github_config.get('repo')
-                    if repo:
-                        os.environ['GITHUB_REPO'] = repo
-                        
-                print(f"✅ Configured GitHub environment from {self.config.config_path}", file=sys.stderr)
+                # Set Planka environment variables if not already set
+                if 'planka' in config:
+                    planka_config = config['planka']
+                    if 'PLANKA_BASE_URL' not in os.environ:
+                        os.environ['PLANKA_BASE_URL'] = planka_config.get('base_url', 'http://localhost:3333')
+                    if 'PLANKA_AGENT_EMAIL' not in os.environ:
+                        os.environ['PLANKA_AGENT_EMAIL'] = planka_config.get('email', 'demo@demo.demo')
+                    if 'PLANKA_AGENT_PASSWORD' not in os.environ:
+                        os.environ['PLANKA_AGENT_PASSWORD'] = planka_config.get('password', 'demo')
+                    if 'PLANKA_PROJECT_NAME' not in os.environ:
+                        os.environ['PLANKA_PROJECT_NAME'] = config.get('project_name', 'Task Master Test')
                 
-            elif provider == 'linear':
-                linear_config = kanban_config
-                if 'LINEAR_API_KEY' not in os.environ:
-                    api_key = linear_config.get('api_key')
-                    if api_key:
-                        os.environ['LINEAR_API_KEY'] = api_key
-                if 'LINEAR_TEAM_ID' not in os.environ:
-                    team_id = linear_config.get('team_id')
-                    if team_id:
-                        os.environ['LINEAR_TEAM_ID'] = team_id
-                        
-                print(f"✅ Configured Linear environment from {self.config.config_path}", file=sys.stderr)
-            
+                # Support GitHub if configured in the future
+                if 'github' in config:
+                    github_config = config['github']
+                    if 'GITHUB_TOKEN' not in os.environ and github_config.get('token'):
+                        os.environ['GITHUB_TOKEN'] = github_config['token']
+                    if 'GITHUB_OWNER' not in os.environ and github_config.get('owner'):
+                        os.environ['GITHUB_OWNER'] = github_config['owner']
+                    if 'GITHUB_REPO' not in os.environ and github_config.get('repo'):
+                        os.environ['GITHUB_REPO'] = github_config['repo']
+                
+                # Support Linear if configured in the future  
+                if 'linear' in config:
+                    linear_config = config['linear']
+                    if 'LINEAR_API_KEY' not in os.environ and linear_config.get('api_key'):
+                        os.environ['LINEAR_API_KEY'] = linear_config['api_key']
+                    if 'LINEAR_TEAM_ID' not in os.environ and linear_config.get('team_id'):
+                        os.environ['LINEAR_TEAM_ID'] = linear_config['team_id']
+                
+                print(f"✅ Loaded configuration from {config_path}", file=sys.stderr)
+                
         except FileNotFoundError as e:
             raise ConfigurationError(
                 service_name="MCP Server",
-                config_type="marcus.config.json",
+                config_type="config_marcus.json",
                 missing_field="configuration file",
                 context=ErrorContext(
                     operation="environment_config_loading",
@@ -238,11 +231,10 @@ class MarcusServer:
             raise ConfigurationError(
                 service_name="MCP Server", 
                 config_type="environment variables",
-                missing_field=f"kanban.{provider} configuration",
+                missing_field="kanban configuration",
                 context=ErrorContext(
                     operation="environment_config_loading",
-                    service="mcp_server",
-                    provider=provider
+                    service="mcp_server"
                 )
             ) from e
     
