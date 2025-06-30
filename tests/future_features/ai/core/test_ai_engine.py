@@ -59,7 +59,9 @@ class TestMarcusAIEngine:
             priority=Priority.HIGH,
             assigned_to=None,
             created_at=None,
-            updated_at=None
+            updated_at=None,
+            due_date=None,
+            estimated_hours=8.0
         )
     
     @pytest.fixture
