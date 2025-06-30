@@ -145,12 +145,58 @@ class LabelManagerHelper:
         
         # Check cache first
         if normalized_name in self._label_cache:
-            return self._label_cache[normalized_name]['id']
+            cached_label = self._label_cache[normalized_name]
+            # Verify the color is correct
+            expected_color = self.get_color_for_label(name)
+            if cached_label['color'] != expected_color:
+                # Update the label color
+                print(f"Updating label '{name}' color from {cached_label['color']} to {expected_color}")
+                try:
+                    update_result = await self.session.call_tool(
+                        "mcp_kanban_label_manager",
+                        {
+                            "action": "update",
+                            "id": cached_label['id'],
+                            "boardId": self.board_id,
+                            "name": name,
+                            "color": expected_color,
+                            "position": cached_label.get('position', 65536)
+                        }
+                    )
+                    if update_result and hasattr(update_result, 'content') and update_result.content:
+                        updated_label = json.loads(update_result.content[0].text)
+                        self._label_cache[normalized_name] = updated_label
+                except Exception as e:
+                    print(f"Failed to update label color: {e}")
+            return cached_label['id']
         
         # Refresh cache and check again
         await self.refresh_labels()
         if normalized_name in self._label_cache:
-            return self._label_cache[normalized_name]['id']
+            cached_label = self._label_cache[normalized_name]
+            # Verify the color is correct
+            expected_color = self.get_color_for_label(name)
+            if cached_label['color'] != expected_color:
+                # Update the label color
+                print(f"Updating label '{name}' color from {cached_label['color']} to {expected_color}")
+                try:
+                    update_result = await self.session.call_tool(
+                        "mcp_kanban_label_manager",
+                        {
+                            "action": "update",
+                            "id": cached_label['id'],
+                            "boardId": self.board_id,
+                            "name": name,
+                            "color": expected_color,
+                            "position": cached_label.get('position', 65536)
+                        }
+                    )
+                    if update_result and hasattr(update_result, 'content') and update_result.content:
+                        updated_label = json.loads(update_result.content[0].text)
+                        self._label_cache[normalized_name] = updated_label
+                except Exception as e:
+                    print(f"Failed to update label color: {e}")
+            return cached_label['id']
         
         # Need to create the label
         if color is None:
