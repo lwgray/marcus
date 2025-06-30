@@ -608,23 +608,21 @@ class IntelligentTaskGenerator:
             description=template.get('description', ''),
             status=TaskStatus.TODO,
             priority=priority,
-            labels=labels,
-            estimated_hours=template.get('hours', template.get('base_hours', 4)),
-            dependencies=[],  # Will be resolved later
+            assigned_to=None,
             created_at=datetime.now(),
             updated_at=datetime.now(),
             due_date=None,
-            assigned_to=None,
-            completed_at=None,
-            risk_level=None,
-            confidence_score=None,
-            suggested_agent=None,
-            metadata={
-                "phase": phase,
-                "generated": True,
-                "dependencies_names": template.get('dependencies', [])
-            }
+            estimated_hours=template.get('hours', template.get('base_hours', 4)),
+            dependencies=[],  # Will be resolved later
+            labels=labels
         )
+        
+        # Add metadata as dynamic attribute for task tracking
+        task.metadata = {
+            "phase": phase,
+            "generated": True,
+            "dependencies_names": template.get('dependencies', [])
+        }
         
         return task
     
