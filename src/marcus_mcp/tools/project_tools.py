@@ -37,9 +37,9 @@ async def get_project_status(state: Any) -> Dict[str, Any]:
                 "error": "Failed to initialize kanban client. Check your kanban configuration."
             }
         
-        # Refresh state - this might fail if board is not accessible
+        # Refresh state - use the server's own refresh method
         try:
-            await refresh_project_state(state)
+            await state.refresh_project_state()
         except Exception as e:
             return {
                 "success": False,

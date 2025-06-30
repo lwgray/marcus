@@ -197,9 +197,25 @@ class MarcusServer:
                     last_updated=datetime.now()
                 )
             
+            # Create a JSON-serializable version of project_state
+            project_state_data = None
+            if self.project_state:
+                project_state_data = {
+                    "board_id": self.project_state.board_id,
+                    "project_name": self.project_state.project_name,
+                    "total_tasks": self.project_state.total_tasks,
+                    "completed_tasks": self.project_state.completed_tasks,
+                    "in_progress_tasks": self.project_state.in_progress_tasks,
+                    "blocked_tasks": self.project_state.blocked_tasks,
+                    "progress_percent": self.project_state.progress_percent,
+                    "team_velocity": self.project_state.team_velocity,
+                    "risk_level": self.project_state.risk_level.value,  # Convert enum to string
+                    "last_updated": self.project_state.last_updated.isoformat()
+                }
+            
             self.log_event("project_state_refreshed", {
                 "task_count": len(self.project_tasks),
-                "project_state": self.project_state.__dict__ if self.project_state else None
+                "project_state": project_state_data
             })
             
         except Exception as e:
