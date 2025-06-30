@@ -550,42 +550,45 @@ class AdvancedPRDParser:
         }
     
     async def _enhance_task_with_ai(self, task_info: Dict[str, Any], analysis: PRDAnalysis, constraints: ProjectConstraints) -> Dict[str, Any]:
-        """Enhance task with AI-generated details"""
+        """Enhance task with PRD-aware details following board quality standards"""
         task_id = task_info.get('id', 'unknown')
+        epic_id = task_info.get('epic_id', 'unknown')
         
-        # Generate basic task details
-        if 'design' in task_id:
-            return {
-                'name': f"Design component for {task_id}",
-                'description': f"Create detailed design specifications for {task_id}",
-                'estimated_hours': 8,
-                'labels': ['design', 'planning'],
-                'due_date': None
-            }
-        elif 'implement' in task_id:
-            return {
-                'name': f"Implement {task_id}",
-                'description': f"Develop and implement functionality for {task_id}",
-                'estimated_hours': 16,
-                'labels': ['development', 'implementation'],
-                'due_date': None
-            }
-        elif 'test' in task_id:
-            return {
-                'name': f"Test {task_id}",
-                'description': f"Create and execute tests for {task_id}",
-                'estimated_hours': 8,
-                'labels': ['testing', 'qa'],
-                'due_date': None
-            }
+        # Extract meaningful context from PRD analysis
+        project_context = self._extract_project_context(analysis, task_id, epic_id)
+        
+        # Generate context-aware task details
+        if 'design' in task_id.lower():
+            name, description = self._generate_design_task(project_context, task_id)
+            task_type = 'design'
+            estimated_hours = 8
+        elif 'implement' in task_id.lower():
+            name, description = self._generate_implementation_task(project_context, task_id)
+            task_type = 'implementation'
+            estimated_hours = 16
+        elif 'test' in task_id.lower():
+            name, description = self._generate_testing_task(project_context, task_id)
+            task_type = 'testing'
+            estimated_hours = 8
+        elif 'setup' in task_id.lower() or 'infra' in task_id.lower():
+            name, description = self._generate_infrastructure_task(project_context, task_id)
+            task_type = 'setup'
+            estimated_hours = 12
         else:
-            return {
-                'name': f"Task {task_id}",
-                'description': f"Complete task {task_id}",
-                'estimated_hours': 8,
-                'labels': ['general'],
-                'due_date': None
-            }
+            name, description = self._generate_generic_task(project_context, task_id)
+            task_type = 'feature'
+            estimated_hours = 12
+            
+        # Generate appropriate labels based on context and requirements
+        labels = self._generate_labels(task_type, project_context, constraints)
+        
+        return {
+            'name': name,
+            'description': description,
+            'estimated_hours': estimated_hours,
+            'labels': labels,
+            'due_date': None
+        }
     
     def _determine_priority(self, task_info: Dict[str, Any], analysis: PRDAnalysis) -> Priority:
         """Determine task priority"""

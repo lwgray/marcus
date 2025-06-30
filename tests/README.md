@@ -8,22 +8,23 @@ The Marcus test suite is organized to provide comprehensive coverage of all comp
 
 ```
 tests/
-├── unit/                    # Isolated unit tests
+├── unit/                    # ✅ Isolated unit tests (181 tests - 100% passing)
 │   ├── core/               # Core functionality tests
-│   ├── ai/                 # AI components tests
+│   ├── ai/                 # AI components tests  
 │   ├── mcp/                # MCP protocol tests
 │   └── visualization/      # UI/visualization tests
-├── integration/            # Integration tests
+├── integration/            # 🔶 Integration tests (require services)
 │   ├── e2e/               # End-to-end tests
 │   ├── api/               # API integration tests
-│   └── external/          # External service tests
-├── performance/           # Performance tests
+│   ├── external/          # External service tests
+│   └── diagnostics/       # Diagnostic and debugging tests
+├── performance/           # 📊 Performance tests and benchmarks
 │   ├── benchmarks/        # Performance benchmarks
 │   └── load/              # Load testing
-├── diagnostics/           # Diagnostic and debugging tests
+├── future_features/       # 🚧 TDD tests for unimplemented features
 ├── fixtures/              # Shared test data and fixtures
 ├── utils/                 # Test utilities and helpers
-└── archive/               # Archived/deprecated tests
+└── archive/               # 📦 Archived/deprecated tests
 ```
 
 ## Running Tests
@@ -31,21 +32,21 @@ tests/
 ### Quick Start
 
 ```bash
-# Run all tests
+# Run all unit tests (fast, default - ✅ 181/181 passing)
 pytest
 
 # Run with coverage
 pytest --cov=src --cov-report=html
 
-# Run specific test categories
-pytest tests/unit/
-pytest tests/integration/
-pytest -m unit
-pytest -m integration
-
-# Run without pytest-asyncio (to avoid introspection issues)
-pytest -p no:asyncio tests/unit/test_marcus_server_complete.py
+# Run specific test categories  
+pytest tests/unit/                    # Unit tests (✅ 100% passing)
+pytest tests/integration/             # Integration tests (require services)
+pytest tests/performance/             # Performance benchmarks
+pytest -m unit                        # Tests marked as unit
+pytest -m integration                 # Tests marked as integration
 ```
+
+📖 **See [RUNNING_TESTS.md](RUNNING_TESTS.md) for complete testing guide**
 
 ### Using the Test Runner Script
 
