@@ -18,6 +18,10 @@ import atexit
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+# Apply NetworkX thread safety fix early
+# from src.utils.networkx_fix import ensure_networkx_safety
+# ensure_networkx_safety()
+
 from dotenv import load_dotenv
 from mcp.server import Server
 from mcp.server.stdio import stdio_server

@@ -91,7 +91,7 @@ class TestUIServerHealth:
         assert result["average_health"] == "green"
         assert result["trend"] == "stable"
     
-    def test_health_analyze_success(self, server):
+    async def test_health_analyze_success(self, server):
         """Test successful health analysis"""
         mock_state = ProjectState(
             board_id="test-board",
@@ -117,19 +117,20 @@ class TestUIServerHealth:
         }
         
         # Test the mock works
-        assert server.health_monitor.get_project_health() is not None
+        result = await server.health_monitor.get_project_health()
+        assert result is not None
     
-    def test_health_analyze_missing_data(self, server):
+    async def test_health_analyze_missing_data(self, server):
         """Test health analysis with missing project state"""
         server.health_monitor.get_project_health.return_value = None
         
-        result = server.health_monitor.get_project_health()
+        result = await server.health_monitor.get_project_health()
         assert result is None
     
-    def test_health_analyze_invalid_risk_level(self, server):
+    async def test_health_analyze_invalid_risk_level(self, server):
         """Test health analysis with invalid risk level"""
         # This test is checking the mock behavior
         server.health_monitor.get_project_health.side_effect = ValueError("Invalid risk level")
         
         with pytest.raises(ValueError):
-            server.health_monitor.get_project_health()
+            await server.health_monitor.get_project_health()

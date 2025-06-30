@@ -9,7 +9,7 @@ This module contains tools for system monitoring and health checks:
 from datetime import datetime
 from typing import Dict, Any
 from src.logging.conversation_logger import conversation_logger, log_thinking
-from src.visualization.conversation_adapter import log_agent_event
+from src.logging.agent_events import log_agent_event
 from src.monitoring.assignment_monitor import AssignmentHealthChecker
 
 

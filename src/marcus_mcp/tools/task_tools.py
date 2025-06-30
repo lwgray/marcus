@@ -14,7 +14,7 @@ from typing import Dict, List, Any, Optional
 
 from src.core.models import Task, TaskStatus, Priority, TaskAssignment
 from src.logging.conversation_logger import conversation_logger, log_thinking
-from src.visualization.conversation_adapter import log_agent_event
+from src.logging.agent_events import log_agent_event
 from src.core.ai_powered_task_assignment import find_optimal_task_for_agent_ai_powered
 
 

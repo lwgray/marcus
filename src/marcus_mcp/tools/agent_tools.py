@@ -10,7 +10,7 @@ This module contains tools for managing AI agents in the Marcus system:
 from typing import Dict, List, Any
 from src.core.models import WorkerStatus
 from src.logging.conversation_logger import conversation_logger, log_thinking
-from src.visualization.conversation_adapter import log_agent_event
+from src.logging.agent_events import log_agent_event
 
 
 async def register_agent(

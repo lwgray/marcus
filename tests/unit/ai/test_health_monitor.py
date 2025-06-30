@@ -134,7 +134,7 @@ class TestHealthMonitor:
             sample_project_state, [], sample_team_status
         )
         
-        # Second analysis
+        # Second analysis with different activities to avoid cache
         second_analysis = {
             "overall_health": "green",
             "timeline_prediction": {"confidence": 0.8},
@@ -143,7 +143,7 @@ class TestHealthMonitor:
         mock_ai_engine.analyze_project_health.return_value = second_analysis
         
         result = await health_monitor.get_project_health(
-            sample_project_state, [], sample_team_status
+            sample_project_state, [{"activity": "test"}], sample_team_status
         )
         
         # Check trends
@@ -225,7 +225,7 @@ class TestHealthMonitor:
         # Stop monitoring
         await health_monitor.stop_monitoring()
         
-        assert health_monitor._monitoring_task is None
+        assert health_monitor._monitoring_task.cancelled()
     
     @pytest.mark.asyncio
     async def test_monitoring_with_callback(self, health_monitor):

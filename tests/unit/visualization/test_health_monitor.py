@@ -117,7 +117,7 @@ class TestHealthMonitor:
         ))
         
         # Start monitoring
-        monitor.start_monitoring(
+        await monitor.start_monitoring(
             get_project_state_func=get_state_func,
             interval=1  # 1 second for testing
         )

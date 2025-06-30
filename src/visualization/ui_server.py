@@ -20,8 +20,9 @@ import socketio
 from jinja2 import Environment, FileSystemLoader
 
 from .conversation_stream import ConversationStreamProcessor, ConversationEvent
-from .decision_visualizer import DecisionVisualizer
-from .knowledge_graph import KnowledgeGraphBuilder
+# Lazy imports to avoid NetworkX until needed
+# from .decision_visualizer import DecisionVisualizer
+# from .knowledge_graph import KnowledgeGraphBuilder
 from .health_monitor import HealthMonitor
 
 
@@ -45,10 +46,10 @@ class VisualizationServer:
         Socket.IO server for real-time communication
     conversation_processor : ConversationStreamProcessor
         Processes conversation events
-    decision_visualizer : DecisionVisualizer
-        Visualizes decision-making processes
-    knowledge_graph : KnowledgeGraphBuilder
-        Builds and manages knowledge graph
+    decision_visualizer : DecisionVisualizer (property)
+        Lazy-loaded visualizer for decision-making processes
+    knowledge_graph : KnowledgeGraphBuilder (property)
+        Lazy-loaded knowledge graph builder
     health_monitor : HealthMonitor
         Monitors system health metrics
     active_sessions : Set[str]
@@ -81,8 +82,8 @@ class VisualizationServer:
         
         # Components
         self.conversation_processor = ConversationStreamProcessor()
-        self.decision_visualizer = DecisionVisualizer()
-        self.knowledge_graph = KnowledgeGraphBuilder()
+        self._decision_visualizer = None  # Lazy loaded
+        self._knowledge_graph = None      # Lazy loaded
         self.health_monitor = HealthMonitor()
         
         # Active connections
@@ -97,6 +98,22 @@ class VisualizationServer:
         
         # Add conversation event handler
         self.conversation_processor.add_event_handler(self._handle_conversation_event)
+    
+    @property
+    def decision_visualizer(self):
+        """Lazy load DecisionVisualizer to avoid NetworkX import"""
+        if self._decision_visualizer is None:
+            from .decision_visualizer import DecisionVisualizer
+            self._decision_visualizer = DecisionVisualizer()
+        return self._decision_visualizer
+    
+    @property
+    def knowledge_graph(self):
+        """Lazy load KnowledgeGraphBuilder to avoid NetworkX import"""
+        if self._knowledge_graph is None:
+            from .knowledge_graph import KnowledgeGraphBuilder
+            self._knowledge_graph = KnowledgeGraphBuilder()
+        return self._knowledge_graph
         
         # Routes will be set up via setup_routes() method
         

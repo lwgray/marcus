@@ -5,6 +5,9 @@ Conversation Adapter for Marcus Visualization
 This module creates conversation-style logs from Marcus MCP events for the 
 visualization system. It monitors the real-time log stream and converts 
 task/kanban events into conversation format expected by the UI.
+
+This module is designed to be completely independent of NetworkX to avoid
+import-time dependencies on heavy visualization libraries.
 """
 
 import json
