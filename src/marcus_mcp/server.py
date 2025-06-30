@@ -119,6 +119,9 @@ class MarcusServer:
     async def initialize_kanban(self):
         """Initialize kanban client if not already done"""
         if not self.kanban_client:
+            # Ensure configuration is loaded before creating kanban client
+            self._ensure_environment_config()
+            
             self.kanban_client = KanbanFactory.create(self.provider)
             
             # Connect to the kanban board
@@ -132,6 +135,29 @@ class MarcusServer:
                     self.kanban_client
                 )
                 await self.assignment_monitor.start()
+    
+    def _ensure_environment_config(self):
+        """Ensure environment variables are set from config if needed"""
+        # Load from config_marcus.json if environment variables aren't set
+        import json
+        from pathlib import Path
+        
+        config_path = Path(__file__).parent.parent.parent / "config_marcus.json"
+        if config_path.exists():
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+            
+            # Set Planka environment variables if not already set
+            if 'planka' in config:
+                planka_config = config['planka']
+                if 'PLANKA_BASE_URL' not in os.environ:
+                    os.environ['PLANKA_BASE_URL'] = planka_config.get('base_url', 'http://localhost:3333')
+                if 'PLANKA_AGENT_EMAIL' not in os.environ:
+                    os.environ['PLANKA_AGENT_EMAIL'] = planka_config.get('email', 'demo@demo.demo')
+                if 'PLANKA_AGENT_PASSWORD' not in os.environ:
+                    os.environ['PLANKA_AGENT_PASSWORD'] = planka_config.get('password', 'demo')
+            
+            print(f"✅ Loaded configuration from {config_path}", file=sys.stderr)
     
     def log_event(self, event_type: str, data: dict):
         """Log events immediately to realtime log"""

@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "marcus": {
+      "command": "python",
+      "args": ["/Users/lwgray/dev/marcus/marcus.py"],
+      "env": {
+        "KANBAN_PROVIDER": "planka",
+        "PLANKA_BASE_URL": "http://localhost:3333",
+        "PLANKA_AGENT_EMAIL": "demo@demo.demo", 
+        "PLANKA_AGENT_PASSWORD": "demo"
+      }
+    }
+  }
+}
