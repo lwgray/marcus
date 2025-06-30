@@ -93,7 +93,7 @@ class BasicEnricher:
         name_lower = task.name.lower()
         
         # Add labels based on task patterns
-        for pattern, config in self.task_patterns.items():
+        for pattern, config in list(self.task_patterns.items()):
             if pattern in name_lower:
                 for label in config['labels']:
                     if label not in labels:
@@ -109,7 +109,7 @@ class BasicEnricher:
             'ui': 'frontend'
         }
         
-        for keyword, label in tech_keywords.items():
+        for keyword, label in list(tech_keywords.items()):
             if keyword in name_lower and label not in labels:
                 labels.append(label)
         
@@ -122,7 +122,7 @@ class BasicEnricher:
         combined = f"{name_lower} {desc_lower}"
         
         # Check for priority keywords
-        for priority, keywords in self.priority_keywords.items():
+        for priority, keywords in list(self.priority_keywords.items()):
             if any(keyword in combined for keyword in keywords):
                 return priority
         
@@ -140,7 +140,7 @@ class BasicEnricher:
         name_lower = task.name.lower()
         
         # Check patterns
-        for pattern, config in self.task_patterns.items():
+        for pattern, config in list(self.task_patterns.items()):
             if pattern in name_lower:
                 return config['hours']
         

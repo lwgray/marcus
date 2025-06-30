@@ -153,7 +153,7 @@ class ContextDetector:
         message_lower = message.lower()
         
         # Check each intent pattern
-        for intent, patterns in self.INTENT_PATTERNS.items():
+        for intent, patterns in list(self.INTENT_PATTERNS.items()):
             for pattern in patterns:
                 if re.search(pattern, message_lower):
                     logger.info(f"Detected intent {intent} from pattern '{pattern}'")
