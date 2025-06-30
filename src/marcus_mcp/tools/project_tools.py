@@ -27,18 +27,24 @@ async def get_project_status(state: Any) -> Dict[str, Any]:
         Dict with project metrics and status
     """
     try:
-        # Check if state is properly initialized
+        # Initialize kanban if needed (this will create kanban_client if it doesn't exist)
+        await state.initialize_kanban()
+        
+        # Double-check that initialization worked
         if not hasattr(state, 'kanban_client') or state.kanban_client is None:
             return {
                 "success": False,
-                "error": "Not initialized. Call initialize() first."
+                "error": "Failed to initialize kanban client. Check your kanban configuration."
             }
         
-        # Initialize kanban if needed
-        await state.initialize_kanban()
-        
-        # Refresh state
-        await refresh_project_state(state)
+        # Refresh state - this might fail if board is not accessible
+        try:
+            await refresh_project_state(state)
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Failed to refresh project state: {str(e)}"
+            }
         
         if state.project_state:
             # Calculate metrics
@@ -70,7 +76,7 @@ async def get_project_status(state: Any) -> Dict[str, Any]:
         else:
             return {
                 "success": False,
-                "message": "Project state not available"
+                "error": "No project state available. This might mean no tasks exist on the kanban board or the board is not accessible."
             }
             
     except Exception as e:

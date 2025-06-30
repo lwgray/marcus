@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
 """
-Marcus MCP Server - Entry Point
-
-This is the main entry point for the Marcus MCP server.
-It delegates to the modularized implementation in src/marcus_mcp/
+Start Marcus MCP server with proper configuration
 """
 
-import asyncio
-import sys
 import os
+import sys
 import json
 from pathlib import Path
 
+# Load configuration from config_marcus.json
 def load_config():
     """Load configuration and set environment variables"""
     config_path = Path(__file__).parent / "config_marcus.json"
@@ -29,13 +26,27 @@ def load_config():
         
         # Set kanban provider
         os.environ['KANBAN_PROVIDER'] = 'planka'
+        
+        print("✅ Configuration loaded from config_marcus.json")
+        print(f"   Planka URL: {os.environ.get('PLANKA_BASE_URL')}")
+        print(f"   Planka User: {os.environ.get('PLANKA_AGENT_EMAIL')}")
+        print(f"   Kanban Provider: {os.environ.get('KANBAN_PROVIDER')}")
+        
+    else:
+        print(f"⚠️  No config file found at {config_path}")
+        print("   Using default environment variables")
 
-# Add the project root to Python path
-sys.path.insert(0, str(Path(__file__).parent))
-
-from src.marcus_mcp import main
 
 if __name__ == "__main__":
-    # Load configuration before starting
+    # Load configuration first
     load_config()
+    
+    # Add the project root to Python path
+    sys.path.insert(0, str(Path(__file__).parent))
+    
+    # Import and run Marcus
+    from src.marcus_mcp import main
+    import asyncio
+    
+    print("\n🚀 Starting Marcus MCP Server...")
     asyncio.run(main())
