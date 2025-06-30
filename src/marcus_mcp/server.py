@@ -138,7 +138,7 @@ class MarcusServer:
                                f"Expected KanbanClientWithCreate or compatible implementation.",
                         context=ErrorContext(
                             operation="kanban_initialization",
-                            service="mcp_server",
+                            integration_name="mcp_server",
                             provider=self.provider
                         )
                     )
@@ -166,7 +166,7 @@ class MarcusServer:
                     details=f"Failed to initialize kanban client: {str(e)}",
                     context=ErrorContext(
                         operation="kanban_initialization",
-                        service="mcp_server",
+                        integration_name="mcp_server",
                         provider=self.provider
                     )
                 ) from e
@@ -224,7 +224,7 @@ class MarcusServer:
                 missing_field="configuration file",
                 context=ErrorContext(
                     operation="environment_config_loading",
-                    service="mcp_server"
+                    integration_name="mcp_server"
                 )
             ) from e
         except Exception as e:
@@ -234,7 +234,7 @@ class MarcusServer:
                 missing_field="kanban configuration",
                 context=ErrorContext(
                     operation="environment_config_loading",
-                    service="mcp_server"
+                    integration_name="mcp_server"
                 )
             ) from e
     

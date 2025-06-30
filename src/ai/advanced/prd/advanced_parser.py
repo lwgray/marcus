@@ -235,7 +235,7 @@ class AdvancedPRDParser:
                 details=f"LLM analysis failed: {str(e)}. Falling back to simulation.",
                 context=ErrorContext(
                     operation="analyze_prd_deeply",
-                    service="advanced_prd_parser",
+                    integration_name="advanced_prd_parser",
                     prd_length=len(prd_content)
                 )
             )
@@ -274,7 +274,7 @@ class AdvancedPRDParser:
                            f"PRD preview: '{prd_content[:200]}...'",
                     context=ErrorContext(
                         operation="analyze_prd_deeply",
-                        service="advanced_prd_parser",
+                        integration_name="advanced_prd_parser",
                         prd_length=len(prd_content),
                         original_error=str(e),
                         simulation_error=str(sim_error)

@@ -100,7 +100,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             # Parse tasks
             from src.core.error_framework import ErrorContext, error_context
             
-            with error_context("task_parsing", project_name=project_name, description_length=len(description)):
+            with error_context("task_parsing", custom_context={"project_name": project_name, "description_length": len(description)}):
                 tasks = await self.process_natural_language(description, project_name, options)
                 logger.info(f"process_natural_language returned {len(tasks)} tasks")
                 
@@ -120,20 +120,21 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 logger.warning("No tasks generated from natural language processing!")
                 
                 raise BusinessLogicError(
-                    operation="task_generation",
-                    details=f"Failed to generate any tasks from project description. "
-                           f"The description may be too vague, missing key details, or not match "
-                           f"expected patterns. Description: '{description[:200]}...'",
+                    f"Failed to generate any tasks from project description. "
+                    f"The description may be too vague, missing key details, or not match "
+                    f"expected patterns. Description: '{description[:200]}...'",
                     context=ErrorContext(
                         operation="create_project",
-                        service="mcp_natural_language_tools",
-                        project_name=project_name,
-                        description_length=len(description)
+                        integration_name="mcp_natural_language_tools",
+                        custom_context={
+                            "project_name": project_name,
+                            "description_length": len(description)
+                        }
                     )
                 )
             
             # Apply safety checks using base class
-            with error_context("safety_checks", project_name=project_name, original_task_count=len(tasks)):
+            with error_context("safety_checks", custom_context={"project_name": project_name, "original_task_count": len(tasks)}):
                 safe_tasks = await self.apply_safety_checks(tasks)
                 logger.info(f"Safety checks passed, {len(safe_tasks)} tasks ready")
                 
@@ -143,7 +144,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                     logger.info(f"Safety checks added {added_tasks} dependency tasks")
             
             # Create tasks on board using base class
-            with error_context("kanban_task_creation", project_name=project_name, task_count=len(safe_tasks)):
+            with error_context("kanban_task_creation", custom_context={"project_name": project_name, "task_count": len(safe_tasks)}):
                 created_tasks = await self.create_tasks_on_board(safe_tasks)
                 logger.info(f"Created {len(created_tasks)} tasks on board")
                 
@@ -151,25 +152,26 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 success_rate = (len(created_tasks) / len(safe_tasks)) * 100 if safe_tasks else 0
                 logger.info(f"Task creation success rate: {success_rate:.1f}%")
             
-            # Get task classification
-            classified_tasks = self.classify_tasks(created_tasks)
+            # Skip classification for dictionaries - just count them
+            # created_tasks are dictionaries from kanban API, not Task objects
+            task_breakdown = {"total": len(created_tasks)}
             
-            # Create project metadata (specific to project creation)
-            # Create a snapshot of the dictionary to avoid modification during iteration
-            task_breakdown = {}
-            for task_type, tasks in list(classified_tasks.items()):
-                if tasks:
-                    task_breakdown[task_type.value] = len(tasks)
+            # Add breakdown by original task types if available
+            if safe_tasks:
+                classified_original = self.classify_tasks(safe_tasks)
+                for task_type, tasks in classified_original.items():
+                    if tasks:
+                        task_breakdown[task_type.value] = len(tasks)
             
             result = {
                 "success": True,
                 "project_name": project_name,
                 "tasks_created": len(created_tasks),
                 "task_breakdown": task_breakdown,
-                "phases": self._extract_phases(created_tasks),
-                "estimated_days": self._estimate_duration(created_tasks),
-                "dependencies_mapped": self._count_dependencies(created_tasks),
-                "risk_level": self._assess_risk(classified_tasks),
+                "phases": self._extract_phases(safe_tasks),
+                "estimated_days": self._estimate_duration(safe_tasks),
+                "dependencies_mapped": self._count_dependencies(safe_tasks),
+                "risk_level": self._assess_risk_by_count(len(created_tasks)),
                 "confidence": 0.85,
                 "created_at": datetime.now().isoformat()
             }
@@ -192,15 +194,14 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 })
             else:
                 # Convert other exceptions to proper Marcus errors
-                from src.core.error_framework import UnexpectedError, ErrorContext
+                from src.core.error_framework import BusinessLogicError, ErrorContext
                 
-                unexpected_error = UnexpectedError(
-                    operation="create_project_from_description",
-                    details=f"Unexpected error during project creation: {str(e)}",
+                unexpected_error = BusinessLogicError(
+                    f"Unexpected error during project creation: {str(e)}",
                     context=ErrorContext(
                         operation="create_project",
-                        service="mcp_natural_language_tools",
-                        project_name=project_name
+                        integration_name="mcp_natural_language_tools",
+                        custom_context={"project_name": project_name}
                     )
                 )
                 
@@ -257,6 +258,15 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         if total_tasks > 50:
             return "high"
         elif total_tasks > 20:
+            return "medium"
+        else:
+            return "low"
+    
+    def _assess_risk_by_count(self, task_count: int) -> str:
+        """Assess project risk level by task count"""
+        if task_count > 50:
+            return "high"
+        elif task_count > 20:
             return "medium"
         else:
             return "low"
@@ -339,15 +349,16 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
             # Create tasks on board using base class
             created_tasks = await self.create_tasks_on_board(safe_tasks)
             
-            # Get task classification
-            classified_tasks = self.classify_tasks(created_tasks)
+            # Skip classification for dictionaries - just count them
+            # created_tasks are dictionaries from kanban API, not Task objects
+            task_breakdown = {"total": len(created_tasks)}
             
-            # Create feature-specific result
-            # Create a snapshot of the dictionary to avoid modification during iteration
-            task_breakdown = {}
-            for task_type, tasks in list(classified_tasks.items()):
-                if tasks:
-                    task_breakdown[task_type.value] = len(tasks)
+            # Add breakdown by original task types if available
+            if safe_tasks:
+                classified_original = self.classify_tasks(safe_tasks)
+                for task_type, tasks in classified_original.items():
+                    if tasks:
+                        task_breakdown[task_type.value] = len(tasks)
             
             result = {
                 "success": True,

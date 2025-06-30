@@ -91,8 +91,10 @@ class KanbanClientWithCreate(SimpleMCPKanbanClient):
                        "the kanban client is properly initialized with a valid board.",
                 context=ErrorContext(
                     operation="create_task",
-                    service="kanban_client_with_create",
-                    task_name=task_data.get('name', 'unknown')
+                    integration_name="kanban_client_with_create",
+                    custom_context={
+                        "task_name": task_data.get('name', 'unknown')
+                    }
                 )
             )
         
@@ -143,9 +145,11 @@ class KanbanClientWithCreate(SimpleMCPKanbanClient):
                                f"Please check that your kanban board is properly configured with lists.",
                         context=ErrorContext(
                             operation="create_task",
-                            service="kanban_client_with_create",
-                            board_id=str(self.board_id),
-                            task_name=task_data.get('name', 'unknown')
+                            integration_name="kanban_client_with_create",
+                            custom_context={
+                                "board_id": str(self.board_id),
+                                "task_name": task_data.get('name', 'unknown')
+                            }
                         )
                     )
                 
@@ -176,10 +180,12 @@ class KanbanClientWithCreate(SimpleMCPKanbanClient):
                                f"or there may be permission issues. Check kanban-mcp server logs.",
                         context=ErrorContext(
                             operation="create_task",
-                            service="kanban_client_with_create",
-                            board_id=str(self.board_id),
-                            task_name=card_name,
-                            list_id=target_list["id"] if target_list else None
+                            integration_name="kanban_client_with_create",
+                            custom_context={
+                                "board_id": str(self.board_id),
+                                "task_name": card_name,
+                                "list_id": target_list["id"] if target_list else None
+                            }
                         )
                     )
                 

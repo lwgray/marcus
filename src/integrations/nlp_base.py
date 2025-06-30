@@ -79,7 +79,7 @@ class NaturalLanguageTaskCreator(ABC):
                        f"Current client type: {type(self.kanban_client).__module__}.{type(self.kanban_client).__name__}",
                 context=ErrorContext(
                     operation="create_tasks_on_board",
-                    service="natural_language_tools",
+                    integration_name="natural_language_tools",
                     client_type=type(self.kanban_client).__name__
                 )
             )
@@ -108,9 +108,11 @@ class NaturalLanguageTaskCreator(ABC):
                     details=f"Failed to create task '{task.name}': {str(e)}",
                     context=ErrorContext(
                         operation="create_tasks_on_board",
-                        service="natural_language_tools",
-                        task_name=task.name,
-                        task_type=getattr(task, 'task_type', 'unknown')
+                        integration_name="natural_language_tools",
+                        custom_context={
+                            "task_name": task.name,
+                            "task_type": getattr(task, 'task_type', 'unknown')
+                        }
                     )
                 )
                 
@@ -140,7 +142,7 @@ class NaturalLanguageTaskCreator(ABC):
                        f"This indicates a fundamental issue with the kanban integration or board configuration.",
                 context=ErrorContext(
                     operation="create_tasks_on_board",
-                    service="natural_language_tools",
+                    integration_name="natural_language_tools",
                     total_tasks=len(tasks),
                     failed_tasks=len(failed_tasks)
                 )
