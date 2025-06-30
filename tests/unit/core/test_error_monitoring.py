@@ -61,7 +61,7 @@ class TestErrorPattern:
         assert pattern.pattern_type == "frequency"
         assert pattern.description == "High frequency error pattern"
         assert pattern.frequency == 10
-        assert pattern.severity == AlertSeverity.WARNING  # Default
+        assert pattern.severity == ErrorSeverity.MEDIUM  # Default
         assert isinstance(pattern.affected_agents, set)
         assert isinstance(pattern.affected_operations, set)
         assert isinstance(pattern.sample_errors, list)

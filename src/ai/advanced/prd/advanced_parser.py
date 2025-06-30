@@ -187,18 +187,25 @@ class AdvancedPRDParser:
             
             context = SimpleContext(max_tokens=2000)
             
+            logger.info("Attempting to use LLM for PRD analysis...")
+            
             # Use the actual LLM to analyze the PRD
             analysis_result = await self.llm_client.analyze(
                 prompt=analysis_prompt,
                 context=context
             )
             
+            logger.info(f"LLM response received: {len(analysis_result) if analysis_result else 0} chars")
+            
             # Parse the AI response
             import json
             try:
                 analysis_data = json.loads(analysis_result)
-            except json.JSONDecodeError:
-                logger.warning("Failed to parse AI response as JSON, falling back to simulation")
+                logger.info("Successfully parsed AI response as JSON")
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse AI response as JSON: {e}")
+                logger.warning(f"Response was: {analysis_result[:200]}...")
+                logger.warning("Falling back to simulation")
                 analysis_data = await self._simulate_prd_analysis(prd_content)
             
             return PRDAnalysis(

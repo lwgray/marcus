@@ -236,6 +236,9 @@ class LLMAbstraction:
         Returns:
             Analysis result as string
         """
+        # Ensure providers are initialized before trying to use them
+        self._initialize_providers()
+        
         return await self._execute_with_fallback(
             'complete',
             prompt=prompt,

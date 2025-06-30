@@ -16,7 +16,7 @@ from dataclasses import dataclass, asdict
 from enum import Enum
 import logging
 
-from .error_framework import MarcusBaseError, ErrorSeverity, ErrorCategory, ErrorContext
+from .error_framework import MarcusBaseError, ErrorSeverity, ErrorCategory, ErrorContext, IntegrationError
 
 logger = logging.getLogger(__name__)
 
@@ -105,11 +105,10 @@ class ErrorResponseFormatter:
     
     def _convert_to_marcus_error(self, error: Exception) -> MarcusBaseError:
         """Convert regular exception to Marcus error."""
-        from .error_framework import ExternalServiceError
-        
-        return ExternalServiceError(
+        return IntegrationError(
+            str(error),  # Pass original error message
             service_name="unknown",
-            error_details=str(error),
+            operation="unknown",
             context=ErrorContext(operation="unknown"),
             cause=error
         )
@@ -136,6 +135,10 @@ class ErrorResponseFormatter:
                 "agent_id": error.context.agent_id,
                 "task_id": error.context.task_id
             }
+            
+            # Add custom context if present
+            if error.context.custom_context:
+                base_response["error"]["context"]["custom_context"] = error.context.custom_context
         
         # Add remediation if enabled
         if self.config.include_remediation and error.remediation:
@@ -559,7 +562,8 @@ def handle_mcp_tool_error(error: Exception, tool_name: str, arguments: Dict[str,
     )
     
     if not isinstance(error, MarcusBaseError):
-        error = ExternalServiceError(
+        error = IntegrationError(
+            str(error),  # Include original error message
             service_name="mcp_tool",
             operation=tool_name,
             context=context,

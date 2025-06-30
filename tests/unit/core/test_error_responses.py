@@ -223,7 +223,7 @@ class TestErrorResponseFormatter:
         
         assert response["success"] is False
         error_data = response["error"]
-        assert error_data["type"] == "ExternalServiceError"
+        assert error_data["type"] == "IntegrationError"
         assert "Regular error message" in error_data["message"]
     
     def test_http_status_code_mapping(self):
@@ -476,7 +476,7 @@ class TestResponseHelpers:
         
         assert response["success"] is False
         error_data = response["error"]
-        assert error_data["type"] == "ExternalServiceError"
+        assert error_data["type"] == "IntegrationError"
         
         # Check context includes tool information
         context = error_data["context"]

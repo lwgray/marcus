@@ -57,7 +57,7 @@ class ErrorPattern:
     last_seen: datetime
     affected_agents: Set[str] = field(default_factory=set)
     affected_operations: Set[str] = field(default_factory=set)
-    severity: AlertSeverity = AlertSeverity.WARNING
+    severity: ErrorSeverity = ErrorSeverity.MEDIUM
     sample_errors: List[str] = field(default_factory=list)
 
 
@@ -142,12 +142,23 @@ class ErrorMonitor:
         # Load metrics history
         if 'metrics_history' in data:
             for metrics_data in data['metrics_history'][-100:]:  # Keep last 100
+                # Convert ISO string to datetime if needed
+                if 'last_updated' in metrics_data and isinstance(metrics_data['last_updated'], str):
+                    metrics_data['last_updated'] = datetime.fromisoformat(metrics_data['last_updated'])
                 metrics = ErrorMetrics(**metrics_data)
                 self.metrics_history.append(metrics)
         
         # Load detected patterns
         if 'patterns' in data:
             for pattern_data in data['patterns'].values():
+                # Convert ISO strings to datetime objects
+                if 'first_seen' in pattern_data and isinstance(pattern_data['first_seen'], str):
+                    pattern_data['first_seen'] = datetime.fromisoformat(pattern_data['first_seen'])
+                if 'last_seen' in pattern_data and isinstance(pattern_data['last_seen'], str):
+                    pattern_data['last_seen'] = datetime.fromisoformat(pattern_data['last_seen'])
+                if 'severity' in pattern_data and isinstance(pattern_data['severity'], str):
+                    pattern_data['severity'] = ErrorSeverity(pattern_data['severity'])
+                    
                 pattern = ErrorPattern(**pattern_data)
                 pattern.affected_agents = set(pattern.affected_agents)
                 pattern.affected_operations = set(pattern.affected_operations)
@@ -316,7 +327,7 @@ class ErrorMonitor:
                     frequency=recent_count,
                     first_seen=now,
                     last_seen=now,
-                    severity=AlertSeverity.WARNING if recent_count < 10 else AlertSeverity.ERROR
+                    severity=ErrorSeverity.MEDIUM if recent_count < 10 else ErrorSeverity.HIGH
                 )
                 
                 self.detected_patterns[pattern_id] = pattern
@@ -346,7 +357,7 @@ class ErrorMonitor:
                     frequency=burst_count,
                     first_seen=now,
                     last_seen=now,
-                    severity=AlertSeverity.ERROR if burst_count < 20 else AlertSeverity.CRITICAL
+                    severity=ErrorSeverity.HIGH if burst_count < 20 else ErrorSeverity.CRITICAL
                 )
                 
                 self.detected_patterns[pattern_id] = pattern
@@ -376,7 +387,7 @@ class ErrorMonitor:
                     frequency=agent_errors,
                     first_seen=now,
                     last_seen=now,
-                    severity=AlertSeverity.WARNING,
+                    severity=ErrorSeverity.MEDIUM,
                     affected_agents={agent_id}
                 )
                 
@@ -406,7 +417,7 @@ class ErrorMonitor:
                 frequency=len(similar_errors),
                 first_seen=now,
                 last_seen=now,
-                severity=AlertSeverity.WARNING
+                severity=ErrorSeverity.MEDIUM
             )
             
             self.detected_patterns[pattern_id] = pattern

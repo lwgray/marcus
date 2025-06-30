@@ -158,7 +158,7 @@ class MarcusBaseError(Exception):
                 'correlation_id': self.context.correlation_id,
                 'timestamp': self.context.timestamp.isoformat(),
                 'integration_name': self.context.integration_name,
-                'custom_context': self.context.custom_context
+                'custom_context': self.context.custom_context or {}
             },
             'remediation': {
                 'immediate': self.remediation.immediate_action,
@@ -393,22 +393,36 @@ class StateConflictError(BusinessLogicError):
 class IntegrationError(MarcusBaseError):
     """Base class for external integration errors."""
     
-    def __init__(self, service_name: str = "unknown", operation: str = "unknown", *args, **kwargs):
-        # Extract these specific kwargs if provided
+    def __init__(self, *args, **kwargs):
+        # Handle different initialization patterns
+        message = None
+        service_name = "unknown"
+        operation = "unknown"
+        
+        # Check if first arg is a message string
+        if args and isinstance(args[0], str):
+            message = args[0]
+            args = args[1:]
+            
+        # Extract service_name and operation from kwargs or positional args
         if 'service_name' in kwargs:
             service_name = kwargs.pop('service_name')
+        elif args and isinstance(args[0], str):
+            service_name = args[0]
+            args = args[1:]
+            
         if 'operation' in kwargs:
             operation = kwargs.pop('operation')
+        elif args and isinstance(args[0], str):
+            operation = args[0]
+            args = args[1:]
             
         # Store as attributes
         self.service_name = service_name
         self.operation = operation
-            
+        
         # Create message if not provided
-        if args and isinstance(args[0], str):
-            message = args[0]
-            args = args[1:]
-        else:
+        if not message:
             message = f"Integration error with {service_name} during {operation}"
             
         kwargs.setdefault('severity', ErrorSeverity.MEDIUM)

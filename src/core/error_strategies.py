@@ -20,7 +20,7 @@ import logging
 from functools import wraps
 
 from .error_framework import (
-    MarcusBaseError, TransientError, IntegrationError, 
+    MarcusBaseError, TransientError, IntegrationError, NetworkTimeoutError,
     ErrorContext, ErrorSeverity, ErrorCategory
 )
 
@@ -227,13 +227,13 @@ class RetryHandler:
             except Exception as e:
                 last_exception = e
                 
-                # Check if we should stop retrying
-                if self._should_stop_retry(e, attempt):
-                    break
-                
                 # Check if we should retry this exception
                 if not self._should_retry(e):
-                    break
+                    raise e  # Non-retryable errors are raised immediately
+                
+                # Check if we should stop retrying (max attempts reached)
+                if self._should_stop_retry(e, attempt):
+                    break  # Exit loop to wrap in IntegrationError
                 
                 # Calculate delay and wait
                 if attempt < self.config.max_attempts - 1:
