@@ -128,10 +128,13 @@ class AdvancedPRDParser:
         prd_analysis = await self._analyze_prd_deeply(prd_content)
         
         # Step 2: Generate task hierarchy
+        logger.info(f"PRD analysis found {len(prd_analysis.functional_requirements)} functional requirements")
         task_hierarchy = await self._generate_task_hierarchy(prd_analysis, constraints)
         
         # Step 3: Create detailed tasks
+        logger.info(f"Creating detailed tasks from hierarchy with {len(task_hierarchy)} epics")
         tasks = await self._create_detailed_tasks(task_hierarchy, prd_analysis, constraints)
+        logger.info(f"Created {len(tasks)} detailed tasks")
         
         # Step 4: AI-powered dependency inference
         dependencies = await self._infer_smart_dependencies(tasks, prd_analysis)
@@ -222,8 +225,26 @@ class AdvancedPRDParser:
             )
             
         except Exception as e:
-            logger.error(f"PRD analysis failed: {e}")
-            return self._create_fallback_analysis(prd_content)
+            logger.error(f"PRD analysis failed: {e}", exc_info=True)
+            logger.info("Attempting simulation fallback...")
+            try:
+                # Try simulation as last resort
+                analysis_data = await self._simulate_prd_analysis(prd_content)
+                return PRDAnalysis(
+                    functional_requirements=analysis_data.get('functional_requirements', []),
+                    non_functional_requirements=analysis_data.get('non_functional_requirements', []),
+                    technical_constraints=analysis_data.get('technical_constraints', []),
+                    business_objectives=analysis_data.get('business_objectives', []),
+                    user_personas=analysis_data.get('user_personas', []),
+                    success_metrics=analysis_data.get('success_metrics', []),
+                    implementation_approach=analysis_data.get('implementation_approach', 'agile_iterative'),
+                    complexity_assessment=analysis_data.get('complexity_assessment', {}),
+                    risk_factors=analysis_data.get('risk_factors', []),
+                    confidence=analysis_data.get('confidence', 0.8)
+                )
+            except Exception as sim_error:
+                logger.error(f"Simulation also failed: {sim_error}")
+                return self._create_fallback_analysis(prd_content)
     
     async def _generate_task_hierarchy(
         self, 
@@ -240,6 +261,7 @@ class AdvancedPRDParser:
             
             # Break epic into smaller tasks
             epic_tasks = await self._break_down_epic(req, analysis, constraints)
+            logger.debug(f"Epic {epic_id} broken down into {len(epic_tasks)} tasks")
             hierarchy[epic_id] = [task['id'] for task in epic_tasks]
         
         # Add non-functional requirement tasks
@@ -502,6 +524,7 @@ class AdvancedPRDParser:
     async def _simulate_prd_analysis(self, prd_content: str) -> Dict[str, Any]:
         """Analyze PRD content to extract project-specific requirements"""
         prd_lower = prd_content.lower()
+        logger.info(f"Running PRD simulation for content: {prd_content[:100]}...")
         
         # Extract features based on common keywords and patterns
         functional_requirements = []
@@ -533,6 +556,14 @@ class AdvancedPRDParser:
                 {'id': 'req_1', 'description': 'Design database schema', 'priority': 'high'},
                 {'id': 'req_2', 'description': 'Implement data models', 'priority': 'high'},
                 {'id': 'req_3', 'description': 'Create data access layer', 'priority': 'high'}
+            ])
+        elif 'e-commerce' in prd_lower or 'ecommerce' in prd_lower or ('analytics' in prd_lower and 'dashboard' in prd_lower):
+            functional_requirements.extend([
+                {'id': 'req_1', 'description': 'Create analytics data pipeline', 'priority': 'high'},
+                {'id': 'req_2', 'description': 'Build dashboard visualization components', 'priority': 'high'},
+                {'id': 'req_3', 'description': 'Implement real-time metrics tracking', 'priority': 'high'},
+                {'id': 'req_4', 'description': 'Design KPI reporting system', 'priority': 'high'},
+                {'id': 'req_5', 'description': 'Create data export functionality', 'priority': 'medium'}
             ])
         else:
             # Generic fallback based on content
@@ -589,10 +620,15 @@ class AdvancedPRDParser:
         word_count = len(prd_content.split())
         complexity = 'high' if word_count > 200 or 'complex' in prd_lower else 'medium'
         
-        return {
-            'functional_requirements': functional_requirements if functional_requirements else [
+        # Ensure we have at least some requirements
+        if not functional_requirements:
+            logger.warning("No specific requirements found, using generic requirements")
+            functional_requirements = [
                 {'id': 'req_1', 'description': 'Implement core functionality', 'priority': 'high'}
-            ],
+            ]
+        
+        result = {
+            'functional_requirements': functional_requirements,
             'non_functional_requirements': non_functional_requirements,
             'technical_constraints': technical_constraints,
             'business_objectives': ['Deliver working solution', 'Meet user requirements'],
@@ -605,6 +641,11 @@ class AdvancedPRDParser:
             ],
             'confidence': 0.7
         }
+        
+        logger.info(f"Simulation result: {len(result['functional_requirements'])} functional reqs, "
+                   f"{len(result['non_functional_requirements'])} non-functional reqs")
+        
+        return result
     
     def _create_fallback_analysis(self, prd_content: str) -> PRDAnalysis:
         """Create fallback analysis when AI fails"""

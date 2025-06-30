@@ -74,6 +74,11 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         
         prd_result = await self.prd_parser.parse_prd_to_tasks(description, constraints)
         
+        logger.info(f"PRD parser returned {len(prd_result.tasks) if prd_result.tasks else 0} tasks")
+        if not prd_result.tasks:
+            logger.warning("PRD parser returned no tasks!")
+            logger.debug(f"PRD result: {prd_result}")
+        
         return prd_result.tasks
     
     async def create_project_from_description(
@@ -89,15 +94,36 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         """
         try:
             logger.info(f"Creating project '{project_name}' from natural language")
+            logger.debug(f"Description: {description[:200]}...")
+            logger.debug(f"Options: {options}")
             
             # Parse tasks
             tasks = await self.process_natural_language(description, project_name, options)
+            logger.info(f"process_natural_language returned {len(tasks)} tasks")
+            
+            if not tasks:
+                logger.warning("No tasks generated from natural language processing!")
+                return {
+                    "success": False,
+                    "error": "Failed to generate tasks from description",
+                    "project_name": project_name,
+                    "tasks_created": 0,
+                    "task_breakdown": {},
+                    "phases": [],
+                    "estimated_days": 0,
+                    "dependencies_mapped": 0,
+                    "risk_level": "unknown",
+                    "confidence": 0,
+                    "created_at": datetime.now().isoformat()
+                }
             
             # Apply safety checks using base class
             safe_tasks = await self.apply_safety_checks(tasks)
+            logger.info(f"Safety checks passed, {len(safe_tasks)} tasks ready")
             
             # Create tasks on board using base class
             created_tasks = await self.create_tasks_on_board(safe_tasks)
+            logger.info(f"Created {len(created_tasks)} tasks on board")
             
             # Get task classification
             classified_tasks = self.classify_tasks(created_tasks)
