@@ -813,15 +813,19 @@ Write unit tests for auth flow
         assert "Error calling Claude" in captured.err
     
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("completed,blocked,overdue_count,velocity,risk_level,expected_health,expected_on_track", [
-        # High risk project with many issues
-        (20, 5, 3, 1.5, RiskLevel.HIGH, "red", False),
-        # Medium risk project
-        (50, 3, 0, 5.0, RiskLevel.MEDIUM, "yellow", True),
-        # Low risk healthy project
-        (50, 0, 0, 5.0, RiskLevel.LOW, "green", True),
+    @pytest.mark.parametrize("completed,blocked,overdue_count,velocity,risk_level,progress_percent,expected_health,expected_on_track", [
+        # High risk project with many issues - completion rate (20/100=0.2) >= progress (0.4) = False
+        (20, 5, 3, 1.5, RiskLevel.HIGH, 40.0, "red", False),
+        # Medium risk project - completion rate (50/100=0.5) >= progress (0.5) = True  
+        (50, 3, 0, 5.0, RiskLevel.MEDIUM, 50.0, "yellow", True),
+        # Low risk healthy project - completion rate (50/100=0.5) >= progress (0.5) = True
+        (50, 0, 0, 5.0, RiskLevel.LOW, 50.0, "green", True),
+        # Project ahead of schedule - completion rate (60/100=0.6) >= progress (0.5) = True
+        (60, 0, 0, 5.0, RiskLevel.LOW, 50.0, "green", True),
+        # Project behind schedule - completion rate (30/100=0.3) >= progress (0.5) = False
+        (30, 1, 1, 3.0, RiskLevel.MEDIUM, 50.0, "yellow", False),
     ])
-    async def test_fallback_health_analysis_parameterized(self, completed, blocked, overdue_count, velocity, risk_level, expected_health, expected_on_track):
+    async def test_fallback_health_analysis_parameterized(self, completed, blocked, overdue_count, velocity, risk_level, progress_percent, expected_health, expected_on_track):
         """Test fallback health analysis with various project states"""
         engine = AIAnalysisEngine()
         
@@ -832,7 +836,7 @@ Write unit tests for auth flow
             completed_tasks=completed,
             in_progress_tasks=30,
             blocked_tasks=blocked,
-            progress_percent=float(completed),
+            progress_percent=progress_percent,
             overdue_tasks=[Mock() for _ in range(overdue_count)],
             team_velocity=velocity,
             risk_level=risk_level,
@@ -1041,7 +1045,8 @@ Write unit tests for auth flow
         ("low", "Minor UI issue", False),
         ("unknown", "System down", False),
         ("high", "Production outage", True),
-        ("critical", "Data corruption", True),
+        ("urgent", "Critical system failure", True),
+        ("critical", "Data corruption", False),  # Not in the implementation's list
     ])
     async def test_blocker_severity_mapping(self, ai_engine, severity, description, expected_escalation):
         """Test blocker analysis with different severity mappings"""

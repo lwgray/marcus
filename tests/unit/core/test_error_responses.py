@@ -10,6 +10,7 @@ import json
 from datetime import datetime
 from unittest.mock import Mock, patch
 
+from tests.unit.test_helpers import create_test_context, create_test_remediation
 from src.core.error_responses import (
     ErrorResponseFormatter, ErrorResponseConfig, ResponseFormat,
     BatchErrorResponseFormatter, create_success_response,
@@ -67,18 +68,8 @@ class TestErrorResponseFormatter:
     
     def create_test_error(self):
         """Create a test error for formatting tests"""
-        context = ErrorContext(
-            operation="test_operation",
-            agent_id="agent_123",
-            task_id="task_456",
-            correlation_id="corr_789"
-        )
-        remediation = RemediationSuggestion(
-            immediate_action="Retry operation",
-            fallback_strategy="Use cached data",
-            long_term_solution="Fix configuration",
-            retry_strategy="Exponential backoff"
-        )
+        context = create_test_context()
+        remediation = create_test_remediation()
         
         return NetworkTimeoutError(
             service_name="test_service",
@@ -87,119 +78,101 @@ class TestErrorResponseFormatter:
             remediation=remediation
         )
     
-    def test_format_for_mcp(self):
-        """Test formatting error for MCP protocol"""
+    @pytest.mark.parametrize("format_type,expected_checks", [
+        (ResponseFormat.MCP, {
+            "structure": lambda r: r["success"] is False and "error" in r,
+            "error_fields": lambda r: all([
+                r["error"]["code"] == "NETWORKTIMEOUTERROR",
+                "test_service" in r["error"]["message"],
+                r["error"]["type"] == "NetworkTimeoutError",
+                r["error"]["severity"] == "medium",
+                r["error"]["retryable"] is True
+            ]),
+            "context": lambda r: all([
+                r["error"]["context"]["operation"] == "test_operation",
+                r["error"]["context"]["agent_id"] == "agent_123",
+                r["error"]["context"]["task_id"] == "task_456",
+                r["error"]["context"]["correlation_id"] == "corr_789"
+            ]),
+            "remediation": lambda r: all([
+                r["error"]["remediation"]["immediate"] == "Retry operation",
+                r["error"]["remediation"]["fallback"] == "Use cached data"
+            ])
+        }),
+        (ResponseFormat.JSON_API, {
+            "structure": lambda r: "error" in r,
+            "error_fields": lambda r: all([
+                r["error"]["id"] == "corr_789",
+                r["error"]["status"] == 503,
+                r["error"]["code"] == "NETWORKTIMEOUTERROR",
+                r["error"]["title"] == "NetworkTimeoutError",
+                "test_service" in r["error"]["detail"]
+            ]),
+            "meta": lambda r: all([
+                r["error"]["meta"]["severity"] == "medium",
+                r["error"]["meta"]["retryable"] is True,
+                "suggestions" in r["error"]["meta"]
+            ]),
+            "source": lambda r: all([
+                r["error"]["source"]["operation"] == "test_operation",
+                r["error"]["source"]["agent_id"] == "agent_123"
+            ])
+        }),
+        (ResponseFormat.USER_FRIENDLY, {
+            "structure": lambda r: "message" in r,
+            "message_content": lambda r: all([
+                "What to do: Retry operation" in r["message"],
+                "Alternative: Use cached data" in r["message"],
+                "🔁 Retry:" in r["message"]
+            ]),
+            "fields": lambda r: all([
+                r["severity"] == "medium",
+                r["can_retry"] is True,
+                r["error_id"] == "corr_789",
+                r["help_needed"] is False
+            ])
+        }),
+        (ResponseFormat.LOGGING, {
+            "fields": lambda r: all([
+                r["error_code"] == "NETWORKTIMEOUTERROR",
+                r["error_type"] == "NetworkTimeoutError",
+                "test_service" in r["message"],
+                r["severity"] == "medium",
+                r["retryable"] is True,
+                r["correlation_id"] == "corr_789",
+                r["operation"] == "test_operation",
+                r["agent_id"] == "agent_123",
+                r["task_id"] == "task_456"
+            ])
+        }),
+        (ResponseFormat.MONITORING, {
+            "fields": lambda r: all([
+                r["alert_id"] == "corr_789",
+                r["alert_type"] == "marcus_error",
+                r["severity"] == "medium",
+                r["service"] == "marcus",
+                r["operation"] == "test_operation",
+                r["agent_id"] == "agent_123",
+                r["retryable"] is True
+            ]),
+            "tags": lambda r: all([
+                "transient" in r["tags"],
+                "medium" in r["tags"],
+                "networktimeouterror" in r["tags"]
+            ])
+        })
+    ])
+    def test_format_error_various_formats(self, format_type, expected_checks):
+        """Test formatting error for various response formats"""
         error = self.create_test_error()
+        response = self.formatter.format_error(error, format_type)
         
-        response = self.formatter.format_error(error, ResponseFormat.MCP)
-        
-        assert response["success"] is False
-        assert "error" in response
-        
-        error_data = response["error"]
-        assert error_data["code"] == "NETWORKTIMEOUTERROR"
-        assert "test_service" in error_data["message"]
-        assert error_data["type"] == "NetworkTimeoutError"
-        assert error_data["severity"] == "medium"
-        assert error_data["retryable"] is True
-        
-        # Check context
-        assert "context" in error_data
-        context = error_data["context"]
-        assert context["operation"] == "test_operation"
-        assert context["agent_id"] == "agent_123"
-        assert context["task_id"] == "task_456"
-        assert context["correlation_id"] == "corr_789"
-        
-        # Check remediation
-        assert "remediation" in error_data
-        remediation = error_data["remediation"]
-        assert remediation["immediate"] == "Retry operation"
-        assert remediation["fallback"] == "Use cached data"
-    
-    def test_format_for_json_api(self):
-        """Test formatting error for JSON API response"""
-        error = self.create_test_error()
-        
-        response = self.formatter.format_error(error, ResponseFormat.JSON_API)
-        
-        assert "error" in response
-        error_data = response["error"]
-        
-        assert error_data["id"] == "corr_789"
-        assert error_data["status"] == 503  # Service Unavailable for transient errors
-        assert error_data["code"] == "NETWORKTIMEOUTERROR"
-        assert error_data["title"] == "NetworkTimeoutError"
-        assert "test_service" in error_data["detail"]
-        
-        # Check meta information
-        assert "meta" in error_data
-        meta = error_data["meta"]
-        assert meta["severity"] == "medium"
-        assert meta["retryable"] is True
-        assert "suggestions" in meta
-        
-        # Check source information
-        assert "source" in error_data
-        source = error_data["source"]
-        assert source["operation"] == "test_operation"
-        assert source["agent_id"] == "agent_123"
-    
-    def test_format_for_user_friendly(self):
-        """Test formatting error for user-friendly display"""
-        error = self.create_test_error()
-        
-        response = self.formatter.format_error(error, ResponseFormat.USER_FRIENDLY)
-        
-        assert "message" in response
-        assert "What to do: Retry operation" in response["message"]
-        assert "Alternative: Use cached data" in response["message"]
-        assert "🔁 Retry:" in response["message"]  # Should include retry info for retryable errors
-        
-        assert response["severity"] == "medium"
-        assert response["can_retry"] is True
-        assert response["error_id"] == "corr_789"
-        assert response["help_needed"] is False  # Medium severity doesn't need help
-    
-    def test_format_for_logging(self):
-        """Test formatting error for structured logging"""
-        error = self.create_test_error()
-        
-        response = self.formatter.format_error(error, ResponseFormat.LOGGING)
-        
-        assert response["error_code"] == "NETWORKTIMEOUTERROR"
-        assert response["error_type"] == "NetworkTimeoutError"
-        assert "test_service" in response["message"]
-        assert response["severity"] == "medium"
-        assert response["retryable"] is True
-        assert response["correlation_id"] == "corr_789"
-        assert response["operation"] == "test_operation"
-        assert response["agent_id"] == "agent_123"
-        assert response["task_id"] == "task_456"
-    
-    def test_format_for_monitoring(self):
-        """Test formatting error for monitoring/alerting"""
-        error = self.create_test_error()
-        
-        response = self.formatter.format_error(error, ResponseFormat.MONITORING)
-        
-        assert response["alert_id"] == "corr_789"
-        assert response["alert_type"] == "marcus_error"
-        assert response["severity"] == "medium"
-        assert response["service"] == "marcus"  # No integration name set
-        assert response["operation"] == "test_operation"
-        assert response["agent_id"] == "agent_123"
-        assert response["retryable"] is True
-        
-        # Check tags
-        assert "tags" in response
-        tags = response["tags"]
-        assert "transient" in tags
-        assert "medium" in tags
-        assert "networktimeouterror" in tags
+        # Run all checks for this format
+        for check_name, check_func in expected_checks.items():
+            assert check_func(response), f"Failed {check_name} check for {format_type}"
     
     def test_format_for_debug(self):
-        """Test formatting error for debug output"""
+        """Test formatting error for debug output (special case with different config)"""
         config = ErrorResponseConfig(
             include_debug_info=True,
             include_stack_trace=True
@@ -257,7 +230,7 @@ class TestErrorResponseFormatter:
     
     def test_sensitive_data_sanitization(self):
         """Test sanitization of sensitive data"""
-        context = ErrorContext(
+        context = create_test_context(
             custom_context={
                 "password": "secret123",
                 "api_key": "key_abc123",
@@ -281,7 +254,7 @@ class TestErrorResponseFormatter:
         config = ErrorResponseConfig(sanitize_sensitive_data=False)
         formatter = ErrorResponseFormatter(config)
         
-        context = ErrorContext(
+        context = create_test_context(
             custom_context={"password": "secret123"}
         )
         error = MarcusBaseError(message="Test error", context=context)
@@ -318,9 +291,9 @@ class TestBatchErrorResponseFormatter:
     def create_test_errors(self):
         """Create a list of test errors"""
         errors = [
-            NetworkTimeoutError("service1", context=ErrorContext(operation="op1")),
-            NetworkTimeoutError("service2", context=ErrorContext(operation="op2")),
-            AuthorizationError(context=ErrorContext(operation="op3"))
+            NetworkTimeoutError("service1", context=create_test_context(operation="op1")),
+            NetworkTimeoutError("service2", context=create_test_context(operation="op2")),
+            AuthorizationError(context=create_test_context(operation="op3"))
         ]
         return errors
     
@@ -510,9 +483,8 @@ class TestErrorResponsesIntegration:
         """Test that all response formats are JSON serializable"""
         error = NetworkTimeoutError(
             service_name="test_service",
-            context=ErrorContext(
+            context=create_test_context(
                 operation="test_op",
-                agent_id="agent_123",
                 custom_context={"key": "value"}
             )
         )
@@ -543,7 +515,7 @@ class TestErrorResponsesIntegration:
         """Test consistency across different response formats"""
         error = NetworkTimeoutError(
             service_name="test_service",
-            context=ErrorContext(correlation_id="test_corr_123")
+            context=create_test_context(correlation_id="test_corr_123")
         )
         
         formatter = ErrorResponseFormatter()
