@@ -243,7 +243,7 @@ class TestHealthMonitor:
         
         # In production, callback would be called with actual health data
         # For now, just verify the monitoring loop is working
-        assert health_monitor._monitoring_task is None
+        assert health_monitor._monitoring_task.cancelled()
     
     def test_get_health_history(self, health_monitor):
         """Test retrieving health history"""

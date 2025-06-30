@@ -126,16 +126,6 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             return result
             
         except Exception as e:
-            # Log detailed traceback for debugging
-            import traceback
-            print(f"\n{'='*80}")
-            print("ERROR IN create_project_from_description")
-            print(f"Error type: {type(e).__name__}")
-            print(f"Error message: {str(e)}")
-            print(f"{'='*80}")
-            traceback.print_exc()
-            print(f"{'='*80}\n")
-            
             logger.error(f"Error creating project: {str(e)}")
             return {
                 "success": False,
@@ -579,16 +569,6 @@ async def create_project_from_natural_language(
         return result
         
     except Exception as e:
-        # Log detailed traceback for debugging
-        import traceback
-        print(f"\n{'='*80}")
-        print("ERROR IN create_project_from_natural_language")
-        print(f"Error type: {type(e).__name__}")
-        print(f"Error message: {str(e)}")
-        print(f"{'='*80}")
-        traceback.print_exc()
-        print(f"{'='*80}\n")
-        
         logger.error(f"Unexpected error in create_project_from_natural_language: {str(e)}")
         return {
             "success": False,

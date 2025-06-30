@@ -313,15 +313,6 @@ async def handle_tool_call(
         )]
         
     except Exception as e:
-        # Log the full traceback for debugging
-        import traceback
-        print(f"\n{'='*80}")
-        print(f"TOOL EXECUTION ERROR in {name}")
-        print(f"Error: {str(e)}")
-        print(f"{'='*80}")
-        traceback.print_exc()
-        print(f"{'='*80}\n")
-        
         return [types.TextContent(
             type="text",
             text=json.dumps({
