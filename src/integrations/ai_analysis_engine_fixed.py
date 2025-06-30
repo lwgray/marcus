@@ -535,12 +535,12 @@ Good luck with your task!"""
         if agent:
             agent_context = f"""
 Agent Profile:
-- ID: {agent.id}
+- ID: {agent.worker_id}
 - Name: {agent.name}
 - Role: {agent.role}
 - Skills: {', '.join(agent.skills) if agent.skills else 'None specified'}
 - Current Tasks: {len(agent.current_tasks)} active tasks
-- Completed Tasks: {agent.total_completed}
+- Completed Tasks: {agent.completed_tasks_count}
 - Performance Score: {agent.performance_score}
 """
         
