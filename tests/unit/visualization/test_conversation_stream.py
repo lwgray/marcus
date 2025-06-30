@@ -73,7 +73,7 @@ class TestConversationStreamProcessor:
         assert event is not None
         assert isinstance(event, ConversationEvent)
         assert event.source == "worker-123"
-        assert event.target == "pm_agent"
+        assert event.target == "marcus"
         assert event.message == "Task completed"
         assert event.event_type == EventType.WORKER_MESSAGE.value
     
@@ -112,7 +112,7 @@ class TestConversationStreamProcessor:
         assert event is not None
         assert event.event_type == "ping_request"
         assert event.source == "mcp_client"
-        assert event.target == "pm_agent"
+        assert event.target == "marcus"
         assert "Ping: test" in event.message
     
     @pytest.mark.asyncio

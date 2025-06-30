@@ -434,7 +434,7 @@ class VisualizationServer:
         """Handle analytics data requests with proper error handling"""
         try:
             # Get analytics from decision visualizer
-            analytics = self.decision_visualizer.get_analytics()
+            analytics = self.decision_visualizer.get_decision_analytics()
             
             # Ensure we have valid data
             if not analytics:

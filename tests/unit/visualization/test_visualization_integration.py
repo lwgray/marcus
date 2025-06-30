@@ -87,7 +87,7 @@ class TestVisualizationIntegration:
         
         # Start monitoring
         get_state_func = AsyncMock(return_value=(project_state, [], team_status))
-        monitor.start_monitoring(get_state_func, interval=0.5)
+        await monitor.start_monitoring(get_state_func, interval=0.5)
         
         # Let it run
         await asyncio.sleep(1.0)
