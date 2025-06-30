@@ -162,7 +162,9 @@ class ContextualLearningSystem:
         logger.info(f"Learning patterns for tech stack: {tech_stack}")
         
         if len(project_outcomes) < self.min_samples_for_learning:
-            return self._create_default_tech_learnings(tech_stack)
+            tech_learnings = self._create_default_tech_learnings(tech_stack)
+            self.technology_learnings[tech_stack] = tech_learnings
+            return tech_learnings
         
         # Analyze typical patterns
         typical_patterns = self._analyze_tech_patterns(project_outcomes)
@@ -300,6 +302,13 @@ class ContextualLearningSystem:
                 estimated_hours = task_data.get('estimated_hours', 0)
                 actual_hours = task_data.get('actual_hours', 0)
                 
+                # Ensure we have numeric values
+                try:
+                    estimated_hours = float(estimated_hours)
+                    actual_hours = float(actual_hours)
+                except (ValueError, TypeError):
+                    continue
+                
                 if estimated_hours > 0 and actual_hours > 0:
                     velocity_ratio = actual_hours / estimated_hours
                     velocity_data[task_type].append(velocity_ratio)
@@ -404,8 +413,8 @@ class ContextualLearningSystem:
             bug_rate = success_metrics.get('bug_rate', 0.1)
             bug_rates.append(bug_rate)
             
-            review_coverage = success_metrics.get('review_coverage', 0.8)
-            review_coverage.append(review_coverage)
+            review_cov = success_metrics.get('review_coverage', 0.8)
+            review_coverage.append(review_cov)
         
         if all_quality_scores:
             quality_metrics['average_quality'] = statistics.mean(all_quality_scores)
