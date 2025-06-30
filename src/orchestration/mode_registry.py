@@ -5,7 +5,7 @@ Manages available Marcus modes and handles mode switching.
 """
 
 import logging
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 from datetime import datetime
 from dataclasses import dataclass
 
