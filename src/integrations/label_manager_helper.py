@@ -27,21 +27,50 @@ class LabelManagerHelper:
     
     # Mapping of common label names to appropriate colors
     DEFAULT_LABEL_COLORS = {
+        # Skills/Technologies
         "backend": "berry-red",
         "frontend": "lagoon-blue",
         "database": "pumpkin-orange",
+        "api": "berry-red",
+        "ui": "lagune-blue",
+        "ux": "lagune-blue",
+        "devops": "tank-green",
+        "fullstack": "midnight-blue",
+        "react": "lagoon-blue",
+        "django": "bright-moss",
+        "python": "bright-moss",
+        "nodejs": "sunny-grass",
+        "javascript": "egg-yellow",
+        
+        # Task types
         "testing": "sunny-grass",
         "bug": "midnight-blue",
         "feature": "pink-tulip",
-        "high-priority": "red-burgundy",
         "documentation": "sunny-grass",
-        "devops": "tank-green",
+        "refactor": "light-concrete",
+        "enhancement": "bright-moss",
+        "setup": "pink-tulip",
+        "deployment": "pumpkin-orange",
+        "design": "lagune-blue",
+        "implementation": "berry-red",
+        
+        # Priorities
+        "high": "berry-red",
+        "medium": "egg-yellow",
+        "low": "bright-moss",
+        "urgent": "red-burgundy",
+        "high-priority": "red-burgundy",
+        
+        # Complexity
+        "simple": "bright-moss",
+        "moderate": "egg-yellow",
+        "complex": "berry-red",
+        
+        # Other
         "security": "midnight-blue",
         "performance": "orange-peel",
-        "ui": "lagune-blue",
-        "api": "berry-red",
-        "refactor": "light-concrete",
-        "enhancement": "bright-moss"
+        "authentication": "midnight-blue",
+        "infrastructure": "tank-green"
     }
     
     def __init__(self, session, board_id: str):
@@ -125,8 +154,8 @@ class LabelManagerHelper:
         
         # Need to create the label
         if color is None:
-            # Use default color mapping or pick a valid color
-            color = self.DEFAULT_LABEL_COLORS.get(normalized_name, "lagoon-blue")
+            # Use the class method for consistency
+            color = self.get_color_for_label(name)
         
         # Validate color
         if color not in self.VALID_COLORS:
@@ -208,7 +237,39 @@ class LabelManagerHelper:
             Recommended color from the valid colors list
         """
         normalized = label_name.lower()
-        return cls.DEFAULT_LABEL_COLORS.get(normalized, "lagoon-blue")
+        
+        # Handle prefixed labels (e.g., "component:frontend" -> check "frontend")
+        if ':' in normalized:
+            prefix, suffix = normalized.split(':', 1)
+            
+            # Try exact suffix match first
+            color = cls.DEFAULT_LABEL_COLORS.get(suffix, None)
+            
+            # If not found, try to find a matching key in suffix (e.g., "python" in "python-255887")
+            if not color:
+                for key in cls.DEFAULT_LABEL_COLORS:
+                    if key in suffix:
+                        color = cls.DEFAULT_LABEL_COLORS[key]
+                        break
+            
+            # If not found, try prefix
+            if not color:
+                color = cls.DEFAULT_LABEL_COLORS.get(prefix, None)
+            
+            # If still not found, use a color based on prefix type
+            if not color:
+                prefix_colors = {
+                    'component': 'bright-moss',
+                    'type': 'pumpkin-orange',
+                    'priority': 'berry-red',
+                    'skill': 'lagoon-blue',
+                    'complexity': 'light-concrete'
+                }
+                color = prefix_colors.get(prefix, "lagoon-blue")
+            return color
+        else:
+            # Simple label without prefix
+            return cls.DEFAULT_LABEL_COLORS.get(normalized, "lagoon-blue")
     
     @classmethod
     def map_hex_to_valid_color(cls, hex_color: str) -> str:
