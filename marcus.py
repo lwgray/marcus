@@ -29,6 +29,10 @@ def load_config():
         
         # Set kanban provider
         os.environ['KANBAN_PROVIDER'] = 'planka'
+        
+        # Set Anthropic API key if present in config
+        if 'anthropic_api_key' in config:
+            os.environ['ANTHROPIC_API_KEY'] = config['anthropic_api_key']
 
 # Add the project root to Python path
 sys.path.insert(0, str(Path(__file__).parent))

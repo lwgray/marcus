@@ -236,3 +236,128 @@ You are an autonomous agent working through PM Agent's MCP interface.
      - Explain test strategy and what will be tested
      - Show complete test file with all imports
      - Explain key decisions (mocking strategy, assertions)
+
+  ERROR_HANDLING_FRAMEWORK:
+  Use Marcus Error Framework for ALL user/agent-facing errors. Use regular Python exceptions only for internal programming errors.
+
+  WHEN TO USE MARCUS ERRORS:
+  ✅ External service calls (Kanban, AI providers, APIs)
+  ✅ Agent task operations (assignment, execution, progress)
+  ✅ Configuration issues (missing credentials, invalid config)
+  ✅ Security violations (unauthorized access, permission denied)
+  ✅ Resource problems (memory exhaustion, database failures)
+  ✅ Business logic violations (workflow errors, validation failures)
+
+  WHEN TO USE REGULAR EXCEPTIONS:
+  ✅ Programming errors (ValueError, TypeError for internal validation)
+  ✅ Library-specific exceptions (let them bubble up)
+  ✅ Internal logic errors (KeyError for missing dict keys)
+
+  ERROR CREATION PATTERNS:
+  ```python
+  # External service errors
+  from src.core.error_framework import KanbanIntegrationError, ErrorContext
+
+  try:
+      await kanban_client.create_task(data)
+  except httpx.TimeoutException:
+      raise KanbanIntegrationError(
+          board_name="project_board",
+          operation="create_task",
+          context=ErrorContext(
+              operation="task_creation",
+              agent_id=agent_id,
+              task_id=task_id
+          )
+      )
+
+  # Use error context manager for automatic context injection
+  from src.core.error_framework import error_context
+
+  with error_context("sync_tasks", agent_id=agent_id):
+      await sync_with_kanban()  # Errors automatically get context
+
+  # Configuration errors
+  from src.core.error_framework import MissingCredentialsError
+
+  if not os.getenv('API_KEY'):
+      raise MissingCredentialsError(
+          service_name="kanban",
+          credential_type="API key"
+      )
+  ```
+
+  RETRY AND RESILIENCE PATTERNS:
+  ```python
+  # Add retries for network operations
+  from src.core.error_strategies import with_retry, RetryConfig
+
+  @with_retry(RetryConfig(max_attempts=3, base_delay=1.0))
+  async def call_external_service():
+      return await service.call()
+
+  # Add circuit breakers for external dependencies
+  from src.core.error_strategies import with_circuit_breaker
+
+  @with_circuit_breaker("kanban_service")
+  async def sync_with_kanban():
+      return await kanban.sync()
+
+  # Add fallbacks for critical operations
+  from src.core.error_strategies import with_fallback
+
+  async def use_cached_data():
+      return load_from_cache()
+
+  @with_fallback(use_cached_data)
+  async def get_live_data():
+      return await fetch_from_api()
+  ```
+
+  ERROR RESPONSE PATTERNS:
+  ```python
+  # For MCP tool responses
+  from src.core.error_responses import handle_mcp_tool_error
+
+  async def mcp_tool_function(arguments):
+      try:
+          result = await operation(arguments)
+          return {"success": True, "result": result}
+      except Exception as e:
+          return handle_mcp_tool_error(e, "tool_name", arguments)
+
+  # For API responses
+  from src.core.error_responses import create_error_response, ResponseFormat
+
+  try:
+      result = await api_operation()
+      return {"success": True, "data": result}
+  except Exception as e:
+      return create_error_response(e, ResponseFormat.JSON_API)
+  ```
+
+  ERROR MONITORING:
+  ```python
+  # Record errors for monitoring and pattern detection
+  from src.core.error_monitoring import record_error_for_monitoring
+
+  try:
+      await critical_operation()
+  except MarcusBaseError as e:
+      record_error_for_monitoring(e)
+      raise
+  ```
+
+  QUICK DECISION TREE:
+  - External service call → Use Marcus Integration Error + Circuit Breaker + Retry
+  - Agent operation → Use Marcus Business Logic Error + Context
+  - Configuration issue → Use Marcus Configuration Error (no retry)
+  - Security violation → Use Marcus Security Error (no retry, alert)
+  - Programming error → Use regular Python exception (ValueError, TypeError)
+  - Library error → Let bubble up, convert to Marcus if user-facing
+
+  NEVER:
+  - Use generic Exception() for anything user/agent-facing
+  - Retry authentication failures or validation errors
+  - Skip error context for agent operations
+  - Use regular exceptions for external service failures

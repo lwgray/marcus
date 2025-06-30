@@ -7,5 +7,6 @@
     "base_url": "http://localhost:3333",
     "email": "demo@demo.demo",
     "password": "demo"
-  }
+  },
+  "anthropic_api_key": "YOUR_ANTHROPIC_API_KEY_HERE"
 }
