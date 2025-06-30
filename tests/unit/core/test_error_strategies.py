@@ -20,7 +20,7 @@ from src.core.error_strategies import (
 )
 from src.core.error_framework import (
     MarcusBaseError, TransientError, NetworkTimeoutError,
-    IntegrationError, ErrorContext, ErrorSeverity
+    IntegrationError, ErrorContext, ErrorSeverity, AuthorizationError
 )
 
 
@@ -92,7 +92,6 @@ class TestRetryHandler:
     @pytest.mark.asyncio
     async def test_no_retry_on_non_retryable_error(self):
         """Test no retry on non-retryable error"""
-        from src.core.error_framework import AuthorizationError
         
         mock_func = AsyncMock(side_effect=AuthorizationError())
         
@@ -432,7 +431,6 @@ class TestErrorAggregator:
     
     def test_get_critical_errors(self):
         """Test getting critical errors"""
-        from src.core.error_framework import AuthorizationError
         
         # Add various severity errors
         self.aggregator.add_error(NetworkTimeoutError("service"))  # Medium severity
@@ -445,7 +443,6 @@ class TestErrorAggregator:
     
     def test_raise_if_critical(self):
         """Test raising on critical errors"""
-        from src.core.error_framework import AuthorizationError
         
         # No critical errors - should not raise
         self.aggregator.add_error(NetworkTimeoutError("service"))
@@ -594,10 +591,11 @@ class TestErrorStrategiesIntegration:
             raise NetworkTimeoutError("integration_service")
         
         # First, try with retry - should exhaust retries
+        async def circuit_protected_call():
+            return await circuit_breaker.call(failing_function)
+            
         with pytest.raises(IntegrationError):
-            await retry_handler.execute(
-                lambda: circuit_breaker.call(failing_function)
-            )
+            await retry_handler.execute(circuit_protected_call)
         
         # Circuit should be open now
         assert circuit_breaker.state.state == CircuitBreakerState.OPEN
@@ -623,8 +621,9 @@ class TestErrorStrategiesIntegration:
         fallback_handler.add_fallback(fallback_func, priority=1)
         
         # Use retry within fallback
-        result = await fallback_handler.execute_with_fallback(
-            lambda: RetryHandler(retry_config).execute(primary_func)
-        )
+        async def primary_with_retry():
+            return await RetryHandler(retry_config).execute(primary_func)
+            
+        result = await fallback_handler.execute_with_fallback(primary_with_retry)
         
         assert result == "fallback_success"

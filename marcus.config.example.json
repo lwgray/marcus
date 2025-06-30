@@ -1,0 +1,69 @@
+{
+  "// Instructions": "Copy this file to marcus.config.json and fill in your values",
+  "// Note": "This file is tracked by git. Do NOT put real credentials here!",
+  "kanban": {
+    "provider": "planka",
+    "planka": {
+      "base_url": "http://localhost:3333",
+      "email": "your-email@example.com",
+      "password": "your-password",
+      "project_id": "1533678301472621705",
+      "board_id": "1533859887128249584",
+      "project_name": "Task Master Test",
+      "auto_find_board": false
+    },
+    "github": {
+      "token": "ghp_your_github_token_here",
+      "owner": "",
+      "repo": ""
+    },
+    "linear": {
+      "api_key": "lin_api_your_linear_key_here",
+      "team_id": ""
+    }
+  },
+  "ai": {
+    "anthropic_api_key": "sk-ant-your-api-key-here",
+    "openai_api_key": "sk-your-openai-key-here",
+    "model": "claude-3-sonnet-20241022",
+    "temperature": 0.7,
+    "max_tokens": 2000,
+    "retry_attempts": 3,
+    "retry_delay": 1.0
+  },
+  "monitoring": {
+    "interval": 900,
+    "stall_threshold_hours": 24,
+    "health_check_interval": 3600,
+    "risk_thresholds": {
+      "high": 0.8,
+      "medium": 0.5,
+      "timeline_buffer": 0.2
+    }
+  },
+  "escalation": {
+    "stuck_task_hours": 8,
+    "blocker_escalation_hours": 4,
+    "critical_path_delay_hours": 2
+  },
+  "communication": {
+    "slack_enabled": false,
+    "slack_webhook_url": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL",
+    "email_enabled": false,
+    "kanban_comments_enabled": true,
+    "rules": {
+      "daily_plan_time": "08:00",
+      "progress_check_time": "14:00",
+      "end_of_day_summary": "18:00"
+    }
+  },
+  "security": {
+    "mcp_auth_tokens": []
+  },
+  "advanced": {
+    "debug": false,
+    "port": 8000,
+    "max_concurrent_analyses": 5,
+    "cache_ttl_seconds": 300
+  }
+}

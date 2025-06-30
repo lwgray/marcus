@@ -60,4 +60,10 @@ pids/*.pid
 # Logs (keep directory structure)
 logs/*.log
 logs/*.jsonl
-!logs/.gitkeepknowledge_graph.html
+!logs/.gitkeep
+
+# Configuration files with sensitive data
+marcus.config.json
+config_marcus.json
+
+knowledge_graph.html

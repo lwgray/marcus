@@ -96,7 +96,13 @@ class MarcusBaseError(Exception):
         self.message = message
         self.error_code = error_code or self.__class__.__name__.upper()
         self.context = context or ErrorContext()
-        self.remediation = remediation or RemediationSuggestion()
+        
+        # Handle remediation as either RemediationSuggestion or dict
+        if isinstance(remediation, dict):
+            self.remediation = RemediationSuggestion(**remediation)
+        else:
+            self.remediation = remediation or RemediationSuggestion()
+            
         self.severity = severity
         self.retryable = retryable
         self.cause = cause
@@ -117,7 +123,7 @@ class MarcusBaseError(Exception):
         """Log error with appropriate level based on severity."""
         log_data = {
             'error_code': self.error_code,
-            'message': self.message,
+            'error_message': self.message,  # Changed from 'message' to avoid conflict
             'severity': self.severity.value,
             'category': self.category.value,
             'correlation_id': self.context.correlation_id,
@@ -183,6 +189,12 @@ class NetworkTimeoutError(TransientError):
     """Network operation timed out."""
     
     def __init__(self, service_name: str = "unknown", timeout_seconds: int = 30, *args, **kwargs):
+        # Extract service_name from kwargs if not provided positionally
+        if 'service_name' in kwargs:
+            service_name = kwargs.pop('service_name')
+        if 'timeout_seconds' in kwargs:
+            timeout_seconds = kwargs.pop('timeout_seconds')
+            
         message = f"Network timeout connecting to {service_name} after {timeout_seconds}s"
         kwargs.setdefault('remediation', RemediationSuggestion(
             immediate_action=f"Retry connection to {service_name}",
@@ -380,10 +392,27 @@ class StateConflictError(BusinessLogicError):
 class IntegrationError(MarcusBaseError):
     """Base class for external integration errors."""
     
-    def __init__(self, *args, **kwargs):
+    def __init__(self, service_name: str = "unknown", operation: str = "unknown", *args, **kwargs):
+        # Extract these specific kwargs if provided
+        if 'service_name' in kwargs:
+            service_name = kwargs.pop('service_name')
+        if 'operation' in kwargs:
+            operation = kwargs.pop('operation')
+            
+        # Store as attributes
+        self.service_name = service_name
+        self.operation = operation
+            
+        # Create message if not provided
+        if args and isinstance(args[0], str):
+            message = args[0]
+            args = args[1:]
+        else:
+            message = f"Integration error with {service_name} during {operation}"
+            
         kwargs.setdefault('severity', ErrorSeverity.MEDIUM)
         kwargs.setdefault('retryable', True)
-        super().__init__(*args, **kwargs)
+        super().__init__(message, *args, **kwargs)
     
     def _get_category(self) -> ErrorCategory:
         return ErrorCategory.INTEGRATION

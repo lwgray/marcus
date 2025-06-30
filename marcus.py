@@ -9,42 +9,70 @@ It delegates to the modularized implementation in src/marcus_mcp/
 import asyncio
 import sys
 import os
-import json
 from pathlib import Path
-from dotenv import load_dotenv
+
+# Add parent directory to path before imports
+sys.path.insert(0, str(Path(__file__).parent))
+
+from src.config.config_loader import get_config
 
 def load_config():
-    """Load configuration from .env file and config_marcus.json"""
-    # First, load .env file
-    env_path = Path(__file__).parent / ".env"
-    if env_path.exists():
-        load_dotenv(env_path)
-        print(f"✅ Loaded .env file from {env_path}")
-    
-    # Then load config_marcus.json to override with specific settings
-    config_path = Path(__file__).parent / "config_marcus.json"
-    
-    if config_path.exists():
-        with open(config_path, 'r') as f:
-            config = json.load(f)
+    """Load configuration from marcus.config.json and set environment variables"""
+    try:
+        config = get_config()
+        print(f"✅ Loaded configuration from {config.config_path}")
         
-        # Set Planka environment variables from config
-        if 'planka' in config:
-            planka_config = config['planka']
+        # Set environment variables that other parts of the code expect
+        # This is temporary until we update all code to use config directly
+        
+        # Kanban provider
+        os.environ['KANBAN_PROVIDER'] = config.get('kanban.provider', 'planka')
+        
+        # Planka settings
+        planka_config = config.get('kanban.planka', {})
+        if planka_config:
             os.environ['PLANKA_BASE_URL'] = planka_config.get('base_url', 'http://localhost:3333')
             os.environ['PLANKA_AGENT_EMAIL'] = planka_config.get('email', 'demo@demo.demo')
             os.environ['PLANKA_AGENT_PASSWORD'] = planka_config.get('password', 'demo')
+            os.environ['PLANKA_PROJECT_ID'] = planka_config.get('project_id', '')
+            os.environ['PLANKA_BOARD_ID'] = planka_config.get('board_id', '')
         
-        # Set kanban provider (from .env or default to planka)
-        if 'KANBAN_PROVIDER' not in os.environ:
-            os.environ['KANBAN_PROVIDER'] = 'planka'
+        # GitHub settings
+        github_config = config.get('kanban.github', {})
+        if github_config.get('token'):
+            os.environ['GITHUB_TOKEN'] = github_config['token']
+            os.environ['GITHUB_OWNER'] = github_config.get('owner', '')
+            os.environ['GITHUB_REPO'] = github_config.get('repo', '')
         
-        # Only set API key from config if not already in environment (from .env)
-        if 'anthropic_api_key' in config and 'ANTHROPIC_API_KEY' not in os.environ:
-            os.environ['ANTHROPIC_API_KEY'] = config['anthropic_api_key']
+        # AI settings
+        ai_config = config.get('ai', {})
+        if ai_config.get('anthropic_api_key'):
+            os.environ['ANTHROPIC_API_KEY'] = ai_config['anthropic_api_key']
+        if ai_config.get('openai_api_key'):
+            os.environ['OPENAI_API_KEY'] = ai_config['openai_api_key']
+        
+        # Monitoring settings
+        monitoring_config = config.get('monitoring', {})
+        os.environ['MARCUS_MONITORING_INTERVAL'] = str(monitoring_config.get('interval', 900))
+        
+        # Communication settings
+        comm_config = config.get('communication', {})
+        os.environ['MARCUS_SLACK_ENABLED'] = str(comm_config.get('slack_enabled', False)).lower()
+        os.environ['MARCUS_EMAIL_ENABLED'] = str(comm_config.get('email_enabled', False)).lower()
+        
+        # Debug settings
+        advanced_config = config.get('advanced', {})
+        os.environ['MARCUS_DEBUG'] = str(advanced_config.get('debug', False)).lower()
+        os.environ['MARCUS_PORT'] = str(advanced_config.get('port', 8000))
+        
+    except FileNotFoundError as e:
+        print(f"❌ Configuration error: {e}")
+        print("Please run: python scripts/migrate_config.py")
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ Failed to load configuration: {e}")
+        sys.exit(1)
 
-# Add the project root to Python path
-sys.path.insert(0, str(Path(__file__).parent))
 
 from src.marcus_mcp import main
 

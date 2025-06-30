@@ -54,7 +54,7 @@ class RetryConfig:
     multiplier: float = 2.0
     jitter: bool = True
     retry_on: tuple = (TransientError, IntegrationError)
-    stop_on: tuple = (Exception,)  # Exceptions that stop retries
+    stop_on: tuple = ()  # Exceptions that stop retries (empty by default)
 
 
 @dataclass
@@ -68,8 +68,8 @@ class CircuitBreakerConfig:
 
 
 @dataclass
-class CircuitBreakerState:
-    """Current state of a circuit breaker."""
+class CircuitBreakerStatus:
+    """Current status of a circuit breaker."""
     state: CircuitBreakerState = CircuitBreakerState.CLOSED
     failure_count: int = 0
     success_count: int = 0
@@ -88,7 +88,7 @@ class CircuitBreaker:
     def __init__(self, name: str, config: CircuitBreakerConfig = None):
         self.name = name
         self.config = config or CircuitBreakerConfig()
-        self.state = CircuitBreakerState()
+        self.state = CircuitBreakerStatus()
         self._lock = asyncio.Lock()
     
     async def call(self, func: Callable, *args, **kwargs):
@@ -161,6 +161,13 @@ class CircuitBreaker:
         """Record a successful operation."""
         if self.state.state == CircuitBreakerState.HALF_OPEN:
             self.state.success_count += 1
+            
+            # Check if we should transition to CLOSED
+            if self.state.success_count >= self.config.success_threshold:
+                self.state.state = CircuitBreakerState.CLOSED
+                self.state.failure_count = 0
+                self.state.failure_history.clear()
+                logger.info(f"Circuit breaker {self.name} transitioning to CLOSED")
         
         logger.debug(f"Circuit breaker {self.name} recorded success")
     
@@ -243,28 +250,28 @@ class RetryHandler:
                     )
                     await asyncio.sleep(delay)
         
-        # All retries exhausted, re-raise the last exception
-        if isinstance(last_exception, MarcusBaseError):
-            # Enhance Marcus errors with retry context
-            last_exception.context.custom_context = last_exception.context.custom_context or {}
-            last_exception.context.custom_context.update({
-                'retry_attempts': self.config.max_attempts,
-                'final_attempt': True
-            })
-            raise last_exception
-        else:
-            # Convert regular exceptions to Marcus errors
-            raise IntegrationError(
-                service_name="unknown",
-                operation=context.operation or "unknown",
-                context=context,
-                remediation={
-                    "immediate_action": "Check service availability",
-                    "long_term_solution": "Implement better error handling",
-                    "retry_strategy": f"Already retried {self.config.max_attempts} times"
-                },
-                cause=last_exception
-            )
+        # All retries exhausted - wrap in IntegrationError to indicate retry failure
+        service_name = "unknown"
+        operation = context.operation or "unknown"
+        
+        # Extract service name from NetworkTimeoutError if available
+        if isinstance(last_exception, NetworkTimeoutError) and hasattr(last_exception, 'service_name'):
+            service_name = last_exception.service_name
+        elif isinstance(last_exception, IntegrationError):
+            service_name = last_exception.service_name
+            operation = last_exception.operation
+            
+        raise IntegrationError(
+            service_name=service_name,
+            operation=operation,
+            context=context,
+            remediation={
+                "immediate_action": "Check service availability",
+                "long_term_solution": "Implement better error handling",
+                "retry_strategy": f"Already retried {self.config.max_attempts} times"
+            },
+            cause=last_exception
+        )
     
     def _should_retry(self, exception: Exception) -> bool:
         """Determine if exception should trigger a retry."""
@@ -273,6 +280,10 @@ class RetryHandler:
             if isinstance(exception, stop_type):
                 return False
         
+        # If retry_on is empty, retry on any exception not in stop_on
+        if not self.config.retry_on:
+            return True
+            
         # Retry if exception type is in retry_on list
         for retry_type in self.config.retry_on:
             if isinstance(exception, retry_type):
@@ -401,7 +412,8 @@ class FallbackHandler:
                     remediation={
                         "immediate_action": "All fallback strategies failed",
                         "long_term_solution": "Improve fallback mechanisms",
-                        "escalation_path": "Contact system administrator"
+                        "escalation_path": "Contact system administrator",
+                        "fallback_strategy": "All fallback strategies exhausted"
                     },
                     cause=primary_error
                 )
