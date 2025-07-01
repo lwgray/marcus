@@ -134,12 +134,14 @@ class MarcusServer:
                     raise KanbanIntegrationError(
                         board_name=self.provider,
                         operation="client_initialization",
-                        details=f"Kanban client {type(self.kanban_client).__name__} does not support task creation. "
-                               f"Expected KanbanClientWithCreate or compatible implementation.",
                         context=ErrorContext(
                             operation="kanban_initialization",
                             integration_name="mcp_server",
-                            provider=self.provider
+                            custom_context={
+                                "provider": self.provider,
+                                "details": f"Kanban client {type(self.kanban_client).__name__} does not support task creation. "
+                                          f"Expected KanbanClientWithCreate or compatible implementation."
+                            }
                         )
                     )
                 
@@ -163,11 +165,13 @@ class MarcusServer:
                 raise KanbanIntegrationError(
                     board_name=self.provider,
                     operation="client_initialization",
-                    details=f"Failed to initialize kanban client: {str(e)}",
                     context=ErrorContext(
                         operation="kanban_initialization",
                         integration_name="mcp_server",
-                        provider=self.provider
+                        custom_context={
+                            "provider": self.provider,
+                            "details": f"Failed to initialize kanban client: {str(e)}"
+                        }
                     )
                 ) from e
     

@@ -92,18 +92,17 @@ class TestMarcusServerInitialization:
     @patch.dict(os.environ, {}, clear=True)
     def test_server_initialization_with_github(self, mock_mkdir, mock_file, mock_get_config):
         """Test server initialization with GitHub provider"""
-        config = {
-            'kanban': {
-                'provider': 'github'
-            },
-            'github': {
-                'token': 'test-token',
-                'owner': 'test-owner',
-                'repo': 'test-repo'
-            },
+        # Create a mock config loader object
+        mock_config_loader = Mock()
+        mock_config_loader.get = Mock(side_effect=lambda path, default=None: {
+            'kanban.provider': 'github',
+            'github.token': 'test-token',
+            'github.owner': 'test-owner',
+            'github.repo': 'test-repo',
             'project_name': 'Test Project'
-        }
-        mock_get_config.return_value = config
+        }.get(path, default))
+        
+        mock_get_config.return_value = mock_config_loader
         
         server = MarcusServer()
         
@@ -170,9 +169,8 @@ class TestKanbanInitialization:
             await server.initialize_kanban()
         
         error = exc_info.value
-        assert "does not support task creation" in str(error)
-        assert error.board_name == 'planka'
-        assert error.operation == 'client_initialization'
+        assert "client_initialization failed for board planka" in str(error)
+        assert error.context.custom_context.get('details') and "does not support task creation" in error.context.custom_context['details']
     
     @pytest.mark.asyncio
     @patch('src.marcus_mcp.server.KanbanFactory.create')
@@ -189,9 +187,8 @@ class TestKanbanInitialization:
             await server.initialize_kanban()
         
         error = exc_info.value
-        assert "Failed to initialize kanban client" in str(error)
-        assert error.board_name == 'planka'
-        assert error.operation == 'client_initialization'
+        assert "client_initialization failed for board planka" in str(error)
+        assert error.context.custom_context.get('details') and "Failed to initialize kanban client" in error.context.custom_context['details']
     
     @pytest.mark.asyncio
     async def test_initialize_kanban_idempotent(self, server):
@@ -263,14 +260,15 @@ class TestEnvironmentConfiguration:
             }
         }
         
-        with patch('builtins.open', mock_open(read_data=json.dumps(config_data))):
-            with patch.dict('os.environ', {'PLANKA_BASE_URL': 'http://existing:3333'}):
-                server._ensure_environment_config()
-                
-                # Existing value should be preserved
-                assert os.environ['PLANKA_BASE_URL'] == 'http://existing:3333'
-                # New value should be set
-                assert os.environ['PLANKA_AGENT_EMAIL'] == 'new@example.com'
+        with patch('pathlib.Path.exists', return_value=True):
+            with patch('builtins.open', mock_open(read_data=json.dumps(config_data))):
+                with patch.dict('os.environ', {'PLANKA_BASE_URL': 'http://existing:3333'}, clear=True):
+                    server._ensure_environment_config()
+                    
+                    # Existing value should be preserved
+                    assert os.environ['PLANKA_BASE_URL'] == 'http://existing:3333'
+                    # New value should be set
+                    assert os.environ['PLANKA_AGENT_EMAIL'] == 'new@example.com'
 
 
 class TestEventLogging:

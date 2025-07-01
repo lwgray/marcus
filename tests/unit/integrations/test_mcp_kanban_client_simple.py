@@ -144,7 +144,12 @@ class TestSimpleMCPKanbanClient:
 
     def test_initialization_without_config_file(self):
         """Test client initialization when config file doesn't exist."""
-        with patch('src.integrations.mcp_kanban_client_simple.os.path.exists', return_value=False), \
+        # Create a mock that handles the Path operations
+        def mock_exists(path):
+            return False  # Always return False for any path
+            
+        with patch('os.path.exists', side_effect=mock_exists), \
+             patch('pathlib.Path.exists', return_value=False), \
              patch('src.integrations.mcp_kanban_client_simple.os.environ', {}) as mock_env, \
              patch('sys.stderr'):
             
@@ -167,7 +172,8 @@ class TestSimpleMCPKanbanClient:
             'PLANKA_AGENT_PASSWORD': 'existing-password'
         }
         
-        with patch('src.integrations.mcp_kanban_client_simple.os.path.exists', return_value=False), \
+        with patch('os.path.exists', return_value=False), \
+             patch('pathlib.Path.exists', return_value=False), \
              patch('src.integrations.mcp_kanban_client_simple.os.environ', existing_env.copy()) as mock_env, \
              patch('sys.stderr'):
             

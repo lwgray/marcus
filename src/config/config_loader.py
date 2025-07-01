@@ -33,9 +33,9 @@ class ConfigLoader:
         # Find config file
         # Try multiple locations in order of preference
         possible_paths = [
-            Path.cwd() / "marcus.config.json",  # Current directory
-            Path(__file__).parent.parent.parent / "marcus.config.json",  # Project root
-            Path.home() / ".marcus" / "marcus.config.json",  # User home
+            Path.cwd() / "config_marcus.json",  # Current directory
+            Path(__file__).parent.parent.parent / "config_marcus.json",  # Project root
+            Path.home() / ".marcus" / "config_marcus.json",  # User home
         ]
         
         for path in possible_paths:
@@ -45,8 +45,8 @@ class ConfigLoader:
         
         if self._config_path is None:
             raise FileNotFoundError(
-                "marcus.config.json not found. Please run scripts/migrate_config.py "
-                "or copy marcus.config.example.json to marcus.config.json"
+                "config_marcus.json not found. Please copy config_marcus.example.json "
+                "to config_marcus.json and fill in your settings."
             )
         
         # Load the config file
