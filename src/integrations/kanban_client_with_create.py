@@ -83,17 +83,17 @@ class KanbanClientWithCreate(SimpleMCPKanbanClient):
             from src.core.error_framework import ConfigurationError, ErrorContext
             
             raise ConfigurationError(
-                service_name="Kanban Client",
-                config_type="board configuration",
-                missing_field="board_id",
-                details="Board ID must be set before creating tasks. "
-                       "Check your marcus.config.json kanban configuration or ensure "
-                       "the kanban client is properly initialized with a valid board.",
+                "Board ID must be set before creating tasks. "
+                "Check your marcus.config.json kanban configuration or ensure "
+                "the kanban client is properly initialized with a valid board.",
                 context=ErrorContext(
                     operation="create_task",
                     integration_name="kanban_client_with_create",
                     custom_context={
-                        "task_name": task_data.get('name', 'unknown')
+                        "task_name": task_data.get('name', 'unknown'),
+                        "service_name": "Kanban Client",
+                        "config_type": "board configuration",
+                        "missing_field": "board_id"
                     }
                 )
             )
@@ -140,15 +140,15 @@ class KanbanClientWithCreate(SimpleMCPKanbanClient):
                     raise KanbanIntegrationError(
                         board_name=str(self.board_id),
                         operation="find_target_list",
-                        details=f"No suitable list found for new tasks on board {self.board_id}. "
-                               f"Expected a list named 'Backlog' or 'TODO', or at least one list to exist. "
-                               f"Please check that your kanban board is properly configured with lists.",
                         context=ErrorContext(
                             operation="create_task",
                             integration_name="kanban_client_with_create",
                             custom_context={
                                 "board_id": str(self.board_id),
-                                "task_name": task_data.get('name', 'unknown')
+                                "task_name": task_data.get('name', 'unknown'),
+                                "details": f"No suitable list found for new tasks on board {self.board_id}. "
+                                          f"Expected a list named 'Backlog' or 'TODO', or at least one list to exist. "
+                                          f"Please check that your kanban board is properly configured with lists."
                             }
                         )
                     )
@@ -175,16 +175,16 @@ class KanbanClientWithCreate(SimpleMCPKanbanClient):
                     raise KanbanIntegrationError(
                         board_name=str(self.board_id),
                         operation="create_card",
-                        details=f"Failed to create card '{card_name}' on board {self.board_id}. "
-                               f"The kanban-mcp server may be down, the board may not exist, "
-                               f"or there may be permission issues. Check kanban-mcp server logs.",
                         context=ErrorContext(
                             operation="create_task",
                             integration_name="kanban_client_with_create",
                             custom_context={
                                 "board_id": str(self.board_id),
                                 "task_name": card_name,
-                                "list_id": target_list["id"] if target_list else None
+                                "list_id": target_list["id"] if target_list else None,
+                                "details": f"Failed to create card '{card_name}' on board {self.board_id}. "
+                                          f"The kanban-mcp server may be down, the board may not exist, "
+                                          f"or there may be permission issues. Check kanban-mcp server logs."
                             }
                         )
                     )

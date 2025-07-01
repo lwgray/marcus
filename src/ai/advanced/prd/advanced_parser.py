@@ -230,13 +230,15 @@ class AdvancedPRDParser:
             
             # Create AI provider error with context
             ai_error = AIProviderError(
-                provider="LLM",
+                provider_name="LLM",
                 operation="prd_analysis",
-                details=f"LLM analysis failed: {str(e)}. Falling back to simulation.",
                 context=ErrorContext(
                     operation="analyze_prd_deeply",
                     integration_name="advanced_prd_parser",
-                    prd_length=len(prd_content)
+                    custom_context={
+                        "prd_length": len(prd_content),
+                        "details": f"LLM analysis failed: {str(e)}. Falling back to simulation."
+                    }
                 )
             )
             
@@ -267,17 +269,19 @@ class AdvancedPRDParser:
                 
                 # If both AI and simulation fail, raise a proper error
                 raise BusinessLogicError(
-                    operation="prd_analysis_fallback",
-                    details=f"Both AI analysis and simulation fallback failed for PRD. "
-                           f"Original error: {str(e)}. Simulation error: {str(sim_error)}. "
-                           f"The PRD content may be malformed or too complex to parse. "
-                           f"PRD preview: '{prd_content[:200]}...'",
+                    f"Both AI analysis and simulation fallback failed for PRD. "
+                    f"Original error: {str(e)}. Simulation error: {str(sim_error)}. "
+                    f"The PRD content may be malformed or too complex to parse. "
+                    f"PRD preview: '{prd_content[:200]}...'",
                     context=ErrorContext(
                         operation="analyze_prd_deeply",
                         integration_name="advanced_prd_parser",
-                        prd_length=len(prd_content),
-                        original_error=str(e),
-                        simulation_error=str(sim_error)
+                        custom_context={
+                            "prd_length": len(prd_content),
+                            "original_error": str(e),
+                            "simulation_error": str(sim_error),
+                            "operation_type": "prd_analysis_fallback"
+                        }
                     )
                 ) from e
     

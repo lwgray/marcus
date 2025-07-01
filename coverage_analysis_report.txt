@@ -1,0 +1,64 @@
+================================================================================
+MARCUS PROJECT - FINAL COVERAGE ANALYSIS REPORT
+================================================================================
+
+OVERALL COVERAGE: 58.17%
+Target Coverage: 80%
+Target NOT ACHIEVED
+
+SUMMARY STATISTICS:
+- Total Statements: 10,976
+- Covered Statements: 0
+- Missing Statements: 4,591
+- Total Files: 103
+
+MODULE-BY-MODULE COVERAGE:
+------------------------------------------------------------
+Module                 Coverage   Statements    Missing
+------------------------------------------------------------
+__init__.py              100.0%            0          0
+ai                         0.0%        1,811        941
+communication              0.0%           94         63
+config                     0.0%          197         49
+core                       0.0%        1,859        214
+detection                  0.0%          218         55
+integrations               0.0%        2,240      1,366
+intelligence               0.0%          740        216
+learning                   0.0%          240         21
+logging                    0.0%           93         21
+marcus_mcp                 0.0%          459        231
+marcus_mvp_fixed.py        0.0%          203         25
+modes                      0.0%        1,154        845
+monitoring                 0.0%          293        232
+orchestration              0.0%          187          0
+visualization              0.0%        1,140        308
+worker                     0.0%           48          4
+
+CRITICAL COVERAGE GAPS (< 50%):
+------------------------------------------------------------
+src/ai/providers/anthropic_provider.py                0.0% (161 missing)
+src/integrations/mcp_natural_language_tools_original.py    0.0% (256 missing)
+src/modes/enricher/basic_enricher.py                  0.0% (59 missing)
+src/integrations/providers/github_kanban.py          12.6% (139 missing)
+src/integrations/label_manager_helper.py             13.9% (87 missing)
+src/integrations/providers/planka_kanban.py          14.2% (127 missing)
+src/ai/advanced/prd/advanced_parser.py               14.3% (516 missing)
+src/modes/enricher/enricher_mode.py                  14.6% (146 missing)
+src/modes/adaptive/basic_adaptive.py                 15.0% (142 missing)
+src/core/assignment_reconciliation.py                15.7% (59 missing)
+
+FILES WITH 100% COVERAGE: 37
+
+COVERAGE DISTRIBUTION:
+----------------------------------------
+100-109%: █████████████████████████████████████ (37 files)
+ 90- 99%: ████████████ (12 files)
+ 80- 89%: █████████ (9 files)
+ 70- 79%: ████ (4 files)
+ 60- 69%: █████ (5 files)
+ 50- 59%: █████ (5 files)
+ 40- 49%: ███ (3 files)
+ 30- 39%: █████ (5 files)
+ 20- 29%: █████ (5 files)
+ 10- 19%: ███████████████ (15 files)
+  0-  9%: ███ (3 files)

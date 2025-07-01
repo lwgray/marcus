@@ -74,13 +74,15 @@ class NaturalLanguageTaskCreator(ABC):
             raise KanbanIntegrationError(
                 board_name=getattr(self.kanban_client, 'board_id', 'unknown'),
                 operation="task_creation_validation",
-                details=f"Kanban client {type(self.kanban_client).__name__} does not support task creation. "
-                       f"Expected KanbanClientWithCreate or compatible implementation. "
-                       f"Current client type: {type(self.kanban_client).__module__}.{type(self.kanban_client).__name__}",
                 context=ErrorContext(
                     operation="create_tasks_on_board",
                     integration_name="natural_language_tools",
-                    client_type=type(self.kanban_client).__name__
+                    custom_context={
+                        "client_type": type(self.kanban_client).__name__,
+                        "details": f"Kanban client {type(self.kanban_client).__name__} does not support task creation. "
+                                  f"Expected KanbanClientWithCreate or compatible implementation. "
+                                  f"Current client type: {type(self.kanban_client).__module__}.{type(self.kanban_client).__name__}"
+                    }
                 )
             )
         
@@ -105,13 +107,13 @@ class NaturalLanguageTaskCreator(ABC):
                 kanban_error = KanbanIntegrationError(
                     board_name=getattr(self.kanban_client, 'board_id', 'unknown'),
                     operation="individual_task_creation",
-                    details=f"Failed to create task '{task.name}': {str(e)}",
                     context=ErrorContext(
                         operation="create_tasks_on_board",
                         integration_name="natural_language_tools",
                         custom_context={
                             "task_name": task.name,
-                            "task_type": getattr(task, 'task_type', 'unknown')
+                            "task_type": getattr(task, 'task_type', 'unknown'),
+                            "details": f"Failed to create task '{task.name}': {str(e)}"
                         }
                     )
                 )
@@ -138,13 +140,15 @@ class NaturalLanguageTaskCreator(ABC):
             raise KanbanIntegrationError(
                 board_name=getattr(self.kanban_client, 'board_id', 'unknown'),
                 operation="batch_task_creation",
-                details=f"Failed to create any of {len(tasks)} tasks. All task creation attempts failed. "
-                       f"This indicates a fundamental issue with the kanban integration or board configuration.",
                 context=ErrorContext(
                     operation="create_tasks_on_board",
                     integration_name="natural_language_tools",
-                    total_tasks=len(tasks),
-                    failed_tasks=len(failed_tasks)
+                    custom_context={
+                        "total_tasks": len(tasks),
+                        "failed_tasks": len(failed_tasks),
+                        "details": f"Failed to create any of {len(tasks)} tasks. All task creation attempts failed. "
+                                  f"This indicates a fundamental issue with the kanban integration or board configuration."
+                    }
                 )
             )
         
