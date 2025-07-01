@@ -117,20 +117,19 @@ class TestKanbanClientWithCreate:
 
     @pytest.mark.asyncio
     async def test_create_task_without_board_id(self, client, sample_task_data):
-        """Test create_task raises ConfigurationError when board_id is not set.
-        
-        Note: This test currently fails due to ErrorContext accepting invalid
-        'task_name' parameter in the source code. This should be fixed to use
-        custom_context instead.
-        """
+        """Test create_task raises ConfigurationError when board_id is not set."""
         client.board_id = None
         
-        # This will raise TypeError due to implementation issue
-        with pytest.raises(TypeError) as exc_info:
+        # Should raise ConfigurationError when board_id is not set
+        with pytest.raises(ConfigurationError) as exc_info:
             await client.create_task(sample_task_data)
         
-        # Expected error would be ConfigurationError
-        assert "task_name" in str(exc_info.value)
+        # Verify error message and context
+        assert "Board ID must be set before creating tasks" in str(exc_info.value)
+        assert exc_info.value.context.operation == "create_task"
+        assert exc_info.value.context.integration_name == "kanban_client_with_create"
+        assert exc_info.value.context.custom_context["task_name"] == sample_task_data["name"]
+        assert exc_info.value.context.custom_context["missing_field"] == "board_id"
 
     @pytest.mark.asyncio
     @patch('src.integrations.kanban_client_with_create.stdio_client')
@@ -237,11 +236,7 @@ class TestKanbanClientWithCreate:
         mock_session_context,
         mock_client_session
     ):
-        """Test create_task raises error when no suitable list is found.
-        
-        Note: This test currently fails due to ErrorContext accepting invalid
-        'board_id' parameter in the source code.
-        """
+        """Test create_task raises error when no suitable list is found."""
         # Setup mocks
         mock_stdio.return_value = mock_stdio_client()
         mock_session_class.return_value = mock_session_context()
@@ -252,11 +247,18 @@ class TestKanbanClientWithCreate:
         
         mock_client_session.call_tool.return_value = list_response
         
-        # Execute and verify error - currently raises TypeError
-        with pytest.raises(TypeError) as exc_info:
+        # Execute and verify error
+        with pytest.raises(KanbanIntegrationError) as exc_info:
             await client.create_task(sample_task_data)
         
-        assert "board_id" in str(exc_info.value)
+        # Verify error details
+        assert "find_target_list failed for board test-board-id" in str(exc_info.value)
+        assert exc_info.value.context.operation == "create_task"
+        assert exc_info.value.context.integration_name == "kanban_client_with_create"
+        assert exc_info.value.context.custom_context["board_id"] == "test-board-id"
+        assert exc_info.value.context.custom_context["task_name"] == sample_task_data["name"]
+        # Check that the detailed message is in the custom context
+        assert "No suitable list found" in exc_info.value.context.custom_context["details"]
 
     @pytest.mark.asyncio
     @patch('src.integrations.kanban_client_with_create.stdio_client')

@@ -100,7 +100,8 @@ class TestMarcusServerInitialization:
                 'token': 'test-token',
                 'owner': 'test-owner',
                 'repo': 'test-repo'
-            }
+            },
+            'project_name': 'Test Project'
         }
         mock_get_config.return_value = config
         
@@ -162,16 +163,16 @@ class TestKanbanInitialization:
     async def test_initialize_kanban_invalid_client(self, mock_ensure_config, mock_factory, server):
         """Test kanban initialization with invalid client"""
         # Create mock client without create_task method
-        mock_client = Mock()  # Not AsyncMock, so no create_task
-        # Remove create_task attribute if it exists
-        if hasattr(mock_client, 'create_task'):
-            delattr(mock_client, 'create_task')
+        mock_client = Mock(spec=['some_method'])  # Explicitly exclude create_task
         mock_factory.return_value = mock_client
         
         with pytest.raises(KanbanIntegrationError) as exc_info:
             await server.initialize_kanban()
         
-        assert "does not support task creation" in str(exc_info.value)
+        error = exc_info.value
+        assert "does not support task creation" in str(error)
+        assert error.board_name == 'planka'
+        assert error.operation == 'client_initialization'
     
     @pytest.mark.asyncio
     @patch('src.marcus_mcp.server.KanbanFactory.create')
@@ -187,7 +188,10 @@ class TestKanbanInitialization:
         with pytest.raises(KanbanIntegrationError) as exc_info:
             await server.initialize_kanban()
         
-        assert "Failed to initialize kanban client" in str(exc_info.value)
+        error = exc_info.value
+        assert "Failed to initialize kanban client" in str(error)
+        assert error.board_name == 'planka'
+        assert error.operation == 'client_initialization'
     
     @pytest.mark.asyncio
     async def test_initialize_kanban_idempotent(self, server):
