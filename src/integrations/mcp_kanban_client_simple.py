@@ -88,11 +88,25 @@ class SimpleMCPKanbanClient:
         
         Notes
         -----
-        The config file should be in the current working directory.
-        If the file doesn't exist, board_id and project_id remain None.
+        The config file is searched in multiple locations:
+        1. Current working directory
+        2. Project root (relative to this file)
         """
-        if os.path.exists('config_marcus.json'):
-            with open('config_marcus.json', 'r') as f:
+        # Try multiple locations for config file
+        from pathlib import Path
+        config_paths = [
+            Path('config_marcus.json'),  # Current directory
+            Path(__file__).parent.parent.parent / 'config_marcus.json',  # Project root
+        ]
+        
+        config_path = None
+        for path in config_paths:
+            if path.exists():
+                config_path = path
+                break
+        
+        if config_path:
+            with open(config_path, 'r') as f:
                 config = json.load(f)
                 self.project_id = config.get("project_id")
                 self.board_id = config.get("board_id")
@@ -106,10 +120,11 @@ class SimpleMCPKanbanClient:
                 if planka_config.get("password"):
                     os.environ['PLANKA_AGENT_PASSWORD'] = planka_config["password"]
                 
-                print(f"✅ Loaded config: project_id={self.project_id}, board_id={self.board_id}", file=sys.stderr)
+                print(f"✅ Loaded config from {config_path}: project_id={self.project_id}, board_id={self.board_id}", file=sys.stderr)
         else:
-            print(f"❌ config_marcus.json not found in {os.getcwd()}", file=sys.stderr)
-            print(f"   Files in directory: {[f for f in os.listdir('.') if 'config' in f]}", file=sys.stderr)
+            print(f"❌ config_marcus.json not found in any of the following locations:", file=sys.stderr)
+            for path in config_paths:
+                print(f"   - {path.absolute()}", file=sys.stderr)
     
     async def get_available_tasks(self) -> List[Task]:
         """

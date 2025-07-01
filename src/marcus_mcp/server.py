@@ -229,12 +229,16 @@ class MarcusServer:
             ) from e
         except Exception as e:
             raise ConfigurationError(
-                service_name="MCP Server", 
-                config_type="environment variables",
-                missing_field="kanban configuration",
+                "Failed to load environment configuration for kanban integration",
                 context=ErrorContext(
                     operation="environment_config_loading",
-                    integration_name="mcp_server"
+                    integration_name="mcp_server",
+                    custom_context={
+                        "service_name": "MCP Server",
+                        "config_type": "environment variables",
+                        "missing_field": "kanban configuration",
+                        "error": str(e)
+                    }
                 )
             ) from e
     
