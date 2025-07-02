@@ -456,6 +456,9 @@ class AIProviderError(IntegrationError):
             fallback_strategy="Use fallback AI provider or cached results",
             long_term_solution="Implement AI provider health checks"
         ))
+        # Pass service_name and operation explicitly to parent
+        kwargs['service_name'] = provider_name
+        kwargs['operation'] = operation
         super().__init__(message, *args, **kwargs)
 
 
