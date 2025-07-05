@@ -167,18 +167,55 @@ class AdvancedPRDParser:
 
         {prd_content}
 
-        Provide a comprehensive JSON analysis with:
-        1. Functional requirements (features, capabilities)
-        2. Non-functional requirements (performance, security, usability)
-        3. Technical constraints and limitations
-        4. Business objectives and goals
-        5. User personas and target audience
-        6. Success metrics and KPIs
-        7. Recommended implementation approach
-        8. Complexity assessment (technical, timeline, resource)
-        9. Risk factors and mitigation strategies
+        Provide a comprehensive analysis in the following EXACT JSON format:
+        {{
+            "functionalRequirements": [
+                {{
+                    "id": "unique_feature_id",
+                    "name": "Feature Name",
+                    "description": "Detailed description of the feature",
+                    "priority": "high|medium|low"
+                }}
+            ],
+            "nonFunctionalRequirements": [
+                {{
+                    "id": "nfr_id",
+                    "name": "Requirement Name",
+                    "description": "Detailed description",
+                    "category": "performance|security|usability|scalability"
+                }}
+            ],
+            "technicalConstraints": ["constraint1", "constraint2"],
+            "businessObjectives": ["objective1", "objective2"],
+            "userPersonas": [
+                {{
+                    "name": "Persona Name",
+                    "description": "Persona description",
+                    "needs": ["need1", "need2"]
+                }}
+            ],
+            "successMetrics": ["metric1", "metric2"],
+            "implementationApproach": "agile|waterfall|iterative",
+            "complexityAssessment": {{
+                "technical": "low|medium|high",
+                "timeline": "days|weeks|months",
+                "resources": "small|medium|large"
+            }},
+            "riskFactors": [
+                {{
+                    "risk": "Risk description",
+                    "impact": "low|medium|high",
+                    "mitigation": "Mitigation strategy"
+                }}
+            ],
+            "confidence": 0.85
+        }}
 
-        Focus on extracting actionable, specific requirements that can be converted into development tasks.
+        IMPORTANT: 
+        - For functionalRequirements, use "id", "name", "description", and "priority" fields
+        - For nonFunctionalRequirements, use "id", "name", "description", and "category" fields
+        - Generate meaningful IDs based on the feature name (e.g., "crud_operations", "user_auth")
+        - Focus on extracting actionable, specific requirements that can be converted into development tasks
         """
         
         try:
@@ -235,7 +272,15 @@ class AdvancedPRDParser:
                     # Convert snake_case to camelCase
                     parts = snake_key.split('_')
                     camel_key = parts[0] + ''.join(word.capitalize() for word in parts[1:])
-                return data.get(snake_key, data.get(camel_key, []))
+                
+                # Prefer camelCase (our template format)
+                if camel_key in data:
+                    return data[camel_key]
+                elif snake_key in data:
+                    logger.debug(f"AI used snake_case '{snake_key}' instead of expected camelCase '{camel_key}'")
+                    return data[snake_key]
+                else:
+                    return []  # Return empty list as default
             
             return PRDAnalysis(
                 functional_requirements=get_key(analysis_data, 'functional_requirements', 'functionalRequirements'),
@@ -244,7 +289,13 @@ class AdvancedPRDParser:
                 business_objectives=get_key(analysis_data, 'business_objectives', 'businessObjectives'),
                 user_personas=get_key(analysis_data, 'user_personas', 'userPersonas'),
                 success_metrics=get_key(analysis_data, 'success_metrics', 'successMetrics'),
-                implementation_approach=get_key(analysis_data, 'implementation_approach', 'recommendedImplementation') or 'agile_iterative',
+                # Note: template uses 'implementationApproach', but old responses might use 'recommendedImplementation'
+                implementation_approach=(
+                    analysis_data.get('implementationApproach') or 
+                    analysis_data.get('implementation_approach') or 
+                    analysis_data.get('recommendedImplementation') or 
+                    'agile_iterative'
+                ),
                 complexity_assessment=get_key(analysis_data, 'complexity_assessment', 'complexityAssessment') or {},
                 risk_factors=get_key(analysis_data, 'risk_factors', 'riskFactors'),
                 confidence=analysis_data.get('confidence', 0.8)
@@ -297,26 +348,31 @@ class AdvancedPRDParser:
         
         # Create epics from functional requirements
         for i, req in enumerate(analysis.functional_requirements):
-            # Try to get feature name from multiple possible fields
-            feature_name = req.get('feature') or req.get('description') or req.get('name') or f'requirement_{i}'
+            # Prefer standardized 'id' field from template
+            req_id = req.get('id')
             
-            # Generate clean feature ID
-            feature_id = feature_name.lower()
-            # Remove common words and clean up
-            for word in ['for', 'the', 'a', 'an', 'and', 'or', 'with', 'using']:
-                feature_id = feature_id.replace(f' {word} ', ' ')
-            # Convert to ID format
-            feature_id = feature_id.strip().replace(' ', '_').replace('-', '_').replace(':', '')
-            # Remove any non-alphanumeric characters except underscore
-            feature_id = ''.join(c if c.isalnum() or c == '_' else '' for c in feature_id)
+            if not req_id:
+                # Fallback: generate ID from name/feature/description
+                feature_name = req.get('name') or req.get('feature') or req.get('description') or f'requirement_{i}'
+                
+                # Generate clean feature ID
+                feature_id = feature_name.lower()
+                # Remove common words and clean up
+                for word in ['for', 'the', 'a', 'an', 'and', 'or', 'with', 'using']:
+                    feature_id = feature_id.replace(f' {word} ', ' ')
+                # Convert to ID format
+                feature_id = feature_id.strip().replace(' ', '_').replace('-', '_').replace(':', '')
+                # Remove any non-alphanumeric characters except underscore
+                feature_id = ''.join(c if c.isalnum() or c == '_' else '' for c in feature_id)
+                
+                # If we still don't have a good ID, use the index
+                if not feature_id or feature_id == 'feature':
+                    feature_id = f'req_{i}'
+                
+                req_id = feature_id
+                logger.debug(f"Generated fallback ID '{req_id}' for requirement without 'id' field")
             
-            # If we still don't have a good ID, use the index
-            if not feature_id or feature_id == 'feature':
-                feature_id = f'req_{i}'
-            
-            # Use the ID field if provided, otherwise use generated feature_id
-            final_id = req.get('id', feature_id)
-            epic_id = f"epic_{final_id}"
+            epic_id = f"epic_{req_id}"
             hierarchy[epic_id] = []
             
             # Break epic into smaller tasks
@@ -590,27 +646,33 @@ class AdvancedPRDParser:
     # Additional helper methods would be implemented here...
     async def _break_down_epic(self, req: Dict[str, Any], analysis: PRDAnalysis, constraints: ProjectConstraints) -> List[Dict[str, Any]]:
         """Break down epic into smaller tasks"""
-        # Try to get feature name from multiple possible fields
-        feature_name = req.get('feature') or req.get('description') or req.get('name') or 'feature'
+        # First try to use standardized fields (from our template)
+        req_id = req.get('id')
+        feature_name = req.get('name')
         
-        # Generate unique ID based on feature name
-        # Clean the feature name to create a valid ID
-        feature_id = feature_name.lower()
-        # Remove common words and clean up
-        for word in ['for', 'the', 'a', 'an', 'and', 'or', 'with', 'using']:
-            feature_id = feature_id.replace(f' {word} ', ' ')
-        # Convert to ID format
-        feature_id = feature_id.strip().replace(' ', '_').replace('-', '_').replace(':', '')
-        # Remove any non-alphanumeric characters except underscore
-        feature_id = ''.join(c if c.isalnum() or c == '_' else '' for c in feature_id)
+        # Fallback to other possible field names if template wasn't followed
+        if not feature_name:
+            feature_name = req.get('feature') or req.get('description') or 'feature'
+            logger.warning(f"AI deviated from template format. Expected 'name' field but got: {list(req.keys())}")
         
-        # If we still don't have a good ID, use the index from functional requirements
-        if not feature_id or feature_id == 'feature':
-            req_index = analysis.functional_requirements.index(req) if req in analysis.functional_requirements else 0
-            feature_id = f'req_{req_index}'
-        
-        # Use the ID field if provided, otherwise use generated feature_id
-        req_id = req.get('id', feature_id)
+        if not req_id:
+            # Generate ID from feature name as fallback
+            feature_id = feature_name.lower()
+            # Remove common words and clean up
+            for word in ['for', 'the', 'a', 'an', 'and', 'or', 'with', 'using']:
+                feature_id = feature_id.replace(f' {word} ', ' ')
+            # Convert to ID format
+            feature_id = feature_id.strip().replace(' ', '_').replace('-', '_').replace(':', '')
+            # Remove any non-alphanumeric characters except underscore
+            feature_id = ''.join(c if c.isalnum() or c == '_' else '' for c in feature_id)
+            
+            # If we still don't have a good ID, use the index from functional requirements
+            if not feature_id or feature_id == 'feature':
+                req_index = analysis.functional_requirements.index(req) if req in analysis.functional_requirements else 0
+                feature_id = f'req_{req_index}'
+            
+            req_id = feature_id
+            logger.warning(f"AI deviated from template format. Expected 'id' field, generated: {req_id}")
         
         return [
             {'id': f'task_{req_id}_design', 'name': f"Design {feature_name}", 'type': 'design'},
@@ -622,19 +684,26 @@ class AdvancedPRDParser:
         """Create non-functional requirement tasks"""
         tasks = []
         for i, nfr in enumerate(nfrs):
-            # Try to get requirement name from multiple fields
-            req_name = nfr.get('requirement') or nfr.get('name') or nfr.get('description') or f'NFR {i+1}'
+            # Prefer standardized fields from template
+            nfr_id = nfr.get('id')
+            nfr_name = nfr.get('name')
             
-            # Generate clean ID
-            req_id = req_name.lower().replace(' ', '_').replace('-', '_')
-            req_id = ''.join(c if c.isalnum() or c == '_' else '' for c in req_id)
+            # Fallback to other fields if template wasn't followed
+            if not nfr_name:
+                nfr_name = nfr.get('requirement') or nfr.get('description') or f'NFR {i+1}'
+                if nfr.get('requirement') or nfr.get('description'):
+                    logger.warning(f"NFR deviated from template format. Expected 'name' field but got: {list(nfr.keys())}")
             
-            # Use provided ID or generated one
-            final_id = nfr.get('id', req_id or str(i))
+            if not nfr_id:
+                # Generate clean ID as fallback
+                req_id = nfr_name.lower().replace(' ', '_').replace('-', '_')
+                req_id = ''.join(c if c.isalnum() or c == '_' else '' for c in req_id)
+                nfr_id = req_id or str(i)
+                logger.warning(f"NFR deviated from template format. Expected 'id' field, generated: {nfr_id}")
             
             tasks.append({
-                'id': f'nfr_task_{final_id}',
-                'name': f"Implement {req_name}",
+                'id': f'nfr_task_{nfr_id}',
+                'name': f"Implement {nfr_name}",
                 'type': 'nfr'
             })
         return tasks
