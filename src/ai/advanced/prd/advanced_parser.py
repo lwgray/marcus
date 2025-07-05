@@ -767,28 +767,63 @@ class AdvancedPRDParser:
             'domain': 'general'
         }
         
-        # Determine project type and domain from requirements and constraints
-        all_text = ' '.join([
-            ' '.join(analysis.business_objectives),
-            ' '.join(analysis.technical_constraints),
-            ' '.join([req.get('description', '') for req in analysis.functional_requirements])
-        ]).lower()
+        # First, check if this task is for a specific functional requirement
+        task_specific_domain = None
+        task_specific_type = None
         
-        if any(word in all_text for word in ['auth', 'login', 'user', 'account']):
-            context['domain'] = 'user_management'
-            context['project_type'] = 'user authentication system'
-        elif any(word in all_text for word in ['api', 'service', 'endpoint']):
-            context['domain'] = 'backend_services'
-            context['project_type'] = 'backend service'
-        elif any(word in all_text for word in ['ui', 'interface', 'frontend', 'react']):
-            context['domain'] = 'frontend'
-            context['project_type'] = 'frontend application'
-        elif any(word in all_text for word in ['data', 'analytics', 'report']):
-            context['domain'] = 'data_analytics'
-            context['project_type'] = 'data analytics platform'
-        elif any(word in all_text for word in ['ecommerce', 'shop', 'cart', 'product']):
-            context['domain'] = 'ecommerce'
-            context['project_type'] = 'e-commerce platform'
+        # Extract the feature from task_id (e.g., task_crud_operations_design -> crud_operations)
+        if 'task_' in task_id:
+            parts = task_id.split('_')
+            if len(parts) >= 3:
+                feature_parts = parts[1:-1]  # Remove 'task' prefix and action suffix
+                feature_id = '_'.join(feature_parts)
+                
+                # Find the matching functional requirement
+                for req in analysis.functional_requirements:
+                    req_feature = req.get('feature', '').lower().replace(' ', '_')
+                    if req_feature == feature_id:
+                        # Determine domain based on this specific requirement
+                        req_text = f"{req.get('feature', '')} {req.get('description', '')}".lower()
+                        
+                        if any(word in req_text for word in ['crud', 'create', 'read', 'update', 'delete']):
+                            task_specific_domain = 'crud_operations'
+                            task_specific_type = 'REST API'
+                        elif any(word in req_text for word in ['auth', 'login', 'jwt', 'token']):
+                            task_specific_domain = 'user_management'
+                            task_specific_type = 'authentication system'
+                        elif any(word in req_text for word in ['validation', 'validate', 'verify']):
+                            task_specific_domain = 'validation'
+                            task_specific_type = 'input validation system'
+                        elif any(word in req_text for word in ['property', 'properties', 'schema', 'model']):
+                            task_specific_domain = 'data_modeling'
+                            task_specific_type = 'data model'
+                        break
+        
+        # Use task-specific domain if found, otherwise fall back to general analysis
+        if task_specific_domain:
+            context['domain'] = task_specific_domain
+            context['project_type'] = task_specific_type
+        else:
+            # Determine general project type from overall requirements
+            all_text = ' '.join([
+                ' '.join(analysis.business_objectives),
+                ' '.join(analysis.technical_constraints),
+                ' '.join([req.get('description', '') for req in analysis.functional_requirements])
+            ]).lower()
+            
+            # Use more specific matching to avoid false positives
+            if any(word in all_text for word in ['api', 'rest', 'endpoint', 'crud']):
+                context['domain'] = 'backend_services'
+                context['project_type'] = 'REST API'
+            elif any(word in all_text for word in ['ui', 'interface', 'frontend', 'react']):
+                context['domain'] = 'frontend'
+                context['project_type'] = 'frontend application'
+            elif any(word in all_text for word in ['data', 'analytics', 'report']):
+                context['domain'] = 'data_analytics'
+                context['project_type'] = 'data analytics platform'
+            elif any(word in all_text for word in ['ecommerce', 'shop', 'cart', 'product']):
+                context['domain'] = 'ecommerce'
+                context['project_type'] = 'e-commerce platform'
         
         # Extract specific requirements that match this task/epic
         relevant_requirements = []
@@ -809,7 +844,16 @@ class AdvancedPRDParser:
         project_type = context['project_type']
         objectives = context['business_objectives']
         
-        if domain == 'user_management':
+        if domain == 'crud_operations':
+            name = "Design CRUD API Architecture"
+            description = f"Design RESTful CRUD API for {project_type}. Define endpoints for Create, Read, Update, and Delete operations. Include request/response schemas, error handling, pagination, filtering, and sorting capabilities. Business goal: {objectives[0] if objectives else 'efficient data management'}."
+        elif domain == 'data_modeling':
+            name = "Design Data Model and Schema"
+            description = f"Design data model and database schema for {project_type}. Define entity relationships, field types, constraints, indexes, and data validation rules. Include schema diagrams and migration strategy. Focus on: {objectives[0] if objectives else 'scalable data architecture'}."
+        elif domain == 'validation':
+            name = "Design Input Validation System"
+            description = f"Design comprehensive input validation system for {project_type}. Define validation rules, error messages, sanitization procedures, and security measures. Include validation for all data inputs and API endpoints. Goal: {objectives[0] if objectives else 'data integrity and security'}."
+        elif domain == 'user_management':
             name = "Design User Authentication Flow"
             description = f"Design comprehensive user authentication and account management system for {project_type}. Define user registration, login, password reset flows, session management, and security protocols. Include wireframes, user flows, and technical specifications. Business goal: {objectives[0] if objectives else 'secure user access'}."
         elif domain == 'frontend':
@@ -850,6 +894,15 @@ class AdvancedPRDParser:
         elif domain == 'ecommerce':
             name = "Build E-commerce Core Features"
             description = f"Implement core e-commerce functionality for {project_type}. Build product catalog, shopping cart, checkout process, payment integration, and order management. Stack: {', '.join(tech_constraints)}. Include inventory management and order tracking."
+        elif domain == 'crud_operations':
+            name = "Implement CRUD API Endpoints"
+            description = f"Build complete CRUD (Create, Read, Update, Delete) functionality for {project_type}. Implement RESTful endpoints with proper HTTP methods, request/response handling, data validation, and error responses. Technology: {', '.join(tech_constraints)}. Include pagination, filtering, and sorting capabilities."
+        elif domain == 'data_modeling':
+            name = "Implement Data Models and Database Layer"
+            description = f"Create data models and database integration for {project_type}. Define schemas, implement ORM/ODM models, set up migrations, add indexes for performance, and implement data validation. Stack: {', '.join(tech_constraints)}. Include relationships, constraints, and data integrity rules."
+        elif domain == 'validation':
+            name = "Implement Input Validation and Sanitization"
+            description = f"Build comprehensive validation layer for {project_type}. Implement input validation rules, data sanitization, type checking, business rule validation, and error message formatting. Technology: {', '.join(tech_constraints)}. Include XSS prevention, SQL injection protection, and data format validation."
         else:
             name = f"Implement {project_type.title()} Core Features"
             description = f"Build core functionality for {project_type}. Implement business logic, data processing, user interfaces, and system integrations. Using: {', '.join(tech_constraints)}. Include proper error handling, logging, and performance optimization."
@@ -878,6 +931,15 @@ class AdvancedPRDParser:
         elif domain == 'ecommerce':
             name = "Test E-commerce Transaction Flows"
             description = f"Develop comprehensive testing for {project_type}. Test shopping cart functionality, checkout process, payment integration, order management, and inventory updates. Include security testing for payment processing and fraud prevention."
+        elif domain == 'crud_operations':
+            name = "Test CRUD Operations and API Endpoints"
+            description = f"Create comprehensive test suite for CRUD operations in {project_type}. Test all HTTP methods (GET, POST, PUT, DELETE), validate request/response formats, test error handling, pagination, filtering, and edge cases. Include load testing for concurrent operations. Achieve >80% coverage."
+        elif domain == 'data_modeling':
+            name = "Test Data Models and Database Operations"
+            description = f"Develop database testing suite for {project_type}. Test model validations, database constraints, migrations, relationships, data integrity, and transaction handling. Include performance testing for queries and indexes. Validate data consistency and error scenarios."
+        elif domain == 'validation':
+            name = "Test Input Validation and Security"
+            description = f"Create validation testing suite for {project_type}. Test all validation rules, boundary conditions, invalid inputs, injection attempts, XSS prevention, and error message accuracy. Include fuzz testing and security vulnerability scanning. Ensure comprehensive input sanitization coverage."
         else:
             name = f"Test {project_type.title()} Functionality"
             description = f"Create comprehensive test suite for {project_type}. Include unit tests, integration tests, and end-to-end testing. Validate business logic, user workflows, and system reliability. Achieve >80% code coverage."

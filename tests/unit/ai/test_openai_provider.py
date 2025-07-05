@@ -876,6 +876,145 @@ class TestOpenAIProviderResponseParsing:
         assert result == ["Review task requirements"]
 
 
+class TestOpenAIProviderComplete:
+    """Test suite for complete method functionality"""
+    
+    @pytest.fixture
+    def provider(self):
+        """Create provider instance with mocked environment"""
+        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-api-key'}):
+            return OpenAIProvider()
+    
+    async def test_complete_success(self, provider):
+        """Test successful completion generation"""
+        prompt = "Analyze this PRD and provide structured output"
+        expected_response = "Here is the structured analysis of the PRD..."
+        
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            'choices': [{
+                'message': {
+                    'content': expected_response
+                }
+            }]
+        }
+        mock_response.raise_for_status = Mock()
+        
+        provider.client.post = AsyncMock(return_value=mock_response)
+        
+        result = await provider.complete(prompt, max_tokens=2000)
+        
+        assert result == expected_response
+        
+        # Verify API call was made correctly
+        provider.client.post.assert_called_once_with(
+            f"{provider.base_url}/chat/completions",
+            json={
+                "model": provider.model,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 2000,
+                "temperature": 0.1
+            }
+        )
+    
+    async def test_complete_custom_max_tokens(self, provider):
+        """Test completion with custom max tokens"""
+        prompt = "Short response please"
+        expected_response = "Brief answer"
+        custom_max_tokens = 500
+        
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            'choices': [{
+                'message': {
+                    'content': expected_response
+                }
+            }]
+        }
+        mock_response.raise_for_status = Mock()
+        
+        provider.client.post = AsyncMock(return_value=mock_response)
+        
+        result = await provider.complete(prompt, max_tokens=custom_max_tokens)
+        
+        assert result == expected_response
+        assert provider.max_tokens == custom_max_tokens
+        
+        # Verify max_tokens was updated
+        provider.client.post.assert_called_once()
+        call_args = provider.client.post.call_args[1]['json']
+        assert call_args['max_tokens'] == custom_max_tokens
+    
+    async def test_complete_api_error(self, provider):
+        """Test completion with API error propagates exception"""
+        prompt = "Test prompt"
+        
+        provider.client.post = AsyncMock(side_effect=httpx.TimeoutException("Request timed out"))
+        
+        with pytest.raises(Exception) as exc_info:
+            await provider.complete(prompt)
+        
+        assert "OpenAI API request timed out" in str(exc_info.value)
+    
+    async def test_complete_http_error(self, provider):
+        """Test completion with HTTP error"""
+        prompt = "Test prompt"
+        
+        mock_response = Mock()
+        mock_response.status_code = 429
+        error = httpx.HTTPStatusError("Rate limited", request=Mock(), response=mock_response)
+        
+        provider.client.post = AsyncMock(side_effect=error)
+        
+        with pytest.raises(Exception) as exc_info:
+            await provider.complete(prompt)
+        
+        assert "OpenAI API error: 429" in str(exc_info.value)
+    
+    async def test_complete_preserves_max_tokens_state(self, provider):
+        """Test that complete method preserves max_tokens state correctly"""
+        original_max_tokens = provider.max_tokens
+        prompt = "Test prompt"
+        custom_max_tokens = 1000
+        
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            'choices': [{
+                'message': {
+                    'content': 'Response'
+                }
+            }]
+        }
+        mock_response.raise_for_status = Mock()
+        
+        provider.client.post = AsyncMock(return_value=mock_response)
+        
+        # Call with custom max_tokens
+        await provider.complete(prompt, max_tokens=custom_max_tokens)
+        
+        # Verify max_tokens was updated
+        assert provider.max_tokens == custom_max_tokens
+    
+    async def test_complete_uses_call_openai_internally(self, provider):
+        """Test that complete method uses _call_openai internally"""
+        prompt = "Test prompt"
+        expected_response = "Test response"
+        
+        # Mock _call_openai instead of client.post to test internal call
+        provider._call_openai = AsyncMock(return_value=expected_response)
+        
+        result = await provider.complete(prompt)
+        
+        assert result == expected_response
+        provider._call_openai.assert_called_once()
+        
+        # Verify the messages format passed to _call_openai
+        call_args = provider._call_openai.call_args[0][0]
+        assert len(call_args) == 1
+        assert call_args[0]['role'] == 'user'
+        assert call_args[0]['content'] == prompt
+
+
 class TestOpenAIProviderCleanup:
     """Test suite for provider cleanup functionality"""
     

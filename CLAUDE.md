@@ -361,3 +361,15 @@ You are an autonomous agent working through PM Agent's MCP interface.
   - Retry authentication failures or validation errors
   - Skip error context for agent operations
   - Use regular exceptions for external service failures
+
+  ITERATIVE_TESTING_APPROACH:
+  1. Write ONE simple test first to understand actual behavior
+  2. Run it and fix any issues before expanding
+  3. Use findings to inform remaining test design
+  4. Don't assume error message formats - discover them
+
+  DISCOVERY_OVER_ASSUMPTION:
+  - Run simple tests to discover actual error behavior
+  - Check inheritance chains and constructor patterns
+  - Verify message formats and context structure
+  - Test framework quirks before building complex scenarios

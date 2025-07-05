@@ -380,6 +380,33 @@ Provide JSON array of 3-5 specific solutions:
                     suggestions.append(line.strip('- ').strip())
             return suggestions[:5] if suggestions else ["Review task requirements"]
     
+    async def complete(self, prompt: str, max_tokens: int = 2000) -> str:
+        """
+        Generate a completion for the given prompt
+        
+        Args:
+            prompt: The prompt to complete
+            max_tokens: Maximum tokens in response
+            
+        Returns:
+            The completion text
+        """
+        messages = [
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+        
+        self.max_tokens = max_tokens
+        
+        try:
+            response = await self._call_openai(messages)
+            return response
+        except Exception as e:
+            logger.error(f"OpenAI completion failed: {e}")
+            raise
+    
     async def close(self):
         """Close HTTP client"""
         await self.client.aclose()
