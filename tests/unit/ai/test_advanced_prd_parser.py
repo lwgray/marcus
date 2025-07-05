@@ -309,3 +309,183 @@ class TestAdvancedPRDParserErrorHandling:
         preview = exc_info.value.context.custom_context["prd_preview"]
         assert len(preview) <= 203  # 200 chars + "..."
         assert preview.endswith("...")
+
+
+class TestAdvancedPRDParserTaskGeneration:
+    """Test suite for PRD parser task generation improvements"""
+    
+    @pytest.fixture
+    def parser(self):
+        """Create parser instance with mocked dependencies"""
+        with patch('src.ai.advanced.prd.advanced_parser.LLMAbstraction'):
+            with patch('src.ai.advanced.prd.advanced_parser.DependencyInferer'):
+                return AdvancedPRDParser()
+    
+    @pytest.fixture
+    def mock_constraints(self):
+        """Create mock project constraints"""
+        return ProjectConstraints(
+            team_size=2,
+            technology_constraints=["Node.js", "Express", "PostgreSQL"]
+        )
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_analyze_prd_handles_camelcase_and_snakecase_keys(self, parser):
+        """Test that PRD analysis handles both camelCase and snake_case keys"""
+        # Test data with camelCase (as AI returns)
+        camelcase_data = {
+            "functionalRequirements": [
+                {"feature": "CRUD", "description": "CRUD operations"}
+            ],
+            "nonFunctionalRequirements": [
+                {"requirement": "Performance", "description": "Fast"}
+            ],
+            "technicalConstraints": ["Node.js"],
+            "businessObjectives": ["Build API"],
+            "userPersonas": [],
+            "successMetrics": ["Working"],
+            "recommendedImplementation": "agile",
+            "complexityAssessment": {"level": "low"},
+            "riskFactors": []
+        }
+        
+        with patch('src.utils.json_parser.parse_ai_json_response') as mock_parse:
+            mock_parse.return_value = camelcase_data
+            
+            with patch.object(parser.llm_client, 'analyze', new_callable=AsyncMock):
+                result = await parser._analyze_prd_deeply("Test PRD")
+                
+                assert len(result.functional_requirements) == 1
+                assert result.functional_requirements[0]["feature"] == "CRUD"
+                assert len(result.non_functional_requirements) == 1
+                assert result.implementation_approach == "agile"
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_generate_task_hierarchy_creates_unique_epic_ids(self, parser, mock_constraints):
+        """Test that each functional requirement gets a unique epic ID"""
+        from src.ai.advanced.prd.advanced_parser import PRDAnalysis
+        
+        prd_analysis = PRDAnalysis(
+            functional_requirements=[
+                {"feature": "CRUD Operations", "description": "CRUD"},
+                {"feature": "User Auth", "description": "Auth"},
+                {"feature": "Validation", "description": "Validate"}
+            ],
+            non_functional_requirements=[],
+            technical_constraints=[],
+            business_objectives=[],
+            user_personas=[],
+            success_metrics=[],
+            implementation_approach="agile",
+            complexity_assessment={},
+            risk_factors=[],
+            confidence=0.8
+        )
+        
+        hierarchy = await parser._generate_task_hierarchy(prd_analysis, mock_constraints)
+        
+        # Should have unique epic IDs
+        assert "epic_crud_operations" in hierarchy
+        assert "epic_user_auth" in hierarchy
+        assert "epic_validation" in hierarchy
+        assert len(hierarchy) == 5  # 3 functional + 1 NFR + 1 infra
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_break_down_epic_uses_feature_name_for_unique_ids(self, parser, mock_constraints):
+        """Test that task IDs are based on feature names"""
+        from src.ai.advanced.prd.advanced_parser import PRDAnalysis
+        
+        req1 = {"feature": "CRUD Operations", "description": "CRUD"}
+        req2 = {"feature": "User Auth", "description": "Auth"}
+        
+        analysis = PRDAnalysis(
+            functional_requirements=[], non_functional_requirements=[],
+            technical_constraints=[], business_objectives=[], user_personas=[],
+            success_metrics=[], implementation_approach="agile",
+            complexity_assessment={}, risk_factors=[], confidence=0.8
+        )
+        
+        tasks1 = await parser._break_down_epic(req1, analysis, mock_constraints)
+        tasks2 = await parser._break_down_epic(req2, analysis, mock_constraints)
+        
+        # Check task IDs are unique and based on feature
+        assert tasks1[0]['id'] == 'task_crud_operations_design'
+        assert tasks1[1]['id'] == 'task_crud_operations_implement'
+        assert tasks1[2]['id'] == 'task_crud_operations_test'
+        
+        assert tasks2[0]['id'] == 'task_user_auth_design'
+        assert tasks2[1]['id'] == 'task_user_auth_implement'
+        assert tasks2[2]['id'] == 'task_user_auth_test'
+        
+        # Check task names include feature name
+        assert tasks1[0]['name'] == 'Design CRUD Operations'
+        assert tasks2[0]['name'] == 'Design User Auth'
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_create_nfr_tasks_uses_requirement_name_for_ids(self, parser, mock_constraints):
+        """Test NFR tasks use requirement names for unique IDs"""
+        nfrs = [
+            {"requirement": "Performance", "description": "Fast"},
+            {"requirement": "Security", "description": "Secure"}
+        ]
+        
+        tasks = await parser._create_nfr_tasks(nfrs, mock_constraints)
+        
+        assert len(tasks) == 2
+        assert tasks[0]['id'] == 'nfr_task_performance'
+        assert tasks[0]['name'] == 'Implement Performance'
+        assert tasks[1]['id'] == 'nfr_task_security'
+        assert tasks[1]['name'] == 'Implement Security'
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_full_task_generation_creates_all_tasks(self, parser, mock_constraints):
+        """Test that all functional requirements generate tasks"""
+        from src.ai.advanced.prd.advanced_parser import PRDAnalysis
+        
+        prd_analysis = PRDAnalysis(
+            functional_requirements=[
+                {"feature": "CRUD Operations", "description": "Create, Read, Update, Delete"},
+                {"feature": "Todo Properties", "description": "Title, status, timestamps"},
+                {"feature": "User Auth", "description": "JWT authentication"},
+                {"feature": "Validation", "description": "Input validation"}
+            ],
+            non_functional_requirements=[
+                {"requirement": "Performance", "description": "100 req/s"},
+                {"requirement": "Security", "description": "JWT tokens"}
+            ],
+            technical_constraints=["Node.js", "Express"],
+            business_objectives=["Build TODO API"],
+            user_personas=[],
+            success_metrics=["All CRUD working"],
+            implementation_approach="agile",
+            complexity_assessment={},
+            risk_factors=[],
+            confidence=0.9
+        )
+        
+        # Generate hierarchy
+        hierarchy = await parser._generate_task_hierarchy(prd_analysis, mock_constraints)
+        
+        # Should have all functional epics
+        assert len(hierarchy) == 6  # 4 functional + 1 NFR + 1 infra
+        assert "epic_crud_operations" in hierarchy
+        assert "epic_todo_properties" in hierarchy
+        assert "epic_user_auth" in hierarchy
+        assert "epic_validation" in hierarchy
+        
+        # Each functional epic should have 3 tasks
+        assert len(hierarchy["epic_crud_operations"]) == 3
+        assert len(hierarchy["epic_todo_properties"]) == 3
+        assert len(hierarchy["epic_user_auth"]) == 3
+        assert len(hierarchy["epic_validation"]) == 3
+        
+        # NFR epic should have tasks for each NFR
+        assert len(hierarchy["epic_non_functional"]) == 2  # Performance + Security
+        
+        # Infrastructure epic should have 3 standard tasks
+        assert len(hierarchy["epic_infrastructure"]) == 3

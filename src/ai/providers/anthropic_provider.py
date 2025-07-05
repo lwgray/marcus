@@ -14,6 +14,7 @@ import httpx
 
 from src.core.models import Task, Priority
 from .base_provider import BaseLLMProvider, SemanticAnalysis, SemanticDependency, EffortEstimate
+from src.utils.json_parser import parse_ai_json_response
 
 logger = logging.getLogger(__name__)
 
@@ -403,7 +404,7 @@ Respond only with valid JSON array."""
     def _parse_task_analysis_response(self, response: str) -> SemanticAnalysis:
         """Parse Claude's task analysis response"""
         try:
-            data = json.loads(response)
+            data = parse_ai_json_response(response)
             return SemanticAnalysis(
                 task_intent=data.get('task_intent', 'unknown'),
                 semantic_dependencies=data.get('semantic_dependencies', []),
@@ -428,7 +429,7 @@ Respond only with valid JSON array."""
     def _parse_dependency_response(self, response: str, tasks: List[Task]) -> List[SemanticDependency]:
         """Parse Claude's dependency inference response"""
         try:
-            data = json.loads(response)
+            data = parse_ai_json_response(response)
             dependencies = []
             
             task_ids = {task.id for task in tasks}
@@ -465,7 +466,7 @@ Respond only with valid JSON array."""
     def _parse_estimation_response(self, response: str) -> EffortEstimate:
         """Parse Claude's effort estimation response"""
         try:
-            data = json.loads(response)
+            data = parse_ai_json_response(response)
             return EffortEstimate(
                 estimated_hours=float(data.get('estimated_hours', 8.0)),
                 confidence=float(data.get('confidence', 0.5)),
@@ -486,7 +487,7 @@ Respond only with valid JSON array."""
     def _parse_blocker_response(self, response: str) -> List[str]:
         """Parse Claude's blocker analysis response"""
         try:
-            suggestions = json.loads(response)
+            suggestions = parse_ai_json_response(response)
             if isinstance(suggestions, list):
                 return [str(s) for s in suggestions]
             else:

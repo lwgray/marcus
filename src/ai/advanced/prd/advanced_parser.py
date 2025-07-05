@@ -200,12 +200,13 @@ class AdvancedPRDParser:
             
             logger.info(f"LLM response received: {len(analysis_result) if analysis_result else 0} chars")
             
-            # Parse the AI response
-            import json
+            # Parse the AI response using our JSON parser utility
+            from src.utils.json_parser import parse_ai_json_response
+            
             try:
-                analysis_data = json.loads(analysis_result)
+                analysis_data = parse_ai_json_response(analysis_result)
                 logger.info("Successfully parsed AI response as JSON")
-            except json.JSONDecodeError as e:
+            except (json.JSONDecodeError, ValueError) as e:
                 from src.core.error_framework import AIProviderError, ErrorContext
                 
                 logger.error(f"Failed to parse AI response as JSON: {e}")
@@ -227,16 +228,25 @@ class AdvancedPRDParser:
                     )
                 )
             
+            # Handle both snake_case and camelCase keys from AI response
+            def get_key(data, snake_key, camel_key=None):
+                """Get value from dict using either snake_case or camelCase key"""
+                if camel_key is None:
+                    # Convert snake_case to camelCase
+                    parts = snake_key.split('_')
+                    camel_key = parts[0] + ''.join(word.capitalize() for word in parts[1:])
+                return data.get(snake_key, data.get(camel_key, []))
+            
             return PRDAnalysis(
-                functional_requirements=analysis_data.get('functional_requirements', []),
-                non_functional_requirements=analysis_data.get('non_functional_requirements', []),
-                technical_constraints=analysis_data.get('technical_constraints', []),
-                business_objectives=analysis_data.get('business_objectives', []),
-                user_personas=analysis_data.get('user_personas', []),
-                success_metrics=analysis_data.get('success_metrics', []),
-                implementation_approach=analysis_data.get('implementation_approach', 'agile_iterative'),
-                complexity_assessment=analysis_data.get('complexity_assessment', {}),
-                risk_factors=analysis_data.get('risk_factors', []),
+                functional_requirements=get_key(analysis_data, 'functional_requirements', 'functionalRequirements'),
+                non_functional_requirements=get_key(analysis_data, 'non_functional_requirements', 'nonFunctionalRequirements'),
+                technical_constraints=get_key(analysis_data, 'technical_constraints', 'technicalConstraints'),
+                business_objectives=get_key(analysis_data, 'business_objectives', 'businessObjectives'),
+                user_personas=get_key(analysis_data, 'user_personas', 'userPersonas'),
+                success_metrics=get_key(analysis_data, 'success_metrics', 'successMetrics'),
+                implementation_approach=get_key(analysis_data, 'implementation_approach', 'recommendedImplementation') or 'agile_iterative',
+                complexity_assessment=get_key(analysis_data, 'complexity_assessment', 'complexityAssessment') or {},
+                risk_factors=get_key(analysis_data, 'risk_factors', 'riskFactors'),
                 confidence=analysis_data.get('confidence', 0.8)
             )
             
@@ -286,8 +296,10 @@ class AdvancedPRDParser:
         hierarchy = {}
         
         # Create epics from functional requirements
-        for req in analysis.functional_requirements:
-            epic_id = f"epic_{req.get('id', 'unknown')}"
+        for i, req in enumerate(analysis.functional_requirements):
+            # Generate unique epic ID based on feature name or index
+            feature_id = req.get('id', req.get('feature', '').lower().replace(' ', '_') or f'req_{i}')
+            epic_id = f"epic_{feature_id}"
             hierarchy[epic_id] = []
             
             # Break epic into smaller tasks
@@ -561,18 +573,22 @@ class AdvancedPRDParser:
     # Additional helper methods would be implemented here...
     async def _break_down_epic(self, req: Dict[str, Any], analysis: PRDAnalysis, constraints: ProjectConstraints) -> List[Dict[str, Any]]:
         """Break down epic into smaller tasks"""
-        # Simplified implementation
-        req_id = req.get('id', 'unknown')
+        # Generate unique ID based on feature name if no ID provided
+        req_id = req.get('id', req.get('feature', '').lower().replace(' ', '_') or 'unknown')
+        feature_name = req.get('feature', req.get('description', 'feature'))
+        
         return [
-            {'id': f'task_{req_id}_design', 'name': f"Design {req.get('description', 'feature')}", 'type': 'design'},
-            {'id': f'task_{req_id}_implement', 'name': f"Implement {req.get('description', 'feature')}", 'type': 'implementation'},
-            {'id': f'task_{req_id}_test', 'name': f"Test {req.get('description', 'feature')}", 'type': 'testing'}
+            {'id': f'task_{req_id}_design', 'name': f"Design {feature_name}", 'type': 'design'},
+            {'id': f'task_{req_id}_implement', 'name': f"Implement {feature_name}", 'type': 'implementation'},
+            {'id': f'task_{req_id}_test', 'name': f"Test {feature_name}", 'type': 'testing'}
         ]
     
     async def _create_nfr_tasks(self, nfrs: List[Dict[str, Any]], constraints: ProjectConstraints) -> List[Dict[str, Any]]:
         """Create non-functional requirement tasks"""
         return [
-            {'id': f'nfr_task_{nfr.get("id", i)}', 'name': f"Implement {nfr.get('description', 'NFR')}", 'type': 'nfr'}
+            {'id': f'nfr_task_{nfr.get("id", nfr.get("requirement", "").lower().replace(" ", "_") or str(i))}', 
+             'name': f"Implement {nfr.get('requirement', nfr.get('description', 'NFR'))}", 
+             'type': 'nfr'}
             for i, nfr in enumerate(nfrs)
         ]
     
