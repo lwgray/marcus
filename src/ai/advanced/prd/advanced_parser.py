@@ -346,6 +346,9 @@ class AdvancedPRDParser:
         """Generate hierarchical task structure"""
         hierarchy = {}
         
+        # Store task metadata for later use
+        self._task_metadata = {}
+        
         # Create epics from functional requirements
         for i, req in enumerate(analysis.functional_requirements):
             # Prefer standardized 'id' field from template
@@ -378,16 +381,44 @@ class AdvancedPRDParser:
             # Break epic into smaller tasks
             epic_tasks = await self._break_down_epic(req, analysis, constraints)
             logger.debug(f"Epic {epic_id} broken down into {len(epic_tasks)} tasks")
+            
+            # Store task metadata for later use
+            for task in epic_tasks:
+                self._task_metadata[task['id']] = {
+                    'original_name': task['name'],
+                    'type': task['type'],
+                    'epic_id': epic_id,
+                    'requirement': req
+                }
+            
             hierarchy[epic_id] = [task['id'] for task in epic_tasks]
         
         # Add non-functional requirement tasks
         nfr_epic_id = "epic_non_functional"
         nfr_tasks = await self._create_nfr_tasks(analysis.non_functional_requirements, constraints)
+        
+        # Store NFR task metadata
+        for task in nfr_tasks:
+            self._task_metadata[task['id']] = {
+                'original_name': task['name'],
+                'type': task['type'],
+                'epic_id': nfr_epic_id
+            }
+        
         hierarchy[nfr_epic_id] = [task['id'] for task in nfr_tasks]
         
         # Add infrastructure and setup tasks
         infra_epic_id = "epic_infrastructure"
         infra_tasks = await self._create_infrastructure_tasks(analysis, constraints)
+        
+        # Store infrastructure task metadata
+        for task in infra_tasks:
+            self._task_metadata[task['id']] = {
+                'original_name': task['name'],
+                'type': task['type'],
+                'epic_id': infra_epic_id
+            }
+        
         hierarchy[infra_epic_id] = [task['id'] for task in infra_tasks]
         
         return hierarchy
@@ -730,28 +761,32 @@ class AdvancedPRDParser:
         task_id = task_info.get('id', 'unknown')
         epic_id = task_info.get('epic_id', 'unknown')
         
+        # Get original task metadata
+        task_metadata = self._task_metadata.get(task_id, {})
+        original_name = task_metadata.get('original_name', '')
+        
         # Extract meaningful context from PRD analysis
         project_context = self._extract_project_context(analysis, task_id, epic_id)
         
         # Generate context-aware task details
         if 'design' in task_id.lower():
-            name, description = self._generate_design_task(project_context, task_id)
+            name, description = self._generate_design_task(project_context, task_id, original_name)
             task_type = 'design'
             estimated_hours = 8
         elif 'implement' in task_id.lower():
-            name, description = self._generate_implementation_task(project_context, task_id)
+            name, description = self._generate_implementation_task(project_context, task_id, original_name)
             task_type = 'implementation'
             estimated_hours = 16
         elif 'test' in task_id.lower():
-            name, description = self._generate_testing_task(project_context, task_id)
+            name, description = self._generate_testing_task(project_context, task_id, original_name)
             task_type = 'testing'
             estimated_hours = 8
         elif 'setup' in task_id.lower() or 'infra' in task_id.lower():
-            name, description = self._generate_infrastructure_task(project_context, task_id)
+            name, description = self._generate_infrastructure_task(project_context, task_id, original_name)
             task_type = 'setup'
             estimated_hours = 12
         else:
-            name, description = self._generate_generic_task(project_context, task_id)
+            name, description = self._generate_generic_task(project_context, task_id, original_name)
             task_type = 'feature'
             estimated_hours = 12
             
@@ -954,35 +989,40 @@ class AdvancedPRDParser:
         
         return context
     
-    def _generate_design_task(self, context: Dict[str, Any], task_id: str) -> Tuple[str, str]:
+    def _generate_design_task(self, context: Dict[str, Any], task_id: str, original_name: str = "") -> Tuple[str, str]:
         """Generate design task name and description using PRD context"""
         domain = context['domain']
         project_type = context['project_type']
         objectives = context['business_objectives']
         
+        # Extract feature name from original name (e.g., "Design CRUD Operations" -> "CRUD Operations")
+        feature_name = original_name.replace("Design ", "") if original_name else ""
+        
         if domain == 'crud_operations':
-            name = "Design CRUD API Architecture"
+            # Use original feature name if available, otherwise use generic
+            name = original_name if original_name else "Design CRUD API Architecture"
             description = f"Design RESTful CRUD API for {project_type}. Define endpoints for Create, Read, Update, and Delete operations. Include request/response schemas, error handling, pagination, filtering, and sorting capabilities. Business goal: {objectives[0] if objectives else 'efficient data management'}."
         elif domain == 'data_modeling':
-            name = "Design Data Model and Schema"
+            name = original_name if original_name else "Design Data Model and Schema"
             description = f"Design data model and database schema for {project_type}. Define entity relationships, field types, constraints, indexes, and data validation rules. Include schema diagrams and migration strategy. Focus on: {objectives[0] if objectives else 'scalable data architecture'}."
         elif domain == 'validation':
-            name = "Design Input Validation System"
+            name = original_name if original_name else "Design Input Validation System"
             description = f"Design comprehensive input validation system for {project_type}. Define validation rules, error messages, sanitization procedures, and security measures. Include validation for all data inputs and API endpoints. Goal: {objectives[0] if objectives else 'data integrity and security'}."
         elif domain == 'user_management':
-            name = "Design User Authentication Flow"
+            name = original_name if original_name else "Design User Authentication Flow"
             description = f"Design comprehensive user authentication and account management system for {project_type}. Define user registration, login, password reset flows, session management, and security protocols. Include wireframes, user flows, and technical specifications. Business goal: {objectives[0] if objectives else 'secure user access'}."
         elif domain == 'frontend':
-            name = "Design User Interface Architecture"
+            name = original_name if original_name else "Design User Interface Architecture"
             description = f"Create detailed UI/UX design for {project_type}. Include component hierarchy, design system, responsive layouts, and user interaction patterns. Focus on achieving: {objectives[0] if objectives else 'excellent user experience'}. Define accessibility standards and usability requirements."
         elif domain == 'backend_services':
-            name = "Design API Architecture"
+            name = original_name if original_name else "Design API Architecture"
             description = f"Design RESTful API architecture for {project_type}. Define endpoint specifications, data models, request/response schemas, authentication mechanisms, and error handling. Ensure scalability for: {objectives[0] if objectives else 'reliable service delivery'}."
         elif domain == 'ecommerce':
-            name = "Design E-commerce User Experience"
+            name = original_name if original_name else "Design E-commerce User Experience"
             description = f"Design comprehensive e-commerce user experience for {project_type}. Include product catalog, shopping cart, checkout flow, user accounts, and order management. Optimize for: {objectives[0] if objectives else 'seamless shopping experience'}."
         else:
-            name = f"Design {project_type.title()} Architecture"
+            # For any other domain, use original name or create one from feature
+            name = original_name if original_name else f"Design {feature_name if feature_name else project_type.title()} Architecture"
             description = f"Create architectural design for {project_type}. Define system components, data flow, user interactions, and technical specifications. Support business objective: {objectives[0] if objectives else 'effective solution delivery'}."
         
         # Add specific requirements if available
@@ -992,35 +1032,37 @@ class AdvancedPRDParser:
         
         return name, description
     
-    def _generate_implementation_task(self, context: Dict[str, Any], task_id: str) -> Tuple[str, str]:
+    def _generate_implementation_task(self, context: Dict[str, Any], task_id: str, original_name: str = "") -> Tuple[str, str]:
         """Generate implementation task name and description using PRD context"""
         domain = context['domain']
         project_type = context['project_type']
         tech_constraints = context['technical_constraints']
         
         if domain == 'user_management':
-            name = "Implement User Authentication Service"
+            name = original_name if original_name else "Implement User Authentication Service"
             description = f"Build secure user authentication service for {project_type}. Implement user registration, login, JWT token management, password hashing with bcrypt, and session handling. Technology stack: {', '.join(tech_constraints)}. Include rate limiting, email verification, and comprehensive error handling."
         elif domain == 'frontend':
-            name = "Build User Interface Components"
+            name = original_name if original_name else "Build User Interface Components"
             description = f"Develop responsive UI components for {project_type}. Create reusable component library, implement state management, handle user interactions, and ensure accessibility compliance. Using: {', '.join(tech_constraints)}. Include loading states, error boundaries, and responsive design."
         elif domain == 'backend_services':
-            name = "Develop Backend API Services"
+            name = original_name if original_name else "Develop Backend API Services"
             description = f"Implement backend API services for {project_type}. Build RESTful endpoints, implement business logic, add data validation, error handling, and logging. Technology: {', '.join(tech_constraints)}. Include API documentation, performance optimization, and security measures."
         elif domain == 'ecommerce':
-            name = "Build E-commerce Core Features"
+            name = original_name if original_name else "Build E-commerce Core Features"
             description = f"Implement core e-commerce functionality for {project_type}. Build product catalog, shopping cart, checkout process, payment integration, and order management. Stack: {', '.join(tech_constraints)}. Include inventory management and order tracking."
         elif domain == 'crud_operations':
-            name = "Implement CRUD API Endpoints"
+            name = original_name if original_name else "Implement CRUD API Endpoints"
             description = f"Build complete CRUD (Create, Read, Update, Delete) functionality for {project_type}. Implement RESTful endpoints with proper HTTP methods, request/response handling, data validation, and error responses. Technology: {', '.join(tech_constraints)}. Include pagination, filtering, and sorting capabilities."
         elif domain == 'data_modeling':
-            name = "Implement Data Models and Database Layer"
+            name = original_name if original_name else "Implement Data Models and Database Layer"
             description = f"Create data models and database integration for {project_type}. Define schemas, implement ORM/ODM models, set up migrations, add indexes for performance, and implement data validation. Stack: {', '.join(tech_constraints)}. Include relationships, constraints, and data integrity rules."
         elif domain == 'validation':
-            name = "Implement Input Validation and Sanitization"
+            name = original_name if original_name else "Implement Input Validation and Sanitization"
             description = f"Build comprehensive validation layer for {project_type}. Implement input validation rules, data sanitization, type checking, business rule validation, and error message formatting. Technology: {', '.join(tech_constraints)}. Include XSS prevention, SQL injection protection, and data format validation."
         else:
-            name = f"Implement {project_type.title()} Core Features"
+            # Extract feature name from original name
+            feature_name = original_name.replace("Implement ", "") if original_name else ""
+            name = original_name if original_name else f"Implement {feature_name if feature_name else project_type.title()} Core Features"
             description = f"Build core functionality for {project_type}. Implement business logic, data processing, user interfaces, and system integrations. Using: {', '.join(tech_constraints)}. Include proper error handling, logging, and performance optimization."
         
         # Add specific requirements if available
@@ -1030,59 +1072,61 @@ class AdvancedPRDParser:
         
         return name, description
     
-    def _generate_testing_task(self, context: Dict[str, Any], task_id: str) -> Tuple[str, str]:
+    def _generate_testing_task(self, context: Dict[str, Any], task_id: str, original_name: str = "") -> Tuple[str, str]:
         """Generate testing task name and description using PRD context"""
         domain = context['domain']
         project_type = context['project_type']
         
         if domain == 'user_management':
-            name = "Test Authentication Security Features"
+            name = original_name if original_name else "Test Authentication Security Features"
             description = f"Create comprehensive test suite for user authentication in {project_type}. Include unit tests for login/registration, integration tests for JWT flows, security testing for password policies, and end-to-end user journey tests. Achieve >80% code coverage."
         elif domain == 'frontend':
-            name = "Test User Interface Components"
+            name = original_name if original_name else "Test User Interface Components"
             description = f"Develop UI testing suite for {project_type}. Include component unit tests, user interaction tests, accessibility testing, responsive design validation, and cross-browser compatibility tests. Test all user flows and error states."
         elif domain == 'backend_services':
-            name = "Test API Functionality and Performance"
+            name = original_name if original_name else "Test API Functionality and Performance"
             description = f"Create API testing suite for {project_type}. Include endpoint unit tests, integration tests, load testing, security testing, and error handling validation. Test data validation, authentication, and business logic. Achieve >80% coverage."
         elif domain == 'ecommerce':
-            name = "Test E-commerce Transaction Flows"
+            name = original_name if original_name else "Test E-commerce Transaction Flows"
             description = f"Develop comprehensive testing for {project_type}. Test shopping cart functionality, checkout process, payment integration, order management, and inventory updates. Include security testing for payment processing and fraud prevention."
         elif domain == 'crud_operations':
-            name = "Test CRUD Operations and API Endpoints"
+            name = original_name if original_name else "Test CRUD Operations and API Endpoints"
             description = f"Create comprehensive test suite for CRUD operations in {project_type}. Test all HTTP methods (GET, POST, PUT, DELETE), validate request/response formats, test error handling, pagination, filtering, and edge cases. Include load testing for concurrent operations. Achieve >80% coverage."
         elif domain == 'data_modeling':
-            name = "Test Data Models and Database Operations"
+            name = original_name if original_name else "Test Data Models and Database Operations"
             description = f"Develop database testing suite for {project_type}. Test model validations, database constraints, migrations, relationships, data integrity, and transaction handling. Include performance testing for queries and indexes. Validate data consistency and error scenarios."
         elif domain == 'validation':
-            name = "Test Input Validation and Security"
+            name = original_name if original_name else "Test Input Validation and Security"
             description = f"Create validation testing suite for {project_type}. Test all validation rules, boundary conditions, invalid inputs, injection attempts, XSS prevention, and error message accuracy. Include fuzz testing and security vulnerability scanning. Ensure comprehensive input sanitization coverage."
         else:
-            name = f"Test {project_type.title()} Functionality"
+            # Extract feature name from original name
+            feature_name = original_name.replace("Test ", "") if original_name else ""
+            name = original_name if original_name else f"Test {feature_name if feature_name else project_type.title()} Functionality"
             description = f"Create comprehensive test suite for {project_type}. Include unit tests, integration tests, and end-to-end testing. Validate business logic, user workflows, and system reliability. Achieve >80% code coverage."
         
         return name, description
     
-    def _generate_infrastructure_task(self, context: Dict[str, Any], task_id: str) -> Tuple[str, str]:
+    def _generate_infrastructure_task(self, context: Dict[str, Any], task_id: str, original_name: str = "") -> Tuple[str, str]:
         """Generate infrastructure task name and description using PRD context"""
         project_type = context['project_type']
         tech_constraints = context['technical_constraints']
         
         if 'setup' in task_id.lower():
-            name = "Setup Development Environment"
+            name = original_name if original_name else "Setup Development Environment"
             description = f"Configure complete development environment for {project_type}. Set up local development stack, database, environment variables, development tools, and project dependencies. Technology: {', '.join(tech_constraints)}. Include Docker containers, hot reloading, and debugging tools."
         elif 'ci' in task_id.lower() or 'cd' in task_id.lower():
-            name = "Configure CI/CD Pipeline"
+            name = original_name if original_name else "Configure CI/CD Pipeline"
             description = f"Set up continuous integration and deployment for {project_type}. Configure automated testing, code quality checks, building, and deployment to staging/production. Using: {', '.join(tech_constraints)}. Include security scanning and performance monitoring."
         elif 'deploy' in task_id.lower():
-            name = "Setup Production Deployment"
+            name = original_name if original_name else "Setup Production Deployment"
             description = f"Configure production infrastructure for {project_type}. Set up hosting, load balancing, monitoring, logging, backup systems, and security measures. Technology: {', '.join(tech_constraints)}. Include scaling strategy and disaster recovery."
         else:
-            name = "Configure System Infrastructure"
+            name = original_name if original_name else "Configure System Infrastructure"
             description = f"Set up core infrastructure for {project_type}. Configure servers, databases, caching, monitoring, and security systems. Stack: {', '.join(tech_constraints)}. Include performance optimization and maintenance procedures."
         
         return name, description
     
-    def _generate_generic_task(self, context: Dict[str, Any], task_id: str) -> Tuple[str, str]:
+    def _generate_generic_task(self, context: Dict[str, Any], task_id: str, original_name: str = "") -> Tuple[str, str]:
         """Generate generic task name and description using PRD context"""
         project_type = context['project_type']
         objectives = context['business_objectives']
