@@ -297,9 +297,26 @@ class AdvancedPRDParser:
         
         # Create epics from functional requirements
         for i, req in enumerate(analysis.functional_requirements):
-            # Generate unique epic ID based on feature name or index
-            feature_id = req.get('id', req.get('feature', '').lower().replace(' ', '_') or f'req_{i}')
-            epic_id = f"epic_{feature_id}"
+            # Try to get feature name from multiple possible fields
+            feature_name = req.get('feature') or req.get('description') or req.get('name') or f'requirement_{i}'
+            
+            # Generate clean feature ID
+            feature_id = feature_name.lower()
+            # Remove common words and clean up
+            for word in ['for', 'the', 'a', 'an', 'and', 'or', 'with', 'using']:
+                feature_id = feature_id.replace(f' {word} ', ' ')
+            # Convert to ID format
+            feature_id = feature_id.strip().replace(' ', '_').replace('-', '_').replace(':', '')
+            # Remove any non-alphanumeric characters except underscore
+            feature_id = ''.join(c if c.isalnum() or c == '_' else '' for c in feature_id)
+            
+            # If we still don't have a good ID, use the index
+            if not feature_id or feature_id == 'feature':
+                feature_id = f'req_{i}'
+            
+            # Use the ID field if provided, otherwise use generated feature_id
+            final_id = req.get('id', feature_id)
+            epic_id = f"epic_{final_id}"
             hierarchy[epic_id] = []
             
             # Break epic into smaller tasks
@@ -573,9 +590,27 @@ class AdvancedPRDParser:
     # Additional helper methods would be implemented here...
     async def _break_down_epic(self, req: Dict[str, Any], analysis: PRDAnalysis, constraints: ProjectConstraints) -> List[Dict[str, Any]]:
         """Break down epic into smaller tasks"""
-        # Generate unique ID based on feature name if no ID provided
-        req_id = req.get('id', req.get('feature', '').lower().replace(' ', '_') or 'unknown')
-        feature_name = req.get('feature', req.get('description', 'feature'))
+        # Try to get feature name from multiple possible fields
+        feature_name = req.get('feature') or req.get('description') or req.get('name') or 'feature'
+        
+        # Generate unique ID based on feature name
+        # Clean the feature name to create a valid ID
+        feature_id = feature_name.lower()
+        # Remove common words and clean up
+        for word in ['for', 'the', 'a', 'an', 'and', 'or', 'with', 'using']:
+            feature_id = feature_id.replace(f' {word} ', ' ')
+        # Convert to ID format
+        feature_id = feature_id.strip().replace(' ', '_').replace('-', '_').replace(':', '')
+        # Remove any non-alphanumeric characters except underscore
+        feature_id = ''.join(c if c.isalnum() or c == '_' else '' for c in feature_id)
+        
+        # If we still don't have a good ID, use the index from functional requirements
+        if not feature_id or feature_id == 'feature':
+            req_index = analysis.functional_requirements.index(req) if req in analysis.functional_requirements else 0
+            feature_id = f'req_{req_index}'
+        
+        # Use the ID field if provided, otherwise use generated feature_id
+        req_id = req.get('id', feature_id)
         
         return [
             {'id': f'task_{req_id}_design', 'name': f"Design {feature_name}", 'type': 'design'},
@@ -585,12 +620,24 @@ class AdvancedPRDParser:
     
     async def _create_nfr_tasks(self, nfrs: List[Dict[str, Any]], constraints: ProjectConstraints) -> List[Dict[str, Any]]:
         """Create non-functional requirement tasks"""
-        return [
-            {'id': f'nfr_task_{nfr.get("id", nfr.get("requirement", "").lower().replace(" ", "_") or str(i))}', 
-             'name': f"Implement {nfr.get('requirement', nfr.get('description', 'NFR'))}", 
-             'type': 'nfr'}
-            for i, nfr in enumerate(nfrs)
-        ]
+        tasks = []
+        for i, nfr in enumerate(nfrs):
+            # Try to get requirement name from multiple fields
+            req_name = nfr.get('requirement') or nfr.get('name') or nfr.get('description') or f'NFR {i+1}'
+            
+            # Generate clean ID
+            req_id = req_name.lower().replace(' ', '_').replace('-', '_')
+            req_id = ''.join(c if c.isalnum() or c == '_' else '' for c in req_id)
+            
+            # Use provided ID or generated one
+            final_id = nfr.get('id', req_id or str(i))
+            
+            tasks.append({
+                'id': f'nfr_task_{final_id}',
+                'name': f"Implement {req_name}",
+                'type': 'nfr'
+            })
+        return tasks
     
     async def _create_infrastructure_tasks(self, analysis: PRDAnalysis, constraints: ProjectConstraints) -> List[Dict[str, Any]]:
         """Create infrastructure and setup tasks"""
