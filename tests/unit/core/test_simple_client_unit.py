@@ -14,7 +14,7 @@ from typing import Dict, Any, List, Optional
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from src.integrations.mcp_kanban_client_simplified import MCPKanbanClientSimplified
+from src.integrations.mcp_kanban_client_simple import SimpleMCPKanbanClient
 from src.core.models import Task, TaskStatus, Priority
 
 
@@ -109,7 +109,7 @@ class TestMCPKanbanClientSimplified:
     @pytest.fixture
     def client(self, mock_caller):
         """Create a client with mock caller"""
-        return MCPKanbanClientSimplified(mock_caller)
+        return SimpleMCPKanbanClient(mock_caller)
     
     @pytest.mark.asyncio
     async def test_initialization(self, client):

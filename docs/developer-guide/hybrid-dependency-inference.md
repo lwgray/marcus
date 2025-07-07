@@ -12,32 +12,32 @@ flowchart TD
     B --> C{High Confidence?}
     C -->|Yes > 80%| D[Accept Pattern Result]
     C -->|No| E[Mark as Ambiguous]
-    
+
     A --> F[Identify Complex Cases]
     F --> G[Similar Components?]
     F --> H[Workflow Groups?]
     F --> I[Conflicting Patterns?]
-    
+
     G --> J[AI Analysis Queue]
     H --> J
     I --> J
     E --> J
-    
+
     J --> K[Batch AI Request]
     K --> L[AI Dependency Analysis]
-    
+
     L --> M[Combine Results]
     D --> M
-    
+
     M --> N{Agreement?}
     N -->|Both Agree| O[Boost Confidence +15%]
     N -->|Conflict| P[Use Higher Confidence]
     N -->|Single Source| Q[Check Threshold]
-    
+
     O --> R[Final Dependencies]
     P --> R
     Q --> R
-    
+
     R --> S[Build Dependency Graph]
     S --> T[Detect Cycles]
     T --> U[Output Graph]
@@ -120,7 +120,7 @@ flowchart TD
 ```python
 # Initialize with AI engine
 from src.intelligence.dependency_inferer_hybrid import HybridDependencyInferer
-from src.integrations.ai_analysis_engine_fixed import AIAnalysisEngine
+from src.integrations.ai_analysis_engine import AIAnalysisEngine
 
 ai_engine = AIAnalysisEngine()
 inferer = HybridDependencyInferer(ai_engine)

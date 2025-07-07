@@ -354,13 +354,17 @@ async def demonstrate_optimal_ordering(context: Context):
     # Analyze dependencies
     dep_map = await context.analyze_dependencies(tasks, infer_implicit=True)
     
-    # Get optimal order
-    ordered_ids = context._get_optimal_task_order(dep_map, tasks)
+    # Get optimal order using suggest_task_order
+    ordered_tasks = context.suggest_task_order(tasks)
     
     print("\n1. Optimal execution order:")
-    for i, task_id in enumerate(ordered_ids, 1):
-        task = next(t for t in tasks if t.id == task_id)
-        deps = [tid for tid, deps in dep_map.items() if task_id in deps]
+    for i, task in enumerate(ordered_tasks, 1):
+        # Find what this task depends on
+        deps = []
+        for dep_id, dependent_ids in dep_map.items():
+            if task.id in dependent_ids:
+                deps.append(dep_id)
+        
         print(f"\n   {i}. {task.name}")
         print(f"      Priority: {task.priority.value}")
         if deps:
@@ -376,21 +380,26 @@ async def demonstrate_optimal_ordering(context: Context):
     ready_tasks = []
     completed = set()
     
-    for task_id in ordered_ids:
-        deps = [tid for tid, deps in dep_map.items() if task_id in deps]
+    for task in ordered_tasks:
+        # Find dependencies for this task
+        deps = []
+        for dep_id, dependent_ids in dep_map.items():
+            if task.id in dependent_ids:
+                deps.append(dep_id)
+        
         if all(d in completed for d in deps):
-            ready_tasks.append(task_id)
+            ready_tasks.append(task.id)
         
         # Simulate completion
         if len(ready_tasks) >= 2:
             print(f"\n   Can run in parallel:")
             for tid in ready_tasks:
-                task = next(t for t in tasks if t.id == tid)
-                print(f"     - {task.name}")
+                task_obj = next(t for t in tasks if t.id == tid)
+                print(f"     - {task_obj.name}")
             completed.update(ready_tasks)
             ready_tasks = []
         else:
-            completed.add(task_id)
+            completed.add(task.id)
 
 
 async def demonstrate_real_world_benefits():

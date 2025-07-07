@@ -22,26 +22,34 @@ Examples
 import json
 import os
 import sys
-from typing import List, Dict, Optional, Any, Union
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Union
 
 import anthropic
 
 from src.core.models import (
-    Task, WorkerStatus, ProjectState, 
-    RiskLevel, Priority, BlockerReport, ProjectRisk
+    BlockerReport,
+    Priority,
+    ProjectRisk,
+    ProjectState,
+    RiskLevel,
+    Task,
+    WorkerStatus,
 )
-from src.cost_tracking.ai_usage_middleware import ai_usage_middleware, track_project_tokens
+from src.cost_tracking.ai_usage_middleware import (
+    ai_usage_middleware,
+    track_project_tokens,
+)
 
 
 class AIAnalysisEngine:
     """
     AI-powered analysis and decision engine using Claude API.
-    
+
     This class provides intelligent analysis for project management decisions,
     including task assignment optimization, blocker resolution, and risk analysis.
     It gracefully falls back to rule-based approaches when AI is unavailable.
-    
+
     Attributes
     ----------
     client : Optional[anthropic.Anthropic]
@@ -50,23 +58,23 @@ class AIAnalysisEngine:
         Claude model to use for analysis
     prompts : Dict[str, str]
         Template prompts for different analysis types
-    
+
     Examples
     --------
     >>> engine = AIAnalysisEngine()
     >>> await engine.initialize()
     >>> # Engine is ready for analysis tasks
-    
+
     Notes
     -----
     Requires ANTHROPIC_API_KEY environment variable for AI features.
     Works in fallback mode without the API key.
     """
-    
+
     def __init__(self) -> None:
         """
         Initialize the AI Analysis Engine.
-        
+
         Attempts to set up the Anthropic client with various compatibility
         approaches for different library versions.
         """
@@ -77,37 +85,55 @@ class AIAnalysisEngine:
         try:
             # Get API key from config first, fall back to environment
             from src.config.config_loader import get_config
+
             config = get_config()
-            api_key = config.get('ai.anthropic_api_key') or os.environ.get("ANTHROPIC_API_KEY")
+            api_key = config.get("ai.anthropic_api_key") or os.environ.get(
+                "ANTHROPIC_API_KEY"
+            )
             if not api_key:
-                print("⚠️  Anthropic API key not found - AI features will use fallback mode", file=sys.stderr)
+                print(
+                    "⚠️  Anthropic API key not found - AI features will use fallback mode",
+                    file=sys.stderr,
+                )
                 self.client = None
             else:
                 # Try different initialization approaches based on version
                 try:
                     # First try simple initialization
                     self.client = anthropic.Anthropic(api_key=api_key)
-                    print("✅ Anthropic client initialized successfully", file=sys.stderr)
+                    print(
+                        "✅ Anthropic client initialized successfully", file=sys.stderr
+                    )
                 except TypeError as te:
                     # If we get a TypeError about proxies, try with explicit None
-                    if 'proxies' in str(te):
-                        print("⚠️  Retrying Anthropic init with proxies=None", file=sys.stderr)
+                    if "proxies" in str(te):
+                        print(
+                            "⚠️  Retrying Anthropic init with proxies=None",
+                            file=sys.stderr,
+                        )
                         self.client = anthropic.Anthropic(api_key=api_key, proxies=None)
-                        print("✅ Anthropic client initialized with proxies=None", file=sys.stderr)
+                        print(
+                            "✅ Anthropic client initialized with proxies=None",
+                            file=sys.stderr,
+                        )
                     else:
                         raise te
-                
+
         except Exception as e:
             print(f"⚠️  Failed to initialize Anthropic client: {e}", file=sys.stderr)
             print("   AI features will use fallback responses", file=sys.stderr)
             self.client = None
-        
-        self.model: str = config.get('ai.model', 'claude-3-5-sonnet-20241022') if 'config' in locals() else "claude-3-5-sonnet-20241022"  # Using Sonnet 3.5 for speed/cost balance
-        
+
+        self.model: str = (
+            config.get("ai.model", "claude-3-5-sonnet-20241022")
+            if "config" in locals()
+            else "claude-3-5-sonnet-20241022"
+        )  # Using Sonnet 3.5 for speed/cost balance
+
         # Analysis prompts
         self.prompts: Dict[str, str] = {
             "task_assignment": """You are an AI Project Manager analyzing task assignments.
-            
+
 Given:
 - Available tasks: {tasks}
 - Agent profile: {agent}
@@ -125,7 +151,6 @@ Return JSON:
     "confidence_score": 0.0-1.0,
     "reasoning": "explanation"
 }}""",
-
             "task_instructions": """You are generating detailed task instructions for a developer.
 
 Task: {task}
@@ -139,7 +164,6 @@ Generate clear, actionable instructions that:
 5. Suggest tools/resources to use
 
 Format as structured text the developer can follow.""",
-
             "blocker_analysis": """Analyze this blocker and suggest resolution:
 
 Task ID: {task_id}
@@ -154,7 +178,7 @@ Tailor resolution steps to their capabilities and provide learning opportunities
 Provide JSON response:
 {{
     "root_cause": "analysis",
-    "impact_assessment": "description", 
+    "impact_assessment": "description",
     "resolution_steps": ["step1 tailored to agent skills", "step2"],
     "required_resources": ["resource1"],
     "estimated_hours": number,
@@ -164,7 +188,6 @@ Provide JSON response:
     "recommended_collaborators": ["team members with needed skills"],
     "skill_match_confidence": "high/medium/low"
 }}""",
-
             "project_risk": """Analyze project risks based on current state:
 
 Project State: {project_state}
@@ -183,16 +206,16 @@ Identify risks and provide JSON:
     ],
     "overall_health": "healthy|at_risk|critical",
     "recommended_actions": ["action1", "action2"]
-}}"""
+}}""",
         }
-    
+
     async def initialize(self) -> None:
         """
         Initialize the AI engine and test connectivity.
-        
+
         Verifies the Anthropic client can communicate with the API by
         sending a test message. Disables the client if the test fails.
-        
+
         Examples
         --------
         >>> engine = AIAnalysisEngine()
@@ -200,37 +223,40 @@ Identify risks and provide JSON:
         ✅ AI Engine connection verified
         """
         if not self.client:
-            print("⚠️  AI Engine running in fallback mode (no Anthropic client)", file=sys.stderr)
+            print(
+                "⚠️  AI Engine running in fallback mode (no Anthropic client)",
+                file=sys.stderr,
+            )
             return
-        
+
         # Test connection
         try:
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=10,
-                messages=[{"role": "user", "content": "test"}]
+                messages=[{"role": "user", "content": "test"}],
             )
             print("✅ AI Engine connection verified", file=sys.stderr)
-            
+
             # Wrap client for token tracking
             self.client = ai_usage_middleware.wrap_ai_provider(self.client)
         except Exception as e:
             print(f"⚠️  AI Engine test failed: {e}", file=sys.stderr)
             print("   Will use fallback responses", file=sys.stderr)
             self.client = None  # Disable client if test fails
-    
+
     async def match_task_to_agent(
-        self, 
-        available_tasks: List[Task], 
+        self,
+        available_tasks: List[Task],
         agent: WorkerStatus,
-        project_state: ProjectState
+        project_state: ProjectState,
     ) -> Optional[Task]:
         # Set project context for token tracking
         self.current_project_id = project_state.project_name or project_state.board_id
         self.current_agent_id = agent.worker_id
         """
         Find the optimal task for an agent using AI analysis.
-        
+
         Parameters
         ----------
         available_tasks : List[Task]
@@ -239,19 +265,19 @@ Identify risks and provide JSON:
             Agent profile including skills and capacity
         project_state : ProjectState
             Current state of the project
-        
+
         Returns
         -------
         Optional[Task]
             The best matching task, or None if no suitable task found
-        
+
         Examples
         --------
         >>> task = await engine.match_task_to_agent(
         ...     tasks, agent, ProjectState.HEALTHY
         ... )
         >>> print(f"Assigned: {task.name} to {agent.name}")
-        
+
         Notes
         -----
         Falls back to skill-based matching if AI is unavailable.
@@ -259,11 +285,11 @@ Identify risks and provide JSON:
         """
         if not available_tasks:
             return None
-        
+
         if not self.client:
             # Fallback: Simple skill-based matching
             return self._fallback_task_matching(available_tasks, agent)
-        
+
         # Prepare data for AI analysis
         tasks_data = [
             {
@@ -273,20 +299,20 @@ Identify risks and provide JSON:
                 "priority": t.priority.value,
                 "estimated_hours": t.estimated_hours,
                 "labels": t.labels,
-                "dependencies": t.dependencies
+                "dependencies": t.dependencies,
             }
             for t in available_tasks[:10]  # Limit to 10 tasks for context
         ]
-        
+
         agent_data = {
             "id": agent.worker_id,
             "name": agent.name,
             "role": agent.role,
             "skills": agent.skills,
             "current_capacity": agent.capacity,
-            "completed_tasks": agent.completed_tasks_count
+            "completed_tasks": agent.completed_tasks_count,
         }
-        
+
         # Serialize ProjectState dataclass to JSON
         project_state_data = {
             "board_id": project_state.board_id,
@@ -297,48 +323,54 @@ Identify risks and provide JSON:
             "blocked_tasks": project_state.blocked_tasks,
             "progress_percent": project_state.progress_percent,
             "team_velocity": project_state.team_velocity,
-            "risk_level": project_state.risk_level.value if hasattr(project_state.risk_level, 'value') else str(project_state.risk_level),
-            "last_updated": project_state.last_updated.isoformat() if hasattr(project_state.last_updated, 'isoformat') else str(project_state.last_updated)
+            "risk_level": project_state.risk_level.value
+            if hasattr(project_state.risk_level, "value")
+            else str(project_state.risk_level),
+            "last_updated": project_state.last_updated.isoformat()
+            if hasattr(project_state.last_updated, "isoformat")
+            else str(project_state.last_updated),
         }
-        
+
         prompt = self.prompts["task_assignment"].format(
             tasks=json.dumps(tasks_data, indent=2),
             agent=json.dumps(agent_data, indent=2),
-            project_state=json.dumps(project_state_data, indent=2)
+            project_state=json.dumps(project_state_data, indent=2),
         )
-        
+
         try:
             response = await self._call_claude(prompt)
             result = json.loads(response)
-            
+
             # Find the recommended task
             task_id = result.get("recommended_task_id")
             for task in available_tasks:
                 if task.id == task_id:
                     return task
-                    
+
         except Exception as e:
             print(f"AI task matching failed: {e}", file=sys.stderr)
-        
+
         # Fallback to simple matching
         return self._fallback_task_matching(available_tasks, agent)
-    
-    def _fallback_task_matching(self, tasks: List[Task], agent: WorkerStatus) -> Optional[Task]:
+
+    def _fallback_task_matching(
+        self, tasks: List[Task], agent: WorkerStatus
+    ) -> Optional[Task]:
         """
         Simple skill-based task matching without AI.
-        
+
         Parameters
         ----------
         tasks : List[Task]
             Available tasks to match
         agent : WorkerStatus
             Agent to match tasks for
-        
+
         Returns
         -------
         Optional[Task]
             Best matching task based on priority and skills
-        
+
         Notes
         -----
         Scores tasks based on:
@@ -348,55 +380,53 @@ Identify risks and provide JSON:
         # Score tasks based on priority and skill match
         best_score = -1
         best_task = None
-        
+
         priority_scores = {
             Priority.URGENT: 10,  # Heavily prioritize urgent tasks in fallback mode
             Priority.HIGH: 3,
             Priority.MEDIUM: 2,
-            Priority.LOW: 1
+            Priority.LOW: 1,
         }
-        
+
         for task in tasks:
             score = priority_scores.get(task.priority, 1)
-            
+
             # Check skill match
             if agent.skills and task.labels:
                 skill_match = len(set(agent.skills) & set(task.labels))
                 score += skill_match * 2
-            
+
             if score > best_score:
                 best_score = score
                 best_task = task
-        
+
         return best_task
-    
+
     async def generate_task_instructions(
-        self, 
-        task: Task, 
-        agent: Optional[WorkerStatus] = None
+        self, task: Task, agent: Optional[WorkerStatus] = None
     ) -> str:
         """
         Generate detailed instructions for a task.
-        
+
         Parameters
         ----------
         task : Task
             The task to generate instructions for
         agent : Optional[WorkerStatus], default=None
             The agent assigned to the task
-        
+
         Returns
         -------
         str
             Detailed task instructions formatted as markdown
-        
+
         Examples
         --------
         >>> instructions = await engine.generate_task_instructions(task, agent)
         >>> print(instructions)
         ## Task Assignment for Alice
         ...
-        
+
         Notes
         -----
         Uses AI to generate context-aware instructions when available,
@@ -405,52 +435,53 @@ Identify risks and provide JSON:
         if not self.client:
             # Fallback instructions when AI is not available
             return self._generate_fallback_instructions(task, agent)
-        
+
         task_data = {
             "name": task.name,
             "description": task.description,
             "priority": task.priority.value,
             "estimated_hours": task.estimated_hours,
             "dependencies": task.dependencies,
-            "labels": task.labels
+            "labels": task.labels,
         }
-        
+
         agent_data = {
             "name": agent.name if agent else "Unknown",
             "role": agent.role if agent else "Developer",
-            "skills": agent.skills if agent else []
+            "skills": agent.skills if agent else [],
         }
-        
+
         prompt = self.prompts["task_instructions"].format(
-            task=json.dumps(task_data, indent=2),
-            agent=json.dumps(agent_data, indent=2)
+            task=json.dumps(task_data, indent=2), agent=json.dumps(agent_data, indent=2)
         )
-        
+
         try:
             instructions = await self._call_claude(prompt)
             return instructions
         except Exception as e:
             print(f"AI instruction generation failed: {e}", file=sys.stderr)
             return self._generate_fallback_instructions(task, agent)
-    
-    def _generate_fallback_instructions(self, task: Task, agent: Optional[WorkerStatus]) -> str:
+
+    def _generate_fallback_instructions(
+        self, task: Task, agent: Optional[WorkerStatus]
+    ) -> str:
         """
         Generate fallback instructions when AI is not available.
-        
+
         Parameters
         ----------
         task : Task
             Task to generate instructions for
         agent : Optional[WorkerStatus]
             Agent assigned to the task
-        
+
         Returns
         -------
         str
             Structured task instructions in markdown format
         """
         agent_name = agent.name if agent else "Team Member"
-        
+
         return f"""## Task Assignment for {agent_name}
 
 **Task:** {task.name}
@@ -487,18 +518,18 @@ Identify risks and provide JSON:
 **Labels:** {', '.join(task.labels) if task.labels else 'None'}
 
 Good luck with your task!"""
-    
+
     async def analyze_blocker(
         self,
         task_id: str,
         description: str,
         severity: str,
-        agent: Optional['WorkerStatus'] = None,
-        task: Optional['Task'] = None
+        agent: Optional["WorkerStatus"] = None,
+        task: Optional["Task"] = None,
     ) -> Dict[str, Any]:
         """
         Analyze a blocker and suggest resolution steps.
-        
+
         Parameters
         ----------
         task_id : str
@@ -511,7 +542,7 @@ Good luck with your task!"""
             Agent who reported the blocker (for context-aware suggestions)
         task : Optional[Task]
             Full task details (for enhanced analysis)
-        
+
         Returns
         -------
         Dict[str, Any]
@@ -525,11 +556,11 @@ Good luck with your task!"""
             - prevention_measures: Future prevention steps
             - learning_opportunities: Skills/knowledge gaps identified
             - recommended_collaborators: Team members who could help
-        
+
         Examples
         --------
         >>> analysis = await engine.analyze_blocker(
-        ...     "TASK-123", 
+        ...     "TASK-123",
         ...     "Database connection timeout",
         ...     "high",
         ...     agent=worker_status,
@@ -539,8 +570,10 @@ Good luck with your task!"""
         ['Check database server status', ...]
         """
         if not self.client:
-            return self._generate_fallback_blocker_analysis(description, severity, agent, task)
-        
+            return self._generate_fallback_blocker_analysis(
+                description, severity, agent, task
+            )
+
         # Prepare agent context
         agent_context = ""
         if agent:
@@ -554,7 +587,7 @@ Agent Profile:
 - Completed Tasks: {agent.completed_tasks_count}
 - Performance Score: {agent.performance_score}
 """
-        
+
         # Prepare task context
         task_context = ""
         if task:
@@ -567,32 +600,34 @@ Task Details:
 - Dependencies: {', '.join(task.dependencies) if task.dependencies else 'None'}
 - Labels: {', '.join(task.labels) if task.labels else 'None'}
 """
-        
+
         prompt = self.prompts["blocker_analysis"].format(
             task_id=task_id,
             description=description,
             severity=severity,
             agent_context=agent_context,
-            task_context=task_context
+            task_context=task_context,
         )
-        
+
         try:
             response = await self._call_claude(prompt)
             return json.loads(response)
         except Exception as e:
             print(f"AI blocker analysis failed: {e}", file=sys.stderr)
-            return self._generate_fallback_blocker_analysis(description, severity, agent, task)
-    
+            return self._generate_fallback_blocker_analysis(
+                description, severity, agent, task
+            )
+
     def _generate_fallback_blocker_analysis(
-        self, 
-        description: str, 
+        self,
+        description: str,
         severity: str,
-        agent: Optional['WorkerStatus'] = None,
-        task: Optional['Task'] = None
+        agent: Optional["WorkerStatus"] = None,
+        task: Optional["Task"] = None,
     ) -> Dict[str, Any]:
         """
         Generate fallback blocker analysis without AI.
-        
+
         Parameters
         ----------
         description : str
@@ -603,7 +638,7 @@ Task Details:
             Agent who reported the blocker
         task : Optional[Task]
             Task details
-        
+
         Returns
         -------
         Dict[str, Any]
@@ -614,27 +649,29 @@ Task Details:
             "Review the blocker description",
             "Identify required resources",
             "Research potential solutions",
-            "Document resolution steps"
+            "Document resolution steps",
         ]
-        
+
         # Add agent-specific guidance if available
         if agent and agent.skills:
             skill_based_steps = []
             if "python" in [s.lower() for s in agent.skills]:
-                skill_based_steps.append("Check Python documentation and Stack Overflow")
+                skill_based_steps.append(
+                    "Check Python documentation and Stack Overflow"
+                )
             if "database" in [s.lower() for s in agent.skills]:
                 skill_based_steps.append("Review database logs and connection settings")
             if "frontend" in [s.lower() for s in agent.skills]:
                 skill_based_steps.append("Check browser console and network requests")
-            
+
             if skill_based_steps:
                 base_steps = skill_based_steps + base_steps
-        
+
         # Adjust resources based on agent experience
         resources = ["Team lead", "Subject matter expert"]
         if agent and agent.performance_score < 0.7:
             resources.insert(0, "Senior developer (mentoring)")
-        
+
         return {
             "root_cause": "Analysis needed",
             "impact_assessment": f"Blocker reported: {description}",
@@ -645,22 +682,19 @@ Task Details:
             "prevention_measures": [
                 "Improve documentation",
                 "Add monitoring",
-                "Review process"
+                "Review process",
             ],
             "learning_opportunities": ["Root cause analysis", "Problem solving"],
             "recommended_collaborators": ["Team lead", "Senior developer"],
-            "skill_match_confidence": "medium"
+            "skill_match_confidence": "medium",
         }
-    
+
     async def generate_clarification(
-        self,
-        task: Task,
-        question: str,
-        context: str = ""
+        self, task: Task, question: str, context: str = ""
     ) -> str:
         """
         Generate clarification for a task-related question.
-        
+
         Parameters
         ----------
         task : Task
@@ -669,12 +703,12 @@ Task Details:
             The question needing clarification
         context : str, optional
             Additional context for the question
-        
+
         Returns
         -------
         str
             Clarification response
-        
+
         Examples
         --------
         >>> clarification = await engine.generate_clarification(
@@ -684,8 +718,10 @@ Task Details:
         ... )
         """
         if not self.client:
-            return f"Please clarify: {question}\n\nTask: {task.name}\nContext: {context}"
-        
+            return (
+                f"Please clarify: {question}\n\nTask: {task.name}\nContext: {context}"
+            )
+
         prompt = f"""Help clarify this question about a task:
 
 Task: {task.name}
@@ -694,22 +730,24 @@ Question: {question}
 Context: {context}
 
 Provide a helpful clarification that guides the developer."""
-        
+
         try:
             return await self._call_claude(prompt)
         except Exception as e:
             print(f"AI clarification failed: {e}", file=sys.stderr)
-            return f"Please clarify: {question}\n\nTask: {task.name}\nContext: {context}"
-    
+            return (
+                f"Please clarify: {question}\n\nTask: {task.name}\nContext: {context}"
+            )
+
     async def analyze_project_risks(
         self,
         project_state: ProjectState,
         recent_blockers: List[BlockerReport],
-        team_status: List[WorkerStatus]
+        team_status: List[WorkerStatus],
     ) -> List[ProjectRisk]:
         """
         Analyze and identify project risks.
-        
+
         Parameters
         ----------
         project_state : ProjectState
@@ -718,12 +756,12 @@ Provide a helpful clarification that guides the developer."""
             Recent blockers encountered
         team_status : List[WorkerStatus]
             Current team member status
-        
+
         Returns
         -------
         List[ProjectRisk]
             Identified risks with mitigation strategies
-        
+
         Examples
         --------
         >>> risks = await engine.analyze_project_risks(
@@ -733,7 +771,7 @@ Provide a helpful clarification that guides the developer."""
         ... )
         >>> for risk in risks:
         ...     print(f"{risk.description}: {risk.mitigation}")
-        
+
         Notes
         -----
         Analyzes up to 10 recent blockers to identify patterns.
@@ -741,28 +779,28 @@ Provide a helpful clarification that guides the developer."""
         """
         if not self.client:
             return self._generate_fallback_risk_analysis(project_state)
-        
+
         # Prepare data
         blockers_data = [
             {
                 "task_id": b.task_id,
                 "description": b.description,
                 "severity": b.severity.value,
-                "reported_at": b.reported_at.isoformat()
+                "reported_at": b.reported_at.isoformat(),
             }
             for b in recent_blockers[-10:]  # Last 10 blockers
         ]
-        
+
         team_data = [
             {
                 "name": w.name,
                 "role": w.role,
                 "current_tasks": len(w.current_tasks),
-                "capacity": w.capacity
+                "capacity": w.capacity,
             }
             for w in team_status
         ]
-        
+
         # Serialize ProjectState dataclass to JSON
         project_state_data = {
             "board_id": project_state.board_id,
@@ -773,35 +811,35 @@ Provide a helpful clarification that guides the developer."""
             "blocked_tasks": project_state.blocked_tasks,
             "progress_percent": project_state.progress_percent,
             "team_velocity": project_state.team_velocity,
-            "risk_level": project_state.risk_level.value if hasattr(project_state.risk_level, 'value') else str(project_state.risk_level),
-            "last_updated": project_state.last_updated.isoformat() if hasattr(project_state.last_updated, 'isoformat') else str(project_state.last_updated)
+            "risk_level": project_state.risk_level.value
+            if hasattr(project_state.risk_level, "value")
+            else str(project_state.risk_level),
+            "last_updated": project_state.last_updated.isoformat()
+            if hasattr(project_state.last_updated, "isoformat")
+            else str(project_state.last_updated),
         }
-        
+
         prompt = self.prompts["project_risk"].format(
             project_state=json.dumps(project_state_data, indent=2),
             recent_blockers=json.dumps(blockers_data, indent=2),
-            team_status=json.dumps(team_data, indent=2)
+            team_status=json.dumps(team_data, indent=2),
         )
-        
+
         try:
             response = await self._call_claude(prompt)
             result = json.loads(response)
-            
+
             # Convert to ProjectRisk objects
             risks = []
             for risk_data in result.get("risks", []):
-                likelihood_map = {
-                    "low": 0.2,
-                    "medium": 0.5,
-                    "high": 0.8
-                }
-                
+                likelihood_map = {"low": 0.2, "medium": 0.5, "high": 0.8}
+
                 impact_severity = {
                     "low": RiskLevel.LOW,
                     "medium": RiskLevel.MEDIUM,
-                    "high": RiskLevel.HIGH
+                    "high": RiskLevel.HIGH,
                 }
-                
+
                 risk = ProjectRisk(
                     risk_type="project",
                     description=risk_data["description"],
@@ -809,54 +847,58 @@ Provide a helpful clarification that guides the developer."""
                     probability=likelihood_map.get(risk_data["likelihood"], 0.5),
                     impact=risk_data.get("impact", "Unknown impact"),
                     mitigation_strategy=risk_data["mitigation"],
-                    identified_at=datetime.now()
+                    identified_at=datetime.now(),
                 )
                 risks.append(risk)
-            
+
             return risks
-            
+
         except Exception as e:
             print(f"AI risk analysis failed: {e}", file=sys.stderr)
             return self._generate_fallback_risk_analysis(project_state)
-    
-    def _generate_fallback_risk_analysis(self, project_state: ProjectState) -> List[ProjectRisk]:
+
+    def _generate_fallback_risk_analysis(
+        self, project_state: ProjectState
+    ) -> List[ProjectRisk]:
         """
         Generate fallback risk analysis without AI.
-        
+
         Parameters
         ----------
         project_state : ProjectState
             Current project state
-        
+
         Returns
         -------
         List[ProjectRisk]
             Basic risks based on project state
         """
         risks = []
-        
+
         if project_state.risk_level == RiskLevel.HIGH:
-            risks.append(ProjectRisk(
-                risk_type="timeline",
-                description="Project timeline at risk",
-                severity=RiskLevel.HIGH,
-                probability=0.7,
-                impact="Potential delays in delivery",
-                mitigation_strategy="Review task priorities and resource allocation",
-                identified_at=datetime.now()
-            ))
-        
+            risks.append(
+                ProjectRisk(
+                    risk_type="timeline",
+                    description="Project timeline at risk",
+                    severity=RiskLevel.HIGH,
+                    probability=0.7,
+                    impact="Potential delays in delivery",
+                    mitigation_strategy="Review task priorities and resource allocation",
+                    identified_at=datetime.now(),
+                )
+            )
+
         return risks
-    
+
     async def analyze_project_health(
         self,
         project_state: ProjectState,
         recent_activities: List[Dict[str, Any]],
-        team_status: Dict[str, Any]
+        team_status: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
         Analyze overall project health using AI.
-        
+
         Parameters
         ----------
         project_state : ProjectState
@@ -865,7 +907,7 @@ Provide a helpful clarification that guides the developer."""
             Recent project activities/events
         team_status : Dict[str, Any]
             Current team status information
-            
+
         Returns
         -------
         Dict[str, Any]
@@ -874,7 +916,7 @@ Provide a helpful clarification that guides the developer."""
         """
         if not self.client:
             return self._generate_fallback_health_analysis(project_state, team_status)
-        
+
         # Serialize ProjectState dataclass to JSON
         project_state_data = {
             "board_id": project_state.board_id,
@@ -886,10 +928,12 @@ Provide a helpful clarification that guides the developer."""
             "progress_percent": project_state.progress_percent,
             "team_velocity": project_state.team_velocity,
             "risk_level": project_state.risk_level.value,
-            "last_updated": project_state.last_updated.isoformat() if hasattr(project_state.last_updated, 'isoformat') else str(project_state.last_updated),
-            "overdue_tasks": len(project_state.overdue_tasks)
+            "last_updated": project_state.last_updated.isoformat()
+            if hasattr(project_state.last_updated, "isoformat")
+            else str(project_state.last_updated),
+            "overdue_tasks": len(project_state.overdue_tasks),
         }
-        
+
         # Serialize team status if it's a list of WorkerStatus objects
         if isinstance(team_status, list) and len(team_status) > 0:
             # Assume it's a list of WorkerStatus objects
@@ -901,13 +945,13 @@ Provide a helpful clarification that guides the developer."""
                     "current_tasks_count": len(worker.current_tasks),
                     "completed_tasks_count": worker.completed_tasks_count,
                     "capacity": worker.capacity,
-                    "performance_score": getattr(worker, 'performance_score', 1.0)
+                    "performance_score": getattr(worker, "performance_score", 1.0),
                 }
                 for worker in team_status
             ]
         else:
             team_status_data = team_status
-        
+
         # Create project health analysis prompt
         prompt = f"""Analyze the health of this software project and provide comprehensive insights.
 
@@ -958,31 +1002,29 @@ Return JSON in this format:
         }}
     ]
 }}"""
-        
+
         try:
             response = await self._call_claude(prompt)
             result = json.loads(response)
             return result
-            
+
         except Exception as e:
             print(f"AI health analysis failed: {e}", file=sys.stderr)
             return self._generate_fallback_health_analysis(project_state, team_status)
-    
+
     def _generate_fallback_health_analysis(
-        self, 
-        project_state: ProjectState,
-        team_status: Dict[str, Any]
+        self, project_state: ProjectState, team_status: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
         Generate fallback health analysis without AI.
-        
+
         Parameters
         ----------
         project_state : ProjectState
             Current project state
         team_status : Dict[str, Any]
             Team status information
-            
+
         Returns
         -------
         Dict[str, Any]
@@ -992,81 +1034,96 @@ Return JSON in this format:
         overall_health = "green"
         if project_state.risk_level == RiskLevel.HIGH:
             overall_health = "red"
-        elif project_state.risk_level == RiskLevel.MEDIUM or project_state.blocked_tasks > 2:
+        elif (
+            project_state.risk_level == RiskLevel.MEDIUM
+            or project_state.blocked_tasks > 2
+        ):
             overall_health = "yellow"
-        
+
         # Calculate timeline prediction
-        completion_rate = project_state.completed_tasks / max(project_state.total_tasks, 1)
+        completion_rate = project_state.completed_tasks / max(
+            project_state.total_tasks, 1
+        )
         on_track = completion_rate >= (project_state.progress_percent / 100.0)
-        
+
         risk_factors = []
-        
+
         # Check for resource risks
         if project_state.blocked_tasks > 0:
-            risk_factors.append({
-                "type": "resource",
-                "description": f"{project_state.blocked_tasks} tasks are currently blocked",
-                "severity": "high" if project_state.blocked_tasks > 2 else "medium",
-                "mitigation": "Review and resolve blockers urgently"
-            })
-        
+            risk_factors.append(
+                {
+                    "type": "resource",
+                    "description": f"{project_state.blocked_tasks} tasks are currently blocked",
+                    "severity": "high" if project_state.blocked_tasks > 2 else "medium",
+                    "mitigation": "Review and resolve blockers urgently",
+                }
+            )
+
         # Check for timeline risks
         if len(project_state.overdue_tasks) > 0:
-            risk_factors.append({
-                "type": "timeline",
-                "description": f"{len(project_state.overdue_tasks)} tasks are overdue",
-                "severity": "high",
-                "mitigation": "Reassign or reprioritize overdue tasks"
-            })
-        
+            risk_factors.append(
+                {
+                    "type": "timeline",
+                    "description": f"{len(project_state.overdue_tasks)} tasks are overdue",
+                    "severity": "high",
+                    "mitigation": "Reassign or reprioritize overdue tasks",
+                }
+            )
+
         # Generate recommendations
         recommendations = []
         if project_state.team_velocity < 3.0:
-            recommendations.append({
-                "priority": "high",
-                "action": "Review team capacity and task complexity",
-                "expected_impact": "Improve velocity by 20-30%"
-            })
-        
+            recommendations.append(
+                {
+                    "priority": "high",
+                    "action": "Review team capacity and task complexity",
+                    "expected_impact": "Improve velocity by 20-30%",
+                }
+            )
+
         if project_state.blocked_tasks > 0:
-            recommendations.append({
-                "priority": "high",
-                "action": "Conduct blocker review session",
-                "expected_impact": "Unblock tasks and restore progress"
-            })
-        
+            recommendations.append(
+                {
+                    "priority": "high",
+                    "action": "Conduct blocker review session",
+                    "expected_impact": "Unblock tasks and restore progress",
+                }
+            )
+
         return {
             "overall_health": overall_health,
             "timeline_prediction": {
                 "on_track": on_track,
                 "estimated_completion": "Based on current velocity",
                 "confidence": 0.6 if on_track else 0.3,
-                "critical_path_risks": ["Resource constraints"] if project_state.blocked_tasks > 0 else []
+                "critical_path_risks": ["Resource constraints"]
+                if project_state.blocked_tasks > 0
+                else [],
             },
             "risk_factors": risk_factors,
             "recommendations": recommendations,
             "resource_optimization": [
                 {
                     "suggestion": "Balance workload across team members",
-                    "impact": "Reduce bottlenecks and improve throughput"
+                    "impact": "Reduce bottlenecks and improve throughput",
                 }
-            ]
+            ],
         }
-    
+
     async def analyze_feature_request(self, feature_description: str) -> Dict[str, Any]:
         """
         Analyze a feature request and generate appropriate tasks.
-        
+
         Parameters
         ----------
         feature_description : str
             Natural language description of the feature to implement
-            
+
         Returns
         -------
         Dict[str, Any]
             Dictionary containing required tasks with details
-            
+
         Examples
         --------
         >>> result = await engine.analyze_feature_request("Add user profile page")
@@ -1075,7 +1132,7 @@ Return JSON in this format:
         # Fallback for when Claude is unavailable
         if not self.client:
             return self._analyze_feature_request_fallback(feature_description)
-            
+
         try:
             prompt = f"""Analyze this feature request and generate a comprehensive task breakdown.
 
@@ -1111,103 +1168,114 @@ Return JSON with this exact format:
 Be specific and actionable. Each task should be self-contained and assignable to a developer."""
 
             response = await self._call_claude(prompt)
-            
+
             # Parse JSON response
             try:
                 result = json.loads(response)
                 return result
             except json.JSONDecodeError:
                 # If JSON parsing fails, try to extract structured data
-                print(f"Failed to parse AI response as JSON, using fallback", file=sys.stderr)
+                print(
+                    f"Failed to parse AI response as JSON, using fallback",
+                    file=sys.stderr,
+                )
                 return self._analyze_feature_request_fallback(feature_description)
-                
+
         except Exception as e:
             print(f"AI feature analysis failed: {e}, using fallback", file=sys.stderr)
             return self._analyze_feature_request_fallback(feature_description)
-    
-    def _analyze_feature_request_fallback(self, feature_description: str) -> Dict[str, Any]:
+
+    def _analyze_feature_request_fallback(
+        self, feature_description: str
+    ) -> Dict[str, Any]:
         """Fallback feature analysis when AI is unavailable."""
         feature_lower = feature_description.lower()
         tasks = []
-        
+
         # Always start with design
-        tasks.append({
-            "name": f"Design {feature_description}",
-            "description": f"Create technical design and architecture for {feature_description}",
-            "estimated_hours": 4,
-            "labels": ["design", "planning"],
-            "critical": False,
-            "task_type": "design"
-        })
-        
-        # Analyze feature type and add appropriate tasks
-        if any(word in feature_lower for word in ['api', 'endpoint', 'service']):
-            tasks.append({
-                "name": f"Implement API for {feature_description}",
-                "description": f"Build backend API endpoints and business logic",
-                "estimated_hours": 12,
-                "labels": ["backend", "api"],
-                "critical": True,
-                "task_type": "backend"
-            })
-            
-        if any(word in feature_lower for word in ['ui', 'page', 'screen', 'interface']):
-            tasks.append({
-                "name": f"Build UI for {feature_description}",
-                "description": f"Create user interface components and interactions",
-                "estimated_hours": 10,
-                "labels": ["frontend", "ui"],
-                "critical": True,
-                "task_type": "frontend"
-            })
-            
-        # Always add testing and documentation
-        tasks.extend([
+        tasks.append(
             {
-                "name": f"Test {feature_description}",
-                "description": "Write unit tests and perform integration testing",
-                "estimated_hours": 6,
-                "labels": ["testing", "qa"],
+                "name": f"Design {feature_description}",
+                "description": f"Create technical design and architecture for {feature_description}",
+                "estimated_hours": 4,
+                "labels": ["design", "planning"],
                 "critical": False,
-                "task_type": "testing"
-            },
-            {
-                "name": f"Document {feature_description}",
-                "description": "Create user and technical documentation",
-                "estimated_hours": 3,
-                "labels": ["documentation"],
-                "critical": False,
-                "task_type": "documentation"
+                "task_type": "design",
             }
-        ])
-        
+        )
+
+        # Analyze feature type and add appropriate tasks
+        if any(word in feature_lower for word in ["api", "endpoint", "service"]):
+            tasks.append(
+                {
+                    "name": f"Implement API for {feature_description}",
+                    "description": f"Build backend API endpoints and business logic",
+                    "estimated_hours": 12,
+                    "labels": ["backend", "api"],
+                    "critical": True,
+                    "task_type": "backend",
+                }
+            )
+
+        if any(word in feature_lower for word in ["ui", "page", "screen", "interface"]):
+            tasks.append(
+                {
+                    "name": f"Build UI for {feature_description}",
+                    "description": f"Create user interface components and interactions",
+                    "estimated_hours": 10,
+                    "labels": ["frontend", "ui"],
+                    "critical": True,
+                    "task_type": "frontend",
+                }
+            )
+
+        # Always add testing and documentation
+        tasks.extend(
+            [
+                {
+                    "name": f"Test {feature_description}",
+                    "description": "Write unit tests and perform integration testing",
+                    "estimated_hours": 6,
+                    "labels": ["testing", "qa"],
+                    "critical": False,
+                    "task_type": "testing",
+                },
+                {
+                    "name": f"Document {feature_description}",
+                    "description": "Create user and technical documentation",
+                    "estimated_hours": 3,
+                    "labels": ["documentation"],
+                    "critical": False,
+                    "task_type": "documentation",
+                },
+            ]
+        )
+
         return {
             "required_tasks": tasks,
             "feature_complexity": "moderate",
             "technical_requirements": [],
-            "dependencies_on_existing": []
+            "dependencies_on_existing": [],
         }
-    
+
     async def analyze_integration_points(
-        self, 
-        feature_tasks: List[Task], 
-        existing_tasks: List[Task]
+        self, feature_tasks: List[Task], existing_tasks: List[Task]
     ) -> Dict[str, Any]:
         """
         Analyze how new feature tasks should integrate with existing project tasks.
-        
+
         Parameters
         ----------
         feature_tasks : List[Task]
             Tasks for the new feature
         existing_tasks : List[Task]
             Current project tasks
-            
+
         Returns
         -------
         Dict[str, Any]
             Integration analysis including dependencies and phase
-            
+
         Examples
         --------
         >>> integration = await engine.analyze_integration_points(new_tasks, project_tasks)
@@ -1216,25 +1284,31 @@ Be specific and actionable. Each task should be self-contained and assignable to
         # Fallback for when Claude is unavailable
         if not self.client:
             return self._analyze_integration_fallback(feature_tasks, existing_tasks)
-            
+
         try:
             # Prepare task summaries
             feature_summary = [
-                {"name": t.name, "labels": t.labels, "type": getattr(t, 'task_type', 'unknown')}
+                {
+                    "name": t.name,
+                    "labels": t.labels,
+                    "type": getattr(t, "task_type", "unknown"),
+                }
                 for t in feature_tasks
             ]
-            
+
             existing_summary = [
                 {
                     "id": t.id,
-                    "name": t.name, 
+                    "name": t.name,
                     "labels": t.labels,
                     "status": t.status.value,
-                    "description": t.description[:100] + "..." if len(t.description) > 100 else t.description
+                    "description": t.description[:100] + "..."
+                    if len(t.description) > 100
+                    else t.description,
                 }
                 for t in existing_tasks
             ]
-            
+
             prompt = f"""Analyze how these new feature tasks should integrate with the existing project.
 
 New Feature Tasks:
@@ -1266,25 +1340,32 @@ Return JSON with this format:
 }}"""
 
             response = await self._call_claude(prompt)
-            
+
             # Parse JSON response
             try:
                 result = json.loads(response)
                 return result
             except json.JSONDecodeError:
-                print(f"Failed to parse AI response as JSON, using fallback", file=sys.stderr)
+                print(
+                    f"Failed to parse AI response as JSON, using fallback",
+                    file=sys.stderr,
+                )
                 return self._analyze_integration_fallback(feature_tasks, existing_tasks)
-                
+
         except Exception as e:
-            print(f"AI integration analysis failed: {e}, using fallback", file=sys.stderr)
+            print(
+                f"AI integration analysis failed: {e}, using fallback", file=sys.stderr
+            )
             return self._analyze_integration_fallback(feature_tasks, existing_tasks)
-    
-    def _analyze_integration_fallback(self, feature_tasks: List[Task], existing_tasks: List[Task]) -> Dict[str, Any]:
+
+    def _analyze_integration_fallback(
+        self, feature_tasks: List[Task], existing_tasks: List[Task]
+    ) -> Dict[str, Any]:
         """Fallback integration analysis when AI is unavailable."""
         # Analyze existing task states
         completed = [t for t in existing_tasks if t.status.value == "done"]
         in_progress = [t for t in existing_tasks if t.status.value == "in_progress"]
-        
+
         # Find potential dependencies based on labels
         dependent_ids = []
         for existing in existing_tasks:
@@ -1294,7 +1375,7 @@ Return JSON with this format:
                     if set(existing.labels) & set(feature.labels):
                         dependent_ids.append(existing.id)
                         break
-        
+
         # Determine phase
         if len(completed) == 0:
             phase = "initial"
@@ -1304,7 +1385,7 @@ Return JSON with this format:
             phase = "testing"
         else:
             phase = "development"
-            
+
         return {
             "dependent_task_ids": list(set(dependent_ids)),
             "suggested_phase": phase,
@@ -1312,23 +1393,23 @@ Return JSON with this format:
             "confidence": 0.7,
             "integration_risks": [],
             "recommendations": [],
-            "rationale": "Based on task label matching and project progress"
+            "rationale": "Based on task label matching and project progress",
         }
-    
+
     async def _call_claude(self, prompt: str) -> str:
         """
         Call Claude API with error handling and token tracking.
-        
+
         Parameters
         ----------
         prompt : str
             The prompt to send to Claude
-        
+
         Returns
         -------
         str
             Claude's response text
-        
+
         Raises
         ------
         Exception
@@ -1336,47 +1417,46 @@ Return JSON with this format:
         """
         if not self.client:
             raise Exception("Anthropic client not available")
-        
+
         try:
             # Set context for token tracking if available
             if self.current_project_id and self.current_agent_id:
                 ai_usage_middleware.set_project_context(
-                    self.current_agent_id, 
-                    self.current_project_id
+                    self.current_agent_id, self.current_project_id
                 )
-            
+
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=2000,
                 temperature=0.7,
-                messages=[{
-                    "role": "user",
-                    "content": prompt
-                }]
+                messages=[{"role": "user", "content": prompt}],
             )
-            
+
             # Extract token usage if available
-            if hasattr(response, 'usage'):
+            if hasattr(response, "usage"):
                 usage = response.usage
                 if self.current_project_id:
                     # Manually track tokens since we're calling the API directly
-                    from src.cost_tracking.token_tracker import token_tracker
                     import asyncio
-                    
-                    asyncio.create_task(token_tracker.track_tokens(
-                        project_id=self.current_project_id,
-                        input_tokens=usage.input_tokens,
-                        output_tokens=usage.output_tokens,
-                        model=self.model,
-                        metadata={
-                            'agent_id': self.current_agent_id,
-                            'function': 'ai_analysis_engine',
-                            'prompt_length': len(prompt)
-                        }
-                    ))
-            
+
+                    from src.cost_tracking.token_tracker import token_tracker
+
+                    asyncio.create_task(
+                        token_tracker.track_tokens(
+                            project_id=self.current_project_id,
+                            input_tokens=usage.input_tokens,
+                            output_tokens=usage.output_tokens,
+                            model=self.model,
+                            metadata={
+                                "agent_id": self.current_agent_id,
+                                "function": "ai_analysis_engine",
+                                "prompt_length": len(prompt),
+                            },
+                        )
+                    )
+
             return response.content[0].text
-            
+
         except Exception as e:
             print(f"Error calling Claude: {e}", file=sys.stderr)
             raise

@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from src.integrations.mcp_kanban_client_simplified import MCPKanbanClientSimplified
+from src.integrations.mcp_kanban_client_simple import SimpleMCPKanbanClient
 from src.core.models import Task, TaskStatus, Priority
 
 
@@ -104,7 +104,7 @@ class TestMCPKanbanClientComprehensive:
             result = await mock_session.call_tool(tool_name, arguments)
             return result.content[0].text if result.content else None
         
-        client = MCPKanbanClientSimplified(mcp_caller)
+        client = SimpleMCPKanbanClient(mcp_caller)
         # Store reference to mock session for test access
         client._mock_session = mock_session
         return client
@@ -354,7 +354,7 @@ class TestMCPKanbanClientComprehensive:
     @pytest.mark.asyncio
     async def test_no_mcp_caller_error(self):
         """Test error when no MCP caller provided"""
-        client = MCPKanbanClientSimplified()
+        client = SimpleMCPKanbanClient()
         
         with pytest.raises(RuntimeError, match="MCP function caller not provided"):
             await client.initialize("Test Project")

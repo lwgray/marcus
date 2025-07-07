@@ -9,7 +9,7 @@ from datetime import datetime
 import asyncio
 
 from src.integrations.kanban_interface import KanbanInterface, KanbanProvider
-from src.integrations.mcp_kanban_client_simplified import MCPKanbanClientSimplified
+from src.integrations.mcp_kanban_client_simple import SimpleMCPKanbanClient
 from src.core.models import Task, TaskStatus, Priority
 
 
@@ -27,7 +27,7 @@ class PlankaKanban(KanbanInterface):
         """
         super().__init__(config)
         self.provider = KanbanProvider.PLANKA
-        self.client = MCPKanbanClientSimplified(config.get('mcp_function_caller'))
+        self.client = SimpleMCPKanbanClient(config.get('mcp_function_caller'))
         self.project_name = config.get('project_name', 'Task Master Test')
         self.connected = False
         

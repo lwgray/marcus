@@ -253,22 +253,22 @@ async def demonstrate_decision_tracking(context: Context):
     
     # Retrieve decisions
     print("\n2. Retrieving decisions by task:")
-    db_decisions = await context.get_decisions_for_task("db_1")
+    db_decisions = context.get_decisions_for_task("db_1")
     print(f"   Database decisions ({len(db_decisions)} total):")
     for dec in db_decisions:
-        print(f"     - {dec['what']}")
-        print(f"       Why: {dec['why']}")
-        print(f"       Impact: {dec['impact']}")
+        print(f"     - {dec.what}")
+        print(f"       Why: {dec.why}")
+        print(f"       Impact: {dec.impact}")
     
     # Show decision impact analysis
     print("\n3. Decision Impact Analysis:")
     all_decisions = []
     for task_id in ["db_1", "api_1"]:
-        all_decisions.extend(await context.get_decisions_for_task(task_id))
+        all_decisions.extend(context.get_decisions_for_task(task_id))
     
     impacts = {}
     for dec in all_decisions:
-        for word in dec['impact'].lower().split():
+        for word in dec.impact.lower().split():
             if len(word) > 5:  # Significant words
                 impacts[word] = impacts.get(word, 0) + 1
     
@@ -348,7 +348,7 @@ async def demonstrate_implementation_sharing(context: Context):
     
     print("\n   Architectural decisions to consider:")
     for dec in ctx.architectural_decisions[:3]:
-        print(f"     - {dec['what']}")
+        print(f"     - {dec.what}")
     
     # Show how context helps
     print("\n3. How context helps the next agent:")

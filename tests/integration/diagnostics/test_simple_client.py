@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 # Add parent directories to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from src.integrations.mcp_kanban_client_simplified import MCPKanbanClientSimplified
+from src.integrations.mcp_kanban_client_simple import SimpleMCPKanbanClient
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -48,7 +48,7 @@ async def test_simple():
     mcp_caller = await create_mcp_function_caller()
     
     # Create client with MCP caller
-    client = MCPKanbanClientSimplified(mcp_caller)
+    client = SimpleMCPKanbanClient(mcp_caller)
     
     print("🔍 Testing MCPKanbanClientSimplified")
     print("=" * 60)

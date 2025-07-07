@@ -1,7 +1,7 @@
 # Marcus AI Analysis Engine API Reference
 
-> **Type**: API  
-> **Version**: 1.0.0  
+> **Type**: API
+> **Version**: 1.0.0
 > **Last Updated**: 2025-06-25
 
 ## Overview
@@ -11,7 +11,7 @@ Complete reference for the AI Analysis Engine that powers intelligent task assig
 ## Synopsis
 
 ```python
-from src.integrations.ai_analysis_engine_fixed import AIAnalysisEngine
+from src.integrations.ai_analysis_engine import AIAnalysisEngine
 
 # Initialize engine
 ai_engine = AIAnalysisEngine()
@@ -58,15 +58,15 @@ async def generate_task_instructions(
 ) -> str:
     """
     Generate detailed implementation instructions.
-    
+
     Parameters:
         task: Task to generate instructions for
         worker: Optional worker info for personalization
         previous_implementations: Context from similar tasks
-        
+
     Returns:
         Detailed, step-by-step instructions
-        
+
     Raises:
         AnthropicError: If AI API fails
     """
@@ -115,13 +115,13 @@ async def analyze_blocker(
 ) -> str:
     """
     Analyze blocker and suggest solutions.
-    
+
     Parameters:
         blocker_description: Detailed blocker description
         task: Optional task context
         worker: Optional worker context
         severity: Blocker severity level
-        
+
     Returns:
         Actionable suggestions to resolve blocker
     """
@@ -167,11 +167,11 @@ async def suggest_optimal_assignment(
 ) -> List[Dict[str, Any]]:
     """
     Suggest optimal task-worker assignments.
-    
+
     Parameters:
         tasks: Available tasks to assign
         workers: Available workers
-        
+
     Returns:
         List of assignment recommendations with scores
     """
@@ -205,12 +205,12 @@ async def analyze_project_health(
 ) -> Dict[str, Any]:
     """
     Analyze overall project health.
-    
+
     Parameters:
         project_state: Current project metrics
         recent_activities: Recent task activities
         team_status: Team member statuses
-        
+
     Returns:
         Comprehensive health analysis
     """
@@ -254,12 +254,12 @@ async def generate_daily_plan(
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
     Generate daily work plan for team.
-    
+
     Parameters:
         workers: Team members
         available_tasks: Tasks to distribute
         constraints: Optional scheduling constraints
-        
+
     Returns:
         Personalized daily plans per worker
     """
@@ -323,34 +323,34 @@ class IntelligentTaskManager:
     def __init__(self):
         self.ai_engine = AIAnalysisEngine()
         self.kanban = KanbanFactory.create_default()
-    
+
     async def assign_task_intelligently(
-        self, 
-        task_id: str, 
+        self,
+        task_id: str,
         available_workers: List[WorkerStatus]
     ):
         # Get task details
         task = await self.kanban.get_task_by_id(task_id)
-        
+
         # Find best worker match
         assignments = await self.ai_engine.suggest_optimal_assignment(
-            [task], 
+            [task],
             available_workers
         )
-        
+
         if not assignments:
             return None
-            
+
         best_match = assignments[0]
         worker_id = best_match["suggested_worker"]
-        
+
         # Generate personalized instructions
         worker = next(w for w in available_workers if w.worker_id == worker_id)
         instructions = await self.ai_engine.generate_task_instructions(
-            task, 
+            task,
             worker
         )
-        
+
         # Create assignment
         return {
             "task_id": task_id,
@@ -368,10 +368,10 @@ class ProductionAIEngine(AIAnalysisEngine):
         super().__init__()
         self.metrics = MetricsCollector()
         self.cache = RedisCache()
-    
+
     async def generate_task_instructions(
-        self, 
-        task: Task, 
+        self,
+        task: Task,
         worker: Optional[WorkerStatus] = None,
         previous_implementations: Optional[Dict] = None
     ) -> str:
@@ -381,52 +381,52 @@ class ProductionAIEngine(AIAnalysisEngine):
         if cached:
             self.metrics.increment("cache_hits")
             return cached
-        
+
         # Track API usage
         start_time = time.time()
-        
+
         try:
             # Try primary AI
             instructions = await super().generate_task_instructions(
                 task, worker, previous_implementations
             )
-            
+
             # Cache successful response
             await self.cache.set(cache_key, instructions, ttl=3600)
-            
+
             # Record metrics
             self.metrics.record_latency("ai_instructions", time.time() - start_time)
             self.metrics.increment("ai_success")
-            
+
             return instructions
-            
+
         except AnthropicError as e:
             # Track failures
             self.metrics.increment("ai_failures")
-            
+
             # Use fallback
             if "rate_limit" in str(e):
                 self.metrics.increment("rate_limits")
-                
+
             return self._generate_fallback_instructions(task, worker)
-    
+
     def _generate_fallback_instructions(
-        self, 
-        task: Task, 
+        self,
+        task: Task,
         worker: Optional[WorkerStatus]
     ) -> str:
         """Enhanced fallback with templates"""
-        
+
         # Task type detection
         task_type = self._detect_task_type(task)
-        
+
         # Load template
         template = self.load_template(task_type)
-        
+
         # Customize for worker
         if worker and worker.skills:
             template = self._customize_for_skills(template, worker.skills)
-        
+
         return template.format(
             task_name=task.name,
             description=task.description,
