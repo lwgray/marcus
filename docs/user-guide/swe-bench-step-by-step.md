@@ -48,7 +48,7 @@ print(f'Loaded {len(dataset[\"test\"])} test instances')
 test_instances = dataset['test'][:10]
 with open('swe_bench_lite_sample.json', 'w') as f:
     json.dump(test_instances, f, indent=2)
-    
+
 print('Saved sample to swe_bench_lite_sample.json')
 "
 ```
@@ -110,7 +110,7 @@ class SimpleSWEBenchRunner:
     def __init__(self, workspace_dir: str = "./swe_bench_workspaces"):
         self.workspace_dir = Path(workspace_dir)
         self.workspace_dir.mkdir(exist_ok=True)
-        
+
     def load_instances(self, dataset_name: str = "princeton-nlp/SWE-bench_Lite", limit: int = 10):
         """Load SWE-Bench instances"""
         print(f"Loading {dataset_name} (limit: {limit})")
@@ -118,29 +118,29 @@ class SimpleSWEBenchRunner:
         instances = dataset['test'][:limit]
         print(f"Loaded {len(instances)} instances")
         return instances
-    
+
     def setup_repository(self, instance: Dict[str, Any]) -> str:
         """Set up repository for an instance"""
         repo_path = self.workspace_dir / f"repo_{instance['instance_id']}"
-        
+
         if repo_path.exists():
             print(f"Repository already exists: {repo_path}")
             return str(repo_path)
-            
+
         print(f"Cloning {instance['repo']} to {repo_path}")
-        
+
         # Clone repository
         subprocess.run([
             "git", "clone", f"https://github.com/{instance['repo']}.git", str(repo_path)
         ], check=True)
-        
+
         # Checkout base commit
         subprocess.run([
             "git", "checkout", instance['base_commit']
         ], cwd=repo_path, check=True)
-        
+
         return str(repo_path)
-    
+
     def analyze_issue(self, instance: Dict[str, Any]) -> Dict[str, str]:
         """Analyze the GitHub issue (simplified version)"""
         return {
@@ -149,43 +149,43 @@ class SimpleSWEBenchRunner:
             "instance_id": instance['instance_id'],
             "base_commit": instance['base_commit']
         }
-    
+
     def generate_patch(self, instance: Dict[str, Any], repo_path: str) -> str:
         """Generate a patch for the issue (placeholder implementation)"""
         # This is where Marcus would analyze the code and generate a solution
         # For now, return empty patch
         print(f"Generating patch for {instance['instance_id']}")
-        
+
         # TODO: Integrate with Marcus agents here
         # 1. Parse problem statement
         # 2. Analyze codebase using Marcus context system
         # 3. Generate solution using Marcus AI engine
         # 4. Create git patch
-        
+
         return ""  # Empty patch for now
-    
+
     def run_instance(self, instance: Dict[str, Any]) -> Dict[str, Any]:
         """Process a single SWE-Bench instance"""
         print(f"\n=== Processing {instance['instance_id']} ===")
-        
+
         try:
             # 1. Set up repository
             repo_path = self.setup_repository(instance)
-            
+
             # 2. Analyze issue
             analysis = self.analyze_issue(instance)
             print(f"Problem: {analysis['problem_statement'][:100]}...")
-            
+
             # 3. Generate patch
             patch = self.generate_patch(instance, repo_path)
-            
+
             return {
                 "instance_id": instance['instance_id'],
                 "model_patch": patch,
                 "model_name_or_path": "marcus-v1",
                 "status": "completed" if patch else "failed"
             }
-            
+
         except Exception as e:
             print(f"Error processing {instance['instance_id']}: {e}")
             return {
@@ -195,34 +195,34 @@ class SimpleSWEBenchRunner:
                 "status": "error",
                 "error": str(e)
             }
-    
+
     def run_evaluation(self, limit: int = 5):
         """Run evaluation on limited instances"""
         # Load instances
         instances = self.load_instances(limit=limit)
-        
+
         # Process each instance
         results = []
         for i, instance in enumerate(instances):
             print(f"\nProgress: {i+1}/{len(instances)}")
             result = self.run_instance(instance)
             results.append(result)
-        
+
         # Save results
         output_file = "marcus_swe_bench_predictions.jsonl"
         with open(output_file, 'w') as f:
             for result in results:
                 f.write(json.dumps(result) + '\n')
-        
+
         print(f"\nResults saved to {output_file}")
         print(f"Processed {len(results)} instances")
-        
+
         return results
 
 if __name__ == "__main__":
     runner = SimpleSWEBenchRunner()
     results = runner.run_evaluation(limit=3)  # Start with just 3 instances
-    
+
     # Print summary
     successful = sum(1 for r in results if r['status'] == 'completed' and r['model_patch'])
     print(f"\nSummary:")
@@ -301,7 +301,7 @@ def get_swe_bench_tool_definition():
                     "description": "Action to perform"
                 },
                 "instance_id": {
-                    "type": "string", 
+                    "type": "string",
                     "description": "SWE-Bench instance ID"
                 },
                 "limit": {
@@ -317,7 +317,7 @@ def get_swe_bench_tool_definition():
 async def handle_swe_bench_tool(arguments: Dict[str, Any]) -> Dict[str, Any]:
     """Handle SWE-Bench tool calls"""
     action = arguments.get("action")
-    
+
     if action == "load_instance":
         limit = arguments.get("limit", 10)
         try:
@@ -330,23 +330,23 @@ async def handle_swe_bench_tool(arguments: Dict[str, Any]) -> Dict[str, Any]:
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     elif action == "setup_repo":
         instance_id = arguments.get("instance_id")
         if not instance_id:
             return {"success": False, "error": "instance_id required"}
-        
+
         # TODO: Implement repository setup
         return {"success": True, "message": f"Repository setup for {instance_id} - TODO"}
-    
+
     elif action == "analyze_issue":
         instance_id = arguments.get("instance_id")
         if not instance_id:
             return {"success": False, "error": "instance_id required"}
-        
+
         # TODO: Implement issue analysis
         return {"success": True, "message": f"Issue analysis for {instance_id} - TODO"}
-    
+
     else:
         return {"success": False, "error": f"Unknown action: {action}"}
 ```
@@ -377,31 +377,31 @@ from pathlib import Path
 
 async def main():
     print("=== Marcus SWE-Bench Simple Integration ===")
-    
+
     # Step 1: Load Marcus components
     print("1. Loading Marcus components...")
     # TODO: Initialize Marcus MCP client
-    
+
     # Step 2: Load SWE-Bench instance
     print("2. Loading SWE-Bench instance...")
     # TODO: Call swe_bench tool to load instance
-    
+
     # Step 3: Create Kanban task
     print("3. Creating Kanban task...")
     # TODO: Call kanban tool to create task
-    
+
     # Step 4: Request task assignment
     print("4. Requesting task assignment...")
     # TODO: Use Marcus agent system
-    
+
     # Step 5: Generate solution
     print("5. Generating solution...")
     # TODO: Use Marcus AI engine
-    
+
     # Step 6: Validate solution
     print("6. Validating solution...")
     # TODO: Run tests
-    
+
     print("Integration test complete!")
 
 if __name__ == "__main__":

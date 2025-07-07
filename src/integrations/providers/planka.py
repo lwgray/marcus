@@ -12,7 +12,7 @@ from src.integrations.kanban_client_with_create import KanbanClientWithCreate
 from src.integrations.kanban_interface import KanbanInterface, KanbanProvider
 
 
-class PlankaSimple(KanbanInterface):
+class Planka(KanbanInterface):
     """Planka kanban board implementation using direct MCP client"""
 
     def __init__(self, config: Dict[str, Any]):
@@ -27,7 +27,7 @@ class PlankaSimple(KanbanInterface):
         self.client = KanbanClientWithCreate()
         self.connected = False
         print(
-            f"[PlankaSimple] Initialized with board_id={self.client.board_id}, project_id={self.client.project_id}"
+            f"[Planka] Initialized with board_id={self.client.board_id}, project_id={self.client.project_id}"
         )
 
     @property

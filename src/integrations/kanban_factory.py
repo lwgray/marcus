@@ -10,8 +10,7 @@ from typing import Any, Dict, Optional
 
 from src.config.config_loader import get_config
 from src.integrations.kanban_interface import KanbanInterface, KanbanProvider
-from src.integrations.providers import GitHubKanban, LinearKanban, PlankaKanban
-from src.integrations.providers.planka_simple import PlankaSimple
+from src.integrations.providers import GitHubKanban, LinearKanban, Planka, PlankaKanban
 
 
 class KanbanFactory:
@@ -47,7 +46,7 @@ class KanbanFactory:
                     ),
                 }
             # Use KanbanClient-based implementation
-            return PlankaSimple(config)
+            return Planka(config)
 
         elif provider_lower == KanbanProvider.LINEAR.value:
             if not config:
