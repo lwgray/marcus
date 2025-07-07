@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pipeline Debug</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>Pipeline Debug</h1>
+    <div id="status">Connecting...</div>
+    <div id="flows"></div>
+    <pre id="log"></pre>
+    
+    <script>
+        const log = (msg) => {
+            const logEl = document.getElementById('log');
+            logEl.textContent += new Date().toISOString() + ' - ' + msg + '\n';
+            console.log(msg);
+        };
+        
+        const socket = io('{{ server_url }}');
+        
+        socket.on('connect', () => {
+            document.getElementById('status').textContent = 'Connected!';
+            log('Connected to server');
+            log('Subscribing to pipeline flow...');
+            socket.emit('subscribe_pipeline_flow', {});
+        });
+        
+        socket.on('subscription_confirmed', (data) => {
+            log('Subscription confirmed: ' + JSON.stringify(data));
+        });
+        
+        socket.on('active_flows_update', (data) => {
+            log('Received flows update: ' + data.flows.length + ' flows');
+            
+            const flowsEl = document.getElementById('flows');
+            flowsEl.innerHTML = '<h2>Active Flows:</h2>';
+            
+            if (data.flows.length === 0) {
+                flowsEl.innerHTML += '<p>No active flows</p>';
+            } else {
+                data.flows.forEach(flow => {
+                    flowsEl.innerHTML += `
+                        <div style="border: 1px solid #ccc; padding: 10px; margin: 5px;">
+                            <strong>${flow.project_name}</strong><br>
+                            ID: ${flow.id}<br>
+                            Events: ${flow.event_count}<br>
+                            Stage: ${flow.current_stage || 'unknown'}
+                        </div>
+                    `;
+                });
+            }
+        });
+        
+        socket.on('disconnect', () => {
+            document.getElementById('status').textContent = 'Disconnected!';
+            log('Disconnected from server');
+        });
+        
+        socket.on('error', (error) => {
+            log('Socket error: ' + error);
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marcus Pipeline Enhancement Dashboard</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    {% raw %}
+    <div id="app">
+        <nav class="navbar">
+            <h1>Marcus Pipeline Enhancement Dashboard</h1>
+            <div class="nav-tabs">
+                <button @click="switchTab('monitor')" :class="{active: activeTab === 'monitor'}">
+                    Live Monitor
+                </button>
+                <button @click="switchTab('replay')" :class="{active: activeTab === 'replay'}">
+                    Pipeline Replay
+                </button>
+                <button @click="switchTab('whatif')" :class="{active: activeTab === 'whatif'}">
+                    What-If Analysis
+                </button>
+                <button @click="switchTab('compare')" :class="{active: activeTab === 'compare'}">
+                    Compare Flows
+                </button>
+                <button @click="switchTab('recommendations')" :class="{active: activeTab === 'recommendations'}">
+                    Recommendations
+                </button>
+                <button @click="switchTab('projects')" :class="{active: activeTab === 'projects'}">
+                    Project Management
+                </button>
+                <button @click="switchTab('agents')" :class="{active: activeTab === 'agents'}">
+                    Agent Management
+                </button>
+            </div>
+        </nav>
+
+        <main class="container">
+            <!-- Debug: Test if Vue is working -->
+            <div style="background: yellow; padding: 10px; margin-bottom: 20px;">
+                Vue Test - Active Tab: [[ activeTab ]] | Dashboard flows: [[ dashboard.active_flows.length ]]
+            </div>
+            <!-- Live Monitor Tab -->
+            <div v-show="activeTab === 'monitor'" class="tab-content">
+                <h2>Live Pipeline Monitor</h2>
+                
+                <div class="dashboard-grid">
+                    <div class="metric-card">
+                        <h3>Active Flows</h3>
+                        <div class="metric-value">[[ dashboard.active_flows ? dashboard.active_flows.length : 0 ]]</div>
+                    </div>
+                    <div class="metric-card">
+                        <h3>Flows/Hour</h3>
+                        <div class="metric-value">[[ dashboard.system_metrics ? dashboard.system_metrics.flows_per_hour : 0 ]]</div>
+                    </div>
+                    <div class="metric-card">
+                        <h3>Success Rate</h3>
+                        <div class="metric-value">[[ dashboard.system_metrics ? dashboard.system_metrics.success_rate : 0 ]]%</div>
+                    </div>
+                    <div class="metric-card">
+                        <h3>Avg Completion</h3>
+                        <div class="metric-value">[[ dashboard.system_metrics ? Math.round(dashboard.system_metrics.avg_completion_time) : 0 ]]m</div>
+                    </div>
+                </div>
+
+                <div class="flow-list">
+                    <h3>Active Flows</h3>
+                    <div v-for="flow in (dashboard.active_flows || [])" :key="flow.flow_id" class="flow-card">
+                        <div class="flow-header">
+                            <h4>[[ flow.flow_id ]]</h4>
+                            <span :class="'health-badge health-' + flow.health_status.status">
+                                [[ flow.health_status.status ]]
+                            </span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" :style="{width: flow.progress_percentage + '%'}"></div>
+                        </div>
+                        <div class="flow-details">
+                            <span>Stage: [[ flow.current_stage ]]</span>
+                            <span v-if="flow.eta">ETA: [[ new Date(flow.eta).toLocaleTimeString() ]]</span>
+                        </div>
+                        <button @click="viewFlowDetails(flow.flow_id)" class="btn-secondary">
+                            View Details
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pipeline Replay Tab -->
+            <div v-show="activeTab === 'replay'" class="tab-content">
+                <h2>Pipeline Replay</h2>
+                
+                <div class="replay-controls">
+                    <input v-model="replayFlowId" placeholder="Enter Flow ID" class="input-field">
+                    <button @click="startReplay" class="btn-primary">Start Replay</button>
+                </div>
+
+                <div v-if="replaySession" class="replay-viewer">
+                    <div class="replay-timeline">
+                        <input type="range" 
+                               v-model="replayPosition" 
+                               :max="replaySession.total_events - 1"
+                               @input="jumpToPosition"
+                               class="timeline-slider">
+                        <div class="timeline-info">
+                            Event [[ replayPosition + 1 ]] of [[ replaySession.total_events ]]
+                        </div>
+                    </div>
+
+                    <div class="replay-controls-bar">
+                        <button @click="stepBackward" :disabled="replayPosition === 0" class="btn-control">
+                            ⏮ Previous
+                        </button>
+                        <button @click="playPause" class="btn-control">
+                            [[ isPlaying ? '⏸ Pause' : '▶ Play' ]]
+                        </button>
+                        <button @click="stepForward" :disabled="replayPosition >= replaySession.total_events - 1" class="btn-control">
+                            Next ⏭
+                        </button>
+                    </div>
+
+                    <div class="event-viewer">
+                        <h3>Current Event</h3>
+                        <pre>[[ JSON.stringify(replaySession.state, null, 2) ]]</pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- What-If Analysis Tab -->
+            <div v-show="activeTab === 'whatif'" class="tab-content">
+                <h2>What-If Analysis</h2>
+                
+                <div class="whatif-setup">
+                    <input v-model="whatifFlowId" placeholder="Enter Flow ID" class="input-field">
+                    <button @click="startWhatIf" class="btn-primary">Start Analysis</button>
+                </div>
+
+                <div v-if="whatifSession" class="whatif-analyzer">
+                    <div class="original-metrics">
+                        <h3>Original Metrics</h3>
+                        <div class="metrics-grid">
+                            <div class="metric-item">
+                                <label>Tasks:</label>
+                                <span>[[ whatifSession.original_metrics.task_count ]]</span>
+                            </div>
+                            <div class="metric-item">
+                                <label>Complexity:</label>
+                                <span>[[ whatifSession.original_metrics.complexity ]]</span>
+                            </div>
+                            <div class="metric-item">
+                                <label>Cost:</label>
+                                <span>$[[ whatifSession.original_metrics.cost ]]</span>
+                            </div>
+                            <div class="metric-item">
+                                <label>Quality:</label>
+                                <span>[[ whatifSession.original_metrics.quality * 100 ]]%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="modifications">
+                        <h3>Modifications</h3>
+                        <div v-for="(mod, index) in modifications" :key="index" class="modification-item">
+                            <select v-model="mod.parameter_type" class="select-field">
+                                <option value="requirement">Requirement</option>
+                                <option value="constraint">Constraint</option>
+                                <option value="parameter">Parameter</option>
+                            </select>
+                            <input v-model="mod.parameter_name" placeholder="Parameter name" class="input-field">
+                            <input v-model="mod.new_value" placeholder="New value" class="input-field">
+                            <button @click="removeModification(index)" class="btn-danger">Remove</button>
+                        </div>
+                        <button @click="addModification" class="btn-secondary">Add Modification</button>
+                        <button @click="runSimulation" class="btn-primary">Run Simulation</button>
+                    </div>
+
+                    <div v-if="simulationResults" class="simulation-results">
+                        <h3>Simulation Results</h3>
+                        <canvas id="whatifChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Compare Flows Tab -->
+            <div v-show="activeTab === 'compare'" class="tab-content">
+                <h2>Compare Pipeline Flows</h2>
+                
+                <div class="compare-setup">
+                    <div class="flow-selector">
+                        <h3>Select Flows to Compare</h3>
+                        <div v-for="(flowId, index) in compareFlowIds" :key="index" class="flow-input">
+                            <input v-model="compareFlowIds[index]" placeholder="Flow ID" class="input-field">
+                            <button @click="removeCompareFlow(index)" class="btn-danger">Remove</button>
+                        </div>
+                        <button @click="addCompareFlow" class="btn-secondary">Add Flow</button>
+                        <button @click="runComparison" :disabled="compareFlowIds.length < 2" class="btn-primary">
+                            Compare Flows
+                        </button>
+                    </div>
+                </div>
+
+                <div v-if="comparisonReport" class="comparison-results">
+                    <div class="comparison-summary">
+                        <h3>Flow Summaries</h3>
+                        <table class="comparison-table">
+                            <thead>
+                                <tr>
+                                    <th>Project</th>
+                                    <th>Duration</th>
+                                    <th>Cost</th>
+                                    <th>Tasks</th>
+                                    <th>Quality</th>
+                                    <th>Complexity</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="flow in comparisonReport.flow_summaries" :key="flow.flow_id">
+                                    <td>[[ flow.project_name ]]</td>
+                                    <td>[[ flow.duration_seconds ]]s</td>
+                                    <td>$[[ flow.cost ]]</td>
+                                    <td>[[ flow.task_count ]]</td>
+                                    <td>[[ Math.round(flow.quality_score * 100) ]]%</td>
+                                    <td>[[ flow.complexity.toFixed(2) ]]</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="comparison-charts">
+                        <canvas id="comparisonChart"></canvas>
+                    </div>
+
+                    <div class="comparison-recommendations">
+                        <h3>Recommendations</h3>
+                        <ul>
+                            <li v-for="rec in comparisonReport.recommendations" :key="rec">
+                                [[ rec ]]
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recommendations Tab -->
+            <div v-show="activeTab === 'recommendations'" class="tab-content">
+                <h2>Pipeline Recommendations</h2>
+                
+                <div class="recommendations-setup">
+                    <input v-model="recommendFlowId" placeholder="Enter Flow ID" class="input-field">
+                    <button @click="getRecommendations" class="btn-primary">Get Recommendations</button>
+                </div>
+
+                <div v-if="recommendations" class="recommendations-list">
+                    <div v-for="rec in recommendations" :key="rec.type" class="recommendation-card">
+                        <div class="rec-header">
+                            <h3>[[ rec.message ]]</h3>
+                            <span class="confidence-badge">[[ Math.round(rec.confidence * 100) ]]% confident</span>
+                        </div>
+                        <p class="rec-impact">Impact: [[ rec.impact ]]</p>
+                        <div v-if="rec.supporting_data" class="rec-details">
+                            <h4>Supporting Data:</h4>
+                            <pre>[[ JSON.stringify(rec.supporting_data, null, 2) ]]</pre>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="similarFlows" class="similar-flows">
+                    <h3>Similar Flows</h3>
+                    <div v-for="flow in similarFlows" :key="flow.flow_id" class="similar-flow-item">
+                        <span>[[ flow.project_name ]]</span>
+                        <span class="similarity">[[ Math.round(flow.similarity * 100) ]]% similar</span>
+                        <button @click="viewFlow(flow.flow_id)" class="btn-secondary">View</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Project Management Tab -->
+            <div v-show="activeTab === 'projects'" class="tab-content">
+                <h2>Project Management</h2>
+                
+                <div class="project-creation">
+                    <h3>Create New Project</h3>
+                    
+                    <!-- Sample Projects Dropdown -->
+                    <div class="sample-selector">
+                        <label>Quick Start with Sample Project:</label>
+                        <select v-model="selectedSample" @change="loadSampleProject" class="select-field">
+                            <option value="">-- Select a sample project --</option>
+                            <option v-for="sample in sampleProjects" :key="sample.id" :value="sample.id">
+                                [[ sample.name ]]
+                            </option>
+                        </select>
+                    </div>
+                    
+                    <div class="divider">OR</div>
+                    
+                    <!-- Custom Project Form -->
+                    <div class="project-form">
+                        <input v-model="newProject.name" placeholder="Project Name" class="input-field">
+                        <textarea v-model="newProject.description" 
+                                  placeholder="Describe your project in natural language. Marcus will analyze and create tasks automatically." 
+                                  class="textarea-field"
+                                  rows="6"></textarea>
+                        <button @click="createProject" :disabled="!newProject.description" class="btn-primary">
+                            Create Project with AI Analysis
+                        </button>
+                    </div>
+                </div>
+
+                <div v-if="currentProject" class="current-project">
+                    <h3>Current Project: [[ currentProject.name ]]</h3>
+                    <div class="project-info">
+                        <p><strong>Status:</strong> [[ currentProject.status ]]</p>
+                        <p><strong>Created:</strong> [[ new Date(currentProject.created_at).toLocaleString() ]]</p>
+                        <p v-if="currentProject.task_count"><strong>Tasks Generated:</strong> [[ currentProject.task_count ]]</p>
+                        <p v-if="currentProject.estimated_hours"><strong>Estimated Hours:</strong> [[ currentProject.estimated_hours ]]</p>
+                        <!-- Cost Information -->
+                        <div v-if="currentProject.tokenCosts" class="cost-section">
+                            <h4>Real-Time Cost Tracking</h4>
+                            <div class="cost-metrics">
+                                <div class="metric-row">
+                                    <span class="metric-label">Total Tokens Used:</span>
+                                    <span class="metric-value">[[ currentProject.tokenCosts.total_tokens.toLocaleString() ]]</span>
+                                </div>
+                                <div class="metric-row">
+                                    <span class="metric-label">Actual Cost (Tokens):</span>
+                                    <span class="metric-value cost-actual">$[[ currentProject.tokenCosts.total_cost ]]</span>
+                                </div>
+                                <div class="metric-row">
+                                    <span class="metric-label">Current Burn Rate:</span>
+                                    <span class="metric-value">[[ currentProject.tokenCosts.current_spend_rate.toLocaleString() ]] tokens/hr</span>
+                                </div>
+                                <div class="metric-row">
+                                    <span class="metric-label">Cost per Hour:</span>
+                                    <span class="metric-value">$[[ currentProject.tokenCosts.cost_per_hour ]]/hr</span>
+                                </div>
+                                <div class="metric-row" v-if="currentProject.tokenCosts.projected_cost > 0">
+                                    <span class="metric-label">Projected Total Cost:</span>
+                                    <span class="metric-value cost-projected">$[[ currentProject.tokenCosts.projected_cost ]]</span>
+                                </div>
+                                <div class="metric-row" v-if="currentProject.naive_cost">
+                                    <span class="metric-label">Naive Estimate ($150/hr):</span>
+                                    <span class="metric-value cost-naive">$[[ currentProject.naive_cost ]]</span>
+                                </div>
+                                <div class="metric-row" v-if="currentProject.costComparison">
+                                    <span class="metric-label">Variance:</span>
+                                    <span class="metric-value" :class="currentProject.costComparison.direction === 'over' ? 'cost-over' : 'cost-under'">
+                                        [[ currentProject.costComparison.percentage ]]% [[ currentProject.costComparison.direction ]]
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Fallback to naive estimate if no token tracking -->
+                        <p v-else-if="currentProject.estimated_cost"><strong>Estimated Cost (Naive):</strong> $[[ currentProject.estimated_cost ]]</p>
+                    </div>
+
+                    <div v-if="currentProject.prd_analysis" class="prd-analysis">
+                        <h4>AI Analysis Results</h4>
+                        <div class="analysis-section" v-if="currentProject.prd_analysis.features">
+                            <h5>Identified Features:</h5>
+                            <ul>
+                                <li v-for="feature in currentProject.prd_analysis.features" :key="feature">
+                                    [[ feature ]]
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="analysis-section" v-if="currentProject.prd_analysis.tech_stack">
+                            <h5>Recommended Tech Stack:</h5>
+                            <p>[[ currentProject.prd_analysis.tech_stack ]]</p>
+                        </div>
+                        <div class="analysis-section" v-if="currentProject.prd_analysis.complexity">
+                            <h5>Project Complexity:</h5>
+                            <p>[[ currentProject.prd_analysis.complexity ]]</p>
+                        </div>
+                    </div>
+
+                    <div class="workflow-controls">
+                        <h4>Workflow Management</h4>
+                        <div class="workflow-options">
+                            <div class="option-group">
+                                <label>
+                                    <input type="checkbox" v-model="workflowOptions.auto_assign">
+                                    Auto-assign tasks to available agents
+                                </label>
+                            </div>
+                            <div class="option-group">
+                                <label>
+                                    <input type="checkbox" v-model="workflowOptions.parallel_execution">
+                                    Enable parallel task execution
+                                </label>
+                            </div>
+                            <div class="option-group">
+                                <label>
+                                    <input type="checkbox" v-model="workflowOptions.continuous_monitoring">
+                                    Enable continuous monitoring
+                                </label>
+                            </div>
+                            <div class="option-group">
+                                <label>Max Agents:</label>
+                                <input type="number" v-model.number="workflowOptions.max_agents" 
+                                       min="1" max="10" class="input-field input-small">
+                            </div>
+                        </div>
+                        
+                        <div class="workflow-actions">
+                            <button @click="startWorkflow" 
+                                    :disabled="!currentProject || currentProject.status === 'running'"
+                                    class="btn-primary btn-large">
+                                Start Workflow
+                            </button>
+                            <button @click="pauseWorkflow" 
+                                    :disabled="currentProject?.status !== 'running'"
+                                    class="btn-warning">
+                                Pause Workflow
+                            </button>
+                            <button @click="stopWorkflow" 
+                                    :disabled="currentProject?.status !== 'running' && currentProject?.status !== 'paused'"
+                                    class="btn-danger">
+                                Stop Workflow
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="existing-projects">
+                    <h3>Existing Projects</h3>
+                    <button @click="refreshProjects" class="btn-secondary">Refresh</button>
+                    
+                    <div class="projects-grid">
+                        <div v-for="project in existingProjects" :key="project.id" class="project-card">
+                            <div class="project-header">
+                                <h4>[[ project.name ]]</h4>
+                                <span :class="'status-badge status-' + project.status">
+                                    [[ project.status ]]
+                                </span>
+                            </div>
+                            <p>[[ project.description ]]</p>
+                            <div class="project-stats">
+                                <span>Features: [[ project.feature_count ]]</span>
+                                <span>Tasks: [[ project.task_count ]]</span>
+                                <span>Progress: [[ project.progress ]]%</span>
+                            </div>
+                            <div class="project-actions">
+                                <button @click="selectProject(project.id)" class="btn-primary">
+                                    Select
+                                </button>
+                                <button @click="viewProjectFlow(project.id)" class="btn-secondary">
+                                    View Flow
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Agent Management Tab -->
+            <div v-show="activeTab === 'agents'" class="tab-content">
+                <h2>Agent Management</h2>
+                
+                <div class="agent-controls">
+                    <h3>Register New Agent</h3>
+                    <div class="agent-form">
+                        <input v-model="newAgent.id" placeholder="Agent ID (e.g., agent-001)" class="input-field">
+                        <input v-model="newAgent.name" placeholder="Agent Name" class="input-field">
+                        <select v-model="newAgent.role" class="select-field">
+                            <option value="">Select Role</option>
+                            <option value="Backend Developer">Backend Developer</option>
+                            <option value="Frontend Developer">Frontend Developer</option>
+                            <option value="Full Stack Developer">Full Stack Developer</option>
+                            <option value="DevOps Engineer">DevOps Engineer</option>
+                            <option value="QA Engineer">QA Engineer</option>
+                        </select>
+                        <button @click="registerAgent" class="btn-primary">Register Agent</button>
+                    </div>
+                </div>
+
+                <div class="registered-agents">
+                    <h3>Registered Agents</h3>
+                    <button @click="refreshAgents" class="btn-secondary">Refresh</button>
+                    
+                    <div class="agents-grid">
+                        <div v-for="agent in registeredAgents" :key="agent.agent_id" class="agent-card">
+                            <div class="agent-header">
+                                <h4>[[ agent.name ]]</h4>
+                                <span :class="'status-badge status-' + agent.status">
+                                    [[ agent.status ]]
+                                </span>
+                            </div>
+                            <div class="agent-details">
+                                <p><strong>ID:</strong> [[ agent.agent_id ]]</p>
+                                <p><strong>Role:</strong> [[ agent.role ]]</p>
+                                <p v-if="agent.current_task"><strong>Current Task:</strong> [[ agent.current_task.name ]]</p>
+                            </div>
+                            <div class="agent-actions">
+                                <button @click="requestTaskForAgent(agent.agent_id)" 
+                                        :disabled="agent.status !== 'idle'"
+                                        class="btn-primary">
+                                    Request Task
+                                </button>
+                                <button @click="getAgentStatus(agent.agent_id)" class="btn-secondary">
+                                    Get Status
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="task-simulation">
+                    <h3>Task Progress Simulation</h3>
+                    <div class="simulation-form">
+                        <select v-model="taskUpdate.agent_id" class="select-field">
+                            <option value="">Select Agent</option>
+                            <option v-for="agent in registeredAgents" 
+                                    :value="agent.agent_id"
+                                    :key="agent.agent_id">
+                                [[ agent.name ]] ([[ agent.agent_id ]])
+                            </option>
+                        </select>
+                        <input v-model="taskUpdate.task_id" placeholder="Task ID" class="input-field">
+                        <select v-model="taskUpdate.status" class="select-field">
+                            <option value="in_progress">In Progress</option>
+                            <option value="completed">Completed</option>
+                            <option value="blocked">Blocked</option>
+                        </select>
+                        <input v-model.number="taskUpdate.progress" 
+                               type="number" 
+                               min="0" 
+                               max="100" 
+                               placeholder="Progress %" 
+                               class="input-field">
+                        <textarea v-model="taskUpdate.message" 
+                                  placeholder="Progress message" 
+                                  class="textarea-field"></textarea>
+                        <button @click="reportProgress" class="btn-primary">Report Progress</button>
+                    </div>
+                </div>
+
+                <div class="project-overview">
+                    <h3>Project Status</h3>
+                    <button @click="getProjectStatus" class="btn-primary">Get Current Status</button>
+                    
+                    <div v-if="projectStatus" class="project-status">
+                        <div class="status-grid">
+                            <div class="status-item">
+                                <label>Total Tasks:</label>
+                                <span>[[ projectStatus.total_tasks ]]</span>
+                            </div>
+                            <div class="status-item">
+                                <label>Completed:</label>
+                                <span>[[ projectStatus.completed_tasks ]]</span>
+                            </div>
+                            <div class="status-item">
+                                <label>In Progress:</label>
+                                <span>[[ projectStatus.in_progress_tasks ]]</span>
+                            </div>
+                            <div class="status-item">
+                                <label>Blocked:</label>
+                                <span>[[ projectStatus.blocked_tasks ]]</span>
+                            </div>
+                            <div class="status-item">
+                                <label>Progress:</label>
+                                <span>[[ projectStatus.progress_percent ]]%</span>
+                            </div>
+                            <div class="status-item">
+                                <label>Active Agents:</label>
+                                <span>[[ projectStatus.active_agents ]]</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="agent-logs">
+                    <h3>Agent Activity Log</h3>
+                    <div class="log-entries">
+                        <div v-for="log in agentLogs" :key="log.timestamp" class="log-entry">
+                            <span class="log-time">[[ new Date(log.timestamp).toLocaleTimeString() ]]</span>
+                            <span class="log-agent">[[ log.agent_id ]]:</span>
+                            <span class="log-message">[[ log.message ]]</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    {% endraw %}
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

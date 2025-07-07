@@ -229,6 +229,21 @@ class AdvancedPRDParser:
             
             logger.info("Attempting to use LLM for PRD analysis...")
             
+            # Track AI analysis start
+            ai_start_time = datetime.now()
+            flow_id = getattr(self, '_current_flow_id', None)
+            if flow_id and hasattr(self, '_pipeline_visualizer'):
+                self._pipeline_visualizer.add_event(
+                    flow_id=flow_id,
+                    stage=PipelineStage.AI_ANALYSIS,
+                    event_type="ai_analysis_started",
+                    data={
+                        "prd_length": len(prd_content),
+                        "model": getattr(self.llm_client, 'current_provider', 'unknown')
+                    },
+                    status="in_progress"
+                )
+            
             # Use the actual LLM to analyze the PRD
             analysis_result = await self.llm_client.analyze(
                 prompt=analysis_prompt,

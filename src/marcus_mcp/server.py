@@ -38,6 +38,12 @@ from src.logging.conversation_logger import conversation_logger
 from src.core.assignment_persistence import AssignmentPersistence
 from src.monitoring.assignment_monitor import AssignmentMonitor
 from src.config.config_loader import get_config
+from src.visualization.shared_pipeline_events import SharedPipelineVisualizer
+from src.visualization.pipeline_flow import PipelineStage
+from src.cost_tracking.token_tracker import token_tracker
+from src.cost_tracking.ai_usage_middleware import ai_usage_middleware
+from src.core.events import Events, EventTypes
+from src.core.context import Context
 
 from .handlers import get_tool_definitions, handle_tool_call
 
@@ -71,6 +77,9 @@ class MarcusServer:
         self.monitor = ProjectMonitor()
         self.comm_hub = CommunicationHub()
         
+        # Token tracking for cost monitoring
+        self.token_tracker = token_tracker
+        
         # Code analyzer for GitHub
         self.code_analyzer = None
         if self.provider == 'github':
@@ -90,6 +99,37 @@ class MarcusServer:
         # Assignment monitoring
         self.assignment_monitor = None
         
+        # Pipeline flow visualization (shared between processes)
+        self.pipeline_visualizer = SharedPipelineVisualizer()
+        
+        # New enhancement systems (optional based on config)
+        # Persistence layer (if any enhanced features are enabled)
+        self.persistence = None
+        if any(self.config.get(f'features.{feature}', False) 
+               for feature in ['events', 'context', 'memory']):
+            from src.core.persistence import Persistence, SQLitePersistence
+            # Use SQLite for better performance
+            self.persistence = Persistence(backend=SQLitePersistence())
+        
+        # Events system for loose coupling
+        if self.config.get('features.events', False):
+            self.events = Events(store_history=True, persistence=self.persistence)
+        else:
+            self.events = None
+            
+        # Context system for rich task assignments
+        if self.config.get('features.context', False):
+            self.context = Context(events=self.events, persistence=self.persistence)
+        else:
+            self.context = None
+            
+        # Memory system for learning and prediction
+        if self.config.get('features.memory', False):
+            from src.core.memory import Memory
+            self.memory = Memory(events=self.events, persistence=self.persistence)
+        else:
+            self.memory = None
+        
         # Log startup
         self.log_event("server_startup", {
             "provider": self.provider,
@@ -107,7 +147,17 @@ class MarcusServer:
         @self.server.list_tools()
         async def handle_list_tools() -> List[types.Tool]:
             """Return list of available tools"""
-            return get_tool_definitions()
+            # Determine role based on client type
+            # For now, we'll check if this is being called by an agent or human
+            # Agents typically have "agent" in their client name or metadata
+            # This can be enhanced with proper authentication/role detection
+            role = "human"  # Default to human for full access
+            
+            # If we detect this is an agent client, limit tools
+            # This would be enhanced with proper client identification
+            # For now, we assume human users get full access
+            
+            return get_tool_definitions(role)
         
         @self.server.call_tool()
         async def handle_call_tool(
@@ -116,6 +166,19 @@ class MarcusServer:
         ) -> List[types.TextContent | types.ImageContent | types.EmbeddedResource]:
             """Handle tool calls"""
             return await handle_tool_call(name, arguments, self)
+    
+    async def initialize(self):
+        """Initialize all Marcus server components"""
+        # Initialize AI engine
+        await self.ai_engine.initialize()
+        
+        # Initialize kanban if needed
+        await self.initialize_kanban()
+        
+        # Wrap AI engine for token tracking
+        self.ai_engine = ai_usage_middleware.wrap_ai_provider(self.ai_engine)
+        
+        print("✅ Marcus server initialized", file=sys.stderr)
     
     async def initialize_kanban(self):
         """Initialize kanban client if not already done"""
@@ -247,13 +310,27 @@ class MarcusServer:
             ) from e
     
     def log_event(self, event_type: str, data: dict):
-        """Log events immediately to realtime log"""
+        """Log events immediately to realtime log and optionally to Events system"""
         event = {
             "timestamp": datetime.now().isoformat(),
             "type": event_type,
             **data
         }
         self.realtime_log.write(json.dumps(event) + '\n')
+        
+        # Also publish to Events system if available
+        if self.events:
+            # Run async publish in a fire-and-forget manner
+            asyncio.create_task(self._publish_event_async(event_type, data))
+    
+    async def _publish_event_async(self, event_type: str, data: dict):
+        """Helper to publish events asynchronously"""
+        try:
+            source = data.get('source', 'marcus')
+            await self.events.publish(event_type, source, data)
+        except Exception as e:
+            # Don't let event publishing errors affect main flow
+            print(f"Error publishing event: {e}", file=sys.stderr)
     
     async def refresh_project_state(self):
         """Refresh project state from kanban board"""

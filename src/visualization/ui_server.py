@@ -24,6 +24,8 @@ from .conversation_stream import ConversationStreamProcessor, ConversationEvent
 # from .decision_visualizer import DecisionVisualizer
 # from .knowledge_graph import KnowledgeGraphBuilder
 from .health_monitor import HealthMonitor
+from .pipeline_flow import PipelineFlowVisualizer, PipelineStage
+from .shared_pipeline_events import SharedPipelineVisualizer
 
 
 class VisualizationServer:
@@ -85,6 +87,8 @@ class VisualizationServer:
         self._decision_visualizer = None  # Lazy loaded
         self._knowledge_graph = None      # Lazy loaded
         self.health_monitor = HealthMonitor()
+        # Use shared pipeline visualizer for cross-process communication
+        self.pipeline_visualizer = SharedPipelineVisualizer()
         
         # Active connections
         self.active_sessions: Set[str] = set()
@@ -98,6 +102,8 @@ class VisualizationServer:
         
         # Add conversation event handler
         self.conversation_processor.add_event_handler(self._handle_conversation_event)
+        
+        # Note: Pipeline events are shared via file system, no direct handler needed
     
     @property
     def decision_visualizer(self):
@@ -132,6 +138,8 @@ class VisualizationServer:
         
         # API routes
         self.app.router.add_get('/', self._index_handler)
+        self.app.router.add_get('/pipeline', self._pipeline_handler)
+        self.app.router.add_get('/pipeline-debug', self._pipeline_debug_handler)
         self.app.router.add_get('/api/status', self._status_handler)
         # Add both full paths and shortcuts for compatibility
         self.app.router.add_get('/api/conversations', self._conversation_history_handler)
@@ -272,6 +280,41 @@ class VisualizationServer:
                     'error': 'No health data available',
                     'message': 'Run a health analysis first'
                 }, room=sid)
+        
+        @self.sio.event
+        async def subscribe_pipeline_flow(sid, data):
+            """Subscribe to real-time pipeline flow updates"""
+            logging.info(f"Client {sid} subscribing to pipeline flow")
+            
+            await self.sio.emit('subscription_confirmed', {
+                'type': 'pipeline_flow',
+                'status': 'active'
+            }, room=sid)
+            
+            # Send active flows
+            active_flows = self.pipeline_visualizer.get_active_flows()
+            logging.info(f"Sending {len(active_flows)} active flows to client {sid}")
+            
+            await self.sio.emit('active_flows_update', {
+                'flows': active_flows
+            }, room=sid)
+        
+        @self.sio.event
+        async def request_flow_visualization(sid, data):
+            """Request visualization for a specific flow"""
+            flow_id = data.get('flow_id')
+            if not flow_id:
+                await self.sio.emit('flow_visualization_error', {
+                    'error': 'flow_id is required'
+                }, room=sid)
+                return
+            
+            visualization = self.pipeline_visualizer.get_flow_visualization(flow_id)
+            
+            if 'error' in visualization:
+                await self.sio.emit('flow_visualization_error', visualization, room=sid)
+            else:
+                await self.sio.emit('flow_visualization_ready', visualization, room=sid)
             
     def _setup_templates(self) -> None:
         """
@@ -374,6 +417,38 @@ class VisualizationServer:
             
         # Broadcast to all connected clients
         await self._broadcast_event(event)
+    
+    async def _handle_pipeline_event(self, flow_id: str, event: Any) -> None:
+        """
+        Handle pipeline flow events.
+        
+        Processes pipeline events and broadcasts updates to connected clients.
+        
+        Parameters
+        ----------
+        flow_id : str
+            The flow ID this event belongs to
+        event : PipelineEvent
+            The pipeline event to process
+        """
+        # Convert event to dict for broadcasting
+        event_data = {
+            'flow_id': flow_id,
+            'event_id': event.id,
+            'stage': event.stage.value,
+            'timestamp': event.timestamp.isoformat(),
+            'event_type': event.event_type,
+            'status': event.status,
+            'data': event.data
+        }
+        
+        if event.error:
+            event_data['error'] = event.error
+        if event.duration_ms:
+            event_data['duration_ms'] = event.duration_ms
+            
+        # Emit pipeline event to all connected clients
+        await self.sio.emit('pipeline_event', event_data)
         
     async def _broadcast_event(self, event: ConversationEvent) -> None:
         """
@@ -406,6 +481,24 @@ class VisualizationServer:
         template = self.jinja_env.get_template('index.html')
         html = template.render(
             title="Marcus Visualization",
+            server_url=f"http://{self.host}:{self.port}"
+        )
+        return web.Response(text=html, content_type='text/html')
+    
+    async def _pipeline_handler(self, request):
+        """Serve pipeline visualization page"""
+        template = self.jinja_env.get_template('pipeline.html')
+        html = template.render(
+            title="Marcus Pipeline Flow",
+            server_url=f"http://{self.host}:{self.port}"
+        )
+        return web.Response(text=html, content_type='text/html')
+    
+    async def _pipeline_debug_handler(self, request):
+        """Serve pipeline debug page"""
+        template = self.jinja_env.get_template('pipeline_debug.html')
+        html = template.render(
+            title="Pipeline Debug",
             server_url=f"http://{self.host}:{self.port}"
         )
         return web.Response(text=html, content_type='text/html')
@@ -636,6 +729,34 @@ class VisualizationServer:
         
         # Start health monitoring (it runs independently)
         await self.health_monitor.start_monitoring()
+        
+        # Start pipeline event polling
+        async def poll_pipeline_events():
+            """Poll for pipeline events and broadcast to clients"""
+            poll_count = 0
+            while True:
+                try:
+                    # Get active flows
+                    active_flows = self.pipeline_visualizer.get_active_flows()
+                    
+                    # Log every 10th poll to avoid spam
+                    if poll_count % 10 == 0:
+                        logging.info(f"Pipeline poll #{poll_count}: {len(active_flows)} active flows")
+                    
+                    # Broadcast to all clients
+                    if len(self.active_sessions) > 0:
+                        await self.sio.emit('active_flows_update', {
+                            'flows': active_flows
+                        })
+                    
+                    poll_count += 1
+                    await asyncio.sleep(1)  # Poll every second
+                except Exception as e:
+                    logging.error(f"Pipeline polling error: {e}")
+                    await asyncio.sleep(5)  # Back off on error
+        
+        asyncio.create_task(poll_pipeline_events())
+        logging.info("Started pipeline event polling")
         
         # Start web server
         runner = web.AppRunner(self.app)

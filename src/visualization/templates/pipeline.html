@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marcus Pipeline Flow Visualization</title>
+    <script src="https://cdn.jsdelivr.net/npm/vis-network@latest/dist/vis-network.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+        
+        .sidebar {
+            width: 300px;
+            background: white;
+            box-shadow: 2px 0 4px rgba(0,0,0,0.1);
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        .main {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        #pipeline-network {
+            flex: 1;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            min-height: 500px;
+            position: relative;
+        }
+        
+        .flow-item {
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .flow-item:hover {
+            background: #f0f0f0;
+        }
+        
+        .flow-item.active {
+            background: #e3f2fd;
+        }
+        
+        .flow-status {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+        
+        .flow-status.active {
+            background: #4caf50;
+            animation: pulse 2s infinite;
+        }
+        
+        .flow-status.completed {
+            background: #2196f3;
+        }
+        
+        .flow-status.failed {
+            background: #f44336;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .stage-header {
+            font-weight: bold;
+            color: #333;
+            margin: 20px 0 10px 0;
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 1px;
+        }
+        
+        .event-details {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            max-width: 400px;
+            display: none;
+        }
+        
+        .event-details.show {
+            display: block;
+        }
+        
+        .metric {
+            display: inline-block;
+            padding: 5px 10px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            margin: 5px;
+            font-size: 12px;
+        }
+        
+        .metric.duration {
+            background: #fff3cd;
+        }
+        
+        .metric.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .controls {
+            margin-bottom: 20px;
+        }
+        
+        /* Enhanced insights styles */
+        .insight-panel {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .insight-section {
+            margin-bottom: 20px;
+        }
+        
+        .insight-section h4 {
+            color: #495057;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        
+        .requirement-item {
+            background: white;
+            padding: 10px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            border-left: 4px solid #007bff;
+        }
+        
+        .requirement-item.low-confidence {
+            border-left-color: #ffc107;
+        }
+        
+        .confidence-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        
+        .confidence-high {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .confidence-medium {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .confidence-low {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .alternative-item {
+            background: #f8f9fa;
+            padding: 8px;
+            margin-bottom: 6px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .decision-reasoning {
+            font-style: italic;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+        
+        .performance-chart {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .performance-label {
+            width: 120px;
+            font-size: 14px;
+        }
+        
+        .performance-bar {
+            flex: 1;
+            height: 20px;
+            background: #e9ecef;
+            border-radius: 4px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .performance-fill {
+            height: 100%;
+            background: #007bff;
+            transition: width 0.3s ease;
+        }
+        
+        .performance-value {
+            margin-left: 10px;
+            font-size: 14px;
+            font-weight: bold;
+            min-width: 60px;
+        }
+        
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            background: #2196f3;
+            color: white;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        
+        button:hover {
+            background: #1976d2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <h2>Pipeline Flows</h2>
+            <div class="controls">
+                <button id="refresh-btn">Refresh</button>
+                <button id="clear-btn">Clear</button>
+            </div>
+            <div id="flow-list"></div>
+        </div>
+        
+        <div class="main">
+            <h1>Marcus Pipeline Flow Visualization</h1>
+            <div id="pipeline-network"></div>
+            <div id="insights-panel" class="insight-panel" style="display: none;">
+                <h3>Pipeline Insights</h3>
+                <div id="insights-content"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="event-details" class="event-details">
+        <h3 id="event-title">Event Details</h3>
+        <div id="event-content"></div>
+    </div>
+    
+    <script>
+        // Initialize Socket.IO connection
+        const socket = io('{{ server_url }}');
+        
+        // Network visualization
+        let network = null;
+        let nodes = null;
+        let edges = null;
+        let currentFlowId = null;
+        
+        // Stage colors
+        const stageColors = {
+            'mcp_request': '#9c27b0',
+            'ai_analysis': '#3f51b5',
+            'prd_parsing': '#00bcd4',
+            'task_generation': '#4caf50',
+            'task_creation': '#ff9800',
+            'task_assignment': '#ff5722',
+            'work_progress': '#795548',
+            'task_completion': '#607d8b'
+        };
+        
+        // Initialize network
+        function initNetwork() {
+            const container = document.getElementById('pipeline-network');
+            
+            if (!container) {
+                console.error('Pipeline network container not found!');
+                return;
+            }
+            
+            console.log('Initializing network in container:', container);
+            
+            const data = {
+                nodes: new vis.DataSet(),
+                edges: new vis.DataSet()
+            };
+            
+            const options = {
+                nodes: {
+                    shape: 'box',
+                    margin: 10,
+                    font: {
+                        size: 14,
+                        face: 'Arial'
+                    }
+                },
+                edges: {
+                    arrows: {
+                        to: {
+                            enabled: true,
+                            scaleFactor: 0.8
+                        }
+                    },
+                    smooth: {
+                        type: 'cubicBezier',
+                        roundness: 0.5
+                    }
+                },
+                layout: {
+                    hierarchical: {
+                        direction: 'LR',
+                        sortMethod: 'directed',
+                        levelSeparation: 200,
+                        nodeSpacing: 100
+                    }
+                },
+                physics: {
+                    enabled: false
+                },
+                interaction: {
+                    dragNodes: true,
+                    dragView: true,
+                    zoomView: true
+                }
+            };
+            
+            network = new vis.Network(container, data, options);
+            nodes = data.nodes;
+            edges = data.edges;
+            
+            // Handle node clicks
+            network.on('click', function(params) {
+                if (params.nodes.length > 0) {
+                    const nodeId = params.nodes[0];
+                    const node = nodes.get(nodeId);
+                    showEventDetails(node);
+                }
+            });
+        }
+        
+        // Socket.IO event handlers
+        socket.on('connect', () => {
+            console.log('Connected to Marcus visualization server');
+            socket.emit('subscribe_pipeline_flow', {});
+        });
+        
+        socket.on('active_flows_update', (data) => {
+            updateFlowList(data.flows);
+        });
+        
+        socket.on('pipeline_event', (event) => {
+            if (event.flow_id === currentFlowId) {
+                addEventToNetwork(event);
+            }
+        });
+        
+        socket.on('flow_visualization_ready', (data) => {
+            console.log('Received flow visualization:', data);
+            displayFlowVisualization(data);
+        });
+        
+        socket.on('flow_visualization_error', (error) => {
+            console.error('Flow visualization error:', error);
+            alert('Error loading visualization: ' + (error.error || 'Unknown error'));
+        });
+        
+        // Update flow list in sidebar
+        function updateFlowList(flows) {
+            const flowList = document.getElementById('flow-list');
+            flowList.innerHTML = '';
+            
+            flows.forEach(flow => {
+                const flowItem = document.createElement('div');
+                flowItem.className = 'flow-item';
+                flowItem.innerHTML = `
+                    <span class="flow-status ${flow.current_stage ? 'active' : 'completed'}"></span>
+                    <strong>${flow.project_name}</strong><br>
+                    <small>${new Date(flow.started_at).toLocaleTimeString()}</small><br>
+                    <small>${flow.event_count} events</small>
+                `;
+                
+                flowItem.onclick = function() { selectFlow(flow.id, this); };
+                flowList.appendChild(flowItem);
+            });
+        }
+        
+        // Select a flow to visualize
+        function selectFlow(flowId, element) {
+            currentFlowId = flowId;
+            
+            // Update UI
+            document.querySelectorAll('.flow-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            if (element) {
+                element.classList.add('active');
+            }
+            
+            console.log('Requesting visualization for flow:', flowId);
+            
+            // Request flow visualization
+            socket.emit('request_flow_visualization', { flow_id: flowId });
+        }
+        
+        // Display complete flow visualization
+        function displayFlowVisualization(data) {
+            console.log('Displaying flow visualization:', data);
+            
+            if (!data.nodes || data.nodes.length === 0) {
+                console.error('No nodes in visualization data');
+                return;
+            }
+            
+            // Clear existing network
+            nodes.clear();
+            edges.clear();
+            
+            console.log('Adding', data.nodes.length, 'nodes and', data.edges.length, 'edges');
+            
+            // Group nodes by stage
+            const stages = Object.keys(data.stages || {});
+            let level = 0;
+            
+            data.nodes.forEach(node => {
+                const color = stageColors[node.stage] || '#999';
+                const networkNode = {
+                    id: node.id,
+                    label: node.label,
+                    color: {
+                        background: node.status === 'failed' ? '#ffcdd2' : color,
+                        border: color
+                    },
+                    level: stages.indexOf(node.stage),
+                    title: formatNodeTooltip(node),
+                    ...node
+                };
+                
+                console.log('Adding node:', networkNode);
+                nodes.add(networkNode);
+            });
+            
+            // Add edges
+            data.edges.forEach(edge => {
+                console.log('Adding edge:', edge);
+                edges.add({
+                    from: edge.from,
+                    to: edge.to,
+                    label: edge.label,
+                    color: '#999'
+                });
+            });
+            
+            // Fit network to view
+            setTimeout(() => {
+                console.log('Fitting network to view');
+                network.fit();
+                
+                // Force redraw
+                network.redraw();
+                
+                // Check if nodes are actually in the network
+                console.log('Network has', nodes.length, 'nodes');
+                console.log('Network has', edges.length, 'edges');
+            }, 100);
+        }
+        
+        // Add real-time event to network
+        function addEventToNetwork(event) {
+            const nodeId = event.event_id;
+            const color = stageColors[event.stage] || '#999';
+            
+            // Add or update node
+            nodes.update({
+                id: nodeId,
+                label: event.event_type,
+                color: {
+                    background: event.status === 'failed' ? '#ffcdd2' : color,
+                    border: color
+                },
+                title: formatEventTooltip(event),
+                ...event
+            });
+            
+            // Highlight with animation
+            const originalColor = nodes.get(nodeId).color;
+            nodes.update({
+                id: nodeId,
+                color: { background: '#ffeb3b', border: '#fbc02d' }
+            });
+            
+            setTimeout(() => {
+                nodes.update({
+                    id: nodeId,
+                    color: originalColor
+                });
+            }, 1000);
+        }
+        
+        // Format node tooltip
+        function formatNodeTooltip(node) {
+            let tooltip = `<strong>${node.label}</strong><br>`;
+            tooltip += `Stage: ${node.stage}<br>`;
+            tooltip += `Status: ${node.status}<br>`;
+            tooltip += `Time: ${new Date(node.timestamp).toLocaleTimeString()}<br>`;
+            
+            if (node.duration_ms) {
+                tooltip += `Duration: ${node.duration_ms}ms<br>`;
+            }
+            
+            if (node.error) {
+                tooltip += `<span style="color: red">Error: ${node.error}</span><br>`;
+            }
+            
+            return tooltip;
+        }
+        
+        // Format event tooltip
+        function formatEventTooltip(event) {
+            return formatNodeTooltip(event);
+        }
+        
+        // Show event details
+        function showEventDetails(node) {
+            const details = document.getElementById('event-details');
+            const title = document.getElementById('event-title');
+            const content = document.getElementById('event-content');
+            
+            title.textContent = node.label;
+            
+            let html = '';
+            html += `<div class="metric">Stage: ${node.stage}</div>`;
+            html += `<div class="metric">Status: ${node.status}</div>`;
+            
+            if (node.duration_ms) {
+                html += `<div class="metric duration">Duration: ${node.duration_ms}ms</div>`;
+            }
+            
+            if (node.error) {
+                html += `<div class="metric error">Error: ${node.error}</div>`;
+            }
+            
+            if (node.data) {
+                html += '<h4>Event Data:</h4>';
+                html += '<pre style="font-size: 12px; overflow: auto; max-height: 200px;">';
+                html += JSON.stringify(node.data, null, 2);
+                html += '</pre>';
+            }
+            
+            content.innerHTML = html;
+            details.classList.add('show');
+            
+            // Update insights panel based on node type
+            updateInsightsPanel(node);
+            
+            // Hide after 5 seconds
+            setTimeout(() => {
+                details.classList.remove('show');
+            }, 5000);
+        }
+        
+        // Update insights panel with rich context
+        function updateInsightsPanel(node) {
+            const panel = document.getElementById('insights-panel');
+            const content = document.getElementById('insights-content');
+            
+            if (!node.data) {
+                panel.style.display = 'none';
+                return;
+            }
+            
+            let html = '';
+            
+            // AI Analysis insights
+            if (node.stage === 'ai_analysis' && node.data.extracted_requirements) {
+                html += renderAIAnalysisInsights(node.data);
+            }
+            
+            // Task Generation insights
+            else if (node.stage === 'task_generation') {
+                html += renderTaskGenerationInsights(node.data);
+            }
+            
+            // Decision Point insights
+            else if (node.event_type === 'decision_point') {
+                html += renderDecisionInsights(node.data);
+            }
+            
+            // Performance Metrics
+            else if (node.event_type === 'performance_metrics') {
+                html += renderPerformanceInsights(node.data);
+            }
+            
+            // Quality Metrics
+            else if (node.event_type === 'quality_metrics') {
+                html += renderQualityInsights(node.data);
+            }
+            
+            if (html) {
+                content.innerHTML = html;
+                panel.style.display = 'block';
+            } else {
+                panel.style.display = 'none';
+            }
+        }
+        
+        function renderAIAnalysisInsights(data) {
+            let html = '<div class="insight-section">';
+            html += '<h4>AI Analysis Insights</h4>';
+            
+            // Confidence score
+            if (data.confidence !== undefined) {
+                const confidenceClass = data.confidence > 0.8 ? 'high' : data.confidence > 0.6 ? 'medium' : 'low';
+                html += `<p>Overall Confidence: <span class="confidence-badge confidence-${confidenceClass}">${(data.confidence * 100).toFixed(0)}%</span></p>`;
+            }
+            
+            // Extracted requirements
+            if (data.extracted_requirements && data.extracted_requirements.length > 0) {
+                html += '<h5>Extracted Requirements:</h5>';
+                data.extracted_requirements.forEach(req => {
+                    const confClass = req.confidence > 0.8 ? '' : 'low-confidence';
+                    const badgeClass = req.confidence > 0.8 ? 'high' : req.confidence > 0.6 ? 'medium' : 'low';
+                    html += `<div class="requirement-item ${confClass}">`;
+                    html += `<strong>${req.requirement}</strong>`;
+                    html += `<span class="confidence-badge confidence-${badgeClass}">${(req.confidence * 100).toFixed(0)}%</span>`;
+                    if (req.source_text) {
+                        html += `<div class="decision-reasoning">Source: "${req.source_text}"</div>`;
+                    }
+                    html += '</div>';
+                });
+            }
+            
+            // Ambiguities
+            if (data.ambiguities && data.ambiguities.length > 0) {
+                html += '<h5>Ambiguities Detected:</h5>';
+                data.ambiguities.forEach(amb => {
+                    html += '<div class="alternative-item">';
+                    html += `<strong>${amb.text}</strong><br>`;
+                    html += `Interpretation: ${amb.interpretation}<br>`;
+                    if (amb.reasoning) {
+                        html += `<span class="decision-reasoning">${amb.reasoning}</span>`;
+                    }
+                    html += '</div>';
+                });
+            }
+            
+            // AI Metrics
+            if (data.ai_metrics) {
+                html += '<h5>AI Performance:</h5>';
+                html += `<p>Model: ${data.ai_metrics.model}</p>`;
+                html += `<p>Tokens Used: ${data.ai_metrics.tokens_used}</p>`;
+            }
+            
+            html += '</div>';
+            return html;
+        }
+        
+        function renderTaskGenerationInsights(data) {
+            let html = '<div class="insight-section">';
+            html += '<h4>Task Generation Insights</h4>';
+            
+            html += `<p><strong>${data.task_count}</strong> tasks generated</p>`;
+            
+            // Task breakdown reasoning
+            if (data.task_breakdown_reasoning) {
+                html += '<h5>Generation Strategy:</h5>';
+                html += `<p class="decision-reasoning">${data.task_breakdown_reasoning}</p>`;
+            }
+            
+            // Complexity analysis
+            if (data.complexity_score !== undefined) {
+                html += '<h5>Complexity Analysis:</h5>';
+                html += renderProgressBar('Complexity', data.complexity_score, data.complexity_score.toFixed(2));
+            }
+            
+            // Risk factors
+            if (data.risk_factors && data.risk_factors.length > 0) {
+                html += '<h5>Identified Risks:</h5>';
+                data.risk_factors.forEach(risk => {
+                    html += '<div class="alternative-item">';
+                    html += `<strong>${risk.risk}</strong>: ${risk.description}`;
+                    if (risk.mitigation) {
+                        html += `<br><em>Mitigation: ${risk.mitigation}</em>`;
+                    }
+                    html += '</div>';
+                });
+            }
+            
+            // Alternative structures
+            if (data.alternative_structures && data.alternative_structures.length > 0) {
+                html += '<h5>Alternatives Considered:</h5>';
+                data.alternative_structures.forEach(alt => {
+                    html += `<div class="alternative-item">${alt.approach} - ${alt.reason_rejected}</div>`;
+                });
+            }
+            
+            html += '</div>';
+            return html;
+        }
+        
+        function renderDecisionInsights(data) {
+            let html = '<div class="insight-section">';
+            html += '<h4>Decision Point</h4>';
+            
+            html += `<p><strong>Decision:</strong> ${data.decision}</p>`;
+            html += `<p class="decision-reasoning">${data.rationale}</p>`;
+            
+            if (data.confidence !== undefined) {
+                const confidenceClass = data.confidence > 0.8 ? 'high' : data.confidence > 0.6 ? 'medium' : 'low';
+                html += `<p>Confidence: <span class="confidence-badge confidence-${confidenceClass}">${(data.confidence * 100).toFixed(0)}%</span></p>`;
+            }
+            
+            if (data.alternatives_considered && data.alternatives_considered.length > 0) {
+                html += '<h5>Alternatives Considered:</h5>';
+                data.alternatives_considered.forEach(alt => {
+                    html += '<div class="alternative-item">';
+                    html += `<strong>${alt.option}</strong> (Score: ${alt.score})`;
+                    if (alt.reason_rejected) {
+                        html += `<br><em>${alt.reason_rejected}</em>`;
+                    }
+                    html += '</div>';
+                });
+            }
+            
+            html += '</div>';
+            return html;
+        }
+        
+        function renderPerformanceInsights(data) {
+            let html = '<div class="insight-section">';
+            html += '<h4>Performance Metrics</h4>';
+            
+            if (data.token_usage !== undefined) {
+                html += renderProgressBar('Token Usage', data.token_usage / 10000, `${data.token_usage} tokens`);
+            }
+            
+            if (data.response_time_ms !== undefined) {
+                const seconds = data.response_time_ms / 1000;
+                html += renderProgressBar('Response Time', Math.min(seconds / 10, 1), `${seconds.toFixed(1)}s`);
+            }
+            
+            if (data.cost_estimate !== undefined) {
+                html += `<p>Estimated Cost: $${data.cost_estimate.toFixed(3)}</p>`;
+            }
+            
+            if (data.provider) {
+                html += `<p>Provider: ${data.provider}</p>`;
+            }
+            
+            html += '</div>';
+            return html;
+        }
+        
+        function renderQualityInsights(data) {
+            let html = '<div class="insight-section">';
+            html += '<h4>Quality Assessment</h4>';
+            
+            if (data.task_completeness_score !== undefined) {
+                html += renderProgressBar('Task Completeness', data.task_completeness_score, 
+                    `${(data.task_completeness_score * 100).toFixed(0)}%`);
+            }
+            
+            if (data.overall_quality_score !== undefined) {
+                html += renderProgressBar('Overall Quality', data.overall_quality_score, 
+                    `${(data.overall_quality_score * 100).toFixed(0)}%`);
+            }
+            
+            if (data.missing_considerations && data.missing_considerations.length > 0) {
+                html += '<h5>Missing Considerations:</h5>';
+                data.missing_considerations.forEach(missing => {
+                    html += `<div class="alternative-item">⚠️ ${missing}</div>`;
+                });
+            }
+            
+            html += '</div>';
+            return html;
+        }
+        
+        function renderProgressBar(label, value, displayValue) {
+            const percentage = Math.min(Math.max(value * 100, 0), 100);
+            return `
+                <div class="performance-chart">
+                    <div class="performance-label">${label}:</div>
+                    <div class="performance-bar">
+                        <div class="performance-fill" style="width: ${percentage}%"></div>
+                    </div>
+                    <div class="performance-value">${displayValue}</div>
+                </div>
+            `;
+        }
+        
+        // Control buttons
+        document.getElementById('refresh-btn').onclick = () => {
+            socket.emit('subscribe_pipeline_flow', {});
+        };
+        
+        document.getElementById('clear-btn').onclick = () => {
+            nodes.clear();
+            edges.clear();
+            currentFlowId = null;
+        };
+        
+        // Initialize on load
+        window.addEventListener('load', () => {
+            initNetwork();
+        });
+    </script>
+</body>
+</html>

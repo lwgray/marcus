@@ -31,6 +31,7 @@ from src.core.models import (
     Task, WorkerStatus, ProjectState, 
     RiskLevel, Priority, BlockerReport, ProjectRisk
 )
+from src.cost_tracking.ai_usage_middleware import ai_usage_middleware, track_project_tokens
 
 
 class AIAnalysisEngine:
@@ -71,6 +72,8 @@ class AIAnalysisEngine:
         """
         # Initialize Anthropic client with better error handling
         self.client: Optional[anthropic.Anthropic] = None
+        self.current_project_id: Optional[str] = None
+        self.current_agent_id: Optional[str] = None
         try:
             # Get API key from config first, fall back to environment
             from src.config.config_loader import get_config
@@ -208,6 +211,9 @@ Identify risks and provide JSON:
                 messages=[{"role": "user", "content": "test"}]
             )
             print("✅ AI Engine connection verified", file=sys.stderr)
+            
+            # Wrap client for token tracking
+            self.client = ai_usage_middleware.wrap_ai_provider(self.client)
         except Exception as e:
             print(f"⚠️  AI Engine test failed: {e}", file=sys.stderr)
             print("   Will use fallback responses", file=sys.stderr)
@@ -219,6 +225,9 @@ Identify risks and provide JSON:
         agent: WorkerStatus,
         project_state: ProjectState
     ) -> Optional[Task]:
+        # Set project context for token tracking
+        self.current_project_id = project_state.project_name or project_state.board_id
+        self.current_agent_id = agent.worker_id
         """
         Find the optimal task for an agent using AI analysis.
         
@@ -1308,7 +1317,7 @@ Return JSON with this format:
     
     async def _call_claude(self, prompt: str) -> str:
         """
-        Call Claude API with error handling.
+        Call Claude API with error handling and token tracking.
         
         Parameters
         ----------
@@ -1329,6 +1338,13 @@ Return JSON with this format:
             raise Exception("Anthropic client not available")
         
         try:
+            # Set context for token tracking if available
+            if self.current_project_id and self.current_agent_id:
+                ai_usage_middleware.set_project_context(
+                    self.current_agent_id, 
+                    self.current_project_id
+                )
+            
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=2000,
@@ -1338,6 +1354,26 @@ Return JSON with this format:
                     "content": prompt
                 }]
             )
+            
+            # Extract token usage if available
+            if hasattr(response, 'usage'):
+                usage = response.usage
+                if self.current_project_id:
+                    # Manually track tokens since we're calling the API directly
+                    from src.cost_tracking.token_tracker import token_tracker
+                    import asyncio
+                    
+                    asyncio.create_task(token_tracker.track_tokens(
+                        project_id=self.current_project_id,
+                        input_tokens=usage.input_tokens,
+                        output_tokens=usage.output_tokens,
+                        model=self.model,
+                        metadata={
+                            'agent_id': self.current_agent_id,
+                            'function': 'ai_analysis_engine',
+                            'prompt_length': len(prompt)
+                        }
+                    ))
             
             return response.content[0].text
             

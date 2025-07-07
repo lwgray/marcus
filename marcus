@@ -1,0 +1,81 @@
+#!/bin/bash
+# Marcus - Unified Entry Point
+
+# Function to kill all Marcus processes
+kill_marcus() {
+    echo "🛑 Stopping all Marcus processes..."
+    
+    # Kill Marcus Python processes
+    pkill -f "python.*marcus" 2>/dev/null
+    pkill -f "python.*src.api.app" 2>/dev/null
+    pkill -f "python.*src.marcus_mcp" 2>/dev/null
+    
+    # Kill any marcus shell scripts (except this one)
+    pkill -f "bash.*marcus" 2>/dev/null
+    
+    # Wait a moment for processes to terminate
+    sleep 1
+    
+    # Check if any processes are still running
+    if pgrep -f "python.*marcus" > /dev/null; then
+        echo "⚠️  Some Marcus processes still running, force killing..."
+        pkill -9 -f "python.*marcus" 2>/dev/null
+    fi
+    
+    echo "✅ All Marcus processes stopped"
+}
+
+# Check for special commands
+case "$1" in
+    stop|kill)
+        kill_marcus
+        exit 0
+        ;;
+    restart)
+        echo "🔄 Restarting Marcus..."
+        kill_marcus
+        echo ""
+        # Remove 'restart' from arguments and start normally
+        shift
+        exec "$0" "$@"
+        ;;
+    status)
+        echo "📊 Marcus Process Status:"
+        echo ""
+        if pgrep -f "python.*marcus" > /dev/null; then
+            echo "✅ Marcus is running"
+            echo ""
+            echo "Active processes:"
+            ps aux | grep -E "python.*marcus|python.*src.api.app" | grep -v grep
+        else
+            echo "❌ Marcus is not running"
+        fi
+        exit 0
+        ;;
+    help|--help|-h)
+        echo "Marcus - AI-Powered Project Management"
+        echo ""
+        echo "Usage: ./marcus [command] [options]"
+        echo ""
+        echo "Commands:"
+        echo "  start       Start Marcus (default if no command given)"
+        echo "  stop        Stop all Marcus processes"
+        echo "  restart     Restart Marcus"
+        echo "  status      Show Marcus process status"
+        echo ""
+        echo "Options:"
+        echo "  --no-web    Start without web UI (MCP server only)"
+        echo "  --port NUM  Set web UI port (default: 5000)"
+        echo ""
+        echo "Examples:"
+        echo "  ./marcus                  # Start with web UI"
+        echo "  ./marcus restart          # Restart Marcus"
+        echo "  ./marcus stop             # Stop all processes"
+        echo "  ./marcus --port 8080      # Start on port 8080"
+        echo "  ./marcus --no-web         # Start MCP only"
+        exit 0
+        ;;
+esac
+
+# Default: Start Marcus
+python marcus.py "$@"

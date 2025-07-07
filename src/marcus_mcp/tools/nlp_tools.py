@@ -11,6 +11,7 @@ from src.integrations.mcp_natural_language_tools import (
     create_project_from_natural_language,
     add_feature_natural_language
 )
+from src.visualization.pipeline_flow import PipelineStage
 
 
 async def create_project(
@@ -37,13 +38,85 @@ async def create_project(
     Returns:
         Dict with created project details and task list
     """
-    # Create project using natural language processing
-    return await create_project_from_natural_language(
-        description=description,
-        project_name=project_name,
-        state=state,
-        options=options
-    )
+    import uuid
+    from datetime import datetime
+    
+    # Start tracking pipeline flow
+    flow_id = str(uuid.uuid4())
+    if hasattr(state, 'pipeline_visualizer'):
+        state.pipeline_visualizer.start_flow(flow_id, project_name)
+        
+        # Track the MCP request
+        state.pipeline_visualizer.add_event(
+            flow_id=flow_id,
+            stage=PipelineStage.MCP_REQUEST,
+            event_type="create_project_request",
+            data={
+                "project_name": project_name,
+                "description_length": len(description),
+                "options": options or {}
+            },
+            status="completed"
+        )
+        
+        # Also log to real-time log for UI server
+        state.log_event("pipeline_flow_started", {
+            "flow_id": flow_id,
+            "project_name": project_name,
+            "stage": "mcp_request",
+            "event_type": "create_project_request"
+        })
+    
+    start_time = datetime.now()
+    
+    try:
+        # Create project using natural language processing with pipeline tracking
+        from src.integrations.pipeline_tracked_nlp import create_project_from_natural_language_tracked
+        
+        result = await create_project_from_natural_language_tracked(
+            description=description,
+            project_name=project_name,
+            state=state,
+            options=options,
+            flow_id=flow_id
+        )
+        
+        # Track successful completion
+        if hasattr(state, 'pipeline_visualizer'):
+            duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+            state.pipeline_visualizer.add_event(
+                flow_id=flow_id,
+                stage=PipelineStage.TASK_COMPLETION,
+                event_type="pipeline_completed",
+                data={
+                    "success": result.get('success', False),
+                    "task_count": result.get('task_count', 0),
+                    "total_duration_ms": duration_ms
+                },
+                duration_ms=duration_ms,
+                status="completed"
+            )
+            
+            # Complete the flow
+            state.pipeline_visualizer.complete_flow(flow_id)
+        
+        return result
+        
+    except Exception as e:
+        # Track error
+        if hasattr(state, 'pipeline_visualizer'):
+            duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+            state.pipeline_visualizer.add_event(
+                flow_id=flow_id,
+                stage=PipelineStage.TASK_COMPLETION,
+                event_type="pipeline_failed",
+                data={"error_type": type(e).__name__},
+                duration_ms=duration_ms,
+                status="failed",
+                error=str(e)
+            )
+        
+        raise
 
 
 async def add_feature(

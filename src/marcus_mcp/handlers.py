@@ -29,15 +29,47 @@ from .tools import (
     add_feature
 )
 
+from .tools.context_tools import (
+    # Context tools
+    log_decision,
+    get_task_context
+)
 
-def get_tool_definitions() -> List[types.Tool]:
+from .tools.pipeline_tools import (
+    # Pipeline replay tools
+    start_replay,
+    replay_step_forward,
+    replay_step_backward,
+    replay_jump_to,
+    # What-if analysis tools
+    start_what_if_analysis,
+    simulate_modification,
+    compare_what_if_scenarios,
+    # Comparison tools
+    compare_pipelines,
+    generate_report,
+    # Monitoring tools
+    get_live_dashboard,
+    track_flow_progress,
+    predict_failure_risk,
+    # Recommendation tools
+    get_recommendations,
+    find_similar_flows
+)
+
+
+def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
     """
-    Return list of all available tool definitions for MCP.
+    Return list of available tool definitions for MCP based on role.
+    
+    Args:
+        role: User role - "agent" for coding agents, "human" for full access
     
     Returns:
-        List of Tool objects with schemas for all Marcus tools
+        List of Tool objects with schemas for Marcus tools based on role
     """
-    return [
+    # Core agent tools available to all coding agents
+    agent_tools = [
         # Agent Management Tools
         types.Tool(
             name="register_agent",
@@ -154,7 +186,43 @@ def get_tool_definitions() -> List[types.Tool]:
             }
         ),
         
-        # Natural Language Tools
+        # Context Tools (for agents to log decisions)
+        types.Tool(
+            name="log_decision",
+            description="Log an architectural decision that might affect other tasks",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "agent_id": {"type": "string", "description": "Agent making the decision"},
+                    "task_id": {"type": "string", "description": "Current task ID"},
+                    "decision": {
+                        "type": "string", 
+                        "description": "Decision description. Format: 'I chose X because Y. This affects Z.'"
+                    }
+                },
+                "required": ["agent_id", "task_id", "decision"]
+            }
+        ),
+        types.Tool(
+            name="get_task_context",
+            description="Get the full context for a specific task including dependencies and decisions",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string", "description": "Task ID to get context for"}
+                },
+                "required": ["task_id"]
+            }
+        )
+    ]
+    
+    # If role is "agent", return only agent tools
+    if role == "agent":
+        return agent_tools
+    
+    # For "human" role, include all tools including pipeline enhancements
+    human_tools = agent_tools + [
+        # Natural Language Tools (also available to humans)
         types.Tool(
             name="create_project",
             description="Create a complete project from natural language description",
@@ -205,8 +273,170 @@ def get_tool_definitions() -> List[types.Tool]:
                 },
                 "required": ["feature_description"]
             }
+        ),
+        
+        # Pipeline Enhancement Tools (only for humans)
+        types.Tool(
+            name="pipeline_replay_start",
+            description="Start replay session for a pipeline flow",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "flow_id": {"type": "string", "description": "Flow ID to replay"}
+                },
+                "required": ["flow_id"]
+            }
+        ),
+        types.Tool(
+            name="pipeline_replay_forward",
+            description="Step forward in pipeline replay",
+            inputSchema={"type": "object", "properties": {}}
+        ),
+        types.Tool(
+            name="pipeline_replay_backward",
+            description="Step backward in pipeline replay",
+            inputSchema={"type": "object", "properties": {}}
+        ),
+        types.Tool(
+            name="pipeline_replay_jump",
+            description="Jump to specific position in replay",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "position": {"type": "integer", "description": "Position to jump to"}
+                },
+                "required": ["position"]
+            }
+        ),
+        types.Tool(
+            name="what_if_start",
+            description="Start what-if analysis session",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "flow_id": {"type": "string", "description": "Flow ID to analyze"}
+                },
+                "required": ["flow_id"]
+            }
+        ),
+        types.Tool(
+            name="what_if_simulate",
+            description="Simulate pipeline with modifications",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "modifications": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "parameter_type": {"type": "string"},
+                                "parameter_name": {"type": "string"},
+                                "new_value": {},
+                                "old_value": {},
+                                "description": {"type": "string"}
+                            },
+                            "required": ["parameter_type", "parameter_name", "new_value"]
+                        }
+                    }
+                },
+                "required": ["modifications"]
+            }
+        ),
+        types.Tool(
+            name="what_if_compare",
+            description="Compare all what-if scenarios",
+            inputSchema={"type": "object", "properties": {}}
+        ),
+        types.Tool(
+            name="pipeline_compare",
+            description="Compare multiple pipeline flows",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "flow_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of flow IDs to compare"
+                    }
+                },
+                "required": ["flow_ids"]
+            }
+        ),
+        types.Tool(
+            name="pipeline_report",
+            description="Generate pipeline report",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "flow_id": {"type": "string", "description": "Flow ID"},
+                    "format": {
+                        "type": "string",
+                        "enum": ["html", "markdown", "json"],
+                        "description": "Report format",
+                        "default": "html"
+                    }
+                },
+                "required": ["flow_id"]
+            }
+        ),
+        types.Tool(
+            name="pipeline_monitor_dashboard",
+            description="Get live monitoring dashboard data",
+            inputSchema={"type": "object", "properties": {}}
+        ),
+        types.Tool(
+            name="pipeline_monitor_flow",
+            description="Track specific flow progress",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "flow_id": {"type": "string", "description": "Flow ID to track"}
+                },
+                "required": ["flow_id"]
+            }
+        ),
+        types.Tool(
+            name="pipeline_predict_risk",
+            description="Predict failure risk for a flow",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "flow_id": {"type": "string", "description": "Flow ID to assess"}
+                },
+                "required": ["flow_id"]
+            }
+        ),
+        types.Tool(
+            name="pipeline_recommendations",
+            description="Get recommendations for a pipeline flow",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "flow_id": {"type": "string", "description": "Flow ID"}
+                },
+                "required": ["flow_id"]
+            }
+        ),
+        types.Tool(
+            name="pipeline_find_similar",
+            description="Find similar pipeline flows",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "flow_id": {"type": "string", "description": "Flow ID"},
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max similar flows to return",
+                        "default": 5
+                    }
+                },
+                "required": ["flow_id"]
+            }
         )
     ]
+    
+    return human_tools
 
 
 async def handle_tool_call(
@@ -303,6 +533,64 @@ async def handle_tool_call(
                 integration_point=arguments.get("integration_point", "auto_detect"),
                 state=state
             )
+        
+        # Context Tools
+        elif name == "log_decision":
+            result = await log_decision(
+                agent_id=arguments.get("agent_id"),
+                task_id=arguments.get("task_id"),
+                decision=arguments.get("decision"),
+                state=state
+            )
+        
+        elif name == "get_task_context":
+            result = await get_task_context(
+                task_id=arguments.get("task_id"),
+                state=state
+            )
+        
+        # Pipeline Enhancement Tools
+        elif name == "pipeline_replay_start":
+            result = await start_replay(state, arguments)
+        
+        elif name == "pipeline_replay_forward":
+            result = await replay_step_forward(state, arguments)
+        
+        elif name == "pipeline_replay_backward":
+            result = await replay_step_backward(state, arguments)
+        
+        elif name == "pipeline_replay_jump":
+            result = await replay_jump_to(state, arguments)
+        
+        elif name == "what_if_start":
+            result = await start_what_if_analysis(state, arguments)
+        
+        elif name == "what_if_simulate":
+            result = await simulate_modification(state, arguments)
+        
+        elif name == "what_if_compare":
+            result = await compare_what_if_scenarios(state, arguments)
+        
+        elif name == "pipeline_compare":
+            result = await compare_pipelines(state, arguments)
+        
+        elif name == "pipeline_report":
+            result = await generate_report(state, arguments)
+        
+        elif name == "pipeline_monitor_dashboard":
+            result = await get_live_dashboard(state, arguments)
+        
+        elif name == "pipeline_monitor_flow":
+            result = await track_flow_progress(state, arguments)
+        
+        elif name == "pipeline_predict_risk":
+            result = await predict_failure_risk(state, arguments)
+        
+        elif name == "pipeline_recommendations":
+            result = await get_recommendations(state, arguments)
+        
+        elif name == "pipeline_find_similar":
+            result = await find_similar_flows(state, arguments)
         
         else:
             result = {"error": f"Unknown tool: {name}"}

@@ -91,6 +91,64 @@ async def request_next_task(agent_id: str, state: Any) -> Dict[str, Any]:
                     if impl_details:
                         previous_implementations = impl_details
                 
+                # Get enhanced context if Context system is available
+                context_data = None
+                dependency_awareness = None
+                if hasattr(state, 'context') and state.context:
+                    # Get full context for this task
+                    task_context = await state.context.get_context(
+                        optimal_task.id,
+                        optimal_task.dependencies or []
+                    )
+                    
+                    # Add any GitHub implementations to context
+                    if previous_implementations:
+                        await state.context.add_implementation(
+                            optimal_task.id,
+                            previous_implementations
+                        )
+                    
+                    # Analyze dependencies for this project
+                    if state.project_tasks:
+                        dep_map = state.context.analyze_dependencies(state.project_tasks)
+                        if optimal_task.id in dep_map:
+                            # Add dependent tasks to context
+                            for dep_task_id in dep_map[optimal_task.id]:
+                                dep_task = next((t for t in state.project_tasks if t.id == dep_task_id), None)
+                                if dep_task:
+                                    from src.core.context import DependentTask
+                                    state.context.add_dependency(
+                                        optimal_task.id,
+                                        DependentTask(
+                                            task_id=dep_task.id,
+                                            task_name=dep_task.name,
+                                            expected_interface=f"Implementation needed by {dep_task.name}"
+                                        )
+                                    )
+                    
+                    # Format context for response
+                    context_data = task_context.to_dict()
+                    
+                    # Create dependency awareness message
+                    if task_context.dependent_tasks:
+                        dep_count = len(task_context.dependent_tasks)
+                        dep_list = "\n".join([
+                            f"- {dt['task_name']} (needs: {dt['expected_interface']})"
+                            for dt in task_context.dependent_tasks[:3]  # Show first 3
+                        ])
+                        dependency_awareness = f"{dep_count} future tasks depend on your work:\n{dep_list}"
+                
+                # Get predictions if Memory system is available
+                predictions = None
+                if hasattr(state, 'memory') and state.memory:
+                    predictions = await state.memory.predict_task_outcome(
+                        agent_id,
+                        optimal_task
+                    )
+                    
+                    # Record task start in memory
+                    await state.memory.record_task_start(agent_id, optimal_task)
+                
                 # Generate detailed instructions with AI
                 instructions = await state.ai_engine.generate_task_instructions(
                     optimal_task,
@@ -187,6 +245,29 @@ async def request_next_task(agent_id: str, state: Any) -> Dict[str, Any]:
                         "implementation_context": previous_implementations
                     }
                 }
+                
+                # Add enhanced context if available
+                if dependency_awareness:
+                    response["task"]["dependency_awareness"] = dependency_awareness
+                if context_data:
+                    response["task"]["full_context"] = context_data
+                if predictions:
+                    response["task"]["predictions"] = predictions
+                    
+                # Emit event if Events system is available
+                if hasattr(state, 'events') and state.events:
+                    await state.events.publish(
+                        "task_assigned",  # Using string instead of EventTypes constant
+                        "marcus",
+                        {
+                            "agent_id": agent_id,
+                            "task_id": optimal_task.id,
+                            "task_name": optimal_task.name,
+                            "has_context": context_data is not None,
+                            "has_dependencies": dependency_awareness is not None
+                        }
+                    )
+                
                 return serialize_for_mcp(response)
             
             except Exception as e:
@@ -289,6 +370,24 @@ async def report_task_progress(
             update_data["status"] = TaskStatus.DONE
             update_data["completed_at"] = datetime.now().isoformat()
             
+            # Record completion in Memory if available
+            if hasattr(state, 'memory') and state.memory:
+                # Calculate actual hours (simplified - in real system would track actual time)
+                task_assignment = state.agent_tasks.get(agent_id)
+                if task_assignment:
+                    start_time = task_assignment.assigned_at
+                    actual_hours = (datetime.now() - start_time).total_seconds() / 3600
+                else:
+                    actual_hours = 1.0  # Default if no assignment found
+                    
+                await state.memory.record_task_completion(
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    success=True,
+                    actual_hours=actual_hours,
+                    blockers=[]
+                )
+            
             # Clear agent's current task
             if agent_id in state.agent_status:
                 agent = state.agent_status[agent_id]
@@ -327,6 +426,24 @@ async def report_task_progress(
             
         elif status == "blocked":
             update_data["status"] = TaskStatus.BLOCKED
+            
+            # Record blocker in Memory if available
+            if hasattr(state, 'memory') and state.memory and message:
+                # Try to get current task assignment
+                task_assignment = state.agent_tasks.get(agent_id)
+                if task_assignment:
+                    start_time = task_assignment.assigned_at
+                    actual_hours = (datetime.now() - start_time).total_seconds() / 3600
+                else:
+                    actual_hours = 1.0
+                    
+                await state.memory.record_task_completion(
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    success=False,
+                    actual_hours=actual_hours,
+                    blockers=[message]
+                )
             
         await state.kanban_client.update_task(task_id, update_data)
         
