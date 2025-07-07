@@ -49,7 +49,7 @@ from src.monitoring.project_monitor import ProjectMonitor
 from src.visualization.pipeline_flow import PipelineStage
 from src.visualization.shared_pipeline_events import SharedPipelineVisualizer
 
-from .handlers import get_tool_definitions, handle_tool_call
+from src.marcus_mcp.handlers import get_tool_definitions, handle_tool_call
 
 
 class MarcusServer:
@@ -225,6 +225,26 @@ class MarcusServer:
         ) -> List[types.TextContent | types.ImageContent | types.EmbeddedResource]:
             """Handle tool calls"""
             return await handle_tool_call(name, arguments, self)
+
+        @self.server.list_prompts()
+        async def handle_list_prompts() -> List[types.Prompt]:
+            """Return list of available prompts - Marcus doesn't use prompts currently"""
+            return []
+
+        @self.server.list_resources()
+        async def handle_list_resources() -> List[types.Resource]:
+            """Return list of available resources - Marcus doesn't use resources currently"""
+            return []
+
+        @self.server.read_resource()
+        async def handle_read_resource(uri: str) -> str:
+            """Read a resource - Marcus doesn't use resources currently"""
+            raise ValueError(f"Resource not found: {uri}")
+
+        @self.server.get_prompt()
+        async def handle_get_prompt(name: str, arguments: Optional[Dict[str, str]] = None) -> types.GetPromptResult:
+            """Get a prompt - Marcus doesn't use prompts currently"""
+            raise ValueError(f"Prompt not found: {name}")
 
     async def initialize(self):
         """Initialize all Marcus server components"""
