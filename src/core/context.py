@@ -19,6 +19,14 @@ from src.core.resilience import with_fallback, resilient_persistence
 
 logger = logging.getLogger(__name__)
 
+# Optional import for hybrid dependency inference
+try:
+    from src.intelligence.dependency_inferer_hybrid import HybridDependencyInferer
+    HYBRID_AVAILABLE = True
+except ImportError:
+    HYBRID_AVAILABLE = False
+    logger.info("Hybrid dependency inferer not available, using pattern-based inference")
+
 
 @dataclass
 class TaskContext:
@@ -85,13 +93,16 @@ class Context:
     - Optional persistence for long-term storage
     """
     
-    def __init__(self, events: Optional[Events] = None, persistence=None):
+    def __init__(self, events: Optional[Events] = None, persistence=None, 
+                 use_hybrid_inference: bool = True, ai_engine=None):
         """
         Initialize the Context system.
         
         Args:
             events: Optional Events system for integration
             persistence: Optional Persistence instance for storing context
+            use_hybrid_inference: Whether to use hybrid dependency inference if available
+            ai_engine: Optional AI engine for hybrid inference
         """
         self.events = events
         self.persistence = persistence
@@ -100,6 +111,13 @@ class Context:
         self.decisions: List[Decision] = []
         self.patterns: Dict[str, List[Dict[str, Any]]] = {}  # pattern_type -> examples
         self._decision_counter = 0
+        self.default_infer_dependencies = True  # Default setting for dependency inference
+        
+        # Set up dependency inference strategy
+        self.hybrid_inferer = None
+        if use_hybrid_inference and HYBRID_AVAILABLE and ai_engine:
+            self.hybrid_inferer = HybridDependencyInferer(ai_engine)
+            logger.info("Using hybrid dependency inference for better accuracy")
         
         # Load persisted data if available
         if self.persistence:
@@ -294,41 +312,78 @@ class Context:
             
         return context
         
-    def analyze_dependencies(self, tasks: List[Task]) -> Dict[str, List[str]]:
+    async def analyze_dependencies(self, tasks: List[Task], infer_implicit: bool = True) -> Dict[str, List[str]]:
         """
-        Analyze task list to identify dependencies.
+        Analyze task list to identify dependencies (both explicit and implicit).
         
         Args:
             tasks: List of all tasks
+            infer_implicit: Whether to infer implicit dependencies (default: True)
             
         Returns:
             Mapping of task_id to list of dependent task IDs
         """
+        # Use hybrid inferer if available for better accuracy with fewer API calls
+        if self.hybrid_inferer and infer_implicit:
+            logger.info("Using hybrid dependency inference")
+            # Get dependency graph from hybrid inferer
+            dep_graph = await self.hybrid_inferer.infer_dependencies(tasks)
+            
+            # Convert to our format
+            dependency_map: Dict[str, List[str]] = dep_graph.adjacency_list.copy()
+            
+            # Also include explicit dependencies
+            for task in tasks:
+                if task.dependencies:
+                    for dep_id in task.dependencies:
+                        if dep_id not in dependency_map:
+                            dependency_map[dep_id] = []
+                        if task.id not in dependency_map[dep_id]:
+                            dependency_map[dep_id].append(task.id)
+            
+            return dependency_map
+        
+        # Fallback to pattern-based inference
         dependency_map: Dict[str, List[str]] = {}
         
+        # First, map explicit dependencies
         for task in tasks:
-            # Direct dependencies from task model
             if task.dependencies:
                 for dep_id in task.dependencies:
                     if dep_id not in dependency_map:
                         dependency_map[dep_id] = []
                     dependency_map[dep_id].append(task.id)
-                    
-            # Infer dependencies from labels/tags
-            # For example, "frontend-login" might depend on "backend-auth"
-            if task.labels:
-                for other_task in tasks:
-                    if other_task.id != task.id and self._infer_dependency(task, other_task):
+        
+        # Then, infer implicit dependencies if enabled
+        if infer_implicit:
+            inferred_count = 0
+            for i, task in enumerate(tasks):
+                for j, other_task in enumerate(tasks):
+                    if i >= j:  # Skip self and already processed pairs
+                        continue
+                        
+                    # Check if task depends on other_task
+                    if self._infer_dependency(task, other_task):
                         if other_task.id not in dependency_map:
                             dependency_map[other_task.id] = []
                         if task.id not in dependency_map[other_task.id]:
                             dependency_map[other_task.id].append(task.id)
-                            
+                            inferred_count += 1
+                            logger.info(f"Inferred: '{task.name}' depends on '{other_task.name}'")
+            
+            if inferred_count > 0:
+                logger.info(f"Inferred {inferred_count} implicit dependencies")
+        
+        # Check for circular dependencies
+        cycles = self._detect_circular_dependencies(dependency_map, tasks)
+        if cycles:
+            logger.warning(f"Circular dependencies detected: {cycles}")
+            
         return dependency_map
         
     def _infer_dependency(self, task: Task, potential_dependency: Task) -> bool:
         """
-        Infer if task depends on potential_dependency based on labels/names.
+        Infer if task depends on potential_dependency using multiple strategies.
         
         Args:
             task: The task to check
@@ -337,29 +392,268 @@ class Context:
         Returns:
             True if dependency is likely
         """
-        # Simple heuristics - can be enhanced
-        inference_rules = [
-            # Frontend depends on backend
-            (["frontend", "ui", "client"], ["backend", "api", "server"]),
-            # Tests depend on implementation
-            (["test", "spec"], ["implement", "feature", "api"]),
-            # Integration depends on individual components
-            (["integration", "e2e"], ["component", "service", "module"]),
-            # Documentation depends on implementation
-            (["docs", "documentation"], ["implement", "feature"]),
-        ]
-        
+        # Extract task information
         task_labels = set(label.lower() for label in (task.labels or []))
         task_name_words = set(task.name.lower().split())
         dep_labels = set(label.lower() for label in (potential_dependency.labels or []))
         dep_name_words = set(potential_dependency.name.lower().split())
         
+        logger.debug(f"Checking if '{task.name}' depends on '{potential_dependency.name}'")
+        logger.debug(f"Task labels: {task_labels}, words: {task_name_words}")
+        logger.debug(f"Dep labels: {dep_labels}, words: {dep_name_words}")
+        
+        # Strategy 1: Pattern-based rules
+        inference_rules = [
+            # Frontend depends on backend
+            (["frontend", "ui", "client", "react", "vue", "angular"], 
+             ["backend", "api", "server", "endpoint", "rest"]),
+            # Tests depend on implementation
+            (["test", "spec", "unittest", "integration-test", "e2e"], 
+             ["implement", "feature", "api", "service", "component"]),
+            # Deployment depends on build
+            (["deploy", "deployment", "release", "publish"], 
+             ["build", "compile", "bundle", "package"]),
+            # Documentation depends on implementation
+            (["docs", "documentation", "readme", "guide"], 
+             ["implement", "feature", "api", "component"]),
+            # Database migrations depend on schema
+            (["migration", "migrate", "update-db"], 
+             ["schema", "database", "model", "entity"]),
+            # Integration depends on components
+            (["integration", "integrate", "connect"], 
+             ["component", "service", "module", "api"]),
+        ]
+        
         for dependent_keywords, dependency_keywords in inference_rules:
             if (any(kw in task_labels or kw in task_name_words for kw in dependent_keywords) and
                 any(kw in dep_labels or kw in dep_name_words for kw in dependency_keywords)):
                 return True
+        
+        # Strategy 2: Action-based inference (verb analysis)
+        task_action = self._extract_action(task.name)
+        dep_action = self._extract_action(potential_dependency.name)
+        
+        action_dependencies = {
+            "update": ["create", "implement", "build"],
+            "test": ["implement", "create", "build"],
+            "deploy": ["test", "build", "package"],
+            "document": ["implement", "create", "design"],
+            "refactor": ["implement", "create"],
+            "optimize": ["implement", "measure"],
+            "integrate": ["implement", "create", "build"],
+            "configure": ["install", "setup", "create"],
+        }
+        
+        if task_action in action_dependencies:
+            if dep_action in action_dependencies[task_action]:
+                return True
+        
+        # Strategy 3: Entity-based inference (same entity, different actions)
+        task_entity = self._extract_entity(task.name)
+        dep_entity = self._extract_entity(potential_dependency.name)
+        
+        if task_entity and dep_entity and task_entity == dep_entity:
+            # Same entity - check if actions have natural order
+            action_order = [
+                "design", "plan", "create", "implement", "build", 
+                "test", "document", "deploy", "monitor"
+            ]
+            
+            try:
+                task_order = action_order.index(task_action) if task_action in action_order else -1
+                dep_order = action_order.index(dep_action) if dep_action in action_order else -1
                 
+                # If both have known actions and task comes after dependency
+                if task_order > dep_order >= 0:
+                    return True
+            except ValueError:
+                pass
+        
+        # Special case: API depends on schema/database
+        if ("api" in task_labels or "api" in task_name_words) and \
+           ("schema" in dep_labels or "schema" in dep_name_words or \
+            "database" in dep_labels or "database" in dep_name_words):
+            logger.info(f"Special rule matched: {task.name} depends on {potential_dependency.name}")
+            return True
+        
+        # Strategy 4: Technical stack dependencies
+        tech_dependencies = {
+            "frontend": ["api", "backend", "auth", "database"],
+            "mobile": ["api", "backend", "auth"],
+            "cli": ["api", "core", "library"],
+            "api": ["database", "auth", "model"],
+            "auth": ["database", "user", "model"],
+        }
+        
+        for tech, deps in tech_dependencies.items():
+            if tech in task_labels or tech in task_name_words:
+                if any(d in dep_labels or d in dep_name_words for d in deps):
+                    return True
+        
         return False
+    
+    def _extract_action(self, task_name: str) -> Optional[str]:
+        """Extract the primary action verb from a task name"""
+        words = task_name.lower().split()
+        common_actions = {
+            "create", "build", "implement", "design", "test", "deploy", 
+            "update", "refactor", "optimize", "document", "integrate",
+            "configure", "setup", "install", "add", "remove", "fix"
+        }
+        
+        for word in words:
+            if word in common_actions:
+                return word
+        return None
+    
+    def _extract_entity(self, task_name: str) -> Optional[str]:
+        """Extract the primary entity/component from a task name"""
+        # Remove common actions to find entity
+        words = task_name.lower().split()
+        action_words = {
+            "create", "build", "implement", "design", "test", "deploy",
+            "update", "refactor", "optimize", "document", "integrate",
+            "configure", "setup", "install", "add", "remove", "fix", "for"
+        }
+        
+        entity_words = [w for w in words if w not in action_words and len(w) > 2]
+        
+        # Common entities to look for
+        common_entities = {
+            "api", "database", "auth", "user", "login", "dashboard",
+            "payment", "notification", "email", "search", "report"
+        }
+        
+        for word in entity_words:
+            if word in common_entities:
+                return word
+                
+        # Return first non-action word as entity
+        return entity_words[0] if entity_words else None
+    
+    def _detect_circular_dependencies(self, dependency_map: Dict[str, List[str]], 
+                                    tasks: List[Task]) -> List[List[str]]:
+        """
+        Detect circular dependencies using depth-first search.
+        
+        Args:
+            dependency_map: Mapping of task_id to dependent task_ids
+            tasks: List of all tasks
+            
+        Returns:
+            List of circular dependency chains
+        """
+        # Build task lookup for names
+        task_lookup = {task.id: task.name for task in tasks}
+        
+        # Track visited nodes and recursion stack
+        visited = set()
+        rec_stack = set()
+        cycles = []
+        
+        def dfs(task_id: str, path: List[str]) -> None:
+            """Depth-first search to find cycles"""
+            visited.add(task_id)
+            rec_stack.add(task_id)
+            path.append(task_id)
+            
+            # Check all dependencies
+            if task_id in dependency_map:
+                for dependent_id in dependency_map[task_id]:
+                    if dependent_id not in visited:
+                        dfs(dependent_id, path.copy())
+                    elif dependent_id in rec_stack:
+                        # Found a cycle
+                        cycle_start = path.index(dependent_id)
+                        cycle = path[cycle_start:] + [dependent_id]
+                        # Convert to task names for readability
+                        cycle_names = [task_lookup.get(tid, tid) for tid in cycle]
+                        cycles.append(cycle_names)
+            
+            rec_stack.remove(task_id)
+        
+        # Check all tasks
+        all_task_ids = set(task.id for task in tasks)
+        for task_id in all_task_ids:
+            if task_id not in visited:
+                dfs(task_id, [])
+        
+        return cycles
+    
+    def suggest_task_order(self, tasks: List[Task]) -> List[Task]:
+        """
+        Suggest an optimal order for tasks based on dependencies.
+        
+        Uses topological sort with priority consideration.
+        
+        Args:
+            tasks: List of tasks to order
+            
+        Returns:
+            Ordered list of tasks
+        """
+        # Build dependency graph
+        dep_map = self.analyze_dependencies(tasks)
+        
+        # Build reverse map (task -> its dependencies)
+        task_deps = {}
+        for task in tasks:
+            task_deps[task.id] = task.dependencies or []
+            
+        # Count incoming edges
+        in_degree = {task.id: 0 for task in tasks}
+        for deps in task_deps.values():
+            for dep in deps:
+                if dep in in_degree:
+                    in_degree[dep] += 1
+        
+        # Priority queue for tasks with no dependencies
+        # Use negative priority for max heap behavior
+        import heapq
+        ready = []
+        for task in tasks:
+            if in_degree[task.id] == 0:
+                # Sort by priority then by creation date
+                priority_value = {
+                    Priority.URGENT: 0,
+                    Priority.HIGH: 1,
+                    Priority.MEDIUM: 2,
+                    Priority.LOW: 3
+                }.get(task.priority, 2)
+                heapq.heappush(ready, (priority_value, task.created_at.timestamp(), task))
+        
+        ordered = []
+        while ready:
+            _, _, task = heapq.heappop(ready)
+            ordered.append(task)
+            
+            # Reduce in-degree for dependent tasks
+            if task.id in dep_map:
+                for dependent_id in dep_map[task.id]:
+                    in_degree[dependent_id] -= 1
+                    if in_degree[dependent_id] == 0:
+                        # Find task object
+                        dependent_task = next((t for t in tasks if t.id == dependent_id), None)
+                        if dependent_task:
+                            priority_value = {
+                                Priority.URGENT: 0,
+                                Priority.HIGH: 1,
+                                Priority.MEDIUM: 2,
+                                Priority.LOW: 3
+                            }.get(dependent_task.priority, 2)
+                            heapq.heappush(ready, 
+                                         (priority_value, dependent_task.created_at.timestamp(), dependent_task))
+        
+        # If not all tasks were ordered, there's a cycle
+        if len(ordered) < len(tasks):
+            logger.warning(f"Could not order all tasks due to circular dependencies")
+            # Add remaining tasks at the end
+            ordered_ids = {t.id for t in ordered}
+            for task in tasks:
+                if task.id not in ordered_ids:
+                    ordered.append(task)
+        
+        return ordered
         
     def get_decisions_for_task(self, task_id: str) -> List[Decision]:
         """
@@ -382,12 +676,12 @@ class Context:
             self.implementations[task_id]
         )
     
-    @with_fallback(lambda self, decision: logger.warning(f"Failed to persist decision {decision.id}"))
+    @with_fallback(lambda self, decision: logger.warning(f"Failed to persist decision {decision.decision_id}"))
     async def _persist_decision_safe(self, decision: Decision):
         """Persist decision with graceful degradation"""
         await self.persistence.store(
             "decisions",
-            decision.id,
+            decision.decision_id,
             decision.__dict__
         )
     

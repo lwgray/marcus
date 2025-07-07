@@ -14,7 +14,9 @@ import json
 
 from src.core.models import Task, TaskStatus, Priority
 from src.ai.providers.llm_abstraction import LLMAbstraction
-from src.intelligence.dependency_inferer import DependencyInferer
+from src.intelligence.dependency_inferer_hybrid import HybridDependencyInferer
+from src.integrations.ai_analysis_engine_fixed import AIAnalysisEngine
+from src.config.hybrid_inference_config import HybridInferenceConfig
 from src.ai.types import AnalysisContext
 
 logger = logging.getLogger(__name__)
@@ -73,9 +75,12 @@ class AdvancedPRDParser:
     into complete task breakdown with intelligent dependencies and risk assessment
     """
     
-    def __init__(self):
+    def __init__(self, hybrid_config: Optional[HybridInferenceConfig] = None):
         self.llm_client = LLMAbstraction()
-        self.dependency_inferer = DependencyInferer()
+        
+        # Set up hybrid dependency inference with configurable thresholds
+        ai_engine = AIAnalysisEngine() if hybrid_config and hybrid_config.enable_ai_inference else None
+        self.dependency_inferer = HybridDependencyInferer(ai_engine, hybrid_config)
         
         # PRD parsing configuration
         self.max_tasks_per_epic = 8

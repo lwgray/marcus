@@ -72,7 +72,7 @@ class MemoryEnhanced(Memory):
         
         # Enhance duration estimate
         enhanced_duration = self._calculate_enhanced_duration(
-            task, agent_history, complexity_factor
+            task, agent_id, agent_history, complexity_factor
         )
         
         # Identify risk factors
@@ -123,8 +123,15 @@ class MemoryEnhanced(Memory):
             return 0.1
             
         # Logarithmic growth with plateau
-        confidence = min(0.95, 0.1 + (0.85 * math.log(sample_size + 1) / math.log(self.confidence_threshold)))
-        return max(0.1, confidence)
+        # At 10 samples, confidence should be around 0.5-0.6
+        # At 20 samples (threshold), confidence should be around 0.8
+        if sample_size >= self.confidence_threshold:
+            confidence = min(0.95, 0.8 + (0.15 * (sample_size - self.confidence_threshold) / self.confidence_threshold))
+        else:
+            # Scale from 0.1 to 0.8 based on samples
+            confidence = 0.1 + (0.7 * math.log(sample_size + 1) / math.log(self.confidence_threshold + 1))
+        
+        return max(0.1, min(0.95, confidence))
         
     def _calculate_complexity_factor(self, task: Task, agent_history: List[TaskOutcome]) -> float:
         """
@@ -179,7 +186,7 @@ class MemoryEnhanced(Memory):
                 
         return sum(weights) / len(weights) if weights else 0.5
         
-    def _calculate_enhanced_duration(self, task: Task, agent_history: List[TaskOutcome], 
+    def _calculate_enhanced_duration(self, task: Task, agent_id: str, agent_history: List[TaskOutcome], 
                                    complexity_factor: float) -> float:
         """
         Calculate enhanced duration estimate considering multiple factors.

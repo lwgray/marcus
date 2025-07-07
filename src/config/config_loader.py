@@ -152,6 +152,37 @@ class ConfigLoader:
         
         return value
     
+    def get_feature_config(self, feature: str) -> Dict[str, Any]:
+        """
+        Get feature configuration with backward compatibility.
+        
+        Supports both old boolean format and new object format:
+        - Old: "events": true
+        - New: "events": {"enabled": true, "store_history": true}
+        
+        Args:
+            feature: Feature name (events, context, memory, visibility)
+            
+        Returns:
+            Feature configuration dictionary
+        """
+        config = self.get(f'features.{feature}')
+        
+        if config is None:
+            # Feature not configured
+            return {"enabled": False}
+        elif isinstance(config, bool):
+            # Old format - convert to new
+            return {"enabled": config}
+        elif isinstance(config, dict):
+            # New format - ensure 'enabled' field exists
+            if 'enabled' not in config:
+                config['enabled'] = True
+            return config
+        else:
+            # Invalid format
+            return {"enabled": False}
+    
     def get_kanban_config(self) -> Dict[str, Any]:
         """Get the complete kanban configuration for the selected provider"""
         provider = self.get('kanban.provider', 'planka')
@@ -172,6 +203,23 @@ class ConfigLoader:
     def get_communication_config(self) -> Dict[str, Any]:
         """Get the complete communication configuration"""
         return self.get('communication', {})
+    
+    def get_hybrid_inference_config(self) -> Dict[str, Any]:
+        """Get the hybrid inference configuration"""
+        from src.config.hybrid_inference_config import HybridInferenceConfig
+        
+        config_dict = self.get('hybrid_inference', {})
+        if not config_dict:
+            # Return default config
+            return HybridInferenceConfig()
+        
+        try:
+            config = HybridInferenceConfig.from_dict(config_dict)
+            config.validate()
+            return config
+        except Exception as e:
+            logger.warning(f"Invalid hybrid inference config, using defaults: {e}")
+            return HybridInferenceConfig()
     
     def reload(self):
         """Reload the configuration from disk"""

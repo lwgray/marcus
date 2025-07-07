@@ -12,7 +12,8 @@ from datetime import datetime
 from src.core.models import Task, TaskStatus, Priority
 from src.ai.core.ai_engine import MarcusAIEngine
 from src.ai.types import AnalysisContext, AssignmentContext
-from src.intelligence.dependency_inferer import DependencyInferer
+from src.intelligence.dependency_inferer_hybrid import HybridDependencyInferer
+from src.integrations.ai_analysis_engine_fixed import AIAnalysisEngine
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +29,12 @@ class AITaskAssignmentEngine:
     - Phase 4: Predictive impact analysis
     """
     
-    def __init__(self, ai_engine: MarcusAIEngine, project_tasks: List[Task]):
+    def __init__(self, ai_engine: MarcusAIEngine, project_tasks: List[Task], 
+                 ai_analysis_engine: Optional[AIAnalysisEngine] = None):
         self.ai_engine = ai_engine
         self.project_tasks = project_tasks
-        self.dependency_inferer = DependencyInferer()
+        # Use hybrid dependency inferer for better accuracy with fewer API calls
+        self.dependency_inferer = HybridDependencyInferer(ai_analysis_engine)
         
     async def find_optimal_task_for_agent(
         self,

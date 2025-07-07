@@ -103,32 +103,71 @@ class MarcusServer:
         self.pipeline_visualizer = SharedPipelineVisualizer()
         
         # New enhancement systems (optional based on config)
+        # Get feature configurations with granular settings
+        config_loader = get_config()
+        events_config = config_loader.get_feature_config('events')
+        context_config = config_loader.get_feature_config('context')
+        memory_config = config_loader.get_feature_config('memory')
+        visibility_config = config_loader.get_feature_config('visibility')
+        
         # Persistence layer (if any enhanced features are enabled)
         self.persistence = None
-        if any(self.config.get(f'features.{feature}', False) 
-               for feature in ['events', 'context', 'memory']):
+        if any(cfg['enabled'] for cfg in [events_config, context_config, memory_config]):
             from src.core.persistence import Persistence, SQLitePersistence
             # Use SQLite for better performance
-            self.persistence = Persistence(backend=SQLitePersistence())
+            persistence_path = self.config.get('features.persistence_path', './data/marcus.db')
+            self.persistence = Persistence(backend=SQLitePersistence(Path(persistence_path)))
         
         # Events system for loose coupling
-        if self.config.get('features.events', False):
-            self.events = Events(store_history=True, persistence=self.persistence)
+        if events_config['enabled']:
+            self.events = Events(
+                store_history=events_config.get('store_history', True),
+                persistence=self.persistence
+            )
         else:
             self.events = None
             
         # Context system for rich task assignments
-        if self.config.get('features.context', False):
-            self.context = Context(events=self.events, persistence=self.persistence)
+        if context_config['enabled']:
+            # Check if we should use hybrid inference
+            hybrid_config = config_loader.get_hybrid_inference_config()
+            use_hybrid = context_config.get('use_hybrid_inference', True)
+            
+            self.context = Context(
+                events=self.events, 
+                persistence=self.persistence,
+                use_hybrid_inference=use_hybrid and hybrid_config.enable_ai_inference,
+                ai_engine=self.ai_engine if use_hybrid else None
+            )
+            # Apply context-specific settings
+            if 'infer_dependencies' in context_config:
+                self.context.default_infer_dependencies = context_config['infer_dependencies']
         else:
             self.context = None
             
         # Memory system for learning and prediction
-        if self.config.get('features.memory', False):
-            from src.core.memory import Memory
-            self.memory = Memory(events=self.events, persistence=self.persistence)
+        if memory_config['enabled']:
+            # Check if we should use enhanced memory
+            if memory_config.get('use_v2_predictions', False):
+                from src.core.memory_enhanced import MemoryEnhanced
+                self.memory = MemoryEnhanced(events=self.events, persistence=self.persistence)
+            else:
+                from src.core.memory import Memory
+                self.memory = Memory(events=self.events, persistence=self.persistence)
+            
+            # Apply memory-specific settings
+            if 'learning_rate' in memory_config:
+                self.memory.learning_rate = memory_config['learning_rate']
+            if 'min_samples' in memory_config:
+                self.memory.confidence_threshold = memory_config['min_samples']
         else:
             self.memory = None
+        
+        # Event-integrated visualization (if events and visibility enabled)
+        self.event_visualizer = None
+        if events_config['enabled'] and visibility_config['enabled']:
+            from src.visualization.event_integrated_visualizer import EventIntegratedVisualizer
+            self.event_visualizer = EventIntegratedVisualizer(events_system=self.events)
         
         # Log startup
         self.log_event("server_startup", {
@@ -174,6 +213,11 @@ class MarcusServer:
         
         # Initialize kanban if needed
         await self.initialize_kanban()
+        
+        # Initialize event visualizer if available
+        if self.event_visualizer:
+            await self.event_visualizer.initialize()
+            print("✅ Event-integrated visualization enabled", file=sys.stderr)
         
         # Wrap AI engine for token tracking
         self.ai_engine = ai_usage_middleware.wrap_ai_provider(self.ai_engine)

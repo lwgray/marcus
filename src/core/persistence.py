@@ -455,3 +455,97 @@ class Persistence:
                 logger.info(f"Cleaned up {count} old items from {collection}")
                 
         return results
+
+
+class MemoryPersistence(PersistenceBackend):
+    """In-memory persistence for testing and temporary storage"""
+    
+    def __init__(self):
+        """Initialize memory persistence"""
+        self.data: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        self._locks = {}
+        
+    def _get_lock(self, collection: str):
+        """Get or create a lock for a collection"""
+        if collection not in self._locks:
+            self._locks[collection] = asyncio.Lock()
+        return self._locks[collection]
+        
+    async def store(self, collection: str, key: str, data: Dict[str, Any]) -> None:
+        """Store data in memory"""
+        lock = self._get_lock(collection)
+        async with lock:
+            if collection not in self.data:
+                self.data[collection] = {}
+                
+            self.data[collection][key] = {
+                **data,
+                "_stored_at": datetime.now().isoformat()
+            }
+            
+    async def retrieve(self, collection: str, key: str) -> Optional[Dict[str, Any]]:
+        """Retrieve data from memory"""
+        lock = self._get_lock(collection)
+        async with lock:
+            if collection not in self.data:
+                return None
+                
+            return self.data[collection].get(key)
+            
+    async def query(self, collection: str, filter_func=None, limit: int = 100) -> List[Dict[str, Any]]:
+        """Query data from memory"""
+        lock = self._get_lock(collection)
+        async with lock:
+            if collection not in self.data:
+                return []
+                
+            # Convert to list of items
+            items = [
+                {"_key": k, **v} for k, v in self.data[collection].items()
+            ]
+            
+            # Apply filter if provided
+            if filter_func:
+                items = [item for item in items if filter_func(item)]
+                
+            # Sort by stored time (newest first) and limit
+            items.sort(
+                key=lambda x: x.get("_stored_at", ""), 
+                reverse=True
+            )
+            
+            return items[:limit]
+            
+    async def delete(self, collection: str, key: str) -> None:
+        """Delete data from memory"""
+        lock = self._get_lock(collection)
+        async with lock:
+            if collection in self.data and key in self.data[collection]:
+                del self.data[collection][key]
+                
+    async def clear_old(self, collection: str, days: int) -> int:
+        """Clear old data from memory"""
+        lock = self._get_lock(collection)
+        async with lock:
+            if collection not in self.data:
+                return 0
+                
+            cutoff = datetime.now() - timedelta(days=days)
+            removed_count = 0
+            
+            # Create new dict with non-old entries
+            new_data = {}
+            for key, value in self.data[collection].items():
+                stored_at_str = value.get("_stored_at")
+                if stored_at_str:
+                    stored_at = datetime.fromisoformat(stored_at_str)
+                    if stored_at >= cutoff:
+                        new_data[key] = value
+                    else:
+                        removed_count += 1
+                else:
+                    # Keep entries without timestamp
+                    new_data[key] = value
+                    
+            self.data[collection] = new_data
+            return removed_count

@@ -16,6 +16,8 @@ from src.api.pipeline_enhancement_api import pipeline_api, setup_websocket_handl
 from src.api.agent_management_api import agent_api, setup_agent_websocket_handlers
 from src.api.project_management_api import project_api
 from src.api.cost_tracking_api import cost_tracking_bp
+from src.api.context_visualization_api import context_api
+from src.api.memory_insights_api import memory_api
 
 # Create Flask app
 app = Flask(__name__)
@@ -32,6 +34,8 @@ app.register_blueprint(pipeline_api)
 app.register_blueprint(agent_api)
 app.register_blueprint(project_api)
 app.register_blueprint(cost_tracking_bp)
+app.register_blueprint(context_api)
+app.register_blueprint(memory_api)
 
 # Static file serving for frontend
 @app.route('/')
