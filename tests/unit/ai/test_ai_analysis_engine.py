@@ -594,7 +594,7 @@ Remember: Take your time, test thoroughly, and ask questions!"""
 
             # Mock anthropic module
             with patch(
-                "src.integrations.ai_analysis_engine_fixed.anthropic"
+                "src.integrations.ai_analysis_engine.anthropic"
             ) as mock_anthropic:
                 mock_client = Mock()
                 mock_anthropic.Anthropic.return_value = mock_client
@@ -617,7 +617,7 @@ Remember: Take your time, test thoroughly, and ask questions!"""
             mock_get_config.return_value = mock_config
 
             with patch(
-                "src.integrations.ai_analysis_engine_fixed.anthropic"
+                "src.integrations.ai_analysis_engine.anthropic"
             ) as mock_anthropic:
                 mock_anthropic.Anthropic.side_effect = Exception("Connection failed")
 
@@ -1144,9 +1144,7 @@ Write unit tests for auth flow
     @pytest.mark.asyncio
     async def test_initialize_success(self, capsys):
         """Test successful initialization"""
-        with patch(
-            "src.integrations.ai_analysis_engine_fixed.anthropic"
-        ) as mock_anthropic:
+        with patch("src.integrations.ai_analysis_engine.anthropic") as mock_anthropic:
             mock_client = Mock()
             mock_response = Mock()
             mock_response.content = [Mock(text="test")]
@@ -1175,9 +1173,7 @@ Write unit tests for auth flow
     @pytest.mark.asyncio
     async def test_initialize_connection_failure(self, capsys):
         """Test initialize when connection test fails"""
-        with patch(
-            "src.integrations.ai_analysis_engine_fixed.anthropic"
-        ) as mock_anthropic:
+        with patch("src.integrations.ai_analysis_engine.anthropic") as mock_anthropic:
             mock_client = Mock()
             mock_client.messages.create.side_effect = Exception("Connection failed")
             mock_anthropic.Anthropic.return_value = mock_client
