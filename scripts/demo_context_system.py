@@ -38,9 +38,8 @@ async def create_example_project() -> List[Task]:
             due_date=None,
             estimated_hours=4.0,
             labels=["setup", "infrastructure"],
-            dependencies=[]
+            dependencies=[],
         ),
-
         # Database layer
         Task(
             id="db_1",
@@ -54,9 +53,8 @@ async def create_example_project() -> List[Task]:
             due_date=None,
             estimated_hours=6.0,
             labels=["database", "design"],
-            dependencies=["infra_1"]
+            dependencies=["infra_1"],
         ),
-
         Task(
             id="db_2",
             name="Implement Database Models",
@@ -69,9 +67,8 @@ async def create_example_project() -> List[Task]:
             due_date=None,
             estimated_hours=8.0,
             labels=["database", "backend", "models"],
-            dependencies=[]  # Will be inferred
+            dependencies=[],  # Will be inferred
         ),
-
         # Backend layer
         Task(
             id="api_1",
@@ -85,9 +82,8 @@ async def create_example_project() -> List[Task]:
             due_date=None,
             estimated_hours=10.0,
             labels=["api", "auth", "backend"],
-            dependencies=[]  # Will be inferred
+            dependencies=[],  # Will be inferred
         ),
-
         Task(
             id="api_2",
             name="Create Product API",
@@ -100,9 +96,8 @@ async def create_example_project() -> List[Task]:
             due_date=None,
             estimated_hours=12.0,
             labels=["api", "backend", "products"],
-            dependencies=[]  # Will be inferred
+            dependencies=[],  # Will be inferred
         ),
-
         # Frontend layer
         Task(
             id="ui_1",
@@ -116,9 +111,8 @@ async def create_example_project() -> List[Task]:
             due_date=None,
             estimated_hours=8.0,
             labels=["frontend", "ui", "design"],
-            dependencies=[]
+            dependencies=[],
         ),
-
         Task(
             id="ui_2",
             name="Implement Product Catalog UI",
@@ -131,9 +125,8 @@ async def create_example_project() -> List[Task]:
             due_date=None,
             estimated_hours=10.0,
             labels=["frontend", "ui", "products"],
-            dependencies=[]  # Will be inferred
+            dependencies=[],  # Will be inferred
         ),
-
         # Testing layer
         Task(
             id="test_1",
@@ -147,9 +140,8 @@ async def create_example_project() -> List[Task]:
             due_date=None,
             estimated_hours=6.0,
             labels=["test", "auth"],
-            dependencies=[]  # Will be inferred
+            dependencies=[],  # Will be inferred
         ),
-
         # Deployment
         Task(
             id="deploy_1",
@@ -163,8 +155,8 @@ async def create_example_project() -> List[Task]:
             due_date=None,
             estimated_hours=4.0,
             labels=["deploy", "production"],
-            dependencies=[]  # Will be inferred
-        )
+            dependencies=[],  # Will be inferred
+        ),
     ]
 
     return tasks
@@ -228,22 +220,22 @@ async def demonstrate_decision_tracking(context: Context):
             "task_id": "db_1",
             "what": "Use PostgreSQL as primary database",
             "why": "Need ACID compliance, complex queries, and JSON support",
-            "impact": "All services must use PostgreSQL client libraries"
+            "impact": "All services must use PostgreSQL client libraries",
         },
         {
             "agent_id": "bob",
             "task_id": "api_1",
             "what": "Implement JWT authentication",
             "why": "Stateless, scalable, and works well with microservices",
-            "impact": "Frontend must store tokens securely, API gateway needs JWT validation"
+            "impact": "Frontend must store tokens securely, API gateway needs JWT validation",
         },
         {
             "agent_id": "alice",
             "task_id": "db_1",
             "what": "Use UUID for primary keys",
             "why": "Better for distributed systems and prevents ID enumeration",
-            "impact": "Slightly larger storage, need UUID generation in all services"
-        }
+            "impact": "Slightly larger storage, need UUID generation in all services",
+        },
     ]
 
     print("\n1. Logging architectural decisions:")
@@ -294,18 +286,18 @@ async def demonstrate_implementation_sharing(context: Context):
                         "id": "UUID PRIMARY KEY",
                         "email": "VARCHAR(255) UNIQUE",
                         "password_hash": "VARCHAR(255)",
-                        "created_at": "TIMESTAMP"
+                        "created_at": "TIMESTAMP",
                     },
                     "products": {
                         "id": "UUID PRIMARY KEY",
                         "name": "VARCHAR(255)",
                         "price": "DECIMAL(10,2)",
-                        "inventory": "INTEGER"
-                    }
+                        "inventory": "INTEGER",
+                    },
                 },
                 "connection": "postgresql://localhost:5432/ecommerce",
-                "migrations": ["001_initial.sql", "002_add_indexes.sql"]
-            }
+                "migrations": ["001_initial.sql", "002_add_indexes.sql"],
+            },
         },
         {
             "task_id": "api_1",
@@ -315,15 +307,15 @@ async def demonstrate_implementation_sharing(context: Context):
                 "endpoints": {
                     "/auth/login": "POST - Login with email/password",
                     "/auth/refresh": "POST - Refresh access token",
-                    "/auth/logout": "POST - Invalidate refresh token"
+                    "/auth/logout": "POST - Invalidate refresh token",
                 },
                 "token_config": {
                     "access_token_expire": "15 minutes",
                     "refresh_token_expire": "7 days",
-                    "algorithm": "HS256"
-                }
-            }
-        }
+                    "algorithm": "HS256",
+                },
+            },
+        },
     ]
 
     print("\n1. Adding implementations:")
@@ -348,7 +340,7 @@ async def demonstrate_implementation_sharing(context: Context):
 
     print("\n   Architectural decisions to consider:")
     for dec in ctx.architectural_decisions[:3]:
-        print(f"     - {dec.what}")
+        print(f"     - {dec['what']}")
 
     # Show how context helps
     print("\n3. How context helps the next agent:")
@@ -381,7 +373,7 @@ async def demonstrate_context_updates(context: Context, events: Events):
         task_id="ui_1",
         what="Use Material-UI component library",
         why="Consistent design, good accessibility, TypeScript support",
-        impact="All UI components must follow Material Design principles"
+        impact="All UI components must follow Material Design principles",
     )
     print("   ✓ Logged new architectural decision")
 
@@ -390,12 +382,9 @@ async def demonstrate_context_updates(context: Context, events: Events):
         "ui_1",
         {
             "component_library": "Material-UI v5",
-            "theme": {
-                "primary_color": "#1976d2",
-                "secondary_color": "#dc004e"
-            },
-            "components_created": ["Button", "Card", "Form", "Table"]
-        }
+            "theme": {"primary_color": "#1976d2", "secondary_color": "#dc004e"},
+            "components_created": ["Button", "Card", "Form", "Table"],
+        },
     )
     print("   ✓ Added UI implementation details")
 
@@ -413,7 +402,8 @@ async def demonstrate_dependency_workflow():
     print("\n\n🔄 DEPENDENCY AWARENESS WORKFLOW")
     print("=" * 60)
 
-    print("""
+    print(
+        """
 The dependency awareness workflow helps Marcus understand task relationships
 and prevent illogical assignments:
 
@@ -452,7 +442,8 @@ BENEFITS:
 ✓ Reduces agent confusion
 ✓ Accelerates development
 ✓ Improves quality
-""")
+"""
+    )
 
 
 async def main():
@@ -482,7 +473,8 @@ async def main():
     # Summary
     print("\n\n📈 CONTEXT SYSTEM BENEFITS")
     print("=" * 60)
-    print("""
+    print(
+        """
 The enhanced context system provides:
 
 1. Smart Dependency Management
@@ -504,7 +496,8 @@ The enhanced context system provides:
    - Reduced miscommunication
    - Faster development
    - Higher quality results
-""")
+"""
+    )
 
     print("\n✅ Demonstration complete!")
 

@@ -2,35 +2,35 @@
 MCP Tools Package
 
 This package contains all MCP tool implementations organized by domain:
-- agent_tools: Agent management (register, status, list)
-- task_tools: Task operations (request, progress, blockers)
-- project_tools: Project monitoring
-- system_tools: System health and diagnostics
-- nlp_tools: Natural language processing tools
+- agent: Agent management (register, status, list)
+- task: Task operations (request, progress, blockers)
+- project: Project monitoring
+- system: System health and diagnostics
+- nlp: Natural language processing tools
 """
 
-from .agent_tools import (
+from .agent import (
     register_agent,
     get_agent_status,
     list_registered_agents
 )
 
-from .task_tools import (
+from .task import (
     request_next_task,
     report_task_progress,
     report_blocker
 )
 
-from .project_tools import (
+from .project import (
     get_project_status
 )
 
-from .system_tools import (
+from .system import (
     ping,
     check_assignment_health
 )
 
-from .nlp_tools import (
+from .nlp import (
     create_project,
     add_feature
 )

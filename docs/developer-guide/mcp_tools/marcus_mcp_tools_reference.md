@@ -28,15 +28,18 @@ The MCP tools are currently split across two files:
 ### Recommended Structure
 ```
 src/
-├── mcp/
+├── marcus_mcp/
 │   ├── __init__.py
 │   ├── server.py              # Main MCP server
 │   ├── tools/
 │   │   ├── __init__.py
-│   │   ├── agent_tools.py     # Agent management
-│   │   ├── task_tools.py      # Task operations
-│   │   ├── project_tools.py   # Project monitoring
-│   │   └── system_tools.py    # System health
+│   │   ├── agent.py           # Agent management
+│   │   ├── task.py            # Task operations
+│   │   ├── project.py         # Project monitoring
+│   │   ├── system.py          # System health
+│   │   ├── nlp.py             # Natural language tools
+│   │   ├── context.py         # Context management
+│   │   └── pipeline.py        # Pipeline enhancement tools
 │   └── handlers.py            # Tool handlers
 ```
 

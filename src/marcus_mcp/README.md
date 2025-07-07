@@ -5,17 +5,19 @@ This directory contains the reorganized Marcus MCP server with a modular archite
 ## Structure
 
 ```
-src/mcp/
+src/marcus_mcp/
 ├── __init__.py          # Package initialization
 ├── server.py            # Main server class and entry point
 ├── handlers.py          # Tool registration and routing
 ├── tools/               # Tool implementations organized by domain
 │   ├── __init__.py      # Tool exports
-│   ├── agent_tools.py   # Agent management (register, status, list)
-│   ├── task_tools.py    # Task operations (request, progress, blockers)
-│   ├── project_tools.py # Project monitoring
-│   ├── system_tools.py  # System health checks
-│   └── nlp_tools.py     # Natural language processing tools
+│   ├── agent.py         # Agent management (register, status, list)
+│   ├── task.py          # Task operations (request, progress, blockers)
+│   ├── project.py       # Project monitoring
+│   ├── system.py        # System health checks
+│   ├── nlp.py           # Natural language processing tools
+│   ├── context.py       # Context management
+│   └── pipeline.py      # Pipeline enhancement tools
 └── README.md            # This file
 ```
 
@@ -41,26 +43,38 @@ python -m src.mcp.server
 
 ## Tool Categories
 
-### Agent Tools (`agent_tools.py`)
+### Agent Tools (`agent.py`)
 - `register_agent`: Register new agents with skills and roles
 - `get_agent_status`: Check agent status and current tasks
 - `list_registered_agents`: List all registered agents
 
-### Task Tools (`task_tools.py`)
+### Task Tools (`task.py`)
 - `request_next_task`: AI-powered optimal task assignment
 - `report_task_progress`: Update task progress and status
 - `report_blocker`: Report blockers with AI suggestions
 
-### Project Tools (`project_tools.py`)
+### Project Tools (`project.py`)
 - `get_project_status`: Get comprehensive project metrics
 
-### System Tools (`system_tools.py`)
+### System Tools (`system.py`)
 - `ping`: Check system connectivity
 - `check_assignment_health`: Monitor assignment system health
 
-### NLP Tools (`nlp_tools.py`)
+### NLP Tools (`nlp.py`)
 - `create_project`: Create projects from natural language
 - `add_feature`: Add features using natural language
+
+### Context Tools (`context.py`)
+- `log_decision`: Log important decisions and context
+- `get_task_context`: Retrieve task-specific context
+
+### Pipeline Tools (`pipeline.py`)
+- `start_replay`: Start pipeline replay functionality
+- `replay_step_forward`: Step forward in pipeline replay
+- `replay_step_backward`: Step backward in pipeline replay
+- `start_what_if_analysis`: Start what-if analysis
+- `simulate_modification`: Simulate pipeline modifications
+- `compare_pipelines`: Compare different pipeline configurations
 
 ## Migration Notes
 

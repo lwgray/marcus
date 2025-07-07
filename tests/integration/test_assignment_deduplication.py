@@ -16,7 +16,7 @@ import os
 
 # Import the components we'll be testing
 from src.marcus_mcp.server import MarcusServer
-from src.marcus_mcp.tools.task_tools import (
+from src.marcus_mcp.tools.task import (
     find_optimal_task_for_agent,
     request_next_task
 )

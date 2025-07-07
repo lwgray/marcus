@@ -21,23 +21,35 @@ logger = logging.getLogger(__name__)
 
 class EventIntegratedVisualizer:
     """
-    Bridges the Events system with the visualization pipeline.
+    Bridges the Events system with the visualization pipeline and enhanced systems.
     
     Instead of polling for updates, this subscribes to events and
-    updates the visualization in real-time.
+    updates the visualization in real-time. Integrates with Context, Memory,
+    and Dependency systems to provide comprehensive project intelligence.
     """
     
-    def __init__(self, events_system: Optional[Events] = None):
+    def __init__(self, events_system: Optional[Events] = None, 
+                 context_system=None, memory_system=None):
         """
         Initialize the event-integrated visualizer.
         
         Args:
             events_system: The Events system to subscribe to
+            context_system: The Context system for dependency and decision insights
+            memory_system: The Memory system for predictions and learning insights
         """
         self.events = events_system
+        self.context = context_system
+        self.memory = memory_system
         self.shared_pipeline = SharedPipelineEvents()
         self.active_flows: Dict[str, Dict[str, Any]] = {}
         self._subscribed = False
+        
+        # Enhanced tracking for integrated systems
+        self.context_insights: Dict[str, Any] = {}
+        self.memory_predictions: Dict[str, Any] = {}
+        self.dependency_analysis: Dict[str, Any] = {}
+        self.system_correlations: List[Dict[str, Any]] = []
         
     async def initialize(self):
         """Initialize and subscribe to events"""
@@ -293,3 +305,319 @@ class EventIntegratedVisualizer:
             summary_parts.append(f"{len(impl_data['patterns'])} patterns")
             
         return ", ".join(summary_parts) if summary_parts else "Implementation details available"
+    
+    # ===== ENHANCED SYSTEM INTEGRATION METHODS =====
+    
+    async def get_context_insights(self, task_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get comprehensive context insights from the Context system.
+        
+        Args:
+            task_id: Optional specific task to analyze
+            
+        Returns:
+            Context insights including dependencies, decisions, and knowledge flow
+        """
+        if not self.context:
+            return {"error": "Context system not available"}
+            
+        insights = {
+            "timestamp": datetime.now().isoformat(),
+            "task_focus": task_id,
+            "dependency_analysis": {},
+            "decision_tracking": {},
+            "knowledge_flow": {},
+            "system_health": {}
+        }
+        
+        try:
+            # Get implementation summary
+            impl_summary = self.context.get_implementation_summary()
+            insights["system_health"] = {
+                "total_implementations": impl_summary.get("total_implementations", 0),
+                "total_decisions": impl_summary.get("total_decisions", 0),
+                "pattern_types": impl_summary.get("pattern_types", []),
+                "active_contexts": impl_summary.get("tasks_with_dependents", 0)
+            }
+            
+            # Get recent decisions
+            if task_id:
+                decisions = self.context.get_decisions_for_task(task_id)
+                insights["decision_tracking"] = {
+                    "task_decisions": len(decisions),
+                    "recent_decisions": [
+                        {
+                            "what": d.what,
+                            "why": d.why,
+                            "impact": d.impact,
+                            "agent": d.agent_id,
+                            "timestamp": d.timestamp.isoformat()
+                        }
+                        for d in decisions[-3:]  # Last 3 decisions
+                    ]
+                }
+            
+            # Calculate knowledge flow metrics
+            insights["knowledge_flow"] = {
+                "active_implementations": len(self.context.implementations),
+                "cross_task_references": sum(
+                    len(deps) for deps in self.context.dependencies.values()
+                ),
+                "pattern_reuse": len(self.context.patterns),
+                "context_sharing_active": len(self.context.implementations) > 0
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting context insights: {e}")
+            insights["error"] = str(e)
+            
+        return insights
+    
+    async def get_memory_predictions(self, agent_id: Optional[str] = None, 
+                                   task_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get comprehensive memory system predictions and learning insights.
+        
+        Args:
+            agent_id: Optional specific agent to analyze
+            task_id: Optional specific task to predict
+            
+        Returns:
+            Memory insights including predictions, confidence, and learning patterns
+        """
+        if not self.memory:
+            return {"error": "Memory system not available"}
+            
+        insights = {
+            "timestamp": datetime.now().isoformat(),
+            "agent_focus": agent_id,
+            "task_focus": task_id,
+            "system_intelligence": {},
+            "agent_profiles": {},
+            "prediction_accuracy": {},
+            "learning_trends": {}
+        }
+        
+        try:
+            # Get system-wide intelligence metrics
+            insights["system_intelligence"] = {
+                "total_outcomes_tracked": len(self.memory.episodic.get("outcomes", [])),
+                "total_agents_profiled": len(self.memory.semantic.get("agent_profiles", {})),
+                "prediction_confidence_available": hasattr(self.memory, 'predict_task_outcome_v2'),
+                "learning_active": len(self.memory.episodic.get("outcomes", [])) > 0
+            }
+            
+            # Get agent profile insights
+            if agent_id and agent_id in self.memory.semantic.get("agent_profiles", {}):
+                profile = self.memory.semantic["agent_profiles"][agent_id]
+                insights["agent_profiles"][agent_id] = {
+                    "total_tasks": profile.total_tasks,
+                    "success_rate": profile.successful_tasks / max(1, profile.total_tasks),
+                    "top_skills": sorted(
+                        profile.skill_success_rates.items(),
+                        key=lambda x: x[1],
+                        reverse=True
+                    )[:3],
+                    "common_blockers": list(profile.common_blockers.keys())[:3],
+                    "estimation_accuracy": profile.average_estimation_accuracy
+                }
+            else:
+                # Get overview of all agents
+                for aid, profile in self.memory.semantic.get("agent_profiles", {}).items():
+                    insights["agent_profiles"][aid] = {
+                        "total_tasks": profile.total_tasks,
+                        "success_rate": profile.successful_tasks / max(1, profile.total_tasks),
+                        "expertise_areas": len(profile.skill_success_rates)
+                    }
+            
+            # Calculate learning trends
+            outcomes = self.memory.episodic.get("outcomes", [])
+            if outcomes:
+                recent_outcomes = outcomes[-10:]  # Last 10 outcomes
+                insights["learning_trends"] = {
+                    "recent_success_rate": sum(1 for o in recent_outcomes if o.success) / len(recent_outcomes),
+                    "estimation_accuracy_trend": sum(o.estimation_accuracy for o in recent_outcomes) / len(recent_outcomes),
+                    "learning_velocity": len(recent_outcomes),
+                    "skill_development_active": any(
+                        len(profile.skill_success_rates) > 0 
+                        for profile in self.memory.semantic.get("agent_profiles", {}).values()
+                    )
+                }
+                
+        except Exception as e:
+            logger.error(f"Error getting memory predictions: {e}")
+            insights["error"] = str(e)
+            
+        return insights
+    
+    async def get_dependency_analysis(self, tasks: Optional[List] = None) -> Dict[str, Any]:
+        """
+        Get comprehensive dependency analysis from the Context system.
+        
+        Args:
+            tasks: Optional list of tasks to analyze
+            
+        Returns:
+            Dependency insights including relationships, ordering, and bottlenecks
+        """
+        if not self.context:
+            return {"error": "Context system not available"}
+            
+        insights = {
+            "timestamp": datetime.now().isoformat(),
+            "dependency_health": {},
+            "task_relationships": {},
+            "optimization_opportunities": {},
+            "system_efficiency": {}
+        }
+        
+        try:
+            if tasks:
+                # Analyze provided tasks
+                dependency_map = await self.context.analyze_dependencies(tasks, infer_implicit=True)
+                ordered_tasks = await self.context.suggest_task_order(tasks)
+                
+                insights["task_relationships"] = {
+                    "total_tasks": len(tasks),
+                    "explicit_dependencies": sum(len(t.dependencies or []) for t in tasks),
+                    "inferred_dependencies": sum(len(deps) for deps in dependency_map.values()),
+                    "dependency_ratio": sum(len(deps) for deps in dependency_map.values()) / max(1, len(tasks)),
+                    "optimization_applied": len(ordered_tasks) == len(tasks)
+                }
+                
+                # Detect potential bottlenecks
+                bottlenecks = []
+                for task_id, dependents in dependency_map.items():
+                    if len(dependents) > 2:  # Task blocks multiple others
+                        task_name = next((t.name for t in tasks if t.id == task_id), task_id)
+                        bottlenecks.append({
+                            "task_id": task_id,
+                            "task_name": task_name,
+                            "blocks_count": len(dependents)
+                        })
+                
+                insights["optimization_opportunities"] = {
+                    "potential_bottlenecks": bottlenecks,
+                    "parallelizable_tasks": len(tasks) - len(dependency_map),
+                    "critical_path_length": len(ordered_tasks),
+                    "dependency_complexity": "high" if len(dependency_map) > len(tasks) * 0.5 else "low"
+                }
+            
+            # System-wide dependency health
+            insights["dependency_health"] = {
+                "total_tracked_dependencies": len(self.context.dependencies),
+                "active_implementations": len(self.context.implementations),
+                "decision_context_available": len(self.context.decisions) > 0,
+                "hybrid_inference_active": hasattr(self.context, 'hybrid_inferer') and self.context.hybrid_inferer is not None
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting dependency analysis: {e}")
+            insights["error"] = str(e)
+            
+        return insights
+    
+    async def get_system_correlations(self) -> Dict[str, Any]:
+        """
+        Get insights into how all enhanced systems work together.
+        
+        Returns:
+            Cross-system correlation insights and integration health
+        """
+        correlations = {
+            "timestamp": datetime.now().isoformat(),
+            "integration_health": {},
+            "cross_system_insights": {},
+            "value_amplification": {},
+            "system_synergy": {}
+        }
+        
+        try:
+            # Check system availability
+            systems_available = {
+                "events": self.events is not None,
+                "context": self.context is not None,
+                "memory": self.memory is not None,
+                "visibility": True  # Self
+            }
+            
+            correlations["integration_health"] = {
+                "systems_connected": sum(systems_available.values()),
+                "total_systems": len(systems_available),
+                "integration_completeness": sum(systems_available.values()) / len(systems_available),
+                "systems_status": systems_available
+            }
+            
+            # Analyze cross-system data flow
+            if self.events and self.context:
+                context_events = getattr(self, "_event_stats", {}).get("context_updated", 0)
+                decision_events = getattr(self, "_event_stats", {}).get("decision_logged", 0)
+                
+                correlations["cross_system_insights"]["context_activity"] = {
+                    "context_updates": context_events,
+                    "decisions_logged": decision_events,
+                    "knowledge_flow_active": context_events > 0
+                }
+            
+            if self.events and self.memory:
+                prediction_events = getattr(self, "_event_stats", {}).get("prediction_made", 0)
+                learning_events = getattr(self, "_event_stats", {}).get("agent_learned", 0)
+                
+                correlations["cross_system_insights"]["memory_activity"] = {
+                    "predictions_made": prediction_events,
+                    "learning_events": learning_events,
+                    "intelligence_active": prediction_events > 0
+                }
+            
+            # Calculate value amplification
+            base_events = getattr(self, "_event_stats", {}).get("task_assigned", 0)
+            enhanced_events = sum([
+                getattr(self, "_event_stats", {}).get("context_updated", 0),
+                getattr(self, "_event_stats", {}).get("prediction_made", 0),
+                getattr(self, "_event_stats", {}).get("decision_logged", 0)
+            ])
+            
+            if base_events > 0:
+                correlations["value_amplification"] = {
+                    "base_task_assignments": base_events,
+                    "enhanced_system_events": enhanced_events,
+                    "intelligence_multiplier": enhanced_events / base_events,
+                    "system_value_add": enhanced_events > base_events * 0.5  # 50% enhancement threshold
+                }
+            
+            # System synergy indicators
+            correlations["system_synergy"] = {
+                "context_memory_synergy": self.context is not None and self.memory is not None,
+                "event_driven_coordination": self.events is not None,
+                "real_time_intelligence": all(systems_available.values()),
+                "predictive_context_sharing": (
+                    self.context is not None and 
+                    self.memory is not None and 
+                    hasattr(self.context, 'hybrid_inferer')
+                )
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting system correlations: {e}")
+            correlations["error"] = str(e)
+            
+        return correlations
+    
+    def get_enhanced_dashboard_data(self) -> Dict[str, Any]:
+        """
+        Get comprehensive dashboard data including all enhanced system insights.
+        
+        Returns:
+            Complete dashboard data with integrated insights
+        """
+        return {
+            "basic_stats": self.get_event_statistics(),
+            "active_flows": len(self.active_flows),
+            "flow_details": self.active_flows,
+            "enhanced_integrations": {
+                "context_available": self.context is not None,
+                "memory_available": self.memory is not None,
+                "systems_integrated": self.context is not None and self.memory is not None
+            },
+            "last_updated": datetime.now().isoformat()
+        }
