@@ -165,9 +165,9 @@ Event Types:
   - **Planka**: `providers/planka_kanban.py`, `providers/planka_kanban_simple.py`
   - **Linear**: `providers/linear_kanban.py`
   - **GitHub Projects**: `providers/github_kanban.py`
-- **MCP Clients**: `mcp_kanban_client_simple.py`, `mcp_kanban_client_simplified.py`
+- **MCP Clients**: `mcp_kanban_client_simple.py`
 
-#### **AI Analysis Engine** (`src/integrations/ai_analysis_engine_fixed.py`)
+#### **AI Analysis Engine** (`src/integrations/ai_analysis_engine.py`)
 - Task instruction generation using Claude
 - Blocker analysis and suggestion generation
 - Implementation context awareness
@@ -428,7 +428,7 @@ class ConversationPatternEngine:
     """
     Analyzes conversation patterns to optimize system performance
     """
-    
+
     def detect_patterns(self, conversations: List[ConversationEvent]) -> Dict[str, Any]:
         return {
             "communication_bottlenecks": self._detect_bottlenecks(conversations),
@@ -436,13 +436,13 @@ class ConversationPatternEngine:
             "failure_patterns": self._identify_failure_modes(conversations),
             "optimization_opportunities": self._suggest_optimizations(conversations)
         }
-    
+
     def _detect_bottlenecks(self, conversations):
         # Identify where tasks get stuck
         # Analyze response times between workers and Marcus
         # Find communication gaps
         pass
-    
+
     def _identify_successful_workflows(self, conversations):
         # Pattern match successful task completions
         # Identify high-performing worker combinations
@@ -457,17 +457,17 @@ class PredictiveEngine:
     """
     Predicts project outcomes and resource needs
     """
-    
+
     def predict_task_completion_time(self, task: Task, worker: WorkerStatus) -> float:
         # ML model based on historical conversation data
         # Factors: worker skill match, task complexity, current workload
         pass
-    
+
     def predict_blocker_likelihood(self, task: Task, context: Dict) -> float:
         # Analyze similar tasks and their blocker patterns
         # Early warning system for potential issues
         pass
-    
+
     def forecast_resource_needs(self, project_timeline: int) -> Dict[str, int]:
         # Predict worker capacity requirements
         # Suggest optimal team composition
@@ -481,13 +481,13 @@ class AdaptiveLearningEngine:
     """
     Continuously improves Marcus decision-making
     """
-    
+
     def learn_from_outcomes(self, decisions: List[Decision], outcomes: List[Outcome]):
         # Reinforcement learning from decision success/failure
         # Update confidence scoring algorithms
         # Improve task assignment logic
         pass
-    
+
     def adapt_communication_style(self, worker_id: str, effectiveness_metrics: Dict):
         # Personalize instructions for each worker
         # Adapt to worker preferences and capabilities
@@ -506,7 +506,7 @@ class EnhancedConversationEvent(ConversationEvent):
     performance_metrics: Dict[str, float]  # For learning
     related_events: List[str]  # For causal analysis
     confidence_evolution: List[float]  # Track decision confidence over time
-    
+
     # Intelligence annotations
     pattern_classification: Optional[str]
     anomaly_score: Optional[float]
@@ -549,7 +549,7 @@ Given the philosophical nature of Stoicism and its emphasis on rational decision
    - Advisor and coordinator to emperors
    - Emphasized rational decision-making
 
-2. **"Epictetus"** 
+2. **"Epictetus"**
    - Focus on what can be controlled vs. what cannot
    - Perfect for task prioritization and resource allocation
    - Emphasis on systematic thinking

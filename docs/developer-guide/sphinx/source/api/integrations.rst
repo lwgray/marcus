@@ -18,10 +18,10 @@ SimpleMCPKanbanClient
 AIAnalysisEngine
 ----------------
 
-.. automodule:: integrations.ai_analysis_engine_fixed
+.. automodule:: integrations.ai_analysis_engine
    :no-members:
 
-.. autoclass:: integrations.ai_analysis_engine_fixed.AIAnalysisEngine
+.. autoclass:: integrations.ai_analysis_engine.AIAnalysisEngine
    :members:
    :private-members:
    :special-members: __init__
