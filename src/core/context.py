@@ -13,7 +13,7 @@ from typing import Dict, List, Any, Optional, Set
 from dataclasses import dataclass, field
 import logging
 
-from src.core.models import Task, TaskStatus
+from src.core.models import Task, TaskStatus, Priority
 from src.core.events import Events, EventTypes
 from src.core.resilience import with_fallback, resilient_persistence
 
@@ -580,7 +580,7 @@ class Context:
         
         return cycles
     
-    def suggest_task_order(self, tasks: List[Task]) -> List[Task]:
+    async def suggest_task_order(self, tasks: List[Task]) -> List[Task]:
         """
         Suggest an optimal order for tasks based on dependencies.
         
@@ -593,19 +593,23 @@ class Context:
             Ordered list of tasks
         """
         # Build dependency graph
-        dep_map = self.analyze_dependencies(tasks)
+        dep_map = await self.analyze_dependencies(tasks)
         
         # Build reverse map (task -> its dependencies)
+        # This combines explicit dependencies with inferred ones
         task_deps = {}
         for task in tasks:
-            task_deps[task.id] = task.dependencies or []
+            task_deps[task.id] = set(task.dependencies or [])
+        
+        # Add inferred dependencies from dep_map
+        # dep_map format: {dependency_id: [dependent_ids]}
+        for dependency_id, dependents in dep_map.items():
+            for dependent_id in dependents:
+                if dependent_id in task_deps:
+                    task_deps[dependent_id].add(dependency_id)
             
-        # Count incoming edges
-        in_degree = {task.id: 0 for task in tasks}
-        for deps in task_deps.values():
-            for dep in deps:
-                if dep in in_degree:
-                    in_degree[dep] += 1
+        # Count incoming edges (how many dependencies each task has)
+        in_degree = {task.id: len(task_deps.get(task.id, set())) for task in tasks}
         
         # Priority queue for tasks with no dependencies
         # Use negative priority for max heap behavior
@@ -627,13 +631,14 @@ class Context:
             _, _, task = heapq.heappop(ready)
             ordered.append(task)
             
-            # Reduce in-degree for dependent tasks
-            if task.id in dep_map:
-                for dependent_id in dep_map[task.id]:
-                    in_degree[dependent_id] -= 1
-                    if in_degree[dependent_id] == 0:
+            # Reduce in-degree for tasks that depend on this one
+            # Check both explicit dependencies and inferred ones
+            for other_task_id, deps in task_deps.items():
+                if task.id in deps:
+                    in_degree[other_task_id] -= 1
+                    if in_degree[other_task_id] == 0:
                         # Find task object
-                        dependent_task = next((t for t in tasks if t.id == dependent_id), None)
+                        dependent_task = next((t for t in tasks if t.id == other_task_id), None)
                         if dependent_task:
                             priority_value = {
                                 Priority.URGENT: 0,

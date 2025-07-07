@@ -9,6 +9,7 @@ shared knowledge between agents.
 import asyncio
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from datetime import datetime
@@ -16,13 +17,13 @@ from typing import List
 
 from src.core.context import Context
 from src.core.events import Events, EventTypes
-from src.core.persistence import Persistence, MemoryPersistence
-from src.core.models import Task, TaskStatus, Priority
+from src.core.models import Priority, Task, TaskStatus
+from src.core.persistence import MemoryPersistence, Persistence
 
 
 async def create_example_project() -> List[Task]:
     """Create a realistic e-commerce project with complex dependencies"""
-    
+
     tasks = [
         # Infrastructure layer
         Task(
@@ -39,7 +40,7 @@ async def create_example_project() -> List[Task]:
             labels=["setup", "infrastructure"],
             dependencies=[]
         ),
-        
+
         # Database layer
         Task(
             id="db_1",
@@ -55,7 +56,7 @@ async def create_example_project() -> List[Task]:
             labels=["database", "design"],
             dependencies=["infra_1"]
         ),
-        
+
         Task(
             id="db_2",
             name="Implement Database Models",
@@ -70,7 +71,7 @@ async def create_example_project() -> List[Task]:
             labels=["database", "backend", "models"],
             dependencies=[]  # Will be inferred
         ),
-        
+
         # Backend layer
         Task(
             id="api_1",
@@ -86,7 +87,7 @@ async def create_example_project() -> List[Task]:
             labels=["api", "auth", "backend"],
             dependencies=[]  # Will be inferred
         ),
-        
+
         Task(
             id="api_2",
             name="Create Product API",
@@ -101,7 +102,7 @@ async def create_example_project() -> List[Task]:
             labels=["api", "backend", "products"],
             dependencies=[]  # Will be inferred
         ),
-        
+
         # Frontend layer
         Task(
             id="ui_1",
@@ -117,7 +118,7 @@ async def create_example_project() -> List[Task]:
             labels=["frontend", "ui", "design"],
             dependencies=[]
         ),
-        
+
         Task(
             id="ui_2",
             name="Implement Product Catalog UI",
@@ -132,7 +133,7 @@ async def create_example_project() -> List[Task]:
             labels=["frontend", "ui", "products"],
             dependencies=[]  # Will be inferred
         ),
-        
+
         # Testing layer
         Task(
             id="test_1",
@@ -148,7 +149,7 @@ async def create_example_project() -> List[Task]:
             labels=["test", "auth"],
             dependencies=[]  # Will be inferred
         ),
-        
+
         # Deployment
         Task(
             id="deploy_1",
@@ -165,26 +166,26 @@ async def create_example_project() -> List[Task]:
             dependencies=[]  # Will be inferred
         )
     ]
-    
+
     return tasks
 
 
 async def demonstrate_dependency_inference(context: Context, tasks: List[Task]):
     """Show how the context system infers dependencies"""
-    
+
     print("\n\n🔗 DEPENDENCY INFERENCE DEMONSTRATION")
     print("=" * 60)
-    
+
     # Show tasks without explicit dependencies
     print("\n1. Tasks with missing dependencies:")
     for task in tasks:
         if not task.dependencies and task.id != "infra_1":
             print(f"   - {task.name} (no explicit dependencies)")
-    
+
     # Analyze with inference
     print("\n2. Analyzing dependencies with inference...")
     dep_map = await context.analyze_dependencies(tasks, infer_implicit=True)
-    
+
     # Show inferred dependencies
     print("\n3. Inferred dependency graph:")
     for dependency_id, dependents in sorted(dep_map.items()):
@@ -194,7 +195,7 @@ async def demonstrate_dependency_inference(context: Context, tasks: List[Task]):
             for dependent_id in dependents:
                 dependent_task = next(t for t in tasks if t.id == dependent_id)
                 print(f"     → {dependent_task.name}")
-    
+
     # Check for circular dependencies
     print("\n4. Circular dependency check:")
     cycles = context._detect_circular_dependencies(dep_map, tasks)
@@ -204,12 +205,11 @@ async def demonstrate_dependency_inference(context: Context, tasks: List[Task]):
             print(f"     {' → '.join(cycle)}")
     else:
         print("   ✅ No circular dependencies found")
-    
+
     # Get optimal task order
     print("\n5. Optimal task execution order:")
-    ordered_tasks = context._get_optimal_task_order(dep_map, tasks)
-    for i, task_id in enumerate(ordered_tasks[:5], 1):
-        task = next(t for t in tasks if t.id == task_id)
+    ordered_tasks = await context.suggest_task_order(tasks)
+    for i, task in enumerate(ordered_tasks[:5], 1):
         print(f"   {i}. {task.name}")
     if len(ordered_tasks) > 5:
         print(f"   ... and {len(ordered_tasks) - 5} more tasks")
@@ -217,10 +217,10 @@ async def demonstrate_dependency_inference(context: Context, tasks: List[Task]):
 
 async def demonstrate_decision_tracking(context: Context):
     """Show architectural decision logging and retrieval"""
-    
+
     print("\n\n📋 ARCHITECTURAL DECISION TRACKING")
     print("=" * 60)
-    
+
     # Log some architectural decisions
     decisions = [
         {
@@ -245,12 +245,12 @@ async def demonstrate_decision_tracking(context: Context):
             "impact": "Slightly larger storage, need UUID generation in all services"
         }
     ]
-    
+
     print("\n1. Logging architectural decisions:")
     for decision in decisions:
         await context.log_decision(**decision)
         print(f"   ✓ Logged: {decision['what']}")
-    
+
     # Retrieve decisions
     print("\n2. Retrieving decisions by task:")
     db_decisions = context.get_decisions_for_task("db_1")
@@ -259,19 +259,19 @@ async def demonstrate_decision_tracking(context: Context):
         print(f"     - {dec.what}")
         print(f"       Why: {dec.why}")
         print(f"       Impact: {dec.impact}")
-    
+
     # Show decision impact analysis
     print("\n3. Decision Impact Analysis:")
     all_decisions = []
     for task_id in ["db_1", "api_1"]:
         all_decisions.extend(context.get_decisions_for_task(task_id))
-    
+
     impacts = {}
     for dec in all_decisions:
         for word in dec.impact.lower().split():
             if len(word) > 5:  # Significant words
                 impacts[word] = impacts.get(word, 0) + 1
-    
+
     print("   Most mentioned in impacts:")
     for word, count in sorted(impacts.items(), key=lambda x: x[1], reverse=True)[:5]:
         print(f"     - {word}: {count} times")
@@ -279,10 +279,10 @@ async def demonstrate_decision_tracking(context: Context):
 
 async def demonstrate_implementation_sharing(context: Context):
     """Show how implementations are shared between tasks"""
-    
+
     print("\n\n🔄 IMPLEMENTATION SHARING")
     print("=" * 60)
-    
+
     # Add implementations
     implementations = [
         {
@@ -325,17 +325,17 @@ async def demonstrate_implementation_sharing(context: Context):
             }
         }
     ]
-    
+
     print("\n1. Adding implementations:")
     for impl in implementations:
         await context.add_implementation(impl["task_id"], impl["details"])
         task_name = impl["task_id"].replace("_", " ").title()
         print(f"   ✓ Added implementation for {task_name}")
-    
+
     # Get context for dependent task
     print("\n2. Getting context for dependent task (Product API):")
     ctx = await context.get_context("api_2", ["db_1", "api_1"])
-    
+
     print("\n   Previous implementations available:")
     for task_id, impl in ctx.previous_implementations.items():
         print(f"\n   From {task_id}:")
@@ -345,11 +345,11 @@ async def demonstrate_implementation_sharing(context: Context):
             print(f"     - API with {len(impl['endpoints'])} endpoints")
         if "auth_type" in impl:
             print(f"     - Authentication: {impl['auth_type']}")
-    
+
     print("\n   Architectural decisions to consider:")
     for dec in ctx.architectural_decisions[:3]:
         print(f"     - {dec.what}")
-    
+
     # Show how context helps
     print("\n3. How context helps the next agent:")
     print("   The agent building Product API now knows:")
@@ -361,20 +361,20 @@ async def demonstrate_implementation_sharing(context: Context):
 
 async def demonstrate_context_updates(context: Context, events: Events):
     """Show real-time context updates through events"""
-    
+
     print("\n\n📡 REAL-TIME CONTEXT UPDATES")
     print("=" * 60)
-    
+
     # Subscribe to context events
     context_updates = []
-    
+
     async def track_updates(event):
         context_updates.append(event)
-    
+
     events.subscribe(EventTypes.CONTEXT_UPDATED, track_updates)
-    
+
     print("\n1. Making context changes:")
-    
+
     # Add a new decision
     await context.log_decision(
         agent_id="charlie",
@@ -384,7 +384,7 @@ async def demonstrate_context_updates(context: Context, events: Events):
         impact="All UI components must follow Material Design principles"
     )
     print("   ✓ Logged new architectural decision")
-    
+
     # Add implementation
     await context.add_implementation(
         "ui_1",
@@ -398,10 +398,10 @@ async def demonstrate_context_updates(context: Context, events: Events):
         }
     )
     print("   ✓ Added UI implementation details")
-    
+
     # Wait for events to process
     await asyncio.sleep(0.1)
-    
+
     print(f"\n2. Context update events fired: {len(context_updates)}")
     for event in context_updates:
         print(f"   - {event.event_type}: {event.data.get('update_type', 'unknown')}")
@@ -409,10 +409,10 @@ async def demonstrate_context_updates(context: Context, events: Events):
 
 async def demonstrate_dependency_workflow():
     """Show the complete dependency awareness workflow"""
-    
+
     print("\n\n🔄 DEPENDENCY AWARENESS WORKFLOW")
     print("=" * 60)
-    
+
     print("""
 The dependency awareness workflow helps Marcus understand task relationships
 and prevent illogical assignments:
@@ -457,28 +457,28 @@ BENEFITS:
 
 async def main():
     """Run the context system demonstration"""
-    
+
     print("\n🌟 MARCUS CONTEXT SYSTEM DEMONSTRATION")
     print("=" * 60)
     print("This demo shows how the enhanced context system manages")
     print("dependencies, decisions, and shared knowledge.")
-    
+
     # Set up environment
     print("\n⚙️  Setting up environment...")
     persistence = Persistence(backend=MemoryPersistence())
     events = Events(store_history=True, persistence=persistence)
     context = Context(events=events, persistence=persistence)
-    
+
     # Create example project
     tasks = await create_example_project()
-    
+
     # Run demonstrations
     await demonstrate_dependency_inference(context, tasks)
     await demonstrate_decision_tracking(context)
     await demonstrate_implementation_sharing(context)
     await demonstrate_context_updates(context, events)
     await demonstrate_dependency_workflow()
-    
+
     # Summary
     print("\n\n📈 CONTEXT SYSTEM BENEFITS")
     print("=" * 60)
@@ -505,7 +505,7 @@ The enhanced context system provides:
    - Faster development
    - Higher quality results
 """)
-    
+
     print("\n✅ Demonstration complete!")
 
 

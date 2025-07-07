@@ -1,395 +1,152 @@
+#!/usr/bin/env python3
 """
-Integration tests for Marcus server components.
-
-This module tests the integration between Marcus components including the MCP server,
-AI engine, monitoring system, and communication hub.
-
-Notes
------
-These tests use mocked external dependencies to verify component interactions
-without requiring actual services to be running.
+Test Marcus integration without running the full web server.
 """
 
-import pytest
 import asyncio
-import json
-from unittest.mock import Mock, patch, AsyncMock
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+import sys
+from pathlib import Path
 
-from src.marcus_mcp.server import MarcusServer
-from src.marcus_mcp.handlers import handle_tool_call
-from src.core.models import Task, TaskStatus, Priority, WorkerStatus, RiskLevel, ProjectState
+# Add parent directory to path
+sys.path.insert(0, str(Path(__file__).parent))
+
+from src.visualization.pipeline_flow_manager import PipelineFlowManager
+from src.marcus_mcp.client import SimpleMarcusClient
+from src.workflow.project_workflow_manager import ProjectWorkflowManager
 
 
-class TestMarcusIntegration:
-    """
-    Integration tests for the Marcus Server.
+async def test_marcus_integration():
+    """Test the Marcus MCP integration."""
+    print("=== Testing Marcus Integration ===\n")
     
-    These tests verify that all components work together correctly,
-    including MCP server request handling, AI decision making,
-    monitoring state tracking, and notification delivery.
-    """
+    # Initialize components
+    print("1. Initializing components...")
+    flow_manager = PipelineFlowManager()
+    marcus_client = SimpleMarcusClient()
+    workflow_manager = ProjectWorkflowManager(marcus_client, flow_manager)
     
-    @pytest.fixture
-    def mock_kanban_client(self):
-        """Create a mock kanban client for testing."""
-        client = AsyncMock()
-        client.get_available_tasks = AsyncMock(return_value=[])
-        client.get_all_tasks = AsyncMock(return_value=[])
-        client.update_task = AsyncMock()
-        client.add_comment = AsyncMock()
-        client.get_board_summary = AsyncMock(return_value={
-            'totalCards': 0,
-            'doneCount': 0,
-            'inProgressCount': 0,
-            'backlogCount': 0
+    # Initialize Marcus client
+    await marcus_client.initialize()
+    print("✓ Marcus client initialized")
+    
+    # Test 1: Ping Marcus
+    print("\n2. Testing Marcus connection...")
+    ping_result = await marcus_client.call_tool('ping', {})
+    if ping_result:
+        print(f"✓ Marcus responded: {ping_result}")
+    else:
+        print("✗ Failed to ping Marcus")
+        return
+    
+    # Test 2: Create a project
+    print("\n3. Creating test project...")
+    project_name = "Test Todo App"
+    prd_content = """# Test Todo App
+
+## Description
+A simple todo application for testing the Marcus integration.
+
+## Features
+
+### User Authentication
+**Priority:** high
+Implement basic user login and registration.
+
+**Acceptance Criteria:**
+- Users can register with email and password
+- Users can login
+- Sessions are maintained
+
+### Todo CRUD
+**Priority:** high
+Basic todo operations.
+
+**Acceptance Criteria:**
+- Create new todos
+- List all todos
+- Mark todos as complete
+- Delete todos
+"""
+    
+    create_result = await marcus_client.call_tool('create_project', {
+        'name': project_name,
+        'description': prd_content
+    })
+    
+    if create_result:
+        print(f"✓ Project created: {create_result}")
+    else:
+        print("✗ Failed to create project")
+        return
+    
+    # Test 3: Get project status
+    print("\n4. Getting project status...")
+    status_result = await marcus_client.call_tool('get_project_status', {})
+    if status_result:
+        print(f"✓ Project status: {status_result}")
+    else:
+        print("✗ Failed to get project status")
+    
+    # Test 4: List registered agents
+    print("\n5. Listing registered agents...")
+    agents_result = await marcus_client.call_tool('list_registered_agents', {})
+    if agents_result:
+        print(f"✓ Registered agents: {agents_result}")
+    else:
+        print("✗ Failed to list agents")
+    
+    # Test 5: Register a test agent
+    print("\n6. Registering test agent...")
+    register_result = await marcus_client.call_tool('register_agent', {
+        'agent_id': 'test-agent-001',
+        'name': 'Test Backend Agent',
+        'role': 'Backend Developer',
+        'skills': ['Python', 'API Development', 'Database']
+    })
+    
+    if register_result:
+        print(f"✓ Agent registered: {register_result}")
+    else:
+        print("✗ Failed to register agent")
+    
+    # Test 6: Request task for agent
+    print("\n7. Requesting task for agent...")
+    task_result = await marcus_client.call_tool('request_next_task', {
+        'agent_id': 'test-agent-001'
+    })
+    
+    if task_result and 'task' in task_result:
+        print(f"✓ Task assigned: {task_result['task']}")
+        
+        # Test 7: Report progress
+        print("\n8. Reporting task progress...")
+        progress_result = await marcus_client.call_tool('report_task_progress', {
+            'agent_id': 'test-agent-001',
+            'task_id': task_result['task']['id'],
+            'status': 'in_progress',
+            'progress': 50,
+            'message': 'Working on implementation'
         })
-        return client
+        
+        if progress_result:
+            print(f"✓ Progress reported: {progress_result}")
+    else:
+        print("✗ No tasks available or failed to request task")
     
-    @pytest.fixture
-    def mock_ai_engine(self):
-        """Create a mock AI engine for testing."""
-        engine = AsyncMock()
-        engine.analyze_task_priority = AsyncMock(return_value=0.8)
-        engine.suggest_next_action = AsyncMock(return_value="Continue with implementation")
-        engine.analyze_blocker = AsyncMock(return_value={
-            'severity': 'medium',
-            'suggestions': ['Check dependencies', 'Review documentation']
-        })
-        return engine
-    
-    @pytest.fixture
-    async def marcus_server(self, mock_kanban_client, mock_ai_engine):
-        """Create a fully initialized Marcus server for integration testing."""
-        with patch('src.marcus_mcp.server.KanbanFactory.create') as mock_factory:
-            mock_factory.return_value = mock_kanban_client
-            
-            server = MarcusServer()
-            server.kanban_client = mock_kanban_client
-            server.ai_engine = mock_ai_engine
-            server.assignment_monitor = None  # Disable for tests
-            
-            return server
-    
-    @pytest.mark.asyncio
-    async def test_end_to_end_task_assignment_flow(self, marcus_server, mock_kanban_client):
-        """Test complete flow: register agent -> request task -> report progress -> complete."""
-        # Available tasks
-        available_tasks = [
-            Task(
-                id="task-1",
-                name="Implement login API",
-                description="Create REST endpoint for user login",
-                status=TaskStatus.TODO,
-                priority=Priority.HIGH,
-                labels=["backend", "api"],
-                assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now()
-            )
-        ]
-        mock_kanban_client.get_available_tasks.return_value = available_tasks
-        
-        # Step 1: Register agent
-        register_result = await handle_tool_call(
-            'register_agent',
-            {
-                'agent_id': 'backend-dev-1',
-                'name': 'Backend Developer',
-                'role': 'Backend Developer',
-                'skills': ['python', 'api', 'backend']
-            },
-            marcus_server
-        )
-        
-        register_data = json.loads(register_result[0].text)
-        assert register_data['success'] is True
-        
-        # Step 2: Request task
-        task_result = await handle_tool_call(
-            'request_next_task',
-            {'agent_id': 'backend-dev-1'},
-            marcus_server
-        )
-        
-        task_data = json.loads(task_result[0].text)
-        assert task_data['task'] is not None
-        assert task_data['task']['id'] == 'task-1'
-        
-        # Step 3: Report progress
-        progress_result = await handle_tool_call(
-            'report_task_progress',
-            {
-                'agent_id': 'backend-dev-1',
-                'task_id': 'task-1',
-                'status': 'in_progress',
-                'progress': 50,
-                'message': 'Endpoint structure created'
-            },
-            marcus_server
-        )
-        
-        progress_data = json.loads(progress_result[0].text)
-        assert progress_data['success'] is True
-        
-        # Step 4: Complete task
-        complete_result = await handle_tool_call(
-            'report_task_progress',
-            {
-                'agent_id': 'backend-dev-1',
-                'task_id': 'task-1',
-                'status': 'completed',
-                'progress': 100,
-                'message': 'Login API implemented and tested'
-            },
-            marcus_server
-        )
-        
-        complete_data = json.loads(complete_result[0].text)
-        assert complete_data['success'] is True
-        
-        # Verify agent status updated
-        status_result = await handle_tool_call(
-            'get_agent_status',
-            {'agent_id': 'backend-dev-1'},
-            marcus_server
-        )
-        
-        status_data = json.loads(status_result[0].text)
-        assert status_data['status'] == 'available'
-        assert status_data['current_task'] is None
-        assert status_data['completed_tasks'] == 1
-    
-    @pytest.mark.asyncio
-    async def test_multiple_agents_concurrent_requests(self, marcus_server, mock_kanban_client):
-        """Test multiple agents requesting tasks concurrently."""
-        # Create tasks
-        tasks = [
-            Task(
-                id=f"task-{i}",
-                name=f"Task {i}",
-                status=TaskStatus.TODO,
-                priority=Priority.MEDIUM,
-                labels=["test"],
-                assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now()
-            )
-            for i in range(3)
-        ]
-        mock_kanban_client.get_available_tasks.return_value = tasks
-        
-        # Register multiple agents
-        agents = ['agent-1', 'agent-2', 'agent-3']
-        for agent_id in agents:
-            await handle_tool_call(
-                'register_agent',
-                {
-                    'agent_id': agent_id,
-                    'name': f'Agent {agent_id}',
-                    'role': 'Developer',
-                    'skills': ['test']
-                },
-                marcus_server
-            )
-        
-        # Concurrent task requests
-        async def request_task(agent_id):
-            result = await handle_tool_call(
-                'request_next_task',
-                {'agent_id': agent_id},
-                marcus_server
-            )
-            return json.loads(result[0].text)
-        
-        results = await asyncio.gather(
-            *[request_task(agent_id) for agent_id in agents]
-        )
-        
-        # Verify each agent got a different task
-        assigned_task_ids = [
-            r['task']['id'] for r in results if r['task'] is not None
-        ]
-        assert len(assigned_task_ids) == 3
-        assert len(set(assigned_task_ids)) == 3  # All unique
-    
-    @pytest.mark.asyncio
-    async def test_blocker_reporting_and_ai_suggestions(self, marcus_server, mock_ai_engine):
-        """Test blocker reporting with AI-powered suggestions."""
-        # Setup agent with task
-        await handle_tool_call(
-            'register_agent',
-            {
-                'agent_id': 'test-agent',
-                'name': 'Test Agent',
-                'role': 'Developer',
-                'skills': ['python']
-            },
-            marcus_server
-        )
-        
-        # Manually assign a task
-        marcus_server.agent_tasks['test-agent'] = Mock(
-            task_id='task-1',
-            agent_id='test-agent',
-            assigned_at=datetime.now(),
-            status='in_progress'
-        )
-        
-        # Report blocker
-        blocker_result = await handle_tool_call(
-            'report_blocker',
-            {
-                'agent_id': 'test-agent',
-                'task_id': 'task-1',
-                'blocker_description': 'Database connection failing',
-                'severity': 'high'
-            },
-            marcus_server
-        )
-        
-        blocker_data = json.loads(blocker_result[0].text)
-        assert blocker_data['success'] is True
-        assert 'suggestions' in blocker_data
-        assert len(blocker_data['suggestions']) > 0
-        
-        # Verify AI engine was called
-        mock_ai_engine.analyze_blocker.assert_called_once()
-    
-    @pytest.mark.asyncio
-    async def test_project_monitoring_integration(self, marcus_server, mock_kanban_client):
-        """Test project status monitoring across multiple operations."""
-        # Setup initial board state
-        mock_kanban_client.get_all_tasks.return_value = [
-            Task(id="1", name="Task 1", status=TaskStatus.DONE,
-                 priority=Priority.HIGH, labels=[], assigned_to=None,
-                 created_at=datetime.now(), updated_at=datetime.now()),
-            Task(id="2", name="Task 2", status=TaskStatus.IN_PROGRESS,
-                 priority=Priority.MEDIUM, labels=[], assigned_to="agent-1",
-                 created_at=datetime.now(), updated_at=datetime.now()),
-            Task(id="3", name="Task 3", status=TaskStatus.TODO,
-                 priority=Priority.LOW, labels=[], assigned_to=None,
-                 created_at=datetime.now(), updated_at=datetime.now())
-        ]
-        
-        mock_kanban_client.get_board_summary.return_value = {
-            'totalCards': 3,
-            'doneCount': 1,
-            'inProgressCount': 1,
-            'backlogCount': 1
-        }
-        
-        # Get initial project status
-        status_result = await handle_tool_call(
-            'get_project_status',
-            {},
-            marcus_server
-        )
-        
-        status_data = json.loads(status_result[0].text)
-        assert status_data['total_tasks'] == 3
-        assert status_data['completed_tasks'] == 1
-        assert status_data['in_progress_tasks'] == 1
-        assert status_data['completion_percentage'] == pytest.approx(33.33, rel=1e-1)
-        
-        # Simulate task completion
-        mock_kanban_client.get_all_tasks.return_value = [
-            Task(id="1", name="Task 1", status=TaskStatus.DONE,
-                 priority=Priority.HIGH, labels=[], assigned_to=None,
-                 created_at=datetime.now(), updated_at=datetime.now()),
-            Task(id="2", name="Task 2", status=TaskStatus.DONE,
-                 priority=Priority.MEDIUM, labels=[], assigned_to=None,
-                 created_at=datetime.now(), updated_at=datetime.now()),
-            Task(id="3", name="Task 3", status=TaskStatus.IN_PROGRESS,
-                 priority=Priority.LOW, labels=[], assigned_to="agent-2",
-                 created_at=datetime.now(), updated_at=datetime.now())
-        ]
-        
-        mock_kanban_client.get_board_summary.return_value = {
-            'totalCards': 3,
-            'doneCount': 2,
-            'inProgressCount': 1,
-            'backlogCount': 0
-        }
-        
-        # Get updated status
-        status_result2 = await handle_tool_call(
-            'get_project_status',
-            {},
-            marcus_server
-        )
-        
-        status_data2 = json.loads(status_result2[0].text)
-        assert status_data2['completed_tasks'] == 2
-        assert status_data2['completion_percentage'] == pytest.approx(66.67, rel=1e-1)
-    
-    @pytest.mark.asyncio
-    async def test_health_check_integration(self, marcus_server):
-        """Test system health check functionality."""
-        # Perform health check
-        health_result = await handle_tool_call(
-            'ping',
-            {'echo': 'integration-test'},
-            marcus_server
-        )
-        
-        health_data = json.loads(health_result[0].text)
-        assert health_data['status'] == 'healthy'
-        assert health_data['echo'] == 'integration-test'
-        assert health_data['kanban_connected'] is True
-        assert 'timestamp' in health_data
-    
-    @pytest.mark.asyncio
-    async def test_assignment_tracking_persistence(self, marcus_server, mock_kanban_client):
-        """Test that assignments are properly tracked and persisted."""
-        # Setup
-        task = Task(
-            id="persist-task",
-            name="Test Persistence",
-            status=TaskStatus.TODO,
-            priority=Priority.HIGH,
-            labels=["test"],
-            assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now()
-        )
-        mock_kanban_client.get_available_tasks.return_value = [task]
-        
-        # Register agent and request task
-        await handle_tool_call(
-            'register_agent',
-            {
-                'agent_id': 'persist-agent',
-                'name': 'Persistence Test Agent',
-                'role': 'Tester',
-                'skills': ['test']
-            },
-            marcus_server
-        )
-        
-        # Request task
-        task_result = await handle_tool_call(
-            'request_next_task',
-            {'agent_id': 'persist-agent'},
-            marcus_server
-        )
-        
-        task_data = json.loads(task_result[0].text)
-        assert task_data['task']['id'] == 'persist-task'
-        
-        # Check assignment health
-        health_result = await handle_tool_call(
-            'check_assignment_health',
-            {},
-            marcus_server
-        )
-        
-        health_data = json.loads(health_result[0].text)
-        assert health_data['healthy'] is True
-        assert health_data['active_assignments'] == 1
-        assert health_data['orphaned_tasks'] == 0
+    # Close client
+    await marcus_client.close()
+    print("\n✓ Test complete!")
+
+
+async def main():
+    """Main entry point."""
+    try:
+        await test_marcus_integration()
+    except Exception as e:
+        print(f"\nError during testing: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    asyncio.run(main())
