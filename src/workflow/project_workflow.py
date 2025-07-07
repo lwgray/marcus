@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from src.marcus_mcp.client import SimpleMarcusClient
-from src.visualization.pipeline_flow import PipelineFlowManager
+from src.visualization.pipeline_manager import PipelineFlowManager
 
 
 class ProjectWorkflowManager:

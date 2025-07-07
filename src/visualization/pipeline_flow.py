@@ -1,179 +1,296 @@
 """
-Pipeline Flow Manager
+Pipeline Flow Visualization for Marcus
 
-Manages pipeline flow data and events for visualization.
+Visualizes the complete MCP request → AI → Task Generation → Progress pipeline
 """
 
-import uuid
+import json
+import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
+from dataclasses import dataclass, asdict
+from enum import Enum
+
+logger = logging.getLogger(__name__)
 
 
-class PipelineFlowManager:
-    """Manages pipeline flows and their events."""
+class PipelineStage(Enum):
+    """Stages in the Marcus pipeline"""
+    MCP_REQUEST = "mcp_request"
+    AI_ANALYSIS = "ai_analysis"
+    PRD_PARSING = "prd_parsing"
+    TASK_GENERATION = "task_generation"
+    TASK_CREATION = "task_creation"
+    TASK_ASSIGNMENT = "task_assignment"
+    WORK_PROGRESS = "work_progress"
+    TASK_COMPLETION = "task_completion"
 
+
+@dataclass
+class PipelineEvent:
+    """Event in the pipeline flow"""
+    id: str
+    stage: PipelineStage
+    timestamp: datetime
+    event_type: str
+    data: Dict[str, Any]
+    parent_id: Optional[str] = None
+    duration_ms: Optional[int] = None
+    status: str = "in_progress"
+    error: Optional[str] = None
+
+
+@dataclass
+class PipelineFlow:
+    """Complete pipeline flow from request to completion"""
+    id: str
+    project_name: str
+    started_at: datetime
+    completed_at: Optional[datetime] = None
+    events: List[PipelineEvent] = None
+    
+    def __post_init__(self):
+        if self.events is None:
+            self.events = []
+
+
+class PipelineFlowVisualizer:
+    """
+    Visualizes the Marcus pipeline flow from MCP request to task completion.
+    
+    Tracks and visualizes:
+    - MCP tool calls and responses
+    - AI analysis and PRD parsing
+    - Task generation and creation
+    - Work assignment and progress
+    - Task completion status
+    """
+    
     def __init__(self):
-        self.flows = {}
-        self.events = {}
-
-    def create_flow(
-        self, project_name: str, project_type: str, description: str = ""
-    ) -> str:
-        """Create a new pipeline flow."""
-        flow_id = str(uuid.uuid4())
-
-        flow = {
-            "flow_id": flow_id,
-            "project_name": project_name,
-            "project_type": project_type,
-            "description": description,
-            "created_at": datetime.now().isoformat(),
-            "status": "active",
-            "current_stage": "initialization",
-            "progress_percentage": 0,
-            "health_status": {"status": "healthy", "message": "Flow initialized"},
-            "metrics": {
-                "task_count": 0,
-                "completed_count": 0,
-                "duration_seconds": 0,
-                "cost": 0.0,
-                "quality_score": 1.0,
-                "complexity": 1.0,
-            },
-        }
-
-        self.flows[flow_id] = flow
-        self.events[flow_id] = []
-
-        # Add initial event
+        """Initialize the pipeline flow visualizer"""
+        self.active_flows: Dict[str, PipelineFlow] = {}
+        self.completed_flows: List[PipelineFlow] = []
+        self.event_handlers = []
+        
+    def start_flow(self, flow_id: str, project_name: str) -> PipelineFlow:
+        """Start tracking a new pipeline flow"""
+        flow = PipelineFlow(
+            id=flow_id,
+            project_name=project_name,
+            started_at=datetime.now()
+        )
+        self.active_flows[flow_id] = flow
+        
+        # Add initial MCP request event
         self.add_event(
-            flow_id,
-            {
-                "type": "flow_created",
-                "timestamp": datetime.now().isoformat(),
-                "data": {"project_name": project_name, "project_type": project_type},
-            },
+            flow_id=flow_id,
+            stage=PipelineStage.MCP_REQUEST,
+            event_type="create_project_request",
+            data={"project_name": project_name}
         )
-
-        return flow_id
-
-    def add_event(self, flow_id: str, event: Dict[str, Any]):
-        """Add an event to a flow."""
-        if flow_id not in self.events:
-            self.events[flow_id] = []
-
-        # Ensure event has timestamp
-        if "timestamp" not in event:
-            event["timestamp"] = datetime.now().isoformat()
-
-        # Add sequential ID
-        event["id"] = len(self.events[flow_id])
-
-        self.events[flow_id].append(event)
-
-        # Update flow based on event type
-        if flow_id in self.flows:
-            self._update_flow_from_event(flow_id, event)
-
-    def _update_flow_from_event(self, flow_id: str, event: Dict[str, Any]):
-        """Update flow state based on event."""
-        flow = self.flows[flow_id]
-        event_type = event.get("type")
-
-        if event_type == "workflow_started":
-            flow["current_stage"] = "workflow_active"
-            flow["progress_percentage"] = 5
-
-        elif event_type == "task_assigned":
-            flow["current_stage"] = "tasks_in_progress"
-            flow["metrics"]["task_count"] += 1
-
-        elif event_type == "task_completed":
-            flow["metrics"]["completed_count"] += 1
-            total = flow["metrics"]["task_count"]
-            if total > 0:
-                flow["progress_percentage"] = int(
-                    (flow["metrics"]["completed_count"] / total) * 100
-                )
-
-        elif event_type == "workflow_metrics":
-            metrics = event.get("metrics", {})
-            flow["progress_percentage"] = metrics.get(
-                "progress_percent", flow["progress_percentage"]
-            )
-            flow["metrics"].update(
-                {
-                    "task_count": metrics.get(
-                        "total_tasks", flow["metrics"]["task_count"]
-                    ),
-                    "completed_count": metrics.get(
-                        "completed_tasks", flow["metrics"]["completed_count"]
-                    ),
-                }
-            )
-
-        elif event_type == "workflow_completed":
-            flow["status"] = "completed"
-            flow["current_stage"] = "completed"
-            flow["progress_percentage"] = 100
-            flow["health_status"] = {
-                "status": "healthy",
-                "message": "Workflow completed successfully",
-            }
-
-        elif event_type == "error":
-            flow["health_status"] = {
-                "status": "critical",
-                "message": event.get("message", "Error occurred"),
-            }
-
-    def get_flow(self, flow_id: str) -> Optional[Dict[str, Any]]:
-        """Get a specific flow."""
-        return self.flows.get(flow_id)
-
-    def get_active_flows(self) -> List[Dict[str, Any]]:
-        """Get all active flows."""
-        return [flow for flow in self.flows.values() if flow["status"] == "active"]
-
-    def get_flow_events(self, flow_id: str) -> List[Dict[str, Any]]:
-        """Get all events for a flow."""
-        return self.events.get(flow_id, [])
-
-    def get_dashboard_data(self) -> Dict[str, Any]:
-        """Get dashboard data for all flows."""
-        active_flows = self.get_active_flows()
-
-        # Calculate system metrics
-        total_flows = len(active_flows)
-        success_count = sum(
-            1 for f in self.flows.values() if f["status"] == "completed"
+        
+        return flow
+    
+    def add_event(
+        self,
+        flow_id: str,
+        stage: PipelineStage,
+        event_type: str,
+        data: Dict[str, Any],
+        parent_id: Optional[str] = None,
+        duration_ms: Optional[int] = None,
+        status: str = "in_progress",
+        error: Optional[str] = None
+    ) -> Optional[PipelineEvent]:
+        """Add an event to the pipeline flow"""
+        if flow_id not in self.active_flows:
+            logger.warning(f"Flow {flow_id} not found")
+            return None
+            
+        flow = self.active_flows[flow_id]
+        
+        # Generate event ID
+        event_id = f"{flow_id}_{stage.value}_{len(flow.events)}"
+        
+        event = PipelineEvent(
+            id=event_id,
+            stage=stage,
+            timestamp=datetime.now(),
+            event_type=event_type,
+            data=data,
+            parent_id=parent_id,
+            duration_ms=duration_ms,
+            status=status,
+            error=error
         )
-        total_count = len(self.flows)
-
-        system_metrics = {
-            "flows_per_hour": total_flows * 2,  # Mock metric
-            "success_rate": int(
-                (success_count / total_count * 100) if total_count > 0 else 0
-            ),
-            "avg_completion_time": 45.5,  # Mock metric in minutes
-            "active_agents": 3,  # Mock metric
-        }
-
+        
+        flow.events.append(event)
+        
+        # Notify handlers
+        self._notify_handlers(flow_id, event)
+        
+        return event
+    
+    def complete_flow(self, flow_id: str) -> Optional[PipelineFlow]:
+        """Mark a flow as completed"""
+        if flow_id not in self.active_flows:
+            return None
+            
+        flow = self.active_flows.pop(flow_id)
+        flow.completed_at = datetime.now()
+        self.completed_flows.append(flow)
+        
+        # Add completion event
+        self.add_event(
+            flow_id=flow_id,
+            stage=PipelineStage.TASK_COMPLETION,
+            event_type="pipeline_completed",
+            data={"total_duration_seconds": (flow.completed_at - flow.started_at).total_seconds()},
+            status="completed"
+        )
+        
+        return flow
+    
+    def get_flow_visualization(self, flow_id: str) -> Dict[str, Any]:
+        """Get visualization data for a specific flow"""
+        flow = self.active_flows.get(flow_id)
+        if not flow:
+            # Check completed flows
+            flow = next((f for f in self.completed_flows if f.id == flow_id), None)
+            
+        if not flow:
+            return {"error": f"Flow {flow_id} not found"}
+        
+        # Build visualization data
+        nodes = []
+        edges = []
+        
+        # Create nodes for each event
+        for event in flow.events:
+            node = {
+                "id": event.id,
+                "label": event.event_type,
+                "stage": event.stage.value,
+                "timestamp": event.timestamp.isoformat(),
+                "status": event.status,
+                "data": event.data
+            }
+            
+            if event.error:
+                node["error"] = event.error
+                
+            if event.duration_ms:
+                node["duration_ms"] = event.duration_ms
+                
+            nodes.append(node)
+            
+            # Create edge to parent
+            if event.parent_id:
+                edges.append({
+                    "from": event.parent_id,
+                    "to": event.id,
+                    "label": f"{event.duration_ms}ms" if event.duration_ms else ""
+                })
+        
+        # Group nodes by stage for layout
+        stages = {}
+        for node in nodes:
+            stage = node["stage"]
+            if stage not in stages:
+                stages[stage] = []
+            stages[stage].append(node)
+        
         return {
-            "active_flows": active_flows,
-            "system_metrics": system_metrics,
-            "health_summary": {
-                "healthy": sum(
-                    1 for f in active_flows if f["health_status"]["status"] == "healthy"
-                ),
-                "warning": sum(
-                    1 for f in active_flows if f["health_status"]["status"] == "warning"
-                ),
-                "critical": sum(
-                    1
-                    for f in active_flows
-                    if f["health_status"]["status"] == "critical"
-                ),
-            },
-            "alerts": [],  # TODO: Implement alerts
+            "flow_id": flow.id,
+            "project_name": flow.project_name,
+            "started_at": flow.started_at.isoformat(),
+            "completed_at": flow.completed_at.isoformat() if flow.completed_at else None,
+            "nodes": nodes,
+            "edges": edges,
+            "stages": stages,
+            "total_events": len(flow.events),
+            "is_active": flow_id in self.active_flows
         }
+    
+    def get_active_flows(self) -> List[Dict[str, Any]]:
+        """Get summary of all active flows"""
+        return [
+            {
+                "id": flow.id,
+                "project_name": flow.project_name,
+                "started_at": flow.started_at.isoformat(),
+                "event_count": len(flow.events),
+                "current_stage": flow.events[-1].stage.value if flow.events else None
+            }
+            for flow in self.active_flows.values()
+        ]
+    
+    def add_event_handler(self, handler):
+        """Add handler for pipeline events"""
+        self.event_handlers.append(handler)
+    
+    def _notify_handlers(self, flow_id: str, event: PipelineEvent):
+        """Notify all handlers of a new event"""
+        for handler in self.event_handlers:
+            try:
+                handler(flow_id, event)
+            except Exception as e:
+                logger.error(f"Error in event handler: {e}")
+    
+    def track_ai_analysis(self, flow_id: str, prd_text: str, analysis_result: Dict[str, Any], duration_ms: int):
+        """Track AI analysis stage"""
+        self.add_event(
+            flow_id=flow_id,
+            stage=PipelineStage.AI_ANALYSIS,
+            event_type="ai_prd_analysis",
+            data={
+                "prd_length": len(prd_text),
+                "functional_requirements": len(analysis_result.get("functionalRequirements", [])),
+                "confidence": analysis_result.get("confidence", 0)
+            },
+            duration_ms=duration_ms,
+            status="completed"
+        )
+    
+    def track_task_generation(self, flow_id: str, task_count: int, tasks: List[Dict[str, Any]], duration_ms: int):
+        """Track task generation stage"""
+        self.add_event(
+            flow_id=flow_id,
+            stage=PipelineStage.TASK_GENERATION,
+            event_type="tasks_generated",
+            data={
+                "task_count": task_count,
+                "task_names": [t.get("name", "Unnamed") for t in tasks[:5]],  # First 5
+                "has_more": len(tasks) > 5
+            },
+            duration_ms=duration_ms,
+            status="completed"
+        )
+    
+    def track_task_creation(self, flow_id: str, task_id: str, task_name: str, success: bool, error: Optional[str] = None):
+        """Track individual task creation"""
+        self.add_event(
+            flow_id=flow_id,
+            stage=PipelineStage.TASK_CREATION,
+            event_type="task_created" if success else "task_creation_failed",
+            data={
+                "task_id": task_id,
+                "task_name": task_name
+            },
+            status="completed" if success else "failed",
+            error=error
+        )
+    
+    def track_work_progress(self, flow_id: str, task_id: str, agent_id: str, progress: int):
+        """Track work progress on tasks"""
+        self.add_event(
+            flow_id=flow_id,
+            stage=PipelineStage.WORK_PROGRESS,
+            event_type="progress_update",
+            data={
+                "task_id": task_id,
+                "agent_id": agent_id,
+                "progress": progress
+            },
+            status="in_progress" if progress < 100 else "completed"
+        )

@@ -13,7 +13,7 @@ from typing import Any, Dict, List
 from flask import Blueprint, jsonify, request
 
 from src.marcus_mcp.client import SimpleMarcusClient
-from src.visualization.pipeline_flow import PipelineFlowManager
+from src.visualization.pipeline_manager import PipelineFlowManager
 from src.workflow.project_workflow import ProjectWorkflowManager
 
 # Create blueprint
