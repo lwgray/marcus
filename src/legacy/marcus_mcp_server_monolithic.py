@@ -44,7 +44,7 @@ from src.integrations.kanban_factory import KanbanFactory
 from src.integrations.kanban_interface import KanbanInterface
 
 # Natural Language Processing tools
-from src.integrations.mcp_natural_language_tools import (
+from src.integrations.nlp_tools import (
     add_feature_natural_language,
     create_project_from_natural_language,
 )

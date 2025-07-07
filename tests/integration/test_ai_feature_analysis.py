@@ -20,7 +20,7 @@ from datetime import datetime
 
 from src.core.models import Priority, Task, TaskStatus
 from src.integrations.ai_analysis_engine import AIAnalysisEngine
-from src.integrations.mcp_natural_language_tools import NaturalLanguageFeatureAdder
+from src.integrations.nlp_tools import NaturalLanguageFeatureAdder
 
 
 class TestAIFeatureAnalysis:

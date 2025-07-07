@@ -162,9 +162,9 @@ class MarcusServer:
         if memory_config["enabled"]:
             # Check if we should use enhanced memory
             if memory_config.get("use_v2_predictions", False):
-                from src.core.memory_enhanced import MemoryEnhanced
+                from src.core.memory_advanced import MemoryAdvanced
 
-                self.memory = MemoryEnhanced(
+                self.memory = MemoryAdvanced(
                     events=self.events, persistence=self.persistence
                 )
             else:

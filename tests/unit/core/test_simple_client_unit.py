@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unit tests for SimpleMCPKanbanClient
+Unit tests for KanbanClient
 Tests the client logic without real MCP connections
 """
 
@@ -13,10 +13,12 @@ import pytest
 import pytest_asyncio
 
 # Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(
+    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 
 from src.core.models import Priority, Task, TaskStatus
-from src.integrations.mcp_kanban_client_simple import SimpleMCPKanbanClient
+from src.integrations.kanban_client import KanbanClient
 
 
 class MockMCPCaller:
@@ -39,15 +41,11 @@ class MockMCPCaller:
         if tool_name == "mcp_kanban_project_board_manager":
             if arguments.get("action") == "get_projects":
                 return {
-                    "items": [
-                        {"id": "test-project-123", "name": "Task Master Test"}
-                    ]
+                    "items": [{"id": "test-project-123", "name": "Task Master Test"}]
                 }
             elif arguments.get("action") == "get_boards":
                 return {
-                    "items": [
-                        {"id": "test-board-456", "projectId": "test-project-123"}
-                    ]
+                    "items": [{"id": "test-board-456", "projectId": "test-project-123"}]
                 }
         elif tool_name == "mcp_kanban_card_manager":
             if arguments.get("action") == "get_all":
@@ -59,15 +57,15 @@ class MockMCPCaller:
                         "list": {"name": "TODO"},
                         "labels": [{"name": "high", "color": "red"}],
                         "createdAt": "2024-01-01T00:00:00",
-                        "updatedAt": "2024-01-01T00:00:00"
+                        "updatedAt": "2024-01-01T00:00:00",
                     },
                     {
                         "id": "card-2",
                         "name": "Test Task 2",
                         "list": {"name": "In Progress"},
                         "labels": [],
-                        "createdAt": "2024-01-01T00:00:00"
-                    }
+                        "createdAt": "2024-01-01T00:00:00",
+                    },
                 ]
             elif arguments.get("action") == "get_details":
                 return {
@@ -76,14 +74,14 @@ class MockMCPCaller:
                     "description": "Detailed description",
                     "list": {"name": "TODO"},
                     "labels": [{"name": "medium"}],
-                    "createdAt": "2024-01-01T00:00:00"
+                    "createdAt": "2024-01-01T00:00:00",
                 }
         elif tool_name == "mcp_kanban_list_manager":
             if arguments.get("action") == "get_all":
                 return [
                     {"id": "list-todo", "name": "TODO", "position": 0},
                     {"id": "list-progress", "name": "In Progress", "position": 1},
-                    {"id": "list-done", "name": "Done", "position": 2}
+                    {"id": "list-done", "name": "Done", "position": 2},
                 ]
         elif tool_name == "mcp_kanban_board_manager":
             if arguments.get("action") == "get_stats":
@@ -92,15 +90,15 @@ class MockMCPCaller:
                         "totalCards": 10,
                         "inProgressCount": 3,
                         "doneCount": 5,
-                        "completionPercentage": 50
+                        "completionPercentage": 50,
                     }
                 }
 
         return None
 
 
-class TestSimpleMCPKanbanClient:
-    """Test suite for SimpleMCPKanbanClient"""
+class TestKanbanClient:
+    """Test suite for KanbanClient"""
 
     @pytest.fixture
     def mock_caller(self):
@@ -110,7 +108,7 @@ class TestSimpleMCPKanbanClient:
     @pytest.fixture
     def client(self, mock_caller):
         """Create a client with mock caller"""
-        return SimpleMCPKanbanClient(mock_caller)
+        return KanbanClient(mock_caller)
 
     @pytest.mark.asyncio
     async def test_initialization(self, client):
@@ -129,7 +127,9 @@ class TestSimpleMCPKanbanClient:
     @pytest.mark.asyncio
     async def test_initialization_project_not_found(self, client):
         """Test initialization when project not found"""
-        client.mcp_call.responses["mcp_kanban_project_board_manager:get_projects"] = {"items": []}
+        client.mcp_call.responses["mcp_kanban_project_board_manager:get_projects"] = {
+            "items": []
+        }
 
         with pytest.raises(ValueError, match="Project 'Task Master Test' not found"):
             await client.initialize("Task Master Test")
@@ -145,11 +145,15 @@ class TestSimpleMCPKanbanClient:
         assert tasks[0].id == "card-1"
         assert tasks[0].name == "Test Task 1"
         assert tasks[0].status == TaskStatus.TODO
-        assert tasks[0].priority == Priority.MEDIUM  # Current implementation doesn't extract from labels
+        assert (
+            tasks[0].priority == Priority.MEDIUM
+        )  # Current implementation doesn't extract from labels
 
         assert tasks[1].id == "card-2"
         assert tasks[1].name == "Test Task 2"
-        assert tasks[1].status == TaskStatus.TODO  # Status is determined by listId lookup, not list.name
+        assert (
+            tasks[1].status == TaskStatus.TODO
+        )  # Status is determined by listId lookup, not list.name
         assert tasks[1].priority == Priority.MEDIUM
 
     @pytest.mark.asyncio
@@ -177,7 +181,9 @@ class TestSimpleMCPKanbanClient:
         await client.initialize("Task Master Test")
 
         # Set up mock responses for assignment
-        client.mcp_call.responses["mcp_kanban_comment_manager:create"] = {"id": "comment-1"}
+        client.mcp_call.responses["mcp_kanban_comment_manager:create"] = {
+            "id": "comment-1"
+        }
         client.mcp_call.responses["mcp_kanban_card_manager:move"] = {"id": "card-1"}
 
         await client.assign_task("card-1", "test-agent")
@@ -201,7 +207,9 @@ class TestSimpleMCPKanbanClient:
         await client.initialize("Task Master Test")
 
         # Set up mock responses
-        client.mcp_call.responses["mcp_kanban_comment_manager:create"] = {"id": "comment-1"}
+        client.mcp_call.responses["mcp_kanban_comment_manager:create"] = {
+            "id": "comment-1"
+        }
         client.mcp_call.responses["mcp_kanban_card_manager:move"] = {"id": "card-1"}
 
         await client.complete_task("card-1")
@@ -212,7 +220,6 @@ class TestSimpleMCPKanbanClient:
         comment_calls = [c for c in calls if c[0] == "mcp_kanban_comment_manager"]
         assert len(comment_calls) > 0
         assert "completed" in comment_calls[0][1]["text"].lower()
-
 
     @pytest.mark.asyncio
     async def test_card_to_task_conversion(self, client):
@@ -227,7 +234,7 @@ class TestSimpleMCPKanbanClient:
             "list": {"name": "TODO"},
             "labels": [{"name": "high", "color": "red"}],
             "createdAt": "2024-01-01T00:00:00",
-            "updatedAt": "2024-01-02T00:00:00"
+            "updatedAt": "2024-01-02T00:00:00",
         }
 
         task = await client._card_to_task(card)
@@ -236,7 +243,9 @@ class TestSimpleMCPKanbanClient:
         assert task.name == "Test Card"
         assert task.description == "Test description"
         assert task.status == TaskStatus.TODO
-        assert task.priority == Priority.MEDIUM  # Priority is always MEDIUM in current implementation
+        assert (
+            task.priority == Priority.MEDIUM
+        )  # Priority is always MEDIUM in current implementation
         assert task.created_at is not None
         assert task.updated_at is not None
 
@@ -245,10 +254,7 @@ class TestSimpleMCPKanbanClient:
         """Test card to task conversion with minimal data"""
         await client.initialize("Task Master Test")
 
-        card = {
-            "id": "minimal-id",
-            "name": "Minimal Card"
-        }
+        card = {"id": "minimal-id", "name": "Minimal Card"}
 
         task = await client._card_to_task(card)
 
@@ -271,7 +277,7 @@ class TestSimpleMCPKanbanClient:
             ("list-working", "Working on it", TaskStatus.TODO),  # No "progress" in name
             ("list-done", "Done", TaskStatus.DONE),
             ("list-completed", "Completed tasks", TaskStatus.DONE),
-            ("list-blocked", "Blocked", TaskStatus.BLOCKED)
+            ("list-blocked", "Blocked", TaskStatus.BLOCKED),
         ]
 
         # Mock the _get_lists response
@@ -281,13 +287,15 @@ class TestSimpleMCPKanbanClient:
             {"id": "list-working", "name": "Working on it"},
             {"id": "list-done", "name": "Done"},
             {"id": "list-completed", "name": "Completed tasks"},
-            {"id": "list-blocked", "name": "Blocked"}
+            {"id": "list-blocked", "name": "Blocked"},
         ]
 
         for list_id, list_name, expected_status in test_cases:
             card = {"id": "test", "name": "Test", "listId": list_id}
             task = await client._card_to_task(card)
-            assert task.status == expected_status, f"List '{list_name}' (id: {list_id}) should map to {expected_status}"
+            assert (
+                task.status == expected_status
+            ), f"List '{list_name}' (id: {list_id}) should map to {expected_status}"
 
     @pytest.mark.asyncio
     async def test_priority_default(self, client):
@@ -298,4 +306,6 @@ class TestSimpleMCPKanbanClient:
         # It doesn't extract from labels yet
         card = {"id": "test", "name": "Test", "labels": [{"name": "urgent"}]}
         task = await client._card_to_task(card)
-        assert task.priority == Priority.MEDIUM  # Always returns MEDIUM in current implementation
+        assert (
+            task.priority == Priority.MEDIUM
+        )  # Always returns MEDIUM in current implementation

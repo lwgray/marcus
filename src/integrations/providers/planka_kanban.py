@@ -9,8 +9,8 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from src.core.models import Priority, Task, TaskStatus
+from src.integrations.kanban_client import KanbanClient
 from src.integrations.kanban_interface import KanbanInterface, KanbanProvider
-from src.integrations.mcp_kanban_client_simple import SimpleMCPKanbanClient
 
 
 class PlankaKanban(KanbanInterface):
@@ -27,8 +27,8 @@ class PlankaKanban(KanbanInterface):
         """
         super().__init__(config)
         self.provider = KanbanProvider.PLANKA
-        self.client = SimpleMCPKanbanClient(config.get('mcp_function_caller'))
-        self.project_name = config.get('project_name', 'Task Master Test')
+        self.client = KanbanClient(config.get("mcp_function_caller"))
+        self.project_name = config.get("project_name", "Task Master Test")
         self.connected = False
 
     async def connect(self) -> bool:
@@ -60,7 +60,7 @@ class PlankaKanban(KanbanInterface):
 
         cards = await self.client._get_cards()
         for card_data in cards:
-            if card_data['id'] == task_id:
+            if card_data["id"] == task_id:
                 return await self.client._card_to_task(card_data)
         return None
 
@@ -71,17 +71,17 @@ class PlankaKanban(KanbanInterface):
 
         # Map to Planka card structure
         card_data = {
-            'name': task_data.get('name', 'Untitled Task'),
-            'description': task_data.get('description', ''),
-            'dueDate': task_data.get('due_date'),
-            'position': 65535  # Default position
+            "name": task_data.get("name", "Untitled Task"),
+            "description": task_data.get("description", ""),
+            "dueDate": task_data.get("due_date"),
+            "position": 65535,  # Default position
         }
 
         # Find backlog list
         lists = await self.client._get_lists()
         backlog_list = None
         for list_data in lists:
-            if 'backlog' in list_data['name'].lower():
+            if "backlog" in list_data["name"].lower():
                 backlog_list = list_data
                 break
 
@@ -89,12 +89,15 @@ class PlankaKanban(KanbanInterface):
             raise ValueError("No backlog list found")
 
         # Create card
-        result = await self.client.mcp_call("mcp_kanban_create_card", {
-            'listId': backlog_list['id'],
-            'name': card_data['name'],
-            'description': card_data['description'],
-            'position': card_data['position']
-        })
+        result = await self.client.mcp_call(
+            "mcp_kanban_create_card",
+            {
+                "listId": backlog_list["id"],
+                "name": card_data["name"],
+                "description": card_data["description"],
+                "position": card_data["position"],
+            },
+        )
 
         # Convert to Task
         return await self.client._card_to_task(result)
@@ -105,14 +108,14 @@ class PlankaKanban(KanbanInterface):
             await self.connect()
 
         # Check if status is being updated
-        if 'status' in updates:
-            status = updates['status']
+        if "status" in updates:
+            status = updates["status"]
             # Map TaskStatus to column names
             status_to_column = {
-                TaskStatus.TODO: 'backlog',
-                TaskStatus.IN_PROGRESS: 'in progress',
-                TaskStatus.DONE: 'done',
-                TaskStatus.BLOCKED: 'blocked'
+                TaskStatus.TODO: "backlog",
+                TaskStatus.IN_PROGRESS: "in progress",
+                TaskStatus.DONE: "done",
+                TaskStatus.BLOCKED: "blocked",
             }
 
             # Move to appropriate column if status changed
@@ -120,7 +123,7 @@ class PlankaKanban(KanbanInterface):
                 await self.move_task_to_column(task_id, status_to_column[status])
 
         # Update card details (if update_task_details exists)
-        if hasattr(self.client, 'update_task_details'):
+        if hasattr(self.client, "update_task_details"):
             await self.client.update_task_details(task_id, updates)
 
         # Get updated task
@@ -135,7 +138,7 @@ class PlankaKanban(KanbanInterface):
         await self.client.assign_task(task_id, assignee_id)
 
         # Move to In Progress column
-        await self.move_task_to_column(task_id, 'in progress')
+        await self.move_task_to_column(task_id, "in progress")
 
         return True
 
@@ -146,11 +149,11 @@ class PlankaKanban(KanbanInterface):
 
         # Map column names to Planka lists
         column_map = {
-            'backlog': 'Backlog',
-            'ready': 'Ready',
-            'in progress': 'In Progress',
-            'blocked': 'Blocked',
-            'done': 'Done'
+            "backlog": "Backlog",
+            "ready": "Ready",
+            "in progress": "In Progress",
+            "blocked": "Blocked",
+            "done": "Done",
         }
 
         target_list_name = column_map.get(column_name.lower(), column_name)
@@ -159,7 +162,7 @@ class PlankaKanban(KanbanInterface):
         lists = await self.client._get_lists()
         target_list = None
         for list_data in lists:
-            if target_list_name.lower() in list_data['name'].lower():
+            if target_list_name.lower() in list_data["name"].lower():
                 target_list = list_data
                 break
 
@@ -167,11 +170,10 @@ class PlankaKanban(KanbanInterface):
             return False
 
         # Move card
-        await self.client.mcp_call("mcp_kanban_move_card", {
-            'cardId': task_id,
-            'listId': target_list['id'],
-            'position': 65535
-        })
+        await self.client.mcp_call(
+            "mcp_kanban_move_card",
+            {"cardId": task_id, "listId": target_list["id"], "position": 65535},
+        )
 
         return True
 
@@ -191,56 +193,62 @@ class PlankaKanban(KanbanInterface):
         lists = await self.client._get_lists()
 
         # Create list name to ID mapping
-        list_map = {list_data['name'].lower(): list_data['id'] for list_data in lists}
+        list_map = {list_data["name"].lower(): list_data["id"] for list_data in lists}
 
         metrics = {
-            'total_tasks': len(cards),
-            'backlog_tasks': 0,
-            'in_progress_tasks': 0,
-            'completed_tasks': 0,
-            'blocked_tasks': 0
+            "total_tasks": len(cards),
+            "backlog_tasks": 0,
+            "in_progress_tasks": 0,
+            "completed_tasks": 0,
+            "blocked_tasks": 0,
         }
 
         # Count tasks by status
         for card in cards:
-            list_id = card.get('listId')
+            list_id = card.get("listId")
             for list_data in lists:
-                if list_data['id'] == list_id:
-                    list_name = list_data['name'].lower()
-                    if 'backlog' in list_name or 'ready' in list_name:
-                        metrics['backlog_tasks'] += 1
-                    elif 'progress' in list_name:
-                        metrics['in_progress_tasks'] += 1
-                    elif 'done' in list_name or 'complete' in list_name:
-                        metrics['completed_tasks'] += 1
-                    elif 'blocked' in list_name:
-                        metrics['blocked_tasks'] += 1
+                if list_data["id"] == list_id:
+                    list_name = list_data["name"].lower()
+                    if "backlog" in list_name or "ready" in list_name:
+                        metrics["backlog_tasks"] += 1
+                    elif "progress" in list_name:
+                        metrics["in_progress_tasks"] += 1
+                    elif "done" in list_name or "complete" in list_name:
+                        metrics["completed_tasks"] += 1
+                    elif "blocked" in list_name:
+                        metrics["blocked_tasks"] += 1
                     break
 
         return metrics
 
-    async def report_blocker(self, task_id: str, blocker_description: str, severity: str = "medium") -> bool:
+    async def report_blocker(
+        self, task_id: str, blocker_description: str, severity: str = "medium"
+    ) -> bool:
         """Report blocker on task"""
         if not self.connected:
             await self.connect()
 
         # Add blocker as comment and label
-        await self.add_comment(task_id, f"🚫 BLOCKER ({severity}): {blocker_description}")
+        await self.add_comment(
+            task_id, f"🚫 BLOCKER ({severity}): {blocker_description}"
+        )
 
         # Move to blocked column if exists
         await self.move_task_to_column(task_id, "Blocked")
 
         return True
 
-    async def update_task_progress(self, task_id: str, progress_data: Dict[str, Any]) -> bool:
+    async def update_task_progress(
+        self, task_id: str, progress_data: Dict[str, Any]
+    ) -> bool:
         """Update task progress"""
         if not self.connected:
             await self.connect()
 
         # Add progress comment
-        progress = progress_data.get('progress', 0)
-        status = progress_data.get('status', '')
-        message = progress_data.get('message', '')
+        progress = progress_data.get("progress", 0)
+        status = progress_data.get("status", "")
+        message = progress_data.get("message", "")
 
         comment = f"📊 Progress Update: {progress}%"
         if status:
@@ -255,9 +263,9 @@ class PlankaKanban(KanbanInterface):
 
         # Move to appropriate column based on status
         if status:
-            if status == 'in_progress' and progress < 100:
+            if status == "in_progress" and progress < 100:
                 await self.move_task_to_column(task_id, "In Progress")
-            elif status == 'completed' or progress >= 100:
+            elif status == "completed" or progress >= 100:
                 await self.move_task_to_column(task_id, "Done")
 
         return True
@@ -276,19 +284,16 @@ class PlankaKanban(KanbanInterface):
             items_to_complete = int((progress / 100) * total_items)
 
             # Sort items by position to maintain order
-            sorted_items = sorted(checklist_items, key=lambda x: x.get('position', 0))
+            sorted_items = sorted(checklist_items, key=lambda x: x.get("position", 0))
 
             # Update checklist items
             for idx, item in enumerate(sorted_items):
                 should_be_completed = idx < items_to_complete
-                is_completed = item.get('isCompleted', False)
+                is_completed = item.get("isCompleted", False)
 
                 # Only update if state needs to change
                 if should_be_completed != is_completed:
-                    await self.client.update_card_task(
-                        item['id'],
-                        should_be_completed
-                    )
+                    await self.client.update_card_task(item["id"], should_be_completed)
 
         except Exception as e:
             # Log error but don't fail the progress update

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Comprehensive integration tests for SimpleMCPKanbanClient
+Comprehensive integration tests for KanbanClient
 Tests edge cases, error handling, and complex scenarios
 """
 
@@ -14,10 +14,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 # Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(
+    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 
 from src.core.models import Priority, Task, TaskStatus
-from src.integrations.mcp_kanban_client_simple import SimpleMCPKanbanClient
+from src.integrations.kanban_client import KanbanClient
 
 
 class MockMCPSession:
@@ -49,49 +51,67 @@ class MockMCPSession:
         result = MagicMock()
         if tool_name == "mcp_kanban_project_board_manager":
             if arguments.get("action") == "get_projects":
-                result.content = [MagicMock(text={
-                    "items": [
-                        {"id": "test-project", "name": "Task Master Test"}
-                    ]
-                })]
+                result.content = [
+                    MagicMock(
+                        text={
+                            "items": [
+                                {"id": "test-project", "name": "Task Master Test"}
+                            ]
+                        }
+                    )
+                ]
             elif arguments.get("action") == "get_boards":
-                result.content = [MagicMock(text={
-                    "items": [
-                        {"id": "test-board", "projectId": "test-project"}
-                    ]
-                })]
+                result.content = [
+                    MagicMock(
+                        text={
+                            "items": [{"id": "test-board", "projectId": "test-project"}]
+                        }
+                    )
+                ]
         elif tool_name == "mcp_kanban_card_manager":
             if arguments.get("action") == "get_all":
                 result.content = [MagicMock(text=[])]
             elif arguments.get("action") == "get_details":
-                result.content = [MagicMock(text={
-                    "id": arguments.get("cardId"),
-                    "name": "Test Card",
-                    "list": {"name": "TODO"}
-                })]
+                result.content = [
+                    MagicMock(
+                        text={
+                            "id": arguments.get("cardId"),
+                            "name": "Test Card",
+                            "list": {"name": "TODO"},
+                        }
+                    )
+                ]
         elif tool_name == "mcp_kanban_list_manager":
             if arguments.get("action") == "get_all":
-                result.content = [MagicMock(text=[
-                    {"id": "list-1", "name": "TODO", "position": 0},
-                    {"id": "list-2", "name": "In Progress", "position": 1},
-                    {"id": "list-3", "name": "Done", "position": 2}
-                ])]
+                result.content = [
+                    MagicMock(
+                        text=[
+                            {"id": "list-1", "name": "TODO", "position": 0},
+                            {"id": "list-2", "name": "In Progress", "position": 1},
+                            {"id": "list-3", "name": "Done", "position": 2},
+                        ]
+                    )
+                ]
         elif tool_name == "mcp_kanban_board_manager":
             if arguments.get("action") == "get_stats":
-                result.content = [MagicMock(text={
-                    "stats": {
-                        "totalCards": 0,
-                        "inProgressCount": 0,
-                        "doneCount": 0,
-                        "completionPercentage": 0
-                    }
-                })]
+                result.content = [
+                    MagicMock(
+                        text={
+                            "stats": {
+                                "totalCards": 0,
+                                "inProgressCount": 0,
+                                "doneCount": 0,
+                                "completionPercentage": 0,
+                            }
+                        }
+                    )
+                ]
 
         return result
 
 
 class TestMCPKanbanClientComprehensive:
-    """Comprehensive test suite for SimpleMCPKanbanClient"""
+    """Comprehensive test suite for KanbanClient"""
 
     @pytest.fixture
     async def mock_session(self):
@@ -101,11 +121,12 @@ class TestMCPKanbanClientComprehensive:
     @pytest.fixture
     async def client(self, mock_session):
         """Create a client with mock session"""
+
         async def mcp_caller(tool_name: str, arguments: Dict[str, Any]) -> Any:
             result = await mock_session.call_tool(tool_name, arguments)
             return result.content[0].text if result.content else None
 
-        client = SimpleMCPKanbanClient(mcp_caller)
+        client = KanbanClient(mcp_caller)
         # Store reference to mock session for test access
         client._mock_session = mock_session
         return client
@@ -115,7 +136,9 @@ class TestMCPKanbanClientComprehensive:
         """Test initialization with retry logic"""
         # First call fails, second succeeds
         mock_session = client._mock_session
-        mock_session.errors["mcp_kanban_project_board_manager:get_projects"] = Exception("Network error")
+        mock_session.errors[
+            "mcp_kanban_project_board_manager:get_projects"
+        ] = Exception("Network error")
 
         # Should fail on first attempt
         with pytest.raises(Exception, match="Network error"):
@@ -137,15 +160,13 @@ class TestMCPKanbanClientComprehensive:
             "items": [
                 {"id": "proj-1", "name": "Other Project"},
                 {"id": "proj-2", "name": "Task Master Test"},
-                {"id": "proj-3", "name": "Another Task Master Test"}
+                {"id": "proj-3", "name": "Another Task Master Test"},
             ]
         }
 
         # Also need to mock boards for the selected project
         mock_session.responses["mcp_kanban_project_board_manager:get_boards"] = {
-            "items": [
-                {"id": "board-2", "projectId": "proj-2"}
-            ]
+            "items": [{"id": "board-2", "projectId": "proj-2"}]
         }
 
         await client.initialize("Task Master Test")
@@ -156,9 +177,7 @@ class TestMCPKanbanClientComprehensive:
         """Test error when board not found for project"""
         mock_session = client._mock_session
         mock_session.responses["mcp_kanban_project_board_manager:get_boards"] = {
-            "items": [
-                {"id": "board-1", "projectId": "other-project"}
-            ]
+            "items": [{"id": "board-1", "projectId": "other-project"}]
         }
 
         with pytest.raises(ValueError, match="No board found"):
@@ -176,7 +195,7 @@ class TestMCPKanbanClientComprehensive:
                 "id": f"task-{i}",
                 "name": f"Task {i}",
                 "list": {"name": "TODO"},
-                "labels": []
+                "labels": [],
             }
             for i in range(10)
         ]
@@ -197,7 +216,9 @@ class TestMCPKanbanClientComprehensive:
 
         # Configure responses for state transitions
         mock_session = client._mock_session
-        mock_session.responses["mcp_kanban_comment_manager:create"] = {"id": "comment-1"}
+        mock_session.responses["mcp_kanban_comment_manager:create"] = {
+            "id": "comment-1"
+        }
         mock_session.responses["mcp_kanban_card_manager:move"] = {"id": "task-1"}
 
         # Test TODO -> In Progress
@@ -217,7 +238,9 @@ class TestMCPKanbanClientComprehensive:
         mock_session = client._mock_session
 
         # Comment creation fails
-        mock_session.errors["mcp_kanban_comment_manager:create"] = Exception("API error")
+        mock_session.errors["mcp_kanban_comment_manager:create"] = Exception(
+            "API error"
+        )
 
         # Assignment should fail but not crash
         with pytest.raises(Exception, match="API error"):
@@ -238,7 +261,7 @@ class TestMCPKanbanClientComprehensive:
                 "name": "Task with émojis 🚀 and unicode ñ",
                 "description": "Description with\nnewlines\tand\ttabs",
                 "list": {"name": "TODO"},
-                "labels": [{"name": "high-priority"}]
+                "labels": [{"name": "high-priority"}],
             }
         ]
 
@@ -259,7 +282,7 @@ class TestMCPKanbanClientComprehensive:
         tasks = await client.get_available_tasks()
         assert tasks == []
 
-        # get_board_summary doesn't exist in SimpleMCPKanbanClient
+        # get_board_summary doesn't exist in KanbanClient
         # Just verify empty tasks were returned
         assert len(tasks) == 0
 
@@ -296,7 +319,7 @@ class TestMCPKanbanClientComprehensive:
             "2024-01-01",
             "invalid-date",
             None,
-            ""
+            "",
         ]
 
         for date_str in test_dates:
@@ -304,7 +327,7 @@ class TestMCPKanbanClientComprehensive:
                 "id": "test",
                 "name": "Test",
                 "createdAt": date_str,
-                "updatedAt": date_str
+                "updatedAt": date_str,
             }
 
             # Should handle gracefully or raise exception for invalid dates
@@ -324,15 +347,13 @@ class TestMCPKanbanClientComprehensive:
         card = {
             "id": "test",
             "name": "Test",
-            "labels": [
-                {"name": "low"},
-                {"name": "urgent"},
-                {"name": "medium"}
-            ]
+            "labels": [{"name": "low"}, {"name": "urgent"}, {"name": "medium"}],
         }
 
         task = await client._card_to_task(card)
-        assert task.priority == Priority.MEDIUM  # Current implementation always returns MEDIUM
+        assert (
+            task.priority == Priority.MEDIUM
+        )  # Current implementation always returns MEDIUM
 
     @pytest.mark.asyncio
     async def test_list_name_normalization(self, client):
@@ -340,9 +361,18 @@ class TestMCPKanbanClientComprehensive:
         await client.initialize("Task Master Test")
 
         list_variations = [
-            "TODO", "todo", "To Do", "TO DO",
-            "In Progress", "in progress", "IN PROGRESS", "In-Progress",
-            "Done", "done", "DONE", "Completed"
+            "TODO",
+            "todo",
+            "To Do",
+            "TO DO",
+            "In Progress",
+            "in progress",
+            "IN PROGRESS",
+            "In-Progress",
+            "Done",
+            "done",
+            "DONE",
+            "Completed",
         ]
 
         for list_name in list_variations:
@@ -350,12 +380,17 @@ class TestMCPKanbanClientComprehensive:
             task = await client._card_to_task(card)
 
             # Should map to one of the standard statuses
-            assert task.status in [TaskStatus.TODO, TaskStatus.IN_PROGRESS, TaskStatus.DONE, TaskStatus.BLOCKED]
+            assert task.status in [
+                TaskStatus.TODO,
+                TaskStatus.IN_PROGRESS,
+                TaskStatus.DONE,
+                TaskStatus.BLOCKED,
+            ]
 
     @pytest.mark.asyncio
     async def test_no_mcp_caller_error(self):
         """Test error when no MCP caller provided"""
-        client = SimpleMCPKanbanClient()
+        client = KanbanClient()
 
         with pytest.raises(RuntimeError, match="MCP function caller not provided"):
             await client.initialize("Test Project")

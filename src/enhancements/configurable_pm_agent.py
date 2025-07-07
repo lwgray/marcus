@@ -20,13 +20,13 @@ Examples
 import json
 import os
 from typing import Optional, Dict, Any, Union
-from marcus_mvp_fixed import PMAgentMVP
+from src.legacy.marcus_mvp import MarcusMVP
 
 
-class ConfigurablePMAgent(PMAgentMVP):
+class ConfigurablePMAgent(MarcusMVP):
     """Marcus with configuration file and environment variable support.
     
-    This class extends PMAgentMVP to provide flexible configuration management
+    This class extends MarcusMVP to provide flexible configuration management
     through JSON files and environment variables, enabling different deployment
     configurations for development, staging, and production environments.
     
@@ -158,7 +158,7 @@ class ConfigurablePMAgent(PMAgentMVP):
         
         Performs enhanced startup sequence that includes:
         1. Board discovery if project_id is set but board_id is not
-        2. Standard PMAgentMVP startup procedures
+        2. Standard MarcusMVP startup procedures
         
         Raises
         ------

@@ -24,35 +24,35 @@ Examples
 Basic worker agent workflow:
 
 >>> import asyncio
->>> from src.worker.mcp_client import WorkerMCPClient
->>> 
+>>> from src.worker.client import WorkerMCPClient
+>>>
 >>> async def worker_main():
 ...     client = WorkerMCPClient()
 ...     async with client.connect_to_marcus() as session:
 ...         # Register agent
 ...         result = await client.register_agent(
-...             "worker-001", 
-...             "Backend Developer", 
-...             "Developer", 
+...             "worker-001",
+...             "Backend Developer",
+...             "Developer",
 ...             ["python", "fastapi", "postgresql"]
 ...         )
-...         
+...
 ...         # Work loop
 ...         while True:
 ...             task = await client.request_next_task("worker-001")
 ...             if not task.get('task'):
 ...                 break
-...                 
+...
 ...             # Report progress milestones
 ...             await client.report_task_progress(
 ...                 "worker-001", task['task']['id'], "in_progress", 25
 ...             )
-...             
+...
 ...             # Complete task
 ...             await client.report_task_progress(
 ...                 "worker-001", task['task']['id'], "completed", 100
 ...             )
->>> 
+>>>
 >>> asyncio.run(worker_main())
 
 Notes
@@ -67,31 +67,32 @@ import json
 import os
 import subprocess
 from contextlib import asynccontextmanager
-from typing import Dict, Any, Optional, List, AsyncIterator
+from typing import Any, AsyncIterator, Dict, List, Optional
+
+from mcp.client.stdio import stdio_client
 
 from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
 
 
 class WorkerMCPClient:
     """
     MCP Client for workers to communicate with Marcus.
-    
+
     This class provides a high-level interface for worker agents to communicate
     with the Marcus server using the Model Context Protocol (MCP). It manages
     connection lifecycle, handles all Marcus operations, and provides robust
     error handling and recovery mechanisms.
-    
+
     The client operates asynchronously and maintains a persistent connection
     to the Marcus server through stdio pipes. It supports the full workflow
     of agent registration, task management, progress reporting, and status
     monitoring required for autonomous worker operation.
-    
+
     Attributes
     ----------
     session : Optional[ClientSession]
         The active MCP client session, None when disconnected
-        
+
     Methods
     -------
     connect_to_marcus()
@@ -106,40 +107,40 @@ class WorkerMCPClient:
         Report task blockers for AI assistance
     get_project_status()
         Retrieve current project status and metrics
-        
+
     Examples
     --------
     Basic usage pattern:
-    
+
     >>> client = WorkerMCPClient()
     >>> async with client.connect_to_marcus() as session:
     ...     # Register with Marcus
     ...     await client.register_agent(
-    ...         "dev-worker-1", 
-    ...         "Development Worker", 
+    ...         "dev-worker-1",
+    ...         "Development Worker",
     ...         "Software Developer",
     ...         ["python", "javascript", "testing"]
     ...     )
-    ...     
+    ...
     ...     # Request and work on tasks
     ...     task_response = await client.request_next_task("dev-worker-1")
     ...     if task_response.get('task'):
     ...         task_id = task_response['task']['id']
-    ...         
+    ...
     ...         # Report progress milestones
     ...         await client.report_task_progress(
-    ...             "dev-worker-1", task_id, "in_progress", 50, 
+    ...             "dev-worker-1", task_id, "in_progress", 50,
     ...             "Completed initial implementation"
     ...         )
-    ...         
+    ...
     ...         # Report completion
     ...         await client.report_task_progress(
     ...             "dev-worker-1", task_id, "completed", 100,
     ...             "Task completed successfully with tests"
     ...         )
-    
+
     Error handling example:
-    
+
     >>> try:
     ...     async with client.connect_to_marcus() as session:
     ...         await client.register_agent("worker-1", "Worker", "Dev", [])
@@ -147,7 +148,7 @@ class WorkerMCPClient:
     ...     print(f"Connection failed: {e}")
     ... except Exception as e:
     ...     print(f"Unexpected error: {e}")
-    
+
     Notes
     -----
     - All methods require an active connection established via connect_to_marcus()
@@ -156,24 +157,24 @@ class WorkerMCPClient:
     - Workers should implement retry logic for transient failures
     - Session management is handled automatically by the context manager
     """
-    
+
     def __init__(self) -> None:
         """
         Initialize the WorkerMCPClient.
-        
+
         Creates a new MCP client instance with no active connection.
         The session will be established when using the connect_to_marcus()
         context manager.
-        
+
         Parameters
         ----------
         None
-        
+
         Attributes
         ----------
         session : Optional[ClientSession]
             Initially None, set when connection is established
-            
+
         Examples
         --------
         >>> client = WorkerMCPClient()
@@ -181,26 +182,26 @@ class WorkerMCPClient:
         None
         """
         self.session: Optional[ClientSession] = None
-        
+
     @asynccontextmanager
     async def connect_to_marcus(self) -> AsyncIterator[ClientSession]:
         """
         Establish connection to Marcus MCP server.
-        
+
         This async context manager handles the complete lifecycle of connecting
         to the Marcus server using the Model Context Protocol (MCP) over stdio.
         It spawns the server process, establishes communication streams, initializes
         the session, and ensures proper cleanup on exit.
-        
+
         The connection uses stdio pipes to communicate with the Marcus server
         process. The server command is dynamically constructed relative to the
         current module location to ensure portability.
-        
+
         Yields
         ------
         ClientSession
             An active MCP client session for communication with Marcus
-            
+
         Raises
         ------
         RuntimeError
@@ -209,19 +210,19 @@ class WorkerMCPClient:
             If MCP initialization fails or server is unreachable
         OSError
             If the server script file cannot be found or executed
-            
+
         Examples
         --------
         Basic connection usage:
-        
+
         >>> client = WorkerMCPClient()
         >>> async with client.connect_to_marcus() as session:
         ...     # Session is active and ready for use
         ...     tools = await session.list_tools()
         ...     print(f"Available tools: {[t.name for t in tools]}")
-        
+
         Connection with error handling:
-        
+
         >>> try:
         ...     async with client.connect_to_marcus() as session:
         ...         await client.register_agent("worker-1", "Test", "Developer", [])
@@ -229,7 +230,7 @@ class WorkerMCPClient:
         ...     print(f"Failed to connect: {e}")
         ... except Exception as e:
         ...     print(f"Unexpected error: {e}")
-        
+
         Notes
         -----
         - The context manager automatically handles server process lifecycle
@@ -241,47 +242,47 @@ class WorkerMCPClient:
         # Marcus server command
         server_cmd = [
             "python",
-            os.path.join(os.path.dirname(__file__), "..", "..", "marcus_mcp_server.py")
+            os.path.join(os.path.dirname(__file__), "..", "..", "marcus_mcp_server.py"),
         ]
-        
+
         server_params = StdioServerParameters(
-            command=server_cmd[0],
-            args=server_cmd[1:],
-            env=None
+            command=server_cmd[0], args=server_cmd[1:], env=None
         )
-        
+
         async with stdio_client(server_params) as (read_stream, write_stream):
             async with ClientSession(read_stream, write_stream) as session:
                 self.session = session
                 await session.initialize()
-                
+
                 # List available tools to verify connection
                 tools_response = await session.list_tools()
-                tools = tools_response.tools if hasattr(tools_response, 'tools') else tools_response
-                print(f"Connected to Marcus. Available tools: {[t.name for t in tools]}")
-                
+                tools = (
+                    tools_response.tools
+                    if hasattr(tools_response, "tools")
+                    else tools_response
+                )
+                print(
+                    f"Connected to Marcus. Available tools: {[t.name for t in tools]}"
+                )
+
                 yield session
-                
+
     async def register_agent(
-        self, 
-        agent_id: str, 
-        name: str, 
-        role: str, 
-        skills: List[str]
+        self, agent_id: str, name: str, role: str, skills: List[str]
     ) -> Dict[str, Any]:
         """
         Register worker agent with the Marcus system.
-        
+
         This method registers a new worker agent with the Marcus server,
         providing identification, role information, and skill capabilities.
         Registration is required before an agent can request tasks or participate
         in the project workflow.
-        
+
         The registration process validates agent information and creates a new
         agent record in the Marcus system. Agents can only be registered once
         per session; subsequent registrations with the same agent_id will update
         the existing record.
-        
+
         Parameters
         ----------
         agent_id : str
@@ -294,7 +295,7 @@ class WorkerMCPClient:
         skills : List[str]
             List of technical skills and capabilities the agent possesses
             (e.g., ["python", "fastapi", "postgresql", "docker"])
-            
+
         Returns
         -------
         Dict[str, Any]
@@ -303,7 +304,7 @@ class WorkerMCPClient:
             - agent_id: str confirming the registered agent ID
             - message: str with registration status details
             - timestamp: str with registration time
-            
+
         Raises
         ------
         RuntimeError
@@ -312,39 +313,39 @@ class WorkerMCPClient:
             If required parameters are missing or invalid
         ConnectionError
             If communication with Marcus server fails
-            
+
         Examples
         --------
         Register a backend developer:
-        
+
         >>> client = WorkerMCPClient()
         >>> async with client.connect_to_marcus() as session:
         ...     result = await client.register_agent(
         ...         agent_id="backend-dev-001",
-        ...         name="Backend Developer Alpha", 
+        ...         name="Backend Developer Alpha",
         ...         role="Software Developer",
         ...         skills=["python", "fastapi", "postgresql", "redis", "docker"]
         ...     )
         ...     print(f"Registration: {result['success']}")
-        
+
         Register a frontend specialist:
-        
+
         >>> result = await client.register_agent(
         ...     "frontend-dev-001",
         ...     "Frontend Specialist",
-        ...     "UI/UX Developer", 
+        ...     "UI/UX Developer",
         ...     ["javascript", "react", "typescript", "css", "webpack"]
         ... )
-        
+
         Register a QA engineer:
-        
+
         >>> result = await client.register_agent(
         ...     "qa-engineer-001",
         ...     "Quality Assurance Engineer",
         ...     "QA Engineer",
         ...     ["selenium", "pytest", "cypress", "performance-testing"]
         ... )
-        
+
         Notes
         -----
         - Agent IDs should follow a consistent naming convention
@@ -354,38 +355,38 @@ class WorkerMCPClient:
         """
         if not self.session:
             raise RuntimeError("Not connected to Marcus")
-            
+
         result = await self.session.call_tool(
             "register_agent",
             arguments={
                 "agent_id": agent_id,
                 "name": name,
                 "role": role,
-                "skills": skills
-            }
+                "skills": skills,
+            },
         )
-        
+
         return json.loads(result.content[0].text) if result.content else {}
-        
+
     async def request_next_task(self, agent_id: str) -> Dict[str, Any]:
         """
         Request next available task assignment from Marcus.
-        
+
         This method requests the next optimal task assignment for the specified
         agent from the Marcus server. The Marcus uses intelligent task
         routing based on agent skills, current workload, task priorities, and
         dependencies to assign the most appropriate task.
-        
+
         If no tasks are available or suitable for the agent, an empty response
         is returned. Agents should implement polling or wait strategies when
         no tasks are available.
-        
+
         Parameters
         ----------
         agent_id : str
             Unique identifier of the agent requesting a task
             Must match a previously registered agent ID
-            
+
         Returns
         -------
         Dict[str, Any]
@@ -402,7 +403,7 @@ class WorkerMCPClient:
                 - dependencies: List[str] - prerequisite task IDs
             - message: str - status message about task assignment
             - timestamp: str - assignment timestamp
-            
+
         Raises
         ------
         RuntimeError
@@ -411,16 +412,16 @@ class WorkerMCPClient:
             If agent_id is invalid or agent not registered
         ConnectionError
             If communication with Marcus server fails
-            
+
         Examples
         --------
         Request task in work loop:
-        
+
         >>> client = WorkerMCPClient()
         >>> async with client.connect_to_marcus() as session:
         ...     # Register first
         ...     await client.register_agent("dev-001", "Developer", "Engineer", ["python"])
-        ...     
+        ...
         ...     # Request task
         ...     response = await client.request_next_task("dev-001")
         ...     if response.get('task'):
@@ -430,33 +431,33 @@ class WorkerMCPClient:
         ...         print(f"Estimated hours: {task['estimated_hours']}")
         ...     else:
         ...         print("No tasks available")
-        
+
         Continuous task processing:
-        
+
         >>> while True:
         ...     response = await client.request_next_task("dev-001")
         ...     task = response.get('task')
-        ...     
+        ...
         ...     if not task:
         ...         await asyncio.sleep(30)  # Wait before next request
         ...         continue
-        ...         
+        ...
         ...     # Process the assigned task
         ...     await process_task(task)
-        ...     
+        ...
         ...     # Report completion
         ...     await client.report_task_progress(
         ...         "dev-001", task['id'], "completed", 100
         ...     )
-        
+
         Handle task dependencies:
-        
+
         >>> response = await client.request_next_task("dev-001")
         >>> task = response.get('task')
         >>> if task and task.get('dependencies'):
         ...     print(f"Task depends on: {task['dependencies']}")
         ...     # These dependencies should be completed first
-        
+
         Notes
         -----
         - Agents should only request tasks when ready to work on them
@@ -467,35 +468,34 @@ class WorkerMCPClient:
         """
         if not self.session:
             raise RuntimeError("Not connected to Marcus")
-            
+
         result = await self.session.call_tool(
-            "request_next_task",
-            arguments={"agent_id": agent_id}
+            "request_next_task", arguments={"agent_id": agent_id}
         )
-        
+
         return json.loads(result.content[0].text) if result.content else {}
-        
+
     async def report_task_progress(
-        self, 
-        agent_id: str, 
-        task_id: str, 
+        self,
+        agent_id: str,
+        task_id: str,
         status: str,
         progress: int = 0,
-        message: str = ""
+        message: str = "",
     ) -> Dict[str, Any]:
         """
         Report task progress and status updates to Marcus.
-        
+
         This method allows agents to report their progress on assigned tasks,
         including status changes, completion percentages, and descriptive messages.
         Progress reporting is essential for project monitoring, coordination,
         and providing visibility into agent activities.
-        
+
         Agents should report progress at key milestones (25%, 50%, 75%, 100%)
         and whenever status changes occur. The Marcus uses this information
         for real-time project tracking, dependency management, and resource
         allocation decisions.
-        
+
         Parameters
         ----------
         agent_id : str
@@ -516,7 +516,7 @@ class WorkerMCPClient:
         message : str, optional
             Descriptive message about current progress, by default ""
             Should provide meaningful details about what was accomplished
-            
+
         Returns
         -------
         Dict[str, Any]
@@ -527,7 +527,7 @@ class WorkerMCPClient:
             - progress: int confirming the progress percentage
             - timestamp: str when the progress was recorded
             - message: str with any additional feedback
-            
+
         Raises
         ------
         RuntimeError
@@ -537,65 +537,65 @@ class WorkerMCPClient:
             If progress is not between 0 and 100
         ConnectionError
             If communication with Marcus server fails
-            
+
         Examples
         --------
         Report task start:
-        
+
         >>> await client.report_task_progress(
         ...     agent_id="dev-001",
-        ...     task_id="task-123", 
+        ...     task_id="task-123",
         ...     status="in_progress",
         ...     progress=0,
         ...     message="Started analysis of requirements"
         ... )
-        
+
         Report milestone progress:
-        
+
         >>> await client.report_task_progress(
         ...     "dev-001", "task-123", "in_progress", 25,
         ...     "Completed database schema design and validation"
         ... )
-        >>> 
+        >>>
         >>> await client.report_task_progress(
         ...     "dev-001", "task-123", "in_progress", 50,
         ...     "Implemented core API endpoints with error handling"
         ... )
-        >>> 
+        >>>
         >>> await client.report_task_progress(
         ...     "dev-001", "task-123", "in_progress", 75,
         ...     "Added comprehensive test coverage and documentation"
         ... )
-        
+
         Report task completion:
-        
+
         >>> await client.report_task_progress(
         ...     "dev-001", "task-123", "completed", 100,
         ...     "Task completed successfully. All tests passing, deployed to staging."
         ... )
-        
+
         Report blocked status:
-        
+
         >>> await client.report_task_progress(
         ...     "dev-001", "task-123", "blocked", 30,
         ...     "Waiting for database migration approval from DevOps team"
         ... )
-        
+
         Batch progress reporting:
-        
+
         >>> progress_updates = [
         ...     (25, "Database setup complete"),
-        ...     (50, "API implementation finished"), 
+        ...     (50, "API implementation finished"),
         ...     (75, "Tests and documentation added"),
         ...     (100, "Task completed and verified")
         ... ]
-        >>> 
+        >>>
         >>> for progress, msg in progress_updates:
         ...     status = "completed" if progress == 100 else "in_progress"
         ...     await client.report_task_progress(
         ...         "dev-001", "task-123", status, progress, msg
         ...     )
-        
+
         Notes
         -----
         - Progress should be reported honestly and reflect actual completion
@@ -606,7 +606,7 @@ class WorkerMCPClient:
         """
         if not self.session:
             raise RuntimeError("Not connected to Marcus")
-            
+
         result = await self.session.call_tool(
             "report_task_progress",
             arguments={
@@ -614,32 +614,32 @@ class WorkerMCPClient:
                 "task_id": task_id,
                 "status": status,
                 "progress": progress,
-                "message": message
-            }
+                "message": message,
+            },
         )
-        
+
         return json.loads(result.content[0].text) if result.content else {}
-        
+
     async def report_blocker(
         self,
         agent_id: str,
         task_id: str,
         blocker_description: str,
-        severity: str = "medium"
+        severity: str = "medium",
     ) -> Dict[str, Any]:
         """
         Report task blockers to Marcus for AI assistance and resolution.
-        
+
         This method allows agents to report issues that prevent task completion,
         triggering AI-powered analysis and recommendation systems. The Marcus
         can provide suggested solutions, escalate to human oversight, or
         reassign tasks based on blocker severity and type.
-        
+
         Blockers are categorized by severity and analyzed for patterns that
         might indicate systemic issues. The AI analysis engine can suggest
         solutions, alternative approaches, or resource adjustments to resolve
         blockers efficiently.
-        
+
         Parameters
         ----------
         agent_id : str
@@ -657,7 +657,7 @@ class WorkerMCPClient:
             - "low": Minor issue that doesn't prevent progress
             - "medium": Significant issue that slows progress
             - "high": Critical issue that completely blocks progress
-            
+
         Returns
         -------
         Dict[str, Any]
@@ -669,7 +669,7 @@ class WorkerMCPClient:
             - estimated_resolution_time: str predicted time to resolve
             - related_blockers: List[str] similar issues across the project
             - timestamp: str when the blocker was reported
-            
+
         Raises
         ------
         RuntimeError
@@ -679,44 +679,44 @@ class WorkerMCPClient:
             If blocker_description is empty or too short
         ConnectionError
             If communication with Marcus server fails
-            
+
         Examples
         --------
         Report a database connection issue:
-        
+
         >>> await client.report_blocker(
         ...     agent_id="dev-001",
         ...     task_id="task-456",
         ...     blocker_description='''
-        ...     Cannot connect to PostgreSQL database. Error: 
+        ...     Cannot connect to PostgreSQL database. Error:
         ...     "connection to server on socket failed: No such file or directory"
-        ...     
+        ...
         ...     Attempted solutions:
         ...     1. Verified PostgreSQL service is running
         ...     2. Checked connection string configuration
         ...     3. Tested network connectivity
-        ...     
+        ...
         ...     Environment: Local development, macOS, PostgreSQL 14
         ...     ''',
         ...     severity="high"
         ... )
-        
+
         Report a dependency conflict:
-        
+
         >>> await client.report_blocker(
-        ...     "dev-001", "task-789", 
+        ...     "dev-001", "task-789",
         ...     '''
         ...     Package dependency conflict preventing installation:
         ...     requests==2.25.1 conflicts with urllib3>=1.26.0,<1.27
-        ...     
+        ...
         ...     Current environment uses requests for API calls,
         ...     new package requires incompatible urllib3 version.
         ...     ''',
         ...     "medium"
         ... )
-        
+
         Report missing documentation:
-        
+
         >>> await client.report_blocker(
         ...     "dev-001", "task-321",
         ...     "API endpoint documentation missing for /api/v2/users. "
@@ -724,40 +724,40 @@ class WorkerMCPClient:
         ...     "expected request/response format and authentication requirements.",
         ...     "low"
         ... )
-        
+
         Report environmental issue:
-        
+
         >>> response = await client.report_blocker(
         ...     "qa-001", "task-654",
         ...     '''
         ...     Test environment not accessible. Staging server returns 502 Bad Gateway.
-        ...     
+        ...
         ...     Error occurs for all API endpoints. Browser shows:
         ...     "502 Bad Gateway - nginx/1.18.0"
-        ...     
+        ...
         ...     Cannot complete integration testing without working environment.
         ...     ''',
         ...     "high"
         ... )
-        >>> 
+        >>>
         >>> # Check AI suggestions
         >>> for suggestion in response.get('suggestions', []):
         ...     print(f"Suggestion: {suggestion}")
-        
+
         Handle blocker response:
-        
+
         >>> response = await client.report_blocker(
         ...     "dev-001", "task-123", "Complex blocker description", "medium"
         ... )
-        >>> 
+        >>>
         >>> if response.get('escalated'):
         ...     print("Blocker escalated to human review")
-        >>> 
+        >>>
         >>> if response.get('suggestions'):
         ...     print("AI suggestions available:")
         ...     for i, suggestion in enumerate(response['suggestions'], 1):
         ...         print(f"{i}. {suggestion}")
-        
+
         Notes
         -----
         - Provide detailed blocker descriptions for better AI analysis
@@ -769,33 +769,33 @@ class WorkerMCPClient:
         """
         if not self.session:
             raise RuntimeError("Not connected to Marcus")
-            
+
         result = await self.session.call_tool(
             "report_blocker",
             arguments={
                 "agent_id": agent_id,
                 "task_id": task_id,
                 "blocker_description": blocker_description,
-                "severity": severity
-            }
+                "severity": severity,
+            },
         )
-        
+
         return json.loads(result.content[0].text) if result.content else {}
-        
+
     async def get_project_status(self) -> Dict[str, Any]:
         """
         Retrieve current project status and metrics from Marcus.
-        
+
         This method fetches comprehensive project status information including
         task progress, agent activities, performance metrics, and overall
         project health indicators. The status information helps agents
         understand the broader project context and make informed decisions
         about their work priorities.
-        
+
         The project status includes real-time metrics about task completion
         rates, agent productivity, blocker resolution times, and resource
         utilization across the entire project ecosystem.
-        
+
         Returns
         -------
         Dict[str, Any]
@@ -835,7 +835,7 @@ class WorkerMCPClient:
                 - risk_factors: List[str] - identified project risks
                 - recommendations: List[str] - suggested improvements
             - timestamp: str - when status was generated
-            
+
         Raises
         ------
         RuntimeError
@@ -844,69 +844,69 @@ class WorkerMCPClient:
             If communication with Marcus server fails
         PermissionError
             If agent doesn't have permission to view project status
-            
+
         Examples
         --------
         Basic status check:
-        
+
         >>> status = await client.get_project_status()
         >>> print(f"Project: {status['project_info']['name']}")
         >>> print(f"Overall Status: {status['project_info']['status']}")
         >>> print(f"Tasks Completed: {status['task_metrics']['completed_tasks']}")
         >>> print(f"Active Agents: {status['agent_metrics']['active_agents']}")
-        
+
         Monitor project health:
-        
+
         >>> status = await client.get_project_status()
         >>> health = status['health_indicators']
-        >>> 
+        >>>
         >>> print(f"Project Health: {health['overall_health']}")
         >>> if health['risk_factors']:
         ...     print("Risk Factors:")
         ...     for risk in health['risk_factors']:
         ...         print(f"  - {risk}")
-        >>> 
+        >>>
         >>> if health['recommendations']:
         ...     print("Recommendations:")
         ...     for rec in health['recommendations']:
         ...         print(f"  - {rec}")
-        
+
         Track progress metrics:
-        
+
         >>> status = await client.get_project_status()
         >>> metrics = status['task_metrics']
-        >>> 
+        >>>
         >>> completion_pct = (metrics['completed_tasks'] / metrics['total_tasks']) * 100
         >>> print(f"Project Progress: {completion_pct:.1f}%")
-        >>> 
+        >>>
         >>> if metrics['blocked_tasks'] > 0:
         ...     print(f"Warning: {metrics['blocked_tasks']} blocked tasks")
-        
+
         Performance analysis:
-        
+
         >>> status = await client.get_project_status()
         >>> perf = status['performance_metrics']
-        >>> 
+        >>>
         >>> print(f"Average task completion: {perf['avg_task_completion_time']:.1f} hours")
         >>> print(f"Daily throughput: {perf['throughput']:.1f} tasks/day")
         >>> print(f"Efficiency score: {perf['efficiency_score']:.2f}")
-        
+
         Review recent activity:
-        
+
         >>> status = await client.get_project_status()
         >>> print("Recent Activity:")
         >>> for activity in status['recent_activity'][-5:]:  # Last 5 events
         ...     print(f"  {activity['timestamp']}: {activity['description']}")
-        
+
         Agent status overview:
-        
+
         >>> status = await client.get_project_status()
         >>> agents = status['agent_metrics']
-        >>> 
+        >>>
         >>> utilization = (agents['active_agents'] / agents['total_agents']) * 100
         >>> print(f"Agent Utilization: {utilization:.1f}%")
         >>> print(f"Idle Agents: {agents['idle_agents']}")
-        
+
         Notes
         -----
         - Status information is real-time but may have slight delays
@@ -918,10 +918,7 @@ class WorkerMCPClient:
         """
         if not self.session:
             raise RuntimeError("Not connected to Marcus")
-            
-        result = await self.session.call_tool(
-            "get_project_status",
-            arguments={}
-        )
-        
+
+        result = await self.session.call_tool("get_project_status", arguments={})
+
         return json.loads(result.content[0].text) if result.content else {}

@@ -27,17 +27,17 @@ Monitoring Capabilities
 Usage Example
 -------------
 >>> from src.monitoring import ProjectMonitor
->>> 
+>>>
 >>> # Initialize the monitoring system
 >>> monitor = ProjectMonitor()
->>> 
+>>>
 >>> # Start continuous monitoring
 >>> await monitor.start_monitoring()
->>> 
+>>>
 >>> # Get current project state
 >>> state = await monitor.get_project_state()
 >>> print(f"Project progress: {state.progress_percent}%")
->>> 
+>>>
 >>> # Check for current risks
 >>> risks = monitor.get_current_risks()
 >>> for risk in risks:
@@ -53,10 +53,10 @@ capabilities.
 See Also
 --------
 src.core.models : Project state and risk model definitions
-src.integrations.mcp_kanban_client_simple : Kanban board integration
+src.integrations.kanban_client : Kanban board integration
 src.integrations.ai_analysis_engine : AI-powered project analysis
 """
 
 from .project_monitor import ProjectMonitor
 
-__all__ = ['ProjectMonitor']
+__all__ = ["ProjectMonitor"]

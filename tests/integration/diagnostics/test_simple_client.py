@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test the SimpleMCPKanbanClient functionality
+Test the KanbanClient functionality
 Quick diagnostic to verify the client is working properly
 """
 
@@ -11,22 +11,27 @@ from contextlib import asynccontextmanager
 from typing import Any, Dict
 
 # Add parent directories to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(
+    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 
 from mcp.client.stdio import stdio_client
 
 from mcp import ClientSession, StdioServerParameters
-from src.integrations.mcp_kanban_client_simple import SimpleMCPKanbanClient
+from src.integrations.kanban_client import KanbanClient
 
 
 async def create_mcp_function_caller():
     """Create a real MCP function caller for testing"""
+
     @asynccontextmanager
     async def get_client():
         server_params = StdioServerParameters(
             command="node",
-            args=["/Users/lwgray/.nvm/versions/node/v22.14.0/lib/node_modules/@lwgray1975/kanban-mcp/dist/index.js"],
-            env=None
+            args=[
+                "/Users/lwgray/.nvm/versions/node/v22.14.0/lib/node_modules/@lwgray1975/kanban-mcp/dist/index.js"
+            ],
+            env=None,
         )
 
         async with stdio_client(server_params) as (read, write):
@@ -44,14 +49,14 @@ async def create_mcp_function_caller():
 
 
 async def test_simple():
-    """Test basic SimpleMCPKanbanClient operations"""
+    """Test basic KanbanClient operations"""
     # Create MCP function caller
     mcp_caller = await create_mcp_function_caller()
 
     # Create client with MCP caller
-    client = SimpleMCPKanbanClient(mcp_caller)
+    client = KanbanClient(mcp_caller)
 
-    print("🔍 Testing SimpleMCPKanbanClient")
+    print("🔍 Testing KanbanClient")
     print("=" * 60)
 
     try:
@@ -65,7 +70,7 @@ async def test_simple():
         # Test get board summary
         print("\n2. Testing get_board_summary...")
         summary = await client.get_board_summary()
-        stats = summary.get('stats', {})
+        stats = summary.get("stats", {})
         print(f"✅ Board statistics:")
         print(f"   - Total cards: {stats.get('totalCards', 0)}")
         print(f"   - In progress: {stats.get('inProgressCount', 0)}")
@@ -110,6 +115,7 @@ async def test_simple():
     except Exception as e:
         print(f"❌ Error: {e}")
         import traceback
+
         traceback.print_exc()
 
 

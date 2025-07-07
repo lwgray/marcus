@@ -41,11 +41,9 @@ from src.core.models import (
     TaskStatus,
     WorkerStatus,
 )
-from src.core.workspace_manager import WorkspaceManager
+from src.core.workspace import WorkspaceManager
 from src.integrations.ai_analysis_engine import AIAnalysisEngine
-from src.integrations.mcp_kanban_client_simple import (
-    SimpleMCPKanbanClient as MCPKanbanClient,
-)
+from src.integrations.kanban_client import KanbanClient as MCPKanbanClient
 
 
 class MarcusMVP:

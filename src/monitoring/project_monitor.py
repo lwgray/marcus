@@ -72,7 +72,7 @@ from src.core.models import (
     TaskStatus,
 )
 from src.integrations.ai_analysis_engine import AIAnalysisEngine
-from src.integrations.mcp_kanban_client_simple import SimpleMCPKanbanClient
+from src.integrations.kanban_client import KanbanClient
 
 
 class ProjectMonitor:
@@ -87,7 +87,7 @@ class ProjectMonitor:
     ----------
     settings : Settings
         Configuration settings for the monitoring system
-    kanban_client : SimpleMCPKanbanClient
+    kanban_client : KanbanClient
         Client for interacting with the MCP Kanban board
     ai_engine : AIAnalysisEngine
         AI engine for project health analysis and risk assessment
@@ -143,7 +143,7 @@ class ProjectMonitor:
 
     def __init__(self) -> None:
         self.settings = Settings()
-        self.kanban_client = SimpleMCPKanbanClient()
+        self.kanban_client = KanbanClient()
         self.ai_engine = AIAnalysisEngine()
 
         # State tracking
