@@ -1,8 +1,25 @@
 """
-OpenAI Provider for Marcus AI
+OpenAI Provider for Marcus AI.
 
 Implements semantic task analysis using OpenAI's GPT models as a fallback
 or alternative to Anthropic Claude.
+
+This provider integrates with OpenAI's API to provide:
+- Task semantic analysis
+- Dependency inference
+- Enhanced descriptions
+- Effort estimation
+- Blocker analysis
+
+Classes
+-------
+OpenAIProvider
+    OpenAI GPT provider implementation
+
+Notes
+-----
+Requires OPENAI_API_KEY environment variable.
+Model selection via OPENAI_MODEL environment variable.
 """
 
 import logging
@@ -19,13 +36,42 @@ logger = logging.getLogger(__name__)
 
 class OpenAIProvider(BaseLLMProvider):
     """
-    OpenAI GPT provider for semantic AI analysis
+    OpenAI GPT provider for semantic AI analysis.
     
     Provides fallback capability when Anthropic is unavailable
     or alternative AI perspective for comparison.
+    
+    Parameters
+    ----------
+    None
+    
+    Attributes
+    ----------
+    api_key : str
+        OpenAI API key from environment
+    base_url : str
+        OpenAI API base URL
+    model : str
+        GPT model to use (default: gpt-3.5-turbo)
+    max_tokens : int
+        Maximum tokens for responses
+    timeout : float
+        API request timeout in seconds
+    client : httpx.AsyncClient
+        Async HTTP client for API calls
+    
+    Raises
+    ------
+    ValueError
+        If OPENAI_API_KEY is not set
+    
+    Examples
+    --------
+    >>> provider = OpenAIProvider()
+    >>> analysis = await provider.analyze_task(task, context)
     """
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.api_key = os.getenv('OPENAI_API_KEY')
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY environment variable not set")
@@ -47,7 +93,21 @@ class OpenAIProvider(BaseLLMProvider):
         logger.info(f"OpenAI provider initialized with model: {self.model}")
     
     async def analyze_task(self, task: Task, context: Dict[str, Any]) -> SemanticAnalysis:
-        """Analyze task semantics using GPT"""
+        """
+        Analyze task semantics using GPT.
+        
+        Parameters
+        ----------
+        task : Task
+            Task to analyze
+        context : dict
+            Project context
+            
+        Returns
+        -------
+        SemanticAnalysis
+            Semantic analysis with fallback on error
+        """
         messages = [
             {
                 "role": "system",
@@ -76,7 +136,19 @@ class OpenAIProvider(BaseLLMProvider):
             )
     
     async def infer_dependencies(self, tasks: List[Task]) -> List[SemanticDependency]:
-        """Infer semantic dependencies using GPT"""
+        """
+        Infer semantic dependencies using GPT.
+        
+        Parameters
+        ----------
+        tasks : list of Task
+            Tasks to analyze for dependencies
+            
+        Returns
+        -------
+        list of SemanticDependency
+            Inferred dependencies, empty list on error
+        """
         if len(tasks) < 2:
             return []
         

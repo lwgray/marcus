@@ -1,8 +1,28 @@
 """
-LLM Abstraction Layer for Marcus AI
+LLM Abstraction Layer for Marcus AI.
 
 Provides a unified interface across different LLM providers (Anthropic, OpenAI, local models)
 with intelligent fallback and provider switching capabilities.
+
+This module implements the strategy pattern for LLM providers, allowing seamless
+switching between providers and automatic fallback on failures.
+
+Classes
+-------
+LLMAbstraction
+    Multi-provider LLM abstraction with intelligent fallback
+
+Notes
+-----
+Provider selection is controlled by the MARCUS_LLM_PROVIDER environment variable.
+The system automatically falls back to alternative providers on failure.
+
+Examples
+--------
+>>> llm = LLMAbstraction()
+>>> analysis = await llm.analyze_task_semantics(task, context)
+>>> if analysis.fallback_used:
+...     print("Using fallback provider")
 """
 
 import logging
@@ -20,13 +40,42 @@ logger = logging.getLogger(__name__)
 
 class LLMAbstraction:
     """
-    Multi-provider LLM abstraction with intelligent fallback
+    Multi-provider LLM abstraction with intelligent fallback.
     
     Supports multiple LLM providers with automatic fallback when primary fails.
     Provides a unified interface for all AI operations in Marcus.
+    
+    Attributes
+    ----------
+    providers : dict
+        Available LLM provider instances
+    current_provider : str
+        Name of the primary provider to use
+    fallback_providers : list of str
+        Ordered list of providers to try on failure
+    provider_stats : dict
+        Performance statistics for each provider
+    
+    Methods
+    -------
+    analyze_task_semantics(task, context)
+        Analyze task meaning and intent
+    infer_dependencies_semantic(tasks)
+        Infer logical dependencies between tasks
+    generate_enhanced_description(task, context)
+        Create improved task descriptions
+    estimate_effort_intelligently(task, context)
+        AI-powered effort estimation
+    analyze_blocker_and_suggest_solutions(task, blocker, severity, agent)
+        Analyze blockers and provide solutions
+    
+    Notes
+    -----
+    Providers are initialized lazily to avoid circular imports.
+    Statistics are tracked for intelligent provider selection.
     """
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.providers: Dict[str, BaseLLMProvider] = {}
         self.current_provider = os.getenv('MARCUS_LLM_PROVIDER', 'anthropic')
         self.fallback_providers = ['anthropic', 'openai']
@@ -43,8 +92,18 @@ class LLMAbstraction:
         
         logger.info(f"LLM abstraction initialized with primary provider: {self.current_provider}")
     
-    def _initialize_providers(self):
-        """Initialize available LLM providers (lazy loading to avoid circular imports)"""
+    def _initialize_providers(self) -> None:
+        """
+        Initialize available LLM providers.
+        
+        Uses lazy loading to avoid circular imports. Providers are only
+        initialized when first needed.
+        
+        Notes
+        -----
+        Failed provider initialization is logged but doesn't stop the system.
+        At least one provider must initialize successfully.
+        """
         if self._providers_initialized:
             return
         
@@ -73,14 +132,23 @@ class LLMAbstraction:
     
     async def analyze_task_semantics(self, task: Task, context: Dict[str, Any]) -> SemanticAnalysis:
         """
-        Analyze task semantics using the best available provider
+        Analyze task semantics using the best available provider.
         
-        Args:
-            task: Task to analyze
-            context: Project context
+        Parameters
+        ----------
+        task : Task
+            Task to analyze for semantic meaning
+        context : dict
+            Project context including related tasks
             
-        Returns:
-            Semantic analysis result
+        Returns
+        -------
+        SemanticAnalysis
+            Comprehensive semantic analysis including intent and risks
+            
+        Notes
+        -----
+        Automatically falls back to alternative providers on failure.
         """
         return await self._execute_with_fallback(
             'analyze_task',
@@ -90,13 +158,21 @@ class LLMAbstraction:
     
     async def infer_dependencies_semantic(self, tasks: List[Task]) -> List[SemanticDependency]:
         """
-        Infer semantic dependencies between tasks
+        Infer semantic dependencies between tasks.
         
-        Args:
-            tasks: List of tasks to analyze
+        Parameters
+        ----------
+        tasks : list of Task
+            All tasks to analyze for dependencies
             
-        Returns:
-            List of inferred semantic dependencies
+        Returns
+        -------
+        list of SemanticDependency
+            Inferred logical relationships between tasks
+            
+        Notes
+        -----
+        Complements rule-based dependency detection with semantic understanding.
         """
         return await self._execute_with_fallback(
             'infer_dependencies',
@@ -105,14 +181,19 @@ class LLMAbstraction:
     
     async def generate_enhanced_description(self, task: Task, context: Dict[str, Any]) -> str:
         """
-        Generate enhanced task description
+        Generate enhanced task description.
         
-        Args:
-            task: Task to enhance
-            context: Project context
+        Parameters
+        ----------
+        task : Task
+            Task needing clearer description
+        context : dict
+            Project context for better understanding
             
-        Returns:
-            Enhanced description
+        Returns
+        -------
+        str
+            Enhanced description with more detail and clarity
         """
         return await self._execute_with_fallback(
             'generate_enhanced_description',
@@ -122,14 +203,19 @@ class LLMAbstraction:
     
     async def estimate_effort_intelligently(self, task: Task, context: Dict[str, Any]) -> EffortEstimate:
         """
-        Estimate task effort using AI
+        Estimate task effort using AI.
         
-        Args:
-            task: Task to estimate
-            context: Project context with historical data
+        Parameters
+        ----------
+        task : Task
+            Task to estimate completion time for
+        context : dict
+            Project context with historical performance data
             
-        Returns:
-            Effort estimate with confidence
+        Returns
+        -------
+        EffortEstimate
+            AI-powered time estimate with confidence and factors
         """
         return await self._execute_with_fallback(
             'estimate_effort',
@@ -145,16 +231,27 @@ class LLMAbstraction:
         agent: Optional[Dict[str, Any]]
     ) -> List[str]:
         """
-        Analyze a blocker and suggest solutions
+        Analyze a blocker and suggest solutions.
         
-        Args:
-            task: Blocked task
-            blocker_description: Description of the blocker
-            severity: Severity level
-            agent: Agent encountering the blocker
+        Parameters
+        ----------
+        task : Task
+            The blocked task
+        blocker_description : str
+            Detailed description of the blocker
+        severity : str
+            Severity level: 'low', 'medium', or 'high'
+        agent : dict, optional
+            Agent information for context
             
-        Returns:
-            List of suggested solutions
+        Returns
+        -------
+        list of str
+            Prioritized list of solution suggestions
+            
+        Notes
+        -----
+        Higher severity blockers receive more detailed analysis.
         """
         context = {
             'blocker_description': blocker_description,
@@ -171,17 +268,32 @@ class LLMAbstraction:
     
     async def _execute_with_fallback(self, method_name: str, **kwargs) -> Any:
         """
-        Execute method with automatic provider fallback
+        Execute method with automatic provider fallback.
         
-        Args:
-            method_name: Name of method to execute
-            **kwargs: Arguments for the method
+        Tries the primary provider first, then falls back to alternatives
+        in order if the primary fails.
+        
+        Parameters
+        ----------
+        method_name : str
+            Name of the provider method to call
+        **kwargs
+            Arguments to pass to the method
             
-        Returns:
-            Result from successful provider
+        Returns
+        -------
+        Any
+            Result from the first successful provider
             
-        Raises:
-            Exception: If all providers fail
+        Raises
+        ------
+        Exception
+            If all providers fail with details of each failure
+            
+        Notes
+        -----
+        Updates provider statistics for intelligent future selection.
+        Marks results with fallback_used=True when not using primary.
         """
         # Ensure providers are initialized
         self._initialize_providers()
