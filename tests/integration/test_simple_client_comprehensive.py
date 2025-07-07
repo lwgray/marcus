@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Comprehensive integration tests for MCPKanbanClientSimplified
+Comprehensive integration tests for SimpleMCPKanbanClient
 Tests edge cases, error handling, and complex scenarios
 """
 
@@ -91,7 +91,7 @@ class MockMCPSession:
 
 
 class TestMCPKanbanClientComprehensive:
-    """Comprehensive test suite for MCPKanbanClientSimplified"""
+    """Comprehensive test suite for SimpleMCPKanbanClient"""
 
     @pytest.fixture
     async def mock_session(self):
@@ -259,7 +259,7 @@ class TestMCPKanbanClientComprehensive:
         tasks = await client.get_available_tasks()
         assert tasks == []
 
-        # get_board_summary doesn't exist in MCPKanbanClientSimplified
+        # get_board_summary doesn't exist in SimpleMCPKanbanClient
         # Just verify empty tasks were returned
         assert len(tasks) == 0
 

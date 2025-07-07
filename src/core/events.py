@@ -269,6 +269,7 @@ class EventTypes:
     TASK_PROGRESS = "task_progress"
     TASK_COMPLETED = "task_completed"
     TASK_BLOCKED = "task_blocked"
+    BLOCKER_RESOLVED = "blocker_resolved"
     
     # Agent events
     AGENT_REGISTERED = "agent_registered"
@@ -294,3 +295,11 @@ class EventTypes:
     # Decision events
     DECISION_LOGGED = "decision_logged"
     PATTERN_DETECTED = "pattern_detected"
+    
+    # Memory events
+    PREDICTION_MADE = "prediction_made"
+    AGENT_LEARNED = "agent_learned"
+    
+    # Error events
+    ERROR = "error"
+    WARNING = "warning"

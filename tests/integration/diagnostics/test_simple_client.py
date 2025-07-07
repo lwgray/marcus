@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test the MCPKanbanClientSimplified functionality
+Test the SimpleMCPKanbanClient functionality
 Quick diagnostic to verify the client is working properly
 """
 
@@ -44,14 +44,14 @@ async def create_mcp_function_caller():
 
 
 async def test_simple():
-    """Test basic MCPKanbanClientSimplified operations"""
+    """Test basic SimpleMCPKanbanClient operations"""
     # Create MCP function caller
     mcp_caller = await create_mcp_function_caller()
 
     # Create client with MCP caller
     client = SimpleMCPKanbanClient(mcp_caller)
 
-    print("🔍 Testing MCPKanbanClientSimplified")
+    print("🔍 Testing SimpleMCPKanbanClient")
     print("=" * 60)
 
     try:

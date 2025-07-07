@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unit tests for MCPKanbanClientSimplified
+Unit tests for SimpleMCPKanbanClient
 Tests the client logic without real MCP connections
 """
 
@@ -99,8 +99,8 @@ class MockMCPCaller:
         return None
 
 
-class TestMCPKanbanClientSimplified:
-    """Test suite for MCPKanbanClientSimplified"""
+class TestSimpleMCPKanbanClient:
+    """Test suite for SimpleMCPKanbanClient"""
 
     @pytest.fixture
     def mock_caller(self):

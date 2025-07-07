@@ -53,8 +53,8 @@ capabilities.
 See Also
 --------
 src.core.models : Project state and risk model definitions
-src.integrations.mcp_kanban_client_simplified : Kanban board integration
-src.integrations.ai_analysis_engine_fixed : AI-powered project analysis
+src.integrations.mcp_kanban_client_simple : Kanban board integration
+src.integrations.ai_analysis_engine : AI-powered project analysis
 """
 
 from .project_monitor import ProjectMonitor

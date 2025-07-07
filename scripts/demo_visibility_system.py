@@ -26,7 +26,7 @@ async def simulate_project_workflow(events: Events):
     
     # Project start
     await events.publish(
-        EventTypes.PROJECT_STARTED,
+        EventTypes.PROJECT_CREATED,
         "marcus",
         {
             "project_id": "todo_app",
@@ -155,37 +155,36 @@ async def demonstrate_visibility_features(visualizer: EventIntegratedVisualizer)
                                    key=lambda x: x[1], reverse=True)[:5]:
         print(f"     - {event_type}: {count}")
     
-    # 2. Agent Activity
-    print("\n2. Agent Activity:")
-    agent_stats = visualizer.get_agent_statistics()
-    for agent_id, activity in agent_stats.items():
-        print(f"   {agent_id}:")
-        print(f"     - Events: {activity['event_count']}")
-        print(f"     - Tasks: {activity['tasks_worked_on']}")
-        if activity['blockers_encountered']:
-            print(f"     - Blockers: {activity['blockers_encountered']}")
+    # 2. Active Flow Analysis
+    print("\n2. Active Flow Analysis:")
+    if hasattr(visualizer, 'active_flows') and visualizer.active_flows:
+        print(f"   Active task flows: {len(visualizer.active_flows)}")
+        for flow_id, flow_data in list(visualizer.active_flows.items())[:5]:
+            if 'stage' in flow_data:
+                print(f"     - Flow {flow_id[:8]}: Stage {flow_data['stage']}")
+    else:
+        print("   No active flows tracked yet")
     
     # 3. Feature Usage
-    print("\n3. Feature Usage:")
-    feature_usage = visualizer.get_feature_usage()
-    for feature, usage in feature_usage.items():
-        if usage > 0:
-            print(f"   {feature}: {usage} times")
+    print("\n3. Feature Usage (from event types):")
+    feature_map = {
+        'task_assigned': 'Task Management',
+        'context_updated': 'Context System',
+        'prediction_made': 'Memory System',
+        'decision_logged': 'Decision Tracking'
+    }
     
-    # 4. Timeline View
-    print("\n4. Recent Activity Timeline:")
-    timeline = visualizer.get_timeline(minutes=5)
-    print(f"   Events in last 5 minutes: {len(timeline)}")
-    if timeline:
-        print("   Recent events:")
-        for event in timeline[-5:]:
-            print(f"     - [{event['timestamp']}] {event['type']}: {event['source']}")
+    for event_type, feature in feature_map.items():
+        count = stats['event_counts'].get(event_type, 0)
+        if count > 0:
+            print(f"   {feature}: used {count} times")
     
-    # 5. Real-time Metrics
-    print("\n5. Real-time Metrics:")
-    print(f"   Events per minute: {visualizer.events_per_minute:.1f}")
-    print(f"   Active sources: {visualizer.active_sources}")
-    print(f"   Memory usage: {visualizer.memory_usage_mb:.1f} MB")
+    # 4. Event Flow Analysis
+    print("\n4. Event Flow Analysis:")
+    if hasattr(visualizer, 'active_flows'):
+        print(f"   Active flows: {len(visualizer.active_flows)}")
+        for flow_id, flow_data in list(visualizer.active_flows.items())[:3]:
+            print(f"     - Flow {flow_id[:8]}: {len(flow_data.get('events', []))} events")
 
 
 async def demonstrate_event_filtering(visualizer: EventIntegratedVisualizer, events: Events):
@@ -224,24 +223,27 @@ async def demonstrate_event_filtering(visualizer: EventIntegratedVisualizer, eve
     
     print(f"   Captured {len(critical_events)} critical events")
     
-    # 2. Query historical events
-    print("\n2. Querying historical events:")
-    history = visualizer.query_events(
-        event_types=[EventTypes.TASK_ASSIGNED, EventTypes.TASK_PROGRESS],
-        sources=["alice", "bob"],
-        limit=10
-    )
-    print(f"   Found {len(history)} matching events")
+    # 2. Event type filtering demonstration
+    print("\n2. Event Type Filtering:")
+    stats = visualizer.get_event_statistics()
+    task_events = ['task_assigned', 'task_started', 'task_progress', 'task_completed']
+    task_event_count = sum(stats['event_counts'].get(evt, 0) for evt in task_events)
+    print(f"   Task-related events: {task_event_count}")
+    print(f"   Other events: {stats['total_events'] - task_event_count}")
     
-    # 3. Pattern detection
-    print("\n3. Event Pattern Detection:")
-    patterns = visualizer.detect_patterns()
-    if patterns:
-        print("   Detected patterns:")
-        for pattern in patterns[:3]:
-            print(f"     - {pattern}")
-    else:
-        print("   No patterns detected yet (need more events)")
+    # 3. Pattern analysis from statistics
+    print("\n3. Event Pattern Analysis:")
+    if stats['event_counts']:
+        # Find most common event type
+        most_common = max(stats['event_counts'].items(), key=lambda x: x[1])
+        print(f"   Most frequent event: {most_common[0]} ({most_common[1]} occurrences)")
+        
+        # Check for imbalances
+        if 'task_assigned' in stats['event_counts'] and 'task_completed' in stats['event_counts']:
+            assigned = stats['event_counts']['task_assigned']
+            completed = stats['event_counts'].get('task_completed', 0)
+            if assigned > completed:
+                print(f"   Tasks in progress: {assigned - completed}")
 
 
 async def demonstrate_integration_points(visualizer: EventIntegratedVisualizer):
@@ -265,13 +267,23 @@ async def demonstrate_integration_points(visualizer: EventIntegratedVisualizer):
     print("   ✓ Progress tracking")
     print("   ✓ Blocker detection and resolution")
     
-    # Show cross-system insights
+    # Show cross-system insights from statistics
     print("\n4. Cross-System Insights:")
-    insights = visualizer.get_system_insights()
-    print(f"   Tasks with context: {insights.get('tasks_with_context', 0)}")
-    print(f"   Tasks with predictions: {insights.get('tasks_with_predictions', 0)}")
-    print(f"   Average task completion: {insights.get('avg_completion_time', 'N/A')}")
-    print(f"   Blocker resolution rate: {insights.get('blocker_resolution_rate', 'N/A')}")
+    stats = visualizer.get_event_statistics()
+    
+    # Estimate from event counts
+    context_updates = stats['event_counts'].get('context_updated', 0)
+    predictions = stats['event_counts'].get('prediction_made', 0)
+    blockers_resolved = stats['event_counts'].get('blocker_resolved', 0)
+    
+    print(f"   Context updates: {context_updates}")
+    print(f"   Predictions made: {predictions}")
+    print(f"   Blockers resolved: {blockers_resolved}")
+    
+    # Show integration health
+    if stats['total_events'] > 0:
+        integration_ratio = (context_updates + predictions) / stats['total_events']
+        print(f"   Integration ratio: {integration_ratio:.1%} of events from integrated systems")
 
 
 async def main():
