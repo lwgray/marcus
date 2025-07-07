@@ -29,9 +29,8 @@ from src.config.settings import Settings
 from src.core.assignment_persistence import AssignmentPersistence
 from src.core.code_analyzer import CodeAnalyzer
 from src.core.context import Context
-from src.core.events import Events, EventTypes
+from src.core.events import Events
 from src.core.models import (
-    Priority,
     ProjectState,
     RiskLevel,
     TaskAssignment,
@@ -43,13 +42,10 @@ from src.cost_tracking.token_tracker import token_tracker
 from src.integrations.ai_analysis_engine import AIAnalysisEngine
 from src.integrations.kanban_factory import KanbanFactory
 from src.integrations.kanban_interface import KanbanInterface
-from src.logging.conversation_logger import conversation_logger
+from src.marcus_mcp.handlers import get_tool_definitions, handle_tool_call
 from src.monitoring.assignment_monitor import AssignmentMonitor
 from src.monitoring.project_monitor import ProjectMonitor
-from src.visualization.pipeline_flow import PipelineStage
 from src.visualization.shared_pipeline_events import SharedPipelineVisualizer
-
-from src.marcus_mcp.handlers import get_tool_definitions, handle_tool_call
 
 
 class MarcusServer:
@@ -63,10 +59,15 @@ class MarcusServer:
 
         # Get kanban provider from config
         self.provider = self.config.get("kanban.provider", "planka")
-        print(f"Initializing Marcus with {self.provider.upper()} kanban provider...")
+        print(
+            f"Initializing Marcus with {self.provider.upper()} kanban provider...",
+            file=sys.stderr,
+        )
 
         # Create realtime log with line buffering
-        log_dir = Path("logs/conversations")
+        # Use absolute path based on Marcus root directory
+        marcus_root = Path(__file__).parent.parent.parent
+        log_dir = marcus_root / "logs" / "conversations"
         log_dir.mkdir(parents=True, exist_ok=True)
         self.realtime_log = open(
             log_dir / f"realtime_{datetime.now():%Y%m%d_%H%M%S}.jsonl",
@@ -242,7 +243,9 @@ class MarcusServer:
             raise ValueError(f"Resource not found: {uri}")
 
         @self.server.get_prompt()
-        async def handle_get_prompt(name: str, arguments: Optional[Dict[str, str]] = None) -> types.GetPromptResult:
+        async def handle_get_prompt(
+            name: str, arguments: Optional[Dict[str, str]] = None
+        ) -> types.GetPromptResult:
             """Get a prompt - Marcus doesn't use prompts currently"""
             raise ValueError(f"Prompt not found: {name}")
 
@@ -495,21 +498,34 @@ class MarcusServer:
 
     async def run(self):
         """Run the MCP server"""
-        print(f"\nMarcus MCP Server Running")
-        print(f"Kanban Provider: {self.provider.upper()}")
-        print(f"Logs: logs/conversations/")
-        print("=" * 50)
 
-        async with stdio_server() as (read_stream, write_stream):
-            await self.server.run(
-                read_stream, write_stream, self.server.create_initialization_options()
-            )
+        try:
+            async with stdio_server() as (read_stream, write_stream):
+                await self.server.run(
+                    read_stream,
+                    write_stream,
+                    self.server.create_initialization_options(),
+                )
+        except Exception as e:
+            print(f"❌ MCP server error: {e}", file=sys.stderr)
+            import traceback
+
+            traceback.print_exc(file=sys.stderr)
+            raise
 
 
 async def main():
     """Main entry point"""
-    server = MarcusServer()
-    await server.run()
+    try:
+        server = MarcusServer()
+        await server.initialize()
+        await server.run()
+    except Exception as e:
+        print(f"❌ Failed to start Marcus MCP server: {e}", file=sys.stderr)
+        import traceback
+
+        traceback.print_exc(file=sys.stderr)
+        raise
 
 
 if __name__ == "__main__":

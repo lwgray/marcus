@@ -6,7 +6,7 @@ accuracy and API call costs.
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 
 @dataclass
@@ -74,11 +74,11 @@ class HybridInferenceConfig:
     Default: 10"""
     
     @classmethod
-    def from_dict(cls, config_dict: dict) -> 'HybridInferenceConfig':
+    def from_dict(cls, config_dict: dict[str, Any]) -> 'HybridInferenceConfig':
         """Create config from dictionary"""
         return cls(**{k: v for k, v in config_dict.items() if hasattr(cls, k)})
     
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization"""
         return {
             'pattern_confidence_threshold': self.pattern_confidence_threshold,

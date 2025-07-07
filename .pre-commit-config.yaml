@@ -1,17 +1,17 @@
 repos:
   # Type checking with mypy
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.8.0
+    rev: v1.16.1
     hooks:
       - id: mypy
         args: [--config-file=pyproject.toml]
-        additional_dependencies: 
+        additional_dependencies:
           - types-aiofiles
           - types-requests
           - types-PyYAML
           - pydantic
         exclude: ^(tests/|docs/)
-        
+
   # Docstring checking with pydocstyle
   - repo: https://github.com/pycqa/pydocstyle
     rev: 6.3.0
@@ -22,21 +22,21 @@ repos:
 
   # Code formatting with black
   - repo: https://github.com/psf/black
-    rev: 23.12.1
+    rev: 25.1.0
     hooks:
       - id: black
         language_version: python3.11
 
   # Import sorting with isort
   - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
+    rev: 6.0.1
     hooks:
       - id: isort
         args: ["--profile", "black"]
 
   # Linting with flake8
   - repo: https://github.com/pycqa/flake8
-    rev: 7.0.0
+    rev: 7.3.0
     hooks:
       - id: flake8
         args: [--max-line-length=88, --extend-ignore=E203]
@@ -44,15 +44,21 @@ repos:
 
   # Security checks
   - repo: https://github.com/pycqa/bandit
-    rev: 1.7.6
+    rev: 1.8.6
     hooks:
       - id: bandit
-        args: ["-r", "src/", "-ll"]
+        name: bandit
+        description: 'Bandit is a tool for finding common security threats'
+        entry: bandit
+        language: python
+        language_version: python3
+        types: [python]
+        args: ['--recursive']
         exclude: ^tests/
 
   # General pre-commit hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v5.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -69,7 +75,7 @@ repos:
 
   # Check for common security issues
   - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.4.0
+    rev: v1.5.0
     hooks:
       - id: detect-secrets
         args: ['--baseline', '.secrets.baseline']

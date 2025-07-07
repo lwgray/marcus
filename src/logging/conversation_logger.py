@@ -61,23 +61,23 @@ The system supports both real-time monitoring and historical analysis.
 JSON format enables easy integration with visualization and analysis tools.
 """
 
-import json
 import logging
-import structlog
 from datetime import datetime
-from typing import Dict, Any, Optional, List, Union
 from enum import Enum
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import structlog
 
 
 class ConversationType(Enum):
     """
     Enumeration of conversation types in the Marcus system.
-    
+
     This enum defines the different categories of interactions and communications
     that occur between components in the Marcus ecosystem. Each type represents
     a specific communication pattern that requires different handling and analysis.
-    
+
     Attributes
     ----------
     WORKER_TO_PM : str
@@ -101,23 +101,24 @@ class ConversationType(Enum):
     ERROR : str
         Error conditions, exceptions, and failure scenarios across
         all system components.
-    
+
     Examples
     --------
     >>> conv_type = ConversationType.WORKER_TO_PM
     >>> print(conv_type.value)
     'worker_to_pm'
-    
+
     >>> if conversation_type == ConversationType.DECISION:
     ...     # Handle decision logging with additional metadata
     ...     pass
-    
+
     Notes
     -----
     These conversation types are used for filtering, analysis, and
     visualization of system interactions. Each type may have different
     metadata requirements and processing patterns.
     """
+
     WORKER_TO_PM = "worker_to_pm"
     PM_TO_WORKER = "pm_to_worker"
     PM_TO_KANBAN = "pm_to_kanban"
@@ -130,22 +131,22 @@ class ConversationType(Enum):
 class ConversationLogger:
     """
     Comprehensive structured logger for Marcus system conversations.
-    
+
     This class provides a centralized logging system that captures all interactions,
     decisions, and state changes within the Marcus ecosystem. It implements
     structured JSON logging with automatic file rotation, hierarchical organization,
     and rich metadata capture for analysis and visualization.
-    
+
     The logger supports multiple output formats, real-time monitoring capabilities,
     and historical data analysis. All logs include comprehensive metadata for
     tracking system performance, decision patterns, and interaction flows.
-    
+
     Parameters
     ----------
     log_dir : str, default="logs/conversations"
         Directory path where log files will be stored. The directory will be
         created if it doesn't exist, including parent directories.
-    
+
     Attributes
     ----------
     log_dir : pathlib.Path
@@ -156,7 +157,7 @@ class ConversationLogger:
         Structured logger instance for worker agent communications and updates.
     kanban_logger : structlog.BoundLogger
         Structured logger instance for kanban board interactions and state changes.
-    
+
     Methods
     -------
     log_worker_message(worker_id, direction, message, metadata=None)
@@ -179,11 +180,11 @@ class ConversationLogger:
         Retrieve conversation logs for replay and analysis.
     export_decision_metrics()
         Export aggregated decision metrics for performance analysis.
-    
+
     Examples
     --------
     Basic initialization and worker communication logging:
-    
+
     >>> logger = ConversationLogger(log_dir="/project/logs")
     >>> logger.log_worker_message(
     ...     worker_id="worker_backend_1",
@@ -191,9 +192,9 @@ class ConversationLogger:
     ...     message="API endpoint implementation completed",
     ...     metadata={"task_id": "TASK-123", "completion_time": "2024-01-15T10:30:00Z"}
     ... )
-    
+
     Decision logging with confidence and alternatives:
-    
+
     >>> logger.log_pm_decision(
     ...     decision="Assign database migration task to worker_2",
     ...     rationale="Worker has PostgreSQL expertise and current availability",
@@ -209,9 +210,9 @@ class ConversationLogger:
     ...         "estimated_duration": "4 hours"
     ...     }
     ... )
-    
+
     System monitoring and state tracking:
-    
+
     >>> logger.log_system_state(
     ...     active_workers=8,
     ...     tasks_in_progress=15,
@@ -224,7 +225,7 @@ class ConversationLogger:
     ...         "active_connections": 24
     ...     }
     ... )
-    
+
     Notes
     -----
     All log entries are timestamped with ISO format for consistency.
@@ -232,18 +233,22 @@ class ConversationLogger:
     The JSON structure enables efficient parsing and analysis.
     Structured logging supports real-time dashboard integration.
     Log retention and cleanup should be managed externally.
-    
+
     See Also
     --------
     ConversationType : Enumeration of conversation types
     log_conversation : Convenience function for quick logging
     log_thinking : Utility function for internal process logging
     """
-    
+
     def __init__(self, log_dir: str = "logs/conversations") -> None:
-        self.log_dir = Path(log_dir)
+        # Use absolute path based on Marcus root directory
+        marcus_root = Path(__file__).parent.parent.parent
+        self.log_dir = (
+            marcus_root / log_dir if not Path(log_dir).is_absolute() else Path(log_dir)
+        )
         self.log_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Configure structlog for structured JSON logging
         structlog.configure(
             processors=[
@@ -255,35 +260,35 @@ class ConversationLogger:
                 structlog.processors.StackInfoRenderer(),
                 structlog.processors.format_exc_info,
                 structlog.processors.UnicodeDecoder(),
-                structlog.processors.JSONRenderer()
+                structlog.processors.JSONRenderer(),
             ],
             context_class=dict,
             logger_factory=structlog.stdlib.LoggerFactory(),
             cache_logger_on_first_use=True,
         )
-        
+
         # Create separate loggers for different components
         self.pm_logger = structlog.get_logger("marcus")
         self.worker_logger = structlog.get_logger("worker")
         self.kanban_logger = structlog.get_logger("kanban")
-        
+
         # Also setup file handlers
         self._setup_file_handlers()
-        
+
     def _setup_file_handlers(self) -> None:
         """
         Setup file handlers for different log types with automatic rotation.
-        
+
         Creates separate file handlers for conversations and decisions with
         timestamp-based naming for automatic organization and rotation.
         Configures JSON formatting and appropriate log levels.
-        
+
         Notes
         -----
         Creates two primary log files:
         - conversations_{timestamp}.jsonl: All conversation and interaction logs
         - decisions_{timestamp}.jsonl: PM agent decision logs with rationale
-        
+
         Files are created with timestamp format: YYYYMMDD_HHMMSS
         Log rotation should be managed externally or through system tools.
         """
@@ -292,32 +297,32 @@ class ConversationLogger:
             self.log_dir / f"conversations_{datetime.now():%Y%m%d_%H%M%S}.jsonl"
         )
         conversation_handler.setLevel(logging.DEBUG)
-        
+
         # Decision log for Marcus decisions
         decision_handler = logging.FileHandler(
             self.log_dir / f"decisions_{datetime.now():%Y%m%d_%H%M%S}.jsonl"
         )
         decision_handler.setLevel(logging.INFO)
-        
+
         # Add handlers to root logger
         root_logger = logging.getLogger()
         root_logger.addHandler(conversation_handler)
         root_logger.addHandler(decision_handler)
-        
+
     def log_worker_message(
         self,
         worker_id: str,
         direction: str,
         message: str,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         Log communication messages between workers and PM agent.
-        
+
         Captures bidirectional communication with workers including status updates,
         task reports, blocker notifications, and responses. Automatically determines
         conversation type based on direction and includes comprehensive metadata.
-        
+
         Parameters
         ----------
         worker_id : str
@@ -338,11 +343,11 @@ class ConversationLogger:
             - status: Current task or worker status
             - progress: Completion percentage
             - metrics: Performance or resource metrics
-        
+
         Examples
         --------
         Worker reporting task completion:
-        
+
         >>> logger.log_worker_message(
         ...     worker_id="worker_backend_1",
         ...     direction="to_pm",
@@ -354,9 +359,9 @@ class ConversationLogger:
         ...         "duration_minutes": 45
         ...     }
         ... )
-        
+
         Marcus assigning new task:
-        
+
         >>> logger.log_worker_message(
         ...     worker_id="worker_frontend_2",
         ...     direction="from_pm",
@@ -368,9 +373,9 @@ class ConversationLogger:
         ...         "dependencies": ["TASK-456"]
         ...     }
         ... )
-        
+
         Worker reporting blocker:
-        
+
         >>> logger.log_worker_message(
         ...     worker_id="worker_backend_3",
         ...     direction="to_pm",
@@ -382,14 +387,14 @@ class ConversationLogger:
         ...         "estimated_delay_hours": 4
         ...     }
         ... )
-        
+
         Notes
         -----
         Messages are automatically timestamped with ISO format.
         The conversation type is determined from the direction parameter.
         All worker communications are logged at INFO level for visibility.
         Large message content is automatically truncated if necessary.
-        
+
         See Also
         --------
         log_progress_update : Specialized method for progress reporting
@@ -397,31 +402,30 @@ class ConversationLogger:
         ConversationType : Enumeration of conversation types
         """
         conversation_type = (
-            ConversationType.WORKER_TO_PM if direction == "to_pm"
+            ConversationType.WORKER_TO_PM
+            if direction == "to_pm"
             else ConversationType.PM_TO_WORKER
         )
-        
+
         self.worker_logger.info(
             "worker_communication",
             worker_id=worker_id,
             conversation_type=conversation_type.value,
             message=message,
             metadata=metadata or {},
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
         )
-        
+
     def log_pm_thinking(
-        self,
-        thought: str,
-        context: Optional[Dict[str, Any]] = None
+        self, thought: str, context: Optional[Dict[str, Any]] = None
     ) -> None:
         """
         Log Marcus' internal reasoning and decision-making processes.
-        
+
         Captures the internal cognitive processes of Marcus including
         analysis, evaluation, planning, and reasoning steps. This enables
         debugging of decision-making logic and optimization of AI reasoning.
-        
+
         Parameters
         ----------
         thought : str
@@ -434,11 +438,11 @@ class ConversationLogger:
             - decision_factors: Factors being weighed in decision-making
             - alternatives: Alternative approaches being considered
             - confidence: Confidence level in current reasoning
-        
+
         Examples
         --------
         Task assignment analysis:
-        
+
         >>> logger.log_pm_thinking(
         ...     thought="Analyzing worker capacity for urgent database task",
         ...     context={
@@ -448,9 +452,9 @@ class ConversationLogger:
         ...         "decision_factors": ["skill_match", "current_load", "priority"]
         ...     }
         ... )
-        
+
         Risk assessment reasoning:
-        
+
         >>> logger.log_pm_thinking(
         ...     thought="Evaluating project timeline risk due to dependency delays",
         ...     context={
@@ -461,9 +465,9 @@ class ConversationLogger:
         ...         "confidence_level": 0.75
         ...     }
         ... )
-        
+
         Resource allocation planning:
-        
+
         >>> logger.log_pm_thinking(
         ...     thought="Planning optimal resource allocation for sprint goals",
         ...     context={
@@ -474,14 +478,14 @@ class ConversationLogger:
         ...         "team_velocity_trend": "increasing"
         ...     }
         ... )
-        
+
         Notes
         -----
         Thinking logs are recorded at DEBUG level for detailed analysis.
         These logs are crucial for understanding AI decision-making patterns.
         Context should include relevant data that influenced the thought process.
         Sensitive information should be excluded from thinking logs.
-        
+
         See Also
         --------
         log_pm_decision : Log formal decisions with rationale
@@ -492,25 +496,25 @@ class ConversationLogger:
             conversation_type=ConversationType.INTERNAL_THINKING.value,
             thought=thought,
             context=context or {},
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
         )
-        
+
     def log_pm_decision(
         self,
         decision: str,
         rationale: str,
         alternatives_considered: Optional[List[Dict[str, Any]]] = None,
         confidence_score: Optional[float] = None,
-        decision_factors: Optional[Dict[str, Any]] = None
+        decision_factors: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         Log formal Marcus decisions with comprehensive context and analysis.
-        
+
         Records important decisions made by Marcus including the decision
         itself, reasoning, alternatives considered, confidence levels, and
         contributing factors. This enables decision auditing, pattern analysis,
         and optimization of decision-making algorithms.
-        
+
         Parameters
         ----------
         decision : str
@@ -540,11 +544,11 @@ class ConversationLogger:
             - risks: Identified risks and mitigation plans
             - resources: Available resources and limitations
             - timeline: Time constraints and deadlines
-        
+
         Examples
         --------
         Task assignment decision:
-        
+
         >>> logger.log_pm_decision(
         ...     decision="Assign critical authentication task to worker_senior_1",
         ...     rationale="Worker has extensive security experience and current availability",
@@ -573,9 +577,9 @@ class ConversationLogger:
         ...         "risk_tolerance": "low"
         ...     }
         ... )
-        
+
         Resource reallocation decision:
-        
+
         >>> logger.log_pm_decision(
         ...     decision="Reallocate 2 developers from Feature B to critical Bug Fix A",
         ...     rationale="Production issue affecting 40% of users requires immediate attention",
@@ -588,9 +592,9 @@ class ConversationLogger:
         ...         "feature_delay_acceptable": True
         ...     }
         ... )
-        
+
         Timeline adjustment decision:
-        
+
         >>> logger.log_pm_decision(
         ...     decision="Extend sprint by 2 days to accommodate dependency delays",
         ...     rationale="External API delays beyond team control, extension minimizes scope reduction",
@@ -609,7 +613,7 @@ class ConversationLogger:
         ...         "quality_requirements": "high"
         ...     }
         ... )
-        
+
         Notes
         -----
         Decision logs are recorded at INFO level for high visibility.
@@ -617,7 +621,7 @@ class ConversationLogger:
         Confidence scores enable tracking of decision-making accuracy over time.
         Decision factors should be quantifiable when possible for analysis.
         This data is crucial for improving AI decision-making algorithms.
-        
+
         See Also
         --------
         log_pm_thinking : Log reasoning processes leading to decisions
@@ -632,23 +636,23 @@ class ConversationLogger:
             alternatives_considered=alternatives_considered or [],
             confidence_score=confidence_score,
             decision_factors=decision_factors or {},
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
         )
-        
+
     def log_kanban_interaction(
         self,
         action: str,
         direction: str,
         data: Dict[str, Any],
-        processing_steps: Optional[List[str]] = None
+        processing_steps: Optional[List[str]] = None,
     ) -> None:
         """
         Log interactions between Marcus and Kanban board system.
-        
+
         Captures all communications with the kanban board including task updates,
         status changes, board queries, and synchronization activities. Tracks
         the flow of task management data and board state changes.
-        
+
         Parameters
         ----------
         action : str
@@ -680,11 +684,11 @@ class ConversationLogger:
             - 'execute_operation': Main operation execution
             - 'verify_result': Result verification
             - 'update_cache': Cache synchronization
-        
+
         Examples
         --------
         Creating new task on kanban board:
-        
+
         >>> logger.log_kanban_interaction(
         ...     action="create_task",
         ...     direction="to_kanban",
@@ -705,9 +709,9 @@ class ConversationLogger:
         ...         "update_board_cache"
         ...     ]
         ... )
-        
+
         Receiving board state update:
-        
+
         >>> logger.log_kanban_interaction(
         ...     action="sync_state",
         ...     direction="from_kanban",
@@ -731,9 +735,9 @@ class ConversationLogger:
         ...         "trigger_notifications"
         ...     ]
         ... )
-        
+
         Batch task status update:
-        
+
         >>> logger.log_kanban_interaction(
         ...     action="batch_update",
         ...     direction="to_kanban",
@@ -754,7 +758,7 @@ class ConversationLogger:
         ...         "log_batch_completion"
         ...     ]
         ... )
-        
+
         Notes
         -----
         Kanban interactions are logged at INFO level for visibility.
@@ -762,7 +766,7 @@ class ConversationLogger:
         Data structure should match kanban board API expectations.
         Large data payloads may be truncated in logs for readability.
         Interaction logs enable kanban integration debugging and optimization.
-        
+
         See Also
         --------
         log_task_assignment : Log task assignments with scoring
@@ -771,35 +775,36 @@ class ConversationLogger:
         ConversationType.KANBAN_TO_PM : Kanban to PM conversation type
         """
         conversation_type = (
-            ConversationType.PM_TO_KANBAN if direction == "to_kanban"
+            ConversationType.PM_TO_KANBAN
+            if direction == "to_kanban"
             else ConversationType.KANBAN_TO_PM
         )
-        
+
         self.kanban_logger.info(
             "kanban_interaction",
             conversation_type=conversation_type.value,
             action=action,
             data=data,
             processing_steps=processing_steps or [],
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
         )
-        
+
     def log_task_assignment(
         self,
         task_id: str,
         worker_id: str,
         task_details: Dict[str, Any],
         assignment_score: float,
-        dependency_analysis: Optional[Dict[str, Any]] = None
+        dependency_analysis: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         Log task assignment decisions with comprehensive scoring and analysis.
-        
+
         Records detailed information about task assignments including the scoring
         rationale, worker selection criteria, task requirements, and dependency
         analysis. This data enables optimization of task assignment algorithms
         and analysis of assignment effectiveness.
-        
+
         Parameters
         ----------
         task_id : str
@@ -832,11 +837,11 @@ class ConversationLogger:
             - dependency_risk: Risk level of dependency delays
             - estimated_start_date: When task can realistically start
             - impact_score: Impact of delays on project timeline
-        
+
         Examples
         --------
         High-priority backend task assignment:
-        
+
         >>> logger.log_task_assignment(
         ...     task_id="TASK-AUTH-001",
         ...     worker_id="worker_backend_senior_1",
@@ -860,9 +865,9 @@ class ConversationLogger:
         ...         "impact_score": 0.85
         ...     }
         ... )
-        
+
         Frontend component assignment:
-        
+
         >>> logger.log_task_assignment(
         ...     task_id="TASK-UI-DASHBOARD",
         ...     worker_id="worker_frontend_2",
@@ -885,9 +890,9 @@ class ConversationLogger:
         ...         "impact_score": 0.45
         ...     }
         ... )
-        
+
         Maintenance task with dependencies:
-        
+
         >>> logger.log_task_assignment(
         ...     task_id="TASK-MAINT-DB-CLEANUP",
         ...     worker_id="worker_devops_1",
@@ -910,7 +915,7 @@ class ConversationLogger:
         ...         "impact_score": 0.25
         ...     }
         ... )
-        
+
         Notes
         -----
         Assignment logs are recorded at INFO level for analysis visibility.
@@ -918,7 +923,7 @@ class ConversationLogger:
         Dependency analysis helps with project timeline prediction.
         This data is crucial for measuring assignment effectiveness.
         Task details should be comprehensive for accurate analysis.
-        
+
         See Also
         --------
         log_progress_update : Log progress on assigned tasks
@@ -933,9 +938,9 @@ class ConversationLogger:
             task_details=task_details,
             assignment_score=assignment_score,
             dependency_analysis=dependency_analysis or {},
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
         )
-        
+
     def log_progress_update(
         self,
         worker_id: str,
@@ -943,15 +948,15 @@ class ConversationLogger:
         progress: int,
         status: str,
         message: str,
-        metrics: Optional[Dict[str, Any]] = None
+        metrics: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         Log task progress updates with performance metrics and status changes.
-        
+
         Captures detailed progress information including completion percentage,
         status changes, milestone achievements, and performance metrics. This
         data enables real-time project tracking and performance analysis.
-        
+
         Parameters
         ----------
         worker_id : str
@@ -987,11 +992,11 @@ class ConversationLogger:
             - files_modified: Number of files changed
             - performance_improvements: Measurable improvements
             - resource_usage: CPU, memory, or other resource metrics
-        
+
         Examples
         --------
         Development task progress with code metrics:
-        
+
         >>> logger.log_progress_update(
         ...     worker_id="worker_backend_1",
         ...     task_id="TASK-API-USERS",
@@ -1008,9 +1013,9 @@ class ConversationLogger:
         ...         "test_coverage": 85
         ...     }
         ... )
-        
+
         Task completion with performance metrics:
-        
+
         >>> logger.log_progress_update(
         ...     worker_id="worker_devops_2",
         ...     task_id="TASK-DB-OPTIMIZATION",
@@ -1027,9 +1032,9 @@ class ConversationLogger:
         ...         "previous_response_time_ms": 250
         ...     }
         ... )
-        
+
         Blocked task with analysis:
-        
+
         >>> logger.log_progress_update(
         ...     worker_id="worker_frontend_3",
         ...     task_id="TASK-UI-INTEGRATION",
@@ -1045,9 +1050,9 @@ class ConversationLogger:
         ...         "alternative_work_available": True
         ...     }
         ... )
-        
+
         Milestone achievement:
-        
+
         >>> logger.log_progress_update(
         ...     worker_id="worker_qa_1",
         ...     task_id="TASK-TESTING-SUITE",
@@ -1064,7 +1069,7 @@ class ConversationLogger:
         ...         "automation_coverage": 90
         ...     }
         ... )
-        
+
         Notes
         -----
         Progress updates are logged at INFO level for visibility.
@@ -1072,7 +1077,7 @@ class ConversationLogger:
         Status changes trigger workflow and notification systems.
         Metrics enable detailed performance analysis and optimization.
         Regular progress updates improve project predictability.
-        
+
         See Also
         --------
         log_task_assignment : Log initial task assignments
@@ -1088,9 +1093,9 @@ class ConversationLogger:
             status=status,
             message=message,
             metrics=metrics or {},
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
         )
-        
+
     def log_blocker(
         self,
         worker_id: str,
@@ -1098,15 +1103,15 @@ class ConversationLogger:
         blocker_description: str,
         severity: str,
         suggested_solutions: Optional[List[str]] = None,
-        resolution_attempts: Optional[List[Dict[str, Any]]] = None
+        resolution_attempts: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         """
         Log task blockers with resolution context and suggested solutions.
-        
+
         Records detailed information about blockers that prevent task progress,
         including impact assessment, suggested solutions, and resolution attempts.
         This data enables proactive blocker management and resolution optimization.
-        
+
         Parameters
         ----------
         worker_id : str
@@ -1138,11 +1143,11 @@ class ConversationLogger:
             - outcome: Result of the attempt
             - time_spent: Time invested in the attempt
             - lessons_learned: Insights gained from the attempt
-        
+
         Examples
         --------
         External dependency blocker:
-        
+
         >>> logger.log_blocker(
         ...     worker_id="worker_backend_2",
         ...     task_id="TASK-PAYMENT-INTEGRATION",
@@ -1171,9 +1176,9 @@ class ConversationLogger:
         ...         }
         ...     ]
         ... )
-        
+
         Technical blocker with research:
-        
+
         >>> logger.log_blocker(
         ...     worker_id="worker_frontend_1",
         ...     task_id="TASK-MOBILE-RESPONSIVE",
@@ -1195,9 +1200,9 @@ class ConversationLogger:
         ...         }
         ...     ]
         ... )
-        
+
         Resource blocker:
-        
+
         >>> logger.log_blocker(
         ...     worker_id="worker_devops_3",
         ...     task_id="TASK-LOAD-TESTING",
@@ -1219,9 +1224,9 @@ class ConversationLogger:
         ...         }
         ...     ]
         ... )
-        
+
         Critical blocker requiring immediate attention:
-        
+
         >>> logger.log_blocker(
         ...     worker_id="worker_security_1",
         ...     task_id="TASK-SECURITY-AUDIT",
@@ -1243,7 +1248,7 @@ class ConversationLogger:
         ...         }
         ...     ]
         ... )
-        
+
         Notes
         -----
         Blocker logs are recorded at WARNING level for appropriate attention.
@@ -1251,7 +1256,7 @@ class ConversationLogger:
         Detailed descriptions enable effective resolution planning.
         Resolution attempts prevent duplicate effort across workers.
         Suggested solutions accelerate blocker resolution processes.
-        
+
         See Also
         --------
         log_progress_update : Log task progress including blocked status
@@ -1267,24 +1272,24 @@ class ConversationLogger:
             severity=severity,
             suggested_solutions=suggested_solutions or [],
             resolution_attempts=resolution_attempts or [],
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
         )
-        
+
     def log_system_state(
         self,
         active_workers: int,
         tasks_in_progress: int,
         tasks_completed: int,
         tasks_blocked: int,
-        system_metrics: Dict[str, Any]
+        system_metrics: Dict[str, Any],
     ) -> None:
         """
         Log comprehensive system state for monitoring and analysis.
-        
+
         Captures a snapshot of the entire Marcus system state including
         worker activity, task distribution, performance metrics, and resource
         utilization. This data enables system health monitoring and optimization.
-        
+
         Parameters
         ----------
         active_workers : int
@@ -1312,11 +1317,11 @@ class ConversationLogger:
             - system_load: Overall system load factor
             - error_rate: System error rate percentage
             - uptime_hours: System uptime in hours
-        
+
         Examples
         --------
         Healthy system state during normal operation:
-        
+
         >>> logger.log_system_state(
         ...     active_workers=8,
         ...     tasks_in_progress=15,
@@ -1338,9 +1343,9 @@ class ConversationLogger:
         ...         "throughput_trend": "stable"
         ...     }
         ... )
-        
+
         High-load system state with performance concerns:
-        
+
         >>> logger.log_system_state(
         ...     active_workers=12,
         ...     tasks_in_progress=28,
@@ -1363,9 +1368,9 @@ class ConversationLogger:
         ...         "bottleneck_indicators": ["memory_pressure", "high_blocked_tasks"]
         ...     }
         ... )
-        
+
         Low-activity system state during off-peak hours:
-        
+
         >>> logger.log_system_state(
         ...     active_workers=3,
         ...     tasks_in_progress=5,
@@ -1388,9 +1393,9 @@ class ConversationLogger:
         ...         "capacity_available": 0.75
         ...     }
         ... )
-        
+
         System state during scaling event:
-        
+
         >>> logger.log_system_state(
         ...     active_workers=15,
         ...     tasks_in_progress=35,
@@ -1414,7 +1419,7 @@ class ConversationLogger:
         ...         "new_workers_added": 3
         ...     }
         ... )
-        
+
         Notes
         -----
         System state logs are recorded at INFO level for monitoring visibility.
@@ -1422,7 +1427,7 @@ class ConversationLogger:
         High blocked task counts may indicate systemic issues requiring attention.
         Resource metrics help identify bottlenecks and optimization opportunities.
         System state data is crucial for automated scaling and alerting systems.
-        
+
         See Also
         --------
         log_progress_update : Log individual task progress
@@ -1437,22 +1442,22 @@ class ConversationLogger:
             tasks_completed=tasks_completed,
             tasks_blocked=tasks_blocked,
             system_metrics=system_metrics,
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
         )
-        
+
     def get_conversation_replay(
         self,
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None,
-        filter_type: Optional[ConversationType] = None
+        filter_type: Optional[ConversationType] = None,
     ) -> List[Dict[str, Any]]:
         """
         Retrieve conversation logs for replay and analysis.
-        
+
         Extracts conversation logs from the stored files based on time range
         and conversation type filters. This method enables visualization systems
         to replay system interactions and analyze communication patterns.
-        
+
         Parameters
         ----------
         start_time : Optional[datetime], default=None
@@ -1464,7 +1469,7 @@ class ConversationLogger:
         filter_type : Optional[ConversationType], default=None
             Specific conversation type to filter by. If None, retrieves
             all conversation types within the time range.
-        
+
         Returns
         -------
         List[Dict[str, Any]]
@@ -1476,11 +1481,11 @@ class ConversationLogger:
             - message: The conversation content
             - metadata: Additional context and structured data
             - log_level: Logging level of the entry
-        
+
         Examples
         --------
         Retrieve all conversations from the last 24 hours:
-        
+
         >>> from datetime import datetime, timedelta
         >>> end_time = datetime.now()
         >>> start_time = end_time - timedelta(hours=24)
@@ -1489,24 +1494,24 @@ class ConversationLogger:
         ...     end_time=end_time
         ... )
         >>> print(f"Retrieved {len(conversations)} conversations")
-        
+
         Retrieve only Marcus decisions:
-        
+
         >>> decisions = logger.get_conversation_replay(
         ...     filter_type=ConversationType.DECISION
         ... )
         >>> for decision in decisions:
         ...     print(f"Decision: {decision['decision']}")
         ...     print(f"Confidence: {decision['confidence_score']}")
-        
+
         Retrieve worker communications for specific time period:
-        
+
         >>> worker_comms = logger.get_conversation_replay(
         ...     start_time=datetime(2024, 1, 15, 9, 0),
         ...     end_time=datetime(2024, 1, 15, 17, 0),
         ...     filter_type=ConversationType.WORKER_TO_PM
         ... )
-        
+
         Notes
         -----
         This method reads from the stored JSON log files.
@@ -1514,7 +1519,7 @@ class ConversationLogger:
         Consider implementing pagination for very large result sets.
         Log files are organized by timestamp for efficient retrieval.
         Empty list is returned if no logs match the criteria.
-        
+
         See Also
         --------
         export_decision_metrics : Extract decision-specific metrics
@@ -1523,15 +1528,15 @@ class ConversationLogger:
         # This would read from the log files and filter based on criteria
         # For now, returning empty list as placeholder
         return []
-        
+
     def export_decision_metrics(self) -> Dict[str, Any]:
         """
         Export comprehensive decision metrics for analysis and optimization.
-        
+
         Analyzes logged decision data to extract key performance indicators,
         patterns, and metrics that enable optimization of the Marcus'
         decision-making algorithms and overall system performance.
-        
+
         Returns
         -------
         Dict[str, Any]
@@ -1547,33 +1552,33 @@ class ConversationLogger:
             - decision_type_breakdown: Count of decisions by type
             - top_decision_factors: Most influential decision factors
             - improvement_opportunities: Identified areas for optimization
-        
+
         Examples
         --------
         Basic metrics extraction:
-        
+
         >>> metrics = logger.export_decision_metrics()
         >>> print(f"Total decisions made: {metrics['total_decisions']}")
         >>> print(f"Assignment success rate: {metrics['assignment_success_rate']:.1%}")
         >>> print(f"Average confidence: {metrics['average_confidence_score']:.2f}")
-        
+
         Analyzing decision patterns:
-        
+
         >>> metrics = logger.export_decision_metrics()
         >>> decision_breakdown = metrics['decision_type_breakdown']
         >>> for decision_type, count in decision_breakdown.items():
         ...     print(f"{decision_type}: {count} decisions")
-        
+
         Identifying optimization opportunities:
-        
+
         >>> metrics = logger.export_decision_metrics()
         >>> opportunities = metrics['improvement_opportunities']
         >>> for opportunity in opportunities:
         ...     print(f"Opportunity: {opportunity['area']}")
         ...     print(f"Impact: {opportunity['potential_improvement']}")
-        
+
         Performance dashboard integration:
-        
+
         >>> metrics = logger.export_decision_metrics()
         >>> dashboard_data = {
         ...     'success_rate': metrics['assignment_success_rate'],
@@ -1581,7 +1586,7 @@ class ConversationLogger:
         ...     'decision_confidence': metrics['average_confidence_score'],
         ...     'total_throughput': metrics['successful_assignments']
         ... }
-        
+
         Notes
         -----
         Metrics are calculated from all available decision log data.
@@ -1589,7 +1594,7 @@ class ConversationLogger:
         Metrics are cached and updated periodically for performance.
         Success rates are based on task completion and quality metrics.
         Empty metrics are returned if insufficient decision data exists.
-        
+
         See Also
         --------
         get_conversation_replay : Retrieve detailed conversation logs
@@ -1602,7 +1607,7 @@ class ConversationLogger:
             "successful_assignments": 0,
             "average_decision_time_ms": 0,
             "task_completion_rate": 0.0,
-            "average_task_duration_hours": 0.0
+            "average_task_duration_hours": 0.0,
         }
 
 
@@ -1612,19 +1617,16 @@ conversation_logger = ConversationLogger()
 
 # Convenience functions for easy logging
 def log_conversation(
-    sender: str, 
-    receiver: str, 
-    message: str, 
-    metadata: Optional[Dict[str, Any]] = None
+    sender: str, receiver: str, message: str, metadata: Optional[Dict[str, Any]] = None
 ) -> None:
     """
     Convenience function for quick conversation logging between system components.
-    
+
     Provides a simplified interface for logging conversations without needing
     to directly interact with the ConversationLogger class. Automatically
     determines the appropriate conversation type and routing based on sender
     and receiver identifiers.
-    
+
     Parameters
     ----------
     sender : str
@@ -1644,52 +1646,52 @@ def log_conversation(
         - priority: Message or task priority level
         - timestamp: Custom timestamp if different from log time
         - status: Current status information
-    
+
     Examples
     --------
     Worker reporting to Marcus:
-    
+
     >>> log_conversation(
     ...     sender="worker_backend_1",
     ...     receiver="marcus",
     ...     message="Task TASK-123 completed successfully",
     ...     metadata={"task_id": "TASK-123", "completion_time": "2024-01-15T16:30:00Z"}
     ... )
-    
+
     Marcus communicating with worker:
-    
+
     >>> log_conversation(
     ...     sender="marcus",
     ...     receiver="worker_frontend_2",
     ...     message="New high-priority UI task assigned",
     ...     metadata={"task_id": "TASK-456", "priority": "high", "deadline": "2024-01-18"}
     ... )
-    
+
     Marcus updating Kanban board:
-    
+
     >>> log_conversation(
     ...     sender="marcus",
     ...     receiver="kanban",
     ...     message="Updating task status to completed",
     ...     metadata={"action": "update_task", "task_id": "TASK-789", "new_status": "Done"}
     ... )
-    
+
     Kanban board notifying Marcus:
-    
+
     >>> log_conversation(
     ...     sender="kanban",
     ...     receiver="marcus",
     ...     message="Board state synchronized, 3 new tasks added",
     ...     metadata={"action": "sync_complete", "new_tasks": 3, "total_tasks": 47}
     ... )
-    
+
     Notes
     -----
     This function uses the global conversation_logger instance.
     Message routing is determined automatically from sender/receiver patterns.
     All conversations are timestamped automatically.
     Invalid sender/receiver patterns will log as general debug information.
-    
+
     See Also
     --------
     ConversationLogger.log_worker_message : Direct worker message logging
@@ -1704,28 +1706,26 @@ def log_conversation(
         conversation_logger.log_kanban_interaction(
             action=metadata.get("action", "unknown"),
             direction="to_kanban",
-            data={"message": message, **(metadata or {})}
+            data={"message": message, **(metadata or {})},
         )
     elif sender == "kanban" and receiver == "marcus":
         conversation_logger.log_kanban_interaction(
             action=metadata.get("action", "unknown"),
             direction="from_kanban",
-            data={"message": message, **(metadata or {})}
+            data={"message": message, **(metadata or {})},
         )
 
 
 def log_thinking(
-    component: str, 
-    thought: str, 
-    context: Optional[Dict[str, Any]] = None
+    component: str, thought: str, context: Optional[Dict[str, Any]] = None
 ) -> None:
     """
     Convenience function for logging internal reasoning and decision processes.
-    
+
     Provides a simplified interface for capturing internal thought processes,
     analysis steps, and reasoning chains across different system components.
     Enables debugging and optimization of AI and algorithmic decision-making.
-    
+
     Parameters
     ----------
     component : str
@@ -1747,11 +1747,11 @@ def log_thinking(
         - analysis_results: Results of analysis or computation
         - confidence_level: Confidence in the reasoning
         - alternatives: Alternative approaches considered
-    
+
     Examples
     --------
     Marcus task assignment reasoning:
-    
+
     >>> log_thinking(
     ...     component="marcus",
     ...     thought="Evaluating worker capacity and skills for urgent security task",
@@ -1763,9 +1763,9 @@ def log_thinking(
     ...         "confidence_level": 0.85
     ...     }
     ... )
-    
+
     Worker agent problem-solving process:
-    
+
     >>> log_thinking(
     ...     component="worker_backend_1",
     ...     thought="Analyzing database performance issue, considering indexing strategies",
@@ -1777,9 +1777,9 @@ def log_thinking(
     ...         "implementation_complexity": {"add_indexes": "low", "optimize_queries": "medium"}
     ...     }
     ... )
-    
+
     System analyzer pattern recognition:
-    
+
     >>> log_thinking(
     ...     component="analyzer",
     ...     thought="Detecting recurring bottleneck pattern in task assignments",
@@ -1792,9 +1792,9 @@ def log_thinking(
     ...         "suggested_action": "stagger_break_times"
     ...     }
     ... )
-    
+
     Scheduler optimization reasoning:
-    
+
     >>> log_thinking(
     ...     component="scheduler",
     ...     thought="Optimizing task order to minimize dependency delays",
@@ -1807,7 +1807,7 @@ def log_thinking(
     ...         "alternative_strategies": ["priority_first", "worker_balanced"]
     ...     }
     ... )
-    
+
     Notes
     -----
     Thinking logs are typically recorded at DEBUG level.
@@ -1815,7 +1815,7 @@ def log_thinking(
     Other components use general structured logging with component identification.
     Context should include data that influenced the reasoning process.
     These logs are essential for AI/algorithm debugging and optimization.
-    
+
     See Also
     --------
     ConversationLogger.log_pm_thinking : Direct Marcus thinking logs
@@ -1831,5 +1831,5 @@ def log_thinking(
             "thinking",
             thought=thought,
             context=context or {},
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
         )
