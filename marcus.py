@@ -12,10 +12,27 @@ import signal
 import sys
 from pathlib import Path
 
-# Add parent directory to path before imports
-sys.path.insert(0, str(Path(__file__).parent))
+# Force Python to run in unbuffered mode to prevent vertical text in MCP
+os.environ["PYTHONUNBUFFERED"] = "1"
 
-from src.config.config_loader import get_config
+# Force stdout/stderr to be unbuffered
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True)
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(line_buffering=True)
+
+# Get the Marcus root directory
+marcus_root = Path(__file__).parent.resolve()
+
+# Add parent directory to path before imports
+sys.path.insert(0, str(marcus_root))
+
+# Only change directory if we're not already there
+# This helps prevent stdio issues when running from different directories
+if os.getcwd() != str(marcus_root):
+    os.chdir(marcus_root)
+
+from src.config.config_loader import get_config  # noqa: E402
 
 
 def load_config():
