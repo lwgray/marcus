@@ -112,19 +112,26 @@ class LLMAbstraction:
         """
         if self._providers_initialized:
             return
+        
+        logger.debug("Starting provider initialization...")
 
         # Try to initialize Anthropic provider
-        try:
-            from .anthropic_provider import AnthropicProvider
+        anthropic_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+        if anthropic_key and anthropic_key.startswith("sk-ant-") and len(anthropic_key) > 10:
+            try:
+                from .anthropic_provider import AnthropicProvider
 
-            self.providers["anthropic"] = AnthropicProvider()
-            self.fallback_providers.append("anthropic")
-            logger.info("Successfully initialized Anthropic provider")
-        except Exception as e:
-            logger.warning(f"Failed to initialize Anthropic provider: {e}")
+                self.providers["anthropic"] = AnthropicProvider()
+                self.fallback_providers.append("anthropic")
+                logger.info("Successfully initialized Anthropic provider")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Anthropic provider: {e}")
+        else:
+            logger.debug(f"Skipping Anthropic provider - no valid API key configured (key present: {bool(anthropic_key)})")
 
-        # Only try OpenAI if we have an API key
-        if os.getenv("OPENAI_API_KEY"):
+        # Only try OpenAI if we have a valid API key
+        openai_key = os.getenv("OPENAI_API_KEY", "").strip()
+        if openai_key and openai_key.startswith("sk-") and len(openai_key) > 10:
             try:
                 from .openai_provider import OpenAIProvider
 
@@ -134,7 +141,7 @@ class LLMAbstraction:
             except Exception as e:
                 logger.warning(f"Failed to initialize OpenAI provider: {e}")
         else:
-            logger.debug("Skipping OpenAI provider - no API key configured")
+            logger.debug(f"Skipping OpenAI provider - no valid API key configured (key present: {bool(openai_key)})")
 
         # Add local provider if configured
         local_model_path = os.getenv("MARCUS_LOCAL_LLM_PATH")
@@ -385,15 +392,22 @@ class LLMAbstraction:
         if not available_providers:
             raise Exception(
                 "No AI providers are configured. "
-                "Please check your API keys in the configuration."
+                "Please check your API keys in config_marcus.json. "
+                "Make sure keys start with 'sk-ant-' for Anthropic or 'sk-' for OpenAI."
             )
         elif len(available_providers) == 1:
             provider_name = available_providers[0]
             error_msg = f"{provider_name.capitalize()} API error: {last_exception}"
             if "401" in str(last_exception):
                 error_msg += (
-                    f". Please check your {provider_name.upper()}_API_KEY "
-                    f"in the configuration."
+                    f". Please check that your {provider_name} API key in "
+                    f"config_marcus.json is valid and not expired."
+                )
+            elif "API key" in str(last_exception):
+                error_msg = (
+                    f"Invalid {provider_name} API key. Please check that your "
+                    f"API key in config_marcus.json is correct and starts with "
+                    f"'{'sk-ant-' if provider_name == 'anthropic' else 'sk-'}'."
                 )
         else:
             error_msg = f"All LLM providers failed. Last error: {last_exception}"

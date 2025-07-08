@@ -69,10 +69,12 @@ def load_config():
 
         # AI settings
         ai_config = config.get("ai", {})
-        if ai_config.get("anthropic_api_key"):
-            os.environ["ANTHROPIC_API_KEY"] = ai_config["anthropic_api_key"]
-        if ai_config.get("openai_api_key"):
-            os.environ["OPENAI_API_KEY"] = ai_config["openai_api_key"]
+        anthropic_key = ai_config.get("anthropic_api_key", "").strip()
+        if anthropic_key and anthropic_key != "sk-ant-your-api-key-here":
+            os.environ["ANTHROPIC_API_KEY"] = anthropic_key
+        openai_key = ai_config.get("openai_api_key", "").strip()
+        if openai_key and openai_key != "sk-your-openai-key-here":
+            os.environ["OPENAI_API_KEY"] = openai_key
 
         # Monitoring settings
         monitoring_config = config.get("monitoring", {})
