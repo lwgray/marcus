@@ -7,64 +7,62 @@ in a centralized location.
 """
 
 import json
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
 import mcp.types as types
 
-from .tools import (
-    # Agent tools
-    register_agent,
-    get_agent_status,
-    list_registered_agents,
-    # Task tools
-    request_next_task,
-    report_task_progress,
-    report_blocker,
-    # Project tools
-    get_project_status,
-    # System tools
-    ping,
+from .tools import (  # Agent tools; Task tools; Project tools; System tools; NLP tools
+    add_feature,
     check_assignment_health,
-    # NLP tools
     create_project,
-    add_feature
+    get_agent_status,
+    get_project_status,
+    list_registered_agents,
+    ping,
+    register_agent,
+    report_blocker,
+    report_task_progress,
+    request_next_task,
 )
-
-from .tools.context import (
-    # Context tools
+from .tools.context import (  # Context tools
+    get_task_context,
     log_decision,
-    get_task_context
 )
 
-from .tools.pipeline import (
-    # Pipeline replay tools
-    start_replay,
-    replay_step_forward,
-    replay_step_backward,
-    replay_jump_to,
-    # What-if analysis tools
-    start_what_if_analysis,
-    simulate_modification,
-    compare_what_if_scenarios,
-    # Comparison tools
+# Pattern learning tools disabled - only accessible via visualization UI API
+# from .tools.pattern_learning import (  # Pattern learning tools
+#     assess_project_quality,
+#     get_pattern_recommendations,
+#     get_project_patterns,
+#     get_quality_trends,
+#     get_similar_projects,
+#     learn_from_completed_project,
+# )
+from .tools.pipeline import (  # Pipeline replay tools; What-if analysis tools; Comparison tools; Monitoring tools; Recommendation tools
     compare_pipelines,
+    compare_what_if_scenarios,
+    find_similar_flows,
     generate_report,
-    # Monitoring tools
     get_live_dashboard,
-    track_flow_progress,
-    predict_failure_risk,
-    # Recommendation tools
     get_recommendations,
-    find_similar_flows
+    predict_failure_risk,
+    replay_jump_to,
+    replay_step_backward,
+    replay_step_forward,
+    simulate_modification,
+    start_replay,
+    start_what_if_analysis,
+    track_flow_progress,
 )
 
 
 def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
     """
     Return list of available tool definitions for MCP based on role.
-    
+
     Args:
         role: User role - "agent" for coding agents, "human" for full access
-    
+
     Returns:
         List of Tool objects with schemas for Marcus tools based on role
     """
@@ -77,18 +75,24 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "agent_id": {"type": "string", "description": "Unique agent identifier"},
+                    "agent_id": {
+                        "type": "string",
+                        "description": "Unique agent identifier",
+                    },
                     "name": {"type": "string", "description": "Agent's display name"},
-                    "role": {"type": "string", "description": "Agent's role (e.g., 'Backend Developer')"},
+                    "role": {
+                        "type": "string",
+                        "description": "Agent's role (e.g., 'Backend Developer')",
+                    },
                     "skills": {
                         "type": "array",
                         "items": {"type": "string"},
                         "description": "List of agent's skills",
-                        "default": []
-                    }
+                        "default": [],
+                    },
                 },
-                "required": ["agent_id", "name", "role"]
-            }
+                "required": ["agent_id", "name", "role"],
+            },
         ),
         types.Tool(
             name="get_agent_status",
@@ -96,21 +100,19 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "agent_id": {"type": "string", "description": "Agent to check status for"}
+                    "agent_id": {
+                        "type": "string",
+                        "description": "Agent to check status for",
+                    }
                 },
-                "required": ["agent_id"]
-            }
+                "required": ["agent_id"],
+            },
         ),
         types.Tool(
             name="list_registered_agents",
             description="List all registered agents",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
+            inputSchema={"type": "object", "properties": {}, "required": []},
         ),
-        
         # Task Management Tools
         types.Tool(
             name="request_next_task",
@@ -118,10 +120,13 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "agent_id": {"type": "string", "description": "Agent requesting the task"}
+                    "agent_id": {
+                        "type": "string",
+                        "description": "Agent requesting the task",
+                    }
                 },
-                "required": ["agent_id"]
-            }
+                "required": ["agent_id"],
+            },
         ),
         types.Tool(
             name="report_task_progress",
@@ -129,14 +134,28 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "agent_id": {"type": "string", "description": "Agent reporting progress"},
+                    "agent_id": {
+                        "type": "string",
+                        "description": "Agent reporting progress",
+                    },
                     "task_id": {"type": "string", "description": "Task being updated"},
-                    "status": {"type": "string", "description": "Task status: in_progress, completed, blocked"},
-                    "progress": {"type": "integer", "description": "Progress percentage (0-100)", "default": 0},
-                    "message": {"type": "string", "description": "Progress message", "default": ""}
+                    "status": {
+                        "type": "string",
+                        "description": "Task status: in_progress, completed, blocked",
+                    },
+                    "progress": {
+                        "type": "integer",
+                        "description": "Progress percentage (0-100)",
+                        "default": 0,
+                    },
+                    "message": {
+                        "type": "string",
+                        "description": "Progress message",
+                        "default": "",
+                    },
                 },
-                "required": ["agent_id", "task_id", "status"]
-            }
+                "required": ["agent_id", "task_id", "status"],
+            },
         ),
         types.Tool(
             name="report_blocker",
@@ -144,26 +163,30 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "agent_id": {"type": "string", "description": "Agent reporting the blocker"},
+                    "agent_id": {
+                        "type": "string",
+                        "description": "Agent reporting the blocker",
+                    },
                     "task_id": {"type": "string", "description": "Blocked task ID"},
-                    "blocker_description": {"type": "string", "description": "Description of the blocker"},
-                    "severity": {"type": "string", "description": "Blocker severity: low, medium, high", "default": "medium"}
+                    "blocker_description": {
+                        "type": "string",
+                        "description": "Description of the blocker",
+                    },
+                    "severity": {
+                        "type": "string",
+                        "description": "Blocker severity: low, medium, high",
+                        "default": "medium",
+                    },
                 },
-                "required": ["agent_id", "task_id", "blocker_description"]
-            }
+                "required": ["agent_id", "task_id", "blocker_description"],
+            },
         ),
-        
         # Project Monitoring Tools
         types.Tool(
             name="get_project_status",
             description="Get current project status and metrics",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
+            inputSchema={"type": "object", "properties": {}, "required": []},
         ),
-        
         # System Health Tools
         types.Tool(
             name="ping",
@@ -171,21 +194,20 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "echo": {"type": "string", "description": "Optional message to echo back", "default": ""}
+                    "echo": {
+                        "type": "string",
+                        "description": "Optional message to echo back",
+                        "default": "",
+                    }
                 },
-                "required": []
-            }
+                "required": [],
+            },
         ),
         types.Tool(
             name="check_assignment_health",
             description="Check the health of the assignment tracking system",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
+            inputSchema={"type": "object", "properties": {}, "required": []},
         ),
-        
         # Context Tools (for agents to log decisions)
         types.Tool(
             name="log_decision",
@@ -193,15 +215,18 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "agent_id": {"type": "string", "description": "Agent making the decision"},
+                    "agent_id": {
+                        "type": "string",
+                        "description": "Agent making the decision",
+                    },
                     "task_id": {"type": "string", "description": "Current task ID"},
                     "decision": {
-                        "type": "string", 
-                        "description": "Decision description. Format: 'I chose X because Y. This affects Z.'"
-                    }
+                        "type": "string",
+                        "description": "Decision description. Format: 'I chose X because Y. This affects Z.'",
+                    },
                 },
-                "required": ["agent_id", "task_id", "decision"]
-            }
+                "required": ["agent_id", "task_id", "decision"],
+            },
         ),
         types.Tool(
             name="get_task_context",
@@ -209,17 +234,20 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "task_id": {"type": "string", "description": "Task ID to get context for"}
+                    "task_id": {
+                        "type": "string",
+                        "description": "Task ID to get context for",
+                    }
                 },
-                "required": ["task_id"]
-            }
-        )
+                "required": ["task_id"],
+            },
+        ),
     ]
-    
+
     # If role is "agent", return only agent tools
     if role == "agent":
         return agent_tools
-    
+
     # For "human" role, include all tools including pipeline enhancements
     human_tools = agent_tools + [
         # Natural Language Tools (also available to humans)
@@ -231,28 +259,35 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                 "properties": {
                     "description": {
                         "type": "string",
-                        "description": "Natural language project description or requirements"
+                        "description": "Natural language project description or requirements",
                     },
                     "project_name": {
                         "type": "string",
-                        "description": "Name for the project board"
+                        "description": "Name for the project board",
                     },
                     "options": {
                         "type": "object",
                         "description": "Optional project configuration",
                         "properties": {
-                            "deadline": {"type": "string", "description": "Project deadline (ISO date format)"},
-                            "team_size": {"type": "integer", "description": "Number of developers", "default": 3},
+                            "deadline": {
+                                "type": "string",
+                                "description": "Project deadline (ISO date format)",
+                            },
+                            "team_size": {
+                                "type": "integer",
+                                "description": "Number of developers",
+                                "default": 3,
+                            },
                             "tech_stack": {
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "description": "Technologies to use"
-                            }
-                        }
-                    }
+                                "description": "Technologies to use",
+                            },
+                        },
+                    },
                 },
-                "required": ["description", "project_name"]
-            }
+                "required": ["description", "project_name"],
+            },
         ),
         types.Tool(
             name="add_feature",
@@ -262,19 +297,23 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                 "properties": {
                     "feature_description": {
                         "type": "string",
-                        "description": "Natural language description of the feature to add"
+                        "description": "Natural language description of the feature to add",
                     },
                     "integration_point": {
                         "type": "string",
                         "description": "How to integrate the feature",
-                        "enum": ["auto_detect", "after_current", "parallel", "new_phase"],
-                        "default": "auto_detect"
-                    }
+                        "enum": [
+                            "auto_detect",
+                            "after_current",
+                            "parallel",
+                            "new_phase",
+                        ],
+                        "default": "auto_detect",
+                    },
                 },
-                "required": ["feature_description"]
-            }
+                "required": ["feature_description"],
+            },
         ),
-        
         # Pipeline Enhancement Tools (only for humans)
         types.Tool(
             name="pipeline_replay_start",
@@ -284,18 +323,18 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                 "properties": {
                     "flow_id": {"type": "string", "description": "Flow ID to replay"}
                 },
-                "required": ["flow_id"]
-            }
+                "required": ["flow_id"],
+            },
         ),
         types.Tool(
             name="pipeline_replay_forward",
             description="Step forward in pipeline replay",
-            inputSchema={"type": "object", "properties": {}}
+            inputSchema={"type": "object", "properties": {}},
         ),
         types.Tool(
             name="pipeline_replay_backward",
             description="Step backward in pipeline replay",
-            inputSchema={"type": "object", "properties": {}}
+            inputSchema={"type": "object", "properties": {}},
         ),
         types.Tool(
             name="pipeline_replay_jump",
@@ -303,10 +342,13 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "position": {"type": "integer", "description": "Position to jump to"}
+                    "position": {
+                        "type": "integer",
+                        "description": "Position to jump to",
+                    }
                 },
-                "required": ["position"]
-            }
+                "required": ["position"],
+            },
         ),
         types.Tool(
             name="what_if_start",
@@ -316,8 +358,8 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                 "properties": {
                     "flow_id": {"type": "string", "description": "Flow ID to analyze"}
                 },
-                "required": ["flow_id"]
-            }
+                "required": ["flow_id"],
+            },
         ),
         types.Tool(
             name="what_if_simulate",
@@ -334,19 +376,23 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                                 "parameter_name": {"type": "string"},
                                 "new_value": {},
                                 "old_value": {},
-                                "description": {"type": "string"}
+                                "description": {"type": "string"},
                             },
-                            "required": ["parameter_type", "parameter_name", "new_value"]
-                        }
+                            "required": [
+                                "parameter_type",
+                                "parameter_name",
+                                "new_value",
+                            ],
+                        },
                     }
                 },
-                "required": ["modifications"]
-            }
+                "required": ["modifications"],
+            },
         ),
         types.Tool(
             name="what_if_compare",
             description="Compare all what-if scenarios",
-            inputSchema={"type": "object", "properties": {}}
+            inputSchema={"type": "object", "properties": {}},
         ),
         types.Tool(
             name="pipeline_compare",
@@ -357,11 +403,11 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                     "flow_ids": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "List of flow IDs to compare"
+                        "description": "List of flow IDs to compare",
                     }
                 },
-                "required": ["flow_ids"]
-            }
+                "required": ["flow_ids"],
+            },
         ),
         types.Tool(
             name="pipeline_report",
@@ -374,16 +420,16 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                         "type": "string",
                         "enum": ["html", "markdown", "json"],
                         "description": "Report format",
-                        "default": "html"
-                    }
+                        "default": "html",
+                    },
                 },
-                "required": ["flow_id"]
-            }
+                "required": ["flow_id"],
+            },
         ),
         types.Tool(
             name="pipeline_monitor_dashboard",
             description="Get live monitoring dashboard data",
-            inputSchema={"type": "object", "properties": {}}
+            inputSchema={"type": "object", "properties": {}},
         ),
         types.Tool(
             name="pipeline_monitor_flow",
@@ -393,8 +439,8 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                 "properties": {
                     "flow_id": {"type": "string", "description": "Flow ID to track"}
                 },
-                "required": ["flow_id"]
-            }
+                "required": ["flow_id"],
+            },
         ),
         types.Tool(
             name="pipeline_predict_risk",
@@ -404,19 +450,17 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                 "properties": {
                     "flow_id": {"type": "string", "description": "Flow ID to assess"}
                 },
-                "required": ["flow_id"]
-            }
+                "required": ["flow_id"],
+            },
         ),
         types.Tool(
             name="pipeline_recommendations",
             description="Get recommendations for a pipeline flow",
             inputSchema={
                 "type": "object",
-                "properties": {
-                    "flow_id": {"type": "string", "description": "Flow ID"}
-                },
-                "required": ["flow_id"]
-            }
+                "properties": {"flow_id": {"type": "string", "description": "Flow ID"}},
+                "required": ["flow_id"],
+            },
         ),
         types.Tool(
             name="pipeline_find_similar",
@@ -428,36 +472,35 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                     "limit": {
                         "type": "integer",
                         "description": "Max similar flows to return",
-                        "default": 5
-                    }
+                        "default": 5,
+                    },
                 },
-                "required": ["flow_id"]
-            }
-        )
+                "required": ["flow_id"],
+            },
+        ),
+        # Pattern Learning Tools removed - only accessible via visualization UI API
     ]
-    
+
     return human_tools
 
 
 async def handle_tool_call(
-    name: str,
-    arguments: Optional[Dict[str, Any]],
-    state: Any
+    name: str, arguments: Optional[Dict[str, Any]], state: Any
 ) -> List[types.TextContent | types.ImageContent | types.EmbeddedResource]:
     """
     Handle tool calls by routing to appropriate tool functions.
-    
+
     Args:
         name: Name of the tool to call
         arguments: Tool arguments
         state: Marcus server state instance
-        
+
     Returns:
         List of MCP content objects with tool results
     """
     if arguments is None:
         arguments = {}
-    
+
     try:
         # Agent management tools
         if name == "register_agent":
@@ -466,25 +509,23 @@ async def handle_tool_call(
                 name=arguments.get("name"),
                 role=arguments.get("role"),
                 skills=arguments.get("skills", []),
-                state=state
+                state=state,
             )
-        
+
         elif name == "get_agent_status":
             result = await get_agent_status(
-                agent_id=arguments.get("agent_id"),
-                state=state
+                agent_id=arguments.get("agent_id"), state=state
             )
-        
+
         elif name == "list_registered_agents":
             result = await list_registered_agents(state=state)
-        
+
         # Task management tools
         elif name == "request_next_task":
             result = await request_next_task(
-                agent_id=arguments.get("agent_id"),
-                state=state
+                agent_id=arguments.get("agent_id"), state=state
             )
-        
+
         elif name == "report_task_progress":
             result = await report_task_progress(
                 agent_id=arguments.get("agent_id"),
@@ -492,119 +533,134 @@ async def handle_tool_call(
                 status=arguments.get("status"),
                 progress=arguments.get("progress", 0),
                 message=arguments.get("message", ""),
-                state=state
+                state=state,
             )
-        
+
         elif name == "report_blocker":
             result = await report_blocker(
                 agent_id=arguments.get("agent_id"),
                 task_id=arguments.get("task_id"),
                 blocker_description=arguments.get("blocker_description"),
                 severity=arguments.get("severity", "medium"),
-                state=state
+                state=state,
             )
-        
+
         # Project monitoring tools
         elif name == "get_project_status":
             result = await get_project_status(state=state)
-        
+
         # System health tools
         elif name == "ping":
-            result = await ping(
-                echo=arguments.get("echo", ""),
-                state=state
-            )
-        
+            result = await ping(echo=arguments.get("echo", ""), state=state)
+
         elif name == "check_assignment_health":
             result = await check_assignment_health(state=state)
-        
+
         # Natural language tools
         elif name == "create_project":
             result = await create_project(
                 description=arguments.get("description"),
                 project_name=arguments.get("project_name"),
                 options=arguments.get("options"),
-                state=state
+                state=state,
             )
-        
+
         elif name == "add_feature":
             result = await add_feature(
                 feature_description=arguments.get("feature_description"),
                 integration_point=arguments.get("integration_point", "auto_detect"),
-                state=state
+                state=state,
             )
-        
+
         # Context Tools
         elif name == "log_decision":
             result = await log_decision(
                 agent_id=arguments.get("agent_id"),
                 task_id=arguments.get("task_id"),
                 decision=arguments.get("decision"),
-                state=state
+                state=state,
             )
-        
+
         elif name == "get_task_context":
             result = await get_task_context(
-                task_id=arguments.get("task_id"),
-                state=state
+                task_id=arguments.get("task_id"), state=state
             )
-        
+
         # Pipeline Enhancement Tools
         elif name == "pipeline_replay_start":
             result = await start_replay(state, arguments)
-        
+
         elif name == "pipeline_replay_forward":
             result = await replay_step_forward(state, arguments)
-        
+
         elif name == "pipeline_replay_backward":
             result = await replay_step_backward(state, arguments)
-        
+
         elif name == "pipeline_replay_jump":
             result = await replay_jump_to(state, arguments)
-        
+
         elif name == "what_if_start":
             result = await start_what_if_analysis(state, arguments)
-        
+
         elif name == "what_if_simulate":
             result = await simulate_modification(state, arguments)
-        
+
         elif name == "what_if_compare":
             result = await compare_what_if_scenarios(state, arguments)
-        
+
         elif name == "pipeline_compare":
             result = await compare_pipelines(state, arguments)
-        
+
         elif name == "pipeline_report":
             result = await generate_report(state, arguments)
-        
+
         elif name == "pipeline_monitor_dashboard":
             result = await get_live_dashboard(state, arguments)
-        
+
         elif name == "pipeline_monitor_flow":
             result = await track_flow_progress(state, arguments)
-        
+
         elif name == "pipeline_predict_risk":
             result = await predict_failure_risk(state, arguments)
-        
+
         elif name == "pipeline_recommendations":
             result = await get_recommendations(state, arguments)
-        
+
         elif name == "pipeline_find_similar":
             result = await find_similar_flows(state, arguments)
-        
+
+        # Pattern Learning Tools removed - only accessible via visualization UI API
+        elif name in [
+            "get_similar_projects",
+            "get_project_patterns",
+            "assess_project_quality",
+            "get_pattern_recommendations",
+            "learn_from_completed_project",
+            "get_quality_trends",
+        ]:
+            result = {
+                "error": (
+                    f"Pattern learning tool '{name}' is not available through MCP. "
+                    "Please use the visualization UI API endpoints instead."
+                ),
+                "suggestion": (
+                    "Pattern learning tools are now only accessible through "
+                    "the web UI at http://localhost:8080"
+                ),
+            }
+
         else:
             result = {"error": f"Unknown tool: {name}"}
-        
-        return [types.TextContent(
-            type="text",
-            text=json.dumps(result, indent=2)
-        )]
-        
+
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
     except Exception as e:
-        return [types.TextContent(
-            type="text",
-            text=json.dumps({
-                "error": f"Tool execution failed: {str(e)}",
-                "tool": name
-            }, indent=2)
-        )]
+        return [
+            types.TextContent(
+                type="text",
+                text=json.dumps(
+                    {"error": f"Tool execution failed: {str(e)}", "tool": name},
+                    indent=2,
+                ),
+            )
+        ]
