@@ -62,6 +62,7 @@ class ProjectConstraints:
     available_skills: List[str] = None
     technology_constraints: List[str] = None
     quality_requirements: Dict[str, Any] = None
+    deployment_target: str = "local"  # local, dev, prod, remote
 
     def __post_init__(self):
         if self.available_skills is None:
@@ -70,6 +71,9 @@ class ProjectConstraints:
             self.technology_constraints = []
         if self.quality_requirements is None:
             self.quality_requirements = {}
+        # Validate deployment target
+        if self.deployment_target not in ["local", "dev", "prod", "remote"]:
+            self.deployment_target = "local"
 
 
 class AdvancedPRDParser:
@@ -299,13 +303,13 @@ class AdvancedPRDParser:
                         integration_name="advanced_prd_parser",
                         custom_context={
                             "prd_length": len(prd_content),
-                            "response_length": len(analysis_result)
-                            if analysis_result
-                            else 0,
+                            "response_length": (
+                                len(analysis_result) if analysis_result else 0
+                            ),
                             "parsing_error": str(e),
-                            "response_preview": analysis_result[:200]
-                            if analysis_result
-                            else "None",
+                            "response_preview": (
+                                analysis_result[:200] if analysis_result else "None"
+                            ),
                             "details": f"AI returned malformed JSON response. This indicates an issue with the AI provider configuration or the response format. Please check your AI provider settings and try again with a clearer project description.",
                         },
                     ),
@@ -379,9 +383,11 @@ class AdvancedPRDParser:
                     integration_name="advanced_prd_parser",
                     custom_context={
                         "prd_length": len(prd_content),
-                        "prd_preview": prd_content[:200] + "..."
-                        if len(prd_content) > 200
-                        else prd_content,
+                        "prd_preview": (
+                            prd_content[:200] + "..."
+                            if len(prd_content) > 200
+                            else prd_content
+                        ),
                         "error_type": type(e).__name__,
                         "original_error": str(e),
                         "troubleshooting_steps": [
@@ -515,7 +521,23 @@ class AdvancedPRDParser:
         task_counter = 1
 
         for epic_id, task_ids in list(task_hierarchy.items()):
+            # Skip deployment-related epics based on deployment_target
+            if self._should_skip_epic(epic_id, constraints.deployment_target):
+                logger.info(
+                    f"Skipping {epic_id} for deployment_target={constraints.deployment_target}"
+                )
+                continue
+
             for task_id in task_ids:
+                # Skip deployment-related tasks based on deployment_target
+                if self._should_skip_task(
+                    task_id, epic_id, constraints.deployment_target
+                ):
+                    logger.info(
+                        f"Skipping task {task_id} for deployment_target={constraints.deployment_target}"
+                    )
+                    continue
+
                 # Generate task based on ID and analysis
                 task = await self._generate_detailed_task(
                     task_id, epic_id, analysis, constraints, task_counter
@@ -1121,15 +1143,21 @@ class AdvancedPRDParser:
     ) -> Dict[str, Any]:
         """Extract meaningful project context from PRD analysis"""
         context = {
-            "business_objectives": analysis.business_objectives[:3]
-            if analysis.business_objectives
-            else ["deliver working solution"],
-            "technical_constraints": analysis.technical_constraints[:3]
-            if analysis.technical_constraints
-            else ["standard web application"],
-            "functional_requirements": analysis.functional_requirements[:5]
-            if analysis.functional_requirements
-            else [],
+            "business_objectives": (
+                analysis.business_objectives[:3]
+                if analysis.business_objectives
+                else ["deliver working solution"]
+            ),
+            "technical_constraints": (
+                analysis.technical_constraints[:3]
+                if analysis.technical_constraints
+                else ["standard web application"]
+            ),
+            "functional_requirements": (
+                analysis.functional_requirements[:5]
+                if analysis.functional_requirements
+                else []
+            ),
             "project_type": "web application",  # Default
             "domain": "general",
         }
@@ -1246,16 +1274,16 @@ class AdvancedPRDParser:
         if domain == "crud_operations":
             # Use original feature name if available, otherwise use generic
             name = original_name if original_name else "Design CRUD API Architecture"
-            description = f"Design RESTful CRUD API for {project_type}. Define endpoints for Create, Read, Update, and Delete operations. Include request/response schemas, error handling, pagination, filtering, and sorting capabilities. Business goal: {objectives[0] if objectives else 'efficient data management'}."
+            description = f"Create architectural design and documentation for CRUD operations in {project_type}. Define API endpoints, document request/response formats, plan error handling strategies, and design pagination approach. Deliverables: API specification document, data flow diagrams, and architectural decisions. Goal: {objectives[0] if objectives else 'efficient data management'}."
         elif domain == "data_modeling":
             name = original_name if original_name else "Design Data Model and Schema"
-            description = f"Design data model and database schema for {project_type}. Define entity relationships, field types, constraints, indexes, and data validation rules. Include schema diagrams and migration strategy. Focus on: {objectives[0] if objectives else 'scalable data architecture'}."
+            description = f"Design data architecture and create documentation for {project_type}. Research data requirements, create entity relationship diagrams, document field specifications and constraints. Plan migration strategy and define validation rules. Deliverables: ER diagrams, schema documentation, and data dictionary. Focus on: {objectives[0] if objectives else 'scalable data architecture'}."
         elif domain == "validation":
             name = original_name if original_name else "Design Input Validation System"
-            description = f"Design comprehensive input validation system for {project_type}. Define validation rules, error messages, sanitization procedures, and security measures. Include validation for all data inputs and API endpoints. Goal: {objectives[0] if objectives else 'data integrity and security'}."
+            description = f"Design validation strategy and create documentation for {project_type}. Research validation requirements, define validation rules and patterns, plan error handling approach. Document security considerations and sanitization procedures. Deliverables: validation specification document, error message catalog, and security guidelines. Goal: {objectives[0] if objectives else 'data integrity and security'}."
         elif domain == "user_management":
             name = original_name if original_name else "Design User Authentication Flow"
-            description = f"Design comprehensive user authentication and account management system for {project_type}. Define user registration, login, password reset flows, session management, and security protocols. Include wireframes, user flows, and technical specifications. Business goal: {objectives[0] if objectives else 'secure user access'}."
+            description = f"Design authentication architecture and create documentation for {project_type}. Research security requirements, create user flow diagrams, document authentication patterns and session management approach. Plan security protocols and define user account lifecycle. Deliverables: authentication flow diagrams, security documentation, and API specifications. Goal: {objectives[0] if objectives else 'secure user access'}."
         elif domain == "frontend":
             name = (
                 original_name if original_name else "Design User Interface Architecture"
@@ -1263,7 +1291,7 @@ class AdvancedPRDParser:
             description = f"Create detailed UI/UX design for {project_type}. Include component hierarchy, design system, responsive layouts, and user interaction patterns. Focus on achieving: {objectives[0] if objectives else 'excellent user experience'}. Define accessibility standards and usability requirements."
         elif domain == "backend_services":
             name = original_name if original_name else "Design API Architecture"
-            description = f"Design RESTful API architecture for {project_type}. Define endpoint specifications, data models, request/response schemas, authentication mechanisms, and error handling. Ensure scalability for: {objectives[0] if objectives else 'reliable service delivery'}."
+            description = f"Design API architecture for {project_type}. Research requirements, document API specifications, define endpoint patterns and data contracts. Create architectural diagrams and technical documentation. Deliverables: API documentation, architectural decisions, and interface specifications. Focus on: {objectives[0] if objectives else 'scalable API design'}."
         elif domain == "ecommerce":
             name = (
                 original_name if original_name else "Design E-commerce User Experience"
@@ -1276,7 +1304,7 @@ class AdvancedPRDParser:
                 if original_name
                 else f"Design {feature_name if feature_name else project_type.title()} Architecture"
             )
-            description = f"Create architectural design for {project_type}. Define system components, data flow, user interactions, and technical specifications. Support business objective: {objectives[0] if objectives else 'effective solution delivery'}."
+            description = f"Research and design architecture for {project_type}. Create documentation defining approach, patterns, and specifications. Plan component structure and integration points. Deliverables: design documentation, architectural diagrams, and technical specifications. Goal: {objectives[0] if objectives else 'effective solution delivery'}."
 
         # Add specific requirements if available
         if context["relevant_requirements"]:
@@ -1307,7 +1335,8 @@ class AdvancedPRDParser:
             description = f"Develop responsive UI components for {project_type}. Create reusable component library, implement state management, handle user interactions, and ensure accessibility compliance. Using: {', '.join(tech_constraints)}. Include loading states, error boundaries, and responsive design."
         elif domain == "backend_services":
             name = original_name if original_name else "Develop Backend API Services"
-            description = f"Implement backend API services for {project_type}. Build RESTful endpoints, implement business logic, add data validation, error handling, and logging. Technology: {', '.join(tech_constraints)}. Include API documentation, performance optimization, and security measures."
+            objectives = context.get("business_objectives", [])
+            description = f"Implement backend API services for {project_type} following the design specifications. Build endpoints, business logic, data validation, and error handling. Include appropriate tests and logging. Technology: {', '.join(tech_constraints)}. Goal: {objectives[0] if objectives else 'working implementation'}."
         elif domain == "ecommerce":
             name = original_name if original_name else "Build E-commerce Core Features"
             description = f"Implement core e-commerce functionality for {project_type}. Build product catalog, shopping cart, checkout process, payment integration, and order management. Stack: {', '.join(tech_constraints)}. Include inventory management and order tracking."
@@ -1440,7 +1469,7 @@ class AdvancedPRDParser:
 
         # Try to infer from task_id what this might be about
         if "nfr" in task_id.lower():
-            name = f"Implement Non-Functional Requirements"
+            name = "Implement Non-Functional Requirements"
             description = f"Address performance, security, and scalability requirements for {project_type}. Implement caching, optimize database queries, add security headers, and ensure system reliability. Target: {objectives[0] if objectives else 'system performance'}."
         elif any(keyword in task_id.lower() for keyword in ["req_0", "req_1", "req_2"]):
             req_index = next(
@@ -1717,3 +1746,81 @@ class AdvancedPRDParser:
                 )
 
         return subtasks[:7]  # Return top 7 most relevant subtasks
+
+    def _should_skip_epic(self, epic_id: str, deployment_target: str) -> bool:
+        """Determine if an epic should be skipped based on deployment target"""
+
+        # Skip deployment and production epics for local development
+        if deployment_target == "local":
+            skip_keywords = [
+                "deployment",
+                "production",
+                "deploy",
+                "release",
+                "hosting",
+                "infrastructure",
+            ]
+            return any(keyword in epic_id.lower() for keyword in skip_keywords)
+
+        # Skip advanced deployment features for dev environment
+        elif deployment_target == "dev":
+            skip_keywords = [
+                "production",
+                "scaling",
+                "monitoring",
+                "optimization",
+                "disaster_recovery",
+            ]
+            return any(keyword in epic_id.lower() for keyword in skip_keywords)
+
+        # Include everything for prod and remote
+        return False
+
+    def _should_skip_task(
+        self, task_id: str, epic_id: str, deployment_target: str
+    ) -> bool:
+        """Determine if a task should be skipped based on deployment target"""
+        task_lower = task_id.lower()
+
+        # Skip deployment tasks for local development
+        if deployment_target == "local":
+            skip_keywords = [
+                "deploy",
+                "production",
+                "hosting",
+                "server",
+                "cloud",
+                "aws",
+                "azure",
+                "gcp",
+                "kubernetes",
+                "docker",
+                "container",
+                "load_balancer",
+                "cdn",
+                "ssl",
+                "domain",
+                "dns",
+            ]
+            return any(keyword in task_lower for keyword in skip_keywords)
+
+        # Skip production-specific tasks for dev environment
+        elif deployment_target == "dev":
+            skip_keywords = [
+                "production",
+                "prod_",
+                "scaling",
+                "auto_scale",
+                "load_balancer",
+                "disaster_recovery",
+                "backup",
+                "monitoring",
+                "alerting",
+                "performance_optimization",
+                "cdn",
+                "multi_region",
+            ]
+            return any(keyword in task_lower for keyword in skip_keywords)
+
+        # Include everything for prod and remote
+        return False
