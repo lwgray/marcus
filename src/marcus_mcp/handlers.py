@@ -17,7 +17,6 @@ from .tools import (  # Agent tools; Task tools; Project tools; System tools; NL
     create_project,
     get_agent_status,
     get_project_status,
-    handshake,
     list_registered_agents,
     ping,
     register_agent,
@@ -77,40 +76,6 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
     """
     # Core agent tools available to all coding agents
     agent_tools = [
-        # Integration Tools
-        types.Tool(
-            name="handshake",
-            description="Get Marcus integration contract and context. Call this first for automatic setup!",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "agent_type": {
-                        "type": "string",
-                        "description": "Type of agent (backend, frontend, fullstack, devops, qa, reviewer, general)",
-                        "enum": ["general", "backend", "frontend", "fullstack", "devops", "qa", "reviewer"],
-                        "default": "general"
-                    },
-                    "contract_version": {
-                        "type": "string", 
-                        "description": "Requested contract version",
-                        "enum": ["1.0", "1.1", "2.0"],
-                        "default": "2.0"
-                    },
-                    "include_examples": {
-                        "type": "boolean",
-                        "description": "Include usage examples and workflow demonstrations",
-                        "default": True
-                    },
-                    "capabilities": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Agent's self-reported capabilities for contract customization",
-                        "default": []
-                    }
-                },
-                "required": []
-            }
-        ),
         # Agent Management Tools
         types.Tool(
             name="register_agent",
@@ -669,12 +634,8 @@ async def handle_tool_call(
         arguments = {}
 
     try:
-        # Integration tools
-        if name == "handshake":
-            result = await handshake(arguments)
-        
         # Agent management tools
-        elif name == "register_agent":
+        if name == "register_agent":
             result = await register_agent(
                 agent_id=arguments.get("agent_id"),
                 name=arguments.get("name"),

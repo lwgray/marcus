@@ -1610,7 +1610,6 @@ class ConversationLogger:
             "task_completion_rate": 0.0,
             "average_task_duration_hours": 0.0,
         }
-    
 
 
 # Global logger instance

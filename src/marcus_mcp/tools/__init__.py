@@ -2,7 +2,6 @@
 MCP Tools Package
 
 This package contains all MCP tool implementations organized by domain:
-- handshake: Integration contract and setup
 - agent: Agent management (register, status, list)
 - task: Task operations (request, progress, blockers)
 - project: Project monitoring
@@ -10,51 +9,27 @@ This package contains all MCP tool implementations organized by domain:
 - nlp: Natural language processing tools
 """
 
-from .handshake import handshake
-
-from .agent import (
-    register_agent,
-    get_agent_status,
-    list_registered_agents
-)
-
-from .task import (
-    request_next_task,
-    report_task_progress,
-    report_blocker
-)
-
-from .project import (
-    get_project_status
-)
-
-from .system import (
-    ping,
-    check_assignment_health
-)
-
-from .nlp import (
-    create_project,
-    add_feature
-)
+from .agent import get_agent_status, list_registered_agents, register_agent
+from .nlp import add_feature, create_project
+from .project import get_project_status
+from .system import check_assignment_health, ping
+from .task import report_blocker, report_task_progress, request_next_task
 
 __all__ = [
-    # Integration tools
-    'handshake',
     # Agent tools
-    'register_agent',
-    'get_agent_status', 
-    'list_registered_agents',
+    "register_agent",
+    "get_agent_status",
+    "list_registered_agents",
     # Task tools
-    'request_next_task',
-    'report_task_progress',
-    'report_blocker',
+    "request_next_task",
+    "report_task_progress",
+    "report_blocker",
     # Project tools
-    'get_project_status',
+    "get_project_status",
     # System tools
-    'ping',
-    'check_assignment_health',
+    "ping",
+    "check_assignment_health",
     # NLP tools
-    'create_project',
-    'add_feature'
+    "create_project",
+    "add_feature",
 ]
