@@ -2,12 +2,15 @@
 MCP Tools Package
 
 This package contains all MCP tool implementations organized by domain:
+- handshake: Integration contract and setup
 - agent: Agent management (register, status, list)
 - task: Task operations (request, progress, blockers)
 - project: Project monitoring
 - system: System health and diagnostics
 - nlp: Natural language processing tools
 """
+
+from .handshake import handshake
 
 from .agent import (
     register_agent,
@@ -36,6 +39,8 @@ from .nlp import (
 )
 
 __all__ = [
+    # Integration tools
+    'handshake',
     # Agent tools
     'register_agent',
     'get_agent_status', 

@@ -48,6 +48,7 @@ from src.marcus_mcp.handlers import get_tool_definitions, handle_tool_call
 from src.monitoring.assignment_monitor import AssignmentMonitor
 from src.monitoring.project_monitor import ProjectMonitor
 from src.visualization.shared_pipeline_events import SharedPipelineVisualizer
+from src.core.service_registry import register_marcus_service, unregister_marcus_service
 
 
 class MarcusServer:
@@ -89,6 +90,7 @@ class MarcusServer:
             buffering=1,  # Line buffering
         )
         atexit.register(self.realtime_log.close)
+        atexit.register(unregister_marcus_service)
 
         # Core components
         self.kanban_client: Optional[KanbanInterface] = (
@@ -250,13 +252,23 @@ class MarcusServer:
 
         @self.server.list_resources()
         async def handle_list_resources() -> List[types.Resource]:
-            """Return list of available resources - Marcus doesn't use resources currently"""
-            return []
+            """Return list of available integration contract resources"""
+            from .resources import list_mcp_resources
+            return await list_mcp_resources()
 
         @self.server.read_resource()
         async def handle_read_resource(uri: str) -> str:
-            """Read a resource - Marcus doesn't use resources currently"""
-            raise ValueError(f"Resource not found: {uri}")
+            """Read an integration contract resource"""
+            from .resources import read_mcp_resource
+            try:
+                result = await read_mcp_resource(uri)
+                # Convert to string if it's a dict (JSON resources)
+                if isinstance(result, dict):
+                    import json
+                    return json.dumps(result, indent=2)
+                return result
+            except Exception as e:
+                raise ValueError(f"Resource not found: {uri} - {str(e)}")
 
         @self.server.get_prompt()
         async def handle_get_prompt(
@@ -264,6 +276,32 @@ class MarcusServer:
         ) -> types.GetPromptResult:
             """Get a prompt - Marcus doesn't use prompts currently"""
             raise ValueError(f"Prompt not found: {name}")
+        
+        # Add protocol extension handlers for custom Marcus messages
+        self._setup_protocol_extensions()
+
+    def _setup_protocol_extensions(self):
+        """Setup custom Marcus protocol message handlers."""
+        from .protocol_extensions import process_protocol_message, ProtocolMessageType
+        
+        # Note: MCP doesn't directly support custom message types in the current implementation
+        # This is a conceptual framework for how it would work if MCP supported extensions
+        
+        # Store protocol extension capability for documentation
+        self.protocol_extensions = {
+            "supported_messages": [msg_type.value for msg_type in ProtocolMessageType],
+            "description": "Marcus protocol extensions for capability negotiation",
+            "usage": "Would be implemented as custom RPC methods if MCP supported extensions"
+        }
+        
+        # Protocol extensions would be implemented as additional tools
+        # for now since MCP doesn't support custom message types directly
+        pass
+
+    async def handle_protocol_extension(self, message_type: str, data: dict) -> dict:
+        """Handle Marcus protocol extension messages."""
+        from .protocol_extensions import process_protocol_message
+        return await process_protocol_message(message_type, data)
 
     async def initialize(self):
         """Initialize all Marcus server components"""
@@ -561,6 +599,24 @@ class MarcusServer:
 
     async def run(self):
         """Run the MCP server"""
+        
+        # Register this Marcus instance for discovery
+        current_project = None
+        if hasattr(self.project_manager, 'get_current_project'):
+            try:
+                current_project = self.project_manager.get_current_project()
+                current_project = current_project.name if current_project else None
+            except:
+                pass
+        
+        service_info = register_marcus_service(
+            mcp_command=sys.executable + " " + " ".join(sys.argv),
+            log_dir=str(Path(self.realtime_log.name).parent),
+            project_name=current_project,
+            provider=self.provider
+        )
+        print(f"🔍 Service registered: {service_info['instance_id']}", file=sys.stderr)
+        print(f"📁 Clients can find logs at: {service_info['log_dir']}", file=sys.stderr)
 
         try:
             async with stdio_server() as (read_stream, write_stream):

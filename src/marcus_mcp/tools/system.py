@@ -27,38 +27,64 @@ async def ping(echo: str, state: Any) -> Dict[str, Any]:
     Returns:
         Dict with status, provider info, and timestamp
     """
-    # Log the ping request immediately
+    
+    # Determine client type from echo
+    client_type = "unknown"
+    if echo:
+        echo_lower = echo.lower()
+        if "seneca" in echo_lower:
+            client_type = "seneca"
+        elif "claude" in echo_lower or "desktop" in echo_lower:
+            client_type = "claude_desktop"
+    
+    # Log the ping request with client identification
     state.log_event("ping_request", {
         "echo": echo,
-        "source": "mcp_client"
+        "source": "mcp_client",
+        "client_type": client_type,
+        "timestamp": datetime.now().isoformat()
     })
     
     # Log conversation event for visualization
     log_agent_event("ping_request", {
         "echo": echo,
-        "source": "mcp_client"
+        "source": "mcp_client",
+        "client_type": client_type
     })
     
-    # Also use structured logging
-    log_thinking("marcus", f"Received ping request with echo: {echo}")
+    # Log thinking with client identification
+    log_thinking("marcus", f"Received ping from {client_type} client with echo: {echo}")
     
     response = {
         "success": True,
         "status": "online",
         "provider": state.provider,
         "echo": echo or "pong",
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "client_type_detected": client_type,
+        "server_info": {
+            "instance_id": getattr(state, 'instance_id', 'unknown'),
+            "log_dir": str(getattr(state, 'realtime_log', {}).name.parent) if hasattr(state, 'realtime_log') else None
+        }
     }
     
     # Log the response immediately
     state.log_event("ping_response", response)
     
-    # Also use structured logging
+    # Log connection establishment
     conversation_logger.log_kanban_interaction(
-        action="ping",
-        direction="response",
-        data=response
+        action="client_connection",
+        direction="established",
+        data={
+            "client_type": client_type,
+            "echo": echo,
+            "timestamp": response["timestamp"]
+        }
     )
+    
+    # Log for monitoring
+    if client_type != "unknown":
+        log_thinking("marcus", f"Client connection established: {client_type} -> Marcus")
     
     return response
 
