@@ -12,6 +12,8 @@ Welcome to the Marcus Developer Guide! This directory contains technical documen
 ### Technical Topics
 
 #### 🏗️ Architecture & Design
+- [**Three-Tier Architecture**](architecture/three-tier-architecture.md) - User/Marcus/Agent separation
+- [**MCP Tools by Role**](reference/mcp-tools-by-role.md) - Tool permissions and usage
 - **Sphinx Documentation**: [sphinx/source/developer/](sphinx/source/developer/)
   - [Architecture Overview](sphinx/source/developer/architecture.md)
   - [System Design](sphinx/source/developer/system_design.md)
@@ -24,6 +26,7 @@ Welcome to the Marcus Developer Guide! This directory contains technical documen
 #### 🤖 AI & NLP Features
 - [**Natural Language Features**](NATURAL_LANGUAGE_AND_AI_FEATURES.md) - AI capabilities
 - [**NLP Board Integration**](NLP_BOARD_INTEGRATION_SUMMARY.md) - How NLP integrates
+- [**Pattern Learning System**](pattern-learning-system.md) - Automatic pattern extraction and learning
 
 #### 🛠️ MCP Tools
 The [mcp_tools/](mcp_tools/) directory contains:
@@ -42,9 +45,10 @@ The [mcp_tools/](mcp_tools/) directory contains:
 ### By Task
 
 **Understanding the System**
-1. Start with [Architecture](sphinx/source/developer/architecture.md)
-2. Read the [API Overview](api.md)
-3. Review [System Design](sphinx/source/developer/system_design.md)
+1. Start with [Three-Tier Architecture](architecture/three-tier-architecture.md)
+2. Review [MCP Tools by Role](reference/mcp-tools-by-role.md)
+3. Read the [API Overview](api.md)
+4. Study [System Design](sphinx/source/developer/system_design.md)
 
 **Contributing Code**
 1. Read [Contributing Guide](contributing.md)

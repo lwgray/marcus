@@ -112,36 +112,70 @@ class LLMAbstraction:
         """
         if self._providers_initialized:
             return
-        
+
         logger.debug("Starting provider initialization...")
 
+        # Load config to get API keys directly
+        try:
+            from src.config.config_loader import get_config
+
+            config = get_config()
+            ai_config = config.get("ai", {})
+        except Exception as e:
+            logger.warning(f"Failed to load config, falling back to env vars: {e}")
+            ai_config = {}
+
         # Try to initialize Anthropic provider
-        anthropic_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
-        if anthropic_key and anthropic_key.startswith("sk-ant-") and len(anthropic_key) > 10:
+        anthropic_key = ai_config.get("anthropic_api_key", "").strip()
+        if not anthropic_key:  # Fallback to env var if not in config
+            anthropic_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+
+        if (
+            anthropic_key
+            and anthropic_key.startswith("sk-ant-")
+            and len(anthropic_key) > 10
+            and anthropic_key != "sk-ant-your-api-key-here"
+        ):
             try:
                 from .anthropic_provider import AnthropicProvider
 
+                # Temporarily set env var for the provider
+                os.environ["ANTHROPIC_API_KEY"] = anthropic_key
                 self.providers["anthropic"] = AnthropicProvider()
                 self.fallback_providers.append("anthropic")
                 logger.info("Successfully initialized Anthropic provider")
             except Exception as e:
                 logger.warning(f"Failed to initialize Anthropic provider: {e}")
         else:
-            logger.debug(f"Skipping Anthropic provider - no valid API key configured (key present: {bool(anthropic_key)})")
+            logger.debug(
+                f"Skipping Anthropic provider - no valid API key configured (key present: {bool(anthropic_key)})"
+            )
 
         # Only try OpenAI if we have a valid API key
-        openai_key = os.getenv("OPENAI_API_KEY", "").strip()
-        if openai_key and openai_key.startswith("sk-") and len(openai_key) > 10:
+        openai_key = ai_config.get("openai_api_key", "").strip()
+        if not openai_key:  # Fallback to env var if not in config
+            openai_key = os.getenv("OPENAI_API_KEY", "").strip()
+
+        if (
+            openai_key
+            and openai_key.startswith("sk-")
+            and len(openai_key) > 10
+            and openai_key != "sk-your-openai-key-here"
+        ):
             try:
                 from .openai_provider import OpenAIProvider
 
+                # Temporarily set env var for the provider
+                os.environ["OPENAI_API_KEY"] = openai_key
                 self.providers["openai"] = OpenAIProvider()
                 self.fallback_providers.append("openai")
                 logger.info("Successfully initialized OpenAI provider")
             except Exception as e:
                 logger.warning(f"Failed to initialize OpenAI provider: {e}")
         else:
-            logger.debug(f"Skipping OpenAI provider - no valid API key configured (key present: {bool(openai_key)})")
+            logger.debug(
+                f"Skipping OpenAI provider - no valid API key configured (key present: {bool(openai_key)})"
+            )
 
         # Add local provider if configured
         local_model_path = os.getenv("MARCUS_LOCAL_LLM_PATH")

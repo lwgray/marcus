@@ -12,9 +12,9 @@ from typing import Any, Dict, List, Optional
 class PipelineFlowManager:
     """Manages pipeline flows and their events."""
 
-    def __init__(self):
-        self.flows = {}
-        self.events = {}
+    def __init__(self) -> None:
+        self.flows: Dict[str, Any] = {}
+        self.events: Dict[str, List[Dict[str, Any]]] = {}
 
     def create_flow(
         self, project_name: str, project_type: str, description: str = ""
@@ -71,7 +71,9 @@ class PipelineFlowManager:
 
         return True
 
-    def update_flow_stage(self, flow_id: str, stage: str, progress: int = None) -> bool:
+    def update_flow_stage(
+        self, flow_id: str, stage: str, progress: Optional[int] = None
+    ) -> bool:
         """Update the current stage of a flow."""
         if flow_id not in self.flows:
             return False
@@ -119,13 +121,11 @@ class PipelineFlowManager:
 
     def get_flow_events(self, flow_id: str) -> List[Dict[str, Any]]:
         """Get events for a specific flow."""
-        return self.events.get(flow_id, [])
+        return self.events.get(flow_id, [])  # type: ignore[no-any-return]
 
     def get_active_flows(self) -> List[Dict[str, Any]]:
         """Get all active flows."""
-        return [
-            flow for flow in self.flows.values() if flow.get("status") == "active"
-        ]
+        return [flow for flow in self.flows.values() if flow.get("status") == "active"]
 
     def get_all_flows(self) -> List[Dict[str, Any]]:
         """Get all flows."""

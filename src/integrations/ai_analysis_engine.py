@@ -156,12 +156,31 @@ Return JSON:
 Task: {task}
 Assigned to: {agent}
 
+IMPORTANT: Look at the task data to determine the task type (check the 'type' field). Generate instructions appropriate for the task type:
+
+For DESIGN tasks:
+- Focus on planning, architecture, and specifications
+- Include creating diagrams, API specs, data models
+- NO implementation code yet
+- Deliverables: design documents, wireframes, API contracts
+
+For IMPLEMENTATION tasks:
+- Focus on actual coding and building
+- Reference the design specifications
+- Include specific code components to build
+- Deliverables: working code with tests
+
+For TESTING tasks:
+- Focus on test scenarios and coverage
+- Include unit, integration, and edge cases
+- Deliverables: test suites with good coverage
+
 Generate clear, actionable instructions that:
-1. Define the task objective
-2. List specific steps to complete it
+1. Define the task objective based on its type
+2. List specific steps appropriate for the task type
 3. Include acceptance criteria
 4. Note any dependencies or prerequisites
-5. Suggest tools/resources to use
+5. Keep complexity appropriate to the task scope (simple tasks get simple instructions)
 
 Format as structured text the developer can follow.""",
             "blocker_analysis": """Analyze this blocker and suggest resolution:
@@ -323,12 +342,16 @@ Identify risks and provide JSON:
             "blocked_tasks": project_state.blocked_tasks,
             "progress_percent": project_state.progress_percent,
             "team_velocity": project_state.team_velocity,
-            "risk_level": project_state.risk_level.value
-            if hasattr(project_state.risk_level, "value")
-            else str(project_state.risk_level),
-            "last_updated": project_state.last_updated.isoformat()
-            if hasattr(project_state.last_updated, "isoformat")
-            else str(project_state.last_updated),
+            "risk_level": (
+                project_state.risk_level.value
+                if hasattr(project_state.risk_level, "value")
+                else str(project_state.risk_level)
+            ),
+            "last_updated": (
+                project_state.last_updated.isoformat()
+                if hasattr(project_state.last_updated, "isoformat")
+                else str(project_state.last_updated)
+            ),
         }
 
         prompt = self.prompts["task_assignment"].format(
@@ -436,13 +459,23 @@ Identify risks and provide JSON:
             # Fallback instructions when AI is not available
             return self._generate_fallback_instructions(task, agent)
 
+        # Determine task type from name or labels
+        task_type = "implementation"  # default
+        task_labels = getattr(task, "labels", []) or []
+
+        if "design" in task.name.lower() or "type:design" in task_labels:
+            task_type = "design"
+        elif "test" in task.name.lower() or "type:testing" in task_labels:
+            task_type = "testing"
+
         task_data = {
             "name": task.name,
             "description": task.description,
             "priority": task.priority.value,
             "estimated_hours": task.estimated_hours,
             "dependencies": task.dependencies,
-            "labels": task.labels,
+            "labels": getattr(task, "labels", []) or [],
+            "type": task_type,
         }
 
         agent_data = {
@@ -482,6 +515,58 @@ Identify risks and provide JSON:
         """
         agent_name = agent.name if agent else "Team Member"
 
+        # Determine task type
+        task_type = "implementation"
+        task_labels = getattr(task, "labels", []) or []
+
+        if "design" in task.name.lower() or "type:design" in task_labels:
+            task_type = "design"
+        elif "test" in task.name.lower() or "type:testing" in task_labels:
+            task_type = "testing"
+
+        # Generate type-specific instructions
+        if task_type == "design":
+            implementation_steps = """2. **Design Steps**
+   - Research existing patterns and best practices
+   - Create architecture diagrams
+   - Define API endpoints and data models
+   - Document component interfaces
+   - Create wireframes or mockups if needed"""
+
+            definition_of_done = """3. **Definition of Done**
+   - Design documentation is complete
+   - API specifications are defined
+   - Data models are documented
+   - Technical approach is clear"""
+
+        elif task_type == "testing":
+            implementation_steps = """2. **Testing Steps**
+   - Review the implementation to understand functionality
+   - Write unit tests for individual components
+   - Create integration tests for workflows
+   - Add edge case and error handling tests
+   - Ensure minimum 80% code coverage"""
+
+            definition_of_done = """3. **Definition of Done**
+   - All tests pass successfully
+   - Code coverage meets requirements
+   - Edge cases are tested
+   - Test documentation is complete"""
+
+        else:  # implementation
+            implementation_steps = """2. **Implementation Steps**
+   - Review the design specifications
+   - Break down the task into smaller subtasks
+   - Start with the core functionality
+   - Follow project coding standards
+   - Write tests as you go"""
+
+            definition_of_done = """3. **Definition of Done**
+   - All requirements from description are met
+   - Code is tested and reviewed
+   - Documentation is updated
+   - Code follows project standards"""
+
         return f"""## Task Assignment for {agent_name}
 
 **Task:** {task.name}
@@ -490,6 +575,7 @@ Identify risks and provide JSON:
 
 **Priority:** {task.priority.value}
 **Estimated Hours:** {task.estimated_hours}
+**Type:** {task_type.capitalize()}
 
 ### Instructions:
 
@@ -498,17 +584,9 @@ Identify risks and provide JSON:
    - Check any linked documentation
    - Identify dependencies: {', '.join(task.dependencies) if task.dependencies else 'None'}
 
-2. **Implementation Steps**
-   - Break down the task into smaller subtasks
-   - Start with the core functionality
-   - Follow project coding standards
-   - Write tests as you go
+{implementation_steps}
 
-3. **Definition of Done**
-   - All requirements from description are met
-   - Code is tested and reviewed
-   - Documentation is updated
-   - No known bugs or issues
+{definition_of_done}
 
 4. **Communication**
    - Report progress regularly
@@ -811,12 +889,16 @@ Provide a helpful clarification that guides the developer."""
             "blocked_tasks": project_state.blocked_tasks,
             "progress_percent": project_state.progress_percent,
             "team_velocity": project_state.team_velocity,
-            "risk_level": project_state.risk_level.value
-            if hasattr(project_state.risk_level, "value")
-            else str(project_state.risk_level),
-            "last_updated": project_state.last_updated.isoformat()
-            if hasattr(project_state.last_updated, "isoformat")
-            else str(project_state.last_updated),
+            "risk_level": (
+                project_state.risk_level.value
+                if hasattr(project_state.risk_level, "value")
+                else str(project_state.risk_level)
+            ),
+            "last_updated": (
+                project_state.last_updated.isoformat()
+                if hasattr(project_state.last_updated, "isoformat")
+                else str(project_state.last_updated)
+            ),
         }
 
         prompt = self.prompts["project_risk"].format(
@@ -928,9 +1010,11 @@ Provide a helpful clarification that guides the developer."""
             "progress_percent": project_state.progress_percent,
             "team_velocity": project_state.team_velocity,
             "risk_level": project_state.risk_level.value,
-            "last_updated": project_state.last_updated.isoformat()
-            if hasattr(project_state.last_updated, "isoformat")
-            else str(project_state.last_updated),
+            "last_updated": (
+                project_state.last_updated.isoformat()
+                if hasattr(project_state.last_updated, "isoformat")
+                else str(project_state.last_updated)
+            ),
             "overdue_tasks": len(project_state.overdue_tasks),
         }
 
@@ -1096,9 +1180,9 @@ Return JSON in this format:
                 "on_track": on_track,
                 "estimated_completion": "Based on current velocity",
                 "confidence": 0.6 if on_track else 0.3,
-                "critical_path_risks": ["Resource constraints"]
-                if project_state.blocked_tasks > 0
-                else [],
+                "critical_path_risks": (
+                    ["Resource constraints"] if project_state.blocked_tasks > 0 else []
+                ),
             },
             "risk_factors": risk_factors,
             "recommendations": recommendations,
@@ -1302,9 +1386,11 @@ Be specific and actionable. Each task should be self-contained and assignable to
                     "name": t.name,
                     "labels": t.labels,
                     "status": t.status.value,
-                    "description": t.description[:100] + "..."
-                    if len(t.description) > 100
-                    else t.description,
+                    "description": (
+                        t.description[:100] + "..."
+                        if len(t.description) > 100
+                        else t.description
+                    ),
                 }
                 for t in existing_tasks
             ]

@@ -5,16 +5,17 @@ Provides project templates to prevent illogical task assignments like
 "Deploy to production" before any code exists.
 """
 
-from typing import List, Dict, Any, Optional
+import json
 from dataclasses import dataclass, field
 from enum import Enum
-import json
+from typing import Any, Dict, List, Optional
 
 from src.core.models import Priority
 
 
 class ProjectSize(Enum):
     """Project size categories"""
+
     MVP = "mvp"
     SMALL = "small"
     MEDIUM = "medium"
@@ -25,6 +26,7 @@ class ProjectSize(Enum):
 @dataclass
 class TaskTemplate:
     """Template for a single task"""
+
     name: str
     description: str
     phase: str
@@ -39,11 +41,12 @@ class TaskTemplate:
 @dataclass
 class PhaseTemplate:
     """Template for a project phase"""
+
     name: str
     description: str
     order: int
     tasks: List[TaskTemplate]
-    
+
     def get_required_tasks(self) -> List[TaskTemplate]:
         """Get only required tasks"""
         return [t for t in self.tasks if not t.optional]
@@ -52,41 +55,44 @@ class PhaseTemplate:
 @dataclass
 class ProjectTemplate:
     """Base class for project templates"""
+
     name: str
     description: str
     category: str
     phases: List[PhaseTemplate]
     default_size: ProjectSize = ProjectSize.MEDIUM
-    
+
     def get_all_tasks(self, size: ProjectSize = None) -> List[TaskTemplate]:
         """Get all tasks adjusted for project size"""
         tasks = []
         target_size = size or self.default_size
-        
+
         for phase in self.phases:
             for task in phase.tasks:
                 # Skip optional tasks for MVP
                 if target_size == ProjectSize.MVP and task.optional:
                     continue
-                    
+
                 # Adjust estimates based on size
                 adjusted_task = self._adjust_task_for_size(task, target_size)
                 tasks.append(adjusted_task)
-                
+
         return tasks
-    
-    def _adjust_task_for_size(self, task: TaskTemplate, size: ProjectSize) -> TaskTemplate:
+
+    def _adjust_task_for_size(
+        self, task: TaskTemplate, size: ProjectSize
+    ) -> TaskTemplate:
         """Adjust task estimates based on project size"""
         size_multipliers = {
             ProjectSize.MVP: 0.5,
             ProjectSize.SMALL: 0.7,
             ProjectSize.MEDIUM: 1.0,
             ProjectSize.LARGE: 1.5,
-            ProjectSize.ENTERPRISE: 2.0
+            ProjectSize.ENTERPRISE: 2.0,
         }
-        
+
         multiplier = size_multipliers.get(size, 1.0)
-        
+
         # Create adjusted task
         adjusted = TaskTemplate(
             name=task.name,
@@ -97,18 +103,18 @@ class ProjectTemplate:
             labels=task.labels.copy(),
             dependencies=task.dependencies.copy(),
             optional=task.optional,
-            conditions=task.conditions.copy()
+            conditions=task.conditions.copy(),
         )
-        
+
         # Add size label
         adjusted.labels.append(f"size:{size.value}")
-        
+
         return adjusted
 
 
 class WebAppTemplate(ProjectTemplate):
     """Template for full-stack web applications"""
-    
+
     def __init__(self):
         phases = [
             PhaseTemplate(
@@ -122,7 +128,7 @@ class WebAppTemplate(ProjectTemplate):
                         phase="setup",
                         estimated_hours=1,
                         priority=Priority.HIGH,
-                        labels=["setup", "git"]
+                        labels=["setup", "git"],
                     ),
                     TaskTemplate(
                         name="Set up development environment",
@@ -131,7 +137,7 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=2,
                         priority=Priority.HIGH,
                         labels=["setup", "dev-env"],
-                        dependencies=["Initialize repository"]
+                        dependencies=["Initialize repository"],
                     ),
                     TaskTemplate(
                         name="Configure build tools",
@@ -140,7 +146,7 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=3,
                         priority=Priority.HIGH,
                         labels=["setup", "build"],
-                        dependencies=["Set up development environment"]
+                        dependencies=["Set up development environment"],
                     ),
                     TaskTemplate(
                         name="Set up CI/CD pipeline",
@@ -150,9 +156,9 @@ class WebAppTemplate(ProjectTemplate):
                         priority=Priority.MEDIUM,
                         labels=["setup", "ci-cd"],
                         dependencies=["Configure build tools"],
-                        optional=True
-                    )
-                ]
+                        optional=True,
+                    ),
+                ],
             ),
             PhaseTemplate(
                 name="Design",
@@ -166,7 +172,7 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=4,
                         priority=Priority.HIGH,
                         labels=["design", "architecture"],
-                        dependencies=["Set up development environment"]
+                        dependencies=["Set up development environment"],
                     ),
                     TaskTemplate(
                         name="Design database schema",
@@ -175,7 +181,7 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=6,
                         priority=Priority.HIGH,
                         labels=["design", "database"],
-                        dependencies=["Design system architecture"]
+                        dependencies=["Design system architecture"],
                     ),
                     TaskTemplate(
                         name="Design API structure",
@@ -184,7 +190,7 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=4,
                         priority=Priority.HIGH,
                         labels=["design", "api"],
-                        dependencies=["Design database schema"]
+                        dependencies=["Design database schema"],
                     ),
                     TaskTemplate(
                         name="Create UI mockups",
@@ -193,9 +199,9 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=8,
                         priority=Priority.MEDIUM,
                         labels=["design", "ui"],
-                        optional=True
-                    )
-                ]
+                        optional=True,
+                    ),
+                ],
             ),
             PhaseTemplate(
                 name="Backend Development",
@@ -209,7 +215,7 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=3,
                         priority=Priority.HIGH,
                         labels=["backend", "setup"],
-                        dependencies=["Design API structure"]
+                        dependencies=["Design API structure"],
                     ),
                     TaskTemplate(
                         name="Implement database models",
@@ -218,7 +224,10 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=6,
                         priority=Priority.HIGH,
                         labels=["backend", "database"],
-                        dependencies=["Set up backend framework", "Design database schema"]
+                        dependencies=[
+                            "Set up backend framework",
+                            "Design database schema",
+                        ],
                     ),
                     TaskTemplate(
                         name="Implement authentication",
@@ -227,7 +236,7 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=8,
                         priority=Priority.HIGH,
                         labels=["backend", "auth"],
-                        dependencies=["Implement database models"]
+                        dependencies=["Implement database models"],
                     ),
                     TaskTemplate(
                         name="Create CRUD API endpoints",
@@ -236,7 +245,10 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=12,
                         priority=Priority.HIGH,
                         labels=["backend", "api"],
-                        dependencies=["Implement database models", "Implement authentication"]
+                        dependencies=[
+                            "Implement database models",
+                            "Implement authentication",
+                        ],
                     ),
                     TaskTemplate(
                         name="Add API validation",
@@ -245,7 +257,7 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=4,
                         priority=Priority.MEDIUM,
                         labels=["backend", "validation"],
-                        dependencies=["Create CRUD API endpoints"]
+                        dependencies=["Create CRUD API endpoints"],
                     ),
                     TaskTemplate(
                         name="Implement business logic",
@@ -254,9 +266,9 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=16,
                         priority=Priority.HIGH,
                         labels=["backend", "business-logic"],
-                        dependencies=["Create CRUD API endpoints"]
-                    )
-                ]
+                        dependencies=["Create CRUD API endpoints"],
+                    ),
+                ],
             ),
             PhaseTemplate(
                 name="Frontend Development",
@@ -270,7 +282,7 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=3,
                         priority=Priority.HIGH,
                         labels=["frontend", "setup"],
-                        dependencies=["Configure build tools"]
+                        dependencies=["Configure build tools"],
                     ),
                     TaskTemplate(
                         name="Create component library",
@@ -279,7 +291,7 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=8,
                         priority=Priority.HIGH,
                         labels=["frontend", "components"],
-                        dependencies=["Set up frontend framework"]
+                        dependencies=["Set up frontend framework"],
                     ),
                     TaskTemplate(
                         name="Implement authentication UI",
@@ -288,7 +300,10 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=6,
                         priority=Priority.HIGH,
                         labels=["frontend", "auth"],
-                        dependencies=["Create component library", "Implement authentication"]
+                        dependencies=[
+                            "Create component library",
+                            "Implement authentication",
+                        ],
                     ),
                     TaskTemplate(
                         name="Build main application views",
@@ -297,7 +312,10 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=16,
                         priority=Priority.HIGH,
                         labels=["frontend", "views"],
-                        dependencies=["Create component library", "Create CRUD API endpoints"]
+                        dependencies=[
+                            "Create component library",
+                            "Create CRUD API endpoints",
+                        ],
                     ),
                     TaskTemplate(
                         name="Add state management",
@@ -307,7 +325,7 @@ class WebAppTemplate(ProjectTemplate):
                         priority=Priority.MEDIUM,
                         labels=["frontend", "state"],
                         dependencies=["Build main application views"],
-                        optional=True
+                        optional=True,
                     ),
                     TaskTemplate(
                         name="Implement responsive design",
@@ -316,9 +334,9 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=8,
                         priority=Priority.MEDIUM,
                         labels=["frontend", "responsive"],
-                        dependencies=["Build main application views"]
-                    )
-                ]
+                        dependencies=["Build main application views"],
+                    ),
+                ],
             ),
             PhaseTemplate(
                 name="Testing",
@@ -332,7 +350,7 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=8,
                         priority=Priority.HIGH,
                         labels=["testing", "backend"],
-                        dependencies=["Implement business logic"]
+                        dependencies=["Implement business logic"],
                     ),
                     TaskTemplate(
                         name="Write unit tests for frontend",
@@ -341,7 +359,7 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=8,
                         priority=Priority.HIGH,
                         labels=["testing", "frontend"],
-                        dependencies=["Build main application views"]
+                        dependencies=["Build main application views"],
                     ),
                     TaskTemplate(
                         name="Create integration tests",
@@ -350,7 +368,10 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=6,
                         priority=Priority.MEDIUM,
                         labels=["testing", "integration"],
-                        dependencies=["Write unit tests for backend", "Write unit tests for frontend"]
+                        dependencies=[
+                            "Write unit tests for backend",
+                            "Write unit tests for frontend",
+                        ],
                     ),
                     TaskTemplate(
                         name="Perform manual testing",
@@ -359,7 +380,7 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=8,
                         priority=Priority.HIGH,
                         labels=["testing", "qa"],
-                        dependencies=["Build main application views"]
+                        dependencies=["Build main application views"],
                     ),
                     TaskTemplate(
                         name="Fix identified bugs",
@@ -368,9 +389,9 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=12,
                         priority=Priority.HIGH,
                         labels=["testing", "bugfix"],
-                        dependencies=["Perform manual testing"]
-                    )
-                ]
+                        dependencies=["Perform manual testing"],
+                    ),
+                ],
             ),
             PhaseTemplate(
                 name="Deployment",
@@ -384,7 +405,8 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=6,
                         priority=Priority.HIGH,
                         labels=["deployment", "infrastructure"],
-                        dependencies=["Fix identified bugs"]
+                        dependencies=["Fix identified bugs"],
+                        optional=True,
                     ),
                     TaskTemplate(
                         name="Configure environment variables",
@@ -393,7 +415,8 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=2,
                         priority=Priority.HIGH,
                         labels=["deployment", "config"],
-                        dependencies=["Set up production infrastructure"]
+                        dependencies=["Set up production infrastructure"],
+                        optional=True,
                     ),
                     TaskTemplate(
                         name="Set up monitoring and logging",
@@ -402,7 +425,8 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=4,
                         priority=Priority.MEDIUM,
                         labels=["deployment", "monitoring"],
-                        dependencies=["Set up production infrastructure"]
+                        dependencies=["Set up production infrastructure"],
+                        optional=True,
                     ),
                     TaskTemplate(
                         name="Deploy to production",
@@ -411,7 +435,11 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=4,
                         priority=Priority.HIGH,
                         labels=["deployment", "release"],
-                        dependencies=["Configure environment variables", "Set up monitoring and logging"]
+                        dependencies=[
+                            "Configure environment variables",
+                            "Set up monitoring and logging",
+                        ],
+                        optional=True,
                     ),
                     TaskTemplate(
                         name="Perform production smoke tests",
@@ -420,23 +448,24 @@ class WebAppTemplate(ProjectTemplate):
                         estimated_hours=3,
                         priority=Priority.HIGH,
                         labels=["deployment", "testing"],
-                        dependencies=["Deploy to production"]
-                    )
-                ]
-            )
+                        dependencies=["Deploy to production"],
+                        optional=True,
+                    ),
+                ],
+            ),
         ]
-        
+
         super().__init__(
             name="Full-Stack Web Application",
             description="Complete web application with frontend, backend, and database",
             category="web",
-            phases=phases
+            phases=phases,
         )
 
 
 class APIServiceTemplate(ProjectTemplate):
     """Template for API-only services"""
-    
+
     def __init__(self):
         phases = [
             PhaseTemplate(
@@ -450,7 +479,7 @@ class APIServiceTemplate(ProjectTemplate):
                         phase="setup",
                         estimated_hours=1,
                         priority=Priority.HIGH,
-                        labels=["setup", "git"]
+                        labels=["setup", "git"],
                     ),
                     TaskTemplate(
                         name="Set up API framework",
@@ -459,7 +488,7 @@ class APIServiceTemplate(ProjectTemplate):
                         estimated_hours=2,
                         priority=Priority.HIGH,
                         labels=["setup", "api"],
-                        dependencies=["Initialize repository"]
+                        dependencies=["Initialize repository"],
                     ),
                     TaskTemplate(
                         name="Configure development environment",
@@ -468,9 +497,9 @@ class APIServiceTemplate(ProjectTemplate):
                         estimated_hours=3,
                         priority=Priority.HIGH,
                         labels=["setup", "dev-env"],
-                        dependencies=["Set up API framework"]
-                    )
-                ]
+                        dependencies=["Set up API framework"],
+                    ),
+                ],
             ),
             PhaseTemplate(
                 name="Design",
@@ -484,7 +513,7 @@ class APIServiceTemplate(ProjectTemplate):
                         estimated_hours=6,
                         priority=Priority.HIGH,
                         labels=["design", "api"],
-                        dependencies=["Set up API framework"]
+                        dependencies=["Set up API framework"],
                     ),
                     TaskTemplate(
                         name="Design data models",
@@ -493,9 +522,9 @@ class APIServiceTemplate(ProjectTemplate):
                         estimated_hours=4,
                         priority=Priority.HIGH,
                         labels=["design", "models"],
-                        dependencies=["Design API schema"]
-                    )
-                ]
+                        dependencies=["Design API schema"],
+                    ),
+                ],
             ),
             PhaseTemplate(
                 name="Implementation",
@@ -509,7 +538,7 @@ class APIServiceTemplate(ProjectTemplate):
                         estimated_hours=4,
                         priority=Priority.HIGH,
                         labels=["backend", "models"],
-                        dependencies=["Design data models"]
+                        dependencies=["Design data models"],
                     ),
                     TaskTemplate(
                         name="Create API endpoints",
@@ -518,7 +547,7 @@ class APIServiceTemplate(ProjectTemplate):
                         estimated_hours=12,
                         priority=Priority.HIGH,
                         labels=["backend", "api"],
-                        dependencies=["Implement data models"]
+                        dependencies=["Implement data models"],
                     ),
                     TaskTemplate(
                         name="Add authentication",
@@ -527,7 +556,7 @@ class APIServiceTemplate(ProjectTemplate):
                         estimated_hours=6,
                         priority=Priority.HIGH,
                         labels=["backend", "auth"],
-                        dependencies=["Create API endpoints"]
+                        dependencies=["Create API endpoints"],
                     ),
                     TaskTemplate(
                         name="Implement rate limiting",
@@ -536,9 +565,9 @@ class APIServiceTemplate(ProjectTemplate):
                         estimated_hours=3,
                         priority=Priority.MEDIUM,
                         labels=["backend", "security"],
-                        dependencies=["Create API endpoints"]
-                    )
-                ]
+                        dependencies=["Create API endpoints"],
+                    ),
+                ],
             ),
             PhaseTemplate(
                 name="Testing & Documentation",
@@ -552,7 +581,7 @@ class APIServiceTemplate(ProjectTemplate):
                         estimated_hours=8,
                         priority=Priority.HIGH,
                         labels=["testing", "api"],
-                        dependencies=["Add authentication"]
+                        dependencies=["Add authentication"],
                     ),
                     TaskTemplate(
                         name="Generate API documentation",
@@ -561,9 +590,9 @@ class APIServiceTemplate(ProjectTemplate):
                         estimated_hours=3,
                         priority=Priority.MEDIUM,
                         labels=["documentation", "api"],
-                        dependencies=["Create API endpoints"]
-                    )
-                ]
+                        dependencies=["Create API endpoints"],
+                    ),
+                ],
             ),
             PhaseTemplate(
                 name="Deployment",
@@ -577,7 +606,7 @@ class APIServiceTemplate(ProjectTemplate):
                         estimated_hours=3,
                         priority=Priority.HIGH,
                         labels=["deployment", "docker"],
-                        dependencies=["Write API tests"]
+                        dependencies=["Write API tests"],
                     ),
                     TaskTemplate(
                         name="Deploy to cloud",
@@ -586,23 +615,23 @@ class APIServiceTemplate(ProjectTemplate):
                         estimated_hours=4,
                         priority=Priority.HIGH,
                         labels=["deployment", "cloud"],
-                        dependencies=["Containerize application"]
-                    )
-                ]
-            )
+                        dependencies=["Containerize application"],
+                    ),
+                ],
+            ),
         ]
-        
+
         super().__init__(
             name="API Service",
             description="RESTful API service without frontend",
             category="api",
-            phases=phases
+            phases=phases,
         )
 
 
 class MobileAppTemplate(ProjectTemplate):
     """Template for mobile applications"""
-    
+
     def __init__(self):
         phases = [
             PhaseTemplate(
@@ -616,7 +645,7 @@ class MobileAppTemplate(ProjectTemplate):
                         phase="setup",
                         estimated_hours=2,
                         priority=Priority.HIGH,
-                        labels=["setup", "mobile"]
+                        labels=["setup", "mobile"],
                     ),
                     TaskTemplate(
                         name="Configure development environment",
@@ -625,9 +654,9 @@ class MobileAppTemplate(ProjectTemplate):
                         estimated_hours=4,
                         priority=Priority.HIGH,
                         labels=["setup", "dev-env"],
-                        dependencies=["Initialize mobile project"]
-                    )
-                ]
+                        dependencies=["Initialize mobile project"],
+                    ),
+                ],
             ),
             PhaseTemplate(
                 name="Core Features",
@@ -641,7 +670,7 @@ class MobileAppTemplate(ProjectTemplate):
                         estimated_hours=4,
                         priority=Priority.HIGH,
                         labels=["mobile", "navigation"],
-                        dependencies=["Configure development environment"]
+                        dependencies=["Configure development environment"],
                     ),
                     TaskTemplate(
                         name="Create UI screens",
@@ -650,7 +679,7 @@ class MobileAppTemplate(ProjectTemplate):
                         estimated_hours=16,
                         priority=Priority.HIGH,
                         labels=["mobile", "ui"],
-                        dependencies=["Implement navigation"]
+                        dependencies=["Implement navigation"],
                     ),
                     TaskTemplate(
                         name="Add offline support",
@@ -660,7 +689,7 @@ class MobileAppTemplate(ProjectTemplate):
                         priority=Priority.MEDIUM,
                         labels=["mobile", "offline"],
                         dependencies=["Create UI screens"],
-                        optional=True
+                        optional=True,
                     ),
                     TaskTemplate(
                         name="Implement push notifications",
@@ -670,9 +699,9 @@ class MobileAppTemplate(ProjectTemplate):
                         priority=Priority.MEDIUM,
                         labels=["mobile", "notifications"],
                         dependencies=["Create UI screens"],
-                        optional=True
-                    )
-                ]
+                        optional=True,
+                    ),
+                ],
             ),
             PhaseTemplate(
                 name="Platform Integration",
@@ -686,7 +715,7 @@ class MobileAppTemplate(ProjectTemplate):
                         estimated_hours=8,
                         priority=Priority.MEDIUM,
                         labels=["mobile", "native"],
-                        dependencies=["Create UI screens"]
+                        dependencies=["Create UI screens"],
                     ),
                     TaskTemplate(
                         name="Handle platform differences",
@@ -695,9 +724,9 @@ class MobileAppTemplate(ProjectTemplate):
                         estimated_hours=6,
                         priority=Priority.HIGH,
                         labels=["mobile", "platform"],
-                        dependencies=["Create UI screens"]
-                    )
-                ]
+                        dependencies=["Create UI screens"],
+                    ),
+                ],
             ),
             PhaseTemplate(
                 name="Testing & Release",
@@ -711,7 +740,7 @@ class MobileAppTemplate(ProjectTemplate):
                         estimated_hours=8,
                         priority=Priority.HIGH,
                         labels=["mobile", "testing"],
-                        dependencies=["Handle platform differences"]
+                        dependencies=["Handle platform differences"],
                     ),
                     TaskTemplate(
                         name="Prepare store listings",
@@ -720,7 +749,7 @@ class MobileAppTemplate(ProjectTemplate):
                         estimated_hours=4,
                         priority=Priority.HIGH,
                         labels=["mobile", "store"],
-                        dependencies=["Test on real devices"]
+                        dependencies=["Test on real devices"],
                     ),
                     TaskTemplate(
                         name="Submit to app stores",
@@ -729,15 +758,15 @@ class MobileAppTemplate(ProjectTemplate):
                         estimated_hours=4,
                         priority=Priority.HIGH,
                         labels=["mobile", "deployment"],
-                        dependencies=["Prepare store listings"]
-                    )
-                ]
-            )
+                        dependencies=["Prepare store listings"],
+                    ),
+                ],
+            ),
         ]
-        
+
         super().__init__(
             name="Mobile Application",
             description="Native or cross-platform mobile app",
             category="mobile",
-            phases=phases
+            phases=phases,
         )

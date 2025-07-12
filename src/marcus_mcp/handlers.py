@@ -54,6 +54,14 @@ from .tools.pipeline import (  # Pipeline replay tools; What-if analysis tools; 
     start_what_if_analysis,
     track_flow_progress,
 )
+from .tools.project_management import (  # Project management tools
+    add_project,
+    get_current_project,
+    list_projects,
+    remove_project,
+    switch_project,
+    update_project,
+)
 
 
 def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
@@ -107,11 +115,6 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                 },
                 "required": ["agent_id"],
             },
-        ),
-        types.Tool(
-            name="list_registered_agents",
-            description="List all registered agents",
-            inputSchema={"type": "object", "properties": {}, "required": []},
         ),
         # Task Management Tools
         types.Tool(
@@ -203,11 +206,6 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                 "required": [],
             },
         ),
-        types.Tool(
-            name="check_assignment_health",
-            description="Check the health of the assignment tracking system",
-            inputSchema={"type": "object", "properties": {}, "required": []},
-        ),
         # Context Tools (for agents to log decisions)
         types.Tool(
             name="log_decision",
@@ -250,6 +248,134 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
 
     # For "human" role, include all tools including pipeline enhancements
     human_tools = agent_tools + [
+        # Administrative Tools (human only)
+        types.Tool(
+            name="list_registered_agents",
+            description="List all registered agents",
+            inputSchema={"type": "object", "properties": {}, "required": []},
+        ),
+        types.Tool(
+            name="check_assignment_health",
+            description="Check the health of the assignment tracking system",
+            inputSchema={"type": "object", "properties": {}, "required": []},
+        ),
+        # Project Management Tools (human only)
+        types.Tool(
+            name="list_projects",
+            description="List all available projects",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filter_tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Filter projects by tags",
+                    },
+                    "provider": {
+                        "type": "string",
+                        "description": "Filter by provider (planka, linear, github)",
+                    },
+                },
+                "required": [],
+            },
+        ),
+        types.Tool(
+            name="switch_project",
+            description="Switch to a different project",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {
+                        "type": "string",
+                        "description": "ID of project to switch to",
+                    },
+                    "project_name": {
+                        "type": "string",
+                        "description": "Name of project (alternative to ID)",
+                    },
+                },
+                "required": [],
+            },
+        ),
+        types.Tool(
+            name="get_current_project",
+            description="Get the currently active project",
+            inputSchema={"type": "object", "properties": {}, "required": []},
+        ),
+        types.Tool(
+            name="add_project",
+            description="Add a new project configuration",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Project name"},
+                    "provider": {
+                        "type": "string",
+                        "description": "Provider type (planka, linear, github)",
+                        "enum": ["planka", "linear", "github"],
+                    },
+                    "config": {
+                        "type": "object",
+                        "description": "Provider-specific configuration",
+                    },
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Project tags",
+                        "default": [],
+                    },
+                    "make_active": {
+                        "type": "boolean",
+                        "description": "Switch to this project after creation",
+                        "default": true,
+                    },
+                },
+                "required": ["name", "provider"],
+            },
+        ),
+        types.Tool(
+            name="remove_project",
+            description="Remove a project from the registry",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {
+                        "type": "string",
+                        "description": "ID of project to remove",
+                    },
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "Confirm deletion",
+                        "default": false,
+                    },
+                },
+                "required": ["project_id"],
+            },
+        ),
+        types.Tool(
+            name="update_project",
+            description="Update project configuration",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {
+                        "type": "string",
+                        "description": "ID of project to update",
+                    },
+                    "name": {"type": "string", "description": "New project name"},
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "New project tags",
+                    },
+                    "config": {
+                        "type": "object",
+                        "description": "Updated provider configuration",
+                    },
+                },
+                "required": ["project_id"],
+            },
+        ),
         # Natural Language Tools (also available to humans)
         types.Tool(
             name="create_project",
@@ -282,6 +408,12 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                                 "type": "array",
                                 "items": {"type": "string"},
                                 "description": "Technologies to use",
+                            },
+                            "deployment_target": {
+                                "type": "string",
+                                "description": "Deployment environment: local (default), dev, prod, remote",
+                                "enum": ["local", "dev", "prod", "remote"],
+                                "default": "local",
                             },
                         },
                     },
@@ -585,6 +717,20 @@ async def handle_tool_call(
             result = await get_task_context(
                 task_id=arguments.get("task_id"), state=state
             )
+
+        # Project Management Tools
+        elif name == "list_projects":
+            result = await list_projects(state, arguments)
+        elif name == "switch_project":
+            result = await switch_project(state, arguments)
+        elif name == "get_current_project":
+            result = await get_current_project(state, arguments)
+        elif name == "add_project":
+            result = await add_project(state, arguments)
+        elif name == "remove_project":
+            result = await remove_project(state, arguments)
+        elif name == "update_project":
+            result = await update_project(state, arguments)
 
         # Pipeline Enhancement Tools
         elif name == "pipeline_replay_start":

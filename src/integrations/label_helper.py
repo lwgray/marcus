@@ -89,7 +89,7 @@ class LabelManagerHelper:
         "infrastructure": "tank-green",
     }
 
-    def __init__(self, session, board_id: str):
+    def __init__(self, session: Any, board_id: str) -> None:
         """
         Initialize the label manager helper.
 
@@ -102,7 +102,7 @@ class LabelManagerHelper:
         """
         self.session = session
         self.board_id = board_id
-        self._label_cache = {}  # Cache of label name -> label data
+        self._label_cache: Dict[str, Any] = {}  # Cache of label name -> label data
 
     async def refresh_labels(self) -> List[Dict[str, Any]]:
         """
@@ -186,7 +186,7 @@ class LabelManagerHelper:
                         self._label_cache[normalized_name] = updated_label
                 except Exception as e:
                     print(f"Failed to update label color: {e}")
-            return cached_label["id"]
+            return str(cached_label["id"])
 
         # Refresh cache and check again
         await self.refresh_labels()
@@ -220,7 +220,7 @@ class LabelManagerHelper:
                         self._label_cache[normalized_name] = updated_label
                 except Exception as e:
                     print(f"Failed to update label color: {e}")
-            return cached_label["id"]
+            return str(cached_label["id"])
 
         # Need to create the label
         if color is None:
@@ -249,7 +249,7 @@ class LabelManagerHelper:
             created_label = json.loads(result.content[0].text)
             # Update cache
             self._label_cache[normalized_name] = created_label
-            return created_label["id"]
+            return str(created_label["id"])
         else:
             raise Exception(f"Failed to create label '{name}'")
 
@@ -375,7 +375,7 @@ class LabelManagerHelper:
 
 
 # Example usage function
-async def example_usage(session, board_id: str, card_id: str):
+async def example_usage(session: Any, board_id: str, card_id: str) -> None:
     """
     Example of how to use the LabelManagerHelper.
 

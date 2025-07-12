@@ -1,0 +1,573 @@
+openapi: 3.0.3
+info:
+  title: Smart Recipe Recommender API
+  description: |
+    RESTful API for the Smart Recipe Recommender system enabling users to store,
+    search, and share recipes with intelligent recommendations based on dietary
+    preferences and available ingredients.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: api@smartrecipe.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api.smartrecipe.com/v1
+    description: Production server
+  - url: https://staging-api.smartrecipe.com/v1
+    description: Staging server
+  - url: http://localhost:8000/v1
+    description: Development server
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Authentication
+    description: User authentication and authorization
+  - name: Users
+    description: User profile management
+  - name: Recipes
+    description: Recipe creation and management
+  - name: Search
+    description: Recipe search and discovery
+  - name: Ingredients
+    description: Ingredient management
+  - name: Pantry
+    description: User pantry management
+  - name: Meal Planning
+    description: Meal planning features
+  - name: Shopping Lists
+    description: Shopping list generation
+
+paths:
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register new user
+      operationId: registerUser
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login user
+      operationId: loginUser
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /recipes:
+    get:
+      tags:
+        - Recipes
+      summary: List recipes
+      operationId: listRecipes
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: dietary
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [vegan, vegetarian, gluten-free, keto, paleo]
+        - name: cuisine
+          in: query
+          schema:
+            type: string
+        - name: difficulty
+          in: query
+          schema:
+            type: string
+            enum: [easy, medium, hard]
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [popular, newest, rating, prep_time]
+            default: newest
+      responses:
+        '200':
+          description: List of recipes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecipeListResponse'
+
+    post:
+      tags:
+        - Recipes
+      summary: Create new recipe
+      operationId: createRecipe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecipeCreateRequest'
+      responses:
+        '201':
+          description: Recipe created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecipeResponse'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /recipes/{recipeId}:
+    get:
+      tags:
+        - Recipes
+      summary: Get recipe details
+      operationId: getRecipe
+      parameters:
+        - $ref: '#/components/parameters/RecipeIdParam'
+      responses:
+        '200':
+          description: Recipe details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecipeDetailResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    put:
+      tags:
+        - Recipes
+      summary: Update recipe
+      operationId: updateRecipe
+      parameters:
+        - $ref: '#/components/parameters/RecipeIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecipeUpdateRequest'
+      responses:
+        '200':
+          description: Recipe updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecipeResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    delete:
+      tags:
+        - Recipes
+      summary: Delete recipe
+      operationId: deleteRecipe
+      parameters:
+        - $ref: '#/components/parameters/RecipeIdParam'
+      responses:
+        '204':
+          description: Recipe deleted successfully
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /recipes/search:
+    post:
+      tags:
+        - Search
+      summary: Search recipes
+      operationId: searchRecipes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+
+  /recipes/by-ingredients:
+    post:
+      tags:
+        - Search
+      summary: Find recipes by available ingredients
+      operationId: findRecipesByIngredients
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecipeByIngredientsRequest'
+      responses:
+        '200':
+          description: Matching recipes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecipeListResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    RecipeIdParam:
+      name: recipeId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    LimitParam:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - username
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        username:
+          type: string
+          minLength: 3
+          maxLength: 30
+          pattern: '^[a-zA-Z0-9_]+$'
+        password:
+          type: string
+          minLength: 8
+          format: password
+        first_name:
+          type: string
+          maxLength: 50
+        last_name:
+          type: string
+          maxLength: 50
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    AuthResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            user:
+              $ref: '#/components/schemas/UserProfile'
+            tokens:
+              type: object
+              properties:
+                access_token:
+                  type: string
+                refresh_token:
+                  type: string
+                expires_in:
+                  type: integer
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        username:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+        avatar_url:
+          type: string
+          format: uri
+        created_at:
+          type: string
+          format: date-time
+
+    RecipeCreateRequest:
+      type: object
+      required:
+        - title
+        - instructions
+        - ingredients
+      properties:
+        title:
+          type: string
+          minLength: 3
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 1000
+        instructions:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required:
+              - step
+              - text
+            properties:
+              step:
+                type: integer
+                minimum: 1
+              text:
+                type: string
+              time_minutes:
+                type: integer
+                minimum: 0
+        prep_time:
+          type: integer
+          minimum: 0
+        cook_time:
+          type: integer
+          minimum: 0
+        servings:
+          type: integer
+          minimum: 1
+          maximum: 100
+        difficulty:
+          type: string
+          enum: [easy, medium, hard]
+        cuisine:
+          type: string
+        course:
+          type: string
+          enum: [appetizer, main, dessert, snack, drink]
+        ingredients:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/RecipeIngredient'
+        nutrition:
+          $ref: '#/components/schemas/NutritionInfo'
+        tags:
+          type: array
+          items:
+            type: string
+        is_public:
+          type: boolean
+          default: true
+
+    RecipeIngredient:
+      type: object
+      required:
+        - ingredient_id
+        - quantity
+        - unit
+      properties:
+        ingredient_id:
+          type: string
+          format: uuid
+        quantity:
+          type: number
+          minimum: 0
+        unit:
+          type: string
+        notes:
+          type: string
+          maxLength: 200
+        is_optional:
+          type: boolean
+          default: false
+
+    NutritionInfo:
+      type: object
+      properties:
+        calories:
+          type: number
+          minimum: 0
+        protein_g:
+          type: number
+          minimum: 0
+        carbs_g:
+          type: number
+          minimum: 0
+        fat_g:
+          type: number
+          minimum: 0
+        fiber_g:
+          type: number
+          minimum: 0
+        sugar_g:
+          type: number
+          minimum: 0
+        sodium_mg:
+          type: number
+          minimum: 0
+
+    RecipeResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/Recipe'
+
+    Recipe:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        author:
+          $ref: '#/components/schemas/UserProfile'
+        image_url:
+          type: string
+          format: uri
+        prep_time:
+          type: integer
+        cook_time:
+          type: integer
+        total_time:
+          type: integer
+        servings:
+          type: integer
+        difficulty:
+          type: string
+        cuisine:
+          type: string
+        rating:
+          type: object
+          properties:
+            average:
+              type: number
+              format: float
+              minimum: 0
+              maximum: 5
+            count:
+              type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          default: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+            request_id:
+              type: string
+            timestamp:
+              type: string
+              format: date-time
+
+  responses:
+    UnauthorizedError:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    ForbiddenError:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    ValidationError:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

@@ -37,6 +37,8 @@ from src.core.models import (
     TaskStatus,
     WorkerStatus,
 )
+from src.core.project_context_manager import ProjectContextManager
+from src.core.project_registry import ProjectRegistry
 from src.cost_tracking.ai_usage_middleware import ai_usage_middleware
 from src.cost_tracking.token_tracker import token_tracker
 from src.integrations.ai_analysis_engine import AIAnalysisEngine
@@ -57,12 +59,24 @@ class MarcusServer:
         self.config = get_config()
         self.settings = Settings()
 
-        # Get kanban provider from config
+        # Initialize project management components
+        self.project_registry = ProjectRegistry()
+        self.project_manager = ProjectContextManager(self.project_registry)
+
+        # For backwards compatibility - get default provider
         self.provider = self.config.get("kanban.provider", "planka")
-        print(
-            f"Initializing Marcus with {self.provider.upper()} kanban provider...",
-            file=sys.stderr,
-        )
+
+        # Check if in multi-project mode
+        if self.config.is_multi_project_mode():
+            print(
+                f"Initializing Marcus in multi-project mode...",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"Initializing Marcus with {self.provider.upper()} kanban provider...",
+                file=sys.stderr,
+            )
 
         # Create realtime log with line buffering
         # Use absolute path based on Marcus root directory
@@ -77,7 +91,9 @@ class MarcusServer:
         atexit.register(self.realtime_log.close)
 
         # Core components
-        self.kanban_client: Optional[KanbanInterface] = None
+        self.kanban_client: Optional[KanbanInterface] = (
+            None  # Will be set by project manager
+        )
         self.ai_engine = AIAnalysisEngine()
         self.monitor = ProjectMonitor()
         self.comm_hub = CommunicationHub()
@@ -254,8 +270,26 @@ class MarcusServer:
         # Initialize AI engine
         await self.ai_engine.initialize()
 
-        # Initialize kanban if needed
-        await self.initialize_kanban()
+        # Initialize project management
+        await self.project_manager.initialize()
+
+        # Check if we're in multi-project mode or legacy mode
+        if self.config.is_multi_project_mode():
+            # Get kanban client from project manager
+            self.kanban_client = await self.project_manager.get_kanban_client()
+            if self.kanban_client:
+                active_project = await self.project_registry.get_active_project()
+                if active_project:
+                    print(
+                        f"✅ Active project: {active_project.name} ({active_project.provider})",
+                        file=sys.stderr,
+                    )
+        else:
+            # Legacy mode - create kanban client directly
+            await self.initialize_kanban()
+
+            # Migrate to multi-project if needed
+            await self._migrate_to_multi_project()
 
         # Initialize event visualizer if available
         if self.event_visualizer:
@@ -265,7 +299,34 @@ class MarcusServer:
         # Wrap AI engine for token tracking
         self.ai_engine = ai_usage_middleware.wrap_ai_provider(self.ai_engine)
 
+        # Initialize pattern learning components for API
+        from src.api.pattern_learning_init import init_pattern_learning_components
+
+        try:
+            init_pattern_learning_components(
+                kanban_client=self.kanban_client, ai_engine=self.ai_engine
+            )
+            print("✅ Pattern learning API initialized", file=sys.stderr)
+        except Exception as e:
+            print(f"⚠️ Pattern learning API initialization failed: {e}", file=sys.stderr)
+
         print("✅ Marcus server initialized", file=sys.stderr)
+
+    async def _migrate_to_multi_project(self):
+        """Migrate legacy configuration to multi-project format"""
+        if self.kanban_client and not self.config.is_multi_project_mode():
+            # Create a project from the legacy config
+            project_id = await self.project_registry.create_from_legacy_config(
+                self.config._config
+            )
+
+            # Set it as active
+            await self.project_registry.set_active_project(project_id)
+
+            # Initialize project context with existing client
+            await self.project_manager.switch_project(project_id)
+
+            print("✅ Migrated to multi-project mode", file=sys.stderr)
 
     async def initialize_kanban(self):
         """Initialize kanban client if not already done"""
@@ -459,9 +520,11 @@ class MarcusServer:
                     completed_tasks=completed_tasks,
                     in_progress_tasks=in_progress_tasks,
                     blocked_tasks=0,  # Would need to track this separately
-                    progress_percent=(completed_tasks / total_tasks * 100)
-                    if total_tasks > 0
-                    else 0.0,
+                    progress_percent=(
+                        (completed_tasks / total_tasks * 100)
+                        if total_tasks > 0
+                        else 0.0
+                    ),
                     overdue_tasks=[],  # Would need to check due dates
                     team_velocity=0.0,  # Would need to calculate
                     risk_level=RiskLevel.LOW,  # Simplified

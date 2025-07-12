@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marcus Pattern Learning Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto p-4">
+        <h1 class="text-3xl font-bold mb-6">Pattern Learning Dashboard</h1>
+
+        <!-- Tabs -->
+        <div class="mb-4 border-b border-gray-200">
+            <nav class="-mb-px flex space-x-8">
+                <button class="tab-btn py-2 px-1 border-b-2 border-blue-500 font-medium text-sm text-blue-600" data-tab="patterns">
+                    Learned Patterns
+                </button>
+                <button class="tab-btn py-2 px-1 border-b-2 border-transparent font-medium text-sm text-gray-500 hover:text-gray-700" data-tab="quality">
+                    Quality Assessment
+                </button>
+                <button class="tab-btn py-2 px-1 border-b-2 border-transparent font-medium text-sm text-gray-500 hover:text-gray-700" data-tab="trends">
+                    Quality Trends
+                </button>
+            </nav>
+        </div>
+
+        <!-- Patterns Tab -->
+        <div id="patterns-tab" class="tab-content">
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-xl font-semibold mb-4">Learned Patterns</h2>
+                <div id="patterns-list" class="space-y-4">
+                    <p class="text-gray-500">Loading patterns...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quality Tab -->
+        <div id="quality-tab" class="tab-content hidden">
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-xl font-semibold mb-4">Project Quality Assessment</h2>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700">Board ID:</label>
+                    <input type="text" id="board-id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" placeholder="Enter board ID">
+                    <button onclick="assessQuality()" class="mt-2 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                        Assess Quality
+                    </button>
+                </div>
+                <div id="quality-results" class="mt-4"></div>
+            </div>
+        </div>
+
+        <!-- Trends Tab -->
+        <div id="trends-tab" class="tab-content hidden">
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-xl font-semibold mb-4">Quality Trends</h2>
+                <canvas id="trends-chart"></canvas>
+                <div id="trends-data" class="mt-4"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Tab switching
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                // Update active tab
+                document.querySelectorAll('.tab-btn').forEach(b => {
+                    b.classList.remove('border-blue-500', 'text-blue-600');
+                    b.classList.add('border-transparent', 'text-gray-500');
+                });
+                btn.classList.remove('border-transparent', 'text-gray-500');
+                btn.classList.add('border-blue-500', 'text-blue-600');
+
+                // Show corresponding content
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    content.classList.add('hidden');
+                });
+                document.getElementById(btn.dataset.tab + '-tab').classList.remove('hidden');
+
+                // Load data for the tab
+                if (btn.dataset.tab === 'patterns') loadPatterns();
+                if (btn.dataset.tab === 'trends') loadTrends();
+            });
+        });
+
+        // Load patterns
+        async function loadPatterns() {
+            try {
+                const response = await fetch('/api/patterns/patterns');
+                const data = await response.json();
+
+                const listEl = document.getElementById('patterns-list');
+                if (data.patterns && data.patterns.length > 0) {
+                    listEl.innerHTML = data.patterns.map(p => `
+                        <div class="border rounded p-4">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <h3 class="font-semibold">${p.project_name}</h3>
+                                    <p class="text-sm text-gray-500">ID: ${p.project_id}</p>
+                                    <p class="text-sm text-gray-500">Extracted: ${new Date(p.extracted_at).toLocaleDateString()}</p>
+                                </div>
+                                <div class="text-right">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                        p.outcome.successful ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                    }">
+                                        ${p.outcome.successful ? 'Successful' : 'Failed'}
+                                    </span>
+                                    <p class="text-sm mt-1">Quality: ${(p.outcome.quality_score * 100).toFixed(0)}%</p>
+                                    <p class="text-sm">Confidence: ${(p.confidence_score * 100).toFixed(0)}%</p>
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <p class="text-sm font-medium">Team Size: ${p.team_size}</p>
+                                <p class="text-sm font-medium">Duration: ${p.outcome.completion_days} days</p>
+                            </div>
+                            ${p.success_factors.length > 0 ? `
+                                <div class="mt-3">
+                                    <p class="text-sm font-medium text-green-700">Success Factors:</p>
+                                    <ul class="text-sm text-gray-600 list-disc list-inside">
+                                        ${p.success_factors.map(f => `<li>${f}</li>`).join('')}
+                                    </ul>
+                                </div>
+                            ` : ''}
+                            ${p.risk_factors.length > 0 ? `
+                                <div class="mt-3">
+                                    <p class="text-sm font-medium text-red-700">Risk Factors:</p>
+                                    <ul class="text-sm text-gray-600 list-disc list-inside">
+                                        ${p.risk_factors.map(f => `<li>${f}</li>`).join('')}
+                                    </ul>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `).join('');
+                } else {
+                    listEl.innerHTML = '<p class="text-gray-500">No patterns learned yet.</p>';
+                }
+            } catch (error) {
+                document.getElementById('patterns-list').innerHTML =
+                    `<p class="text-red-500">Error loading patterns: ${error.message}</p>`;
+            }
+        }
+
+        // Assess quality
+        async function assessQuality() {
+            const boardId = document.getElementById('board-id').value;
+            if (!boardId) {
+                alert('Please enter a board ID');
+                return;
+            }
+
+            const resultsEl = document.getElementById('quality-results');
+            resultsEl.innerHTML = '<p class="text-gray-500">Assessing quality...</p>';
+
+            try {
+                const response = await fetch(`/api/patterns/assess-quality/${boardId}`);
+                const data = await response.json();
+
+                if (data.assessment) {
+                    const a = data.assessment;
+                    resultsEl.innerHTML = `
+                        <div class="space-y-4">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="bg-gray-50 p-4 rounded">
+                                    <p class="text-sm font-medium text-gray-700">Overall Score</p>
+                                    <p class="text-2xl font-bold">${(a.overall_score * 100).toFixed(0)}%</p>
+                                </div>
+                                <div class="bg-gray-50 p-4 rounded">
+                                    <p class="text-sm font-medium text-gray-700">Success Prediction</p>
+                                    <p class="text-lg font-semibold ${a.success_prediction.is_successful ? 'text-green-600' : 'text-red-600'}">
+                                        ${a.success_prediction.is_successful ? 'Likely Successful' : 'At Risk'}
+                                    </p>
+                                    <p class="text-sm text-gray-500">Confidence: ${(a.success_prediction.confidence * 100).toFixed(0)}%</p>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-4 gap-2">
+                                <div class="text-center">
+                                    <p class="text-sm text-gray-600">Code Quality</p>
+                                    <p class="text-lg font-semibold">${(a.code_quality_score * 100).toFixed(0)}%</p>
+                                </div>
+                                <div class="text-center">
+                                    <p class="text-sm text-gray-600">Process Quality</p>
+                                    <p class="text-lg font-semibold">${(a.process_quality_score * 100).toFixed(0)}%</p>
+                                </div>
+                                <div class="text-center">
+                                    <p class="text-sm text-gray-600">Delivery Quality</p>
+                                    <p class="text-lg font-semibold">${(a.delivery_quality_score * 100).toFixed(0)}%</p>
+                                </div>
+                                <div class="text-center">
+                                    <p class="text-sm text-gray-600">Team Quality</p>
+                                    <p class="text-lg font-semibold">${(a.team_quality_score * 100).toFixed(0)}%</p>
+                                </div>
+                            </div>
+
+                            ${a.quality_insights.length > 0 ? `
+                                <div>
+                                    <h4 class="font-medium text-green-700 mb-2">Quality Insights</h4>
+                                    <ul class="list-disc list-inside text-sm space-y-1">
+                                        ${a.quality_insights.map(i => `<li>${i}</li>`).join('')}
+                                    </ul>
+                                </div>
+                            ` : ''}
+
+                            ${a.improvement_areas.length > 0 ? `
+                                <div>
+                                    <h4 class="font-medium text-orange-700 mb-2">Improvement Areas</h4>
+                                    <ul class="list-disc list-inside text-sm space-y-1">
+                                        ${a.improvement_areas.map(i => `<li>${i}</li>`).join('')}
+                                    </ul>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                } else {
+                    resultsEl.innerHTML = `<p class="text-red-500">Error: ${data.error || 'Unknown error'}</p>`;
+                }
+            } catch (error) {
+                resultsEl.innerHTML = `<p class="text-red-500">Error: ${error.message}</p>`;
+            }
+        }
+
+        // Load trends
+        async function loadTrends() {
+            try {
+                const response = await fetch('/api/patterns/quality-trends?days=90');
+                const data = await response.json();
+
+                const trendsEl = document.getElementById('trends-data');
+                if (data.trends) {
+                    trendsEl.innerHTML = `
+                        <div class="grid grid-cols-3 gap-4 mt-4">
+                            <div class="text-center">
+                                <p class="text-sm text-gray-600">Average Score</p>
+                                <p class="text-2xl font-bold">${(data.trends.average_score * 100).toFixed(0)}%</p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-sm text-gray-600">Trend</p>
+                                <p class="text-lg font-semibold ${
+                                    data.trends.trend_direction === 'improving' ? 'text-green-600' :
+                                    data.trends.trend_direction === 'declining' ? 'text-red-600' : 'text-gray-600'
+                                }">
+                                    ${data.trends.trend_direction.charAt(0).toUpperCase() + data.trends.trend_direction.slice(1)}
+                                </p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-sm text-gray-600">Projects Analyzed</p>
+                                <p class="text-2xl font-bold">${data.trends.projects_analyzed}</p>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    trendsEl.innerHTML = '<p class="text-gray-500">No trend data available.</p>';
+                }
+            } catch (error) {
+                document.getElementById('trends-data').innerHTML =
+                    `<p class="text-red-500">Error loading trends: ${error.message}</p>`;
+            }
+        }
+
+        // Load initial data
+        loadPatterns();
+    </script>
+</body>
+</html>

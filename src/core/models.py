@@ -6,15 +6,15 @@ including tasks, workers, assignments, and project state tracking.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional
 from datetime import datetime
 from enum import Enum
+from typing import Dict, List, Optional
 
 
 class TaskStatus(Enum):
     """
     Enumeration of possible task states.
-    
+
     Attributes
     ----------
     TODO : str
@@ -26,6 +26,7 @@ class TaskStatus(Enum):
     BLOCKED : str
         Task cannot proceed due to dependencies or issues
     """
+
     TODO = "todo"
     IN_PROGRESS = "in_progress"
     DONE = "done"
@@ -35,7 +36,7 @@ class TaskStatus(Enum):
 class RiskLevel(Enum):
     """
     Enumeration of risk severity levels.
-    
+
     Attributes
     ----------
     LOW : str
@@ -47,6 +48,7 @@ class RiskLevel(Enum):
     CRITICAL : str
         Severe impact threatening project success
     """
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -56,7 +58,7 @@ class RiskLevel(Enum):
 class Priority(Enum):
     """
     Enumeration of task priority levels.
-    
+
     Attributes
     ----------
     LOW : str
@@ -68,6 +70,7 @@ class Priority(Enum):
     URGENT : str
         Requires immediate attention
     """
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -78,7 +81,7 @@ class Priority(Enum):
 class Task:
     """
     Represents a work item in the project management system.
-    
+
     Parameters
     ----------
     id : str
@@ -107,11 +110,17 @@ class Task:
         List of task IDs that must be completed first
     labels : List[str], optional
         Tags for categorizing the task
-    
+    project_id : Optional[str]
+        ID of the project this task belongs to
+    project_name : Optional[str]
+        Name of the project this task belongs to
+
     Notes
     -----
     Dependencies and labels are initialized as empty lists if not provided.
+    Project context fields are optional for backwards compatibility.
     """
+
     id: str
     name: str
     description: str
@@ -125,13 +134,15 @@ class Task:
     actual_hours: float = 0.0
     dependencies: List[str] = field(default_factory=list)
     labels: List[str] = field(default_factory=list)
+    project_id: Optional[str] = None
+    project_name: Optional[str] = None
 
 
 @dataclass
 class ProjectState:
     """
     Represents the current state of the entire project.
-    
+
     Parameters
     ----------
     board_id : str
@@ -157,6 +168,7 @@ class ProjectState:
     last_updated : datetime
         Timestamp of last state update
     """
+
     board_id: str
     project_name: str
     total_tasks: int
@@ -174,7 +186,7 @@ class ProjectState:
 class WorkerStatus:
     """
     Represents the current state and capabilities of a worker agent.
-    
+
     Parameters
     ----------
     worker_id : str
@@ -197,7 +209,7 @@ class WorkerStatus:
         Days of week when worker is available
     performance_score : float, default=1.0
         Performance rating (0.0-2.0, where 1.0 is baseline)
-    
+
     Examples
     --------
     >>> worker = WorkerStatus(
@@ -212,6 +224,7 @@ class WorkerStatus:
     ...     availability={"monday": True, "tuesday": True, ...}
     ... )
     """
+
     worker_id: str
     name: str
     role: str
@@ -228,7 +241,7 @@ class WorkerStatus:
 class TaskAssignment:
     """
     Represents a task assignment to a specific worker.
-    
+
     Parameters
     ----------
     task_id : str
@@ -255,12 +268,13 @@ class TaskAssignment:
         Path to the workspace directory for this task
     forbidden_paths : List[str], optional
         Paths the worker should not access
-    
+
     Notes
     -----
     The workspace_path and forbidden_paths are used for security isolation
     to prevent workers from accessing unauthorized directories.
     """
+
     task_id: str
     task_name: str
     description: str
@@ -279,7 +293,7 @@ class TaskAssignment:
 class BlockerReport:
     """
     Represents a blocker or impediment reported by a worker.
-    
+
     Parameters
     ----------
     task_id : str
@@ -298,7 +312,7 @@ class BlockerReport:
         Description of how the blocker was resolved
     resolved_at : Optional[datetime], default=None
         When the blocker was resolved
-    
+
     Examples
     --------
     >>> blocker = BlockerReport(
@@ -309,6 +323,7 @@ class BlockerReport:
     ...     reported_at=datetime.now()
     ... )
     """
+
     task_id: str
     reporter_id: str
     description: str
@@ -323,7 +338,7 @@ class BlockerReport:
 class ProjectRisk:
     """
     Represents an identified risk to the project.
-    
+
     Parameters
     ----------
     risk_type : str
@@ -340,7 +355,7 @@ class ProjectRisk:
         Plan to reduce or eliminate the risk
     identified_at : datetime
         When the risk was identified
-    
+
     Examples
     --------
     >>> risk = ProjectRisk(
@@ -353,6 +368,7 @@ class ProjectRisk:
     ...     identified_at=datetime.now()
     ... )
     """
+
     risk_type: str
     description: str
     severity: RiskLevel

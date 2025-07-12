@@ -30,7 +30,12 @@ async def create_project(
     Args:
         description: Natural language project description
         project_name: Name for the project board
-        options: Optional configuration (deadline, team_size, tech_stack)
+        options: Optional configuration (deadline, team_size, tech_stack, deployment_target)
+            - deployment_target: "local" (default), "dev", "prod", or "remote"
+                - local: No deployment tasks, just local development
+                - dev: Basic deployment to development environment
+                - prod: Full production deployment with monitoring, scaling
+                - remote: Deploy to cloud/remote servers
         state: Marcus server state instance
 
     Returns:

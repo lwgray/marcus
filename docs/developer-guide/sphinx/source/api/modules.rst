@@ -8,3 +8,4 @@ API Modules
    models
    integrations
    workspace
+   pattern_learning

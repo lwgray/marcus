@@ -60,7 +60,7 @@ Risk and blocker management:
 import asyncio
 import json
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from src.config.settings import Settings
 from src.core.models import (
@@ -72,7 +72,11 @@ from src.core.models import (
     TaskStatus,
 )
 from src.integrations.ai_analysis_engine import AIAnalysisEngine
+from src.integrations.github_mcp_interface import GitHubMCPInterface
 from src.integrations.kanban_client import KanbanClient
+from src.learning.project_pattern_learner import ProjectPatternLearner
+from src.quality.project_quality_assessor import ProjectQualityAssessor
+from src.recommendations.recommendation_engine import ProjectOutcome
 
 
 class ProjectMonitor:
@@ -145,6 +149,19 @@ class ProjectMonitor:
         self.settings = Settings()
         self.kanban_client = KanbanClient()
         self.ai_engine = AIAnalysisEngine()
+
+        # Pattern learning and quality assessment
+        self.pattern_learner = ProjectPatternLearner(ai_engine=self.ai_engine)
+        self.quality_assessor = ProjectQualityAssessor(ai_engine=self.ai_engine)
+
+        # Connect pattern learner to recommendation engine
+        from src.recommendations.recommendation_engine import (
+            PipelineRecommendationEngine,
+        )
+
+        self.recommendation_engine = PipelineRecommendationEngine(
+            pattern_learner=self.pattern_learner
+        )
 
         # State tracking
         self.current_state: Optional[ProjectState] = None
@@ -219,6 +236,9 @@ class ProjectMonitor:
 
                 # Check for issues
                 await self._check_for_issues()
+
+                # Check for project completion
+                await self._check_for_project_completion()
 
                 # Store historical data
                 self._record_metrics()
@@ -347,9 +367,20 @@ class ProjectMonitor:
         # Calculate velocity (tasks completed per week)
         velocity = await self._calculate_velocity(all_tasks)
 
-        # Determine risk level
+        # Determine velocity trend
+        velocity_trend = self._calculate_velocity_trend(velocity)
+
+        # Determine risk level and score
         risk_level = self._assess_risk_level(
             progress_percent, len(overdue_tasks), blocked_tasks, velocity
+        )
+        risk_score = self._calculate_risk_score(
+            progress_percent, len(overdue_tasks), blocked_tasks, velocity
+        )
+
+        # Calculate projected completion date
+        projected_completion = self._calculate_projected_completion(
+            completed_tasks, total_tasks, velocity
         )
 
         # Update current state
@@ -363,7 +394,10 @@ class ProjectMonitor:
             progress_percent=progress_percent,
             overdue_tasks=overdue_tasks,
             team_velocity=velocity,
+            velocity_trend=velocity_trend,
             risk_level=risk_level,
+            risk_score=risk_score,
+            projected_completion_date=projected_completion,
             last_updated=datetime.now(),
         )
 
@@ -991,3 +1025,412 @@ class ProjectMonitor:
         prioritize resolution efforts.
         """
         return [b for b in self.blockers if not b.resolved]
+
+    def _calculate_velocity_trend(self, current_velocity: float) -> str:
+        """Calculate velocity trend based on historical data.
+
+        Parameters
+        ----------
+        current_velocity : float
+            Current team velocity in tasks per week
+
+        Returns
+        -------
+        str
+            Velocity trend: "increasing", "stable", or "decreasing"
+        """
+        if len(self.historical_data) < 3:
+            return "stable"
+
+        # Get last 3 velocity measurements
+        recent_velocities = [
+            data.get("velocity", 0) for data in self.historical_data[-3:]
+        ]
+
+        if not recent_velocities:
+            return "stable"
+
+        avg_recent = sum(recent_velocities) / len(recent_velocities)
+
+        # Determine trend
+        if current_velocity > avg_recent * 1.1:
+            return "increasing"
+        elif current_velocity < avg_recent * 0.9:
+            return "decreasing"
+        else:
+            return "stable"
+
+    def _calculate_risk_score(
+        self, progress: float, overdue_count: int, blocked_count: int, velocity: float
+    ) -> float:
+        """Calculate numeric risk score (0-1).
+
+        Parameters
+        ----------
+        progress : float
+            Project progress percentage
+        overdue_count : int
+            Number of overdue tasks
+        blocked_count : int
+            Number of blocked tasks
+        velocity : float
+            Team velocity
+
+        Returns
+        -------
+        float
+            Risk score between 0 (low risk) and 1 (high risk)
+        """
+        risk_score = 0.0
+
+        # Progress-based risk (0-0.3)
+        if progress < 25:
+            risk_score += 0.3
+        elif progress < 50:
+            risk_score += 0.15
+
+        # Overdue tasks risk (0-0.3)
+        if overdue_count > 5:
+            risk_score += 0.3
+        elif overdue_count > 2:
+            risk_score += 0.2
+        elif overdue_count > 0:
+            risk_score += 0.1
+
+        # Blocked tasks risk (0-0.2)
+        if blocked_count > 3:
+            risk_score += 0.2
+        elif blocked_count > 0:
+            risk_score += 0.1
+
+        # Velocity risk (0-0.2)
+        if velocity < 2:
+            risk_score += 0.2
+        elif velocity < 5:
+            risk_score += 0.1
+
+        return min(risk_score, 1.0)
+
+    def _calculate_projected_completion(
+        self, completed_tasks: int, total_tasks: int, velocity: float
+    ) -> Optional[datetime]:
+        """Calculate projected completion date based on velocity.
+
+        Parameters
+        ----------
+        completed_tasks : int
+            Number of completed tasks
+        total_tasks : int
+            Total number of tasks
+        velocity : float
+            Tasks completed per week
+
+        Returns
+        -------
+        Optional[datetime]
+            Projected completion date, or None if cannot be calculated
+        """
+        if velocity <= 0 or total_tasks <= completed_tasks:
+            return None
+
+        remaining_tasks = total_tasks - completed_tasks
+        weeks_to_complete = remaining_tasks / velocity
+
+        return datetime.now() + timedelta(weeks=weeks_to_complete)
+
+    async def _check_for_project_completion(self) -> None:
+        """Check if project has reached completion criteria.
+
+        Triggers pattern learning and quality assessment when:
+        - Progress >= 95%
+        - No tasks in progress
+        - Less than 5% of tasks are blocked
+        """
+        if not self.current_state:
+            return
+
+        # Check completion criteria
+        completion_threshold = self.settings.get(
+            "pattern_learning.completion_threshold", 95
+        )
+
+        if (
+            self.current_state.progress_percent >= completion_threshold
+            and self.current_state.in_progress_tasks == 0
+            and (
+                self.current_state.blocked_tasks / self.current_state.total_tasks < 0.05
+                if self.current_state.total_tasks > 0
+                else True
+            )
+        ):
+            # Check if we've already processed this completion
+            if hasattr(self, "_last_completion_check"):
+                if (datetime.now() - self._last_completion_check).days < 1:
+                    return
+
+            self._last_completion_check = datetime.now()
+
+            # Trigger completion learning
+            await self._handle_project_completion()
+
+    async def _handle_project_completion(self) -> None:
+        """Handle project completion by triggering learning and assessment."""
+        print(f"🎉 Project '{self.current_state.project_name}' appears to be complete!")
+        print(f"   Progress: {self.current_state.progress_percent:.1f}%")
+        print(
+            f"   Completed Tasks: {self.current_state.completed_tasks}/{self.current_state.total_tasks}"
+        )
+
+        # Get configuration
+        config = self.settings.get("quality_assessment", {})
+        github_owner = config.get("github_owner")
+        github_repo = config.get("github_repo")
+
+        # Create project outcome based on current state
+        project_duration = self._calculate_project_duration()
+
+        # Run quality assessment first to determine success
+        all_tasks = await self._get_all_tasks()
+
+        # Get team members (would need to be tracked or passed in)
+        team_members = []  # This would come from agent tracking
+
+        github_config = (
+            {
+                "github_owner": github_owner,
+                "github_repo": github_repo,
+                "project_start_date": config.get("project_start_date", ""),
+            }
+            if github_owner and github_repo
+            else None
+        )
+
+        # Pass GitHub MCP interface if available
+        if hasattr(self.kanban_client, "mcp_caller") and github_config:
+            github_interface = GitHubMCPInterface(self.kanban_client.mcp_caller)
+            self.quality_assessor.github_mcp = github_interface
+
+        assessment = await self.quality_assessor.assess_project_quality(
+            project_state=self.current_state,
+            tasks=all_tasks,
+            team_members=team_members,
+            github_config=github_config,
+        )
+
+        # Create outcome based on assessment
+        outcome = ProjectOutcome(
+            successful=assessment.is_successful,
+            completion_time_days=project_duration,
+            quality_score=assessment.overall_score,
+            cost=self._estimate_project_cost(project_duration, len(team_members)),
+            failure_reasons=(
+                [] if assessment.is_successful else assessment.improvement_areas[:3]
+            ),
+        )
+
+        # Run pattern learning
+        pattern = await self.pattern_learner.learn_from_project(
+            project_state=self.current_state,
+            tasks=all_tasks,
+            team_members=team_members,
+            outcome=outcome,
+            github_owner=github_owner,
+            github_repo=github_repo,
+        )
+
+        # Log results
+        print(f"\n📊 Quality Assessment Complete:")
+        print(f"   Overall Score: {assessment.overall_score:.1%}")
+        print(f"   Success: {'✅ Yes' if assessment.is_successful else '❌ No'}")
+        print(f"   Confidence: {assessment.success_confidence:.1%}")
+        print(f"\n📈 Key Insights:")
+        for insight in assessment.quality_insights[:3]:
+            print(f"   • {insight}")
+        print(f"\n🎯 Improvement Areas:")
+        for area in assessment.improvement_areas[:3]:
+            print(f"   • {area}")
+        print(f"\n🧠 Pattern Learning Complete:")
+        print(f"   Confidence Score: {pattern.confidence_score:.1%}")
+        print(f"   Patterns in Database: {len(self.pattern_learner.learned_patterns)}")
+
+    def _calculate_project_duration(self) -> int:
+        """Calculate project duration in days from historical data."""
+        if not self.historical_data:
+            return 30  # Default estimate
+
+        # Find first entry
+        first_entry = self.historical_data[0]
+        first_date = datetime.fromisoformat(first_entry["timestamp"])
+
+        return (datetime.now() - first_date).days
+
+    def _estimate_project_cost(self, duration_days: int, team_size: int) -> float:
+        """Estimate project cost based on duration and team size."""
+        # Simple cost model: $1000/day per team member
+        daily_rate = self.settings.get("cost_estimation.daily_rate", 1000)
+        return (
+            duration_days * team_size * daily_rate
+            if team_size > 0
+            else duration_days * daily_rate * 3
+        )
+
+    async def trigger_project_completion_learning(
+        self,
+        team_members: List[Any],
+        outcome: ProjectOutcome,
+        github_owner: Optional[str] = None,
+        github_repo: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Trigger pattern learning and quality assessment when a project completes.
+
+        This method should be called when a project reaches completion to:
+        1. Extract patterns from the completed project
+        2. Run comprehensive quality assessment
+        3. Store insights for future projects
+
+        Parameters
+        ----------
+        team_members : List[Any]
+            List of team members who worked on the project
+        outcome : ProjectOutcome
+            The actual outcome of the project
+        github_owner : Optional[str]
+            GitHub repository owner for code analysis
+        github_repo : Optional[str]
+            GitHub repository name for code analysis
+
+        Returns
+        -------
+        Dict[str, Any]
+            Results containing pattern extraction and quality assessment
+
+        Examples
+        --------
+        >>> outcome = ProjectOutcome(
+        ...     successful=True,
+        ...     completion_time_days=35,
+        ...     quality_score=0.85,
+        ...     cost=50000
+        ... )
+        >>> results = await monitor.trigger_project_completion_learning(
+        ...     team_members, outcome, "owner", "repo"
+        ... )
+        >>> print(f"Quality Grade: {results['quality_assessment']['grade']}")
+
+        Notes
+        -----
+        This method integrates pattern learning with quality assessment to
+        provide comprehensive insights that help improve future projects.
+        """
+        if not self.current_state:
+            await self._collect_project_data()
+
+        # Get all tasks for analysis
+        all_tasks = await self._get_all_tasks()
+
+        # Run pattern learning
+        pattern = await self.pattern_learner.learn_from_project(
+            project_state=self.current_state,
+            tasks=all_tasks,
+            team_members=team_members,
+            outcome=outcome,
+            github_owner=github_owner,
+            github_repo=github_repo,
+        )
+
+        # Run quality assessment
+        github_config = (
+            {
+                "github_owner": github_owner,
+                "github_repo": github_repo,
+                "project_start_date": self.settings.get(
+                    "quality_assessment.project_start_date", ""
+                ),
+            }
+            if github_owner and github_repo
+            else None
+        )
+
+        assessment = await self.quality_assessor.assess_project_quality(
+            project_state=self.current_state,
+            tasks=all_tasks,
+            team_members=team_members,
+            github_config=github_config,
+        )
+
+        # Log completion event with insights
+        print(f"✅ Project '{self.current_state.project_name}' completed:")
+        print(f"   - Quality Score: {assessment.overall_score:.1%}")
+        print(f"   - Pattern Confidence: {pattern.confidence_score:.1%}")
+        print(f"   - Key Success Factors: {', '.join(pattern.success_factors[:3])}")
+
+        return {
+            "pattern_learning": {
+                "success": True,
+                "confidence_score": pattern.confidence_score,
+                "success_factors": pattern.success_factors,
+                "risk_factors": pattern.risk_factors,
+                "patterns_learned": len(self.pattern_learner.learned_patterns),
+            },
+            "quality_assessment": {
+                "score": assessment.overall_score,
+                "is_successful": assessment.is_successful,
+                "insights": assessment.quality_insights,
+                "improvements": assessment.improvement_areas,
+                "code_quality_score": assessment.code_quality_score,
+                "process_quality_score": assessment.process_quality_score,
+                "delivery_quality_score": assessment.delivery_quality_score,
+                "team_quality_score": assessment.team_quality_score,
+            },
+        }
+
+    async def get_pattern_based_recommendations(self) -> List[Dict[str, Any]]:
+        """
+        Get recommendations based on learned patterns for the current project.
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of recommendations with type, message, confidence, and impact
+
+        Examples
+        --------
+        >>> recommendations = await monitor.get_pattern_based_recommendations()
+        >>> for rec in recommendations:
+        ...     print(f"{rec['message']} (confidence: {rec['confidence']:.0%})")
+        """
+        if not self.current_state:
+            await self._collect_project_data()
+
+        # Build project context
+        all_tasks = await self._get_all_tasks()
+
+        project_context = {
+            "total_tasks": self.current_state.total_tasks,
+            "progress": self.current_state.progress_percent,
+            "velocity": self.current_state.team_velocity,
+            "risk_level": self.current_state.risk_level.value,
+            "team_size": 3,  # Would need to track actual team size
+            "blocked_tasks": self.current_state.blocked_tasks,
+        }
+
+        # Get recommendations from recommendation engine
+        recommendations = self.recommendation_engine.get_pattern_based_recommendations(
+            project_context
+        )
+
+        # Convert to dict format
+        rec_dicts = []
+        for rec in recommendations:
+            rec_dict = {
+                "type": rec.type,
+                "message": rec.message,
+                "confidence": rec.confidence,
+                "impact": rec.impact,
+            }
+            if rec.supporting_data:
+                rec_dict["supporting_data"] = rec.supporting_data
+            rec_dicts.append(rec_dict)
+
+        return rec_dicts

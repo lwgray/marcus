@@ -4,24 +4,32 @@ Task-oriented guides for common Marcus operations. Each guide provides step-by-s
 
 ## 🔧 Troubleshooting
 
-- [**Troubleshoot Common Issues**](troubleshoot-common-issues.md)  
+- [**Troubleshoot Common Issues**](troubleshoot-common-issues.md)
   Diagnose and fix the most common Marcus problems quickly
 
 ## 🚀 Deployment Guides
 
-- [**Deploy with Docker**](deploy-with-docker.md)  
+- [**Deploy with Docker**](deploy-with-docker.md)
   Deploy Marcus using Docker for consistent, reproducible environments
 
-- [**Deploy with Python**](deploy-with-python.md)  
+- [**Deploy with Python**](deploy-with-python.md)
   Deploy Marcus directly using Python for development or lightweight production
 
-- [**Deploy on Kubernetes**](deploy-on-kubernetes.md)  
+- [**Deploy on Kubernetes**](deploy-on-kubernetes.md)
   Deploy Marcus on Kubernetes for scalable, production-grade environments
 
 ## 🔒 Security
 
-- [**Security Best Practices**](security-best-practices.md)  
+- [**Security Best Practices**](security-best-practices.md)
   Implement security best practices for Marcus in production
+
+## 🧠 Advanced Features
+
+- [**Use Pattern Learning**](use-pattern-learning.md)
+  Leverage automatic pattern learning for better project recommendations and risk assessment
+
+- [**Use Pipeline Enhancements**](use-pipeline-enhancements.md)
+  Advanced pipeline features for complex workflows
 
 ## 📋 Quick Reference
 
@@ -43,6 +51,8 @@ Which deployment method should I use?
 | Python Deployment | 5-15 min | Easy |
 | Kubernetes Deployment | 30-45 min | Hard |
 | Security Setup | 30-60 min | Medium |
+| Pattern Learning | 5-10 min | Easy |
+| Pipeline Enhancements | 15-30 min | Medium |
 
 ## 🎯 Common Tasks
 

@@ -262,6 +262,10 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             technology_constraints=options.get("tech_stack", []),
         )
 
+        # Add deployment target to constraints for task generation
+        deployment_target = options.get("deployment_target", "local")
+        constraints.deployment_target = deployment_target
+
         if "deadline" in options:
             try:
                 constraints.deadline = datetime.fromisoformat(options["deadline"])
@@ -440,9 +444,9 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
                 name=task_info["name"],
                 description=task_info.get("description", ""),
                 status=TaskStatus.TODO,
-                priority=Priority.HIGH
-                if task_info.get("critical")
-                else Priority.MEDIUM,
+                priority=(
+                    Priority.HIGH if task_info.get("critical") else Priority.MEDIUM
+                ),
                 labels=task_info.get("labels", ["feature"]),
                 assigned_to=None,
                 created_at=datetime.now(),
@@ -535,9 +539,9 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
         return {
             "suggested_phase": phase,
             "confidence": confidence,
-            "project_maturity": len(completed_tasks) / len(existing_tasks)
-            if existing_tasks
-            else 0,
+            "project_maturity": (
+                len(completed_tasks) / len(existing_tasks) if existing_tasks else 0
+            ),
         }
 
     def _generate_fallback_tasks(self, feature_description: str) -> Dict[str, Any]:

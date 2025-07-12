@@ -1,0 +1,105 @@
+{
+  "patterns": [
+    {
+      "project_id": "test-board-123",
+      "project_name": "Test Project",
+      "outcome": {
+        "successful": false,
+        "completion_time_days": 45,
+        "quality_score": 0.4,
+        "cost": 75000.0,
+        "failure_reasons": [
+          "Budget overrun",
+          "Quality issues",
+          "Missed deadlines"
+        ]
+      },
+      "quality_metrics": {
+        "board_quality_score": 0.82,
+        "description_quality": 1.0,
+        "label_quality": 1.0,
+        "estimate_accuracy": 0.75,
+        "completion_rate": 0.9,
+        "on_time_delivery": 1.0,
+        "rework_rate": 0.1,
+        "blocker_rate": 0.1
+      },
+      "team_composition": {
+        "team_size": 3,
+        "roles": {
+          "Backend Developer": 1,
+          "Frontend Developer": 1,
+          "Full Stack Developer": 1
+        },
+        "skill_coverage": {
+          "Python": 2,
+          "FastAPI": 1,
+          "React": 2,
+          "TypeScript": 1,
+          "Docker": 1
+        },
+        "experience_distribution": {
+          "senior": 0,
+          "mid": 3,
+          "junior": 0
+        }
+      },
+      "velocity_pattern": {
+        "start": 1.3333333333333333,
+        "early": 1.3333333333333333,
+        "middle": 1.3333333333333333,
+        "end": 1.2
+      },
+      "task_patterns": {
+        "task_size_distribution": {
+          "small": 0,
+          "medium": 0,
+          "large": 20,
+          "xlarge": 0
+        },
+        "dependency_depth": 19,
+        "parallel_work_ratio": 0.05,
+        "task_type_distribution": {
+          "untyped": 20
+        },
+        "priority_distribution": {
+          "medium": 20
+        },
+        "phase_structure": {
+          "unphased": {
+            "task_count": 20,
+            "completion_rate": 0.9,
+            "avg_task_size": 8.0
+          }
+        }
+      },
+      "blocker_patterns": {
+        "blocker_frequency": 0.0,
+        "blocker_categories": {},
+        "blocker_timing": {
+          "q1": 0,
+          "q2": 0,
+          "q3": 0,
+          "q4": 0
+        },
+        "recurring_blockers": [
+          "Waiting for API documentation",
+          "Database schema changes",
+          "External service integration"
+        ]
+      },
+      "technology_stack": [],
+      "implementation_patterns": {},
+      "success_factors": [
+        "Strong team collaboration",
+        "Clear requirements"
+      ],
+      "risk_factors": [
+        "Technical debt",
+        "Scope creep"
+      ],
+      "extracted_at": "2025-07-10T20:59:08.288706",
+      "confidence_score": 0.5549999999999999
+    }
+  ]
+}
