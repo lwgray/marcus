@@ -7,6 +7,7 @@ This module contains tools for system monitoring and health checks:
 """
 
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict
 
 from src.logging.agent_events import log_agent_event
@@ -68,8 +69,8 @@ async def ping(echo: str, state: Any) -> Dict[str, Any]:
         "server_info": {
             "instance_id": getattr(state, "instance_id", "unknown"),
             "log_dir": (
-                str(getattr(state, "realtime_log", {}).name.parent)
-                if hasattr(state, "realtime_log")
+                str(Path(state.realtime_log.name).parent)
+                if hasattr(state, "realtime_log") and hasattr(state.realtime_log, "name")
                 else None
             ),
         },
