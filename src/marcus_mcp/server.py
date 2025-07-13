@@ -38,7 +38,7 @@ from src.core.models import (
     WorkerStatus,
 )
 from src.core.project_context_manager import ProjectContextManager
-from src.core.project_registry import ProjectRegistry
+from src.core.project_registry import ProjectRegistry, ProjectConfig
 from src.core.service_registry import register_marcus_service, unregister_marcus_service
 from src.cost_tracking.ai_usage_middleware import ai_usage_middleware
 from src.cost_tracking.token_tracker import token_tracker
@@ -292,6 +292,38 @@ class MarcusServer:
 
             # Migrate to multi-project if needed
             await self._migrate_to_multi_project()
+        
+        # If still no kanban client after initialization, check if we need to sync config with registry
+        if not self.kanban_client and self.config.is_multi_project_mode():
+            # The config might have been migrated at runtime but not synced to registry
+            active_project_id = self.config.get_active_project_id()
+            if active_project_id:
+                # Check if project exists in registry
+                project = await self.project_registry.get_project(active_project_id)
+                if not project:
+                    # Project is in config but not in registry - sync it
+                    projects_config = self.config.get_projects_config()
+                    if active_project_id in projects_config:
+                        proj_data = projects_config[active_project_id]
+                        project = ProjectConfig(
+                            id=active_project_id,
+                            name=proj_data.get("name", "Default Project"),
+                            provider=proj_data.get("provider", "planka"),
+                            provider_config=proj_data.get("config", {}),
+                            tags=proj_data.get("tags", ["default"]),
+                        )
+                        await self.project_registry.add_project(project)
+                        await self.project_registry.set_active_project(active_project_id)
+                        
+                        # Now switch to the project
+                        await self.project_manager.switch_project(active_project_id)
+                        self.kanban_client = await self.project_manager.get_kanban_client()
+                        
+                        if self.kanban_client:
+                            print(
+                                f"✅ Synced and activated project: {project.name} ({project.provider})",
+                                file=sys.stderr,
+                            )
 
         # Initialize event visualizer if available
         if self.event_visualizer:
