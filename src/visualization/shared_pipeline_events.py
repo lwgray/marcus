@@ -57,6 +57,10 @@ class SharedPipelineVisualizer:
         """End a pipeline flow"""
         self.log_event("flow_end", {"flow_id": flow_id, "result": result or {}})
 
+    def complete_flow(self, flow_id: str, result: Dict[str, Any] = None):
+        """Complete a pipeline flow (alias for end_flow for compatibility)"""
+        self.end_flow(flow_id, result)
+
     def add_event(self, flow_id: str, stage: Any, event_type: str = "info", 
                   data: Optional[Dict[str, Any]] = None, 
                   duration_ms: Optional[int] = None,
