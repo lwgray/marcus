@@ -142,7 +142,7 @@ class ProjectContextManager:
                 decision=f"Switching project from '{previous_project.name if previous_project else 'None'}' to '{project.name}'",
                 rationale="User requested project switch",
                 confidence_score=1.0,
-                metadata={
+                decision_factors={
                     "previous_project_id": previous_project_id,
                     "previous_project_name": (
                         previous_project.name if previous_project else None
