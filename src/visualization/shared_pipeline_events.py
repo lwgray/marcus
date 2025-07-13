@@ -59,7 +59,10 @@ class SharedPipelineVisualizer:
 
     def add_event(self, flow_id: str, stage: Any, event_type: str = "info", 
                   data: Optional[Dict[str, Any]] = None, 
-                  duration_ms: Optional[int] = None) -> None:
+                  duration_ms: Optional[int] = None,
+                  status: Optional[str] = None,
+                  error: Optional[str] = None,
+                  **kwargs) -> None:
         """Add an event to the pipeline flow (compatibility method)"""
         event_data = {
             "flow_id": flow_id,
@@ -70,6 +73,12 @@ class SharedPipelineVisualizer:
             event_data.update(data)
         if duration_ms is not None:
             event_data["duration_ms"] = duration_ms
+        if status is not None:
+            event_data["status"] = status
+        if error is not None:
+            event_data["error"] = error
+        # Include any additional kwargs
+        event_data.update(kwargs)
         self.log_event("pipeline_event", event_data)
 
 
