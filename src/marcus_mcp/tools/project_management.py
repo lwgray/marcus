@@ -55,9 +55,8 @@ async def list_projects(server, arguments: Dict[str, Any]) -> List[Dict[str, Any
 
     # Log the query
     conversation_logger.log_pm_thinking(
-        thought=f"User queried projects list",
-        reasoning=f"Found {len(result)} projects",
-        metadata={
+        thought=f"User queried projects list - Found {len(result)} projects",
+        context={
             "filter_tags": filter_tags,
             "provider": provider,
             "project_count": len(result),

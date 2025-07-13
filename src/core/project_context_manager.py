@@ -253,10 +253,8 @@ class ProjectContextManager:
 
         # Log context creation
         conversation_logger.log_pm_thinking(
-            thought=f"Creating new context for project '{project.name}'",
-            reasoning=f"No existing context found for project {project.id}",
-            confidence_score=1.0,
-            metadata={"project_id": project.id, "provider": project.provider},
+            thought=f"Creating new context for project '{project.name}' - No existing context found for project {project.id}",
+            context={"project_id": project.id, "provider": project.provider},
         )
 
         # Create new context
