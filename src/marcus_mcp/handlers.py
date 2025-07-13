@@ -1,5 +1,5 @@
 """
-MCP Tool Registration and Handlers
+MCP Tool Registration and Handlers.
 
 This module provides the tool registration and handling functionality
 for the Marcus MCP server, organizing all tool definitions and handlers
@@ -38,7 +38,7 @@ from .tools.context import (  # Context tools
 #     get_similar_projects,
 #     learn_from_completed_project,
 # )
-from .tools.pipeline import (  # Pipeline replay tools; What-if analysis tools; Comparison tools; Monitoring tools; Recommendation tools
+from .tools.pipeline import (  # Pipeline tools
     compare_pipelines,
     compare_what_if_scenarios,
     find_similar_flows,
@@ -71,7 +71,8 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
     Args:
         role: User role - "agent" for coding agents, "human" for full access
 
-    Returns:
+    Returns
+    -------
         List of Tool objects with schemas for Marcus tools based on role
     """
     # Core agent tools available to all coding agents
@@ -220,7 +221,10 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                     "task_id": {"type": "string", "description": "Current task ID"},
                     "decision": {
                         "type": "string",
-                        "description": "Decision description. Format: 'I chose X because Y. This affects Z.'",
+                        "description": (
+                            "Decision description. Format: "
+                            "'I chose X because Y. This affects Z.'"
+                        ),
                     },
                 },
                 "required": ["agent_id", "task_id", "decision"],
@@ -228,7 +232,10 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
         ),
         types.Tool(
             name="get_task_context",
-            description="Get the full context for a specific task including dependencies and decisions",
+            description=(
+                "Get the full context for a specific task including "
+                "dependencies and decisions"
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -327,7 +334,7 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                     "make_active": {
                         "type": "boolean",
                         "description": "Switch to this project after creation",
-                        "default": true,
+                        "default": True,
                     },
                 },
                 "required": ["name", "provider"],
@@ -346,7 +353,7 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                     "confirm": {
                         "type": "boolean",
                         "description": "Confirm deletion",
-                        "default": false,
+                        "default": False,
                     },
                 },
                 "required": ["project_id"],
@@ -385,7 +392,9 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                 "properties": {
                     "description": {
                         "type": "string",
-                        "description": "Natural language project description or requirements",
+                        "description": (
+                        "Natural language project description or requirements"
+                    ),
                     },
                     "project_name": {
                         "type": "string",
@@ -411,7 +420,10 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                             },
                             "deployment_target": {
                                 "type": "string",
-                                "description": "Deployment environment: local (default), dev, prod, remote",
+                                "description": (
+                                    "Deployment environment: local (default), "
+                                    "dev, prod, remote"
+                                ),
                                 "enum": ["local", "dev", "prod", "remote"],
                                 "default": "local",
                             },
@@ -429,7 +441,9 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                 "properties": {
                     "feature_description": {
                         "type": "string",
-                        "description": "Natural language description of the feature to add",
+                        "description": (
+                            "Natural language description of the feature to add"
+                        ),
                     },
                     "integration_point": {
                         "type": "string",
@@ -627,7 +641,8 @@ async def handle_tool_call(
         arguments: Tool arguments
         state: Marcus server state instance
 
-    Returns:
+    Returns
+    -------
         List of MCP content objects with tool results
     """
     if arguments is None:
