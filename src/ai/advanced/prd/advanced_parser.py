@@ -484,8 +484,8 @@ class AdvancedPRDParser:
 
             hierarchy[epic_id] = [task["id"] for task in epic_tasks]
 
-        # Add non-functional requirement tasks (skip for MVP projects)
-        if project_size != "mvp":
+        # Add non-functional requirement tasks (skip for prototype projects)
+        if project_size not in ["prototype", "mvp"]:
             nfr_epic_id = "epic_non_functional"
             # Filter NFRs based on project size
             filtered_nfrs = self._filter_nfrs_by_size(
@@ -503,8 +503,8 @@ class AdvancedPRDParser:
 
             hierarchy[nfr_epic_id] = [task["id"] for task in nfr_tasks]
 
-        # Add infrastructure and setup tasks (minimal for MVP/small projects)
-        if project_size not in ["mvp"]:  # MVP projects skip infrastructure
+        # Add infrastructure and setup tasks (minimal for prototype projects)
+        if project_size not in ["prototype", "mvp"]:  # Prototype projects skip infrastructure
             infra_epic_id = "epic_infrastructure"
             infra_tasks = await self._create_infrastructure_tasks(analysis, constraints, project_size)
 
@@ -912,16 +912,16 @@ class AdvancedPRDParser:
             "type": "setup",
         })
         
-        # Add CI/CD for medium+ projects
-        if project_size not in ["mvp", "small"]:
+        # Add CI/CD for standard+ projects
+        if project_size in ["standard", "medium", "large", "enterprise"]:
             tasks.append({
                 "id": "infra_ci_cd", 
                 "name": "Configure CI/CD pipeline",
                 "type": "infrastructure",
             })
         
-        # Add deployment infrastructure for large+ projects
-        if project_size in ["large", "enterprise"]:
+        # Add deployment infrastructure only for enterprise projects
+        if project_size in ["enterprise", "large"]:
             tasks.append({
                 "id": "infra_deploy",
                 "name": "Set up deployment infrastructure", 
@@ -1848,36 +1848,33 @@ class AdvancedPRDParser:
         self, requirements: List[Dict], project_size: str, team_size: int
     ) -> List[Dict]:
         """Filter functional requirements based on project size and team capacity"""
-        if project_size == "mvp":
-            # For MVP, only keep the most essential 2-3 requirements
-            # Prioritize based on requirement priority or take first few
+        # Map to new 3-option system (with legacy support)
+        if project_size in ["prototype", "mvp"]:
+            # Prototype: only keep the most essential 1-2 requirements
             return requirements[:2]
-        elif project_size == "small":
-            # Small projects: limit to 3-4 core features
-            return requirements[:4]
-        elif project_size == "medium":
-            # Medium projects: limit based on team size
-            max_reqs = min(len(requirements), team_size * 2)
+        elif project_size in ["standard", "small", "medium"]:
+            # Standard: limit based on team size (typically 3-5 features)
+            max_reqs = min(len(requirements), max(3, team_size))
             return requirements[:max_reqs]
         else:
-            # Large/Enterprise: include all requirements
+            # Enterprise/Large: include all requirements
             return requirements
 
     def _filter_nfrs_by_size(
         self, nfrs: List[Dict], project_size: str
     ) -> List[Dict]:
         """Filter non-functional requirements based on project size"""
-        if project_size in ["mvp", "small"]:
-            # Only keep basic security for small projects
+        if project_size in ["prototype", "mvp", "small"]:
+            # Prototype: Skip NFRs entirely or just basic auth
             essential_nfrs = []
             for nfr in nfrs:
                 nfr_type = nfr.get("type", "").lower()
-                if "security" in nfr_type or "auth" in nfr_type:
+                if "auth" in nfr_type:
                     essential_nfrs.append(nfr)
-            return essential_nfrs[:1]  # Maximum 1 NFR for small projects
-        elif project_size == "medium":
-            # Keep 2-3 most important NFRs
-            return nfrs[:3]
+            return essential_nfrs[:1]  # Maximum 1 NFR for prototypes
+        elif project_size in ["standard", "medium"]:
+            # Standard: Keep 2-3 most important NFRs (security, performance)
+            return nfrs[:2]
         else:
-            # Large/Enterprise: include all NFRs
+            # Enterprise: include all NFRs
             return nfrs

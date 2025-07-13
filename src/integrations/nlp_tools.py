@@ -256,31 +256,49 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         if not options:
             return ProjectConstraints()
 
-        # Get project size and map to appropriate defaults
-        project_size = options.get("project_size", "medium")
+        # Get complexity and deployment options (backwards compatible)
+        complexity = options.get("complexity", options.get("project_size", "standard"))
+        deployment = options.get("deployment", options.get("deployment_target", "none"))
         
-        # Map project size to team size defaults (user can still override)
-        size_defaults = {
+        # Map new complexity levels to appropriate defaults
+        complexity_defaults = {
+            "prototype": {"team_size": 1, "deployment_target": "local"},
+            "standard": {"team_size": 3, "deployment_target": "dev"},
+            "enterprise": {"team_size": 5, "deployment_target": "prod"},
+            # Legacy mappings for backwards compatibility
             "mvp": {"team_size": 1, "deployment_target": "local"},
-            "small": {"team_size": 2, "deployment_target": "local"}, 
+            "small": {"team_size": 2, "deployment_target": "local"},
             "medium": {"team_size": 3, "deployment_target": "dev"},
             "large": {"team_size": 5, "deployment_target": "prod"},
-            "enterprise": {"team_size": 8, "deployment_target": "remote"}
+            "enterprise": {"team_size": 5, "deployment_target": "prod"}
         }
         
-        defaults = size_defaults.get(project_size, size_defaults["medium"])
+        # Map new deployment options to legacy deployment_target values
+        deployment_mapping = {
+            "none": "local",
+            "internal": "dev", 
+            "production": "prod",
+            # Keep legacy values for backwards compatibility
+            "local": "local",
+            "dev": "dev",
+            "prod": "prod",
+            "remote": "prod"
+        }
+        
+        defaults = complexity_defaults.get(complexity, complexity_defaults["standard"])
+        mapped_deployment = deployment_mapping.get(deployment, "local")
         
         constraints = ProjectConstraints(
             team_size=options.get("team_size", defaults["team_size"]),
             available_skills=options.get("tech_stack", []),
             technology_constraints=options.get("tech_stack", []),
-            deployment_target=options.get("deployment_target", defaults["deployment_target"])
+            deployment_target=mapped_deployment
         )
 
-        # Pass project size info via quality_requirements for parser to use
+        # Pass complexity info via quality_requirements for parser to use
         constraints.quality_requirements = {
-            "project_size": project_size,
-            "complexity": "simple" if project_size == "mvp" else "moderate"
+            "project_size": complexity,  # Parser still uses project_size internally
+            "complexity": "simple" if complexity in ["prototype", "mvp"] else "moderate"
         }
 
         if "deadline" in options:

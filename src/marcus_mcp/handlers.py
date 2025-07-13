@@ -418,23 +418,23 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                                 "items": {"type": "string"},
                                 "description": "Technologies to use",
                             },
-                            "deployment_target": {
+                            "deployment": {
                                 "type": "string",
                                 "description": (
-                                    "Deployment environment: local (default), "
-                                    "dev, prod, remote"
+                                    "Deployment scope: none (local only), "
+                                    "internal (team/staging), production (customer-facing)"
                                 ),
-                                "enum": ["local", "dev", "prod", "remote"],
-                                "default": "local",
+                                "enum": ["none", "internal", "production"],
+                                "default": "none",
                             },
-                            "project_size": {
+                            "complexity": {
                                 "type": "string",
                                 "description": (
-                                    "Project complexity level: mvp (minimal tasks), "
-                                    "small, medium (default), large, enterprise"
+                                    "Project complexity: prototype (3-8 tasks), "
+                                    "standard (10-20 tasks), enterprise (25+ tasks)"
                                 ),
-                                "enum": ["mvp", "small", "medium", "large", "enterprise"],
-                                "default": "medium",
+                                "enum": ["prototype", "standard", "enterprise"],
+                                "default": "standard",
                             },
                         },
                     },
