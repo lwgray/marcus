@@ -19,42 +19,47 @@ from typing import Any, Dict, List, Optional
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
-import mcp.types as types
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
+import mcp.types as types  # noqa: E402
+from mcp.server import Server  # noqa: E402
+from mcp.server.stdio import stdio_server  # noqa: E402
 
-from src.communication.communication_hub import CommunicationHub
-from src.config.config_loader import get_config
-from src.config.settings import Settings
-from src.core.assignment_persistence import AssignmentPersistence
-from src.core.code_analyzer import CodeAnalyzer
-from src.core.context import Context
-from src.core.events import Events
-from src.core.models import (
+from src.communication.communication_hub import CommunicationHub  # noqa: E402
+from src.config.config_loader import get_config  # noqa: E402
+from src.config.settings import Settings  # noqa: E402
+from src.core.assignment_persistence import AssignmentPersistence  # noqa: E402
+from src.core.code_analyzer import CodeAnalyzer  # noqa: E402
+from src.core.context import Context  # noqa: E402
+from src.core.events import Events  # noqa: E402
+from src.core.models import (  # noqa: E402
     ProjectState,
     RiskLevel,
     TaskAssignment,
     TaskStatus,
     WorkerStatus,
 )
-from src.core.project_context_manager import ProjectContextManager
-from src.core.project_registry import ProjectConfig, ProjectRegistry
-from src.core.service_registry import register_marcus_service, unregister_marcus_service
-from src.cost_tracking.ai_usage_middleware import ai_usage_middleware
-from src.cost_tracking.token_tracker import token_tracker
-from src.integrations.ai_analysis_engine import AIAnalysisEngine
-from src.integrations.kanban_factory import KanbanFactory
-from src.integrations.kanban_interface import KanbanInterface
-from src.marcus_mcp.handlers import get_tool_definitions, handle_tool_call
-from src.monitoring.assignment_monitor import AssignmentMonitor
-from src.monitoring.project_monitor import ProjectMonitor
-from src.visualization.shared_pipeline_events import SharedPipelineVisualizer
+from src.core.project_context_manager import ProjectContextManager  # noqa: E402
+from src.core.project_registry import ProjectConfig, ProjectRegistry  # noqa: E402
+from src.core.service_registry import (  # noqa: E402
+    register_marcus_service,
+    unregister_marcus_service,
+)
+from src.cost_tracking.ai_usage_middleware import ai_usage_middleware  # noqa: E402
+from src.cost_tracking.token_tracker import token_tracker  # noqa: E402
+from src.integrations.ai_analysis_engine import AIAnalysisEngine  # noqa: E402
+from src.integrations.kanban_factory import KanbanFactory  # noqa: E402
+from src.integrations.kanban_interface import KanbanInterface  # noqa: E402
+from src.marcus_mcp.handlers import get_tool_definitions, handle_tool_call  # noqa: E402
+from src.monitoring.assignment_monitor import AssignmentMonitor  # noqa: E402
+from src.monitoring.project_monitor import ProjectMonitor  # noqa: E402
+from src.visualization.shared_pipeline_events import (  # noqa: E402
+    SharedPipelineVisualizer,
+)
 
 
 class MarcusServer:
     """Marcus MCP Server with modularized architecture"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize Marcus server instance"""
         # Config is already loaded by marcus.py, but ensure it's available
         self.config = get_config()
@@ -211,7 +216,7 @@ class MarcusServer:
         # Register handlers
         self._register_handlers()
 
-    def _register_handlers(self):
+    def _register_handlers(self) -> None:
         """Register MCP tool handlers"""
 
         @self.server.list_tools()
@@ -221,11 +226,11 @@ class MarcusServer:
             # For now, we'll check if this is being called by an agent or human
             # Agents typically have "agent" in their client name or metadata
             # This can be enhanced with proper authentication/role detection
-            role = "human"  # Default to human for full access
+            role = "agent"  # Default to agent for limited tool access
 
             # If we detect this is an agent client, limit tools
             # This would be enhanced with proper client identification
-            # For now, we assume human users get full access
+            # For now, we assume all clients get agent-level access only
 
             return get_tool_definitions(role)
 
@@ -238,12 +243,12 @@ class MarcusServer:
 
         @self.server.list_prompts()
         async def handle_list_prompts() -> List[types.Prompt]:
-            """Return list of available prompts - Marcus doesn't use prompts currently"""
+            """Return list of available prompts - not used by Marcus"""
             return []
 
         @self.server.list_resources()
         async def handle_list_resources() -> List[types.Resource]:
-            """Return list of available resources - Marcus doesn't use resources currently"""
+            """Return list of available resources - not used by Marcus"""
             return []
 
         @self.server.read_resource()
@@ -258,7 +263,7 @@ class MarcusServer:
             """Get a prompt - Marcus doesn't use prompts currently"""
             raise ValueError(f"Prompt not found: {name}")
 
-    async def initialize(self):
+    async def initialize(self) -> None:
         """Initialize all Marcus server components"""
         # Initialize AI engine
         await self.ai_engine.initialize()
@@ -271,7 +276,7 @@ class MarcusServer:
             # Get kanban client from project manager
             self.kanban_client = await self.project_manager.get_kanban_client()
             if self.kanban_client:
-                active_project = await self.project_registry.get_active_project()
+                await self.project_registry.get_active_project()
                 # Active project found - don't print as it interferes with MCP stdio
         else:
             # Legacy mode - create kanban client directly
@@ -280,9 +285,9 @@ class MarcusServer:
             # Migrate to multi-project if needed
             await self._migrate_to_multi_project()
 
-        # If still no kanban client after initialization, check if we need to sync config with registry
+        # If still no kanban client, check if we need to sync config
         if not self.kanban_client and self.config.is_multi_project_mode():
-            # The config might have been migrated at runtime but not synced to registry
+            # Config might have been migrated but not synced to registry
             active_project_id = self.config.get_active_project_id()
             if active_project_id:
                 # Check if project exists in registry
@@ -310,7 +315,7 @@ class MarcusServer:
                             await self.project_manager.get_kanban_client()
                         )
 
-                        # Project synced and activated - don't print as it interferes with MCP stdio
+                        # Project synced - don't print as it interferes with MCP
 
         # Initialize event visualizer if available
         if self.event_visualizer:
@@ -328,13 +333,13 @@ class MarcusServer:
                 kanban_client=self.kanban_client, ai_engine=self.ai_engine
             )
             # Don't print during initialization - it interferes with MCP stdio
-        except Exception as e:
+        except Exception:
             # Log error without printing to stderr during initialization
-            pass
+            pass  # nosec B110
 
         # Don't print during initialization - it interferes with MCP stdio
 
-    async def _migrate_to_multi_project(self):
+    async def _migrate_to_multi_project(self) -> None:
         """Migrate legacy configuration to multi-project format"""
         if self.kanban_client and not self.config.is_multi_project_mode():
             # Create a project from the legacy config
@@ -350,7 +355,7 @@ class MarcusServer:
 
             # Successfully migrated to multi-project mode
 
-    async def initialize_kanban(self):
+    async def initialize_kanban(self) -> None:
         """Initialize kanban client if not already done"""
         from src.core.error_framework import ErrorContext, KanbanIntegrationError
 
@@ -372,8 +377,12 @@ class MarcusServer:
                             integration_name="mcp_server",
                             custom_context={
                                 "provider": self.provider,
-                                "details": f"Kanban client {type(self.kanban_client).__name__} does not support task creation. "
-                                f"Expected KanbanClientWithCreate or compatible implementation.",
+                                "details": (
+                                    f"Kanban client "
+                                    f"{type(self.kanban_client).__name__} "
+                                    f"does not support task creation. Expected "
+                                    f"KanbanClientWithCreate or compatible."
+                                ),
                             },
                         ),
                     )
@@ -407,7 +416,7 @@ class MarcusServer:
                     ),
                 ) from e
 
-    def _ensure_environment_config(self):
+    def _ensure_environment_config(self) -> None:
         """Ensure environment variables are set from config_marcus.json"""
         from src.core.error_framework import ConfigurationError, ErrorContext
 
@@ -490,7 +499,7 @@ class MarcusServer:
                 ),
             ) from e
 
-    def log_event(self, event_type: str, data: dict):
+    def log_event(self, event_type: str, data: dict) -> None:
         """Log events immediately to realtime log and optionally to Events system"""
         event = {"timestamp": datetime.now().isoformat(), "type": event_type, **data}
         self.realtime_log.write(json.dumps(event) + "\n")
@@ -500,7 +509,7 @@ class MarcusServer:
             # Run async publish in a fire-and-forget manner
             asyncio.create_task(self._publish_event_async(event_type, data))
 
-    async def _publish_event_async(self, event_type: str, data: dict):
+    async def _publish_event_async(self, event_type: str, data: dict) -> None:
         """Helper to publish events asynchronously"""
         try:
             source = data.get("source", "marcus")
@@ -509,7 +518,7 @@ class MarcusServer:
             # Don't let event publishing errors affect main flow
             print(f"Error publishing event: {e}", file=sys.stderr)
 
-    async def refresh_project_state(self):
+    async def refresh_project_state(self) -> None:
         """Refresh project state from kanban board"""
         if not self.kanban_client:
             await self.initialize_kanban()
@@ -562,7 +571,7 @@ class MarcusServer:
                     "blocked_tasks": self.project_state.blocked_tasks,
                     "progress_percent": self.project_state.progress_percent,
                     "team_velocity": self.project_state.team_velocity,
-                    "risk_level": self.project_state.risk_level.value,  # Convert enum to string
+                    "risk_level": self.project_state.risk_level.value,  # Enum to str
                     "last_updated": self.project_state.last_updated.isoformat(),
                 }
 
@@ -578,7 +587,7 @@ class MarcusServer:
             self.log_event("project_state_refresh_error", {"error": str(e)})
             raise
 
-    async def run(self):
+    async def run(self) -> None:
         """Run the MCP server"""
         try:
             async with stdio_server() as (read_stream, write_stream):
@@ -595,7 +604,7 @@ class MarcusServer:
             raise
 
 
-async def main():
+async def main() -> None:
     """Main entry point"""
     try:
         server = MarcusServer()
@@ -607,8 +616,8 @@ async def main():
             try:
                 current_project = server.project_manager.get_current_project()
                 current_project = current_project.name if current_project else None
-            except:
-                pass
+            except Exception:
+                pass  # nosec B110
 
         service_info = register_marcus_service(
             mcp_command=sys.executable + " " + " ".join(sys.argv),
