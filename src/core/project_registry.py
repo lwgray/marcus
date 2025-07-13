@@ -37,14 +37,18 @@ class ProjectConfig:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ProjectConfig":
         """Create from dictionary"""
-        data = data.copy()
-        # Remove persistence metadata fields
-        data.pop("_key", None)
-        data.pop("_collection", None)
+        # Only keep fields that ProjectConfig expects
+        expected_fields = {
+            "id", "name", "provider", "provider_config", 
+            "created_at", "last_used", "tags"
+        }
+        filtered_data = {k: v for k, v in data.items() if k in expected_fields}
+        
         # Convert datetime strings
-        data["created_at"] = datetime.fromisoformat(data["created_at"])
-        data["last_used"] = datetime.fromisoformat(data["last_used"])
-        return cls(**data)
+        filtered_data["created_at"] = datetime.fromisoformat(filtered_data["created_at"])
+        filtered_data["last_used"] = datetime.fromisoformat(filtered_data["last_used"])
+        
+        return cls(**filtered_data)
 
 
 class ProjectRegistry:
