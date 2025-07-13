@@ -57,9 +57,32 @@ class SharedPipelineVisualizer:
         """End a pipeline flow"""
         self.log_event("flow_end", {"flow_id": flow_id, "result": result or {}})
 
+    def add_event(self, flow_id: str, stage: Any, event_type: str = "info", 
+                  data: Optional[Dict[str, Any]] = None, 
+                  duration_ms: Optional[int] = None) -> None:
+        """Add an event to the pipeline flow (compatibility method)"""
+        event_data = {
+            "flow_id": flow_id,
+            "stage": getattr(stage, "name", str(stage)),
+            "event_type": event_type,
+        }
+        if data:
+            event_data.update(data)
+        if duration_ms is not None:
+            event_data["duration_ms"] = duration_ms
+        self.log_event("pipeline_event", event_data)
+
 
 class PipelineStage:
     """Minimal stub for pipeline stage representation"""
+    
+    # Stage constants for compatibility
+    MCP_REQUEST = "mcp_request"
+    AI_ANALYSIS = "ai_analysis"
+    PRD_PARSING = "prd_parsing"
+    TASK_GENERATION = "task_generation"
+    TASK_CREATION = "task_creation"
+    TASK_COMPLETION = "task_completion"
 
     def __init__(self, name: str, stage_type: str = "general"):
         self.name = name
