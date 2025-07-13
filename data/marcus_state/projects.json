@@ -1,0 +1,22 @@
+{
+  "498bb7c4-4273-43c2-9f31-83f1355d558d": {
+    "id": "498bb7c4-4273-43c2-9f31-83f1355d558d",
+    "name": "Task Master Test",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": "1533678301472621705",
+      "board_id": "1533859887128249584"
+    },
+    "created_at": "2025-07-12T20:45:51.138255",
+    "last_used": "2025-07-12T20:45:51.150912",
+    "tags": [
+      "default",
+      "migrated"
+    ],
+    "_stored_at": "2025-07-12T20:45:51.151323"
+  },
+  "active_project": {
+    "project_id": "498bb7c4-4273-43c2-9f31-83f1355d558d",
+    "_stored_at": "2025-07-12T20:45:51.152357"
+  }
+}

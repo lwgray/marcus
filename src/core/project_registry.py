@@ -38,6 +38,10 @@ class ProjectConfig:
     def from_dict(cls, data: Dict[str, Any]) -> "ProjectConfig":
         """Create from dictionary"""
         data = data.copy()
+        # Remove persistence metadata fields
+        data.pop("_key", None)
+        data.pop("_collection", None)
+        # Convert datetime strings
         data["created_at"] = datetime.fromisoformat(data["created_at"])
         data["last_used"] = datetime.fromisoformat(data["last_used"])
         return cls(**data)
