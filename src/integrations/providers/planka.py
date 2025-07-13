@@ -4,6 +4,7 @@ Planka implementation using KanbanClient
 Direct integration without the mcp_function_caller abstraction
 """
 
+import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -24,6 +25,20 @@ class Planka(KanbanInterface):
         """
         super().__init__(config)
         self.provider = KanbanProvider.PLANKA
+        
+        # Set environment variables from config before creating client
+        if config:
+            if "base_url" in config:
+                os.environ["PLANKA_BASE_URL"] = config["base_url"]
+            if "email" in config:
+                os.environ["PLANKA_AGENT_EMAIL"] = config["email"]
+            if "password" in config:
+                os.environ["PLANKA_AGENT_PASSWORD"] = config["password"]
+            if "project_id" in config:
+                os.environ["PLANKA_PROJECT_ID"] = config["project_id"]
+            if "board_id" in config:
+                os.environ["PLANKA_BOARD_ID"] = config["board_id"]
+        
         self.client = KanbanClientWithCreate()
         self.connected = False
         print(
