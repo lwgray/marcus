@@ -121,10 +121,7 @@ class KanbanClient:
                 if planka_config.get("password"):
                     os.environ["PLANKA_AGENT_PASSWORD"] = planka_config["password"]
 
-                print(
-                    f"✅ Loaded config from {config_path}: project_id={self.project_id}, board_id={self.board_id}",
-                    file=sys.stderr,
-                )
+                # Config loaded successfully - don't print as it interferes with MCP stdio
         else:
             print(
                 f"❌ config_marcus.json not found in any of the following locations:",

@@ -170,13 +170,12 @@ class ProjectContextManager:
             # Log successful switch
             conversation_logger.log_kanban_interaction(
                 action="project_switched",
-                details={
+                direction="internal",
+                data={
                     "project_id": project_id,
                     "project_name": project.name,
                     "provider": project.provider,
                     "cached_contexts": len(self.contexts),
-                },
-                board_state={
                     "active_project": project_id,
                     "total_projects": len(await self.registry.list_projects()),
                 },
@@ -243,7 +242,8 @@ class ProjectContextManager:
         if project.id in self.contexts:
             conversation_logger.log_kanban_interaction(
                 action="context_reused",
-                details={
+                direction="internal",
+                data={
                     "project_id": project.id,
                     "project_name": project.name,
                     "provider": project.provider,
@@ -272,7 +272,8 @@ class ProjectContextManager:
             # Log successful connection
             conversation_logger.log_kanban_interaction(
                 action="provider_connected",
-                details={
+                direction="to_kanban",
+                data={
                     "project_id": project.id,
                     "project_name": project.name,
                     "provider": project.provider,
@@ -285,7 +286,8 @@ class ProjectContextManager:
             # Log connection failure
             conversation_logger.log_kanban_interaction(
                 action="provider_connection_failed",
-                details={
+                direction="to_kanban",
+                data={
                     "project_id": project.id,
                     "project_name": project.name,
                     "provider": project.provider,
@@ -296,15 +298,20 @@ class ProjectContextManager:
 
         # Create project-specific services
         context.context = Context(
-            persistence=self.persistence, namespace=f"project_{project.id}"
+            events=None,
+            persistence=self.persistence
         )
 
         context.events = Events(
-            persistence=self.persistence, namespace=f"project_{project.id}"
+            store_history=True,
+            persistence=self.persistence
         )
 
+        # Create project-specific assignment persistence directory
+        from pathlib import Path
+        assignments_dir = Path("data/assignments") / f"project_{project.id}"
         context.assignment_persistence = AssignmentPersistence(
-            filename=f"assignments_{project.id}.json"
+            storage_dir=assignments_dir
         )
 
         # Load project state
@@ -316,7 +323,8 @@ class ProjectContextManager:
         # Log context creation complete
         conversation_logger.log_kanban_interaction(
             action="context_created",
-            details={
+            direction="internal",
+            data={
                 "project_id": project.id,
                 "project_name": project.name,
                 "provider": project.provider,

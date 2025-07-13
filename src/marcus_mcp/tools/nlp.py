@@ -6,12 +6,9 @@ This module contains tools for natural language project/task creation:
 - add_feature: Add feature to existing project using natural language
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from src.integrations.nlp_tools import (
-    add_feature_natural_language,
-    create_project_from_natural_language,
-)
+from src.integrations.nlp_tools import add_feature_natural_language
 from src.visualization.pipeline_flow import PipelineStage
 
 
@@ -30,8 +27,9 @@ async def create_project(
     Args:
         description: Natural language project description
         project_name: Name for the project board
-        options: Optional configuration (deadline, team_size, tech_stack, deployment_target)
-            - deployment_target: "local" (default), "dev", "prod", or "remote"
+        options: Optional configuration (deadline, team_size, tech_stack,
+                 deployment_target)
+            - deployment_target: "local" (default), "dev", "prod", "remote"
                 - local: No deployment tasks, just local development
                 - dev: Basic deployment to development environment
                 - prod: Full production deployment with monitoring, scaling
@@ -76,6 +74,40 @@ async def create_project(
     start_time = datetime.now()
 
     try:
+        # Auto-detect simple projects and apply MVP constraints
+        if not options:
+            options = {}
+
+        # Check for simple project indicators
+        description_lower = description.lower()
+        project_name_lower = project_name.lower()
+        simple_keywords = [
+            "simple",
+            "basic",
+            "minimal",
+            "quick",
+            "small",
+            "demo",
+            "prototype",
+            "mvp",
+            "starter",
+            "tutorial",
+            "example",
+            "test",
+        ]
+
+        is_simple_project = any(
+            keyword in description_lower or keyword in project_name_lower
+            for keyword in simple_keywords
+        )
+
+        if is_simple_project:
+            # Apply MVP constraints to reduce task generation
+            if "team_size" not in options:
+                options["team_size"] = 1
+            if "deployment_target" not in options:
+                options["deployment_target"] = "local"
+
         # Create project using natural language processing with pipeline tracking
         from src.integrations.pipeline_tracked_nlp import (
             create_project_from_natural_language_tracked,
@@ -98,7 +130,9 @@ async def create_project(
                 event_type="pipeline_completed",
                 data={
                     "success": result.get("success", False),
-                    "task_count": result.get("task_count", 0),
+                    "task_count": result.get(
+                        "tasks_created", result.get("task_count", 0)
+                    ),
                     "total_duration_ms": duration_ms,
                 },
                 duration_ms=duration_ms,
@@ -107,6 +141,10 @@ async def create_project(
 
             # Complete the flow
             state.pipeline_visualizer.complete_flow(flow_id)
+
+        # Normalize result to include task_count
+        if "tasks_created" in result and "task_count" not in result:
+            result["task_count"] = result["tasks_created"]
 
         return result
 
@@ -141,7 +179,8 @@ async def add_feature(
 
     Args:
         feature_description: Natural language description of the feature
-        integration_point: How to integrate (auto_detect, after_current, parallel, new_phase)
+        integration_point: How to integrate (auto_detect, after_current,
+                           parallel, new_phase)
         state: Marcus server state instance
 
     Returns:

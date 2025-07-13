@@ -101,27 +101,19 @@ class AIAnalysisEngine:
                 try:
                     # First try simple initialization
                     self.client = anthropic.Anthropic(api_key=api_key)
-                    print(
-                        "✅ Anthropic client initialized successfully", file=sys.stderr
-                    )
+                    # Don't print during initialization - it interferes with MCP stdio
                 except TypeError as te:
                     # If we get a TypeError about proxies, try with explicit None
                     if "proxies" in str(te):
-                        print(
-                            "⚠️  Retrying Anthropic init with proxies=None",
-                            file=sys.stderr,
-                        )
+                        # Retry with proxies=None
                         self.client = anthropic.Anthropic(api_key=api_key, proxies=None)
-                        print(
-                            "✅ Anthropic client initialized with proxies=None",
-                            file=sys.stderr,
-                        )
+                        # Successfully initialized with proxies=None
                     else:
                         raise te
 
         except Exception as e:
-            print(f"⚠️  Failed to initialize Anthropic client: {e}", file=sys.stderr)
-            print("   AI features will use fallback responses", file=sys.stderr)
+            # Failed to initialize Anthropic client - AI features will use fallback responses
+            # Don't print to stderr as it interferes with MCP stdio protocol
             self.client = None
 
         self.model: str = (
@@ -255,13 +247,11 @@ Identify risks and provide JSON:
                 max_tokens=10,
                 messages=[{"role": "user", "content": "test"}],
             )
-            print("✅ AI Engine connection verified", file=sys.stderr)
-
-            # Wrap client for token tracking
+            # Connection verified - wrap client for token tracking
             self.client = ai_usage_middleware.wrap_ai_provider(self.client)
         except Exception as e:
-            print(f"⚠️  AI Engine test failed: {e}", file=sys.stderr)
-            print("   Will use fallback responses", file=sys.stderr)
+            # AI Engine test failed - will use fallback responses
+            # Don't print to stderr as it interferes with MCP stdio protocol
             self.client = None  # Disable client if test fails
 
     async def match_task_to_agent(

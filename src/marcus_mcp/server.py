@@ -68,16 +68,7 @@ class MarcusServer:
         self.provider = self.config.get("kanban.provider", "planka")
 
         # Check if in multi-project mode
-        if self.config.is_multi_project_mode():
-            print(
-                f"Initializing Marcus in multi-project mode...",
-                file=sys.stderr,
-            )
-        else:
-            print(
-                f"Initializing Marcus with {self.provider.upper()} kanban provider...",
-                file=sys.stderr,
-            )
+        self.is_multi_project_mode = self.config.is_multi_project_mode()
 
         # Create realtime log with line buffering
         # Use absolute path based on Marcus root directory
@@ -281,11 +272,7 @@ class MarcusServer:
             self.kanban_client = await self.project_manager.get_kanban_client()
             if self.kanban_client:
                 active_project = await self.project_registry.get_active_project()
-                if active_project:
-                    print(
-                        f"✅ Active project: {active_project.name} ({active_project.provider})",
-                        file=sys.stderr,
-                    )
+                # Active project found - don't print as it interferes with MCP stdio
         else:
             # Legacy mode - create kanban client directly
             await self.initialize_kanban()
@@ -319,16 +306,12 @@ class MarcusServer:
                         await self.project_manager.switch_project(active_project_id)
                         self.kanban_client = await self.project_manager.get_kanban_client()
                         
-                        if self.kanban_client:
-                            print(
-                                f"✅ Synced and activated project: {project.name} ({project.provider})",
-                                file=sys.stderr,
-                            )
+                        # Project synced and activated - don't print as it interferes with MCP stdio
 
         # Initialize event visualizer if available
         if self.event_visualizer:
             await self.event_visualizer.initialize()
-            print("✅ Event-integrated visualization enabled", file=sys.stderr)
+            # Don't print during initialization - it interferes with MCP stdio
 
         # Wrap AI engine for token tracking
         self.ai_engine = ai_usage_middleware.wrap_ai_provider(self.ai_engine)
@@ -340,11 +323,12 @@ class MarcusServer:
             init_pattern_learning_components(
                 kanban_client=self.kanban_client, ai_engine=self.ai_engine
             )
-            print("✅ Pattern learning API initialized", file=sys.stderr)
+            # Don't print during initialization - it interferes with MCP stdio
         except Exception as e:
-            print(f"⚠️ Pattern learning API initialization failed: {e}", file=sys.stderr)
+            # Log error without printing to stderr during initialization
+            pass
 
-        print("✅ Marcus server initialized", file=sys.stderr)
+        # Don't print during initialization - it interferes with MCP stdio
 
     async def _migrate_to_multi_project(self):
         """Migrate legacy configuration to multi-project format"""
@@ -360,7 +344,7 @@ class MarcusServer:
             # Initialize project context with existing client
             await self.project_manager.switch_project(project_id)
 
-            print("✅ Migrated to multi-project mode", file=sys.stderr)
+            # Successfully migrated to multi-project mode
 
     async def initialize_kanban(self):
         """Initialize kanban client if not already done"""
@@ -401,10 +385,7 @@ class MarcusServer:
                     )
                     await self.assignment_monitor.start()
 
-                print(
-                    f"✅ Kanban client initialized: {type(self.kanban_client).__name__}",
-                    file=sys.stderr,
-                )
+                # Kanban client initialized successfully
 
             except Exception as e:
                 if isinstance(e, KanbanIntegrationError):
@@ -478,7 +459,7 @@ class MarcusServer:
                     ):
                         os.environ["LINEAR_TEAM_ID"] = linear_config["team_id"]
 
-                print(f"✅ Loaded configuration from {config_path}", file=sys.stderr)
+                # Configuration loaded successfully from config_marcus.json
 
         except FileNotFoundError as e:
             raise ConfigurationError(
@@ -595,27 +576,6 @@ class MarcusServer:
 
     async def run(self):
         """Run the MCP server"""
-
-        # Register this Marcus instance for discovery
-        current_project = None
-        if hasattr(self.project_manager, "get_current_project"):
-            try:
-                current_project = self.project_manager.get_current_project()
-                current_project = current_project.name if current_project else None
-            except:
-                pass
-
-        service_info = register_marcus_service(
-            mcp_command=sys.executable + " " + " ".join(sys.argv),
-            log_dir=str(Path(self.realtime_log.name).parent),
-            project_name=current_project,
-            provider=self.provider,
-        )
-        print(f"🔍 Service registered: {service_info['instance_id']}", file=sys.stderr)
-        print(
-            f"📁 Clients can find logs at: {service_info['log_dir']}", file=sys.stderr
-        )
-
         try:
             async with stdio_server() as (read_stream, write_stream):
                 await self.server.run(
@@ -636,6 +596,28 @@ async def main():
     try:
         server = MarcusServer()
         await server.initialize()
+        
+        # Register this Marcus instance for discovery BEFORE starting stdio server
+        current_project = None
+        if hasattr(server.project_manager, "get_current_project"):
+            try:
+                current_project = server.project_manager.get_current_project()
+                current_project = current_project.name if current_project else None
+            except:
+                pass
+
+        service_info = register_marcus_service(
+            mcp_command=sys.executable + " " + " ".join(sys.argv),
+            log_dir=str(Path(server.realtime_log.name).parent),
+            project_name=current_project,
+            provider=server.provider,
+        )
+        print(f"🔍 Service registered: {service_info['instance_id']}", file=sys.stderr)
+        print(
+            f"📁 Clients can find logs at: {service_info['log_dir']}", file=sys.stderr
+        )
+        
+        # Now run the server with clean stdio
         await server.run()
     except Exception as e:
         print(f"❌ Failed to start Marcus MCP server: {e}", file=sys.stderr)
