@@ -427,6 +427,15 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                                 "enum": ["local", "dev", "prod", "remote"],
                                 "default": "local",
                             },
+                            "project_size": {
+                                "type": "string",
+                                "description": (
+                                    "Project complexity level: mvp (minimal tasks), "
+                                    "small, medium (default), large, enterprise"
+                                ),
+                                "enum": ["mvp", "small", "medium", "large", "enterprise"],
+                                "default": "medium",
+                            },
                         },
                     },
                 },

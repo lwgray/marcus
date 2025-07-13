@@ -297,18 +297,13 @@ class ProjectContextManager:
             raise
 
         # Create project-specific services
-        context.context = Context(
-            events=None,
-            persistence=self.persistence
-        )
+        context.context = Context(events=None, persistence=self.persistence)
 
-        context.events = Events(
-            store_history=True,
-            persistence=self.persistence
-        )
+        context.events = Events(store_history=True, persistence=self.persistence)
 
         # Create project-specific assignment persistence directory
         from pathlib import Path
+
         assignments_dir = Path("data/assignments") / f"project_{project.id}"
         context.assignment_persistence = AssignmentPersistence(
             storage_dir=assignments_dir

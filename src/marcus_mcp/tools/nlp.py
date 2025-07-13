@@ -74,40 +74,6 @@ async def create_project(
     start_time = datetime.now()
 
     try:
-        # Auto-detect simple projects and apply MVP constraints
-        if not options:
-            options = {}
-
-        # Check for simple project indicators
-        description_lower = description.lower()
-        project_name_lower = project_name.lower()
-        simple_keywords = [
-            "simple",
-            "basic",
-            "minimal",
-            "quick",
-            "small",
-            "demo",
-            "prototype",
-            "mvp",
-            "starter",
-            "tutorial",
-            "example",
-            "test",
-        ]
-
-        is_simple_project = any(
-            keyword in description_lower or keyword in project_name_lower
-            for keyword in simple_keywords
-        )
-
-        if is_simple_project:
-            # Apply MVP constraints to reduce task generation
-            if "team_size" not in options:
-                options["team_size"] = 1
-            if "deployment_target" not in options:
-                options["deployment_target"] = "local"
-
         # Create project using natural language processing with pipeline tracking
         from src.integrations.pipeline_tracked_nlp import (
             create_project_from_natural_language_tracked,

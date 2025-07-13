@@ -420,8 +420,14 @@ class AdvancedPRDParser:
         # Store task metadata for later use
         self._task_metadata = {}
 
+        # Filter requirements based on project size
+        project_size = constraints.quality_requirements.get("project_size", "medium")
+        functional_requirements = self._filter_requirements_by_size(
+            analysis.functional_requirements, project_size, constraints.team_size
+        )
+
         # Create epics from functional requirements
-        for i, req in enumerate(analysis.functional_requirements):
+        for i, req in enumerate(functional_requirements):
             # Prefer standardized 'id' field from template
             req_id = req.get("id")
 
@@ -478,35 +484,39 @@ class AdvancedPRDParser:
 
             hierarchy[epic_id] = [task["id"] for task in epic_tasks]
 
-        # Add non-functional requirement tasks
-        nfr_epic_id = "epic_non_functional"
-        nfr_tasks = await self._create_nfr_tasks(
-            analysis.non_functional_requirements, constraints
-        )
+        # Add non-functional requirement tasks (skip for MVP projects)
+        if project_size != "mvp":
+            nfr_epic_id = "epic_non_functional"
+            # Filter NFRs based on project size
+            filtered_nfrs = self._filter_nfrs_by_size(
+                analysis.non_functional_requirements, project_size
+            )
+            nfr_tasks = await self._create_nfr_tasks(filtered_nfrs, constraints)
 
-        # Store NFR task metadata
-        for task in nfr_tasks:
-            self._task_metadata[task["id"]] = {
-                "original_name": task["name"],
-                "type": task["type"],
-                "epic_id": nfr_epic_id,
-            }
+            # Store NFR task metadata
+            for task in nfr_tasks:
+                self._task_metadata[task["id"]] = {
+                    "original_name": task["name"],
+                    "type": task["type"],
+                    "epic_id": nfr_epic_id,
+                }
 
-        hierarchy[nfr_epic_id] = [task["id"] for task in nfr_tasks]
+            hierarchy[nfr_epic_id] = [task["id"] for task in nfr_tasks]
 
-        # Add infrastructure and setup tasks
-        infra_epic_id = "epic_infrastructure"
-        infra_tasks = await self._create_infrastructure_tasks(analysis, constraints)
+        # Add infrastructure and setup tasks (minimal for MVP/small projects)
+        if project_size not in ["mvp"]:  # MVP projects skip infrastructure
+            infra_epic_id = "epic_infrastructure"
+            infra_tasks = await self._create_infrastructure_tasks(analysis, constraints, project_size)
 
-        # Store infrastructure task metadata
-        for task in infra_tasks:
-            self._task_metadata[task["id"]] = {
-                "original_name": task["name"],
-                "type": task["type"],
-                "epic_id": infra_epic_id,
-            }
+            # Store infrastructure task metadata
+            for task in infra_tasks:
+                self._task_metadata[task["id"]] = {
+                    "original_name": task["name"],
+                    "type": task["type"],
+                    "epic_id": infra_epic_id,
+                }
 
-        hierarchy[infra_epic_id] = [task["id"] for task in infra_tasks]
+            hierarchy[infra_epic_id] = [task["id"] for task in infra_tasks]
 
         return hierarchy
 
@@ -890,26 +900,35 @@ class AdvancedPRDParser:
         return tasks
 
     async def _create_infrastructure_tasks(
-        self, analysis: PRDAnalysis, constraints: ProjectConstraints
+        self, analysis: PRDAnalysis, constraints: ProjectConstraints, project_size: str = "medium"
     ) -> List[Dict[str, Any]]:
         """Create infrastructure and setup tasks"""
-        return [
-            {
-                "id": "infra_setup",
-                "name": "Set up development environment",
-                "type": "setup",
-            },
-            {
-                "id": "infra_ci_cd",
+        tasks = []
+        
+        # Always include basic setup for all project sizes
+        tasks.append({
+            "id": "infra_setup",
+            "name": "Set up development environment",
+            "type": "setup",
+        })
+        
+        # Add CI/CD for medium+ projects
+        if project_size not in ["mvp", "small"]:
+            tasks.append({
+                "id": "infra_ci_cd", 
                 "name": "Configure CI/CD pipeline",
                 "type": "infrastructure",
-            },
-            {
+            })
+        
+        # Add deployment infrastructure for large+ projects
+        if project_size in ["large", "enterprise"]:
+            tasks.append({
                 "id": "infra_deploy",
-                "name": "Set up deployment infrastructure",
+                "name": "Set up deployment infrastructure", 
                 "type": "deployment",
-            },
-        ]
+            })
+            
+        return tasks
 
     def _extract_task_info(
         self, task_id: str, epic_id: str, analysis: PRDAnalysis
@@ -1824,3 +1843,41 @@ class AdvancedPRDParser:
 
         # Include everything for prod and remote
         return False
+
+    def _filter_requirements_by_size(
+        self, requirements: List[Dict], project_size: str, team_size: int
+    ) -> List[Dict]:
+        """Filter functional requirements based on project size and team capacity"""
+        if project_size == "mvp":
+            # For MVP, only keep the most essential 2-3 requirements
+            # Prioritize based on requirement priority or take first few
+            return requirements[:2]
+        elif project_size == "small":
+            # Small projects: limit to 3-4 core features
+            return requirements[:4]
+        elif project_size == "medium":
+            # Medium projects: limit based on team size
+            max_reqs = min(len(requirements), team_size * 2)
+            return requirements[:max_reqs]
+        else:
+            # Large/Enterprise: include all requirements
+            return requirements
+
+    def _filter_nfrs_by_size(
+        self, nfrs: List[Dict], project_size: str
+    ) -> List[Dict]:
+        """Filter non-functional requirements based on project size"""
+        if project_size in ["mvp", "small"]:
+            # Only keep basic security for small projects
+            essential_nfrs = []
+            for nfr in nfrs:
+                nfr_type = nfr.get("type", "").lower()
+                if "security" in nfr_type or "auth" in nfr_type:
+                    essential_nfrs.append(nfr)
+            return essential_nfrs[:1]  # Maximum 1 NFR for small projects
+        elif project_size == "medium":
+            # Keep 2-3 most important NFRs
+            return nfrs[:3]
+        else:
+            # Large/Enterprise: include all NFRs
+            return nfrs

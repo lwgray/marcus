@@ -38,7 +38,7 @@ from src.core.models import (
     WorkerStatus,
 )
 from src.core.project_context_manager import ProjectContextManager
-from src.core.project_registry import ProjectRegistry, ProjectConfig
+from src.core.project_registry import ProjectConfig, ProjectRegistry
 from src.core.service_registry import register_marcus_service, unregister_marcus_service
 from src.cost_tracking.ai_usage_middleware import ai_usage_middleware
 from src.cost_tracking.token_tracker import token_tracker
@@ -279,7 +279,7 @@ class MarcusServer:
 
             # Migrate to multi-project if needed
             await self._migrate_to_multi_project()
-        
+
         # If still no kanban client after initialization, check if we need to sync config with registry
         if not self.kanban_client and self.config.is_multi_project_mode():
             # The config might have been migrated at runtime but not synced to registry
@@ -300,12 +300,16 @@ class MarcusServer:
                             tags=proj_data.get("tags", ["default"]),
                         )
                         await self.project_registry.add_project(project)
-                        await self.project_registry.set_active_project(active_project_id)
-                        
+                        await self.project_registry.set_active_project(
+                            active_project_id
+                        )
+
                         # Now switch to the project
                         await self.project_manager.switch_project(active_project_id)
-                        self.kanban_client = await self.project_manager.get_kanban_client()
-                        
+                        self.kanban_client = (
+                            await self.project_manager.get_kanban_client()
+                        )
+
                         # Project synced and activated - don't print as it interferes with MCP stdio
 
         # Initialize event visualizer if available
@@ -596,7 +600,7 @@ async def main():
     try:
         server = MarcusServer()
         await server.initialize()
-        
+
         # Register this Marcus instance for discovery BEFORE starting stdio server
         current_project = None
         if hasattr(server.project_manager, "get_current_project"):
@@ -616,7 +620,7 @@ async def main():
         print(
             f"📁 Clients can find logs at: {service_info['log_dir']}", file=sys.stderr
         )
-        
+
         # Now run the server with clean stdio
         await server.run()
     except Exception as e:

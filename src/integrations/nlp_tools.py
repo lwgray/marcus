@@ -256,15 +256,32 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         if not options:
             return ProjectConstraints()
 
+        # Get project size and map to appropriate defaults
+        project_size = options.get("project_size", "medium")
+        
+        # Map project size to team size defaults (user can still override)
+        size_defaults = {
+            "mvp": {"team_size": 1, "deployment_target": "local"},
+            "small": {"team_size": 2, "deployment_target": "local"}, 
+            "medium": {"team_size": 3, "deployment_target": "dev"},
+            "large": {"team_size": 5, "deployment_target": "prod"},
+            "enterprise": {"team_size": 8, "deployment_target": "remote"}
+        }
+        
+        defaults = size_defaults.get(project_size, size_defaults["medium"])
+        
         constraints = ProjectConstraints(
-            team_size=options.get("team_size", 3),
+            team_size=options.get("team_size", defaults["team_size"]),
             available_skills=options.get("tech_stack", []),
             technology_constraints=options.get("tech_stack", []),
+            deployment_target=options.get("deployment_target", defaults["deployment_target"])
         )
 
-        # Add deployment target to constraints for task generation
-        deployment_target = options.get("deployment_target", "local")
-        constraints.deployment_target = deployment_target
+        # Pass project size info via quality_requirements for parser to use
+        constraints.quality_requirements = {
+            "project_size": project_size,
+            "complexity": "simple" if project_size == "mvp" else "moderate"
+        }
 
         if "deadline" in options:
             try:
