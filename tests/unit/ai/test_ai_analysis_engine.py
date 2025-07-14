@@ -624,8 +624,7 @@ Remember: Take your time, test thoroughly, and ask questions!"""
                 engine = AIAnalysisEngine()
 
                 assert engine.client is None
-            captured = capsys.readouterr()
-            assert "Failed to initialize Anthropic client" in captured.err
+            # Note: Error logging removed to avoid MCP stdio interference
 
     @pytest.mark.asyncio
     async def test_generate_task_instructions_with_agent(
@@ -1156,8 +1155,9 @@ Write unit tests for auth flow
                 engine.client = mock_client
                 await engine.initialize()
 
-                captured = capsys.readouterr()
-                assert "AI Engine connection verified" in captured.err
+                # Note: Success logging removed to avoid MCP stdio interference
+                # Verify client is properly wrapped instead
+                assert engine.client is not None
 
     @pytest.mark.asyncio
     async def test_initialize_no_client(self, capsys):
@@ -1183,6 +1183,6 @@ Write unit tests for auth flow
                 engine.client = mock_client
                 await engine.initialize()
 
-                captured = capsys.readouterr()
-                assert "AI Engine test failed" in captured.err
+                # Note: Error logging removed to avoid MCP stdio interference
+                # Verify client is disabled on failure
                 assert engine.client is None
