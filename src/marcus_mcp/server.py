@@ -527,6 +527,10 @@ class MarcusServer:
             # Get all tasks from the board
             self.project_tasks = await self.kanban_client.get_all_tasks()
 
+            # Update memory system with project tasks for cascade analysis
+            if self.memory and self.project_tasks:
+                self.memory.update_project_tasks(self.project_tasks)
+
             # Update project state
             if self.project_tasks:
                 total_tasks = len(self.project_tasks)

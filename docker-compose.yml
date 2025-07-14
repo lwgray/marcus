@@ -7,25 +7,25 @@ services:
     environment:
       # Kanban provider selection (github, linear, or planka)
       - KANBAN_PROVIDER=${KANBAN_PROVIDER:-github}
-      
+
       # GitHub configuration
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - GITHUB_OWNER=${GITHUB_OWNER}
       - GITHUB_REPO=${GITHUB_REPO}
-      
+
       # Linear configuration (if using Linear)
       - LINEAR_API_KEY=${LINEAR_API_KEY}
       - LINEAR_TEAM_ID=${LINEAR_TEAM_ID}
-      
+
       # Planka configuration (if using Planka)
       - PLANKA_PROJECT_NAME=${PLANKA_PROJECT_NAME}
-      
+
       # AI configuration
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      
+
       # Original config
-      - MARCUS_CONFIG=/app/config/pm_agent_config.json
+      - MARCUS_CONFIG=/app/config/marcus_config.json
       - MARCUS_MONITORING_INTERVAL=900
     volumes:
       - ./config:/app/config
@@ -46,25 +46,25 @@ services:
     environment:
       # Kanban provider selection
       - KANBAN_PROVIDER=${KANBAN_PROVIDER:-github}
-      
+
       # GitHub configuration
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - GITHUB_OWNER=${GITHUB_OWNER}
       - GITHUB_REPO=${GITHUB_REPO}
-      
+
       # Linear configuration
       - LINEAR_API_KEY=${LINEAR_API_KEY}
       - LINEAR_TEAM_ID=${LINEAR_TEAM_ID}
-      
+
       # Planka configuration
       - PLANKA_PROJECT_NAME=${PLANKA_PROJECT_NAME}
-      
+
       # AI configuration
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      
+
       # Original config
-      - MARCUS_CONFIG=/app/config/pm_agent_config.json
+      - MARCUS_CONFIG=/app/config/marcus_config.json
       - MARCUS_MONITORING_INTERVAL=900
     volumes:
       # Mount source code for live updates
@@ -81,7 +81,7 @@ services:
     tty: true
     networks:
       - marcus-network
-  
+
   # Visualization UI (optional)
   visualization:
     build:
@@ -102,7 +102,7 @@ services:
       - marcus
     profiles:
       - full  # Only start when --profile full is used
-  
+
   # Demo workers for testing
   worker-backend:
     build: .
@@ -119,7 +119,7 @@ services:
       - marcus
     profiles:
       - demo  # Only start when --profile demo is used
-  
+
   worker-frontend:
     build: .
     container_name: marcus-worker-frontend
@@ -135,7 +135,7 @@ services:
       - marcus
     profiles:
       - demo
-  
+
   worker-qa:
     build: .
     container_name: marcus-worker-qa

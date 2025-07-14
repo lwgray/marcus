@@ -1,6 +1,6 @@
 # =� Installing Marcus
 
-> **Time to complete**: 5-15 minutes  
+> **Time to complete**: 5-15 minutes
 > **Difficulty**: Beginner friendly
 
 ## <� Choose Your Installation Method
@@ -107,7 +107,7 @@ pip install --upgrade pip
 pip install -r requirements.txt
 
 # Verify installation
-python -c "import pm_agent; print('Marcus modules loaded successfully')"
+python -c "import marcus; print('Marcus modules loaded successfully')"
 ```
 
 ### Step 4: Set Up Kanban Provider
@@ -226,14 +226,14 @@ python marcus.py
 
 ```bash
 # Start Marcus server
-python scripts/start_pm_agent_task_master.py
+python scripts/start_marcus_task_master.py
 ```
 
 ### With Demo Workers
 
 ```bash
 # Run demo with simulated workers
-python scripts/demo_pm_agent.sh
+python scripts/demo_marcus.sh
 ```
 
 ## =3 Docker Installation (Alternative)
@@ -248,7 +248,7 @@ docker-compose up -d
 docker-compose ps
 
 # View logs
-docker-compose logs -f pm-agent
+docker-compose logs -f marcus
 ```
 
 ##  Post-Installation Checklist
@@ -318,7 +318,8 @@ npm run down
 npm run up
 ```
 
-## < Environment Variables Reference
+## <
+ Environment Variables Reference
 
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|

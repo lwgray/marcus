@@ -23,8 +23,8 @@ RUN mkdir -p logs data logs/conversations
 
 # Create default config file if it doesn't exist
 # This ensures the container can start even without mounted config
-RUN if [ ! -f config_marcus.json ] && [ -f config_pm_agent.json ]; then \
-    cp config_pm_agent.json config_marcus.json; \
+RUN if [ ! -f config_marcus.json ] && [ -f config_marcus.example.json ]; then \
+    cp config_marcus.example.json config_marcus.json; \
     fi
 
 # Expose MCP stdio interface (not a network port)

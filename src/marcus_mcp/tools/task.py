@@ -8,6 +8,7 @@ This module contains tools for task operations in the Marcus system:
 """
 
 import json
+import logging
 import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -16,7 +17,163 @@ from src.core.ai_powered_task_assignment import find_optimal_task_for_agent_ai_p
 from src.core.models import Priority, Task, TaskAssignment, TaskStatus
 from src.logging.agent_events import log_agent_event
 from src.logging.conversation_logger import conversation_logger, log_thinking
-from src.marcus_mcp.utils import safe_serialize_task, serialize_for_mcp
+from src.marcus_mcp.utils import serialize_for_mcp
+
+logger = logging.getLogger(__name__)
+
+
+def build_tiered_instructions(
+    base_instructions: str,
+    task: Task,
+    context_data: Optional[Dict[str, Any]],
+    dependency_awareness: Optional[str],
+    predictions: Optional[Dict[str, Any]],
+) -> str:
+    """
+    Build tiered instructions based on task context and complexity.
+
+    Layers:
+    1. Base instructions (always included)
+    2. Implementation context (if previous work exists)
+    3. Dependency awareness (if task has dependents)
+    4. Decision logging (if task affects others)
+    5. Predictions and warnings (if available)
+    """
+    instructions_parts = [base_instructions]
+
+    # Layer 2: Implementation Context
+    if context_data and context_data.get("previous_implementations"):
+        impl_count = len(context_data["previous_implementations"])
+        instructions_parts.append(
+            f"\n\n📚 IMPLEMENTATION CONTEXT:\n{impl_count} relevant implementations found. Use these patterns and interfaces to maintain consistency."
+        )
+
+    # Layer 3: Dependency Awareness
+    if dependency_awareness:
+        instructions_parts.append(
+            f"\n\n🔗 DEPENDENCY AWARENESS:\n{dependency_awareness}\n\nConsider these future needs when making implementation decisions. Your choices will directly impact these dependent tasks."
+        )
+
+    # Layer 4: Decision Logging Prompt
+    if context_data and len(context_data.get("dependent_tasks", [])) > 2:
+        # High-impact task with many dependents
+        instructions_parts.append(
+            "\n\n📝 ARCHITECTURAL DECISIONS:\n"
+            "This task has significant downstream impact. When making technical choices that affect other tasks:\n"
+            "Use: 'Marcus, log decision: I chose [WHAT] because [WHY]. This affects [IMPACT].'\n"
+            "Examples:\n"
+            "- 'I chose JWT tokens because mobile apps need stateless auth. This affects all API endpoints.'\n"
+            "- 'I chose PostgreSQL because we need ACID compliance. This affects all data models.'"
+        )
+
+    # Layer 5: Predictions and Warnings
+    if predictions:
+        risk_parts = []
+
+        # Success probability warning
+        if predictions.get("success_probability", 1.0) < 0.6:
+            risk_parts.append(
+                f"⚠️ Success probability: {predictions['success_probability']:.0%} - Extra care needed"
+            )
+
+        # Enhanced completion time prediction
+        if predictions.get("completion_time"):
+            ct = predictions["completion_time"]
+            risk_parts.append(
+                f"⏱️ Expected duration: {ct['expected_hours']:.1f} hours "
+                + f"({ct['confidence_interval']['lower']:.1f}-{ct['confidence_interval']['upper']:.1f} hours)"
+            )
+            if ct.get("factors"):
+                risk_parts.append("   Time factors: " + "; ".join(ct["factors"][:2]))
+
+        # Detailed blockage analysis
+        if predictions.get("blockage_analysis"):
+            ba = predictions["blockage_analysis"]
+            if ba["overall_risk"] > 0.5:
+                risk_parts.append(f"⚠️ High blockage risk: {ba['overall_risk']:.0%}")
+                # Show top blockers
+                if ba.get("risk_breakdown"):
+                    top_risks = sorted(
+                        ba["risk_breakdown"].items(), key=lambda x: x[1], reverse=True
+                    )[:2]
+                    for risk_type, probability in top_risks:
+                        risk_parts.append(f"   • {risk_type}: {probability:.0%} chance")
+                # Add preventive measures
+                if ba.get("preventive_measures"):
+                    risk_parts.append("💡 Prevention tips:")
+                    for measure in ba["preventive_measures"][:2]:
+                        risk_parts.append(f"   • {measure}")
+
+        # Cascade effects warning
+        if predictions.get("cascade_effects") and predictions["cascade_effects"].get(
+            "critical_path_impact"
+        ):
+            ce = predictions["cascade_effects"]
+            risk_parts.append(
+                f"🌊 CASCADE WARNING: Delays will impact {len(ce['affected_tasks'])} dependent tasks"
+            )
+            if ce.get("mitigation_options"):
+                risk_parts.append(f"   Mitigation: {ce['mitigation_options'][0]}")
+
+        # Performance trajectory insights
+        if predictions.get("performance_trajectory"):
+            pt = predictions["performance_trajectory"]
+            if pt.get("improving_skills"):
+                skill_names = list(pt["improving_skills"].keys())[:1]
+                if skill_names:
+                    risk_parts.append(
+                        f"📈 You're improving in {skill_names[0]} - great opportunity to excel!"
+                    )
+            if pt.get("recommendations"):
+                risk_parts.append(f"💡 {pt['recommendations'][0]}")
+
+        if risk_parts:
+            instructions_parts.append(
+                "\n\n⚡ PREDICTIONS & INSIGHTS:\n" + "\n".join(risk_parts)
+            )
+
+    # Layer 6: Task-specific guidance based on labels
+    if task.labels:
+        guidance_parts = []
+
+        # API tasks
+        if any(label.lower() in ["api", "endpoint", "rest"] for label in task.labels):
+            guidance_parts.append(
+                "🌐 API Guidelines: Follow RESTful conventions, include proper error handling, document response formats"
+            )
+
+        # Frontend tasks
+        if any(
+            label.lower() in ["frontend", "ui", "react", "vue"] for label in task.labels
+        ):
+            guidance_parts.append(
+                "🎨 Frontend Guidelines: Ensure responsive design, follow component patterns, handle loading/error states"
+            )
+
+        # Database tasks
+        if any(
+            label.lower() in ["database", "migration", "schema"]
+            for label in task.labels
+        ):
+            guidance_parts.append(
+                "🗄️ Database Guidelines: Include rollback migrations, test with sample data, document schema changes"
+            )
+
+        # Security tasks
+        if any(
+            label.lower() in ["security", "auth", "authentication"]
+            for label in task.labels
+        ):
+            guidance_parts.append(
+                "🔒 Security Guidelines: Follow OWASP best practices, implement proper validation, use secure defaults"
+            )
+
+        if guidance_parts:
+            instructions_parts.append(
+                "\n\n💡 TASK-SPECIFIC GUIDANCE:\n" + "\n".join(guidance_parts)
+            )
+
+    return "\n".join(instructions_parts)
 
 
 async def request_next_task(agent_id: str, state: Any) -> Dict[str, Any]:
@@ -94,12 +251,7 @@ async def request_next_task(agent_id: str, state: Any) -> Dict[str, Any]:
                 context_data = None
                 dependency_awareness = None
                 if hasattr(state, "context") and state.context:
-                    # Get full context for this task
-                    task_context = await state.context.get_context(
-                        optimal_task.id, optimal_task.dependencies or []
-                    )
-
-                    # Add any GitHub implementations to context
+                    # Add any GitHub implementations to context first
                     if previous_implementations:
                         await state.context.add_implementation(
                             optimal_task.id, previous_implementations
@@ -107,7 +259,7 @@ async def request_next_task(agent_id: str, state: Any) -> Dict[str, Any]:
 
                     # Analyze dependencies for this project
                     if state.project_tasks:
-                        dep_map = state.context.analyze_dependencies(
+                        dep_map = await state.context.analyze_dependencies(
                             state.project_tasks
                         )
                         if optimal_task.id in dep_map:
@@ -124,14 +276,26 @@ async def request_next_task(agent_id: str, state: Any) -> Dict[str, Any]:
                                 if dep_task:
                                     from src.core.context import DependentTask
 
+                                    # Infer what the dependent task needs
+                                    expected_interface = (
+                                        state.context.infer_needed_interface(
+                                            dep_task, optimal_task.id
+                                        )
+                                    )
+
                                     state.context.add_dependency(
                                         optimal_task.id,
                                         DependentTask(
                                             task_id=dep_task.id,
                                             task_name=dep_task.name,
-                                            expected_interface=f"Implementation needed by {dep_task.name}",
+                                            expected_interface=expected_interface,
                                         ),
                                     )
+
+                    # Now get full context including the dependent tasks we just added
+                    task_context = await state.context.get_context(
+                        optimal_task.id, optimal_task.dependencies or []
+                    )
 
                     # Format context for response
                     context_data = task_context.to_dict()
@@ -154,24 +318,71 @@ async def request_next_task(agent_id: str, state: Any) -> Dict[str, Any]:
                 # Get predictions if Memory system is available
                 predictions = None
                 if hasattr(state, "memory") and state.memory:
-                    predictions = await state.memory.predict_task_outcome(
+                    # Get basic task outcome prediction
+                    basic_prediction = await state.memory.predict_task_outcome(
                         agent_id, optimal_task
                     )
+
+                    # Get enhanced predictions
+                    completion_time = await state.memory.predict_completion_time(
+                        agent_id, optimal_task
+                    )
+                    blockage_analysis = await state.memory.predict_blockage_probability(
+                        agent_id, optimal_task
+                    )
+
+                    # Check for cascade effects if task has dependents
+                    cascade_effects = None
+                    if context_data and context_data.get("dependent_tasks"):
+                        # Estimate potential delay based on complexity
+                        potential_delay = (
+                            completion_time.get("expected_hours", 0) * 0.2
+                        )  # 20% buffer
+                        cascade_effects = await state.memory.predict_cascade_effects(
+                            optimal_task.id, potential_delay
+                        )
+
+                    # Get agent performance trajectory
+                    performance_trajectory = (
+                        await state.memory.calculate_agent_performance_trajectory(
+                            agent_id
+                        )
+                    )
+
+                    # Combine all predictions
+                    predictions = {
+                        **basic_prediction,
+                        "completion_time": completion_time,
+                        "blockage_analysis": blockage_analysis,
+                        "cascade_effects": cascade_effects,
+                        "performance_trajectory": performance_trajectory,
+                    }
 
                     # Record task start in memory
                     await state.memory.record_task_start(agent_id, optimal_task)
 
                 # Generate detailed instructions with AI
                 try:
-                    instructions = await state.ai_engine.generate_task_instructions(
-                        optimal_task, state.agent_status.get(agent_id)
+                    base_instructions = (
+                        await state.ai_engine.generate_task_instructions(
+                            optimal_task, state.agent_status.get(agent_id)
+                        )
+                    )
+
+                    # Build tiered instructions based on context
+                    instructions = build_tiered_instructions(
+                        base_instructions,
+                        optimal_task,
+                        context_data,
+                        dependency_awareness,
+                        predictions,
                     )
                 except KeyError as e:
                     # Log the specific KeyError for debugging
                     logger.error(f"KeyError in generate_task_instructions: {e}")
                     logger.error(f"Task: {optimal_task.name}, ID: {optimal_task.id}")
                     logger.error(
-                        f"Task labels: {getattr(optimal_task, 'labels', 'No labels')}"
+                        "Task labels: %s", getattr(optimal_task, "labels", "No labels")
                     )
                     raise
                 except Exception as e:
@@ -290,7 +501,7 @@ async def request_next_task(agent_id: str, state: Any) -> Dict[str, Any]:
                 # Emit event if Events system is available
                 if hasattr(state, "events") and state.events:
                     await state.events.publish(
-                        "task_assigned",  # Using string instead of EventTypes constant
+                        "task_assigned",
                         "marcus",
                         {
                             "agent_id": agent_id,

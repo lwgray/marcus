@@ -30,7 +30,7 @@ docker-compose up -d
 docker-compose down
 
 # View logs
-docker-compose logs -f pm-agent
+docker-compose logs -f
 
 # Restart services
 docker-compose restart
@@ -39,36 +39,6 @@ docker-compose restart
 docker-compose ps
 ```
 
-## PM Agent Commands
-
-### Service Management
-
-```bash
-# Start PM Agent only
-docker-compose up -d pm-agent
-
-# Stop PM Agent
-docker-compose stop pm-agent
-
-# View PM Agent logs
-docker-compose logs -f pm-agent
-
-# Enter PM Agent container
-docker exec -it pm-agent /bin/bash
-```
-
-### Direct Python Commands
-
-```bash
-# Run PM Agent directly (development)
-python -m pm_agent.server
-
-# Run with specific config
-python -m pm_agent.server --config config.json
-
-# Run in debug mode
-python -m pm_agent.server --debug
-```
 
 ## Worker Agent Commands
 
@@ -217,20 +187,7 @@ cp .env.example .env
 nano .env
 
 # Validate configuration
-python -m pm_agent.config --validate
-```
-
-### Provider Configuration
-
-```bash
-# Test GitHub connection
-python -m pm_agent.providers.github --test
-
-# Test Linear connection  
-python -m pm_agent.providers.linear --test
-
-# Test Planka connection
-python -m pm_agent.providers.planka --test
+python scripts/validate_config.py
 ```
 
 ## Debugging Commands
@@ -242,7 +199,7 @@ python -m pm_agent.providers.planka --test
 docker-compose logs -f
 
 # Tail specific service
-docker-compose logs -f pm-agent
+docker-compose logs -f marcus
 
 # Save logs to file
 docker-compose logs > marcus.log
@@ -254,7 +211,7 @@ docker-compose logs | grep ERROR
 ### Health Checks
 
 ```bash
-# Check PM Agent health
+# Check Marcus health
 curl http://localhost:8000/health
 
 # Check Redis connection
@@ -274,7 +231,7 @@ DEBUG=true ./start.sh
 LOG_LEVEL=debug docker-compose up
 
 # Profile performance
-python -m cProfile -o profile.out pm_agent.server
+python -m cProfile -o profile.out marcus.server
 
 # Analyze profile
 python -m pstats profile.out
@@ -289,10 +246,10 @@ python -m pstats profile.out
 pytest
 
 # Run specific test file
-pytest tests/test_pm_agent.py
+pytest tests/test_marcus.py
 
 # Run with coverage
-pytest --cov=pm_agent
+pytest --cov=marcus
 
 # Run integration tests
 pytest tests/integration/
@@ -395,12 +352,12 @@ python scripts/import_project.py --file project-backup.json
 # Show help for start script
 ./start.sh --help
 
-# Show help for PM Agent
-python -m pm_agent.server --help
+# Show help for Marcus
+python -m marcus.server --help
 
 # Show help for experiments
 python experiments/run_agent.py --help
 
 # View documentation
-python -m pydoc pm_agent
+python -m pydoc marcus
 ```
