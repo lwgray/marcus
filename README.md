@@ -18,14 +18,25 @@ Marcus coordinates AI agents (Claude, GPT, etc.) to work together on projects wi
 - Claude Code
 - Anthropic API key
 
-### **1. Install Marcus (30 seconds)**
+### **1. Setup Planka Board (1 minute)**
+```bash
+# Clone and start the kanban-mcp server
+git clone https://github.com/joshuacc/kanban-mcp.git ~/dev/kanban-mcp
+cd ~/dev/kanban-mcp
+docker-compose up -d
+
+# Planka will be available at http://localhost:3333
+# Default login: demo@demo.demo / demo
+```
+
+### **2. Install Marcus (30 seconds)**
 ```bash
 git clone https://github.com/lwgray/marcus.git
 cd marcus
 pip install -r requirements.txt
 ```
 
-### **2. One-Command Demo Setup (3 minutes)**
+### **3. One-Command Demo Setup (2.5 minutes)**
 ```bash
 # Automated setup: creates Planka project, updates config, creates tasks
 python setup_marcus_demo.py
@@ -38,13 +49,13 @@ python setup_marcus_demo.py
 # - Give you final setup instructions
 ```
 
-### **3. Connect Claude Code (1 minute)**
+### **4. Connect Claude Code (30 seconds)**
 ```bash
 # Add Marcus to Claude Code MCP
 claude mcp add python /path/to/marcus/src/marcus_mcp/server.py
 ```
 
-### **4. Run Demo & Watch Magic (1 minute)**
+### **5. Run Demo & Watch Magic (30 seconds)**
 ```bash
 # In Claude Code:
 # 1. Copy content from prompts/Agent_prompt.md as your system prompt
