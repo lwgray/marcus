@@ -159,12 +159,13 @@ class TestContextBridge:
 
         await context.add_implementation("api-task", impl_data)
 
-        # Get context and verify implementation is included
-        context_data = await context.get_context("api-task", [])
+        # Get context for a dependent task and verify implementation is included
+        context_data = await context.get_context("frontend-task", ["api-task"])
 
         assert context_data.previous_implementations is not None
-        assert "endpoints" in context_data.previous_implementations
-        assert len(context_data.previous_implementations["endpoints"]) == 2
+        assert "api-task" in context_data.previous_implementations
+        assert "endpoints" in context_data.previous_implementations["api-task"]
+        assert len(context_data.previous_implementations["api-task"]["endpoints"]) == 2
 
     def test_dependency_inference_patterns(self, context):
         """Test various dependency inference patterns"""

@@ -17,14 +17,14 @@ When asked to write tests for the Marcus project, follow these guidelines:
    - AI/ML logic → tests/unit/ai/test_*.py
    - Core models/logic → tests/unit/core/test_*.py
    - MCP protocol → tests/unit/mcp/test_*.py
-   - UI/Visualization → tests/unit/visualization/test_*.py
-   
+   - UI → tests/unit/ui/test_*.py
+
    Integration Tests (require services):
    - End-to-end workflows → tests/integration/e2e/test_*.py
    - API testing → tests/integration/api/test_*.py
    - External services → tests/integration/external/test_*.py
    - Diagnostics → tests/integration/diagnostics/test_*.py
-   
+
    Other:
    - Performance tests → tests/performance/test_*.py
    - Future/TDD features → tests/future_features/*/test_*.py
@@ -34,30 +34,30 @@ When asked to write tests for the Marcus project, follow these guidelines:
    ```python
    """
    [Unit/Integration] tests for [Component Name]
-   
+
    Tests [specific functionality] with [mocked dependencies/real services].
    """
-   
+
    import pytest
    from unittest.mock import Mock, AsyncMock, patch
-   
+
    class Test[ComponentName]:
        """Test suite for [ComponentName]"""
-       
+
        @pytest.fixture
        def [mock_dependency](self):
            """Mock [dependency name]"""
            # Create mocks for unit tests
-           
+
        @pytest.fixture
        def [component](self, [dependencies]):
            """Create instance with [mocked/real] dependencies"""
            # Setup component
-           
+
        def test_[specific_behavior](self, [fixtures]):
            """Test [what you're testing]"""
            # Arrange
-           # Act  
+           # Act
            # Assert
    ```
 
@@ -80,7 +80,7 @@ When asked to write tests for the Marcus project, follow these guidelines:
    @patch('src.module.where_used.ExternalService')
    def test_something(self, mock_service):
        mock_service.return_value.method.return_value = "expected"
-   
+
    # Or use fixture
    @pytest.fixture
    def mock_kanban_client(self):
@@ -124,13 +124,13 @@ The test will verify that tasks are assigned based on priority, with all databas
 
 This test is placed in the unit tests because:
 - It doesn't require external services (database is mocked)
-- It tests a single component in isolation  
+- It tests a single component in isolation
 - It will run quickly (< 100ms)
 - All dependencies are injected and mocked"
 
 ### Decision Tree Summary:
 1. External services needed? → NO = Unit test, YES = Continue
-2. Testing future features? → YES = future_features/, NO = Continue  
+2. Testing future features? → YES = future_features/, NO = Continue
 3. What type of integration? → Choose appropriate subfolder
 4. Write test following the structure and principles above
 

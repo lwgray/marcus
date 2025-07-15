@@ -1,0 +1,44 @@
+{
+  "project_id":"XXXXX" ,
+  "board_id": "XXXXX",
+  "project_name": "PROJECT_NAME",
+  "auto_find_board": false,
+  "kanban": {
+    "provider": "planka"
+  },
+  "planka": {
+    "base_url": "http://localhost:3333",
+    "email": "demo@demo.demo",
+    "password": "demo"  # pragma: allowlist secret
+  },
+  "ai": {
+    "anthropic_api_key": "sk-ant-XX",  # pragma: allowlist secret
+    "model": "claude-3-sonnet-20240229"
+  },
+  "github": {
+    "token": "",
+    "owner": "",
+    "repo": ""
+  },
+  "linear": {
+    "api_key": "",
+    "team_id": ""
+  },
+  "features": {
+    "events": false,
+    "context": false,
+    "memory": false,
+    "visibility": false
+  },
+  "hybrid_inference": {
+    "pattern_confidence_threshold": 0.8,
+    "ai_confidence_threshold": 0.7,
+    "combined_confidence_boost": 0.15,
+    "max_ai_pairs_per_batch": 20,
+    "min_shared_keywords": 2,
+    "enable_ai_inference": true,
+    "cache_ttl_hours": 24,
+    "require_component_match": true,
+    "max_dependency_chain_length": 10
+  }
+}

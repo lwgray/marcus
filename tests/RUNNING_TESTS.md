@@ -21,7 +21,7 @@ pytest -k "test_health"
 ```
 tests/
 ├── unit/                   # ✅ Unit tests (181 tests) - Run by default
-│   ├── ai/                # AI components 
+│   ├── ai/                # AI components
 │   ├── core/              # Core functionality
 │   ├── mcp/               # MCP protocol
 │   └── visualization/     # UI components
@@ -38,7 +38,7 @@ tests/
 pytest                                    # All unit tests
 pytest tests/unit/                       # Explicit path
 pytest tests/unit/core/                  # Core module only
-pytest tests/unit/visualization/         # Visualization only
+pytest tests/unit/ai/                    # AI modules only
 ```
 
 ### Integration Tests (Slower, Require Services)
@@ -108,6 +108,6 @@ The default `pytest` command runs unit tests only, ensuring fast and reliable CI
 ```
 ✅ Unit Tests: 181/181 passing (100%)
 🔶 Integration Tests: Available separately
-📊 Performance Tests: Available separately  
+📊 Performance Tests: Available separately
 🚧 Future Features: TDD tests for development
 ```

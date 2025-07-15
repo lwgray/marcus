@@ -1,185 +1,219 @@
-# Todo App Project
+# 📋 Marcus Todo App Demo
 
-This directory contains scripts and resources for creating Todo App development cards on a Planka board with varying levels of detail.
+Demo project showing Marcus coordinating AI agents to build a complete todo application.
 
-## Project Structure
+## 🚀 **Quick Start**
 
-```
-todo_app/
-├── README.md                           # This file
-├── todo_app_planka_cards.json         # Card definitions and structure
-├── create_all_todo_app_cards.py       # Comprehensive card creator
-├── create_moderate_todo_cards_v2.py   # Moderate detail card creator
-├── create_minimal_todo_cards_v2.py    # Minimal card creator
-├── create_todo_cards_menu.py          # Interactive menu
-├── clear_board.py                     # Clear all cards from board
-└── docs/                              # Documentation files
-    ├── auth-api-specification.yaml    # API specification
-    ├── auth-database-schema.sql       # Database schema
-    ├── jwt-implementation-guide.md    # JWT implementation guide
-    └── security-checklist.md          # Security checklist
+### **Automated Setup (Recommended)**
+```bash
+# From marcus root directory
+python setup_marcus_demo.py
 ```
 
-## Available Scripts
+This automatically:
+- ✅ Creates "Marcus Todo Demo" project in Planka
+- ✅ Creates todo app board with proper lists
+- ✅ Updates config_marcus.json with correct IDs
+- ✅ Creates 17 development tasks ready for AI agents
+- ✅ Provides final setup instructions
 
-### 1. Comprehensive Cards (`create_all_todo_app_cards.py`)
-- **Description**: Creates highly detailed cards with extensive documentation
-- **Features**:
-  - 2000+ word descriptions per card
-  - 12-16 subtasks per card
-  - Multiple labels and dependencies
-  - Due dates and time estimates
-  - Detailed technical requirements
-  - Implementation guidelines
-  - Best practices documentation
-
-### 2. Moderate Cards (`create_moderate_todo_cards_v2.py`)
-- **Description**: Creates cards with practical, focused detail
-- **Features**:
-  - Concise but informative descriptions
-  - 4-6 subtasks per card
-  - Key technical points
-  - Essential labels
-  - Due dates
-  - Clear objectives and requirements
-
-### 3. Minimal Cards (`create_minimal_todo_cards_v2.py`)
-- **Description**: Creates cards with just the essential information
-- **Features**:
-  - One-line descriptions
-  - 1-2 subtasks per card
-  - Only high-priority labels
-  - Basic task breakdown
-
-### 4. Clear Board (`clear_board.py`)
-- **Description**: Removes all cards from the Task Master Test board
-- **Features**:
-  - Finds and deletes all cards
-  - Keeps lists intact
-  - Shows summary of cards removed
-  - Can be run standalone or from menu
-
-## Interactive Menu
-
-Use `create_todo_cards_menu.py` for an interactive way to manage your Todo App cards:
+### **Manual Setup Scripts**
+If you prefer manual control or want specific card sets:
 
 ```bash
-python create_todo_cards_menu.py
-```
+# Minimal cards (17 essential tasks)
+python create_minimal_todo_cards.py
 
-The menu provides:
-- Options to create cards at three detail levels
-- Clear board functionality
-- Option to clear board before creating new cards
-- Confirmation prompts for all destructive actions
+# Moderate cards (more detail)
+python create_moderate_todo_cards.py
 
-## Prerequisites
-
-1. **Planka Setup**: Ensure Planka is running at `http://localhost:3333`
-2. **MCP Server**: The kanban-mcp server must be installed at `/Users/lwgray/dev/kanban-mcp/`
-3. **Environment**: Uses demo credentials (demo@demo.demo / demo)
-4. **Project**: Requires "Task Master Test" project to exist in Planka
-
-## Usage
-
-### From the project root directory
-
-```bash
-cd projects/todo_app
-```
-
-### Run Individual Scripts
-
-```bash
-# For comprehensive cards
+# Full cards (complete specifications)
 python create_all_todo_app_cards.py
 
-# For moderate detail cards
-python create_moderate_todo_cards_v2.py
+# Interactive menu
+python create_todo_cards_menu.py
 
-# For minimal cards
-python create_minimal_todo_cards_v2.py
-
-# To clear the board
+# Clear all cards
 python clear_board.py
 ```
 
-### Use Interactive Menu
+---
 
+## 📁 **Files Overview**
+
+### **Setup Scripts**
+- `setup_demo_project.py` - **Main setup script** (creates project, board, config, cards)
+- `create_minimal_todo_cards.py` - Create 17 essential tasks
+- `create_moderate_todo_cards.py` - More detailed task specifications
+- `create_all_todo_app_cards.py` - Full detailed tasks with subtasks
+- `create_todo_cards_menu.py` - Interactive menu for card creation
+- `clear_board.py` - Remove all cards from board
+
+### **Configuration**
+- `todo_app_planka_cards.json` - Complete task definitions and specifications
+- `docs/` - Additional documentation for the todo app project
+
+---
+
+## 🎯 **What This Demo Shows**
+
+### **AI Agent Coordination**
+Watch multiple AI agents automatically:
+- **Pick up tasks** from the Backlog column
+- **Report progress** as they work (25%, 50%, 75%, 100%)
+- **Share context** between dependent tasks
+- **Move cards** through workflow: Backlog → TODO → In Progress → Review → Done
+- **Handle blockers** with AI-powered suggestions
+
+### **Todo App Development**
+The demo builds a complete todo application:
+
+**Backend Tasks:**
+- Project setup and database design
+- Todo model with CRUD operations
+- REST API endpoints with validation
+- User authentication with JWT
+- Error handling and testing
+
+**Frontend Tasks:**
+- React app structure with TypeScript
+- Todo list and item components
+- Add/edit forms with validation
+- API integration and state management
+- UI/UX design and responsiveness
+
+**DevOps Tasks:**
+- Testing framework setup
+- Deployment configuration
+- Performance optimization
+
+---
+
+## 🔍 **Monitoring the Demo**
+
+### **Planka Board**
+Visit [http://localhost:3333](http://localhost:3333) to watch:
+- Cards moving between columns
+- Agent comments and progress updates
+- Task completions and context sharing
+
+### **Expected Workflow**
+1. **Agent registers** with Marcus
+2. **Requests first task** (e.g., "Set up project structure")
+3. **Works autonomously** on the task
+4. **Reports progress** at milestones
+5. **Completes task** and moves card to Done
+6. **Immediately requests next task**
+7. **Continues** until all 17 tasks are complete
+
+### **Context Sharing Example**
+When Agent A completes "Create User model", Agent B automatically knows:
+- What database schema was created
+- What API endpoints exist
+- How authentication works
+- Integration patterns to follow
+
+---
+
+## 🎬 **Demo Scenarios**
+
+### **5-Minute Quick Demo**
 ```bash
-python create_todo_cards_menu.py
+python setup_marcus_demo.py
+# Follow instructions, start one agent in Claude Code
+# Watch 2-3 tasks get completed automatically
 ```
 
-### From any directory
-
+### **Full Development Simulation**
 ```bash
-# Run the interactive menu
-python projects/todo_app/create_todo_cards_menu.py
+# Create all 17 tasks
+python create_all_todo_app_cards.py
 
-# Or run specific scripts
-python projects/todo_app/create_all_todo_app_cards.py
+# Start multiple Claude Code instances with different agent IDs
+# Watch full todo app get built by coordinated agents
 ```
 
-## What Gets Created
+### **Custom Project Demo**
+```bash
+# In Marcus (via Claude Code)
+# Use create_project tool to generate your own project
+# Watch agents build whatever you specify
+```
 
-All scripts create the same 17 cards for building a Todo App:
+---
 
-1. Set up project structure
-2. Design database schema
-3. Create Todo model
-4. Set up database connection
-5. Create API endpoints for CRUD operations
-6. Add input validation middleware
-7. Implement error handling
-8. Create frontend app structure
-9. Design UI mockups
-10. Build TodoList component
-11. Build TodoItem component
-12. Build AddTodo form component
-13. Implement API client service
-14. Connect frontend to backend
-15. Add user authentication
-16. Write comprehensive tests
-17. Deploy to production
+## 🛠️ **Customization**
 
-## Card Structure
+### **Modify Tasks**
+Edit `todo_app_planka_cards.json` to:
+- Change task descriptions
+- Add/remove tasks
+- Modify priorities and labels
+- Update due dates
 
-Each card includes:
-- **Title**: Clear, action-oriented task name
-- **Description**: Varies by detail level
-- **Subtasks**: Checklist items (quantity varies by detail level)
-- **Labels**: Categorization (Feature, Frontend, Backend, etc.)
-- **Due Date**: Timeline for completion
-- **Position**: Order in the backlog
+### **Different Project Types**
+The same coordination works for any project:
+- Web applications
+- CLI tools
+- Data pipelines
+- Mobile apps
+- AI/ML projects
 
-## When to Use Each Version
+### **Multiple Agents**
+Run multiple Claude Code instances with different:
+- Agent names (Frontend Developer, Backend Developer, etc.)
+- Skill sets (React, Python, DevOps, etc.)
+- Specializations (Security, Performance, Testing, etc.)
 
-- **Comprehensive**: 
-  - New team members who need detailed guidance
-  - Complex projects requiring extensive documentation
-  - When you need reference documentation
-  
-- **Moderate**:
-  - Experienced teams who need clear objectives
-  - Standard projects with known patterns
-  - When you want balance between detail and brevity
-  
-- **Minimal**:
-  - Very experienced teams
-  - Quick prototypes or MVPs
-  - When you just need task tracking
+---
 
-## Notes
+## 📊 **Success Metrics**
 
-- All cards are created in the "Backlog" list
-- Existing cards in the Backlog are cleared before creating new ones
-- The scripts use the MCP (Model Context Protocol) to communicate with Planka
-- Labels must already exist in the Planka board
+A successful demo shows:
+- ✅ **Autonomous task completion** - Agents work without human intervention
+- ✅ **Context sharing** - Later agents use earlier agents' work
+- ✅ **Intelligent assignment** - Tasks go to appropriate agent types
+- ✅ **Error recovery** - Agents overcome blockers with AI suggestions
+- ✅ **Continuous progress** - No idle time between tasks
 
-## Troubleshooting
+---
 
-If you encounter errors:
-1. Ensure Planka is running and accessible
-2. Check that the kanban-mcp server is properly installed
-3. Verify the "Task Master Test" project exists
-4. Ensure all required labels exist on the board
+## 🔧 **Troubleshooting**
+
+### **"No tasks available"**
+```bash
+# Recreate tasks
+python setup_demo_project.py
+```
+
+### **"Task not found" errors**
+```bash
+# Clear and recreate
+python clear_board.py
+python create_minimal_todo_cards.py
+```
+
+### **Cards not moving**
+- Check agent is registered with Marcus
+- Verify config_marcus.json has correct board_id
+- Ensure Planka connection is working
+
+### **No progress updates**
+- Verify agent is using Marcus MCP tools
+- Check prompts/Agent_prompt.md is being used
+- Ensure agent follows continuous work loop
+
+---
+
+## 💡 **Next Steps**
+
+After the demo:
+1. **Build your own project** using `create_project` MCP tool
+2. **Experiment with agent specialization**
+3. **Try different AI providers** (add OpenAI, local models)
+4. **Extend Marcus** with custom MCP tools
+5. **Integrate with GitHub Projects** or Linear
+
+---
+
+*This demo showcases Marcus's core value: AI agents that work together autonomously, share context intelligently, and build complete applications without human micromanagement.*

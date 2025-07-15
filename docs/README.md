@@ -1,122 +1,67 @@
-# Marcus Documentation
+# 📚 Marcus Documentation
 
-Welcome to the Marcus documentation! All documentation is now organized into clear categories.
+Welcome to Marcus documentation! This hub provides technical resources for developers working with Marcus.
 
-## 📁 Documentation Structure
+## 📁 **Available Documentation**
 
-```
-docs/
-├── README.md                    # This file - Documentation hub
-├── user-guide/                  # For users of Marcus
-│   ├── README.md               # User guide navigation
-│   ├── getting-started.md       # Quick start guide
-│   ├── installation.md          # Detailed installation
-│   ├── how-it-works.md         # Conceptual overview
-│   ├── commands.md             # Command reference
-│   ├── add_feature_usage.md    # Using the add_feature tool
-│   ├── START_PM_AGENT.md       # Starting PM Agent
-│   ├── troubleshooting.md      # Common issues
-│   ├── concepts/               # Conceptual documentation
-│   ├── reference/              # Configuration & settings
-│   ├── how-to/                # Step-by-step guides
-│   └── community/              # Community examples
-│
-├── developer-guide/            # For developers & contributors
-│   ├── README.md              # Developer guide navigation
-│   ├── api.md                  # API overview
-│   ├── contributing.md         # How to contribute
-│   ├── INTEGRATION_GUIDE.md    # Integration guide
-│   ├── BOARD_QUALITY_*.md      # Board quality standards
-│   ├── NATURAL_LANGUAGE_*.md   # NLP features
-│   ├── technical/              # Technical architecture
-│   ├── templates/              # Documentation templates
-│   ├── mcp_tools/             # MCP tools documentation
-│   ├── contributing/          # Contribution guides
-│   └── sphinx/                # 📖 SPHINX DOCS HERE! Technical documentation
-│
-├── operations-guide/          # For deployment & operations
-│   ├── README.md             # Operations guide navigation
-│   ├── deployment.md          # Deployment options
-│   ├── monitoring.md          # Monitoring guide
-│   └── setup/                # Setup guides
-│
-└── archive/                   # Internal & historical docs
-    ├── analysis/             # Documentation analyses
-    ├── planning/            # Planning documents
-    └── internal/           # Internal notes
+### 🔌 **[API Reference](api/)**
+Complete MCP (Model Context Protocol) tool documentation:
+- Agent workflow APIs (register, request_next_task, report_progress, etc.)
+- Project management tools (create_project, get_project_status)
+- Request/response formats and examples
+- Integration guides for Claude Code
+- Error handling and troubleshooting
 
-```
-
-## 🎯 Quick Navigation
-
-### I want to...
-
-**Get Started**
-- [Getting Started Guide](user-guide/getting-started.md) - 5 minute quickstart
-- [Installation Guide](user-guide/installation.md) - Detailed setup
-- [How It Works](user-guide/how-it-works.md) - Understand Marcus
-
-**Use Marcus**
-- [Commands Reference](user-guide/commands.md) - All commands
-- [Configuration Guide](user-guide/reference/configuration_guide.md) - Settings
-- [Troubleshooting](user-guide/troubleshooting.md) - Fix issues
-
-**Develop with Marcus**
-- [API Overview](developer-guide/api.md) - API documentation
-- [Architecture](developer-guide/sphinx/source/developer/architecture.md) - System design
-- [MCP Tools](developer-guide/mcp_tools/mcp_tools_quick_reference.md) - Tool reference
-
-**Deploy Marcus**
-- [Deployment Guide](operations-guide/deployment.md) - Deployment options
-- [Setup Guides](operations-guide/setup/) - Provider-specific setup
-
-## 📚 Documentation by Role
-
-### 👤 **For Users**
-Start with the [user-guide/](user-guide/) directory. This contains everything you need to use Marcus effectively.
-
-### 👨‍💻 **For Developers**
-Check out the [developer-guide/](developer-guide/) directory for API documentation, architecture details, and contribution guidelines.
-
-### 🔧 **For Operators**
-The [operations-guide/](operations-guide/) directory has deployment and monitoring information.
-
-## 📖 About Sphinx Documentation
-
-The Sphinx documentation is located at: **`developer-guide/sphinx/`**
-
-Sphinx contains comprehensive technical documentation including:
-- Detailed API documentation
-- System architecture diagrams
-- Developer tutorials
-- Technical reference materials
-
-To build and view Sphinx docs:
-```bash
-cd docs/developer-guide/sphinx
-make html
-open build/html/index.html  # Or browse to this file
-```
-
-## 🔍 Finding Information
-
-1. **Use the directory structure** - Documentation is organized by role and purpose
-2. **Check the README files** - Each major directory has its own README with navigation help
-3. **Search within directories** - Related content is grouped together
-4. **Follow cross-references** - Documents link to related topics
-5. **For technical details** - Check the Sphinx documentation in `developer-guide/sphinx/`
-
-## 📝 Documentation Standards
-
-- User documentation uses simple language and examples
-- Developer documentation includes technical details and code samples
-- All documentation includes clear headings and navigation
-- Examples are provided wherever possible
-
-## 🚧 Documentation Status
-
-This documentation was reorganized on 2025-06-29 to improve clarity and discoverability. If you find any broken links or missing content, please report it.
+### 🏗️ **[System Architecture](systems/)**
+Deep technical documentation for all 32 Marcus systems:
+- **Memory System** - Multi-tier cognitive memory architecture
+- **AI Intelligence Engine** - Hybrid AI decision making
+- **Context & Dependency System** - Intelligent dependency inference
+- **Kanban Integration** - Multi-provider board abstraction
+- **Error Framework** - Comprehensive error handling
+- **Event-Driven Architecture** - Publish/subscribe system
+- **And 26 more systems...**
 
 ---
 
-For questions or improvements, see [Contributing](developer-guide/contributing.md).
+## 🎯 **Quick Start**
+
+New to Marcus? Start with the [main README](../README.md) for the 5-minute setup guide.
+
+Need API help? Check the [API documentation](api/).
+
+Want to understand how Marcus works? Explore the [systems documentation](systems/).
+
+---
+
+## 🔍 **Finding Information**
+
+| I want to... | Go to... |
+|---------------|----------|
+| **Set up Marcus** | [Main README](../README.md) |
+| **Use the API** | [API Reference](api/) |
+| **Understand the architecture** | [Systems Documentation](systems/) |
+| **Extend Marcus** | [API Reference](api/) + relevant [System Docs](systems/) |
+| **Troubleshoot issues** | [API Reference](api/) + [Main README](../README.md) |
+
+---
+
+## 📝 **Documentation Standards**
+
+- **Systems docs** provide deep technical detail for developers
+- **API docs** focus on practical usage and integration
+- **Examples** are provided wherever possible
+- **Cross-references** link related concepts
+
+---
+
+## 🤝 **Contributing**
+
+Found an issue or want to improve the documentation?
+- 🐛 **Report bugs**: [GitHub Issues](https://github.com/lwgray/marcus/issues)
+- 💡 **Suggest improvements**: [GitHub Discussions](https://github.com/lwgray/marcus/discussions)
+- 📝 **Submit changes**: Fork and submit a PR
+
+---
+
+*Need help? Check our [GitHub Discussions](https://github.com/lwgray/marcus/discussions) or open an issue.*

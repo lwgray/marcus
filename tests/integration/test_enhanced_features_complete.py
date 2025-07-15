@@ -31,7 +31,6 @@ from src.core.memory_advanced import MemoryAdvanced
 from src.core.models import Priority, Task, TaskStatus, WorkerStatus
 from src.core.persistence import MemoryPersistence, Persistence
 from src.core.resilience import RetryConfig, with_fallback, with_retry
-from src.visualization.event_integrated_visualizer import EventIntegratedVisualizer
 
 
 class TestEnhancedFeaturesComplete:
@@ -52,16 +51,11 @@ class TestEnhancedFeaturesComplete:
         # Create enhanced memory system
         memory = MemoryAdvanced(events=events, persistence=persistence)
 
-        # Create visualizer
-        visualizer = EventIntegratedVisualizer(events_system=events)
-        await visualizer.initialize()
-
         yield {
             "persistence": persistence,
             "events": events,
             "context": context,
             "memory": memory,
-            "visualizer": visualizer,
         }
 
     @pytest.mark.asyncio
@@ -325,42 +319,6 @@ class TestEnhancedFeaturesComplete:
         loader._config = {"features": {"events": True}}  # Old format
         events_config = loader.get_feature_config("events")
         assert events_config == {"enabled": True}
-
-    @pytest.mark.asyncio
-    async def test_visibility_event_integration(self, setup_environment):
-        """Test visibility system integrates with events"""
-        events = setup_environment["events"]
-        visualizer = setup_environment["visualizer"]
-
-        # Publish various events
-        await events.publish(
-            EventTypes.TASK_ASSIGNED,
-            "marcus",
-            {
-                "task_id": "123",
-                "task_name": "Test Task",
-                "agent_id": "agent_1",
-                "has_context": True,
-                "has_predictions": True,
-            },
-        )
-
-        await events.publish(
-            EventTypes.TASK_PROGRESS,
-            "agent_1",
-            {
-                "task_id": "123",
-                "progress": 50,
-                "status": "in_progress",
-                "message": "Halfway done",
-            },
-        )
-
-        # Check visualizer captured events
-        stats = visualizer.get_event_statistics()
-        assert stats["total_events"] >= 2
-        assert EventTypes.TASK_ASSIGNED in stats["event_counts"]
-        assert EventTypes.TASK_PROGRESS in stats["event_counts"]
 
     @pytest.mark.asyncio
     async def test_full_workflow_integration(self, setup_environment):

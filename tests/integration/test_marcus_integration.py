@@ -11,8 +11,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from src.marcus_mcp.client import SimpleMarcusClient
-from src.visualization.pipeline_flow import PipelineFlowManager
-from src.workflow.project_workflow import ProjectWorkflowManager
 
 
 async def test_marcus_integration():
@@ -21,9 +19,7 @@ async def test_marcus_integration():
 
     # Initialize components
     print("1. Initializing components...")
-    flow_manager = PipelineFlowManager()
     marcus_client = SimpleMarcusClient()
-    workflow_manager = ProjectWorkflowManager(marcus_client, flow_manager)
 
     # Initialize Marcus client
     await marcus_client.initialize()

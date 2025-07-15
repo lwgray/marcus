@@ -253,8 +253,8 @@ class TestWorkerMCPClient:
         assert result == {}
 
     @pytest.mark.asyncio
-    @patch("src.worker.mcp_client.stdio_client")
-    @patch("src.worker.mcp_client.ClientSession")
+    @patch("src.worker.client.stdio_client")
+    @patch("src.worker.client.ClientSession")
     async def test_connect_to_marcus(
         self, mock_client_session, mock_stdio_client, client
     ):

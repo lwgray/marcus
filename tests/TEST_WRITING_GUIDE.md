@@ -56,28 +56,28 @@ Side Effects:
 ```mermaid
 graph TD
     A[New Test] --> B{Does it require<br/>external services?}
-    
+
     B -->|No| C{Is it testing<br/>a single unit?}
     B -->|Yes| D{Is it testing<br/>future features?}
-    
+
     C -->|Yes| E{What component?}
     C -->|No| F[tests/unit/test_*.py]
-    
+
     D -->|Yes| G[tests/future_features/]
     D -->|No| H{What type of<br/>integration?}
-    
+
     E -->|AI Component| I[tests/unit/ai/]
     E -->|Core Logic| J[tests/unit/core/]
     E -->|MCP Protocol| K[tests/unit/mcp/]
-    E -->|Visualization| L[tests/unit/visualization/]
-    
+    E -->|UI| L[tests/unit/ui/]
+
     H -->|End-to-End| M[tests/integration/e2e/]
     H -->|API Testing| N[tests/integration/api/]
     H -->|External Services| O[tests/integration/external/]
     H -->|Diagnostics| P[tests/integration/diagnostics/]
-    
+
     B -->|Performance Test| Q[tests/performance/]
-    
+
     style A fill:#f9f,stroke:#333,stroke-width:4px
     style G fill:#ff9,stroke:#333,stroke-width:2px
     style Q fill:#9ff,stroke:#333,stroke-width:2px
@@ -100,7 +100,7 @@ START: I need to write a test
    ├─ AI/ML Logic → tests/unit/ai/test_[component].py
    ├─ Core Models/Logic → tests/unit/core/test_[component].py
    ├─ MCP Protocol → tests/unit/mcp/test_[component].py
-   └─ UI/Visualization → tests/unit/visualization/test_[component].py
+   └─ UI → tests/unit/ui/test_[component].py
 
 4. DONE! Write your unit test.
 
@@ -166,49 +166,49 @@ from src.module.component import ComponentUnderTest
 
 class TestComponentName:
     """Test suite for ComponentName"""
-    
+
     @pytest.fixture
     def mock_dependency(self):
         """Mock external dependency"""
         dep = Mock()
         dep.some_method = AsyncMock(return_value="expected")
         return dep
-    
+
     @pytest.fixture
     def component(self, mock_dependency):
         """Create component instance with mocked dependencies"""
         return ComponentUnderTest(dependency=mock_dependency)
-    
+
     def test_normal_operation(self, component):
         """Test component under normal conditions"""
         # Arrange
         input_data = {"key": "value"}
-        
+
         # Act
         result = component.process(input_data)
-        
+
         # Assert
         assert result.success is True
         assert result.data == "expected output"
-    
+
     def test_handles_invalid_input(self, component):
         """Test component handles invalid input gracefully"""
         # Arrange
         invalid_input = None
-        
+
         # Act & Assert
         with pytest.raises(ValueError, match="Input cannot be None"):
             component.process(invalid_input)
-    
+
     @pytest.mark.asyncio
     async def test_async_operation(self, component, mock_dependency):
         """Test async operations"""
         # Arrange
         mock_dependency.async_method.return_value = "async result"
-        
+
         # Act
         result = await component.async_process()
-        
+
         # Assert
         assert result == "async result"
         mock_dependency.async_method.assert_called_once()
@@ -231,7 +231,7 @@ from tests.utils.base import IntegrationTestBase
 @pytest.mark.integration
 class TestFeatureIntegration(IntegrationTestBase):
     """Integration tests for [Feature]"""
-    
+
     @pytest.fixture(scope="class")
     async def setup_services(self):
         """Setup required services for testing"""
@@ -240,7 +240,7 @@ class TestFeatureIntegration(IntegrationTestBase):
         yield {"kanban": kanban}
         # Cleanup
         await self.stop_kanban_server()
-    
+
     @pytest.mark.asyncio
     async def test_full_workflow(self, setup_services):
         """Test complete workflow from start to finish"""
@@ -254,7 +254,7 @@ Use these pytest markers to categorize your tests:
 
 ```python
 @pytest.mark.unit          # Fast, isolated unit test
-@pytest.mark.integration   # Requires external services  
+@pytest.mark.integration   # Requires external services
 @pytest.mark.slow          # Takes more than 1 second
 @pytest.mark.performance   # Performance benchmark
 @pytest.mark.kanban        # Requires Kanban MCP server

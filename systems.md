@@ -4,20 +4,24 @@ Marcus is a comprehensive AI agent coordination platform with enterprise-grade r
 
 ## Core Architectural Systems
 
-### 1. Multi-Tier Memory System (`src/core/memory.py`)
+### 1. Multi-Tier Memory System (`src/core/`)
 A cognitive-inspired memory management system with four tiers:
+- **Memory System** (`memory.py`) - Base memory implementation
+- **Advanced Memory** (`memory_advanced.py`) - Extended memory capabilities
 - **Working Memory** - Current task contexts and immediate data
 - **Episodic Memory** - Historical events and experiences
 - **Semantic Memory** - Facts, patterns, and learned knowledge
 - **Procedural Memory** - Skills and process knowledge
 - Unified interface for cognitive-inspired memory management
 
-### 2. Conversation Logger (`src/logging/conversation_logger.py`)
+### 2. Conversation Logger & Logging Systems (`src/logging/`)
 Structured logging system for all agent-tool interactions:
-- JSON-based conversation storage
+- **Conversation Logger** (`conversation_logger.py`) - JSON-based conversation storage
+- **Agent Events** (`agent_events.py`) - Agent-specific event logging
 - Historical replay capabilities
 - Integration with visualization systems
 - Audit trail for all operations
+- Structured event tracking
 
 ### 3. Context & Dependency System
 Comprehensive dependency and context management:
@@ -28,41 +32,65 @@ Comprehensive dependency and context management:
 
 ### 4. Kanban Board Integration (`src/integrations/`)
 Abstract interface supporting multiple kanban providers:
-- **Planka** - Open-source kanban board
-- **Linear** - Modern issue tracking system
-- **GitHub Projects** - Native GitHub integration
-- Dynamic provider factory pattern
-- AI-powered board analysis
+- **Kanban Interface** (`kanban_interface.py`) - Abstract interface for multiple providers
+- **Kanban Factory** (`kanban_factory.py`) - Provider instantiation
+- **Kanban Client** (`kanban_client.py`, `kanban_client_with_create.py`) - Board operations
+- **Providers** (`providers/`):
+  - **Planka** - Open-source kanban board
+  - **Linear** - Modern issue tracking system
+  - **GitHub Projects** - Native GitHub integration
+- **AI Analysis Engine** (`ai_analysis_engine.py`) - AI-powered board analysis
+- **NLP Tools** (`nlp_base.py`, `nlp_tools.py`, `nlp_task_utils.py`) - Natural language processing
+- **Pipeline Tracked NLP** (`pipeline_tracked_nlp.py`) - NLP with pipeline tracking
 
 ### 5. Visualization & UI Systems (`src/visualization/`)
 Real-time project visualization and monitoring:
-- **Event-Integrated Visualizer** - Real-time project visualization
-- **Pipeline Flow Manager** - Stage-based workflow visualization
-- **Pipeline Replay** - Historical analysis tools
+- **Event-Integrated Visualizer** (`event_integrated_visualizer.py`) - Real-time project visualization
+- **Pipeline Flow Management** (`pipeline_flow.py`, `pipeline_manager.py`) - Stage-based workflow visualization
+- **Pipeline Replay** (`pipeline_replay.py`) - Historical execution replay
+- **Conversation Adapter** (`conversation_adapter.py`) - Conversation visualization
+- **Pipeline Conversation Bridge** (`pipeline_conversation_bridge.py`) - Links conversations to pipeline stages
+- **Shared Pipeline Events** (`shared_pipeline_events.py`) - WebSocket event distribution
 - **WebSocket Event Distribution** - Live updates to UI
-- **Conversation Bridge** - Links conversations to pipeline stages
 
 ### 6. MCP (Model Context Protocol) Server (`src/marcus_mcp/`)
 Full MCP implementation for AI agent integration:
-- Modular tool system (agent, task, project, system tools)
-- Agent-specific server capabilities
-- Natural language processing tools
+- **Server Implementation** (`server.py`) - Main MCP server
+- **Client** (`client.py`) - MCP client implementation
+- **Handlers** (`handlers.py`, `handlers_fixed.py`) - Request handlers
+- **Tools** (`tools/`) - Organized by domain:
+  - Agent management tools
+  - Context tools
+  - NLP (Natural Language Processing) tools
+  - Pipeline tools
+  - Project management tools
+  - System tools
+  - Task management tools
 - Tool registration and routing
+- Agent-specific server capabilities
 
 ### 7. AI Intelligence Engine (`src/ai/`)
 Hybrid intelligence system combining rules and AI:
-- **Hybrid Decision Framework** - Rules + AI intelligence
-- **Provider Abstraction** - Support for Claude, OpenAI, etc.
-- **Contextual Learning** - Pattern recognition
+- **AI Engine** (`core/ai_engine.py`) - Hybrid rule-based and AI intelligence coordination
+- **Providers** (`providers/`) - Multi-provider support (Anthropic Claude, OpenAI)
+- **Learning Systems** (`learning/`) - Contextual learner for pattern recognition
+- **Advanced Features** (`advanced/`):
+  - Multi-project support
+  - PRD (Product Requirements Document) parsing
+  - Prediction capabilities
+  - Adaptation systems
+- **Enrichment** (`enrichment/`) - Intelligent task enrichment
+- **Decision Framework** (`decisions/`) - Hybrid decision-making framework
 - **Task Enrichment** - AI-powered task enhancement
-- **Advanced PRD Parsing** - Intelligent requirement analysis
 
 ### 8. Error Framework (`src/core/error_framework.py`)
 Comprehensive error handling and resilience:
+- **Error Framework** (`error_framework.py`) - Base error classes and context
+- **Error Strategies** (`error_strategies.py`) - Retry, circuit breaker patterns
+- **Error Monitoring** (`error_monitoring.py`) - Pattern detection and tracking
+- **Error Responses** (`error_responses.py`) - Standardized response formats
 - Rich error taxonomy with context
 - Resilience patterns (retry, circuit breaker, fallback)
-- Error monitoring and pattern detection
-- Standardized error responses
 - Integration with monitoring systems
 
 ### 9. Event-Driven Architecture (`src/core/events.py`)
@@ -161,11 +189,68 @@ Intelligent agent management:
 - Agent event tracking
 - Performance monitoring
 
-### 22. Operational Modes
+### 22. Operational Modes (`src/modes/`)
 Flexible operational configurations:
-- **Creator Mode** - Task generation from requirements
-- **Enricher Mode** - Task enhancement and organization
-- **Adaptive Mode** - Learning and optimization
+- **Creator Mode** (`creator/`) - Empty board project creation
+- **Enricher Mode** (`enricher/`) - Enhance existing boards
+- **Adaptive Mode** (`adaptive/`) - Add features to existing projects
+- **Mode Registry** (`src/orchestration/mode_registry.py`) - Mode management
+- **Hybrid Tools** (`src/orchestration/hybrid_tools.py`) - Tool orchestration
+
+### 23. Task Management & Intelligence (`src/intelligence/`)
+AI-powered task creation and management:
+- **Intelligent Task Generator** (`intelligent_task_generator.py`) - AI-powered task creation
+- **PRD Parser** (`prd_parser.py`) - Requirements document analysis
+- **Dependency Inference** (`dependency_inferer.py`, `dependency_inferer_hybrid.py`) - Smart dependency detection
+
+### 24. Analysis Tools (`src/analysis/`)
+Advanced analysis and reporting:
+- **Pipeline Comparison** (`pipeline_comparison.py`) - Compare multiple pipeline runs
+- **What-If Engine** (`what_if_engine.py`) - Scenario analysis
+
+### 25. Report Generation (`src/reports/`)
+Comprehensive reporting system:
+- **Pipeline Report Generator** (`pipeline_report_generator.py`) - Generate detailed reports
+- **Templates** (`templates/`) - Report templates (HTML, Markdown)
+
+### 26. Worker Support (`src/worker/`)
+Client libraries for worker agents:
+- **Worker Client** (`client.py`) - Client library for worker agents
+
+### 27. Recommendation Engine (`src/recommendations/`)
+AI-powered optimization:
+- **Recommendation Engine** (`recommendation_engine.py`) - AI-powered optimization suggestions
+
+### 28. Configuration Management (`src/config/`)
+Application configuration:
+- **Config Loader** (`config_loader.py`) - Configuration management
+- **Settings** (`settings.py`) - Application settings
+- **Hybrid Inference Config** (`hybrid_inference_config.py`) - AI configuration
+
+### 29. Detection Systems (`src/detection/`)
+State and context detection:
+- **Board Analyzer** (`board_analyzer.py`) - Board state analysis
+- **Context Detector** (`context_detector.py`) - Context detection
+
+### 30. Testing Framework (`tests/`)
+Comprehensive testing infrastructure:
+- **Unit Tests** (`unit/`) - Isolated component testing
+- **Integration Tests** (`integration/`) - End-to-end testing
+- **Performance Tests** (`performance/`) - Load and benchmark testing
+- **Future Features** (`future_features/`) - TDD for upcoming features
+
+### 31. Resilience (`src/core/resilience.py`)
+Fault-tolerant patterns:
+- Fault-tolerant decorators and patterns
+- Recovery strategies
+- System resilience
+
+### 32. Models (`src/core/models.py`)
+Fundamental data structures:
+- Task, TaskStatus, Priority, RiskLevel
+- WorkerStatus, TaskAssignment, ProjectState
+- Core domain models
+
 
 ## System Integration Points
 
@@ -216,11 +301,3 @@ Flexible operational configurations:
 ### User Interface Layer
 - Visualization Systems, WebSocket Events
 - Pipeline UI, Real-time Updates
-
-## Future Architecture Directions
-
-1. **Distributed Agent Execution** - Scale across multiple machines
-2. **Advanced Learning** - Deep learning for pattern recognition
-3. **Multi-Cloud Support** - Deploy across cloud providers
-4. **Enhanced Security** - Zero-trust architecture
-5. **GraphQL API** - Modern API for external integrations

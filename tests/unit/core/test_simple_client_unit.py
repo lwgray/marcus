@@ -8,6 +8,7 @@ import os
 import sys
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from unittest.mock import Mock, mock_open, patch
 
 import pytest
 import pytest_asyncio
@@ -21,291 +22,197 @@ from src.core.models import Priority, Task, TaskStatus
 from src.integrations.kanban_client import KanbanClient
 
 
-class MockMCPCaller:
-    """Mock MCP function caller for testing"""
-
-    def __init__(self):
-        self.calls = []
-        self.responses = {}
-
-    async def __call__(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
-        """Record the call and return mock response"""
-        self.calls.append((tool_name, arguments))
-
-        # Generate response based on tool and action
-        key = f"{tool_name}:{arguments.get('action', 'default')}"
-        if key in self.responses:
-            return self.responses[key]
-
-        # Default responses
-        if tool_name == "mcp_kanban_project_board_manager":
-            if arguments.get("action") == "get_projects":
-                return {
-                    "items": [{"id": "test-project-123", "name": "Task Master Test"}]
-                }
-            elif arguments.get("action") == "get_boards":
-                return {
-                    "items": [{"id": "test-board-456", "projectId": "test-project-123"}]
-                }
-        elif tool_name == "mcp_kanban_card_manager":
-            if arguments.get("action") == "get_all":
-                return [
-                    {
-                        "id": "card-1",
-                        "name": "Test Task 1",
-                        "description": "Test description",
-                        "list": {"name": "TODO"},
-                        "labels": [{"name": "high", "color": "red"}],
-                        "createdAt": "2024-01-01T00:00:00",
-                        "updatedAt": "2024-01-01T00:00:00",
-                    },
-                    {
-                        "id": "card-2",
-                        "name": "Test Task 2",
-                        "list": {"name": "In Progress"},
-                        "labels": [],
-                        "createdAt": "2024-01-01T00:00:00",
-                    },
-                ]
-            elif arguments.get("action") == "get_details":
-                return {
-                    "id": arguments.get("cardId"),
-                    "name": "Detailed Task",
-                    "description": "Detailed description",
-                    "list": {"name": "TODO"},
-                    "labels": [{"name": "medium"}],
-                    "createdAt": "2024-01-01T00:00:00",
-                }
-        elif tool_name == "mcp_kanban_list_manager":
-            if arguments.get("action") == "get_all":
-                return [
-                    {"id": "list-todo", "name": "TODO", "position": 0},
-                    {"id": "list-progress", "name": "In Progress", "position": 1},
-                    {"id": "list-done", "name": "Done", "position": 2},
-                ]
-        elif tool_name == "mcp_kanban_board_manager":
-            if arguments.get("action") == "get_stats":
-                return {
-                    "stats": {
-                        "totalCards": 10,
-                        "inProgressCount": 3,
-                        "doneCount": 5,
-                        "completionPercentage": 50,
-                    }
-                }
-
-        return None
-
-
 class TestKanbanClient:
     """Test suite for KanbanClient"""
 
     @pytest.fixture
-    def mock_caller(self):
-        """Create a mock MCP caller"""
-        return MockMCPCaller()
+    def mock_config_file(self):
+        """Create mock config file content"""
+        return """
+        {
+            "project_id": "test-project-123",
+            "board_id": "test-board-456",
+            "planka": {
+                "base_url": "http://localhost:3333",
+                "email": "test@test.com",
+                "password": "testpass"
+            }
+        }
+        """
 
     @pytest.fixture
-    def client(self, mock_caller):
-        """Create a client with mock caller"""
-        return KanbanClient(mock_caller)
+    def client_with_config(self, mock_config_file):
+        """Create a client with mocked config"""
+        with patch("builtins.open", mock_open(read_data=mock_config_file)):
+            with patch("pathlib.Path.exists", return_value=True):
+                return KanbanClient()
 
-    @pytest.mark.asyncio
-    async def test_initialization(self, client):
+    def test_initialization(self, client_with_config):
         """Test client initialization"""
-        # Should not be initialized yet
-        assert client.project_id is None
-        assert client.board_id is None
+        client = client_with_config
 
-        # Initialize
-        await client.initialize("Task Master Test")
-
-        # Should now have IDs
+        # Should load config values
         assert client.project_id == "test-project-123"
         assert client.board_id == "test-board-456"
 
-    @pytest.mark.asyncio
-    async def test_initialization_project_not_found(self, client):
-        """Test initialization when project not found"""
-        client.mcp_call.responses["mcp_kanban_project_board_manager:get_projects"] = {
-            "items": []
-        }
+        # Should set environment variables
+        assert os.environ.get("PLANKA_BASE_URL") == "http://localhost:3333"
+        assert os.environ.get("PLANKA_AGENT_EMAIL") == "test@test.com"
+        assert os.environ.get("PLANKA_AGENT_PASSWORD") == "testpass"
 
-        with pytest.raises(ValueError, match="Project 'Task Master Test' not found"):
-            await client.initialize("Task Master Test")
+    def test_initialization_no_config(self):
+        """Test initialization when no config file exists"""
+        # Clean up environment variables from previous tests
+        env_vars_to_clean = [
+            "PLANKA_BASE_URL",
+            "PLANKA_AGENT_EMAIL",
+            "PLANKA_AGENT_PASSWORD",
+        ]
+        old_values = {}
+        for var in env_vars_to_clean:
+            old_values[var] = os.environ.get(var)
+            if var in os.environ:
+                del os.environ[var]
 
-    @pytest.mark.asyncio
-    async def test_get_available_tasks(self, client):
-        """Test getting available tasks"""
-        await client.initialize("Task Master Test")
+        try:
+            with patch("pathlib.Path.exists", return_value=False):
+                client = KanbanClient()
 
-        tasks = await client.get_available_tasks()
+                # Should have None values for project/board
+                assert client.project_id is None
+                assert client.board_id is None
 
-        assert len(tasks) == 2
-        assert tasks[0].id == "card-1"
-        assert tasks[0].name == "Test Task 1"
-        assert tasks[0].status == TaskStatus.TODO
-        assert (
-            tasks[0].priority == Priority.MEDIUM
-        )  # Current implementation doesn't extract from labels
-
-        assert tasks[1].id == "card-2"
-        assert tasks[1].name == "Test Task 2"
-        assert (
-            tasks[1].status == TaskStatus.TODO
-        )  # Status is determined by listId lookup, not list.name
-        assert tasks[1].priority == Priority.MEDIUM
-
-    @pytest.mark.asyncio
-    async def test_get_available_tasks_not_initialized(self, client):
-        """Test getting tasks when not initialized"""
-        with pytest.raises(RuntimeError, match="Not initialized"):
-            await client.get_available_tasks()
-
-    @pytest.mark.asyncio
-    async def test_get_task_details(self, client):
-        """Test getting task details"""
-        await client.initialize("Task Master Test")
-
-        task = await client.get_task_details("test-task-id")
-
-        assert task.id == "test-task-id"
-        assert task.name == "Detailed Task"
-        assert task.description == "Detailed description"
-        assert task.status == TaskStatus.TODO
-        assert task.priority == Priority.MEDIUM
+                # Should use default environment variables
+                assert os.environ.get("PLANKA_BASE_URL") == "http://localhost:3333"
+                assert os.environ.get("PLANKA_AGENT_EMAIL") == "demo@demo.demo"
+                assert os.environ.get("PLANKA_AGENT_PASSWORD") == "demo"
+        finally:
+            # Restore original environment
+            for var, value in old_values.items():
+                if value is not None:
+                    os.environ[var] = value
+                elif var in os.environ:
+                    del os.environ[var]
 
     @pytest.mark.asyncio
-    async def test_assign_task(self, client):
-        """Test task assignment"""
-        await client.initialize("Task Master Test")
+    async def test_get_available_tasks_no_board_id(self):
+        """Test getting available tasks when board_id is not set"""
+        with patch("pathlib.Path.exists", return_value=False):
+            client = KanbanClient()
 
-        # Set up mock responses for assignment
-        client.mcp_call.responses["mcp_kanban_comment_manager:create"] = {
-            "id": "comment-1"
-        }
-        client.mcp_call.responses["mcp_kanban_card_manager:move"] = {"id": "card-1"}
-
-        await client.assign_task("card-1", "test-agent")
-
-        # Check that correct calls were made
-        calls = client.mcp_call.calls
-
-        # Should have comment creation
-        comment_call = next(c for c in calls if c[0] == "mcp_kanban_comment_manager")
-        assert comment_call[1]["action"] == "create"
-        assert comment_call[1]["cardId"] == "card-1"
-        assert "test-agent" in comment_call[1]["text"]
-
-        # Should have update to In Progress
-        # The client uses update_task_status which changes labels, not direct move
-        assert len(calls) >= 2  # At least comment + some status update
+            with pytest.raises(RuntimeError, match="Board ID not set"):
+                await client.get_available_tasks()
 
     @pytest.mark.asyncio
-    async def test_complete_task(self, client):
-        """Test task completion"""
-        await client.initialize("Task Master Test")
+    async def test_get_all_tasks_no_board_id(self):
+        """Test getting all tasks when board_id is not set"""
+        with patch("pathlib.Path.exists", return_value=False):
+            client = KanbanClient()
 
-        # Set up mock responses
-        client.mcp_call.responses["mcp_kanban_comment_manager:create"] = {
-            "id": "comment-1"
-        }
-        client.mcp_call.responses["mcp_kanban_card_manager:move"] = {"id": "card-1"}
-
-        await client.complete_task("card-1")
-
-        # Check that task completion was recorded
-        calls = client.mcp_call.calls
-        # Should have comment about completion
-        comment_calls = [c for c in calls if c[0] == "mcp_kanban_comment_manager"]
-        assert len(comment_calls) > 0
-        assert "completed" in comment_calls[0][1]["text"].lower()
+            with pytest.raises(RuntimeError, match="Board ID not set"):
+                await client.get_all_tasks()
 
     @pytest.mark.asyncio
-    async def test_card_to_task_conversion(self, client):
+    async def test_get_board_summary_no_board_id(self):
+        """Test getting board summary when board_id is not set"""
+        with patch("pathlib.Path.exists", return_value=False):
+            client = KanbanClient()
+
+            with pytest.raises(RuntimeError, match="Board ID not set"):
+                await client.get_board_summary()
+
+    def test_card_to_task_conversion(self, client_with_config):
         """Test card to task conversion"""
-        await client.initialize("Task Master Test")
+        client = client_with_config
 
         # Test with complete card data
         card = {
             "id": "test-id",
             "name": "Test Card",
             "description": "Test description",
-            "list": {"name": "TODO"},
-            "labels": [{"name": "high", "color": "red"}],
-            "createdAt": "2024-01-01T00:00:00",
-            "updatedAt": "2024-01-02T00:00:00",
+            "listName": "TODO",
+            "users": [{"username": "testuser"}],
         }
 
-        task = await client._card_to_task(card)
+        task = client._card_to_task(card)
 
         assert task.id == "test-id"
         assert task.name == "Test Card"
         assert task.description == "Test description"
         assert task.status == TaskStatus.TODO
-        assert (
-            task.priority == Priority.MEDIUM
-        )  # Priority is always MEDIUM in current implementation
-        assert task.created_at is not None
-        assert task.updated_at is not None
+        assert task.priority == Priority.MEDIUM
+        assert task.assigned_to == "testuser"
 
-    @pytest.mark.asyncio
-    async def test_card_to_task_minimal_data(self, client):
+    def test_card_to_task_minimal_data(self, client_with_config):
         """Test card to task conversion with minimal data"""
-        await client.initialize("Task Master Test")
+        client = client_with_config
 
         card = {"id": "minimal-id", "name": "Minimal Card"}
 
-        task = await client._card_to_task(card)
+        task = client._card_to_task(card)
 
         assert task.id == "minimal-id"
         assert task.name == "Minimal Card"
         assert task.description == ""
         assert task.status == TaskStatus.TODO
         assert task.priority == Priority.MEDIUM
+        assert task.assigned_to is None
 
-    @pytest.mark.asyncio
-    async def test_status_mapping(self, client):
+    def test_status_mapping(self, client_with_config):
         """Test status mapping from list names"""
-        await client.initialize("Task Master Test")
+        client = client_with_config
 
-        # The actual implementation uses listId, not list.name
-        # And it checks if "progress", "done", "complete", or "blocked" is in the list name
         test_cases = [
-            ("list-todo", "TODO", TaskStatus.TODO),
-            ("list-progress", "In Progress", TaskStatus.IN_PROGRESS),
-            ("list-working", "Working on it", TaskStatus.TODO),  # No "progress" in name
-            ("list-done", "Done", TaskStatus.DONE),
-            ("list-completed", "Completed tasks", TaskStatus.DONE),
-            ("list-blocked", "Blocked", TaskStatus.BLOCKED),
+            ("TODO", TaskStatus.TODO),
+            ("DONE", TaskStatus.DONE),
+            ("Done", TaskStatus.DONE),
+            ("In Progress", TaskStatus.IN_PROGRESS),
+            ("PROGRESS", TaskStatus.IN_PROGRESS),
+            ("BLOCKED", TaskStatus.BLOCKED),
+            ("Blocked", TaskStatus.BLOCKED),
+            ("Other", TaskStatus.TODO),  # Default case
         ]
 
-        # Mock the _get_lists response
-        client.mcp_call.responses["mcp_kanban_list_manager:get_all"] = [
-            {"id": "list-todo", "name": "TODO"},
-            {"id": "list-progress", "name": "In Progress"},
-            {"id": "list-working", "name": "Working on it"},
-            {"id": "list-done", "name": "Done"},
-            {"id": "list-completed", "name": "Completed tasks"},
-            {"id": "list-blocked", "name": "Blocked"},
-        ]
-
-        for list_id, list_name, expected_status in test_cases:
-            card = {"id": "test", "name": "Test", "listId": list_id}
-            task = await client._card_to_task(card)
+        for list_name, expected_status in test_cases:
+            card = {"id": "test", "name": "Test", "listName": list_name}
+            task = client._card_to_task(card)
             assert (
                 task.status == expected_status
-            ), f"List '{list_name}' (id: {list_id}) should map to {expected_status}"
+            ), f"List '{list_name}' should map to {expected_status}"
 
-    @pytest.mark.asyncio
-    async def test_priority_default(self, client):
+    def test_priority_default(self, client_with_config):
         """Test that priority defaults to MEDIUM"""
-        await client.initialize("Task Master Test")
+        client = client_with_config
 
         # The current implementation always sets priority to MEDIUM
-        # It doesn't extract from labels yet
-        card = {"id": "test", "name": "Test", "labels": [{"name": "urgent"}]}
-        task = await client._card_to_task(card)
-        assert (
-            task.priority == Priority.MEDIUM
-        )  # Always returns MEDIUM in current implementation
+        card = {"id": "test", "name": "Test"}
+        task = client._card_to_task(card)
+        assert task.priority == Priority.MEDIUM
+
+    def test_is_available_task(self, client_with_config):
+        """Test checking if a task is available"""
+        client = client_with_config
+
+        available_cases = [
+            {"listName": "TODO"},
+            {"listName": "TO DO"},
+            {"listName": "BACKLOG"},
+            {"listName": "READY"},
+        ]
+
+        unavailable_cases = [
+            {"listName": "DONE"},
+            {"listName": "IN PROGRESS"},
+            {"listName": "BLOCKED"},
+            {"listName": "TESTING"},
+        ]
+
+        for card in available_cases:
+            assert client._is_available_task(
+                card
+            ), f"Card with listName '{card['listName']}' should be available"
+
+        for card in unavailable_cases:
+            assert not client._is_available_task(
+                card
+            ), f"Card with listName '{card['listName']}' should not be available"

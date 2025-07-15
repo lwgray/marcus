@@ -791,14 +791,35 @@ class Context:
         Returns:
             String describing the expected interface/functionality
         """
-        # Extract task information
+        # Extract task information for dependent task
         dep_name = dependent_task.name.lower()
         dep_labels = [label.lower() for label in (dependent_task.labels or [])]
+
+        # Try to find the dependency task to get its information
+        dependency_task = None
+        # Look in implementations first
+        if dependency_task_id in self.implementations:
+            # Get task info from implementation if available
+            impl = self.implementations[dependency_task_id]
+            dep_task_name = impl.get("task_name", "").lower()
+            dep_task_labels = [l.lower() for l in impl.get("labels", [])]
+        else:
+            # For now, infer from the task ID and name patterns
+            dep_task_name = dependency_task_id.lower()
+            dep_task_labels = []
+            # Infer labels from common patterns in task names/IDs
+            if "api" in dep_task_name:
+                dep_task_labels.append("api")
+            if "backend" in dep_task_name:
+                dep_task_labels.append("backend")
+            if "frontend" in dep_task_name:
+                dep_task_labels.append("frontend")
 
         # Common interface patterns based on task types
         interface_patterns = {
             # Frontend needs from backend
             ("frontend", "api"): "REST API endpoints with JSON responses",
+            ("frontend", "backend"): "REST API endpoints with JSON responses",
             (
                 "frontend",
                 "auth",
@@ -827,6 +848,10 @@ class Context:
                 "api",
             ): "Documented endpoints with example requests/responses for testing",
             (
+                "test",
+                "frontend",
+            ): "UI components with stable interfaces and test IDs",
+            (
                 "integration-test",
                 "service",
             ): "Service interfaces and test data endpoints",
@@ -834,7 +859,20 @@ class Context:
                 "e2e",
                 "frontend",
             ): "Stable UI elements with test IDs and predictable states",
-            # Deployment needs
+            # ML patterns (must come before general deployment patterns)
+            (
+                "deployment",
+                "training",
+            ): "Trained model artifacts with performance metrics and configuration",
+            (
+                "deployment",
+                "model",
+            ): "Model file with metadata and deployment configuration",
+            (
+                "production",
+                "model",
+            ): "Model file with metadata and deployment configuration",
+            # General deployment needs
             ("deploy", "build"): "Build artifacts, Docker images, or compiled bundles",
             (
                 "deployment",
@@ -857,6 +895,15 @@ class Context:
                 "schema",
             ): "Data models with validation rules and relationships",
             ("migration", "model"): "Entity definitions and database change scripts",
+            # Data processing patterns
+            (
+                "transformation",
+                "extraction",
+            ): "Extracted data in standardized format with clear schema",
+            (
+                "data",
+                "data",
+            ): "Processed data format with documented structure",
             # Integration needs
             (
                 "integration",
@@ -865,13 +912,40 @@ class Context:
             ("connector", "api"): "API client libraries or SDK implementations",
         }
 
-        # Check for pattern matches
+        # Check for pattern matches - match both dependent and dependency types
         for (dep_type, prereq_type), interface in interface_patterns.items():
-            # Check if dependent task matches the pattern
-            dep_match = dep_type in dep_labels or dep_type in dep_name
+            # Check if dependent task matches the pattern (support variations)
+            dep_match = (
+                dep_type in dep_labels
+                or dep_type in dep_name
+                or (
+                    dep_type == "test"
+                    and ("testing" in dep_labels or "integration" in dep_labels)
+                )
+            )
+            # Check if dependency task matches the prerequisite pattern (support variations)
+            prereq_match = (
+                prereq_type in dep_task_labels
+                or prereq_type in dep_task_name
+                or (
+                    prereq_type == "training"
+                    and ("training" in dep_task_labels or "model" in dep_task_labels)
+                )
+            )
 
-            # For now, we assume the dependency matches if we found a dependent match
-            # In a real implementation, we'd check the actual dependency task
+            if dep_match and prereq_match:
+                return interface
+
+        # Fallback: check just dependent task type for common patterns
+        for (dep_type, prereq_type), interface in interface_patterns.items():
+            dep_match = (
+                dep_type in dep_labels
+                or dep_type in dep_name
+                or (
+                    dep_type == "test"
+                    and ("testing" in dep_labels or "integration" in dep_labels)
+                )
+            )
             if dep_match:
                 return interface
 

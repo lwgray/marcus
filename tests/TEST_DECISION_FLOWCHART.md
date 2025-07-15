@@ -47,7 +47,7 @@ ai/     core/    mcp/ or                 e2e/     api/
 | **Component type?** | AI/ML | AI logic | → `tests/unit/ai/` |
 | | Core | Models, managers | → `tests/unit/core/` |
 | | MCP | Protocol handling | → `tests/unit/mcp/` |
-| | UI | Visualization | → `tests/unit/visualization/` |
+| | UI | User interfaces | → `tests/unit/ui/` |
 | **Integration type?** | E2E | Full workflow | → `tests/integration/e2e/` |
 | | API | Service integration | → `tests/integration/api/` |
 | | External | 3rd party services | → `tests/integration/external/` |
