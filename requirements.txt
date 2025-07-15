@@ -1,32 +1,28 @@
 # Core dependencies
 mcp==1.10.0
 anthropic>=0.18.0,<1.0.0
-asyncio==3.4.3
-aiohttp==3.12.13
-python-dotenv==1.1.1
-psutil==7.0.0
+httpx>=0.25.0
+aiofiles>=0.8.0
+psutil>=5.9.0
+structlog>=24.0.0
+jinja2>=3.1.0
+python-dotenv>=1.0.0
 
-# Data handling
-pydantic>=2.8.0
-python-dateutil==2.9.0.post0
+# Data handling (required by MCP)
+pydantic>=2.0.0
 
-# Monitoring and logging
-structlog==25.4.0
-prometheus-client==0.22.1
+# Development tools
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+mypy>=1.8.0
+black>=23.0.0
+ruff>=0.12.0
+isort>=5.12.0
+flake8>=6.0.0
+pydocstyle>=6.3.0
+pre-commit>=3.5.0
+bandit>=1.7.0
 
-# Web UI and visualization
-python-socketio>=5.11.0
-aiohttp-cors>=0.7.0
-jinja2>=3.1.3
-networkx>=3.2.1
-pyvis>=0.3.2
-plotly>=5.18.0
-
-# Development tools (minimal for production)
-black==25.1.0
-ruff==0.12.1
-mypy==1.16.1
-
-# Optional communication integrations (uncomment as needed)
-# slack-sdk==3.26.1
-# sendgrid==6.11.0
+# Type stubs
+types-aiofiles
