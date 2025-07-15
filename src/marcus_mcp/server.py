@@ -611,28 +611,97 @@ class MarcusServer:
 async def main() -> None:
     """Main entry point"""
     try:
+        print("🚀 Starting Marcus MCP Server...", file=sys.stderr)
+        print("=" * 50, file=sys.stderr)
+
         server = MarcusServer()
+
+        # Print configuration info
+        print(f"🏗️  Provider: {server.provider}", file=sys.stderr)
+
+        # Initialize server
+        print("🔧 Initializing server components...", file=sys.stderr)
         await server.initialize()
 
-        # Register this Marcus instance for discovery BEFORE starting stdio server
+        # Print service connections
+        print("\n📡 Service Connections:", file=sys.stderr)
+
+        # Kanban connection info
+        if server.kanban_client:
+            kanban_type = type(server.kanban_client).__name__
+            print(f"   ✅ Kanban: {kanban_type} ({server.provider})", file=sys.stderr)
+
+            # Provider-specific connection details
+            if server.provider == "planka":
+                base_url = os.environ.get("PLANKA_BASE_URL", "Not configured")
+                email = os.environ.get("PLANKA_AGENT_EMAIL", "Not configured")
+                print(f"      📍 URL: {base_url}", file=sys.stderr)
+                print(f"      👤 User: {email}", file=sys.stderr)
+            elif server.provider == "github":
+                repo = os.environ.get("GITHUB_REPOSITORY", "Not configured")
+                print(f"      📍 Repository: {repo}", file=sys.stderr)
+        else:
+            print("   ❌ Kanban: Not connected", file=sys.stderr)
+
+        # AI Engine info
+        if server.ai_engine:
+            ai_provider = getattr(server.ai_engine, "provider", "Unknown")
+            print(f"   ✅ AI Engine: {ai_provider}", file=sys.stderr)
+        else:
+            print("   ⚠️  AI Engine: Fallback mode (no API key)", file=sys.stderr)
+
+        # Memory and persistence
+        if server.persistence:
+            print("   ✅ Persistence: SQLite database", file=sys.stderr)
+        if server.memory:
+            print("   ✅ Memory System: Enabled", file=sys.stderr)
+        if server.context:
+            print("   ✅ Context System: Enabled", file=sys.stderr)
+        if server.events:
+            print("   ✅ Event System: Enabled", file=sys.stderr)
+
+        # Project info
         current_project = None
         if hasattr(server.project_manager, "get_current_project"):
             try:
                 current_project = server.project_manager.get_current_project()
+                if current_project:
+                    print(
+                        f"   📋 Active Project: {current_project.name}", file=sys.stderr
+                    )
+                    if hasattr(current_project, "provider_config"):
+                        if "board_id" in current_project.provider_config:
+                            print(
+                                f"      🎯 Board ID: {current_project.provider_config['board_id']}",
+                                file=sys.stderr,
+                            )
+                else:
+                    print("   📋 Active Project: None", file=sys.stderr)
                 current_project = current_project.name if current_project else None
             except Exception:
+                print("   📋 Active Project: Error retrieving", file=sys.stderr)
                 pass  # nosec B110
 
+        # Register service for discovery
+        print("\n🔗 Registering service for discovery...", file=sys.stderr)
         service_info = register_marcus_service(
             mcp_command=sys.executable + " " + " ".join(sys.argv),
             log_dir=str(Path(server.realtime_log.name).parent),
             project_name=current_project,
             provider=server.provider,
         )
-        print(f"🔍 Service registered: {service_info['instance_id']}", file=sys.stderr)
+        print(f"   🔍 Service ID: {service_info['instance_id']}", file=sys.stderr)
+        print(f"   📁 Log Directory: {service_info['log_dir']}", file=sys.stderr)
+
+        # Ready message
+        print("\n" + "=" * 50, file=sys.stderr)
+        print("✅ Marcus MCP Server is ready!", file=sys.stderr)
+        print("   🔌 Waiting for client connections...", file=sys.stderr)
         print(
-            f"📁 Clients can find logs at: {service_info['log_dir']}", file=sys.stderr
+            "   📊 Monitor at: http://localhost:8080 (if visualization UI is running)",
+            file=sys.stderr,
         )
+        print("=" * 50, file=sys.stderr)
 
         # Now run the server with clean stdio
         await server.run()

@@ -247,6 +247,97 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                 "required": ["task_id"],
             },
         ),
+        # Natural Language Tools (also available to agents)
+        types.Tool(
+            name="create_project",
+            description=(
+                "Create a complete project from natural language description. "
+                "Automatically generates tasks, assigns priorities, and creates "
+                "kanban board structure based on project complexity and deployment needs."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "description": {
+                        "type": "string",
+                        "description": (
+                            "Natural language description of what you want to build. "
+                            "Be specific about features and functionality. "
+                            "Example: 'Create a todo app with user authentication, "
+                            "task categories, and email reminders'"
+                        ),
+                    },
+                    "project_name": {
+                        "type": "string",
+                        "description": (
+                            "A short, memorable name for your project. "
+                            "This will be used as the kanban board title. "
+                            "Example: 'TodoMaster' or 'Task Tracker Pro'"
+                        ),
+                    },
+                    "options": {
+                        "type": "object",
+                        "description": (
+                            "Optional configuration to control project scope and complexity. "
+                            "All fields are optional - sensible defaults will be used."
+                        ),
+                        "properties": {
+                            "complexity": {
+                                "type": "string",
+                                "description": (
+                                    "Project complexity level (default: 'standard'). "
+                                    "- 'prototype': Quick MVP with minimal features (3-8 tasks) "
+                                    "- 'standard': Full-featured project (10-20 tasks) "
+                                    "- 'enterprise': Production-ready with all features (25+ tasks)"
+                                ),
+                                "enum": ["prototype", "standard", "enterprise"],
+                                "default": "standard",
+                            },
+                            "deployment": {
+                                "type": "string",
+                                "description": (
+                                    "Deployment scope (default: 'none'). "
+                                    "- 'none': Local development only, no deployment tasks "
+                                    "- 'internal': Include staging/team deployment tasks "
+                                    "- 'production': Full production deployment with monitoring"
+                                ),
+                                "enum": ["none", "internal", "production"],
+                                "default": "none",
+                            },
+                            "team_size": {
+                                "type": "integer",
+                                "description": (
+                                    "Number of developers (1-20). "
+                                    "Defaults based on complexity: prototype=1, standard=3, enterprise=5. "
+                                    "Affects task parallelization and estimates."
+                                ),
+                                "minimum": 1,
+                                "maximum": 20,
+                            },
+                            "tech_stack": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": (
+                                    "Technologies/frameworks to use. "
+                                    "Example: ['Python', 'React', 'PostgreSQL', 'Docker']. "
+                                    "Helps generate appropriate setup and configuration tasks."
+                                ),
+                            },
+                            "deadline": {
+                                "type": "string",
+                                "format": "date",
+                                "description": (
+                                    "Project deadline in ISO format (YYYY-MM-DD). "
+                                    "Example: '2024-12-31'. "
+                                    "Used to assess timeline risks and adjust priorities."
+                                ),
+                            },
+                        },
+                    },
+                },
+                "required": ["description", "project_name"],
+            },
+        ),
     ]
 
     # If role is "agent", return only agent tools
