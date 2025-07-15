@@ -7,7 +7,7 @@
     },
     "_note": "Make sure kanban-mcp is configured to connect to http://localhost:3333"
   },
-  
+
   "option2_docker_mcp": {
     "_comment": "If kanban-mcp is in Docker (replace 'container-name')",
     "kanban_mcp_server": {
@@ -15,7 +15,7 @@
       "args": ["exec", "-i", "your-kanban-mcp-container-name", "node", "/app/index.js"]
     }
   },
-  
+
   "option3_run_mcp_in_new_container": {
     "_comment": "Start kanban-mcp in a new Docker container",
     "kanban_mcp_server": {

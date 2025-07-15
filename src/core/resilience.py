@@ -6,12 +6,12 @@ and retry logic to ensure Marcus continues working even when components fail.
 """
 
 import asyncio
-import time
 import logging
-from functools import wraps
-from typing import Callable, Any, Optional, Dict
-from datetime import datetime, timedelta
+import time
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from functools import wraps
+from typing import Any, Callable, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RetryConfig:
     """Configuration for retry behavior"""
+
     max_attempts: int = 3
     base_delay: float = 1.0
     max_delay: float = 60.0
@@ -29,6 +30,7 @@ class RetryConfig:
 @dataclass
 class CircuitBreakerConfig:
     """Configuration for circuit breaker behavior"""
+
     failure_threshold: int = 5
     recovery_timeout: float = 60.0
     expected_exception: type = Exception
@@ -36,14 +38,14 @@ class CircuitBreakerConfig:
 
 class CircuitBreaker:
     """Circuit breaker pattern implementation"""
-    
+
     def __init__(self, name: str, config: CircuitBreakerConfig):
         self.name = name
         self.config = config
         self.failure_count = 0
         self.last_failure_time: Optional[datetime] = None
         self.state = "closed"  # closed, open, half-open
-        
+
     def is_open(self) -> bool:
         """Check if circuit is open (failing)"""
         if self.state == "open":
@@ -55,20 +57,22 @@ class CircuitBreaker:
                     return False
             return True
         return False
-        
+
     def record_success(self):
         """Record successful call"""
         self.failure_count = 0
         self.state = "closed"
-        
+
     def record_failure(self):
         """Record failed call"""
         self.failure_count += 1
         self.last_failure_time = datetime.now()
-        
+
         if self.failure_count >= self.config.failure_threshold:
             self.state = "open"
-            logger.warning(f"Circuit breaker '{self.name}' opened after {self.failure_count} failures")
+            logger.warning(
+                f"Circuit breaker '{self.name}' opened after {self.failure_count} failures"
+            )
 
 
 # Global circuit breakers
@@ -78,12 +82,13 @@ _circuit_breakers: Dict[str, CircuitBreaker] = {}
 def with_fallback(fallback_func: Callable, log_errors: bool = True):
     """
     Decorator for graceful degradation with fallback function.
-    
+
     Example:
         @with_fallback(use_memory_storage)
         async def store_to_database(data):
             await db.store(data)
     """
+
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
@@ -95,7 +100,7 @@ def with_fallback(fallback_func: Callable, log_errors: bool = True):
                 if asyncio.iscoroutinefunction(fallback_func):
                     return await fallback_func(*args, **kwargs)
                 return fallback_func(*args, **kwargs)
-                
+
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
             try:
@@ -104,17 +109,18 @@ def with_fallback(fallback_func: Callable, log_errors: bool = True):
                 if log_errors:
                     logger.warning(f"{func.__name__} failed: {e}, using fallback")
                 return fallback_func(*args, **kwargs)
-                
+
         if asyncio.iscoroutinefunction(func):
             return async_wrapper
         return sync_wrapper
+
     return decorator
 
 
 def with_retry(config: Optional[RetryConfig] = None):
     """
     Decorator for retry logic with exponential backoff.
-    
+
     Example:
         @with_retry(RetryConfig(max_attempts=5))
         async def call_external_api():
@@ -122,77 +128,84 @@ def with_retry(config: Optional[RetryConfig] = None):
     """
     if config is None:
         config = RetryConfig()
-        
+
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
             last_exception = None
-            
+
             for attempt in range(config.max_attempts):
                 try:
                     return await func(*args, **kwargs)
                 except Exception as e:
                     last_exception = e
-                    
+
                     if attempt == config.max_attempts - 1:
                         # Last attempt, don't retry
                         break
-                        
+
                     # Calculate delay with exponential backoff
                     delay = min(
-                        config.base_delay * (config.exponential_base ** attempt),
-                        config.max_delay
+                        config.base_delay * (config.exponential_base**attempt),
+                        config.max_delay,
                     )
-                    
+
                     # Add jitter if enabled
                     if config.jitter:
                         import random
-                        delay *= (0.5 + random.random())
-                        
-                    logger.debug(f"{func.__name__} attempt {attempt + 1} failed, retrying in {delay:.2f}s")
+
+                        delay *= 0.5 + random.random()
+
+                    logger.debug(
+                        f"{func.__name__} attempt {attempt + 1} failed, retrying in {delay:.2f}s"
+                    )
                     await asyncio.sleep(delay)
-                    
+
             logger.error(f"{func.__name__} failed after {config.max_attempts} attempts")
             raise last_exception
-            
+
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
             last_exception = None
-            
+
             for attempt in range(config.max_attempts):
                 try:
                     return func(*args, **kwargs)
                 except Exception as e:
                     last_exception = e
-                    
+
                     if attempt == config.max_attempts - 1:
                         break
-                        
+
                     delay = min(
-                        config.base_delay * (config.exponential_base ** attempt),
-                        config.max_delay
+                        config.base_delay * (config.exponential_base**attempt),
+                        config.max_delay,
                     )
-                    
+
                     if config.jitter:
                         import random
-                        delay *= (0.5 + random.random())
-                        
-                    logger.debug(f"{func.__name__} attempt {attempt + 1} failed, retrying in {delay:.2f}s")
+
+                        delay *= 0.5 + random.random()
+
+                    logger.debug(
+                        f"{func.__name__} attempt {attempt + 1} failed, retrying in {delay:.2f}s"
+                    )
                     time.sleep(delay)
-                    
+
             logger.error(f"{func.__name__} failed after {config.max_attempts} attempts")
             raise last_exception
-            
+
         if asyncio.iscoroutinefunction(func):
             return async_wrapper
         return sync_wrapper
+
     return decorator
 
 
 def with_circuit_breaker(name: str, config: Optional[CircuitBreakerConfig] = None):
     """
     Decorator for circuit breaker pattern.
-    
+
     Example:
         @with_circuit_breaker("external_api")
         async def call_external_api():
@@ -200,18 +213,18 @@ def with_circuit_breaker(name: str, config: Optional[CircuitBreakerConfig] = Non
     """
     if config is None:
         config = CircuitBreakerConfig()
-        
+
     # Get or create circuit breaker
     if name not in _circuit_breakers:
         _circuit_breakers[name] = CircuitBreaker(name, config)
     breaker = _circuit_breakers[name]
-    
+
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
             if breaker.is_open():
                 raise Exception(f"Circuit breaker '{name}' is open")
-                
+
             try:
                 result = await func(*args, **kwargs)
                 breaker.record_success()
@@ -219,12 +232,12 @@ def with_circuit_breaker(name: str, config: Optional[CircuitBreakerConfig] = Non
             except config.expected_exception as e:
                 breaker.record_failure()
                 raise
-                
+
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
             if breaker.is_open():
                 raise Exception(f"Circuit breaker '{name}' is open")
-                
+
             try:
                 result = func(*args, **kwargs)
                 breaker.record_success()
@@ -232,47 +245,51 @@ def with_circuit_breaker(name: str, config: Optional[CircuitBreakerConfig] = Non
             except config.expected_exception as e:
                 breaker.record_failure()
                 raise
-                
+
         if asyncio.iscoroutinefunction(func):
             return async_wrapper
         return sync_wrapper
+
     return decorator
 
 
 class GracefulDegradation:
     """
     Context manager for graceful degradation.
-    
+
     Example:
         async with GracefulDegradation(fallback=use_cache) as gd:
             result = await gd.try_primary(fetch_from_database)
             if not result:
                 result = await gd.fallback()
     """
-    
-    def __init__(self, primary: Optional[Callable] = None, 
-                 fallback: Optional[Callable] = None,
-                 log_errors: bool = True):
+
+    def __init__(
+        self,
+        primary: Optional[Callable] = None,
+        fallback: Optional[Callable] = None,
+        log_errors: bool = True,
+    ):
         self.primary = primary
         self.fallback = fallback
         self.log_errors = log_errors
         self._primary_failed = False
         self._primary_exception = None
-        
+
     async def __aenter__(self):
         return self
-        
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         return False
-        
+
     async def try_primary(self, func: Optional[Callable] = None, *args, **kwargs):
         """Try the primary function"""
         if func is None:
             func = self.primary
-            
+
         if func is None:
             raise ValueError("No primary function provided")
-            
+
         try:
             if asyncio.iscoroutinefunction(func):
                 return await func(*args, **kwargs)
@@ -283,12 +300,12 @@ class GracefulDegradation:
             if self.log_errors:
                 logger.warning(f"Primary function failed: {e}")
             return None
-            
+
     async def use_fallback(self, *args, **kwargs):
         """Use the fallback function"""
         if self.fallback is None:
             raise ValueError("No fallback function provided")
-            
+
         if asyncio.iscoroutinefunction(self.fallback):
             return await self.fallback(*args, **kwargs)
         return self.fallback(*args, **kwargs)
@@ -297,12 +314,11 @@ class GracefulDegradation:
 # Pre-configured decorators for common use cases
 resilient_persistence = with_fallback(
     lambda *args, **kwargs: logger.warning("Persistence unavailable, data not saved"),
-    log_errors=True
+    log_errors=True,
 )
 
 resilient_external_call = with_retry(RetryConfig(max_attempts=3, base_delay=1.0))
 
 resilient_ai_call = with_circuit_breaker(
-    "ai_provider",
-    CircuitBreakerConfig(failure_threshold=3, recovery_timeout=30.0)
+    "ai_provider", CircuitBreakerConfig(failure_threshold=3, recovery_timeout=30.0)
 )

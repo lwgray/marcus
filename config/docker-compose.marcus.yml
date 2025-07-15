@@ -8,52 +8,52 @@ services:
     environment:
       # Anthropic API
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      
+
       # Planka configuration
       - PLANKA_BASE_URL=${PLANKA_BASE_URL:-http://host.docker.internal:3333}
       - PLANKA_AGENT_EMAIL=${PLANKA_AGENT_EMAIL:-demo@demo.demo}
       - PLANKA_AGENT_PASSWORD=${PLANKA_AGENT_PASSWORD:-demo}
-      
+
       # Marcus configuration
       - MARCUS_PROJECT_ID=${MARCUS_PROJECT_ID}
       - MARCUS_BOARD_ID=${MARCUS_BOARD_ID}
-      
+
       # Python settings
       - PYTHONUNBUFFERED=1
-      
+
     volumes:
       # Mount config file
       - ./config_marcus.json:/app/config_marcus.json
-      
+
       # Mount logs directory
       - ./logs:/app/logs
-      
+
       # Mount data directory
       - ./data:/app/data
-      
+
       # For development - mount source code
       - ./src:/app/src
       - ./scripts:/app/scripts
-      
+
     # MCP uses stdio, not network ports
     # But we expose a health check endpoint
     ports:
       - "8765:8765"
-      
+
     # Health check
     healthcheck:
       test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
       interval: 30s
       timeout: 10s
       retries: 3
-      
+
     # Restart policy
     restart: unless-stopped
-    
+
     # Network - use host network to access local Planka
     # Or use bridge network if Planka is also in Docker
     network_mode: bridge
-    
+
     # Resource limits
     deploy:
       resources:

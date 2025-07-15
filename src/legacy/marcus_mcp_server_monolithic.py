@@ -986,9 +986,9 @@ async def get_project_status() -> dict:
                     "completed": completed,
                     "in_progress": in_progress,
                     "blocked": blocked,
-                    "completion_percentage": (completed / total_tasks * 100)
-                    if total_tasks > 0
-                    else 0,
+                    "completion_percentage": (
+                        (completed / total_tasks * 100) if total_tasks > 0 else 0
+                    ),
                 },
                 "workers": {
                     "total": len(state.agent_status),
@@ -1016,9 +1016,9 @@ async def get_agent_status(agent_id: str) -> dict:
                     "name": agent.name,
                     "role": agent.role,
                     "skills": agent.skills,
-                    "status": "working"
-                    if len(agent.current_tasks) > 0
-                    else "available",
+                    "status": (
+                        "working" if len(agent.current_tasks) > 0 else "available"
+                    ),
                     "current_tasks": [t.id for t in agent.current_tasks],
                     "total_completed": agent.completed_tasks_count,
                     "performance_score": agent.performance_score,
@@ -1053,9 +1053,9 @@ async def list_registered_agents() -> dict:
                     "id": agent.worker_id,
                     "name": agent.name,
                     "role": agent.role,
-                    "status": "working"
-                    if len(agent.current_tasks) > 0
-                    else "available",
+                    "status": (
+                        "working" if len(agent.current_tasks) > 0 else "available"
+                    ),
                     "skills": agent.skills,
                     "current_tasks": [t.id for t in agent.current_tasks],
                     "total_completed": agent.completed_tasks_count,
@@ -1113,9 +1113,9 @@ async def check_assignment_health() -> dict:
         health_status["in_memory_state"] = {
             "agent_tasks": len(state.agent_tasks),
             "tasks_being_assigned": len(state.tasks_being_assigned),
-            "monitor_running": state.assignment_monitor._running
-            if state.assignment_monitor
-            else False,
+            "monitor_running": (
+                state.assignment_monitor._running if state.assignment_monitor else False
+            ),
         }
 
         return {"success": True, **health_status}

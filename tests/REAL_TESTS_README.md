@@ -44,17 +44,17 @@ pytest tests/integration/test_real_kanban_integration.py -v -s
    ```bash
    pytest tests/integration/test_real_kanban_integration.py::TestRealKanbanIntegration::test_real_task_retrieval -v -s
    ```
-   
+
    This will:
    - Connect to your MCP server
-   - Fetch tasks from "Task Master Test" 
+   - Fetch tasks from "Task Master Test"
    - Display all available tasks with details
 
 2. **Test Real Task Assignment**
    ```bash
    pytest tests/integration/test_real_kanban_integration.py::TestRealKanbanIntegration::test_real_task_assignment -v -s
    ```
-   
+
    This will:
    - Request a task for test-agent-001
    - AI will analyze and assign best task
@@ -64,7 +64,7 @@ pytest tests/integration/test_real_kanban_integration.py -v -s
    ```bash
    pytest tests/integration/test_real_kanban_integration.py::TestRealKanbanIntegration::test_real_progress_reporting -v -s
    ```
-   
+
    This will:
    - Report 50% progress on assigned task
    - Add real comment to kanban board
@@ -74,7 +74,7 @@ pytest tests/integration/test_real_kanban_integration.py -v -s
    ```bash
    pytest tests/integration/test_real_kanban_integration.py::TestRealKanbanIntegration::test_real_blocker_handling -v -s
    ```
-   
+
    This will:
    - Report a blocker on current task
    - AI analyzes and creates resolution plan
@@ -84,7 +84,7 @@ pytest tests/integration/test_real_kanban_integration.py -v -s
    ```bash
    pytest tests/integration/test_real_kanban_integration.py::TestRealKanbanIntegration::test_real_board_monitoring -v -s
    ```
-   
+
    This will:
    - Analyze project health metrics
    - Calculate velocity and progress
@@ -133,7 +133,7 @@ If tests fail:
 1. **Connection Error**
    - Check MCP server is running
    - Verify server path in mcp_kanban_client.py
-   
+
 2. **Project Not Found**
    - Ensure "Task Master Test" project exists
    - Check project name spelling

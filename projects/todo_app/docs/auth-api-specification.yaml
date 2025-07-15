@@ -19,7 +19,7 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-    
+
   schemas:
     User:
       type: object
@@ -43,7 +43,7 @@ components:
         lastLoginAt:
           type: string
           format: date-time
-          
+
     AuthTokens:
       type: object
       properties:
@@ -57,7 +57,7 @@ components:
         expiresIn:
           type: integer
           description: Access token expiration time in seconds
-          
+
     Error:
       type: object
       properties:

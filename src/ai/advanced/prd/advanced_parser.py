@@ -504,9 +504,14 @@ class AdvancedPRDParser:
             hierarchy[nfr_epic_id] = [task["id"] for task in nfr_tasks]
 
         # Add infrastructure and setup tasks (minimal for prototype projects)
-        if project_size not in ["prototype", "mvp"]:  # Prototype projects skip infrastructure
+        if project_size not in [
+            "prototype",
+            "mvp",
+        ]:  # Prototype projects skip infrastructure
             infra_epic_id = "epic_infrastructure"
-            infra_tasks = await self._create_infrastructure_tasks(analysis, constraints, project_size)
+            infra_tasks = await self._create_infrastructure_tasks(
+                analysis, constraints, project_size
+            )
 
             # Store infrastructure task metadata
             for task in infra_tasks:
@@ -651,10 +656,10 @@ class AdvancedPRDParser:
         risk_assessment["timeline_risks"] = constraint_risks
 
         # Generate mitigation strategies
-        risk_assessment[
-            "mitigation_strategies"
-        ] = await self._generate_mitigation_strategies(
-            risk_assessment["risk_factors"], tasks, analysis
+        risk_assessment["mitigation_strategies"] = (
+            await self._generate_mitigation_strategies(
+                risk_assessment["risk_factors"], tasks, analysis
+            )
         )
 
         # Calculate overall risk level
@@ -900,34 +905,43 @@ class AdvancedPRDParser:
         return tasks
 
     async def _create_infrastructure_tasks(
-        self, analysis: PRDAnalysis, constraints: ProjectConstraints, project_size: str = "medium"
+        self,
+        analysis: PRDAnalysis,
+        constraints: ProjectConstraints,
+        project_size: str = "medium",
     ) -> List[Dict[str, Any]]:
         """Create infrastructure and setup tasks"""
         tasks = []
-        
+
         # Always include basic setup for all project sizes
-        tasks.append({
-            "id": "infra_setup",
-            "name": "Set up development environment",
-            "type": "setup",
-        })
-        
+        tasks.append(
+            {
+                "id": "infra_setup",
+                "name": "Set up development environment",
+                "type": "setup",
+            }
+        )
+
         # Add CI/CD for standard+ projects
         if project_size in ["standard", "medium", "large", "enterprise"]:
-            tasks.append({
-                "id": "infra_ci_cd", 
-                "name": "Configure CI/CD pipeline",
-                "type": "infrastructure",
-            })
-        
+            tasks.append(
+                {
+                    "id": "infra_ci_cd",
+                    "name": "Configure CI/CD pipeline",
+                    "type": "infrastructure",
+                }
+            )
+
         # Add deployment infrastructure only for enterprise projects
         if project_size in ["enterprise", "large"]:
-            tasks.append({
-                "id": "infra_deploy",
-                "name": "Set up deployment infrastructure", 
-                "type": "deployment",
-            })
-            
+            tasks.append(
+                {
+                    "id": "infra_deploy",
+                    "name": "Set up deployment infrastructure",
+                    "type": "deployment",
+                }
+            )
+
         return tasks
 
     def _extract_task_info(
@@ -1860,9 +1874,7 @@ class AdvancedPRDParser:
             # Enterprise/Large: include all requirements
             return requirements
 
-    def _filter_nfrs_by_size(
-        self, nfrs: List[Dict], project_size: str
-    ) -> List[Dict]:
+    def _filter_nfrs_by_size(self, nfrs: List[Dict], project_size: str) -> List[Dict]:
         """Filter non-functional requirements based on project size"""
         if project_size in ["prototype", "mvp", "small"]:
             # Prototype: Skip NFRs entirely or just basic auth

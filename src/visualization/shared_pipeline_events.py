@@ -61,12 +61,17 @@ class SharedPipelineVisualizer:
         """Complete a pipeline flow (alias for end_flow for compatibility)"""
         self.end_flow(flow_id, result)
 
-    def add_event(self, flow_id: str, stage: Any, event_type: str = "info", 
-                  data: Optional[Dict[str, Any]] = None, 
-                  duration_ms: Optional[int] = None,
-                  status: Optional[str] = None,
-                  error: Optional[str] = None,
-                  **kwargs) -> None:
+    def add_event(
+        self,
+        flow_id: str,
+        stage: Any,
+        event_type: str = "info",
+        data: Optional[Dict[str, Any]] = None,
+        duration_ms: Optional[int] = None,
+        status: Optional[str] = None,
+        error: Optional[str] = None,
+        **kwargs,
+    ) -> None:
         """Add an event to the pipeline flow (compatibility method)"""
         event_data = {
             "flow_id": flow_id,
@@ -88,7 +93,7 @@ class SharedPipelineVisualizer:
 
 class PipelineStage:
     """Minimal stub for pipeline stage representation"""
-    
+
     # Stage constants for compatibility
     MCP_REQUEST = "mcp_request"
     AI_ANALYSIS = "ai_analysis"

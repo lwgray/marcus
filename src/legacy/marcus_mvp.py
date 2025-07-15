@@ -494,9 +494,9 @@ class MarcusMVP:
                     "instructions": assignment.instructions,
                     "priority": assignment.priority.value,
                     "estimated_hours": assignment.estimated_hours,
-                    "due_date": assignment.due_date.isoformat()
-                    if assignment.due_date
-                    else None,
+                    "due_date": (
+                        assignment.due_date.isoformat() if assignment.due_date else None
+                    ),
                     "workspace_path": assignment.workspace_path,
                     "forbidden_paths": assignment.forbidden_paths,
                 },
@@ -693,13 +693,15 @@ This task is now blocked and requires attention."""
                     "role": agent.role,
                     "skills": agent.skills,
                     "completed_tasks": agent.completed_tasks_count,
-                    "current_task": {
-                        "task_id": current_task.task_id,
-                        "task_name": current_task.task_name,
-                        "assigned_at": current_task.assigned_at.isoformat(),
-                    }
-                    if current_task
-                    else None,
+                    "current_task": (
+                        {
+                            "task_id": current_task.task_id,
+                            "task_name": current_task.task_name,
+                            "assigned_at": current_task.assigned_at.isoformat(),
+                        }
+                        if current_task
+                        else None
+                    ),
                 },
             }
 
@@ -727,9 +729,9 @@ This task is now blocked and requires attention."""
                         "skills": agent.skills,
                         "completed_tasks": agent.completed_tasks_count,
                         "has_current_task": current_task is not None,
-                        "current_task_id": current_task.task_id
-                        if current_task
-                        else None,
+                        "current_task_id": (
+                            current_task.task_id if current_task else None
+                        ),
                     }
                 )
 
@@ -885,9 +887,9 @@ Provide 3-5 concrete steps to resolve this blocker. Be specific and actionable."
                 "service": "Marcus MVP",
                 "timestamp": datetime.utcnow().isoformat(),
                 "version": "1.0.0",
-                "uptime": self._get_uptime()
-                if hasattr(self, "_start_time")
-                else "unknown",
+                "uptime": (
+                    self._get_uptime() if hasattr(self, "_start_time") else "unknown"
+                ),
                 "health": {
                     "status": "healthy",
                     "ai_engine": "available" if self.ai_engine else "unavailable",

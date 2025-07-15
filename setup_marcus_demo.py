@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 
-def check_python_version():
+def check_python_version() -> bool:
     """Ensure Python 3.11+"""
     if sys.version_info < (3, 11):
         print("❌ Python 3.11+ required")
@@ -20,7 +20,7 @@ def check_python_version():
     return True
 
 
-def check_docker():
+def check_docker() -> bool:
     """Check if Docker is running"""
     try:
         result = subprocess.run(
@@ -32,18 +32,29 @@ def check_docker():
         return False
 
 
-def check_planka_running():
+def check_planka_running() -> bool:
     """Check if Planka is running on port 3333"""
     try:
-        import requests
-
-        response = requests.get("http://localhost:3333", timeout=5)
-        return response.status_code == 200
+        # Check if planka container is running
+        result = subprocess.run(
+            [
+                "docker",
+                "ps",
+                "--filter",
+                "name=kanban",
+                "--filter",
+                "status=running",
+                "-q",
+            ],
+            capture_output=True,
+            text=True,
+        )  # nosec B603 B607
+        return bool(result.stdout.strip())
     except:
         return False
 
 
-def main():
+def main() -> None:
     print("🏛️  Marcus Demo Setup")
     print("=" * 30)
 

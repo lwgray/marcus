@@ -10,7 +10,7 @@ The Marcus test suite is organized to provide comprehensive coverage of all comp
 tests/
 ├── unit/                    # ✅ Isolated unit tests (181 tests - 100% passing)
 │   ├── core/               # Core functionality tests
-│   ├── ai/                 # AI components tests  
+│   ├── ai/                 # AI components tests
 │   ├── mcp/                # MCP protocol tests
 │   └── visualization/      # UI/visualization tests
 ├── integration/            # 🔶 Integration tests (require services)
@@ -38,7 +38,7 @@ pytest
 # Run with coverage
 pytest --cov=src --cov-report=html
 
-# Run specific test categories  
+# Run specific test categories
 pytest tests/unit/                    # Unit tests (✅ 100% passing)
 pytest tests/integration/             # Integration tests (require services)
 pytest tests/performance/             # Performance benchmarks
@@ -216,7 +216,7 @@ from tests.utils.base import BaseTestCase
 
 class TestMyComponent(BaseTestCase):
     """Inherits common test utilities."""
-    
+
     def test_something(self):
         # Use inherited helper methods
         task = self.create_sample_task()

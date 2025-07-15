@@ -70,7 +70,8 @@ async def ping(echo: str, state: Any) -> Dict[str, Any]:
             "instance_id": getattr(state, "instance_id", "unknown"),
             "log_dir": (
                 str(Path(state.realtime_log.name).parent)
-                if hasattr(state, "realtime_log") and hasattr(state.realtime_log, "name")
+                if hasattr(state, "realtime_log")
+                and hasattr(state.realtime_log, "name")
                 else None
             ),
         },

@@ -41,39 +41,37 @@ async def create_project(
     """
     import uuid
     from datetime import datetime
-    
+
     # Validate required parameters
-    if not description or not description.strip() or description.lower() in ["test", "dummy", "example", "help"]:
+    if (
+        not description
+        or not description.strip()
+        or description.lower() in ["test", "dummy", "example", "help"]
+    ):
         return {
             "success": False,
             "error": "Please provide a real project description",
             "usage": {
                 "description": "Natural language description of what you want to build",
-                "project_name": "A short name for your project", 
+                "project_name": "A short name for your project",
                 "options": {
                     "complexity": "prototype | standard | enterprise",
                     "deployment": "none | internal | production",
                     "team_size": "1-20 (optional)",
                     "tech_stack": ["array", "of", "technologies"],
-                    "deadline": "YYYY-MM-DD"
-                }
+                    "deadline": "YYYY-MM-DD",
+                },
             },
             "examples": [
                 {
                     "description": "Create a task management app with user authentication and team collaboration",
                     "project_name": "TeamTasks",
-                    "options": {
-                        "complexity": "standard",
-                        "deployment": "internal"
-                    }
+                    "options": {"complexity": "standard", "deployment": "internal"},
                 },
                 {
                     "description": "Build a simple blog with markdown support",
                     "project_name": "MiniBlog",
-                    "options": {
-                        "complexity": "prototype",
-                        "deployment": "none"
-                    }
+                    "options": {"complexity": "prototype", "deployment": "none"},
                 },
                 {
                     "description": "Develop an e-commerce platform with inventory management, payment processing, and analytics",
@@ -82,19 +80,19 @@ async def create_project(
                         "complexity": "enterprise",
                         "deployment": "production",
                         "tech_stack": ["React", "Node.js", "PostgreSQL", "Stripe"],
-                        "team_size": 5
-                    }
-                }
-            ]
+                        "team_size": 5,
+                    },
+                },
+            ],
         }
-    
+
     if not project_name or not project_name.strip():
         return {
             "success": False,
             "error": "Missing required parameter: 'project_name'",
-            "hint": "Please provide a name for your project"
+            "hint": "Please provide a name for your project",
         }
-    
+
     # Validate options if provided
     if options:
         # Validate complexity
@@ -108,10 +106,10 @@ async def create_project(
                     "description": {
                         "prototype": "Quick MVP with minimal features (3-8 tasks)",
                         "standard": "Full-featured project (10-20 tasks)",
-                        "enterprise": "Production-ready with all features (25+ tasks)"
-                    }
+                        "enterprise": "Production-ready with all features (25+ tasks)",
+                    },
                 }
-        
+
         # Validate deployment
         if "deployment" in options:
             valid_deployment = ["none", "internal", "production"]
@@ -123,10 +121,10 @@ async def create_project(
                     "description": {
                         "none": "Local development only",
                         "internal": "Deploy for team/staging use",
-                        "production": "Deploy for customers with full infrastructure"
-                    }
+                        "production": "Deploy for customers with full infrastructure",
+                    },
                 }
-        
+
         # Validate team_size
         if "team_size" in options:
             try:
@@ -135,13 +133,13 @@ async def create_project(
                     return {
                         "success": False,
                         "error": "team_size must be between 1 and 20",
-                        "current_value": options["team_size"]
+                        "current_value": options["team_size"],
                     }
             except (ValueError, TypeError):
                 return {
                     "success": False,
                     "error": "team_size must be a number",
-                    "current_value": options["team_size"]
+                    "current_value": options["team_size"],
                 }
 
     # Start tracking pipeline flow

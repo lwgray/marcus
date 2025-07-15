@@ -2,34 +2,40 @@
 Complete unit tests for Marcus Server - Using anyio to avoid pytest-asyncio issues
 """
 
-import pytest
 import json
 import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import Mock, AsyncMock, patch
-from typing import List, Dict, Any
+from typing import Any, Dict, List
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 
 # Add parent dir to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.marcus_mcp.server import MarcusServer
-from src.marcus_mcp.handlers import get_tool_definitions, handle_tool_call
 from src.core.models import (
-    Task, TaskStatus, Priority, RiskLevel,
-    ProjectState, WorkerStatus, TaskAssignment
+    Priority,
+    ProjectState,
+    RiskLevel,
+    Task,
+    TaskAssignment,
+    TaskStatus,
+    WorkerStatus,
 )
+from src.marcus_mcp.handlers import get_tool_definitions, handle_tool_call
+from src.marcus_mcp.server import MarcusServer
 
 
 def create_test_server():
     """Helper to create a test server instance"""
-    os.environ['KANBAN_PROVIDER'] = 'planka'
-    os.environ['GITHUB_OWNER'] = 'test-owner'
-    os.environ['GITHUB_REPO'] = 'test-repo'
-    
+    os.environ["KANBAN_PROVIDER"] = "planka"
+    os.environ["GITHUB_OWNER"] = "test-owner"
+    os.environ["GITHUB_REPO"] = "test-repo"
+
     server = MarcusServer()
-    
+
     # Mock the kanban client
     server.kanban_client = AsyncMock()
     server.kanban_client.get_available_tasks = AsyncMock(return_value=[])
@@ -40,20 +46,20 @@ def create_test_server():
     server.kanban_client.add_comment = AsyncMock()
     server.kanban_client.get_board_summary = AsyncMock(return_value={})
     server.kanban_client.update_task_progress = AsyncMock()
-    
+
     # Don't start the assignment monitor in tests
     server.assignment_monitor = None
-    
+
     return server
 
 
 # Non-async tests
 def test_server_initialization():
     """Test server initializes correctly"""
-    os.environ['KANBAN_PROVIDER'] = 'planka'
+    os.environ["KANBAN_PROVIDER"] = "planka"
     server = MarcusServer()
-    
-    assert server.provider == 'planka'
+
+    assert server.provider == "planka"
     assert server.ai_engine is not None
     assert server.monitor is not None
     assert server.comm_hub is not None
@@ -65,18 +71,18 @@ def test_server_initialization():
 def test_get_tool_definitions():
     """Test tool definitions are returned correctly"""
     tools = get_tool_definitions()
-    
+
     assert len(tools) > 0
     tool_names = [tool.name for tool in tools]
-    
+
     # Check essential tools are present
-    assert 'ping' in tool_names
-    assert 'register_agent' in tool_names
-    assert 'request_next_task' in tool_names
-    assert 'report_task_progress' in tool_names
-    assert 'get_project_status' in tool_names
-    assert 'create_project' in tool_names
-    assert 'add_feature' in tool_names
+    assert "ping" in tool_names
+    assert "register_agent" in tool_names
+    assert "request_next_task" in tool_names
+    assert "report_task_progress" in tool_names
+    assert "get_project_status" in tool_names
+    assert "create_project" in tool_names
+    assert "add_feature" in tool_names
 
 
 # Async tests using anyio
@@ -85,22 +91,18 @@ def test_get_tool_definitions():
 async def test_ping_tool():
     """Test ping tool functionality"""
     server = create_test_server()
-    
-    result = await handle_tool_call(
-        'ping',
-        {'echo': 'test'},
-        server
-    )
-    
+
+    result = await handle_tool_call("ping", {"echo": "test"}, server)
+
     assert len(result) == 1
-    assert result[0].type == 'text'
-    
+    assert result[0].type == "text"
+
     data = json.loads(result[0].text)
-    assert data['status'] == 'online'
-    assert data['echo'] == 'test'
-    assert 'timestamp' in data
-    assert data['success'] is True
-    assert data['provider'] == 'planka'
+    assert data["status"] == "online"
+    assert data["echo"] == "test"
+    assert "timestamp" in data
+    assert data["success"] is True
+    assert data["provider"] == "planka"
 
 
 @pytest.mark.anyio
@@ -108,17 +110,13 @@ async def test_ping_tool():
 async def test_unknown_tool():
     """Test handling of unknown tool"""
     server = create_test_server()
-    
-    result = await handle_tool_call(
-        'unknown_tool',
-        {},
-        server
-    )
-    
+
+    result = await handle_tool_call("unknown_tool", {}, server)
+
     assert len(result) == 1
     data = json.loads(result[0].text)
-    assert 'error' in data
-    assert 'Unknown tool' in data['error']
+    assert "error" in data
+    assert "Unknown tool" in data["error"]
 
 
 @pytest.mark.anyio
@@ -126,22 +124,22 @@ async def test_unknown_tool():
 async def test_register_agent():
     """Test agent registration"""
     server = create_test_server()
-    
+
     result = await handle_tool_call(
-        'register_agent',
+        "register_agent",
         {
-            'agent_id': 'test-001',
-            'name': 'Test Agent',
-            'role': 'Developer',
-            'skills': ['python', 'testing']
+            "agent_id": "test-001",
+            "name": "Test Agent",
+            "role": "Developer",
+            "skills": ["python", "testing"],
         },
-        server
+        server,
     )
-    
+
     data = json.loads(result[0].text)
-    assert data['success'] is True
-    assert data['agent_id'] == 'test-001'
-    assert 'test-001' in server.agent_status
+    assert data["success"] is True
+    assert data["agent_id"] == "test-001"
+    assert "test-001" in server.agent_status
 
 
 @pytest.mark.anyio
@@ -149,32 +147,30 @@ async def test_register_agent():
 async def test_get_agent_status():
     """Test getting agent status"""
     server = create_test_server()
-    
+
     # First register an agent
-    server.agent_status['test-001'] = WorkerStatus(
-        worker_id='test-001',
-        name='Test Agent',
-        role='Developer',
-        email='test@example.com',
+    server.agent_status["test-001"] = WorkerStatus(
+        worker_id="test-001",
+        name="Test Agent",
+        role="Developer",
+        email="test@example.com",
         current_tasks=[],
         completed_tasks_count=0,
         capacity=40,
-        skills=['python'],
+        skills=["python"],
         availability={},
-        performance_score=1.0
+        performance_score=1.0,
     )
-    
+
     result = await handle_tool_call(
-        'get_agent_status',
-        {'agent_id': 'test-001'},
-        server
+        "get_agent_status", {"agent_id": "test-001"}, server
     )
-    
+
     data = json.loads(result[0].text)
     # Check for error or agent info
-    if 'error' not in data:
-        assert 'agent' in data
-        assert data['agent']['id'] == 'test-001'
+    if "error" not in data:
+        assert "agent" in data
+        assert data["agent"]["id"] == "test-001"
 
 
 @pytest.mark.anyio
@@ -182,46 +178,42 @@ async def test_get_agent_status():
 async def test_list_registered_agents():
     """Test listing all agents"""
     server = create_test_server()
-    
+
     # Register some agents
     server.agent_status = {
-        'test-001': WorkerStatus(
-            worker_id='test-001',
-            name='Agent 1',
-            role='Developer',
-            email='agent1@example.com',
+        "test-001": WorkerStatus(
+            worker_id="test-001",
+            name="Agent 1",
+            role="Developer",
+            email="agent1@example.com",
             current_tasks=[],
             completed_tasks_count=0,
             capacity=40,
             skills=[],
             availability={},
-            performance_score=1.0
+            performance_score=1.0,
         ),
-        'test-002': WorkerStatus(
-            worker_id='test-002',
-            name='Agent 2',
-            role='Tester',
-            email='agent2@example.com',
+        "test-002": WorkerStatus(
+            worker_id="test-002",
+            name="Agent 2",
+            role="Tester",
+            email="agent2@example.com",
             current_tasks=[],
             completed_tasks_count=0,
             capacity=40,
             skills=[],
             availability={},
-            performance_score=1.0
-        )
+            performance_score=1.0,
+        ),
     }
-    
-    result = await handle_tool_call(
-        'list_registered_agents',
-        {},
-        server
-    )
-    
+
+    result = await handle_tool_call("list_registered_agents", {}, server)
+
     data = json.loads(result[0].text)
     # Check for agents list in various formats
-    if 'error' not in data:
-        assert 'agents' in data or 'registered_agents' in data
-        agents_list = data.get('agents', data.get('registered_agents', []))
+    if "error" not in data:
+        assert "agents" in data or "registered_agents" in data
+        agents_list = data.get("agents", data.get("registered_agents", []))
         assert len(agents_list) == 2
 
 
@@ -230,37 +222,35 @@ async def test_list_registered_agents():
 async def test_request_next_task_no_tasks():
     """Test requesting task when none available"""
     server = create_test_server()
-    
+
     # Register agent first
-    server.agent_status['test-001'] = WorkerStatus(
-        worker_id='test-001',
-        name='Test Agent',
-        role='Developer',
-        email='test@example.com',
+    server.agent_status["test-001"] = WorkerStatus(
+        worker_id="test-001",
+        name="Test Agent",
+        role="Developer",
+        email="test@example.com",
         current_tasks=[],
         completed_tasks_count=0,
         capacity=40,
-        skills=['python'],
+        skills=["python"],
         availability={},
-        performance_score=1.0
+        performance_score=1.0,
     )
-    
+
     server.kanban_client.get_available_tasks.return_value = []
-    
+
     result = await handle_tool_call(
-        'request_next_task',
-        {'agent_id': 'test-001'},
-        server
+        "request_next_task", {"agent_id": "test-001"}, server
     )
-    
+
     data = json.loads(result[0].text)
     # Check for task assignment response
-    if data.get('success', True):  # Handle different response formats
-        if 'task' in data:
-            assert data['task'] is None
+    if data.get("success", True):  # Handle different response formats
+        if "task" in data:
+            assert data["task"] is None
     else:
-        assert 'message' in data
-        assert 'no suitable tasks' in data['message'].lower()
+        assert "message" in data
+        assert "no suitable tasks" in data["message"].lower()
 
 
 @pytest.mark.anyio
@@ -268,38 +258,38 @@ async def test_request_next_task_no_tasks():
 async def test_report_task_progress():
     """Test reporting task progress"""
     server = create_test_server()
-    
+
     # Setup agent and task
-    task_id = 'task-001'
-    server.agent_status['test-001'] = WorkerStatus(
-        worker_id='test-001',
-        name='Test Agent',
-        role='Developer',
-        email='test@example.com',
+    task_id = "task-001"
+    server.agent_status["test-001"] = WorkerStatus(
+        worker_id="test-001",
+        name="Test Agent",
+        role="Developer",
+        email="test@example.com",
         current_tasks=[],
         completed_tasks_count=0,
         capacity=40,
         skills=[],
         availability={},
-        performance_score=1.0
+        performance_score=1.0,
     )
     # The server uses a simple dictionary for agent_tasks
-    server.agent_tasks['test-001'] = task_id
-    
+    server.agent_tasks["test-001"] = task_id
+
     result = await handle_tool_call(
-        'report_task_progress',
+        "report_task_progress",
         {
-            'agent_id': 'test-001',
-            'task_id': task_id,
-            'status': 'in_progress',
-            'progress': 50,
-            'message': 'Halfway done'
+            "agent_id": "test-001",
+            "task_id": task_id,
+            "status": "in_progress",
+            "progress": 50,
+            "message": "Halfway done",
         },
-        server
+        server,
     )
-    
+
     data = json.loads(result[0].text)
-    assert data['success'] is True
+    assert data["success"] is True
     server.kanban_client.update_task_progress.assert_called_once()
 
 
@@ -308,12 +298,12 @@ async def test_report_task_progress():
 async def test_get_project_status():
     """Test getting project status"""
     server = create_test_server()
-    
+
     # Mock project state - initialize if not exists
-    if not hasattr(server, 'project_state'):
+    if not hasattr(server, "project_state"):
         server.project_state = ProjectState(
-            board_id='board-001',
-            project_name='Test Project',
+            board_id="board-001",
+            project_name="Test Project",
             total_tasks=10,
             completed_tasks=5,
             in_progress_tasks=3,
@@ -322,36 +312,32 @@ async def test_get_project_status():
             overdue_tasks=[],
             team_velocity=2.0,
             risk_level=RiskLevel.LOW,
-            last_updated=datetime.now()
+            last_updated=datetime.now(),
         )
-    
+
     # Mock board summary
     server.kanban_client.get_board_summary.return_value = {
-        'totalCards': 10,
-        'doneCount': 5,
-        'inProgressCount': 3,
-        'backlogCount': 2
+        "totalCards": 10,
+        "doneCount": 5,
+        "inProgressCount": 3,
+        "backlogCount": 2,
     }
-    
-    result = await handle_tool_call(
-        'get_project_status',
-        {},
-        server
-    )
-    
+
+    result = await handle_tool_call("get_project_status", {}, server)
+
     data = json.loads(result[0].text)
-    
+
     # Handle different response formats
-    if data.get('success', False):
+    if data.get("success", False):
         # Check for project data
-        assert 'project' in data
-        project = data['project']
-        assert project['total_tasks'] == 10
-        assert project['completed'] == 5
-        assert project['in_progress'] == 3
+        assert "project" in data
+        project = data["project"]
+        assert project["total_tasks"] == 10
+        assert project["completed"] == 5
+        assert project["in_progress"] == 3
     else:
         # If there's an error, just ensure it's a valid error response
-        assert 'error' in data or 'message' in data
+        assert "error" in data or "message" in data
 
 
 @pytest.mark.anyio
@@ -359,19 +345,14 @@ async def test_get_project_status():
 async def test_create_project_validation():
     """Test create_project validates inputs"""
     server = create_test_server()
-    
+
     result = await handle_tool_call(
-        'create_project',
-        {
-            'description': '',
-            'project_name': 'Test'
-        },
-        server
+        "create_project", {"description": "", "project_name": "Test"}, server
     )
-    
+
     data = json.loads(result[0].text)
-    assert data['success'] is False
-    assert 'required' in data['error'].lower()
+    assert data["success"] is False
+    assert "required" in data["error"].lower()
 
 
 @pytest.mark.anyio
@@ -379,21 +360,18 @@ async def test_create_project_validation():
 async def test_add_feature_validation():
     """Test add_feature validates inputs"""
     server = create_test_server()
-    
+
     result = await handle_tool_call(
-        'add_feature',
-        {
-            'feature_description': '',
-            'integration_point': 'auto_detect'
-        },
-        server
+        "add_feature",
+        {"feature_description": "", "integration_point": "auto_detect"},
+        server,
     )
-    
+
     data = json.loads(result[0].text)
-    assert data['success'] is False
-    assert 'required' in data['error'].lower()
+    assert data["success"] is False
+    assert "required" in data["error"].lower()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Run without pytest-asyncio to avoid introspection issues
-    pytest.main([__file__, '-v', '-p', 'no:asyncio'])
+    pytest.main([__file__, "-v", "-p", "no:asyncio"])

@@ -25,7 +25,7 @@ class Planka(KanbanInterface):
         """
         super().__init__(config)
         self.provider = KanbanProvider.PLANKA
-        
+
         # Set environment variables from config before creating client
         if config:
             if "base_url" in config:
@@ -38,7 +38,7 @@ class Planka(KanbanInterface):
                 os.environ["PLANKA_PROJECT_ID"] = config["project_id"]
             if "board_id" in config:
                 os.environ["PLANKA_BOARD_ID"] = config["board_id"]
-        
+
         self.client = KanbanClientWithCreate()
         self.connected = False
         print(

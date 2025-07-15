@@ -1,6 +1,6 @@
 """AI Decision Components"""
 
-from .hybrid_framework import HybridDecisionFramework
 from ..types import AssignmentDecision
+from .hybrid_framework import HybridDecisionFramework
 
-__all__ = ['HybridDecisionFramework', 'AssignmentDecision']
+__all__ = ["HybridDecisionFramework", "AssignmentDecision"]

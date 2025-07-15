@@ -129,12 +129,11 @@ class TestKanbanClient:
         """Test client initialization when config file exists."""
         config_json = json.dumps(sample_config)
 
-        with patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=True
-        ), patch("builtins.open", mock_open(read_data=config_json)), patch(
-            "src.integrations.kanban_client.os.environ", {}
-        ) as mock_env, patch(
-            "sys.stderr"
+        with (
+            patch("src.integrations.kanban_client.os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data=config_json)),
+            patch("src.integrations.kanban_client.os.environ", {}) as mock_env,
+            patch("sys.stderr"),
         ):
             client = KanbanClient()
 
@@ -154,10 +153,11 @@ class TestKanbanClient:
         def mock_exists(path):
             return False  # Always return False for any path
 
-        with patch("os.path.exists", side_effect=mock_exists), patch(
-            "pathlib.Path.exists", return_value=False
-        ), patch("src.integrations.kanban_client.os.environ", {}) as mock_env, patch(
-            "sys.stderr"
+        with (
+            patch("os.path.exists", side_effect=mock_exists),
+            patch("pathlib.Path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}) as mock_env,
+            patch("sys.stderr"),
         ):
             client = KanbanClient()
 
@@ -178,12 +178,13 @@ class TestKanbanClient:
             "PLANKA_AGENT_PASSWORD": "existing-password",
         }
 
-        with patch("os.path.exists", return_value=False), patch(
-            "pathlib.Path.exists", return_value=False
-        ), patch(
-            "src.integrations.kanban_client.os.environ", existing_env.copy()
-        ) as mock_env, patch(
-            "sys.stderr"
+        with (
+            patch("os.path.exists", return_value=False),
+            patch("pathlib.Path.exists", return_value=False),
+            patch(
+                "src.integrations.kanban_client.os.environ", existing_env.copy()
+            ) as mock_env,
+            patch("sys.stderr"),
         ):
             client = KanbanClient()
 
@@ -205,12 +206,11 @@ class TestKanbanClient:
 
         config_json = json.dumps(partial_config)
 
-        with patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=True
-        ), patch("builtins.open", mock_open(read_data=config_json)), patch(
-            "src.integrations.kanban_client.os.environ", {}
-        ) as mock_env, patch(
-            "sys.stderr"
+        with (
+            patch("src.integrations.kanban_client.os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data=config_json)),
+            patch("src.integrations.kanban_client.os.environ", {}) as mock_env,
+            patch("sys.stderr"),
         ):
             client = KanbanClient()
 
@@ -250,16 +250,15 @@ class TestKanbanClient:
         # Configure mock to return different responses
         mock_client_session.call_tool.side_effect = [lists_response] + cards_responses
 
-        with patch(
-            "src.integrations.kanban_client.stdio_client", mock_stdio_client
-        ), patch(
-            "src.integrations.kanban_client.ClientSession", mock_client_session_context
-        ), patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch(
-            "src.integrations.kanban_client.os.environ", {}
-        ), patch(
-            "sys.stderr"
+        with (
+            patch("src.integrations.kanban_client.stdio_client", mock_stdio_client),
+            patch(
+                "src.integrations.kanban_client.ClientSession",
+                mock_client_session_context,
+            ),
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
         ):
             client = KanbanClient()
             client.board_id = "test-board-456"
@@ -276,9 +275,11 @@ class TestKanbanClient:
     @pytest.mark.asyncio
     async def test_get_available_tasks_no_board_id(self):
         """Test get_available_tasks raises error when board_id is not set."""
-        with patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch("src.integrations.kanban_client.os.environ", {}), patch("sys.stderr"):
+        with (
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
+        ):
             client = KanbanClient()
             client.board_id = None
 
@@ -296,16 +297,15 @@ class TestKanbanClient:
 
         mock_client_session.call_tool.return_value = lists_response
 
-        with patch(
-            "src.integrations.kanban_client.stdio_client", mock_stdio_client
-        ), patch(
-            "src.integrations.kanban_client.ClientSession", mock_client_session_context
-        ), patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch(
-            "src.integrations.kanban_client.os.environ", {}
-        ), patch(
-            "sys.stderr"
+        with (
+            patch("src.integrations.kanban_client.stdio_client", mock_stdio_client),
+            patch(
+                "src.integrations.kanban_client.ClientSession",
+                mock_client_session_context,
+            ),
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
         ):
             client = KanbanClient()
             client.board_id = "test-board-456"
@@ -338,16 +338,15 @@ class TestKanbanClient:
 
         mock_client_session.call_tool.side_effect = [lists_response] + cards_responses
 
-        with patch(
-            "src.integrations.kanban_client.stdio_client", mock_stdio_client
-        ), patch(
-            "src.integrations.kanban_client.ClientSession", mock_client_session_context
-        ), patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch(
-            "src.integrations.kanban_client.os.environ", {}
-        ), patch(
-            "sys.stderr"
+        with (
+            patch("src.integrations.kanban_client.stdio_client", mock_stdio_client),
+            patch(
+                "src.integrations.kanban_client.ClientSession",
+                mock_client_session_context,
+            ),
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
         ):
             client = KanbanClient()
             client.board_id = "test-board-456"
@@ -387,16 +386,15 @@ class TestKanbanClient:
             move_response,
         ]
 
-        with patch(
-            "src.integrations.kanban_client.stdio_client", mock_stdio_client
-        ), patch(
-            "src.integrations.kanban_client.ClientSession", mock_client_session_context
-        ), patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch(
-            "src.integrations.kanban_client.os.environ", {}
-        ), patch(
-            "sys.stderr"
+        with (
+            patch("src.integrations.kanban_client.stdio_client", mock_stdio_client),
+            patch(
+                "src.integrations.kanban_client.ClientSession",
+                mock_client_session_context,
+            ),
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
         ):
             client = KanbanClient()
             client.board_id = "test-board-456"
@@ -436,16 +434,15 @@ class TestKanbanClient:
 
         mock_client_session.call_tool.side_effect = [comment_response, lists_response]
 
-        with patch(
-            "src.integrations.kanban_client.stdio_client", mock_stdio_client
-        ), patch(
-            "src.integrations.kanban_client.ClientSession", mock_client_session_context
-        ), patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch(
-            "src.integrations.kanban_client.os.environ", {}
-        ), patch(
-            "sys.stderr"
+        with (
+            patch("src.integrations.kanban_client.stdio_client", mock_stdio_client),
+            patch(
+                "src.integrations.kanban_client.ClientSession",
+                mock_client_session_context,
+            ),
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
         ):
             client = KanbanClient()
             client.board_id = "test-board-456"
@@ -472,16 +469,15 @@ class TestKanbanClient:
 
         mock_client_session.call_tool.return_value = summary_response
 
-        with patch(
-            "src.integrations.kanban_client.stdio_client", mock_stdio_client
-        ), patch(
-            "src.integrations.kanban_client.ClientSession", mock_client_session_context
-        ), patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch(
-            "src.integrations.kanban_client.os.environ", {}
-        ), patch(
-            "sys.stderr"
+        with (
+            patch("src.integrations.kanban_client.stdio_client", mock_stdio_client),
+            patch(
+                "src.integrations.kanban_client.ClientSession",
+                mock_client_session_context,
+            ),
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
         ):
             client = KanbanClient()
             client.board_id = "test-board-456"
@@ -495,9 +491,11 @@ class TestKanbanClient:
     @pytest.mark.asyncio
     async def test_get_board_summary_no_board_id(self):
         """Test get_board_summary raises error when board_id is not set."""
-        with patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch("src.integrations.kanban_client.os.environ", {}), patch("sys.stderr"):
+        with (
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
+        ):
             client = KanbanClient()
             client.board_id = None
 
@@ -516,16 +514,15 @@ class TestKanbanClient:
 
         mock_client_session.call_tool.return_value = comment_response
 
-        with patch(
-            "src.integrations.kanban_client.stdio_client", mock_stdio_client
-        ), patch(
-            "src.integrations.kanban_client.ClientSession", mock_client_session_context
-        ), patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch(
-            "src.integrations.kanban_client.os.environ", {}
-        ), patch(
-            "sys.stderr"
+        with (
+            patch("src.integrations.kanban_client.stdio_client", mock_stdio_client),
+            patch(
+                "src.integrations.kanban_client.ClientSession",
+                mock_client_session_context,
+            ),
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
         ):
             client = KanbanClient()
 
@@ -554,16 +551,15 @@ class TestKanbanClient:
 
         mock_client_session.call_tool.side_effect = [lists_response, move_response]
 
-        with patch(
-            "src.integrations.kanban_client.stdio_client", mock_stdio_client
-        ), patch(
-            "src.integrations.kanban_client.ClientSession", mock_client_session_context
-        ), patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch(
-            "src.integrations.kanban_client.os.environ", {}
-        ), patch(
-            "sys.stderr"
+        with (
+            patch("src.integrations.kanban_client.stdio_client", mock_stdio_client),
+            patch(
+                "src.integrations.kanban_client.ClientSession",
+                mock_client_session_context,
+            ),
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
         ):
             client = KanbanClient()
             client.board_id = "test-board-456"
@@ -591,16 +587,15 @@ class TestKanbanClient:
 
         mock_client_session.call_tool.side_effect = [lists_response, move_response]
 
-        with patch(
-            "src.integrations.kanban_client.stdio_client", mock_stdio_client
-        ), patch(
-            "src.integrations.kanban_client.ClientSession", mock_client_session_context
-        ), patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch(
-            "src.integrations.kanban_client.os.environ", {}
-        ), patch(
-            "sys.stderr"
+        with (
+            patch("src.integrations.kanban_client.stdio_client", mock_stdio_client),
+            patch(
+                "src.integrations.kanban_client.ClientSession",
+                mock_client_session_context,
+            ),
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
         ):
             client = KanbanClient()
             client.board_id = "test-board-456"
@@ -623,16 +618,15 @@ class TestKanbanClient:
 
         mock_client_session.call_tool.return_value = lists_response
 
-        with patch(
-            "src.integrations.kanban_client.stdio_client", mock_stdio_client
-        ), patch(
-            "src.integrations.kanban_client.ClientSession", mock_client_session_context
-        ), patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch(
-            "src.integrations.kanban_client.os.environ", {}
-        ), patch(
-            "sys.stderr"
+        with (
+            patch("src.integrations.kanban_client.stdio_client", mock_stdio_client),
+            patch(
+                "src.integrations.kanban_client.ClientSession",
+                mock_client_session_context,
+            ),
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
         ):
             client = KanbanClient()
             client.board_id = "test-board-456"
@@ -642,9 +636,11 @@ class TestKanbanClient:
 
     def test_is_available_task(self):
         """Test task availability checking."""
-        with patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch("src.integrations.kanban_client.os.environ", {}), patch("sys.stderr"):
+        with (
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
+        ):
             client = KanbanClient()
 
             # Available tasks
@@ -662,9 +658,11 @@ class TestKanbanClient:
 
     def test_card_to_task_basic(self):
         """Test basic card to task conversion."""
-        with patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch("src.integrations.kanban_client.os.environ", {}), patch("sys.stderr"):
+        with (
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
+        ):
             client = KanbanClient()
 
             card = {
@@ -685,9 +683,11 @@ class TestKanbanClient:
 
     def test_card_to_task_with_status_mapping(self):
         """Test card to task conversion with different statuses."""
-        with patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch("src.integrations.kanban_client.os.environ", {}), patch("sys.stderr"):
+        with (
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
+        ):
             client = KanbanClient()
 
             # Test DONE status
@@ -707,9 +707,11 @@ class TestKanbanClient:
 
     def test_card_to_task_with_assignment(self):
         """Test card to task conversion with different assignment formats."""
-        with patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch("src.integrations.kanban_client.os.environ", {}), patch("sys.stderr"):
+        with (
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
+        ):
             client = KanbanClient()
 
             # Test with users field (Planka format)
@@ -747,9 +749,11 @@ class TestKanbanClient:
 
     def test_card_to_task_fallback_values(self):
         """Test card to task conversion with missing fields."""
-        with patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch("src.integrations.kanban_client.os.environ", {}), patch("sys.stderr"):
+        with (
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
+        ):
             client = KanbanClient()
 
             # Minimal card
@@ -781,14 +785,11 @@ class TestKanbanClient:
 
             return _failing()
 
-        with patch(
-            "src.integrations.kanban_client.stdio_client", failing_stdio_client
-        ), patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch(
-            "src.integrations.kanban_client.os.environ", {}
-        ), patch(
-            "sys.stderr"
+        with (
+            patch("src.integrations.kanban_client.stdio_client", failing_stdio_client),
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
         ):
             client = KanbanClient()
             client.board_id = "test-board"
@@ -807,16 +808,15 @@ class TestKanbanClient:
 
         mock_client_session.call_tool.return_value = invalid_response
 
-        with patch(
-            "src.integrations.kanban_client.stdio_client", mock_stdio_client
-        ), patch(
-            "src.integrations.kanban_client.ClientSession", mock_client_session_context
-        ), patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch(
-            "src.integrations.kanban_client.os.environ", {}
-        ), patch(
-            "sys.stderr"
+        with (
+            patch("src.integrations.kanban_client.stdio_client", mock_stdio_client),
+            patch(
+                "src.integrations.kanban_client.ClientSession",
+                mock_client_session_context,
+            ),
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
         ):
             client = KanbanClient()
             client.board_id = "test-board"
@@ -832,16 +832,15 @@ class TestKanbanClient:
         # Test with None response
         mock_client_session.call_tool.return_value = None
 
-        with patch(
-            "src.integrations.kanban_client.stdio_client", mock_stdio_client
-        ), patch(
-            "src.integrations.kanban_client.ClientSession", mock_client_session_context
-        ), patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch(
-            "src.integrations.kanban_client.os.environ", {}
-        ), patch(
-            "sys.stderr"
+        with (
+            patch("src.integrations.kanban_client.stdio_client", mock_stdio_client),
+            patch(
+                "src.integrations.kanban_client.ClientSession",
+                mock_client_session_context,
+            ),
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
         ):
             client = KanbanClient()
             client.board_id = "test-board"
@@ -859,16 +858,15 @@ class TestKanbanClient:
 
         mock_client_session.call_tool.return_value = malformed_response
 
-        with patch(
-            "src.integrations.kanban_client.stdio_client", mock_stdio_client
-        ), patch(
-            "src.integrations.kanban_client.ClientSession", mock_client_session_context
-        ), patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch(
-            "src.integrations.kanban_client.os.environ", {}
-        ), patch(
-            "sys.stderr"
+        with (
+            patch("src.integrations.kanban_client.stdio_client", mock_stdio_client),
+            patch(
+                "src.integrations.kanban_client.ClientSession",
+                mock_client_session_context,
+            ),
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
         ):
             client = KanbanClient()
             client.board_id = "test-board"
@@ -879,12 +877,11 @@ class TestKanbanClient:
     def test_config_file_read_error(self):
         """Test handling of config file read errors."""
         # The module doesn't handle file read errors, so we expect it to raise
-        with patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=True
-        ), patch("builtins.open", side_effect=IOError("Permission denied")), patch(
-            "src.integrations.kanban_client.os.environ", {}
-        ) as mock_env, patch(
-            "sys.stderr"
+        with (
+            patch("src.integrations.kanban_client.os.path.exists", return_value=True),
+            patch("builtins.open", side_effect=IOError("Permission denied")),
+            patch("src.integrations.kanban_client.os.environ", {}) as mock_env,
+            patch("sys.stderr"),
         ):
             # The module will raise the IOError
             with pytest.raises(IOError, match="Permission denied"):
@@ -893,12 +890,11 @@ class TestKanbanClient:
     def test_config_file_invalid_json(self):
         """Test handling of invalid JSON in config file."""
         # The module doesn't handle JSON errors, so we expect it to raise
-        with patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=True
-        ), patch("builtins.open", mock_open(read_data="invalid json {")), patch(
-            "src.integrations.kanban_client.os.environ", {}
-        ) as mock_env, patch(
-            "sys.stderr"
+        with (
+            patch("src.integrations.kanban_client.os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data="invalid json {")),
+            patch("src.integrations.kanban_client.os.environ", {}) as mock_env,
+            patch("sys.stderr"),
         ):
             # The module will raise JSONDecodeError
             with pytest.raises(json.JSONDecodeError):
@@ -936,16 +932,15 @@ class TestKanbanClient:
             summary_response,  # For get_board_summary
         ]
 
-        with patch(
-            "src.integrations.kanban_client.stdio_client", mock_stdio_client
-        ), patch(
-            "src.integrations.kanban_client.ClientSession", mock_client_session_context
-        ), patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch(
-            "src.integrations.kanban_client.os.environ", {}
-        ), patch(
-            "sys.stderr"
+        with (
+            patch("src.integrations.kanban_client.stdio_client", mock_stdio_client),
+            patch(
+                "src.integrations.kanban_client.ClientSession",
+                mock_client_session_context,
+            ),
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
         ):
             client = KanbanClient()
             client.board_id = "test-board"
@@ -982,16 +977,15 @@ class TestKanbanClient:
             finally:
                 stdio_exited = True
 
-        with patch(
-            "src.integrations.kanban_client.stdio_client", tracking_stdio_client
-        ), patch(
-            "src.integrations.kanban_client.ClientSession", mock_client_session_context
-        ), patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch(
-            "src.integrations.kanban_client.os.environ", {}
-        ), patch(
-            "sys.stderr"
+        with (
+            patch("src.integrations.kanban_client.stdio_client", tracking_stdio_client),
+            patch(
+                "src.integrations.kanban_client.ClientSession",
+                mock_client_session_context,
+            ),
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
         ):
             client = KanbanClient()
             client.board_id = "test-board"
@@ -1014,16 +1008,15 @@ class TestKanbanClient:
 
         mock_client_session.call_tool.return_value = empty_response
 
-        with patch(
-            "src.integrations.kanban_client.stdio_client", mock_stdio_client
-        ), patch(
-            "src.integrations.kanban_client.ClientSession", mock_client_session_context
-        ), patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch(
-            "src.integrations.kanban_client.os.environ", {}
-        ), patch(
-            "sys.stderr"
+        with (
+            patch("src.integrations.kanban_client.stdio_client", mock_stdio_client),
+            patch(
+                "src.integrations.kanban_client.ClientSession",
+                mock_client_session_context,
+            ),
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
         ):
             client = KanbanClient()
             client.board_id = "test-board-456"
@@ -1034,9 +1027,11 @@ class TestKanbanClient:
 
     def test_card_to_task_with_empty_users_list(self):
         """Test card to task conversion when users list is empty."""
-        with patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch("src.integrations.kanban_client.os.environ", {}), patch("sys.stderr"):
+        with (
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
+        ):
             client = KanbanClient()
 
             card = {
@@ -1051,9 +1046,11 @@ class TestKanbanClient:
 
     def test_card_to_task_with_user_missing_fields(self):
         """Test card to task conversion when user objects have missing fields."""
-        with patch(
-            "src.integrations.kanban_client.os.path.exists", return_value=False
-        ), patch("src.integrations.kanban_client.os.environ", {}), patch("sys.stderr"):
+        with (
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
+        ):
             client = KanbanClient()
 
             # User with only email

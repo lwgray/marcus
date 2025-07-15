@@ -213,7 +213,7 @@ def update_config_file(project_id, board_id):
     config["planka"] = {
         "base_url": "http://localhost:3333",
         "email": "demo@demo.demo",
-        "password": "demo",
+        "password": "demo",  # pragma: allowlist secret
     }
 
     # Save the updated config
@@ -252,7 +252,7 @@ async def create_todo_cards(board_id):
             lists = json.loads(result.content[0].text)
 
             # Create standard lists if they don't exist
-            list_names = ["Backlog", "TODO", "In Progress", "Review", "Done"]
+            list_names = ["Backlog", "In Progress", "Review", "Blocked", "Done"]
             list_ids = {}
 
             existing_lists = {l["name"]: l["id"] for l in lists}
@@ -365,7 +365,7 @@ def print_next_steps(project_id, board_id):
     print(f"\n{Colors.BOLD}Watch the Magic:{Colors.END}")
     print(f"  🌐 Planka Board: {Colors.BLUE}http://localhost:3333{Colors.END}")
     print(
-        f"  👀 Watch tasks move through: Backlog → TODO → In Progress → Review → Done"
+        f"  👀 Watch tasks move through: Backlog → In Progress → Review → Blocked → Done"
     )
     print(f"  🤖 AI agents will automatically:")
     print(f"      - Pick up tasks from the backlog")

@@ -406,10 +406,10 @@ spec:
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           );
-          
+
           CREATE INDEX IF NOT EXISTS idx_agent_status ON agents(status);
           CREATE INDEX IF NOT EXISTS idx_agent_heartbeat ON agents(last_heartbeat);
-          
+
           CREATE TABLE IF NOT EXISTS tasks (
             id VARCHAR PRIMARY KEY,
             title VARCHAR NOT NULL,
@@ -423,7 +423,7 @@ spec:
             completed_at TIMESTAMP,
             metadata JSONB DEFAULT '{}'
           );
-          
+
           CREATE INDEX IF NOT EXISTS idx_task_status ON tasks(status);
           CREATE INDEX IF NOT EXISTS idx_task_agent ON tasks(assigned_agent_id);
           CREATE INDEX IF NOT EXISTS idx_task_priority ON tasks(priority);

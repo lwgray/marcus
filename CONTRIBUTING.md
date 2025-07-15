@@ -19,7 +19,7 @@ New to open source? PM Agent is a great place to start! Here's how:
    # Then clone your fork:
    git clone https://github.com/YOUR_USERNAME/pm-agent.git
    cd pm-agent
-   
+
    # Set up development environment
    ./scripts/dev-setup.sh  # This handles everything for you!
    ```
@@ -174,15 +174,15 @@ We follow PEP 8 with these additions:
 def assign_task(agent_id: str, task_id: str, priority: int = 1) -> TaskAssignment:
     """
     Assign a task to an agent with optional priority.
-    
+
     Args:
         agent_id: Unique identifier of the agent
         task_id: Unique identifier of the task
         priority: Task priority (1-5, default 1)
-        
+
     Returns:
         TaskAssignment object with assignment details
-        
+
     Raises:
         AgentNotFoundError: If agent doesn't exist
         TaskNotFoundError: If task doesn't exist
@@ -273,10 +273,10 @@ def test_agent_registration_with_valid_data():
         "name": "Test Agent",
         "skills": ["python", "testing"]
     }
-    
+
     # Act
     result = agent_manager.register_agent(agent_data)
-    
+
     # Assert
     assert result.success is True
     assert result.agent.id == "test-001"
@@ -460,8 +460,8 @@ We value all contributions! Contributors are recognized in:
 
 ---
 
-## Thank You! 
+## Thank You!
 
-Every contribution makes PM Agent better. Whether it's your first open source contribution or your thousandth, we're grateful you're here. 
+Every contribution makes PM Agent better. Whether it's your first open source contribution or your thousandth, we're grateful you're here.
 
 Welcome to the PM Agent community! 🚀

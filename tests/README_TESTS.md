@@ -110,10 +110,10 @@ class TestMyComponent:
     def test_something(self):
         # Arrange
         component = MyComponent()
-        
+
         # Act
         result = component.do_something()
-        
+
         # Assert
         assert result == expected_value
 ```
@@ -129,7 +129,7 @@ class TestKanbanIntegration:
     async def test_real_operation(self, mcp_session, test_board):
         # Use fixtures for setup
         result = await mcp_session.call_tool("tool_name", {...})
-        
+
         # Assert real results
         assert result is not None
 ```

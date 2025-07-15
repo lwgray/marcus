@@ -1,7 +1,7 @@
 
 # Executive Summary: {{ project_name }}
 
-**Generated:** {{ generation_date }}  
+**Generated:** {{ generation_date }}
 **Flow ID:** {{ flow_id }}
 
 ## Key Metrics

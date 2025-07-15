@@ -4,19 +4,19 @@
     "command": "npx",
     "args": ["kanban-mcp-server"]
   },
-  
+
   "// Example 2": "If you have a local build of kanban-mcp-server",
   "kanban_mcp_server_local": {
     "command": "node",
     "args": ["/Users/yourusername/projects/kanban-mcp-server/build/index.js"]
   },
-  
+
   "// Example 3": "If kanban-mcp-server is running in Docker",
   "kanban_mcp_server_docker": {
     "command": "docker",
     "args": ["exec", "-i", "kanban-mcp-container", "node", "/app/build/index.js"]
   },
-  
+
   "// Example 4": "If you're using the TypeScript version directly",
   "kanban_mcp_server_ts": {
     "command": "npx",

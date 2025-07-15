@@ -14,21 +14,26 @@ to the MCP server, as it eliminates Marcus code as a potential cause.
 import asyncio
 import os
 import sys
-from typing import Optional, List, Tuple
-from mcp import ClientSession, StdioServerParameters
+from typing import List, Optional, Tuple
+
 from mcp.client.stdio import stdio_client
 
+from mcp import ClientSession, StdioServerParameters
+
 # Add parent directories to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(
+    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
+
 
 async def test_direct() -> None:
     """
     Test direct connection to kanban-mcp server.
-    
+
     This function attempts to establish a direct MCP connection, bypassing all
     Marcus abstractions. It tests multiple node.js paths and kanban-mcp locations
     to ensure maximum compatibility.
-    
+
     Notes
     -----
     The test performs the following steps:
@@ -37,7 +42,7 @@ async def test_direct() -> None:
     3. Starts the MCP server process
     4. Creates and initializes a session
     5. Makes a test tool call
-    
+
     Examples
     --------
     >>> asyncio.run(test_direct())
@@ -48,84 +53,85 @@ async def test_direct() -> None:
     ..."""
     print("🔍 Testing Direct MCP Connection")
     print("=" * 60)
-    
+
     # Try different node paths
     node_paths = [
         "node",  # System node
         "/opt/homebrew/bin/node",  # Homebrew on M1
         "/usr/local/bin/node",  # Homebrew on Intel
-        "/Users/lwgray/.nvm/versions/node/v22.14.0/bin/node"  # NVM
+        "/Users/lwgray/.nvm/versions/node/v22.14.0/bin/node",  # NVM
     ]
-    
+
     kanban_paths = [
         "../kanban-mcp/dist/index.js",  # Relative path
         os.path.expanduser("~/dev/kanban-mcp/dist/index.js"),  # Absolute path
     ]
-    
+
     # Find working node
     node_cmd = None
     for path in node_paths:
         if os.path.exists(path) or os.system(f"which {path} > /dev/null 2>&1") == 0:
             node_cmd = path
             break
-    
+
     if not node_cmd:
         print("❌ Could not find node executable")
         return
-    
+
     # Find kanban-mcp
     kanban_path = None
     for path in kanban_paths:
         if os.path.exists(path):
             kanban_path = path
             break
-    
+
     if not kanban_path:
         print("❌ Could not find kanban-mcp/dist/index.js")
         return
-    
+
     print(f"Using node: {node_cmd}")
     print(f"Using kanban-mcp: {kanban_path}")
-    
+
     server_params = StdioServerParameters(
         command=node_cmd,
         args=[kanban_path],
         env={
             "PLANKA_BASE_URL": "http://localhost:3333",
             "PLANKA_AGENT_EMAIL": "demo@demo.demo",
-            "PLANKA_AGENT_PASSWORD": "demo"
-        }
+            "PLANKA_AGENT_PASSWORD": "demo",
+        },
     )
-    
+
     print("\n1. Starting kanban-mcp process...")
     try:
         async with asyncio.timeout(10):  # 10 second timeout
             async with stdio_client(server_params) as (read, write):
                 print("✅ Process started")
-                
+
                 print("\n2. Creating session...")
                 async with ClientSession(read, write) as session:
                     print("✅ Session created")
-                    
+
                     print("\n3. Initializing session...")
                     await session.initialize()
                     print("✅ Session initialized")
-                    
+
                     print("\n4. Calling tool...")
                     result = await session.call_tool(
                         "mcp_kanban_project_board_manager",
-                        {"action": "get_projects", "page": 1, "perPage": 5}
+                        {"action": "get_projects", "page": 1, "perPage": 5},
                     )
                     print("✅ Tool called successfully")
-                    
-                    if hasattr(result, 'content') and result.content:
+
+                    if hasattr(result, "content") and result.content:
                         print(f"\nResult: {result.content[0].text[:200]}...")
-                    
+
     except asyncio.TimeoutError:
         print("❌ Connection timed out!")
     except Exception as e:
         print(f"❌ Error: {e}")
         import traceback
+
         traceback.print_exc()
 
 

@@ -39,15 +39,22 @@ class ProjectConfig:
         """Create from dictionary"""
         # Only keep fields that ProjectConfig expects
         expected_fields = {
-            "id", "name", "provider", "provider_config", 
-            "created_at", "last_used", "tags"
+            "id",
+            "name",
+            "provider",
+            "provider_config",
+            "created_at",
+            "last_used",
+            "tags",
         }
         filtered_data = {k: v for k, v in data.items() if k in expected_fields}
-        
+
         # Convert datetime strings
-        filtered_data["created_at"] = datetime.fromisoformat(filtered_data["created_at"])
+        filtered_data["created_at"] = datetime.fromisoformat(
+            filtered_data["created_at"]
+        )
         filtered_data["last_used"] = datetime.fromisoformat(filtered_data["last_used"])
-        
+
         return cls(**filtered_data)
 
 

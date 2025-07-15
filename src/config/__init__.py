@@ -19,7 +19,7 @@ Key Features
 - Specialized configuration getters for:
   * Team configurations
   * Risk thresholds
-  * Escalation rules  
+  * Escalation rules
   * Communication settings
   * AI model settings
 
@@ -38,4 +38,4 @@ Examples
 
 from .settings import Settings
 
-__all__ = ['Settings']
+__all__ = ["Settings"]

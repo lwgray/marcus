@@ -28,28 +28,28 @@ conversations = [
     {
         "scenario": "Starting a new project",
         "user": "I want to build an online course platform where instructors can create video courses, students can enroll and track progress, and we handle payments through Stripe",
-        "marcus_action": "Creates 42 tasks including:\n         - Set up development environment\n         - Design database schema for courses, users, enrollments\n         - Implement video upload and streaming\n         - Create course builder interface\n         - Add Stripe payment integration\n         - Build student progress tracking\n         All with proper dependencies (can't build UI before API, can't deploy before testing)"
+        "marcus_action": "Creates 42 tasks including:\n         - Set up development environment\n         - Design database schema for courses, users, enrollments\n         - Implement video upload and streaming\n         - Create course builder interface\n         - Add Stripe payment integration\n         - Build student progress tracking\n         All with proper dependencies (can't build UI before API, can't deploy before testing)",
     },
     {
         "scenario": "Adding a feature",
         "user": "Add a discussion forum for each course",
-        "marcus_action": "Creates forum tasks:\n         - Design forum database schema\n         - Create forum API endpoints\n         - Build forum UI components\n         - Add real-time updates for new posts\n         - Implement moderation tools\n         Dependencies: Requires user auth and course structure"
+        "marcus_action": "Creates forum tasks:\n         - Design forum database schema\n         - Create forum API endpoints\n         - Build forum UI components\n         - Add real-time updates for new posts\n         - Implement moderation tools\n         Dependencies: Requires user auth and course structure",
     },
     {
         "scenario": "Trying to deploy too early",
         "user": "Let's deploy this to production",
-        "marcus_action": "❌ BLOCKED: Cannot deploy to production\n         Incomplete tasks:\n         - Video streaming implementation (24h)\n         - Payment integration testing (8h)\n         - Security audit (12h)\n         - Load testing (6h)"
+        "marcus_action": "❌ BLOCKED: Cannot deploy to production\n         Incomplete tasks:\n         - Video streaming implementation (24h)\n         - Payment integration testing (8h)\n         - Security audit (12h)\n         - Load testing (6h)",
     },
     {
         "scenario": "Asking for guidance",
         "user": "What should I work on next?",
-        "marcus_action": "Based on dependencies and team capacity:\n         1. Complete user authentication (blocking 12 tasks)\n         2. Then: Course data model (blocking video features)\n         3. Parallel work available: UI mockups"
+        "marcus_action": "Based on dependencies and team capacity:\n         1. Complete user authentication (blocking 12 tasks)\n         2. Then: Course data model (blocking video features)\n         3. Parallel work available: UI mockups",
     },
     {
         "scenario": "Project status",
         "user": "How are we doing on the timeline?",
-        "marcus_action": "Project Status:\n         - Progress: 28% (12/42 tasks complete)\n         - Velocity: 3.2 tasks/week\n         - Estimated completion: 6 weeks\n         - Risk: Backend developer overloaded\n         - Suggestion: Reassign 2 frontend tasks"
-    }
+        "marcus_action": "Project Status:\n         - Progress: 28% (12/42 tasks complete)\n         - Velocity: 3.2 tasks/week\n         - Estimated completion: 6 weeks\n         - Risk: Backend developer overloaded\n         - Suggestion: Reassign 2 frontend tasks",
+    },
 ]
 
 for conv in conversations:
@@ -76,14 +76,16 @@ print("parser = AdvancedPRDParser()")
 print("my_project = '''")
 print("I need a mobile app for food delivery with:")
 print("- Restaurant browsing and search")
-print("- Order placement and tracking") 
+print("- Order placement and tracking")
 print("- Payment processing")
 print("- Driver assignment and routing")
 print("'''")
 print()
 print("result = await parser.parse_prd_to_tasks(my_project)")
 print("print(f'Created {len(result.tasks)} tasks')")
-print("print(f'Timeline: {result.estimated_timeline[\"estimated_duration_days\"]} days')")
+print(
+    "print(f'Timeline: {result.estimated_timeline[\"estimated_duration_days\"]} days')"
+)
 print()
 print("# Check if deployment is allowed")
 print("engine = MarcusAIEngine()")
@@ -98,10 +100,10 @@ print("-" * 70)
 print()
 print("If Marcus had a CLI (not implemented yet):")
 print()
-print("$ marcus create \"todo app with React and Node.js\"")
+print('$ marcus create "todo app with React and Node.js"')
 print("✅ Created 18 tasks in 5 phases")
 print()
-print("$ marcus add \"user authentication with OAuth\"")
+print('$ marcus add "user authentication with OAuth"')
 print("✅ Added 6 tasks with dependencies")
 print()
 print("$ marcus deploy")
@@ -121,7 +123,11 @@ print()
 
 tools = [
     ("planka__create_card", "Create a new task", '"Create user login API endpoint"'),
-    ("planka__update_card", "Update task details", '"Add 8 hour estimate to login task"'),
+    (
+        "planka__update_card",
+        "Update task details",
+        '"Add 8 hour estimate to login task"',
+    ),
     ("planka__get_board", "View all tasks", '"Show me the current board"'),
     ("planka__move_card", "Change task status", '"Move login API to in progress"'),
     ("planka__add_label_to_card", "Tag tasks", '"Add backend label to API tasks"'),

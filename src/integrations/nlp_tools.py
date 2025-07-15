@@ -259,7 +259,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         # Get complexity and deployment options (backwards compatible)
         complexity = options.get("complexity", options.get("project_size", "standard"))
         deployment = options.get("deployment", options.get("deployment_target", "none"))
-        
+
         # Map new complexity levels to appropriate defaults
         complexity_defaults = {
             "prototype": {"team_size": 1, "deployment_target": "local"},
@@ -270,35 +270,37 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             "small": {"team_size": 2, "deployment_target": "local"},
             "medium": {"team_size": 3, "deployment_target": "dev"},
             "large": {"team_size": 5, "deployment_target": "prod"},
-            "enterprise": {"team_size": 5, "deployment_target": "prod"}
+            "enterprise": {"team_size": 5, "deployment_target": "prod"},
         }
-        
+
         # Map new deployment options to legacy deployment_target values
         deployment_mapping = {
             "none": "local",
-            "internal": "dev", 
+            "internal": "dev",
             "production": "prod",
             # Keep legacy values for backwards compatibility
             "local": "local",
             "dev": "dev",
             "prod": "prod",
-            "remote": "prod"
+            "remote": "prod",
         }
-        
+
         defaults = complexity_defaults.get(complexity, complexity_defaults["standard"])
         mapped_deployment = deployment_mapping.get(deployment, "local")
-        
+
         constraints = ProjectConstraints(
             team_size=options.get("team_size", defaults["team_size"]),
             available_skills=options.get("tech_stack", []),
             technology_constraints=options.get("tech_stack", []),
-            deployment_target=mapped_deployment
+            deployment_target=mapped_deployment,
         )
 
         # Pass complexity info via quality_requirements for parser to use
         constraints.quality_requirements = {
             "project_size": complexity,  # Parser still uses project_size internally
-            "complexity": "simple" if complexity in ["prototype", "mvp"] else "moderate"
+            "complexity": (
+                "simple" if complexity in ["prototype", "mvp"] else "moderate"
+            ),
         }
 
         if "deadline" in options:

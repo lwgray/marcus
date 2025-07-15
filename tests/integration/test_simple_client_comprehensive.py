@@ -136,9 +136,9 @@ class TestMCPKanbanClientComprehensive:
         """Test initialization with retry logic"""
         # First call fails, second succeeds
         mock_session = client._mock_session
-        mock_session.errors[
-            "mcp_kanban_project_board_manager:get_projects"
-        ] = Exception("Network error")
+        mock_session.errors["mcp_kanban_project_board_manager:get_projects"] = (
+            Exception("Network error")
+        )
 
         # Should fail on first attempt
         with pytest.raises(Exception, match="Network error"):

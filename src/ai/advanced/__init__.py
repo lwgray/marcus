@@ -2,6 +2,4 @@
 
 from .prd.advanced_parser import AdvancedPRDParser
 
-__all__ = [
-    'AdvancedPRDParser'
-]
+__all__ = ["AdvancedPRDParser"]

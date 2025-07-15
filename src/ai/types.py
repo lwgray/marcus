@@ -29,9 +29,9 @@ of analysis results. Timestamps are automatically added to decisions
 for audit trails.
 """
 
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from src.core.models import Task
 
@@ -40,10 +40,10 @@ from src.core.models import Task
 class AnalysisContext:
     """
     Context for AI analysis operations.
-    
+
     Provides all necessary information for making intelligent
     task assignment decisions.
-    
+
     Attributes
     ----------
     task : Task
@@ -56,7 +56,7 @@ class AnalysisContext:
         Team composition and skill information
     constraints : dict, optional
         Project constraints (deadlines, resources, etc.)
-    
+
     Examples
     --------
     >>> context = AnalysisContext(
@@ -65,6 +65,7 @@ class AnalysisContext:
     ...     historical_data=performance_history
     ... )
     """
+
     task: Task
     project_context: Dict[str, Any]
     historical_data: List[Dict[str, Any]]
@@ -76,9 +77,9 @@ class AnalysisContext:
 class AIInsights:
     """
     AI-generated insights about a task or decision.
-    
+
     Contains semantic understanding and risk analysis from AI models.
-    
+
     Attributes
     ----------
     task_intent : str
@@ -95,11 +96,12 @@ class AIInsights:
         Explanation of AI's analysis process
     risk_assessment : dict
         Detailed risk breakdown by category
-    
+
     Notes
     -----
     These insights supplement but never override rule-based decisions.
     """
+
     task_intent: str
     semantic_dependencies: List[str]
     risk_factors: List[str]
@@ -113,9 +115,9 @@ class AIInsights:
 class HybridAnalysis:
     """
     Result of hybrid rule-based + AI analysis.
-    
+
     Combines deterministic rules with AI enhancement for optimal decisions.
-    
+
     Attributes
     ----------
     allow_assignment : bool
@@ -136,7 +138,7 @@ class HybridAnalysis:
         Component confidence scores and weights
     optimization_score : float, optional
         AI's optimization score for this assignment
-    
+
     Examples
     --------
     >>> result = HybridAnalysis(
@@ -145,6 +147,7 @@ class HybridAnalysis:
     ...     reason="All checks passed with high confidence"
     ... )
     """
+
     allow_assignment: bool
     confidence: float
     reason: str
@@ -160,9 +163,9 @@ class HybridAnalysis:
 class RuleBasedResult:
     """
     Result from rule-based analysis.
-    
+
     Represents deterministic validation results that provide safety guarantees.
-    
+
     Attributes
     ----------
     is_valid : bool
@@ -175,11 +178,12 @@ class RuleBasedResult:
         Whether this involves safety-critical rules
     mandatory : bool
         Whether this rule cannot be overridden
-    
+
     Notes
     -----
     When mandatory=True, the decision cannot be changed by AI.
     """
+
     is_valid: bool
     confidence: float
     reason: str
@@ -191,9 +195,9 @@ class RuleBasedResult:
 class AIOptimizationResult:
     """
     Result of AI optimization analysis.
-    
+
     Contains AI-powered suggestions for optimizing task execution.
-    
+
     Attributes
     ----------
     confidence : float
@@ -209,6 +213,7 @@ class AIOptimizationResult:
     estimated_completion_time : float, optional
         AI estimate of task duration in hours
     """
+
     confidence: float
     optimization_score: float
     improvements: List[str]
@@ -221,10 +226,10 @@ class AIOptimizationResult:
 class AssignmentDecision:
     """
     Final decision on task assignment.
-    
+
     Represents the complete decision including rule validation,
     AI enhancement, and audit information.
-    
+
     Attributes
     ----------
     allow : bool
@@ -245,12 +250,12 @@ class AssignmentDecision:
         Whether mandatory rules were applied
     timestamp : datetime
         When the decision was made (auto-set)
-    
+
     Methods
     -------
     __post_init__()
         Automatically sets timestamp if not provided
-    
+
     Examples
     --------
     >>> decision = AssignmentDecision(
@@ -260,24 +265,25 @@ class AssignmentDecision:
     ... )
     >>> print(f"Decision at {decision.timestamp}: {decision.allow}")
     """
+
     allow: bool
     confidence: float
     reason: str
-    
+
     # AI enhancements (only when rules allow)
     ai_suggestions: Optional[AIOptimizationResult] = None
     optimization_score: Optional[float] = None
-    
+
     # Confidence breakdown
     confidence_breakdown: Optional[Dict[str, float]] = None
-    
+
     # Safety tracking
     safety_critical: bool = False
     mandatory_rule_applied: bool = False
-    
+
     # Context
     timestamp: datetime = None
-    
+
     def __post_init__(self) -> None:
         """Set timestamp if not provided."""
         if self.timestamp is None:
@@ -288,9 +294,9 @@ class AssignmentDecision:
 class AssignmentContext:
     """
     Context for assignment decision.
-    
+
     Complete context needed to make informed assignment decisions.
-    
+
     Attributes
     ----------
     task : Task
@@ -305,12 +311,13 @@ class AssignmentContext:
         Project metadata and configuration
     team_status : dict
         Status of all team members and assignments
-    
+
     Notes
     -----
     This context is passed through the entire decision pipeline
     to ensure all components have necessary information.
     """
+
     task: Task
     agent_id: str
     agent_status: Dict[str, Any]

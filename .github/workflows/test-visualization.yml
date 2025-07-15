@@ -9,40 +9,40 @@ on:
 jobs:
   test-visualization:
     runs-on: ubuntu-latest
-    
+
     strategy:
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11"]
-    
+
     steps:
     - uses: actions/checkout@v3
-    
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
-    
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
-    
+
     # Option 1: Run API tests separately from others
     - name: Run visualization tests (except API)
       run: |
         python -m pytest tests/unit/visualization/ -k "not test_ui_server_api" -v
-    
+
     - name: Run API tests separately
       run: |
         python -m pytest tests/unit/visualization/test_ui_server_api.py -v
-    
+
     # Option 2: Use the shell script (make it executable first)
     # - name: Run visualization tests with script
     #   run: |
     #     chmod +x tests/unit/visualization/run_tests.sh
     #     ./tests/unit/visualization/run_tests.sh
-    
+
     # Option 3: Run each test file individually (most reliable but verbose)
     # - name: Run conversation stream tests
     #   run: python -m pytest tests/unit/visualization/test_conversation_stream.py -v

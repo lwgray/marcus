@@ -7,15 +7,15 @@ semantic understanding and intelligent optimization.
 """
 
 from .core.ai_engine import MarcusAIEngine
-from .providers.llm_abstraction import LLMAbstraction
 from .decisions.hybrid_framework import HybridDecisionFramework
-from .types import HybridAnalysis, AnalysisContext, AssignmentDecision
+from .providers.llm_abstraction import LLMAbstraction
+from .types import AnalysisContext, AssignmentDecision, HybridAnalysis
 
 __all__ = [
-    'MarcusAIEngine',
-    'LLMAbstraction', 
-    'HybridDecisionFramework',
-    'HybridAnalysis',
-    'AnalysisContext', 
-    'AssignmentDecision'
+    "MarcusAIEngine",
+    "LLMAbstraction",
+    "HybridDecisionFramework",
+    "HybridAnalysis",
+    "AnalysisContext",
+    "AssignmentDecision",
 ]

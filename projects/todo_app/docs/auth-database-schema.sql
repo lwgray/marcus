@@ -152,7 +152,7 @@ CREATE TRIGGER update_oauth_providers_updated_at BEFORE UPDATE ON oauth_provider
 
 -- Views
 CREATE VIEW active_sessions AS
-SELECT 
+SELECT
     s.id,
     s.user_id,
     u.email,
@@ -162,7 +162,7 @@ SELECT
     s.expires_at
 FROM sessions s
 JOIN users u ON s.user_id = u.id
-WHERE s.is_revoked = FALSE 
+WHERE s.is_revoked = FALSE
     AND s.expires_at > CURRENT_TIMESTAMP;
 
 -- Permissions (adjust based on your database users)

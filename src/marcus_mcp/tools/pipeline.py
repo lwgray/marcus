@@ -1,12 +1,12 @@
 """
 Pipeline Enhancement Tools for Marcus MCP
 
-Provides tools for pipeline replay, what-if analysis, comparison, 
+Provides tools for pipeline replay, what-if analysis, comparison,
 monitoring, error prediction, and recommendations.
 """
 
-from typing import Dict, Any, List
 from datetime import datetime
+from typing import Any, Dict, List
 
 from src.mcp.tools.pipeline_enhancement_tools import pipeline_tools
 
@@ -16,7 +16,7 @@ async def start_replay(server, arguments: Dict[str, Any]) -> Dict[str, Any]:
     flow_id = arguments.get("flow_id")
     if not flow_id:
         return {"error": "flow_id is required"}
-        
+
     return await pipeline_tools.start_replay(flow_id)
 
 
@@ -35,7 +35,7 @@ async def replay_jump_to(server, arguments: Dict[str, Any]) -> Dict[str, Any]:
     position = arguments.get("position")
     if position is None:
         return {"error": "position is required"}
-        
+
     return await pipeline_tools.replay_jump_to(position)
 
 
@@ -44,7 +44,7 @@ async def start_what_if_analysis(server, arguments: Dict[str, Any]) -> Dict[str,
     flow_id = arguments.get("flow_id")
     if not flow_id:
         return {"error": "flow_id is required"}
-        
+
     return await pipeline_tools.start_what_if_analysis(flow_id)
 
 
@@ -53,11 +53,13 @@ async def simulate_modification(server, arguments: Dict[str, Any]) -> Dict[str, 
     modifications = arguments.get("modifications", [])
     if not modifications:
         return {"error": "modifications are required"}
-        
+
     return await pipeline_tools.simulate_modification(modifications)
 
 
-async def compare_what_if_scenarios(server, arguments: Dict[str, Any]) -> Dict[str, Any]:
+async def compare_what_if_scenarios(
+    server, arguments: Dict[str, Any]
+) -> Dict[str, Any]:
     """Compare all what-if scenarios."""
     return await pipeline_tools.compare_what_if_scenarios()
 
@@ -67,7 +69,7 @@ async def compare_pipelines(server, arguments: Dict[str, Any]) -> Dict[str, Any]
     flow_ids = arguments.get("flow_ids", [])
     if not flow_ids or len(flow_ids) < 2:
         return {"error": "At least 2 flow_ids are required"}
-        
+
     return await pipeline_tools.compare_pipelines(flow_ids)
 
 
@@ -76,7 +78,7 @@ async def generate_report(server, arguments: Dict[str, Any]) -> Dict[str, Any]:
     flow_id = arguments.get("flow_id")
     if not flow_id:
         return {"error": "flow_id is required"}
-        
+
     format = arguments.get("format", "html")
     return await pipeline_tools.generate_report(flow_id, format)
 
@@ -91,7 +93,7 @@ async def track_flow_progress(server, arguments: Dict[str, Any]) -> Dict[str, An
     flow_id = arguments.get("flow_id")
     if not flow_id:
         return {"error": "flow_id is required"}
-        
+
     return await pipeline_tools.track_flow_progress(flow_id)
 
 
@@ -100,7 +102,7 @@ async def predict_failure_risk(server, arguments: Dict[str, Any]) -> Dict[str, A
     flow_id = arguments.get("flow_id")
     if not flow_id:
         return {"error": "flow_id is required"}
-        
+
     return await pipeline_tools.predict_failure_risk(flow_id)
 
 
@@ -109,7 +111,7 @@ async def get_recommendations(server, arguments: Dict[str, Any]) -> Dict[str, An
     flow_id = arguments.get("flow_id")
     if not flow_id:
         return {"error": "flow_id is required"}
-        
+
     return await pipeline_tools.get_recommendations(flow_id)
 
 
@@ -118,6 +120,6 @@ async def find_similar_flows(server, arguments: Dict[str, Any]) -> Dict[str, Any
     flow_id = arguments.get("flow_id")
     if not flow_id:
         return {"error": "flow_id is required"}
-        
+
     limit = arguments.get("limit", 5)
     return await pipeline_tools.find_similar_flows(flow_id, limit)

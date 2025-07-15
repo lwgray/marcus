@@ -57,7 +57,7 @@ class JWTService {
 
   generateTokenPair(userId: string, email: string, role: string): TokenPair {
     const tokenFamily = randomBytes(16).toString('hex');
-    
+
     const accessToken = jwt.sign(
       {
         sub: userId,
@@ -103,8 +103,8 @@ class JWTService {
 #### Backend (Sessions Table)
 ```typescript
 async function storeRefreshToken(
-  userId: string, 
-  refreshToken: string, 
+  userId: string,
+  refreshToken: string,
   tokenFamily: string,
   ipAddress: string,
   userAgent: string
@@ -128,7 +128,7 @@ class TokenManager {
   static setTokens(accessToken: string, refreshToken: string): void {
     // Store access token in memory only
     sessionStorage.setItem(this.ACCESS_TOKEN_KEY, accessToken);
-    
+
     // Store refresh token in httpOnly cookie (set by backend)
     // Or in secure storage for mobile apps
   }
@@ -152,7 +152,7 @@ class TokenRefreshService {
     try {
       // Verify the refresh token
       const decoded = this.jwtService.verifyRefreshToken(oldRefreshToken);
-      
+
       // Check if token exists and is not revoked
       const session = await this.findValidSession(oldRefreshToken);
       if (!session) {
@@ -161,7 +161,7 @@ class TokenRefreshService {
 
       // Check token family for rotation
       const familySessions = await this.getTokenFamily(decoded.tokenFamily);
-      
+
       // Revoke all tokens in the family (rotation)
       await this.revokeTokenFamily(decoded.tokenFamily);
 
@@ -185,8 +185,8 @@ class TokenRefreshService {
       return newTokens;
     } catch (error) {
       // Log potential token theft attempt
-      await this.logSecurityEvent('refresh_token_failed', { 
-        error: error.message 
+      await this.logSecurityEvent('refresh_token_failed', {
+        error: error.message
       });
       throw new UnauthorizedException('Token refresh failed');
     }
@@ -265,10 +265,10 @@ class AuthInterceptor {
           try {
             const response = await this.refreshAccessToken();
             const { accessToken } = response.data;
-            
+
             TokenManager.setTokens(accessToken, response.data.refreshToken);
             this.onRefreshed(accessToken);
-            
+
             return axiosInstance(originalRequest);
           } catch (refreshError) {
             // Refresh failed, redirect to login
@@ -375,7 +375,7 @@ describe('JWTService', () => {
       process.env.JWT_ACCESS_SECRET!,
       { expiresIn: '-1h' }
     );
-    
+
     expect(() => jwtService.verifyAccessToken(expiredToken))
       .toThrow('jwt expired');
   });

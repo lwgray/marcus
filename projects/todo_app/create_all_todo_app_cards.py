@@ -7,16 +7,20 @@ import asyncio
 import json
 import os
 from datetime import datetime, timedelta
-from mcp import ClientSession, StdioServerParameters
+
 from mcp.client.stdio import stdio_client
 
+from mcp import ClientSession, StdioServerParameters
+
 # Set environment variables
-os.environ['PLANKA_BASE_URL'] = 'http://localhost:3333'
-os.environ['PLANKA_AGENT_EMAIL'] = 'demo@demo.demo'
-os.environ['PLANKA_AGENT_PASSWORD'] = 'demo'
+os.environ["PLANKA_BASE_URL"] = "http://localhost:3333"
+os.environ["PLANKA_AGENT_EMAIL"] = "demo@demo.demo"
+os.environ["PLANKA_AGENT_PASSWORD"] = "demo"
 
 # Load the JSON data
-with open(os.path.join(os.path.dirname(__file__), 'todo_app_planka_cards.json'), 'r') as f:
+with open(
+    os.path.join(os.path.dirname(__file__), "todo_app_planka_cards.json"), "r"
+) as f:
     TODO_APP_DATA = json.load(f)
 
 # Label color mapping for Planka
@@ -35,7 +39,7 @@ LABEL_COLORS = {
     "Performance": "coral-green",
     "UI/UX": "light-orange",
     "API": "wet-moss",
-    "Infrastructure": "desert-sand"
+    "Infrastructure": "desert-sand",
 }
 
 # Enhanced card data with better descriptions and subtasks
@@ -128,12 +132,12 @@ todo-app/
             "Create docker-compose.yml for local development",
             "Write initial README.md with setup instructions",
             "Create .env.example with all required variables",
-            "Set up commitizen for conventional commits"
+            "Set up commitizen for conventional commits",
         ],
         "labels": ["Infrastructure", "High Priority", "Backend", "Frontend"],
         "priority": "high",
         "timeEstimate": 16,
-        "dependencies": []
+        "dependencies": [],
     },
     "card-002": {
         "description": """## Overview
@@ -249,12 +253,12 @@ CREATE TABLE todo_tags (
             "Write migration files for all tables",
             "Create seed data for development",
             "Document database relationships",
-            "Set up database backup strategy"
+            "Set up database backup strategy",
         ],
         "labels": ["Database", "High Priority", "Backend"],
         "priority": "high",
         "timeEstimate": 24,
-        "dependencies": []
+        "dependencies": [],
     },
     "card-003": {
         "description": """## Overview
@@ -349,12 +353,12 @@ enum TodoPriority {
             "Implement event hooks (onCreate, onUpdate)",
             "Add transaction support",
             "Write comprehensive unit tests",
-            "Add model documentation"
+            "Add model documentation",
         ],
         "labels": ["Backend", "High Priority", "Feature"],
         "priority": "high",
         "timeEstimate": 20,
-        "dependencies": ["card-001", "card-002"]
+        "dependencies": ["card-001", "card-002"],
     },
     "card-004": {
         "description": """## Overview
@@ -445,12 +449,12 @@ GET /health/database
             "Create database utilities module",
             "Add migration runner",
             "Implement graceful shutdown",
-            "Write connection tests"
+            "Write connection tests",
         ],
         "labels": ["Backend", "Infrastructure", "High Priority"],
         "priority": "high",
         "timeEstimate": 16,
-        "dependencies": ["card-001"]
+        "dependencies": ["card-001"],
     },
     "card-005": {
         "description": """## Overview
@@ -558,12 +562,12 @@ Response: { affected: number }
             "Implement error handling",
             "Add authentication checks",
             "Create API documentation",
-            "Write integration tests"
+            "Write integration tests",
         ],
         "labels": ["Backend", "API", "High Priority", "Feature"],
         "priority": "high",
         "timeEstimate": 40,
-        "dependencies": ["card-003", "card-004"]
+        "dependencies": ["card-003", "card-004"],
     },
     "card-006": {
         "description": """## Overview
@@ -663,12 +667,12 @@ const registerSchema = {
             "Add async validation support",
             "Implement file upload validation",
             "Write validation tests",
-            "Document validation rules"
+            "Document validation rules",
         ],
         "labels": ["Backend", "Security", "Feature"],
         "priority": "medium",
         "timeEstimate": 24,
-        "dependencies": ["card-005"]
+        "dependencies": ["card-005"],
     },
     "card-007": {
         "description": """## Overview
@@ -681,7 +685,7 @@ Implement robust error handling throughout the application for better debugging 
 class AppError extends Error {
     statusCode: number;
     isOperational: boolean;
-    
+
     constructor(message: string, statusCode: number) {
         super(message);
         this.statusCode = statusCode;
@@ -793,12 +797,12 @@ class ErrorBoundary extends React.Component {
             "Implement circuit breaker pattern",
             "Create error notification system",
             "Write error handling tests",
-            "Document error codes"
+            "Document error codes",
         ],
         "labels": ["Backend", "Infrastructure", "Feature"],
         "priority": "medium",
         "timeEstimate": 16,
-        "dependencies": ["card-005"]
+        "dependencies": ["card-005"],
     },
     "card-008": {
         "description": """## Overview
@@ -903,12 +907,12 @@ frontend/
             "Configure environment variables",
             "Set up Storybook",
             "Create component library",
-            "Configure testing environment"
+            "Configure testing environment",
         ],
         "labels": ["Frontend", "High Priority", "Infrastructure"],
         "priority": "high",
         "timeEstimate": 24,
-        "dependencies": ["card-001"]
+        "dependencies": ["card-001"],
     },
     "card-009": {
         "description": """## Overview
@@ -1021,12 +1025,12 @@ Design comprehensive UI/UX mockups for all Todo App screens with modern, accessi
             "Create dark mode variations",
             "Design loading and empty states",
             "Create interactive prototypes",
-            "Document design decisions"
+            "Document design decisions",
         ],
         "labels": ["UI/UX", "Frontend", "Feature"],
         "priority": "medium",
         "timeEstimate": 32,
-        "dependencies": []
+        "dependencies": [],
     },
     "card-010": {
         "description": """## Overview
@@ -1121,12 +1125,12 @@ TodoList/
             "Add loading skeleton",
             "Implement virtual scrolling",
             "Add drag and drop sorting",
-            "Write component tests"
+            "Write component tests",
         ],
         "labels": ["Frontend", "Component", "High Priority", "Feature"],
         "priority": "high",
         "timeEstimate": 24,
-        "dependencies": ["card-008", "card-009"]
+        "dependencies": ["card-008", "card-009"],
     },
     "card-011": {
         "description": """## Overview
@@ -1215,12 +1219,12 @@ interface TodoItemProps {
             "Implement drag handle",
             "Add keyboard shortcuts",
             "Create completion animation",
-            "Write component tests"
+            "Write component tests",
         ],
         "labels": ["Frontend", "Component", "High Priority", "Feature"],
         "priority": "high",
         "timeEstimate": 24,
-        "dependencies": ["card-010"]
+        "dependencies": ["card-010"],
     },
     "card-012": {
         "description": """## Overview
@@ -1323,12 +1327,12 @@ interface TodoFormData {
             "Add auto-save functionality",
             "Create form templates",
             "Add keyboard shortcuts",
-            "Write form tests"
+            "Write form tests",
         ],
         "labels": ["Frontend", "Component", "High Priority", "Feature"],
         "priority": "high",
         "timeEstimate": 32,
-        "dependencies": ["card-008", "card-009"]
+        "dependencies": ["card-008", "card-009"],
     },
     "card-013": {
         "description": """## Overview
@@ -1491,12 +1495,12 @@ function useTodos() {
             "Create TypeScript types",
             "Implement retry logic",
             "Add request queuing",
-            "Write service tests"
+            "Write service tests",
         ],
         "labels": ["Frontend", "API", "High Priority", "Infrastructure"],
         "priority": "high",
         "timeEstimate": 16,
-        "dependencies": ["card-008"]
+        "dependencies": ["card-008"],
     },
     "card-014": {
         "description": """## Overview
@@ -1552,7 +1556,7 @@ const todoSlice = createSlice({
 function TodoListContainer() {
     const dispatch = useAppDispatch();
     const { items, loading, error } = useAppSelector(state => state.todos);
-    
+
     useEffect(() => {
         dispatch(fetchTodos());
     }, [dispatch]);
@@ -1560,7 +1564,7 @@ function TodoListContainer() {
     const handleUpdate = useCallback(async (id: string, updates: Partial<Todo>) => {
         // Optimistic update
         dispatch(updateTodoOptimistic({ id, ...updates }));
-        
+
         try {
             await dispatch(updateTodo({ id, updates })).unwrap();
         } catch (error) {
@@ -1586,10 +1590,10 @@ function TodoListContainer() {
 // WebSocket integration
 useEffect(() => {
     const ws = new WebSocket(WS_URL);
-    
+
     ws.onmessage = (event) => {
         const { type, payload } = JSON.parse(event.data);
-        
+
         switch (type) {
             case 'TODO_CREATED':
                 dispatch(addTodo(payload));
@@ -1670,12 +1674,12 @@ const handleApiError = (error: any) => {
             "Create error boundaries",
             "Implement data caching",
             "Add offline support",
-            "Write integration tests"
+            "Write integration tests",
         ],
         "labels": ["Frontend", "Integration", "High Priority", "Feature"],
         "priority": "high",
         "timeEstimate": 32,
-        "dependencies": ["card-010", "card-011", "card-012", "card-013", "card-005"]
+        "dependencies": ["card-010", "card-011", "card-012", "card-013", "card-005"],
     },
     "card-015": {
         "description": """## Overview
@@ -1716,7 +1720,7 @@ class AuthManager {
 
     setTokens(tokens: AuthTokens): void {
         this.accessToken = tokens.accessToken;
-        
+
         // Schedule refresh before expiry
         const refreshTime = (tokens.expiresIn - 60) * 1000;
         this.refreshTimer = setTimeout(() => {
@@ -1783,10 +1787,10 @@ async function handleOAuthCallback(code: string) {
 ```typescript
 function ProtectedRoute({ children }: { children: ReactNode }) {
     const { isAuthenticated, loading } = useAuth();
-    
+
     if (loading) return <LoadingSpinner />;
     if (!isAuthenticated) return <Navigate to="/login" />;
-    
+
     return <>{children}</>;
 }
 ```
@@ -1806,12 +1810,12 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
             "Build registration form UI",
             "Implement protected routes",
             "Add session management",
-            "Write auth tests"
+            "Write auth tests",
         ],
         "labels": ["Backend", "Frontend", "Security", "High Priority", "Feature"],
         "priority": "high",
         "timeEstimate": 40,
-        "dependencies": ["card-005"]
+        "dependencies": ["card-005"],
     },
     "card-016": {
         "description": """## Overview
@@ -1893,7 +1897,7 @@ describe('TodoList', () => {
         ];
 
         render(<TodoList todos={todos} />);
-        
+
         expect(screen.getByText('Test 1')).toBeInTheDocument();
         expect(screen.getByText('Test 2')).toBeInTheDocument();
     });
@@ -1903,7 +1907,7 @@ describe('TodoList', () => {
         const todos = [{ id: '1', title: 'Test', status: 'pending' }];
 
         render(<TodoList todos={todos} onToggle={onToggle} />);
-        
+
         await userEvent.click(screen.getByRole('checkbox'));
         expect(onToggle).toHaveBeenCalledWith('1');
     });
@@ -1918,9 +1922,9 @@ describe('useTodos', () => {
         const { result, waitForNextUpdate } = renderHook(() => useTodos());
 
         expect(result.current.loading).toBe(true);
-        
+
         await waitForNextUpdate();
-        
+
         expect(result.current.loading).toBe(false);
         expect(result.current.todos).toHaveLength(2);
     });
@@ -1938,11 +1942,11 @@ describe('Todo App E2E', () => {
     it('creates a new todo', () => {
         cy.visit('/');
         cy.get('[data-testid="add-todo-button"]').click();
-        
+
         cy.get('[data-testid="todo-title"]').type('New Todo');
         cy.get('[data-testid="todo-priority"]').select('high');
         cy.get('[data-testid="submit-button"]').click();
-        
+
         cy.contains('New Todo').should('be.visible');
         cy.get('[data-testid="priority-badge"]').should('contain', 'High');
     });
@@ -1979,12 +1983,12 @@ describe('Todo App E2E', () => {
             "Write E2E test scenarios",
             "Configure test coverage",
             "Set up CI test pipeline",
-            "Create test documentation"
+            "Create test documentation",
         ],
         "labels": ["Testing", "Quality", "High Priority"],
         "priority": "high",
         "timeEstimate": 32,
-        "dependencies": ["card-014", "card-015"]
+        "dependencies": ["card-014", "card-015"],
     },
     "card-017": {
         "description": """## Overview
@@ -2158,55 +2162,54 @@ jobs:
             "Configure auto-scaling",
             "Set up CDN",
             "Create runbooks",
-            "Performance testing"
+            "Performance testing",
         ],
         "labels": ["DevOps", "Infrastructure", "High Priority", "Deployment"],
         "priority": "high",
         "timeEstimate": 32,
-        "dependencies": ["card-016"]
-    }
+        "dependencies": ["card-016"],
+    },
 }
 
 
 async def create_all_cards():
     """Create all Todo App development cards"""
-    
+
     server_params = StdioServerParameters(
         command="node",
         args=["/Users/lwgray/dev/kanban-mcp/dist/index.js"],
-        env=os.environ.copy()
+        env=os.environ.copy(),
     )
-    
+
     print("🚀 Creating all Todo App development cards...")
-    
+
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
-            
+
             print("✅ Connected to kanban-mcp")
-            
+
             # 1. Find Task Master Test project
             print("\n📋 Finding Task Master Test project...")
-            result = await session.call_tool("mcp_kanban_project_board_manager", {
-                "action": "get_projects",
-                "page": 1,
-                "perPage": 25
-            })
-            
+            result = await session.call_tool(
+                "mcp_kanban_project_board_manager",
+                {"action": "get_projects", "page": 1, "perPage": 25},
+            )
+
             projects_data = json.loads(result.content[0].text)
             project_id = None
             board_id = None
-            
+
             for project in projects_data["items"]:
                 if project["name"] == "Task Master Test":
                     project_id = project["id"]
                     print(f"✅ Found project: {project['name']} (ID: {project_id})")
                     break
-            
+
             if not project_id:
                 print("❌ Task Master Test project not found!")
                 return
-            
+
             # Find the board
             if "boards" in projects_data.get("included", {}):
                 for board in projects_data["included"]["boards"]:
@@ -2214,85 +2217,90 @@ async def create_all_cards():
                         board_id = board["id"]
                         print(f"✅ Found board: {board['name']} (ID: {board_id})")
                         break
-            
+
             if not board_id:
                 print("❌ No board found for Task Master Test!")
                 return
-            
+
             # 2. Clear existing cards
             print("\n🧹 Clearing existing cards...")
             try:
                 # Get all lists first
-                lists_result = await session.call_tool("mcp_kanban_list_manager", {
-                    "action": "get_all",
-                    "boardId": board_id
-                })
+                lists_result = await session.call_tool(
+                    "mcp_kanban_list_manager",
+                    {"action": "get_all", "boardId": board_id},
+                )
                 lists = json.loads(lists_result.content[0].text)
-                
+
                 # Get cards from each list
                 for lst in lists:
                     try:
-                        cards_result = await session.call_tool("mcp_kanban_card_manager", {
-                            "action": "get_by_list",
-                            "listId": lst["id"]
-                        })
-                        
+                        cards_result = await session.call_tool(
+                            "mcp_kanban_card_manager",
+                            {"action": "get_by_list", "listId": lst["id"]},
+                        )
+
                         if cards_result.content and cards_result.content[0].text:
                             try:
                                 cards = json.loads(cards_result.content[0].text)
                                 if isinstance(cards, list):
                                     for card in cards:
-                                        await session.call_tool("mcp_kanban_card_manager", {
-                                            "action": "delete",
-                                            "cardId": card["id"]
-                                        })
-                                        print(f"  ✅ Deleted: {card.get('name', 'Unnamed')}")
+                                        await session.call_tool(
+                                            "mcp_kanban_card_manager",
+                                            {"action": "delete", "cardId": card["id"]},
+                                        )
+                                        print(
+                                            f"  ✅ Deleted: {card.get('name', 'Unnamed')}"
+                                        )
                             except:
                                 pass
                     except:
                         pass
             except Exception as e:
                 print(f"  ⚠️  Error clearing cards: {str(e)}")
-            
+
             # 3. Get lists
             print("\n📋 Getting lists...")
             backlog_list = None
-            
+
             for lst in lists:
                 if "BACKLOG" in lst["name"].upper():
                     backlog_list = lst
                     print(f"✅ Found list: {lst['name']} (ID: {lst['id']})")
                     break
-            
+
             if not backlog_list:
                 print("❌ No Backlog list found!")
                 return
-            
+
             # 4. Create labels first
             print("\n🏷️  Creating labels...")
             label_ids = {}
-            
+
             for label_name, color in LABEL_COLORS.items():
                 try:
                     # Try to create the label
-                    result = await session.call_tool("mcp_kanban_label_manager", {
-                        "action": "create",
-                        "boardId": board_id,
-                        "name": label_name,
-                        "color": color
-                    })
+                    result = await session.call_tool(
+                        "mcp_kanban_label_manager",
+                        {
+                            "action": "create",
+                            "boardId": board_id,
+                            "name": label_name,
+                            "color": color,
+                        },
+                    )
                     label = json.loads(result.content[0].text)
                     label_ids[label_name] = label["id"]
                     print(f"  ✅ Created label: {label_name}")
                 except:
                     # Label might exist, try to get it
                     try:
-                        labels_result = await session.call_tool("mcp_kanban_label_manager", {
-                            "action": "get_all",
-                            "boardId": board_id
-                        })
+                        labels_result = await session.call_tool(
+                            "mcp_kanban_label_manager",
+                            {"action": "get_all", "boardId": board_id},
+                        )
                         labels = json.loads(labels_result.content[0].text)
-                        
+
                         for existing_label in labels:
                             if existing_label["name"] == label_name:
                                 label_ids[label_name] = existing_label["id"]
@@ -2300,84 +2308,102 @@ async def create_all_cards():
                                 break
                     except:
                         print(f"  ❌ Could not create/find label: {label_name}")
-            
+
             # 5. Create all cards
             print("\n📝 Creating cards...")
             created_count = 0
             card_id_map = {}
-            
+
             for card_data in TODO_APP_DATA["cards"][:17]:  # Only first 17 cards
                 print(f"\n[{created_count + 1}/17] Creating: {card_data['title']}")
-                
+
                 # Get enhanced description and subtasks
                 enhanced = ENHANCED_CARDS.get(card_data["id"], {})
                 description = enhanced.get("description", card_data["description"])
                 subtasks = enhanced.get("subtasks", [])
-                
+
                 # Calculate due date
                 # Parse due date string (e.g., "2 days" -> 2)
                 due_date_str = card_data.get("dueDate", "7 days")
                 due_days = int(due_date_str.split()[0]) if " day" in due_date_str else 7
                 due_date = datetime.now() + timedelta(days=due_days)
-                
+
                 try:
                     # Create the card
-                    result = await session.call_tool("mcp_kanban_card_manager", {
-                        "action": "create",
-                        "listId": backlog_list["id"],
-                        "name": card_data["title"],
-                        "description": description
-                    })
-                    
+                    result = await session.call_tool(
+                        "mcp_kanban_card_manager",
+                        {
+                            "action": "create",
+                            "listId": backlog_list["id"],
+                            "name": card_data["title"],
+                            "description": description,
+                        },
+                    )
+
                     card = json.loads(result.content[0].text)
                     card_id = card["id"]
                     card_id_map[card_data["title"]] = card_id
                     print(f"  ✅ Created card ID: {card_id}")
-                    
+
                     # Add labels
-                    for label_name in enhanced.get("labels", card_data.get("labels", [])):
+                    for label_name in enhanced.get(
+                        "labels", card_data.get("labels", [])
+                    ):
                         if label_name in label_ids:
                             try:
-                                await session.call_tool("mcp_kanban_label_manager", {
-                                    "action": "add_to_card",
-                                    "cardId": card_id,
-                                    "labelId": label_ids[label_name]
-                                })
+                                await session.call_tool(
+                                    "mcp_kanban_label_manager",
+                                    {
+                                        "action": "add_to_card",
+                                        "cardId": card_id,
+                                        "labelId": label_ids[label_name],
+                                    },
+                                )
                                 print(f"  ✅ Added label: {label_name}")
                             except Exception as e:
-                                print(f"  ❌ Could not add label {label_name}: {str(e)}")
-                    
+                                print(
+                                    f"  ❌ Could not add label {label_name}: {str(e)}"
+                                )
+
                     # Create subtasks
                     if subtasks:
                         print(f"  📋 Creating {len(subtasks)} subtasks...")
-                        for i, subtask_name in enumerate(subtasks[:10], 1):  # Limit to 10 subtasks
+                        for i, subtask_name in enumerate(
+                            subtasks[:10], 1
+                        ):  # Limit to 10 subtasks
                             try:
-                                await session.call_tool("mcp_kanban_task_manager", {
-                                    "action": "create",
-                                    "cardId": card_id,
-                                    "name": subtask_name,
-                                    "position": i
-                                })
+                                await session.call_tool(
+                                    "mcp_kanban_task_manager",
+                                    {
+                                        "action": "create",
+                                        "cardId": card_id,
+                                        "name": subtask_name,
+                                        "position": i,
+                                    },
+                                )
                             except:
                                 pass
                         print(f"  ✅ Created subtasks")
-                    
+
                     # Add time estimate and other details
                     time_estimate = enhanced.get("timeEstimate", 8)
                     priority = enhanced.get("priority", "medium")
-                    
+
                     details_comment = f"""📊 **Task Details**
 ⏱️ **Time Estimate**: {time_estimate} hours
 📅 **Due Date**: {due_date.strftime('%B %d, %Y')}
 🎯 **Priority**: {priority.capitalize()}
 👥 **Team Size**: 1-2 developers"""
-                    
-                    await session.call_tool("mcp_kanban_comment_manager", {
-                        "action": "create",
-                        "cardId": card_id,
-                        "text": details_comment
-                    })
-                    
+
+                    await session.call_tool(
+                        "mcp_kanban_comment_manager",
+                        {
+                            "action": "create",
+                            "cardId": card_id,
+                            "text": details_comment,
+                        },
+                    )
+
                     # Add dependencies if any
                     dependencies = enhanced.get("dependencies", [])
                     if dependencies:
@@ -2388,22 +2414,27 @@ async def create_all_cards():
                                 if c["id"] == dep_id:
                                     dep_names.append(c["title"])
                                     break
-                        
+
                         if dep_names:
-                            deps_comment = "🔗 **Dependencies**:\n" + "\n".join(f"- {name}" for name in dep_names)
-                            await session.call_tool("mcp_kanban_comment_manager", {
-                                "action": "create",
-                                "cardId": card_id,
-                                "text": deps_comment
-                            })
-                    
+                            deps_comment = "🔗 **Dependencies**:\n" + "\n".join(
+                                f"- {name}" for name in dep_names
+                            )
+                            await session.call_tool(
+                                "mcp_kanban_comment_manager",
+                                {
+                                    "action": "create",
+                                    "cardId": card_id,
+                                    "text": deps_comment,
+                                },
+                            )
+
                     created_count += 1
-                    
+
                 except Exception as e:
                     print(f"  ❌ Error creating card: {str(e)}")
-            
+
             print(f"\n✅ Successfully created {created_count}/17 cards!")
-            
+
             # 6. Summary
             print("\n📊 Summary:")
             print(f"  - Cards created: {created_count}")

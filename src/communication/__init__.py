@@ -33,4 +33,4 @@ Examples
 
 from .communication_hub import CommunicationHub
 
-__all__ = ['CommunicationHub']
+__all__ = ["CommunicationHub"]

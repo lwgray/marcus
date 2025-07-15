@@ -71,9 +71,11 @@ class PipelineTrackedProjectCreator:
                 event_type="ai_prd_analysis_started",
                 data={
                     "prd_length": len(prd_content),
-                    "prd_preview": prd_content[:200] + "..."
-                    if len(prd_content) > 200
-                    else prd_content,
+                    "prd_preview": (
+                        prd_content[:200] + "..."
+                        if len(prd_content) > 200
+                        else prd_content
+                    ),
                 },
                 status="in_progress",
             )
@@ -145,9 +147,9 @@ class PipelineTrackedProjectCreator:
                 event_type="prd_parsing_started",
                 data={
                     "has_constraints": constraints is not None,
-                    "team_size": getattr(constraints, "team_size", None)
-                    if constraints
-                    else None,
+                    "team_size": (
+                        getattr(constraints, "team_size", None) if constraints else None
+                    ),
                 },
                 status="in_progress",
             )
@@ -164,9 +166,11 @@ class PipelineTrackedProjectCreator:
                         task_info = {
                             "id": t.id,
                             "name": t.name,
-                            "priority": t.priority.value
-                            if hasattr(t.priority, "value")
-                            else str(t.priority),
+                            "priority": (
+                                t.priority.value
+                                if hasattr(t.priority, "value")
+                                else str(t.priority)
+                            ),
                             "estimatedHours": getattr(t, "estimated_hours", 8),
                             "dependencies": getattr(t, "dependencies", []),
                         }

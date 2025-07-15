@@ -16,23 +16,23 @@ services:
     environment:
       # Kanban provider - GitHub or Linear ONLY for remote
       - KANBAN_PROVIDER=${KANBAN_PROVIDER:-github}
-      
+
       # GitHub configuration (recommended)
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - GITHUB_OWNER=${GITHUB_OWNER}
       - GITHUB_REPO=${GITHUB_REPO}
-      
+
       # Linear configuration (alternative)
       - LINEAR_API_KEY=${LINEAR_API_KEY}
       - LINEAR_TEAM_ID=${LINEAR_TEAM_ID}
-      
+
       # AI configuration
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      
+
       # Security
       - MCP_AUTH_TOKENS=${MCP_AUTH_TOKENS}
-      
+
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data

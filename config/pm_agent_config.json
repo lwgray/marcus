@@ -3,32 +3,32 @@
     "command": "docker",
     "args": ["exec", "-i", "kanban-mcp", "node", "index.js"]
   },
-  
+
   "monitoring_interval": 900,
   "stall_threshold_hours": 24,
-  
+
   "risk_thresholds": {
     "high_risk": 0.8,
     "medium_risk": 0.5,
     "timeline_buffer": 0.2
   },
-  
+
   "escalation_rules": {
     "stuck_task_hours": 8,
     "blocker_escalation_hours": 4,
     "critical_path_delay_hours": 2
   },
-  
+
   "communication_rules": {
     "daily_plan_time": "08:00",
     "progress_check_time": "14:00",
     "end_of_day_summary": "18:00"
   },
-  
+
   "slack_enabled": false,
   "email_enabled": false,
   "kanban_comments_enabled": true,
-  
+
   "team_config": {
     "backend_team": {
       "skills": ["python", "fastapi", "postgresql", "redis"],
@@ -52,12 +52,12 @@
       }
     }
   },
-  
+
   "ai_settings": {
     "model": "claude-3-sonnet-20241022",
     "temperature": 0.7,
     "max_tokens": 2000
   },
-  
+
   "escalation_recipients": ["team-lead@company.com", "pm@company.com"]
 }

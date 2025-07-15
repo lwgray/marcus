@@ -9,22 +9,23 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, List, Optional
-from jinja2 import Template, Environment, FileSystemLoader
+from typing import Any, Dict, List, Optional
 
-from src.visualization.shared_pipeline_events import SharedPipelineEvents
+from jinja2 import Environment, FileSystemLoader, Template
+
 from src.analysis.pipeline_comparison import PipelineComparator
+from src.visualization.shared_pipeline_events import SharedPipelineEvents
 
 
 class PipelineReportGenerator:
     """
     Generate comprehensive reports from pipeline executions.
     """
-    
+
     def __init__(self, template_dir: Optional[str] = None):
         """
         Initialize report generator.
-        
+
         Parameters
         ----------
         template_dir : Optional[str]
@@ -32,22 +33,22 @@ class PipelineReportGenerator:
         """
         self.shared_events = SharedPipelineEvents()
         self.comparator = PipelineComparator()
-        
+
         # Setup Jinja2 environment
         if template_dir:
             self.template_dir = Path(template_dir)
         else:
             self.template_dir = Path(__file__).parent / "templates"
-            
+
         # Create templates directory if it doesn't exist
         self.template_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Initialize template environment
         self.env = Environment(loader=FileSystemLoader(str(self.template_dir)))
-        
+
         # Create default templates if they don't exist
         self._create_default_templates()
-        
+
     def _create_default_templates(self):
         """Create default report templates."""
         # HTML report template
@@ -327,12 +328,12 @@ class PipelineReportGenerator:
 </body>
 </html>
 """
-        
+
         # Executive summary template
         exec_summary_template = """
 # Executive Summary: {{ project_name }}
 
-**Generated:** {{ generation_date }}  
+**Generated:** {{ generation_date }}
 **Flow ID:** {{ flow_id }}
 
 ## Key Metrics
@@ -358,20 +359,20 @@ class PipelineReportGenerator:
 - {{ rec }}
 {% endfor %}
 """
-        
+
         # Save templates
         (self.template_dir / "full_report.html").write_text(html_template)
         (self.template_dir / "executive_summary.md").write_text(exec_summary_template)
-        
+
     def generate_html_report(self, flow_id: str) -> str:
         """
         Generate HTML report for a flow.
-        
+
         Parameters
         ----------
         flow_id : str
             The flow ID to generate report for
-            
+
         Returns
         -------
         str
@@ -380,64 +381,66 @@ class PipelineReportGenerator:
         flow = self._load_complete_flow(flow_id)
         insights = self._gather_insights(flow)
         recommendations = self._generate_recommendations(flow)
-        
+
         template = self.env.get_template("full_report.html")
         return template.render(
             flow=flow,
             insights=insights,
             recommendations=recommendations,
-            generation_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            generation_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         )
-        
-    def generate_pdf_report(self, flow_id: str, output_path: Optional[str] = None) -> bytes:
+
+    def generate_pdf_report(
+        self, flow_id: str, output_path: Optional[str] = None
+    ) -> bytes:
         """
         Generate PDF report for a flow.
-        
+
         Parameters
         ----------
         flow_id : str
             The flow ID to generate report for
         output_path : Optional[str]
             Path to save PDF file
-            
+
         Returns
         -------
         bytes
             PDF content
         """
         html = self.generate_html_report(flow_id)
-        
+
         # Note: PDF generation requires additional dependencies
         # In production, use libraries like weasyprint or pdfkit
         # For now, return a placeholder
-        
+
         if output_path:
             # Save HTML as alternative
-            Path(output_path).with_suffix('.html').write_text(html)
-            
+            Path(output_path).with_suffix(".html").write_text(html)
+
         return b"PDF generation requires additional dependencies"
-        
+
     def generate_executive_summary(self, flow_id: str) -> Dict[str, Any]:
         """
         Generate executive summary for stakeholders.
-        
+
         Parameters
         ----------
         flow_id : str
             The flow ID to summarize
-            
+
         Returns
         -------
         Dict[str, Any]
             Executive summary data
         """
         flow = self._load_complete_flow(flow_id)
-        
+
         # Extract key information
         key_decisions = self._extract_key_decisions(flow)
         risks = self._summarize_risks(flow)
         recommendations = self._top_recommendations(flow)
-        
+
         summary = {
             "project_name": flow["project_name"],
             "flow_id": flow_id,
@@ -452,23 +455,23 @@ class PipelineReportGenerator:
             "quality_score": int(flow["metrics"]["quality_score"] * 100),
             "key_decisions": key_decisions,
             "risks_identified": risks,
-            "recommendations": recommendations
+            "recommendations": recommendations,
         }
-        
+
         return summary
-        
+
     def generate_markdown_summary(self, flow_id: str) -> str:
         """Generate markdown executive summary."""
         summary_data = self.generate_executive_summary(flow_id)
         template = self.env.get_template("executive_summary.md")
         return template.render(**summary_data)
-        
+
     def _load_complete_flow(self, flow_id: str) -> Dict[str, Any]:
         """Load complete flow data with all metadata."""
         events = self.shared_events.get_flow_events(flow_id)
         flow_data = self.shared_events._read_events()
         flow_info = flow_data["flows"].get(flow_id, {})
-        
+
         # Use comparator's extraction methods
         flow = {
             "flow_id": flow_id,
@@ -477,161 +480,167 @@ class PipelineReportGenerator:
             "metrics": self.comparator._extract_flow_metrics(events),
             "decisions": self.comparator._extract_decisions(events),
             "requirements": self.comparator._extract_requirements(events),
-            "tasks": self.comparator._extract_tasks(events)
+            "tasks": self.comparator._extract_tasks(events),
         }
-        
+
         return flow
-        
+
     def _gather_insights(self, flow: Dict[str, Any]) -> Dict[str, Any]:
         """Gather insights from flow data."""
         insights = {
             "timeline": self._create_timeline(flow["events"]),
             "key_decisions": self._extract_key_decisions(flow),
             "requirements": self._analyze_requirements(flow),
-            "stage_performance": self._analyze_stage_performance(flow["events"])
+            "stage_performance": self._analyze_stage_performance(flow["events"]),
         }
-        
+
         return insights
-        
+
     def _create_timeline(self, events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Create timeline from events."""
         timeline = []
-        
+
         if not events:
             return timeline
-            
+
         start_time = datetime.fromisoformat(events[0].get("timestamp", ""))
-        
+
         for event in events:
             event_time = datetime.fromisoformat(event.get("timestamp", ""))
             relative_ms = int((event_time - start_time).total_seconds() * 1000)
-            
-            timeline.append({
-                "stage": event.get("stage", "Unknown"),
-                "event_type": event.get("event_type", ""),
-                "summary": self._get_event_summary(event),
-                "relative_time": relative_ms
-            })
-            
+
+            timeline.append(
+                {
+                    "stage": event.get("stage", "Unknown"),
+                    "event_type": event.get("event_type", ""),
+                    "summary": self._get_event_summary(event),
+                    "relative_time": relative_ms,
+                }
+            )
+
         return timeline
-        
+
     def _get_event_summary(self, event: Dict[str, Any]) -> str:
         """Generate concise event summary."""
         event_type = event.get("event_type", "")
         data = event.get("data", {})
-        
+
         summaries = {
             "ai_prd_analysis": f"AI Analysis ({data.get('confidence', 0) * 100:.0f}% confidence)",
             "tasks_generated": f"Generated {data.get('task_count', 0)} tasks",
             "decision_point": f"Decision: {data.get('decision', 'Unknown')[:50]}",
-            "quality_metrics": f"Quality Score: {data.get('overall_quality_score', 0) * 100:.0f}%"
+            "quality_metrics": f"Quality Score: {data.get('overall_quality_score', 0) * 100:.0f}%",
         }
-        
-        return summaries.get(event_type, event_type.replace('_', ' ').title())
-        
+
+        return summaries.get(event_type, event_type.replace("_", " ").title())
+
     def _extract_key_decisions(self, flow: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Extract the most important decisions."""
         # Get all decisions sorted by confidence
         decisions = sorted(
-            flow["decisions"],
-            key=lambda d: d.get("confidence", 0),
-            reverse=True
+            flow["decisions"], key=lambda d: d.get("confidence", 0), reverse=True
         )
-        
+
         # Return top 5 decisions
         return decisions[:5]
-        
+
     def _summarize_risks(self, flow: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Summarize identified risks."""
         risks = []
-        
+
         for event in flow["events"]:
             if event.get("event_type") == "tasks_generated":
                 risk_factors = event.get("data", {}).get("risk_factors", [])
                 for risk in risk_factors:
-                    risks.append({
-                        "description": risk.get("description", risk.get("risk", "")),
-                        "severity": "High" if "high" in str(risk).lower() else "Medium",
-                        "mitigation": risk.get("mitigation", "Review and monitor")
-                    })
-                    
+                    risks.append(
+                        {
+                            "description": risk.get(
+                                "description", risk.get("risk", "")
+                            ),
+                            "severity": (
+                                "High" if "high" in str(risk).lower() else "Medium"
+                            ),
+                            "mitigation": risk.get("mitigation", "Review and monitor"),
+                        }
+                    )
+
         return risks[:5]  # Top 5 risks
-        
+
     def _generate_recommendations(self, flow: Dict[str, Any]) -> List[str]:
         """Generate recommendations based on flow analysis."""
         recommendations = []
-        
+
         metrics = flow["metrics"]
-        
+
         # Quality recommendations
         if metrics["quality_score"] < 0.7:
             recommendations.append(
                 "Quality score is below 70%. Consider reviewing task coverage "
                 "and adding missing test/documentation tasks."
             )
-            
+
         # Complexity recommendations
         if metrics["complexity_score"] > 0.8:
             recommendations.append(
                 "High complexity detected. Consider breaking the project into "
                 "phases or simplifying task dependencies."
             )
-            
+
         # Cost recommendations
         if metrics["total_cost"] > 1.0:
             recommendations.append(
                 f"Cost is ${metrics['total_cost']:.2f}. Consider using GPT-3.5 "
                 "for non-critical analysis to reduce costs."
             )
-            
+
         # Confidence recommendations
         if metrics["confidence_avg"] < 0.7:
             recommendations.append(
                 "Average confidence is low. Review and clarify project requirements "
                 "for better AI understanding."
             )
-            
+
         # Check for missing testing
-        has_testing = any(
-            "test" in task["name"].lower() 
-            for task in flow["tasks"]
-        )
+        has_testing = any("test" in task["name"].lower() for task in flow["tasks"])
         if not has_testing:
             recommendations.append(
                 "No testing tasks detected. Add explicit testing tasks "
                 "to ensure quality."
             )
-            
+
         return recommendations
-        
+
     def _top_recommendations(self, flow: Dict[str, Any]) -> List[str]:
         """Get top 3 recommendations for executive summary."""
         all_recommendations = self._generate_recommendations(flow)
         return all_recommendations[:3]
-        
+
     def _analyze_requirements(self, flow: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Analyze requirement coverage."""
         requirements = flow["requirements"]
-        
+
         # Count tasks per requirement
         req_coverage = {}
         for event in flow["events"]:
             if event.get("event_type") == "tasks_generated":
                 # This is simplified - in production, track actual mapping
                 for req in requirements:
-                    req_coverage[req.get("requirement", "")] = \
-                        flow["metrics"]["task_count"] // len(requirements)
-                        
+                    req_coverage[req.get("requirement", "")] = flow["metrics"][
+                        "task_count"
+                    ] // len(requirements)
+
         # Enhance requirements with coverage
         for req in requirements:
             req["task_count"] = req_coverage.get(req.get("requirement", ""), 0)
-            
+
         return requirements
-        
-    def _analyze_stage_performance(self, events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+
+    def _analyze_stage_performance(
+        self, events: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
         """Analyze performance by pipeline stage."""
         stage_metrics = {}
-        
+
         for event in events:
             stage = event.get("stage", "unknown")
             if stage not in stage_metrics:
@@ -639,24 +648,24 @@ class PipelineReportGenerator:
                     "name": stage,
                     "duration_ms": 0,
                     "cost": 0,
-                    "tokens": 0
+                    "tokens": 0,
                 }
-                
+
             # Accumulate metrics
             if "duration_ms" in event:
                 stage_metrics[stage]["duration_ms"] += event["duration_ms"]
-                
+
             if event.get("event_type") == "performance_metrics":
                 data = event.get("data", {})
                 stage_metrics[stage]["cost"] += data.get("cost_estimate", 0)
                 stage_metrics[stage]["tokens"] += data.get("token_usage", 0)
-                
+
         return list(stage_metrics.values())
-        
+
     def batch_generate_reports(self, flow_ids: List[str], output_dir: str):
         """
         Generate reports for multiple flows.
-        
+
         Parameters
         ----------
         flow_ids : List[str]
@@ -666,20 +675,20 @@ class PipelineReportGenerator:
         """
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
-        
+
         for flow_id in flow_ids:
             try:
                 # Generate HTML report
                 html = self.generate_html_report(flow_id)
                 html_path = output_path / f"report_{flow_id}.html"
                 html_path.write_text(html)
-                
+
                 # Generate markdown summary
                 md = self.generate_markdown_summary(flow_id)
                 md_path = output_path / f"summary_{flow_id}.md"
                 md_path.write_text(md)
-                
+
                 print(f"Generated reports for {flow_id}")
-                
+
             except Exception as e:
                 print(f"Error generating report for {flow_id}: {e}")
