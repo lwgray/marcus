@@ -23,7 +23,9 @@ def check_python_version():
 def check_docker():
     """Check if Docker is running"""
     try:
-        result = subprocess.run(["docker", "ps"], capture_output=True, text=True)  # nosec B603 B607
+        result = subprocess.run(
+            ["docker", "ps"], capture_output=True, text=True
+        )  # nosec B603 B607
         return result.returncode == 0
     except FileNotFoundError:
         print("❌ Docker not found. Please install Docker.")
