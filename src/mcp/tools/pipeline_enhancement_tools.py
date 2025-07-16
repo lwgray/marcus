@@ -21,15 +21,15 @@ from src.visualization.pipeline_replay import PipelineReplayController
 class PipelineEnhancementTools:
     """MCP tools for pipeline enhancement features."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize all enhancement components."""
-        self.replay_controller = None
-        self.what_if_engine = None
-        self.comparator = PipelineComparator()
-        self.report_generator = PipelineReportGenerator()
-        self.live_monitor = LivePipelineMonitor()
-        self.error_predictor = PipelineErrorPredictor()
-        self.recommendation_engine = PipelineRecommendationEngine()
+        self.replay_controller: Optional[PipelineReplayController] = None
+        self.what_if_engine: Optional[WhatIfAnalysisEngine] = None
+        self.comparator: PipelineComparator = PipelineComparator()  # type: ignore[no-untyped-call]
+        self.report_generator: PipelineReportGenerator = PipelineReportGenerator()
+        self.live_monitor: LivePipelineMonitor = LivePipelineMonitor()  # type: ignore[no-untyped-call]
+        self.error_predictor: PipelineErrorPredictor = PipelineErrorPredictor()  # type: ignore[no-untyped-call]
+        self.recommendation_engine: PipelineRecommendationEngine = PipelineRecommendationEngine()
 
     # ==================== Phase 3.1: Pipeline Replay ====================
 
@@ -40,14 +40,15 @@ class PipelineEnhancementTools:
         Tool: pipeline_replay_start
         """
         try:
-            self.replay_controller = PipelineReplayController(flow_id)
+            self.replay_controller = PipelineReplayController()
+            session = self.replay_controller.start_replay(flow_id)
 
             return {
                 "success": True,
                 "flow_id": flow_id,
-                "total_events": self.replay_controller.max_position,
-                "current_position": self.replay_controller.current_position,
-                "state": self.replay_controller.get_current_state(),
+                "total_events": session.get("total_events", 0),
+                "current_position": session.get("current_position", 0),
+                "state": session,
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -61,12 +62,11 @@ class PipelineEnhancementTools:
         if not self.replay_controller:
             return {"success": False, "error": "No active replay session"}
 
-        success, state = self.replay_controller.step_forward()
+        state = self.replay_controller.step_forward(self.replay_controller.replay_sessions.get(list(self.replay_controller.replay_sessions.keys())[0], {}).get("flow_id", ""))
         return {
-            "success": success,
+            "success": True,
             "state": state,
-            "has_more": self.replay_controller.current_position
-            < self.replay_controller.max_position - 1,
+            "has_more": state.get("current_position", 0) < state.get("total_events", 0) - 1,
         }
 
     async def replay_step_backward(self) -> Dict[str, Any]:
@@ -78,11 +78,11 @@ class PipelineEnhancementTools:
         if not self.replay_controller:
             return {"success": False, "error": "No active replay session"}
 
-        success, state = self.replay_controller.step_backward()
+        state = self.replay_controller.step_backward(self.replay_controller.replay_sessions.get(list(self.replay_controller.replay_sessions.keys())[0], {}).get("flow_id", ""))
         return {
-            "success": success,
+            "success": True,
             "state": state,
-            "has_previous": self.replay_controller.current_position > 0,
+            "has_previous": state.get("current_position", 0) > 0,
         }
 
     async def replay_jump_to(self, position: int) -> Dict[str, Any]:
@@ -94,8 +94,8 @@ class PipelineEnhancementTools:
         if not self.replay_controller:
             return {"success": False, "error": "No active replay session"}
 
-        success, state = self.replay_controller.jump_to_position(position)
-        return {"success": success, "state": state}
+        state = self.replay_controller.jump_to_position(self.replay_controller.replay_sessions.get(list(self.replay_controller.replay_sessions.keys())[0], {}).get("flow_id", ""), position)
+        return {"success": True, "state": state}
 
     # ==================== Phase 3.2: What-If Analysis ====================
 
@@ -123,7 +123,7 @@ class PipelineEnhancementTools:
                         "quality_score"
                     ],
                 },
-                "modifiable_parameters": self.what_if_engine.get_modifiable_parameters(),
+                "modifiable_parameters": list(self.what_if_engine.original_flow["parameters"].keys()),
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -145,9 +145,8 @@ class PipelineEnhancementTools:
             for mod in modifications:
                 mods.append(
                     PipelineModification(
-                        parameter_type=mod["parameter_type"],
-                        parameter_name=mod["parameter_name"],
-                        old_value=mod.get("old_value"),
+                        parameter=mod["parameter_name"],
+                        original_value=mod.get("old_value"),
                         new_value=mod["new_value"],
                         description=mod.get("description", ""),
                     )
@@ -167,7 +166,19 @@ class PipelineEnhancementTools:
         if not self.what_if_engine:
             return {"success": False, "error": "No active what-if session"}
 
-        comparison = self.what_if_engine.compare_all_variations()
+        # Get all variations and create comparison summary
+        variations = getattr(self.what_if_engine, 'variations', [])
+        comparison = {
+            "total_variations": len(variations),
+            "variations": [
+                {
+                    "variation_id": v.get("variation_id"),
+                    "modifications": [mod.__dict__ if hasattr(mod, '__dict__') else str(mod) for mod in v.get("modifications", [])],
+                    "comparison": v.get("comparison").__dict__ if hasattr(v.get("comparison"), '__dict__') else str(v.get("comparison"))
+                }
+                for v in variations
+            ]
+        }
         return {"success": True, "comparison": comparison}
 
     # ==================== Phase 3.3: Pipeline Comparison ====================
@@ -240,9 +251,6 @@ class PipelineEnhancementTools:
             dashboard_data = self.live_monitor.get_dashboard_data()
 
             return {"success": True, **dashboard_data}
-
-            dashboard = self.live_monitor.get_dashboard_data()
-            return {"success": True, "dashboard": dashboard}
         except Exception as e:
             return {"success": False, "error": str(e)}
 

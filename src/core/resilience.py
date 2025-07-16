@@ -11,7 +11,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from functools import wraps
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, TypeVar, Union
 
 logger = logging.getLogger(__name__)
 
@@ -58,12 +58,12 @@ class CircuitBreaker:
             return True
         return False
 
-    def record_success(self):
+    def record_success(self) -> None:
         """Record successful call"""
         self.failure_count = 0
         self.state = "closed"
 
-    def record_failure(self):
+    def record_failure(self) -> None:
         """Record failed call"""
         self.failure_count += 1
         self.last_failure_time = datetime.now()
@@ -79,7 +79,7 @@ class CircuitBreaker:
 _circuit_breakers: Dict[str, CircuitBreaker] = {}
 
 
-def with_fallback(fallback_func: Callable, log_errors: bool = True):
+def with_fallback(fallback_func: Callable[..., Any], log_errors: bool = True) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     Decorator for graceful degradation with fallback function.
 
@@ -89,9 +89,9 @@ def with_fallback(fallback_func: Callable, log_errors: bool = True):
             await db.store(data)
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
-        async def async_wrapper(*args, **kwargs):
+        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return await func(*args, **kwargs)
             except Exception as e:
@@ -102,7 +102,7 @@ def with_fallback(fallback_func: Callable, log_errors: bool = True):
                 return fallback_func(*args, **kwargs)
 
         @wraps(func)
-        def sync_wrapper(*args, **kwargs):
+        def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return func(*args, **kwargs)
             except Exception as e:
@@ -117,7 +117,7 @@ def with_fallback(fallback_func: Callable, log_errors: bool = True):
     return decorator
 
 
-def with_retry(config: Optional[RetryConfig] = None):
+def with_retry(config: Optional[RetryConfig] = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     Decorator for retry logic with exponential backoff.
 
@@ -129,9 +129,9 @@ def with_retry(config: Optional[RetryConfig] = None):
     if config is None:
         config = RetryConfig()
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
-        async def async_wrapper(*args, **kwargs):
+        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             last_exception = None
 
             for attempt in range(config.max_attempts):
@@ -162,10 +162,12 @@ def with_retry(config: Optional[RetryConfig] = None):
                     await asyncio.sleep(delay)
 
             logger.error(f"{func.__name__} failed after {config.max_attempts} attempts")
-            raise last_exception
+            if last_exception is not None:
+                raise last_exception
+            raise RuntimeError("No exception captured")
 
         @wraps(func)
-        def sync_wrapper(*args, **kwargs):
+        def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             last_exception = None
 
             for attempt in range(config.max_attempts):
@@ -193,7 +195,9 @@ def with_retry(config: Optional[RetryConfig] = None):
                     time.sleep(delay)
 
             logger.error(f"{func.__name__} failed after {config.max_attempts} attempts")
-            raise last_exception
+            if last_exception is not None:
+                raise last_exception
+            raise RuntimeError("No exception captured")
 
         if asyncio.iscoroutinefunction(func):
             return async_wrapper
@@ -202,7 +206,7 @@ def with_retry(config: Optional[RetryConfig] = None):
     return decorator
 
 
-def with_circuit_breaker(name: str, config: Optional[CircuitBreakerConfig] = None):
+def with_circuit_breaker(name: str, config: Optional[CircuitBreakerConfig] = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     Decorator for circuit breaker pattern.
 
@@ -219,9 +223,9 @@ def with_circuit_breaker(name: str, config: Optional[CircuitBreakerConfig] = Non
         _circuit_breakers[name] = CircuitBreaker(name, config)
     breaker = _circuit_breakers[name]
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
-        async def async_wrapper(*args, **kwargs):
+        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             if breaker.is_open():
                 raise Exception(f"Circuit breaker '{name}' is open")
 
@@ -229,12 +233,13 @@ def with_circuit_breaker(name: str, config: Optional[CircuitBreakerConfig] = Non
                 result = await func(*args, **kwargs)
                 breaker.record_success()
                 return result
-            except config.expected_exception as e:
-                breaker.record_failure()
+            except Exception as e:
+                if isinstance(e, config.expected_exception):
+                    breaker.record_failure()
                 raise
 
         @wraps(func)
-        def sync_wrapper(*args, **kwargs):
+        def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             if breaker.is_open():
                 raise Exception(f"Circuit breaker '{name}' is open")
 
@@ -242,8 +247,9 @@ def with_circuit_breaker(name: str, config: Optional[CircuitBreakerConfig] = Non
                 result = func(*args, **kwargs)
                 breaker.record_success()
                 return result
-            except config.expected_exception as e:
-                breaker.record_failure()
+            except Exception as e:
+                if isinstance(e, config.expected_exception):
+                    breaker.record_failure()
                 raise
 
         if asyncio.iscoroutinefunction(func):
@@ -266,23 +272,23 @@ class GracefulDegradation:
 
     def __init__(
         self,
-        primary: Optional[Callable] = None,
-        fallback: Optional[Callable] = None,
+        primary: Optional[Callable[..., Any]] = None,
+        fallback: Optional[Callable[..., Any]] = None,
         log_errors: bool = True,
     ):
         self.primary = primary
         self.fallback = fallback
         self.log_errors = log_errors
         self._primary_failed = False
-        self._primary_exception = None
+        self._primary_exception: Optional[Exception] = None
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> 'GracefulDegradation':
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
         return False
 
-    async def try_primary(self, func: Optional[Callable] = None, *args, **kwargs):
+    async def try_primary(self, func: Optional[Callable[..., Any]] = None, *args: Any, **kwargs: Any) -> Any:
         """Try the primary function"""
         if func is None:
             func = self.primary
@@ -301,7 +307,7 @@ class GracefulDegradation:
                 logger.warning(f"Primary function failed: {e}")
             return None
 
-    async def use_fallback(self, *args, **kwargs):
+    async def use_fallback(self, *args: Any, **kwargs: Any) -> Any:
         """Use the fallback function"""
         if self.fallback is None:
             raise ValueError("No fallback function provided")

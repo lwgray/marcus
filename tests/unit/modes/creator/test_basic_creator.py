@@ -32,7 +32,7 @@ class MockTask:
     This mock allows us to test the actual behavior.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         self.id = kwargs.get("id", "test-id")
         self.name = kwargs.get("name", "Test Task")
         self.description = kwargs.get("description", "Test description")

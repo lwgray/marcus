@@ -282,7 +282,7 @@ class AssignmentDecision:
     mandatory_rule_applied: bool = False
 
     # Context
-    timestamp: datetime = None
+    timestamp: Optional[datetime] = None
 
     def __post_init__(self) -> None:
         """Set timestamp if not provided."""

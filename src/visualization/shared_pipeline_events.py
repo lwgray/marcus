@@ -74,7 +74,7 @@ class SharedPipelineVisualizer:
         duration_ms: Optional[int] = None,
         status: Optional[str] = None,
         error: Optional[str] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """Add an event to the pipeline flow (compatibility method)"""
         event_data = {

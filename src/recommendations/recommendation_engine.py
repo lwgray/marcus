@@ -67,18 +67,18 @@ class PatternDatabase:
             "optimization_rules": [],
         }
 
-    def save_patterns(self):
+    def save_patterns(self) -> None:
         """Save patterns to disk."""
         with open(self.db_path, "w") as f:
             json.dump(self.patterns, f, indent=2, default=str)
 
-    def add_success_pattern(self, flow_data: Dict[str, Any]):
+    def add_success_pattern(self, flow_data: Dict[str, Any]) -> None:
         """Add a successful flow pattern."""
         pattern = self._extract_pattern(flow_data)
         self.patterns["success_patterns"].append(pattern)
         self.save_patterns()
 
-    def add_failure_pattern(self, flow_data: Dict[str, Any], reasons: List[str]):
+    def add_failure_pattern(self, flow_data: Dict[str, Any], reasons: List[str]) -> None:
         """Add a failure pattern with reasons."""
         pattern = self._extract_pattern(flow_data)
         pattern["failure_reasons"] = reasons
@@ -255,7 +255,7 @@ class PipelineRecommendationEngine:
     Main recommendation engine that provides actionable recommendations.
     """
 
-    def __init__(self, pattern_learner=None):
+    def __init__(self, pattern_learner: Optional[Any] = None) -> None:
         """Initialize recommendation engine."""
         self.shared_events = SharedPipelineEvents()
         self.comparator = PipelineComparator()

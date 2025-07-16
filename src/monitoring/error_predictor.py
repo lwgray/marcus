@@ -395,11 +395,13 @@ class PipelineErrorPredictor:
         # Update patterns based on accuracy
         if actual_outcome == "failure" and predicted_risk < 0.5:
             # Under-predicted risk
-            print(f"Under-predicted risk for {flow_id}")
+            import sys
+            print(f"Under-predicted risk for {flow_id}", file=sys.stderr)
             # In production, adjust thresholds
         elif actual_outcome == "success" and predicted_risk > 0.7:
             # Over-predicted risk
-            print(f"Over-predicted risk for {flow_id}")
+            import sys
+            print(f"Over-predicted risk for {flow_id}", file=sys.stderr)
             # In production, adjust thresholds
 
     def get_prediction_accuracy(self) -> Dict[str, Any]:

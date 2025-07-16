@@ -56,9 +56,9 @@ class LabelingPlan:
 class BoardOrganizer:
     """Organizes boards into logical structures"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Development phase definitions
-        self.development_phases = {
+        self.development_phases: Dict[str, Dict[str, Any]] = {
             "planning": {
                 "keywords": [
                     "plan",
@@ -196,7 +196,7 @@ class BoardOrganizer:
         self, tasks: List[Task]
     ) -> Optional[OrganizationStrategy]:
         """Analyze viability of phase-based organization"""
-        phase_distribution = defaultdict(int)
+        phase_distribution: defaultdict[str, int] = defaultdict(int)
         phase_tasks = defaultdict(list)
 
         for task in tasks:
@@ -252,7 +252,7 @@ class BoardOrganizer:
         self, tasks: List[Task]
     ) -> Optional[OrganizationStrategy]:
         """Analyze viability of component-based organization"""
-        component_distribution = defaultdict(int)
+        component_distribution: defaultdict[str, int] = defaultdict(int)
         component_tasks = defaultdict(list)
 
         for task in tasks:
@@ -350,7 +350,7 @@ class BoardOrganizer:
                     feature_keywords.add(word)
 
         # Group tasks by features
-        feature_distribution = defaultdict(int)
+        feature_distribution: defaultdict[str, int] = defaultdict(int)
         feature_tasks = defaultdict(list)
 
         for task in tasks:
@@ -404,7 +404,7 @@ class BoardOrganizer:
         self, tasks: List[Task]
     ) -> Optional[OrganizationStrategy]:
         """Analyze viability of priority-based organization"""
-        priority_distribution = defaultdict(int)
+        priority_distribution: defaultdict[str, int] = defaultdict(int)
         priority_tasks = defaultdict(list)
 
         for task in tasks:
@@ -449,7 +449,7 @@ class BoardOrganizer:
         Returns:
             Phased structure with tasks organized by development phases
         """
-        phases = {}
+        phases: Dict[str, List[Task]] = {}
         phase_order = []
 
         # Initialize phases
@@ -458,7 +458,7 @@ class BoardOrganizer:
             phase_order.append(phase_name)
 
         # Sort phase order by configured order
-        phase_order.sort(key=lambda p: self.development_phases[p]["order"])
+        phase_order.sort(key=lambda p: int(self.development_phases[p]["order"]))
 
         # Classify tasks
         for task in tasks:
@@ -468,8 +468,9 @@ class BoardOrganizer:
             # Find best matching phase
             max_matches = 0
             for phase_name, phase_config in list(self.development_phases.items()):
+                keywords = list(phase_config["keywords"])
                 matches = sum(
-                    1 for keyword in phase_config["keywords"] if keyword in task_text
+                    1 for keyword in keywords if keyword in task_text
                 )
                 if matches > max_matches:
                     max_matches = matches
@@ -521,7 +522,7 @@ class BoardOrganizer:
         Returns:
             Component structure with tasks organized by components
         """
-        components = {}
+        components: Dict[str, List[Task]] = {}
         integration_tasks = []
         shared_tasks = []
 
@@ -573,7 +574,7 @@ class BoardOrganizer:
             Labeling plan with hierarchy and assignments
         """
         label_hierarchy = {}
-        task_label_assignments = {}
+        task_label_assignments: Dict[str, List[str]] = {}
         cleanup_suggestions = []
 
         if strategy.name == "phase_based":

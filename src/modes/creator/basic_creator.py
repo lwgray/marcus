@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class BasicCreatorMode:
     """Basic Creator Mode implementation"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.templates = {
             "web": WebAppTemplate(),
             "api": APIServiceTemplate(),

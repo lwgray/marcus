@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class BasicAdaptiveMode:
     """Basic Adaptive Mode that coordinates within existing structure"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.state = {"assignment_preferences": {}, "blocked_tasks": []}
         self.assignment_persistence = AssignmentPersistence()
 

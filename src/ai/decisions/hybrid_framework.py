@@ -8,7 +8,10 @@ optimal task assignment decisions while never compromising safety.
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.ai.core.ai_engine import RuleBasedEngine
 
 from src.ai.types import (
     AIOptimizationResult,
@@ -103,9 +106,9 @@ class HybridDecisionFramework:
     AI provides optimization and enhancement when rules allow the assignment.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Initialize will be done lazily to avoid circular imports
-        self.rule_engine = None
+        self.rule_engine: Optional["RuleBasedEngine"] = None
         self.ai_engine = AIEngine()  # Mock for now, will be replaced with real AI
 
         # Decision weights
@@ -224,8 +227,8 @@ class HybridDecisionFramework:
         }
 
         analysis_context = AnalysisContext(**analysis_context_data)
-
-        return await self.rule_engine.analyze(analysis_context)
+        result = await self.rule_engine.analyze(analysis_context)
+        return result
 
     def _calculate_hybrid_confidence(
         self, rule_confidence: float, ai_confidence: Optional[float]

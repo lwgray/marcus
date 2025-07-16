@@ -4,6 +4,7 @@ Unit tests for Pipeline Recommendation Engine
 
 import json
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 from unittest.mock import Mock, mock_open, patch
 
 import pytest
@@ -21,7 +22,7 @@ class TestPatternDatabase:
     """Test suite for PatternDatabase"""
 
     @pytest.fixture
-    def sample_patterns(self):
+    def sample_patterns(self) -> Dict[str, Any]:
         """Sample pattern data"""
         return {
             "success_patterns": [
@@ -39,7 +40,7 @@ class TestPatternDatabase:
 
     @patch("src.recommendations.recommendation_engine.Path.exists")
     @patch("src.recommendations.recommendation_engine.Path.mkdir")
-    def test_initialization_no_existing_db(self, mock_mkdir, mock_exists):
+    def test_initialization_no_existing_db(self, mock_mkdir: Mock, mock_exists: Mock) -> None:
         """Test pattern database initialization without existing file"""
         mock_exists.return_value = False
 
@@ -53,7 +54,7 @@ class TestPatternDatabase:
     @patch(
         "builtins.open", new_callable=mock_open, read_data='{"success_patterns": []}'
     )
-    def test_initialization_with_existing_db(self, mock_file, mock_exists):
+    def test_initialization_with_existing_db(self, mock_file: Mock, mock_exists: Mock) -> None:
         """Test pattern database initialization with existing file"""
         mock_exists.return_value = True
 
@@ -63,7 +64,7 @@ class TestPatternDatabase:
         mock_file.assert_called_once()
 
     @patch("builtins.open", new_callable=mock_open)
-    def test_save_patterns(self, mock_file):
+    def test_save_patterns(self, mock_file: Mock) -> None:
         """Test saving patterns to disk"""
         db = PatternDatabase()
         db.patterns = {"test": "data"}
@@ -75,7 +76,7 @@ class TestPatternDatabase:
         written_data = "".join(call.args[0] for call in handle.write.call_args_list)
         assert json.loads(written_data) == {"test": "data"}
 
-    def test_extract_pattern(self):
+    def test_extract_pattern(self) -> None:
         """Test pattern extraction from flow data"""
         db = PatternDatabase()
 
@@ -111,7 +112,7 @@ class TestPipelineRecommendationEngine:
     """Test suite for PipelineRecommendationEngine"""
 
     @pytest.fixture
-    def mock_flow_data(self):
+    def mock_flow_data(self) -> Dict[str, Any]:
         """Mock flow data for testing"""
         return {
             "flow_id": "test-flow-123",
@@ -136,7 +137,7 @@ class TestPipelineRecommendationEngine:
         }
 
     @pytest.fixture
-    def mock_dependencies(self):
+    def mock_dependencies(self) -> Dict[str, Mock]:
         """Create mocked dependencies"""
         mocks = {
             "shared_events": Mock(),
@@ -169,12 +170,12 @@ class TestPipelineRecommendationEngine:
     @patch("src.recommendations.recommendation_engine.SuccessAnalyzer")
     def test_initialization(
         self,
-        mock_analyzer_class,
-        mock_db_class,
-        mock_comp_class,
-        mock_events_class,
-        mock_dependencies,
-    ):
+        mock_analyzer_class: Mock,
+        mock_db_class: Mock,
+        mock_comp_class: Mock,
+        mock_events_class: Mock,
+        mock_dependencies: Dict[str, Mock],
+    ) -> None:
         """Test engine initialization"""
         mock_events_class.return_value = mock_dependencies["shared_events"]
         mock_comp_class.return_value = mock_dependencies["comparator"]
@@ -194,13 +195,13 @@ class TestPipelineRecommendationEngine:
     @patch("src.recommendations.recommendation_engine.SuccessAnalyzer")
     def test_get_recommendations_high_complexity(
         self,
-        mock_analyzer_class,
-        mock_db_class,
-        mock_comp_class,
-        mock_events_class,
-        mock_dependencies,
-        mock_flow_data,
-    ):
+        mock_analyzer_class: Mock,
+        mock_db_class: Mock,
+        mock_comp_class: Mock,
+        mock_events_class: Mock,
+        mock_dependencies: Dict[str, Mock],
+        mock_flow_data: Dict[str, Any],
+    ) -> None:
         """Test recommendations for high complexity project"""
         mock_events_class.return_value = mock_dependencies["shared_events"]
         mock_comp_class.return_value = mock_dependencies["comparator"]
@@ -231,13 +232,13 @@ class TestPipelineRecommendationEngine:
     @patch("src.recommendations.recommendation_engine.SuccessAnalyzer")
     def test_get_recommendations_missing_testing(
         self,
-        mock_analyzer_class,
-        mock_db_class,
-        mock_comp_class,
-        mock_events_class,
-        mock_dependencies,
-        mock_flow_data,
-    ):
+        mock_analyzer_class: Mock,
+        mock_db_class: Mock,
+        mock_comp_class: Mock,
+        mock_events_class: Mock,
+        mock_dependencies: Dict[str, Mock],
+        mock_flow_data: Dict[str, Any],
+    ) -> None:
         """Test recommendations for missing testing tasks"""
         mock_events_class.return_value = mock_dependencies["shared_events"]
         mock_comp_class.return_value = mock_dependencies["comparator"]
@@ -259,7 +260,7 @@ class TestPipelineRecommendationEngine:
         assert test_rec.confidence >= 0.8
         assert "test coverage" in test_rec.message.lower()
 
-    def test_calculate_similarity(self):
+    def test_calculate_similarity(self) -> None:
         """Test flow similarity calculation"""
         engine = PipelineRecommendationEngine()
 
@@ -285,7 +286,7 @@ class TestPipelineRecommendationEngine:
 
         assert 0.7 < similarity < 0.9  # Should be similar but not identical
 
-    def test_detect_high_complexity(self):
+    def test_detect_high_complexity(self) -> None:
         """Test high complexity detection"""
         engine = PipelineRecommendationEngine()
 
@@ -301,7 +302,7 @@ class TestPipelineRecommendationEngine:
         flow3 = {"metrics": {"complexity_score": 0.5, "task_count": 20}}
         assert engine.detect_high_complexity(flow3) is False
 
-    def test_suggest_phases(self):
+    def test_suggest_phases(self) -> None:
         """Test project phase suggestions"""
         engine = PipelineRecommendationEngine()
 
@@ -314,13 +315,13 @@ class TestPipelineRecommendationEngine:
         assert len(phases[0]["tasks"]) == 12
         assert phases[2]["phase"] == "Polish & Deploy"
 
-    def test_learn_from_outcome(self):
+    def test_learn_from_outcome(self) -> None:
         """Test learning from project outcome"""
         engine = PipelineRecommendationEngine()
 
         # Mock the pattern database
         engine.pattern_db = Mock()
-        engine._load_flow_data = Mock(return_value={"flow_id": "test-123"})
+        engine._load_flow_data = Mock(return_value={"flow_id": "test-123"})  # type: ignore[method-assign]
 
         outcome = ProjectOutcome(
             successful=True, completion_time_days=10.5, quality_score=0.85, cost=3.5

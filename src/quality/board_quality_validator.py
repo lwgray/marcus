@@ -7,7 +7,7 @@ actionable feedback for improvement.
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from src.core.models import Priority, Task, TaskStatus
 
@@ -318,7 +318,7 @@ class BoardQualityValidator:
                 1 for t in tasks if hasattr(t, "estimated_hours") and t.estimated_hours
             ),
             "tasks_with_dependencies": sum(1 for t in tasks if t.dependencies),
-            "tasks_with_priority": sum(1 for t in tasks if t.priority),
+            "tasks_with_priority": sum(1 for t in tasks if bool(t.priority)),
             "average_labels_per_task": (
                 sum(len(t.labels) for t in tasks) / total_tasks
                 if total_tasks > 0
@@ -331,16 +331,16 @@ class BoardQualityValidator:
 
         # Calculate percentages
         metrics["description_coverage"] = (
-            metrics["tasks_with_descriptions"] / total_tasks if total_tasks > 0 else 0
+            cast(int, metrics["tasks_with_descriptions"]) / total_tasks if total_tasks > 0 else 0
         )
         metrics["label_coverage"] = (
-            metrics["tasks_with_labels"] / total_tasks if total_tasks > 0 else 0
+            cast(int, metrics["tasks_with_labels"]) / total_tasks if total_tasks > 0 else 0
         )
         metrics["estimate_coverage"] = (
-            metrics["tasks_with_estimates"] / total_tasks if total_tasks > 0 else 0
+            cast(int, metrics["tasks_with_estimates"]) / total_tasks if total_tasks > 0 else 0
         )
         metrics["dependency_coverage"] = (
-            metrics["tasks_with_dependencies"] / total_tasks if total_tasks > 0 else 0
+            cast(int, metrics["tasks_with_dependencies"]) / total_tasks if total_tasks > 0 else 0
         )
 
         return metrics
@@ -364,7 +364,7 @@ class BoardQualityValidator:
         # Apply weights
         weighted_score = sum(scores[key] * self.WEIGHTS[key] for key in scores)
 
-        return round(weighted_score, 2)
+        return float(round(weighted_score, 2))
 
     def _determine_quality_level(self, score: float) -> QualityLevel:
         """Determine quality level from score"""
@@ -414,7 +414,7 @@ class BoardQualityValidator:
 
     def _get_priority_distribution(self, tasks: List[Task]) -> Dict[str, int]:
         """Get distribution of priorities"""
-        distribution = {}
+        distribution: Dict[str, int] = {}
         for task in tasks:
             if task.priority:
                 priority_name = (
@@ -427,7 +427,7 @@ class BoardQualityValidator:
 
     def _get_label_categories(self, tasks: List[Task]) -> Dict[str, int]:
         """Get distribution of label categories"""
-        categories = {}
+        categories: Dict[str, int] = {}
         for task in tasks:
             for label in task.labels:
                 if ":" in label:
@@ -437,7 +437,7 @@ class BoardQualityValidator:
 
     def _get_phase_distribution(self, tasks: List[Task]) -> Dict[str, int]:
         """Get distribution of tasks by phase"""
-        phases = {}
+        phases: Dict[str, int] = {}
         for task in tasks:
             phase_labels = [l for l in task.labels if l.startswith("phase:")]
             if phase_labels:

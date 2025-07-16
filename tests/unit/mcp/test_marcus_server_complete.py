@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, Mock, patch
 
+import mcp.types as types
 import pytest
 
 # Add parent dir to path
@@ -28,7 +29,15 @@ from src.marcus_mcp.handlers import get_tool_definitions, handle_tool_call
 from src.marcus_mcp.server import MarcusServer
 
 
-def create_test_server():
+def get_text_content(content: types.TextContent | types.ImageContent | types.EmbeddedResource) -> str:
+    """Helper to extract text from MCP content types."""
+    if isinstance(content, types.TextContent):
+        return content.text
+    else:
+        raise TypeError(f"Expected TextContent, got {type(content)}")
+
+
+def create_test_server() -> MarcusServer:
     """Helper to create a test server instance"""
     os.environ["KANBAN_PROVIDER"] = "planka"
     os.environ["GITHUB_OWNER"] = "test-owner"
@@ -97,7 +106,7 @@ async def test_ping_tool():
     assert len(result) == 1
     assert result[0].type == "text"
 
-    data = json.loads(result[0].text)
+    data = json.loads(get_text_content(result[0]))
     assert data["status"] == "online"
     assert data["echo"] == "test"
     assert "timestamp" in data
@@ -114,7 +123,7 @@ async def test_unknown_tool():
     result = await handle_tool_call("unknown_tool", {}, server)
 
     assert len(result) == 1
-    data = json.loads(result[0].text)
+    data = json.loads(get_text_content(result[0]))
     assert "error" in data
     assert "Unknown tool" in data["error"]
 
@@ -136,7 +145,7 @@ async def test_register_agent():
         server,
     )
 
-    data = json.loads(result[0].text)
+    data = json.loads(get_text_content(result[0]))
     assert data["success"] is True
     assert data["agent_id"] == "test-001"
     assert "test-001" in server.agent_status
@@ -166,7 +175,7 @@ async def test_get_agent_status():
         "get_agent_status", {"agent_id": "test-001"}, server
     )
 
-    data = json.loads(result[0].text)
+    data = json.loads(get_text_content(result[0]))
     # Check for error or agent info
     if "error" not in data:
         assert "agent" in data
@@ -209,7 +218,7 @@ async def test_list_registered_agents():
 
     result = await handle_tool_call("list_registered_agents", {}, server)
 
-    data = json.loads(result[0].text)
+    data = json.loads(get_text_content(result[0]))
     # Check for agents list in various formats
     if "error" not in data:
         assert "agents" in data or "registered_agents" in data
@@ -243,7 +252,7 @@ async def test_request_next_task_no_tasks():
         "request_next_task", {"agent_id": "test-001"}, server
     )
 
-    data = json.loads(result[0].text)
+    data = json.loads(get_text_content(result[0]))
     # Check for task assignment response
     if data.get("success", True):  # Handle different response formats
         if "task" in data:
@@ -288,7 +297,7 @@ async def test_report_task_progress():
         server,
     )
 
-    data = json.loads(result[0].text)
+    data = json.loads(get_text_content(result[0]))
     assert data["success"] is True
     server.kanban_client.update_task_progress.assert_called_once()
 
@@ -325,7 +334,7 @@ async def test_get_project_status():
 
     result = await handle_tool_call("get_project_status", {}, server)
 
-    data = json.loads(result[0].text)
+    data = json.loads(get_text_content(result[0]))
 
     # Handle different response formats
     if data.get("success", False):
@@ -350,7 +359,7 @@ async def test_create_project_validation():
         "create_project", {"description": "", "project_name": "Test"}, server
     )
 
-    data = json.loads(result[0].text)
+    data = json.loads(get_text_content(result[0]))
     assert data["success"] is False
     assert "required" in data["error"].lower()
 
@@ -367,7 +376,7 @@ async def test_add_feature_validation():
         server,
     )
 
-    data = json.loads(result[0].text)
+    data = json.loads(get_text_content(result[0]))
     assert data["success"] is False
     assert "required" in data["error"].lower()
 

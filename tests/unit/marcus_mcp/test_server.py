@@ -57,43 +57,44 @@ class MockConfigLoader:
 
     def is_multi_project_mode(self) -> bool:
         """Check if in multi-project mode"""
-        return self.get("multi_project.enabled", False)
+        return bool(self.get("multi_project.enabled", False))
 
     def get_feature_config(self, feature: str) -> Dict[str, Any]:
         """Get feature configuration"""
-        return self.get(f"features.{feature}", {})
+        return dict(self.get(f"features.{feature}", {}))
 
     def get_kanban_config(self) -> Dict[str, Any]:
         """Get kanban configuration"""
-        return self.get("kanban", {})
+        return dict(self.get("kanban", {}))
 
     def get_ai_config(self) -> Dict[str, Any]:
         """Get AI configuration"""
-        return self.get("ai", {})
+        return dict(self.get("ai", {}))
 
     def get_monitoring_config(self) -> Dict[str, Any]:
         """Get monitoring configuration"""
-        return self.get("monitoring", {})
+        return dict(self.get("monitoring", {}))
 
     def get_communication_config(self) -> Dict[str, Any]:
         """Get communication configuration"""
-        return self.get("communication", {})
+        return dict(self.get("communication", {}))
 
     def get_hybrid_inference_config(self) -> Dict[str, Any]:
         """Get hybrid inference configuration"""
-        return self.get("hybrid_inference", {})
+        return dict(self.get("hybrid_inference", {}))
 
     def get_projects_config(self) -> Dict[str, Any]:
         """Get projects configuration"""
-        return self.get("projects", {})
+        return dict(self.get("projects", {}))
 
     def get_active_project_id(self) -> Optional[str]:
         """Get active project ID"""
-        return self.get("active_project_id")
+        result = self.get("active_project_id")
+        return str(result) if result is not None else None
 
     def get_provider_credentials(self, provider: str) -> Dict[str, Any]:
         """Get provider credentials"""
-        return self.get(provider, {})
+        return dict(self.get(provider, {}))
 
     def reload(self):
         """Reload configuration"""

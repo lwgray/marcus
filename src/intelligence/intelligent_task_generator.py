@@ -55,7 +55,7 @@ class TaskDescription:
 class IntelligentTaskGenerator:
     """AI-powered task generation from requirements"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Task templates for different types of features
         self.feature_task_templates = {
             "user_authentication": [

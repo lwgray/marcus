@@ -43,7 +43,8 @@ class LinearKanban(KanbanInterface):
             result = await self.mcp_caller("linear.get_teams", {})
             return result.get("success", False)
         except Exception as e:
-            print(f"Failed to connect to Linear MCP: {e}")
+            import sys
+            print(f"Failed to connect to Linear MCP: {e}", file=sys.stderr)
             return False
 
     async def disconnect(self):

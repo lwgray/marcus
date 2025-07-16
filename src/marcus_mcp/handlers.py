@@ -783,46 +783,75 @@ async def handle_tool_call(
     try:
         # Agent management tools
         if name == "register_agent":
-            result = await register_agent(
-                agent_id=arguments.get("agent_id"),
-                name=arguments.get("name"),
-                role=arguments.get("role"),
-                skills=arguments.get("skills", []),
-                state=state,
-            )
+            agent_id = arguments.get("agent_id") if arguments else None
+            agent_name = arguments.get("name") if arguments else None
+            role = arguments.get("role") if arguments else None
+            
+            if not agent_id or not agent_name or not role:
+                result = {"error": "agent_id, name, and role are required"}
+            else:
+                result = await register_agent(
+                    agent_id=agent_id,
+                    name=agent_name,
+                    role=role,
+                    skills=arguments.get("skills", []),
+                    state=state,
+                )
 
         elif name == "get_agent_status":
-            result = await get_agent_status(
-                agent_id=arguments.get("agent_id"), state=state
-            )
+            agent_id = arguments.get("agent_id") if arguments else None
+            if not agent_id:
+                result = {"error": "agent_id is required"}
+            else:
+                result = await get_agent_status(
+                    agent_id=agent_id, state=state
+                )
 
         elif name == "list_registered_agents":
             result = await list_registered_agents(state=state)
 
         # Task management tools
         elif name == "request_next_task":
-            result = await request_next_task(
-                agent_id=arguments.get("agent_id"), state=state
-            )
+            agent_id = arguments.get("agent_id") if arguments else None
+            if not agent_id:
+                result = {"error": "agent_id is required"}
+            else:
+                result = await request_next_task(
+                    agent_id=agent_id, state=state
+                )
 
         elif name == "report_task_progress":
-            result = await report_task_progress(
-                agent_id=arguments.get("agent_id"),
-                task_id=arguments.get("task_id"),
-                status=arguments.get("status"),
-                progress=arguments.get("progress", 0),
-                message=arguments.get("message", ""),
-                state=state,
-            )
+            agent_id = arguments.get("agent_id") if arguments else None
+            task_id = arguments.get("task_id") if arguments else None
+            status = arguments.get("status") if arguments else None
+            
+            if not agent_id or not task_id or not status:
+                result = {"error": "agent_id, task_id, and status are required"}
+            else:
+                result = await report_task_progress(
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    status=status,
+                    progress=arguments.get("progress", 0),
+                    message=arguments.get("message", ""),
+                    state=state,
+                )
 
         elif name == "report_blocker":
-            result = await report_blocker(
-                agent_id=arguments.get("agent_id"),
-                task_id=arguments.get("task_id"),
-                blocker_description=arguments.get("blocker_description"),
-                severity=arguments.get("severity", "medium"),
-                state=state,
-            )
+            agent_id = arguments.get("agent_id") if arguments else None
+            task_id = arguments.get("task_id") if arguments else None
+            blocker_description = arguments.get("blocker_description") if arguments else None
+            
+            if not agent_id or not task_id or not blocker_description:
+                result = {"error": "agent_id, task_id, and blocker_description are required"}
+            else:
+                result = await report_blocker(
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    blocker_description=blocker_description,
+                    severity=arguments.get("severity", "medium"),
+                    state=state,
+                )
 
         # Project monitoring tools
         elif name == "get_project_status":
@@ -846,12 +875,18 @@ async def handle_tool_call(
                 },
             )
 
-            result = await create_project(
-                description=arguments.get("description"),
-                project_name=arguments.get("project_name"),
-                options=arguments.get("options"),
-                state=state,
-            )
+            description = arguments.get("description") if arguments else None
+            project_name = arguments.get("project_name") if arguments else None
+            
+            if not description or not project_name:
+                result = {"error": "description and project_name are required"}
+            else:
+                result = await create_project(
+                    description=description,
+                    project_name=project_name,
+                    options=arguments.get("options"),
+                    state=state,
+                )
 
             # Log tool call complete
             state.log_event(
@@ -868,25 +903,42 @@ async def handle_tool_call(
             )
 
         elif name == "add_feature":
-            result = await add_feature(
-                feature_description=arguments.get("feature_description"),
-                integration_point=arguments.get("integration_point", "auto_detect"),
-                state=state,
-            )
+            feature_description = arguments.get("feature_description") if arguments else None
+            
+            if not feature_description:
+                result = {"error": "feature_description is required"}
+            else:
+                result = await add_feature(
+                    feature_description=feature_description,
+                    integration_point=arguments.get("integration_point", "auto_detect"),
+                    state=state,
+                )
 
         # Context Tools
         elif name == "log_decision":
-            result = await log_decision(
-                agent_id=arguments.get("agent_id"),
-                task_id=arguments.get("task_id"),
-                decision=arguments.get("decision"),
-                state=state,
-            )
+            agent_id = arguments.get("agent_id") if arguments else None
+            task_id = arguments.get("task_id") if arguments else None
+            decision = arguments.get("decision") if arguments else None
+            
+            if not agent_id or not task_id or not decision:
+                result = {"error": "agent_id, task_id, and decision are required"}
+            else:
+                result = await log_decision(
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    decision=decision,
+                    state=state,
+                )
 
         elif name == "get_task_context":
-            result = await get_task_context(
-                task_id=arguments.get("task_id"), state=state
-            )
+            task_id = arguments.get("task_id") if arguments else None
+            
+            if not task_id:
+                result = {"error": "task_id is required"}
+            else:
+                result = await get_task_context(
+                    task_id=task_id, state=state
+                )
 
         # Project Management Tools
         elif name == "list_projects":
@@ -978,7 +1030,7 @@ async def handle_tool_call(
             },
         )
 
-        response = [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+        response: List[types.TextContent | types.ImageContent | types.EmbeddedResource] = [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
         # Ensure stdio buffer is flushed for immediate response delivery
         import sys
@@ -995,7 +1047,7 @@ async def handle_tool_call(
         return response
 
     except Exception as e:
-        error_response = [
+        error_response: List[types.TextContent | types.ImageContent | types.EmbeddedResource] = [
             types.TextContent(
                 type="text",
                 text=json.dumps(

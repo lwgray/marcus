@@ -525,9 +525,9 @@ class TestTaskTemplateCustomization:
         assert "phase:backend" in task.labels
         assert "complexity:medium" in task.labels
         assert "tech:React" in task.labels
-        assert task.metadata["phase"] == "backend"
-        assert task.metadata["generated"] is True
-        assert task.metadata["dependencies_names"] == ["Other Task"]
+        assert task.metadata["phase"] == "backend"  # type: ignore[attr-defined]
+        assert task.metadata["generated"] is True  # type: ignore[attr-defined]
+        assert task.metadata["dependencies_names"] == ["Other Task"]  # type: ignore[attr-defined]
 
     def test_phase_priority_mapping(self, task_generator):
         """
@@ -982,7 +982,7 @@ class TestFullProjectGeneration:
         """
 
         # Create properly structured mock tasks
-        def create_mock_task(task_id="test-id", name="Test Task"):
+        def create_mock_task(task_id: str = "test-id", name: str = "Test Task") -> Mock:
             mock_task = Mock()
             mock_task.id = task_id
             mock_task.name = name

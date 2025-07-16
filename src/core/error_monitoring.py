@@ -16,6 +16,8 @@ from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Union
+import asyncio
+from asyncio import Task
 
 from .error_framework import ErrorCategory, ErrorSeverity, MarcusBaseError
 from .error_responses import ErrorResponseFormatter, ResponseFormat
@@ -98,7 +100,7 @@ class ErrorMonitor:
         self.correlation_timeout_minutes = correlation_timeout_minutes
 
         # Error storage
-        self.error_history: deque = deque(maxlen=10000)  # Keep last 10k errors
+        self.error_history: deque[Dict[str, Any]] = deque(maxlen=10000)  # Keep last 10k errors
         self.error_index: Dict[str, Dict[str, Any]] = {}  # correlation_id -> error data
 
         # Metrics
@@ -122,13 +124,13 @@ class ErrorMonitor:
         self.alert_callbacks: List[Callable[[ErrorPattern], None]] = []
 
         # Background task management
-        self._monitoring_task: Optional[asyncio.Task] = None
+        self._monitoring_task: Optional[Task[None]] = None
         self._lock = threading.Lock()
 
         # Initialize storage
         self._initialize_storage()
 
-    def _initialize_storage(self):
+    def _initialize_storage(self) -> None:
         """Initialize error monitoring storage."""
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -141,7 +143,7 @@ class ErrorMonitor:
             except Exception as e:
                 logger.warning(f"Failed to load error monitoring data: {e}")
 
-    def _load_from_storage(self, data: Dict[str, Any]):
+    def _load_from_storage(self, data: Dict[str, Any]) -> None:
         """Load monitoring data from storage."""
         # Load metrics history
         if "metrics_history" in data:
@@ -182,7 +184,7 @@ class ErrorMonitor:
                 pattern.affected_operations = set(pattern.affected_operations)
                 self.detected_patterns[pattern.pattern_id] = pattern
 
-    def _save_to_storage(self):
+    def _save_to_storage(self) -> None:
         """Save monitoring data to storage."""
         try:
             # Convert patterns for JSON serialization
@@ -215,7 +217,7 @@ class ErrorMonitor:
         except Exception as e:
             logger.error(f"Failed to save error monitoring data: {e}")
 
-    def record_error(self, error: MarcusBaseError):
+    def record_error(self, error: MarcusBaseError) -> None:
         """Record an error for monitoring and analysis."""
         with self._lock:
             # Create error record
@@ -254,7 +256,7 @@ class ErrorMonitor:
                 f"Recorded error: {error.error_code} ({error.context.correlation_id})"
             )
 
-    def _update_metrics(self, error_record: Dict[str, Any]):
+    def _update_metrics(self, error_record: Dict[str, Any]) -> None:
         """Update error metrics."""
         metrics = self.current_metrics
 
@@ -306,7 +308,7 @@ class ErrorMonitor:
         # Calculate error rate
         self._calculate_error_rate()
 
-    def _calculate_error_rate(self):
+    def _calculate_error_rate(self) -> None:
         """Calculate current error rate per minute."""
         now = datetime.now()
         cutoff_time = now - timedelta(minutes=self.metrics_window_minutes)
@@ -320,7 +322,7 @@ class ErrorMonitor:
             recent_errors / self.metrics_window_minutes
         )
 
-    def _detect_patterns(self, error_record: Dict[str, Any]):
+    def _detect_patterns(self, error_record: Dict[str, Any]) -> None:
         """Detect error patterns for proactive alerting."""
         now = datetime.now()
 
@@ -336,7 +338,7 @@ class ErrorMonitor:
         # Pattern 4: Cascade pattern (related errors in sequence)
         self._detect_cascade_pattern(error_record, now)
 
-    def _detect_frequency_pattern(self, error_record: Dict[str, Any], now: datetime):
+    def _detect_frequency_pattern(self, error_record: Dict[str, Any], now: datetime) -> None:
         """Detect frequency-based error patterns."""
         error_type = error_record["error_type"]
 
@@ -376,7 +378,7 @@ class ErrorMonitor:
                 pattern.frequency = recent_count
                 pattern.last_seen = now
 
-    def _detect_burst_pattern(self, error_record: Dict[str, Any], now: datetime):
+    def _detect_burst_pattern(self, error_record: Dict[str, Any], now: datetime) -> None:
         """Detect burst error patterns."""
         # Count all errors in last 5 minutes
         burst_count = sum(
@@ -406,7 +408,7 @@ class ErrorMonitor:
                 self.detected_patterns[pattern_id] = pattern
                 self._notify_pattern_detected(pattern)
 
-    def _detect_agent_pattern(self, error_record: Dict[str, Any], now: datetime):
+    def _detect_agent_pattern(self, error_record: Dict[str, Any], now: datetime) -> None:
         """Detect agent-specific error patterns."""
         agent_id = error_record.get("agent_id")
         if not agent_id:
@@ -440,7 +442,7 @@ class ErrorMonitor:
                 self.detected_patterns[pattern_id] = pattern
                 self._notify_pattern_detected(pattern)
 
-    def _detect_cascade_pattern(self, error_record: Dict[str, Any], now: datetime):
+    def _detect_cascade_pattern(self, error_record: Dict[str, Any], now: datetime) -> None:
         """Detect cascade error patterns (related errors in sequence)."""
         # Look for errors with similar context that occurred recently
         similar_errors = []
@@ -496,7 +498,7 @@ class ErrorMonitor:
 
         return sum(similarity_factors)
 
-    def _track_correlations(self, error_record: Dict[str, Any]):
+    def _track_correlations(self, error_record: Dict[str, Any]) -> None:
         """Track error correlations for root cause analysis."""
         correlation_id = error_record["correlation_id"]
 
@@ -527,7 +529,7 @@ class ErrorMonitor:
 
         self.active_correlations[correlation_id] = group_id
 
-    def _notify_pattern_detected(self, pattern: ErrorPattern):
+    def _notify_pattern_detected(self, pattern: ErrorPattern) -> None:
         """Notify about detected error pattern."""
         logger.warning(f"Error pattern detected: {pattern.description}")
 
@@ -538,7 +540,7 @@ class ErrorMonitor:
             except Exception as e:
                 logger.error(f"Error in pattern alert callback: {e}")
 
-    def add_alert_callback(self, callback: Callable[[ErrorPattern], None]):
+    def add_alert_callback(self, callback: Callable[[ErrorPattern], None]) -> None:
         """Add callback for pattern alerts."""
         self.alert_callbacks.append(callback)
 
@@ -591,10 +593,10 @@ class ErrorMonitor:
 
     def search_errors(
         self,
-        error_type: str = None,
-        agent_id: str = None,
-        operation: str = None,
-        severity: str = None,
+        error_type: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        operation: Optional[str] = None,
+        severity: Optional[str] = None,
         hours: int = 24,
     ) -> List[Dict[str, Any]]:
         """Search errors with specified criteria."""
@@ -706,7 +708,7 @@ class ErrorMonitor:
                 )
 
         # Integration-specific recommendations
-        integration_errors = defaultdict(int)
+        integration_errors: Dict[str, int] = defaultdict(int)
         # Get last 1000 errors from deque
         recent_errors = (
             list(self.error_history)[-1000:]
@@ -728,13 +730,13 @@ class ErrorMonitor:
 
         return recommendations
 
-    async def start_monitoring(self):
+    async def start_monitoring(self) -> None:
         """Start background monitoring tasks."""
         if self._monitoring_task is None or self._monitoring_task.done():
             self._monitoring_task = asyncio.create_task(self._monitoring_loop())
             logger.info("Error monitoring started")
 
-    async def stop_monitoring(self):
+    async def stop_monitoring(self) -> None:
         """Stop background monitoring tasks."""
         if self._monitoring_task and not self._monitoring_task.done():
             self._monitoring_task.cancel()
@@ -744,7 +746,7 @@ class ErrorMonitor:
                 pass
             logger.info("Error monitoring stopped")
 
-    async def _monitoring_loop(self):
+    async def _monitoring_loop(self) -> None:
         """Background monitoring loop."""
         while True:
             try:
@@ -768,7 +770,7 @@ class ErrorMonitor:
                 logger.error(f"Error in monitoring loop: {e}")
                 await asyncio.sleep(60)  # Wait 1 minute on error
 
-    def _cleanup_old_data(self):
+    def _cleanup_old_data(self) -> None:
         """Clean up old monitoring data."""
         now = datetime.now()
 
@@ -813,7 +815,7 @@ error_monitor = ErrorMonitor()
 def setup_error_monitoring(
     storage_path: str = "logs/error_monitoring.json",
     enable_patterns: bool = True,
-    alert_callback: Callable[[ErrorPattern], None] = None,
+    alert_callback: Optional[Callable[[ErrorPattern], None]] = None,
 ) -> ErrorMonitor:
     """Set up global error monitoring."""
     global error_monitor
@@ -828,7 +830,7 @@ def setup_error_monitoring(
     return error_monitor
 
 
-def record_error_for_monitoring(error: MarcusBaseError):
+def record_error_for_monitoring(error: MarcusBaseError) -> None:
     """Convenience function to record error in global monitor."""
     error_monitor.record_error(error)
 

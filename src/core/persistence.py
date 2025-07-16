@@ -35,7 +35,7 @@ class PersistenceBackend:
         raise NotImplementedError
 
     async def query(
-        self, collection: str, filter_func=None, limit: int = 100
+        self, collection: str, filter_func: Optional[Any] = None, limit: int = 100
     ) -> List[Dict[str, Any]]:
         """Query data from a collection with optional filtering"""
         raise NotImplementedError
@@ -52,7 +52,7 @@ class PersistenceBackend:
 class FilePersistence(PersistenceBackend):
     """File-based persistence using JSON files"""
 
-    def __init__(self, storage_dir: Path = None):
+    def __init__(self, storage_dir: Optional[Path] = None) -> None:
         """Initialize file persistence"""
         if storage_dir is None:
             # Use absolute path to ensure it works regardless of working directory
@@ -60,9 +60,9 @@ class FilePersistence(PersistenceBackend):
             storage_dir = marcus_root / "data" / "marcus_state"
         self.storage_dir = storage_dir
         self.storage_dir.mkdir(parents=True, exist_ok=True)
-        self._locks = {}
+        self._locks: Dict[str, asyncio.Lock] = {}
 
-    def _get_lock(self, collection: str):
+    def _get_lock(self, collection: str) -> asyncio.Lock:
         """Get or create a lock for a collection"""
         if collection not in self._locks:
             self._locks[collection] = asyncio.Lock()
@@ -122,7 +122,7 @@ class FilePersistence(PersistenceBackend):
                 return None
 
     async def query(
-        self, collection: str, filter_func=None, limit: int = 100
+        self, collection: str, filter_func: Optional[Any] = None, limit: int = 100
     ) -> List[Dict[str, Any]]:
         """Query data from a collection"""
         lock = self._get_lock(collection)
@@ -227,13 +227,13 @@ class FilePersistence(PersistenceBackend):
 class SQLitePersistence(PersistenceBackend):
     """SQLite-based persistence for better performance and queries"""
 
-    def __init__(self, db_path: Path = None):
+    def __init__(self, db_path: Optional[Path] = None) -> None:
         """Initialize SQLite persistence"""
         self.db_path = db_path or Path("./data/marcus_state.db")
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
-    def _init_db(self):
+    def _init_db(self) -> None:
         """Initialize database schema"""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
@@ -258,7 +258,7 @@ class SQLitePersistence(PersistenceBackend):
     async def store(self, collection: str, key: str, data: Dict[str, Any]) -> None:
         """Store data in SQLite"""
 
-        def _store():
+        def _store() -> None:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute(
                     """
@@ -274,7 +274,7 @@ class SQLitePersistence(PersistenceBackend):
     async def retrieve(self, collection: str, key: str) -> Optional[Dict[str, Any]]:
         """Retrieve data from SQLite"""
 
-        def _retrieve():
+        def _retrieve() -> Optional[Dict[str, Any]]:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.execute(
                     """
@@ -289,11 +289,11 @@ class SQLitePersistence(PersistenceBackend):
         return await asyncio.get_event_loop().run_in_executor(None, _retrieve)
 
     async def query(
-        self, collection: str, filter_func=None, limit: int = 100
+        self, collection: str, filter_func: Optional[Any] = None, limit: int = 100
     ) -> List[Dict[str, Any]]:
         """Query data from SQLite"""
 
-        def _query():
+        def _query() -> List[Dict[str, Any]]:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.execute(
                     """
@@ -322,7 +322,7 @@ class SQLitePersistence(PersistenceBackend):
     async def delete(self, collection: str, key: str) -> None:
         """Delete data from SQLite"""
 
-        def _delete():
+        def _delete() -> None:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute(
                     """
@@ -338,7 +338,7 @@ class SQLitePersistence(PersistenceBackend):
     async def clear_old(self, collection: str, days: int) -> int:
         """Clear old data from SQLite"""
 
-        def _clear():
+        def _clear() -> int:
             cutoff = datetime.now() - timedelta(days=days)
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.execute(
@@ -362,7 +362,7 @@ class Persistence:
     Context, Memory, and other systems.
     """
 
-    def __init__(self, backend: Optional[PersistenceBackend] = None):
+    def __init__(self, backend: Optional[PersistenceBackend] = None) -> None:
         """
         Initialize persistence layer.
 
@@ -384,7 +384,7 @@ class Persistence:
     ) -> List[Event]:
         """Retrieve events with optional filtering"""
 
-        def filter_func(item):
+        def filter_func(item: Dict[str, Any]) -> bool:
             if event_type and item.get("event_type") != event_type:
                 return False
             if source and item.get("source") != source:
@@ -429,7 +429,7 @@ class Persistence:
     ) -> List[Decision]:
         """Retrieve decisions with optional filtering"""
 
-        def filter_func(item):
+        def filter_func(item: Dict[str, Any]) -> bool:
             if task_id and item.get("task_id") != task_id:
                 return False
             if agent_id and item.get("agent_id") != agent_id:
@@ -467,10 +467,14 @@ class Persistence:
         return await self.backend.retrieve(collection, key)
 
     async def query(
-        self, collection: str, filter_func=None, limit: int = 100
+        self, collection: str, filter_func: Optional[Any] = None, limit: int = 100
     ) -> List[Dict[str, Any]]:
         """Query a collection"""
         return await self.backend.query(collection, filter_func, limit)
+
+    async def delete(self, collection: str, key: str) -> None:
+        """Delete data from a collection"""
+        await self.backend.delete(collection, key)
 
     async def cleanup(self, days: int = 30) -> Dict[str, int]:
         """Clean up old data from all collections"""
@@ -489,12 +493,12 @@ class Persistence:
 class MemoryPersistence(PersistenceBackend):
     """In-memory persistence for testing and temporary storage"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize memory persistence"""
         self.data: Dict[str, Dict[str, Dict[str, Any]]] = {}
-        self._locks = {}
+        self._locks: Dict[str, asyncio.Lock] = {}
 
-    def _get_lock(self, collection: str):
+    def _get_lock(self, collection: str) -> asyncio.Lock:
         """Get or create a lock for a collection"""
         if collection not in self._locks:
             self._locks[collection] = asyncio.Lock()
@@ -522,7 +526,7 @@ class MemoryPersistence(PersistenceBackend):
             return self.data[collection].get(key)
 
     async def query(
-        self, collection: str, filter_func=None, limit: int = 100
+        self, collection: str, filter_func: Optional[Any] = None, limit: int = 100
     ) -> List[Dict[str, Any]]:
         """Query data from memory"""
         lock = self._get_lock(collection)

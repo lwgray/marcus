@@ -38,7 +38,7 @@ class PlankaKanban(KanbanInterface):
             self.connected = True
             return True
         except Exception as e:
-            print(f"Failed to connect to Planka: {e}")
+            logger.error(f"Failed to connect to Planka: {e}")
             # Re-raise the exception so it propagates up
             raise
 
@@ -298,4 +298,4 @@ class PlankaKanban(KanbanInterface):
 
         except Exception as e:
             # Log error but don't fail the progress update
-            print(f"Warning: Could not update checklist items: {e}")
+            logger.warning(f"Could not update checklist items: {e}")

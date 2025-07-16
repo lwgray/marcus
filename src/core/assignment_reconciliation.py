@@ -7,13 +7,31 @@ kanban board state on startup or after connectivity issues.
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Set, TypedDict
 
 from src.core.assignment_persistence import AssignmentPersistence
 from src.core.models import Task, TaskStatus
 from src.integrations.kanban_interface import KanbanInterface
 
 logger = logging.getLogger(__name__)
+
+
+class ReconciliationResults(TypedDict):
+    """Type definition for reconciliation results."""
+    assignments_verified: int
+    assignments_restored: int
+    assignments_removed: int
+    orphaned_tasks: List[Dict[str, Any]]
+    errors: List[str]
+
+
+class AssignmentHealth(TypedDict, total=False):
+    """Type definition for assignment health status."""
+    persisted_count: int
+    kanban_assigned_count: int
+    mismatches: List[Dict[str, Any]]
+    healthy: bool
+    error: str  # Optional field when there's an error
 
 
 class AssignmentReconciler:
@@ -32,14 +50,14 @@ class AssignmentReconciler:
         self.persistence = persistence
         self.kanban_client = kanban_client
 
-    async def reconcile_assignments(self) -> Dict[str, Any]:
+    async def reconcile_assignments(self) -> ReconciliationResults:
         """
         Reconcile persisted assignments with kanban board state.
 
         Returns:
             Dictionary with reconciliation results
         """
-        results = {
+        results: ReconciliationResults = {
             "assignments_verified": 0,
             "assignments_restored": 0,
             "assignments_removed": 0,
@@ -141,14 +159,14 @@ class AssignmentReconciler:
 
         return results
 
-    async def get_assignment_health(self) -> Dict[str, Any]:
+    async def get_assignment_health(self) -> AssignmentHealth:
         """
         Get health status of assignment tracking.
 
         Returns:
             Dictionary with health metrics
         """
-        health = {
+        health: AssignmentHealth = {
             "persisted_count": 0,
             "kanban_assigned_count": 0,
             "mismatches": [],

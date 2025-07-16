@@ -8,7 +8,7 @@ sensible defaults that can be easily overridden.
 import random
 import string
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from src.core.models import (
     BlockerReport,
@@ -28,7 +28,7 @@ class TaskFactory:
     _counter = 0
 
     @classmethod
-    def create(cls, **kwargs) -> Task:
+    def create(cls, **kwargs: Any) -> Task:
         """
         Create a Task with default values that can be overridden.
 
@@ -59,22 +59,36 @@ class TaskFactory:
             kwargs["priority"] = Priority[kwargs["priority"].upper()]
 
         defaults.update(kwargs)
-        return Task(**defaults)
+        return Task(
+            id=cast(str, defaults["id"]),
+            name=cast(str, defaults["name"]),
+            description=cast(str, defaults["description"]),
+            status=cast(TaskStatus, defaults["status"]),
+            priority=cast(Priority, defaults["priority"]),
+            assigned_to=cast(Optional[str], defaults["assigned_to"]),
+            created_at=cast(datetime, defaults["created_at"]),
+            updated_at=cast(datetime, defaults["updated_at"]),
+            due_date=cast(Optional[datetime], defaults["due_date"]),
+            estimated_hours=cast(float, defaults["estimated_hours"]),
+            actual_hours=cast(float, defaults["actual_hours"]),
+            dependencies=cast(List[str], defaults["dependencies"]),
+            labels=cast(List[str], defaults["labels"])
+        )
 
     @classmethod
-    def create_batch(cls, count: int, **kwargs) -> List[Task]:
+    def create_batch(cls, count: int, **kwargs: Any) -> List[Task]:
         """Create multiple tasks with the same overrides."""
         return [cls.create(**kwargs) for _ in range(count)]
 
     @classmethod
-    def create_with_dependencies(cls, dep_count: int = 2, **kwargs) -> Task:
+    def create_with_dependencies(cls, dep_count: int = 2, **kwargs: Any) -> Task:
         """Create a task with dependencies."""
         dependencies = [f"TASK-DEP-{i:03d}" for i in range(dep_count)]
         kwargs["dependencies"] = dependencies
         return cls.create(**kwargs)
 
     @classmethod
-    def reset_counter(cls):
+    def reset_counter(cls) -> None:
         """Reset the counter for consistent test runs."""
         cls._counter = 0
 
@@ -105,7 +119,7 @@ class AgentFactory:
     ]
 
     @classmethod
-    def create(cls, **kwargs) -> WorkerStatus:
+    def create(cls, **kwargs: Any) -> WorkerStatus:
         """
         Create a WorkerStatus with default values that can be overridden.
 
@@ -135,10 +149,21 @@ class AgentFactory:
         }
 
         defaults.update(kwargs)
-        return WorkerStatus(**defaults)
+        return WorkerStatus(
+            worker_id=cast(str, defaults["worker_id"]),
+            name=cast(str, defaults["name"]),
+            role=cast(str, defaults["role"]),
+            email=cast(Optional[str], defaults["email"]),
+            current_tasks=cast(List[Task], defaults["current_tasks"]),
+            completed_tasks_count=cast(int, defaults["completed_tasks_count"]),
+            capacity=cast(int, defaults["capacity"]),
+            skills=cast(List[str], defaults["skills"]),
+            availability=cast(Dict[str, bool], defaults["availability"]),
+            performance_score=cast(float, defaults["performance_score"])
+        )
 
     @classmethod
-    def create_team(cls, size: int, **kwargs) -> List[WorkerStatus]:
+    def create_team(cls, size: int, **kwargs: Any) -> List[WorkerStatus]:
         """Create a team of agents with diverse skills."""
         team = []
         for i in range(size):
@@ -150,14 +175,14 @@ class AgentFactory:
         return team
 
     @classmethod
-    def create_busy_agent(cls, task_count: int = 3, **kwargs) -> WorkerStatus:
+    def create_busy_agent(cls, task_count: int = 3, **kwargs: Any) -> WorkerStatus:
         """Create an agent with current tasks."""
         current_tasks = [f"TASK-{i:04d}" for i in range(task_count)]
         kwargs["current_tasks"] = current_tasks
         return cls.create(**kwargs)
 
     @classmethod
-    def reset_counter(cls):
+    def reset_counter(cls) -> None:
         """Reset the counter for consistent test runs."""
         cls._counter = 0
 
@@ -166,7 +191,7 @@ class ProjectStateFactory:
     """Factory for creating ProjectState objects for testing."""
 
     @classmethod
-    def create(cls, **kwargs) -> ProjectState:
+    def create(cls, **kwargs: Any) -> ProjectState:
         """Create a ProjectState with default values."""
         total_tasks = kwargs.get("total_tasks", 20)
         completed = kwargs.get("completed_tasks", 8)
@@ -194,7 +219,19 @@ class ProjectStateFactory:
             defaults["risk_level"] = RiskLevel.MEDIUM
 
         defaults.update(kwargs)
-        return ProjectState(**defaults)
+        return ProjectState(
+            board_id=cast(str, defaults["board_id"]),
+            project_name=cast(str, defaults["project_name"]),
+            total_tasks=cast(int, defaults["total_tasks"]),
+            completed_tasks=cast(int, defaults["completed_tasks"]),
+            in_progress_tasks=cast(int, defaults["in_progress_tasks"]),
+            blocked_tasks=cast(int, defaults["blocked_tasks"]),
+            progress_percent=cast(float, defaults["progress_percent"]),
+            overdue_tasks=cast(List[Task], defaults["overdue_tasks"]),
+            team_velocity=cast(float, defaults["team_velocity"]),
+            risk_level=cast(RiskLevel, defaults["risk_level"]),
+            last_updated=cast(datetime, defaults["last_updated"])
+        )
 
     @classmethod
     def create_healthy_project(cls) -> ProjectState:
@@ -233,7 +270,7 @@ class BlockerFactory:
     ]
 
     @classmethod
-    def create(cls, **kwargs) -> BlockerReport:
+    def create(cls, **kwargs: Any) -> BlockerReport:
         """Create a BlockerReport with default values."""
         cls._counter += 1
 
@@ -246,27 +283,34 @@ class BlockerFactory:
             "resolved": False,
             "resolution": None,
             "resolved_at": None,
-            "resolution_time_hours": None,
         }
 
         # Handle resolved blockers
         if kwargs.get("resolved", False):
             defaults["resolution"] = "Issue resolved by implementing workaround"
             defaults["resolved_at"] = datetime.now()
-            defaults["resolution_time_hours"] = random.uniform(1, 48)
 
         defaults.update(kwargs)
-        return BlockerReport(**defaults)
+        return BlockerReport(
+            task_id=cast(str, defaults["task_id"]),
+            reporter_id=cast(str, defaults["reporter_id"]),
+            description=cast(str, defaults["description"]),
+            severity=cast(RiskLevel, defaults["severity"]),
+            reported_at=cast(datetime, defaults["reported_at"]),
+            resolved=cast(bool, defaults["resolved"]),
+            resolution=cast(Optional[str], defaults["resolution"]),
+            resolved_at=cast(Optional[datetime], defaults["resolved_at"])
+        )
 
     @classmethod
-    def create_critical_blocker(cls, **kwargs) -> BlockerReport:
+    def create_critical_blocker(cls, **kwargs: Any) -> BlockerReport:
         """Create a critical severity blocker."""
         kwargs["severity"] = RiskLevel.CRITICAL
         kwargs["description"] = "Production system down - immediate attention required"
         return cls.create(**kwargs)
 
 
-def reset_all_counters():
+def reset_all_counters() -> None:
     """Reset all factory counters for test isolation."""
     TaskFactory.reset_counter()
     AgentFactory.reset_counter()

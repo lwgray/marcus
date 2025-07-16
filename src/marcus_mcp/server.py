@@ -113,15 +113,20 @@ class MarcusServer:
         # Assignment persistence and locking
         self.assignment_persistence = AssignmentPersistence()
         self.assignment_lock = asyncio.Lock()
-        self.tasks_being_assigned: set = set()
+        self.tasks_being_assigned: set[str] = set()
 
         # Assignment monitoring
-        self.assignment_monitor = None
+        self.assignment_monitor: Optional[AssignmentMonitor] = None
 
         # Pipeline flow visualization (shared between processes)
         self.pipeline_visualizer = SharedPipelineVisualizer()
 
         # New enhancement systems (optional based on config)
+        # Declare optional attributes
+        self.events: Optional[Events] = None
+        self.context: Optional[Context] = None
+        self.memory: Any = None
+        
         # Get feature configurations with granular settings
         config_loader = get_config()
         events_config = config_loader.get_feature_config("events")
@@ -202,7 +207,7 @@ class MarcusServer:
                 EventIntegratedVisualizer,
             )
 
-            self.event_visualizer = EventIntegratedVisualizer(events_system=self.events)
+            self.event_visualizer = EventIntegratedVisualizer(self.events)
 
         # Log startup
         self.log_event(
@@ -319,8 +324,8 @@ class MarcusServer:
 
         # Initialize event visualizer if available
         if self.event_visualizer:
-            await self.event_visualizer.initialize()
-            # Don't print during initialization - it interferes with MCP stdio
+            # EventIntegratedVisualizer doesn't have initialize method
+            pass
 
         # Wrap AI engine for token tracking
         self.ai_engine = ai_usage_middleware.wrap_ai_provider(self.ai_engine)
@@ -343,9 +348,11 @@ class MarcusServer:
         """Migrate legacy configuration to multi-project format"""
         if self.kanban_client and not self.config.is_multi_project_mode():
             # Create a project from the legacy config
-            project_id = await self.project_registry.create_from_legacy_config(
-                self.config._config
-            )
+            config_data = getattr(self.config, '_config', None)
+            if config_data is not None:
+                project_id = await self.project_registry.create_from_legacy_config(
+                    config_data
+                )
 
             # Set it as active
             await self.project_registry.set_active_project(project_id)
@@ -499,7 +506,7 @@ class MarcusServer:
                 ),
             ) from e
 
-    def log_event(self, event_type: str, data: dict) -> None:
+    def log_event(self, event_type: str, data: Dict[str, Any]) -> None:
         """Log events immediately to realtime log and optionally to Events system"""
         event = {"timestamp": datetime.now().isoformat(), "type": event_type, **data}
         self.realtime_log.write(json.dumps(event) + "\n")
@@ -509,7 +516,7 @@ class MarcusServer:
             # Run async publish in a fire-and-forget manner
             asyncio.create_task(self._publish_event_async(event_type, data))
 
-    async def _publish_event_async(self, event_type: str, data: dict) -> None:
+    async def _publish_event_async(self, event_type: str, data: Dict[str, Any]) -> None:
         """Helper to publish events asynchronously"""
         try:
             source = data.get("source", "marcus")
@@ -525,7 +532,8 @@ class MarcusServer:
 
         try:
             # Get all tasks from the board
-            self.project_tasks = await self.kanban_client.get_all_tasks()
+            if self.kanban_client is not None:
+                self.project_tasks = await self.kanban_client.get_all_tasks()
 
             # Update memory system with project tasks for cascade analysis
             if self.memory and self.project_tasks:
@@ -545,8 +553,9 @@ class MarcusServer:
                     ]
                 )
 
+                board_id = getattr(self.kanban_client, 'board_id', 'unknown')
                 self.project_state = ProjectState(
-                    board_id=self.kanban_client.board_id,
+                    board_id=board_id,
                     project_name="Current Project",  # Would need to get from board
                     total_tasks=total_tasks,
                     completed_tasks=completed_tasks,

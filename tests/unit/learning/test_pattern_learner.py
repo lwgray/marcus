@@ -17,14 +17,12 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+from src.core.models import Priority, Task, TaskStatus
 from src.learning.pattern_learner import (
     CompletedProject,
     Pattern,
     PatternLearner,
-    Priority,
     ProjectLearnings,
-    Task,
-    TaskStatus,
 )
 
 
@@ -60,7 +58,7 @@ class TestPatternLearner:
             labels=["setup", "infrastructure"],
         )
         # Add completed_at as an attribute for testing
-        task.completed_at = datetime.now() - timedelta(days=1)
+        task.completed_at = datetime.now() - timedelta(days=1)  # type: ignore[attr-defined]
         return task
 
     @pytest.fixture
@@ -81,7 +79,7 @@ class TestPatternLearner:
             dependencies=["TASK-001"],
             labels=["design", "api"],
         )
-        task2.completed_at = datetime.now() - timedelta(hours=12)
+        task2.completed_at = datetime.now() - timedelta(hours=12)  # type: ignore[attr-defined]
 
         task3 = Task(
             id="TASK-003",
@@ -98,7 +96,7 @@ class TestPatternLearner:
             dependencies=["TASK-002"],
             labels=["backend", "implementation"],
         )
-        task3.completed_at = datetime.now() - timedelta(hours=6)
+        task3.completed_at = datetime.now() - timedelta(hours=6)  # type: ignore[attr-defined]
 
         tasks = [sample_task, task2, task3]
 
@@ -663,7 +661,7 @@ class TestPatternLearner:
                 dependencies=[],
                 labels=[task_type],
             )
-            task.completed_at = datetime.now() - timedelta(days=i // 10)
+            task.completed_at = datetime.now() - timedelta(days=i // 10)  # type: ignore[attr-defined]
             tasks.append(task)
 
         large_project = CompletedProject(

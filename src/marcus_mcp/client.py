@@ -10,8 +10,7 @@ import sys
 from typing import Any, Dict, Optional
 
 from mcp.client.stdio import stdio_client
-
-from mcp import StdioServerParameters
+from mcp import ClientSession, StdioServerParameters
 
 
 class SimpleMarcusClient:
@@ -19,13 +18,13 @@ class SimpleMarcusClient:
 
     def __init__(self, server_module: str = "src.marcus_mcp.server"):
         self.server_module = server_module
-        self.client_context = None
-        self.read_stream = None
-        self.write_stream = None
-        self.session = None
+        self.client_context: Any = None
+        self.read_stream: Any = None
+        self.write_stream: Any = None
+        self.session: Optional[ClientSession] = None
         self._initialized = False
 
-    async def initialize(self):
+    async def initialize(self) -> None:
         """Initialize the MCP client connection."""
         if self._initialized:
             return
@@ -42,8 +41,6 @@ class SimpleMarcusClient:
         self.read_stream, self.write_stream = await self.client_context.__aenter__()
 
         # Create and initialize session
-        from mcp import ClientSession
-
         self.session = ClientSession(self.read_stream, self.write_stream)
         await self.session.initialize()
 
@@ -58,6 +55,8 @@ class SimpleMarcusClient:
 
         try:
             # Call the tool
+            if self.session is None:
+                return None
             result = await self.session.call_tool(tool_name, arguments)
 
             # Parse the result
@@ -68,7 +67,10 @@ class SimpleMarcusClient:
                     if hasattr(content, "text"):
                         # Try to parse as JSON
                         try:
-                            return json.loads(content.text)
+                            parsed_json = json.loads(content.text)
+                            if isinstance(parsed_json, dict):
+                                return parsed_json
+                            return {"result": parsed_json}
                         except json.JSONDecodeError:
                             # Return as plain text if not JSON
                             return {"result": content.text}
@@ -77,10 +79,11 @@ class SimpleMarcusClient:
             return None
 
         except Exception as e:
-            print(f"Error calling tool {tool_name}: {e}")
+            import sys
+            print(f"Error calling tool {tool_name}: {e}", file=sys.stderr)
             return None
 
-    async def close(self):
+    async def close(self) -> None:
         """Close the client connection."""
         if self.client_context:
             await self.client_context.__aexit__(None, None, None)

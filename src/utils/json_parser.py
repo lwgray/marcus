@@ -105,7 +105,7 @@ def extract_json_from_response(response: str) -> str:
 
 def parse_json_response(
     response: str, default: Optional[Any] = None
-) -> Union[Dict, list, Any]:
+) -> Union[Dict[str, Any], list[Any], Any]:
     """
     Parse a JSON response that might be wrapped in markdown or have other formatting.
 
@@ -185,7 +185,7 @@ def clean_json_response(response: str) -> str:
     return cleaned
 
 
-def validate_json_structure(data: Any, required_fields: Optional[list] = None) -> bool:
+def validate_json_structure(data: Any, required_fields: Optional[list[str]] = None) -> bool:
     """
     Validate that parsed JSON has expected structure.
 
@@ -203,7 +203,7 @@ def validate_json_structure(data: Any, required_fields: Optional[list] = None) -
 
 # Convenience function for AI response parsing
 def parse_ai_json_response(
-    response: str, required_fields: Optional[list] = None
+    response: str, required_fields: Optional[list[str]] = None
 ) -> Dict[str, Any]:
     """
     Parse JSON from AI responses with validation.
@@ -222,11 +222,12 @@ def parse_ai_json_response(
     cleaned = clean_json_response(response)
     parsed = parse_json_response(cleaned)
 
+    # Ensure we have a dictionary for validation
+    if not isinstance(parsed, dict):
+        raise ValueError(f"Expected JSON object, got {type(parsed).__name__}")
+
     # Validate structure if required fields specified
     if required_fields:
-        if not isinstance(parsed, dict):
-            raise ValueError(f"Expected JSON object, got {type(parsed).__name__}")
-
         missing_fields = [field for field in required_fields if field not in parsed]
         if missing_fields:
             raise ValueError(f"Missing required fields: {', '.join(missing_fields)}")

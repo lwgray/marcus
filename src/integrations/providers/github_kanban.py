@@ -45,7 +45,8 @@ class GitHubKanban(KanbanInterface):
             result = await self.mcp_caller("github.get_me", {})
             return "user" in result
         except Exception as e:
-            print(f"Failed to connect to GitHub MCP: {e}")
+            import sys
+            print(f"Failed to connect to GitHub MCP: {e}", file=sys.stderr)
             return False
 
     async def disconnect(self):

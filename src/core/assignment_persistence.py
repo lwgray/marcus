@@ -89,7 +89,7 @@ class AssignmentPersistence:
         async with self._lock:
             return self._assignments_cache.get(worker_id)
 
-    async def get_all_assigned_task_ids(self) -> set:
+    async def get_all_assigned_task_ids(self) -> set[str]:
         """
         Get all currently assigned task IDs.
 

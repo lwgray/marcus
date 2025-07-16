@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from src.core.models import Priority, Task
-from src.utils.json_parser import parse_ai_json_response
+from src.utils.json_parser import parse_ai_json_response, parse_json_response
 
 from .base_provider import (
     BaseLLMProvider,
@@ -34,7 +34,7 @@ class AnthropicProvider(BaseLLMProvider):
     and project understanding while maintaining safety and reliability.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Try to get API key from config first, fall back to env var
         from src.config.config_loader import get_config
 
@@ -411,7 +411,7 @@ Respond only with valid JSON array."""
             response.raise_for_status()
 
             data = response.json()
-            return data["content"][0]["text"]
+            return str(data["content"][0]["text"])
 
         except httpx.TimeoutException:
             raise Exception("Claude API request timed out")
@@ -452,12 +452,22 @@ Respond only with valid JSON array."""
     ) -> List[SemanticDependency]:
         """Parse Claude's dependency inference response"""
         try:
-            data = parse_ai_json_response(response)
+            data = parse_json_response(response)
             dependencies = []
 
             task_ids = {task.id for task in tasks}
 
-            for dep in data:
+            # Handle both list format and dict with dependencies list
+            if isinstance(data, list):
+                deps_list = data
+            elif isinstance(data, dict) and "dependencies" in data:
+                deps_list = data["dependencies"]
+            elif isinstance(data, dict):
+                deps_list = [data]  # Single dependency as dict
+            else:
+                deps_list = []
+
+            for dep in deps_list:
                 # Validate task IDs exist
                 if (
                     dep.get("dependent_task_id") in task_ids
@@ -514,20 +524,22 @@ Respond only with valid JSON array."""
     def _parse_blocker_response(self, response: str) -> List[str]:
         """Parse Claude's blocker analysis response"""
         try:
-            suggestions = parse_ai_json_response(response)
-            if isinstance(suggestions, list):
-                return [str(s) for s in suggestions]
+            data = parse_json_response(response)
+            if isinstance(data, list):
+                return [str(s) for s in data]
+            elif isinstance(data, dict) and "suggestions" in data:
+                return [str(s) for s in data["suggestions"]]
             else:
-                return [str(suggestions)]
+                return [str(data)]
         except (json.JSONDecodeError, ValueError) as e:
             logger.warning(f"Failed to parse Claude blocker response: {e}")
             # Try to extract suggestions from text
             lines = response.strip().split("\n")
-            suggestions = []
+            suggestions_list: List[str] = []
             for line in lines:
                 if line.strip() and not line.startswith("#"):
-                    suggestions.append(line.strip("- ").strip())
-            return suggestions[:5] if suggestions else ["Review and retry the task"]
+                    suggestions_list.append(line.strip("- ").strip())
+            return suggestions_list[:5] if suggestions_list else ["Review and retry the task"]
 
     def _classify_task_type(self, task: Task) -> str:
         """Classify task type for historical comparison"""
@@ -546,6 +558,6 @@ Respond only with valid JSON array."""
         else:
             return "development"
 
-    async def close(self):
+    async def close(self) -> None:
         """Close the HTTP client"""
         await self.client.aclose()

@@ -434,7 +434,10 @@ class ErrorResponseFormatter:
             else:
                 return obj
 
-        return sanitize_dict(response)
+        result = sanitize_dict(response)
+        # Type assertion to help mypy understand the return type
+        assert isinstance(result, dict)
+        return result
 
 
 class BatchErrorResponseFormatter:

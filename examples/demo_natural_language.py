@@ -9,7 +9,7 @@ to create and manage a project from a simple description.
 import asyncio
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 # Add src to path
@@ -28,7 +28,7 @@ from src.detection.board_analyzer import BoardAnalyzer
 from src.detection.context_detector import ContextDetector
 
 
-async def demo_prd_to_tasks():
+async def demo_prd_to_tasks() -> list[Task]:
     """Demo 1: Convert natural language PRD to tasks"""
     print("=== Demo 1: Natural Language PRD to Tasks ===\n")
 
@@ -109,7 +109,7 @@ async def demo_prd_to_tasks():
     return result.tasks
 
 
-async def demo_task_enhancement():
+async def demo_task_enhancement() -> None:
     """Demo 2: Enhance a simple task with AI"""
     print("\n\n=== Demo 2: Natural Language Task Enhancement ===\n")
 
@@ -126,7 +126,7 @@ async def demo_task_enhancement():
         created_at=datetime.now(),
         updated_at=datetime.now(),
         due_date=None,
-        estimated_hours=None,
+        estimated_hours=0.0,
         dependencies=[],
         labels=[],
     )
@@ -159,49 +159,50 @@ async def demo_task_enhancement():
         print(f"   - {criterion}")
 
     print(f"\n🏷️  Suggested Labels: {', '.join(enhanced.suggested_labels)}")
-    print(f"⏱️  Estimated Effort: {enhanced.estimated_effort_hours} hours")
-    print(f"🎯 Priority: {enhanced.priority_recommendation}")
+    print(f"⏱️  Estimated Effort: {enhanced.estimated_hours} hours")
+    print(f"🎯 Priority: {enhanced.original_task.priority}")
 
     print("\n⚠️  Technical Considerations:")
-    for consideration in enhanced.technical_considerations:
+    for consideration in enhanced.risk_factors:
         print(f"   - {consideration}")
 
 
-async def demo_intelligent_mode_selection():
+async def demo_intelligent_mode_selection() -> None:
     """Demo 3: Natural language triggers correct mode"""
     print("\n\n=== Demo 3: Intelligent Mode Selection ===\n")
 
     analyzer = BoardAnalyzer()
-    detector = ContextDetector()
+    detector = ContextDetector(analyzer)
 
     # Scenario 1: Empty board - should trigger Creator Mode
     print("Scenario 1: Starting new project")
     print('User says: "I want to build a recipe sharing app"\n')
 
-    board_state = analyzer.analyze_board([])  # Empty board
-    context = detector.detect_context(
-        board_state=board_state,
+    board_state = await analyzer.analyze_board("demo-board", [])  # Empty board
+    context = await detector.detect_optimal_mode(
+        user_id="demo-user",
+        board_id="demo-board",
         tasks=[],
-        recent_activity=[],
-        team_velocity={"average_completion_time": 0},
+        recent_message="I want to build a recipe sharing app",
     )
 
-    print(f"Detected context: {context.primary_mode}")
-    print(f"Reasoning: {context.confidence_scores}\n")
+    print(f"Detected context: {context.recommended_mode}")
+    print(f"Reasoning: {context.reasoning}\n")
+    print(f"Confidence: {context.confidence:.2f}\n")
 
     # Scenario 2: Existing project - should trigger Adaptive Mode
     existing_tasks = [
         Task(
             id=f"task-{i}",
             name=name,
-            description="",
+            description="Task description",
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
             assigned_to=None,
             created_at=datetime.now(),
             updated_at=datetime.now(),
-            due_date=None,
-            estimated_hours=8,
+            due_date=datetime.now() + timedelta(days=7),
+            estimated_hours=8.0,
             dependencies=[],
             labels=[],
         )
@@ -217,21 +218,20 @@ async def demo_intelligent_mode_selection():
     print("Scenario 2: Adding to existing project")
     print('User says: "Add user authentication feature"\n')
 
-    board_state2 = analyzer.analyze_board(existing_tasks)
-    context2 = detector.detect_context(
-        board_state=board_state2,
+    board_state2 = await analyzer.analyze_board("demo-board-2", existing_tasks)
+    context2 = await detector.detect_optimal_mode(
+        user_id="demo-user",
+        board_id="demo-board-2",
         tasks=existing_tasks,
-        recent_activity=[],
-        team_velocity={"average_completion_time": 2.5},
+        recent_message="Add user authentication feature",
     )
 
-    print(f"Detected context: {context2.primary_mode}")
-    print(
-        f"Well-structured score: {board_state2.structure_metrics['well_structured_score']:.2f}"
-    )
+    print(f"Detected context: {context2.recommended_mode}")
+    print(f"Confidence: {context2.confidence:.2f}")
+    print(f"Reasoning: {context2.reasoning}")
 
 
-async def demo_natural_conversation():
+async def demo_natural_conversation() -> None:
     """Demo 4: Natural conversation flow"""
     print("\n\n=== Demo 4: Natural Conversation Examples ===\n")
 
@@ -271,7 +271,7 @@ async def demo_natural_conversation():
         print(f"   Marcus: {conv['marcus_action']}")
 
 
-async def demo_safety_check():
+async def demo_safety_check() -> None:
     """Demo 5: Natural language with safety checks"""
     print("\n\n=== Demo 5: Safety Intelligence ===\n")
 
@@ -289,8 +289,8 @@ async def demo_safety_check():
         assigned_to=None,
         created_at=datetime.now(),
         updated_at=datetime.now(),
-        due_date=None,
-        estimated_hours=4,
+        due_date=datetime.now() + timedelta(days=7),
+        estimated_hours=4.0,
         dependencies=[],
         labels=["deployment"],
     )
@@ -305,8 +305,8 @@ async def demo_safety_check():
         assigned_to=None,
         created_at=datetime.now(),
         updated_at=datetime.now(),
-        due_date=None,
-        estimated_hours=40,
+        due_date=datetime.now() + timedelta(days=30),
+        estimated_hours=40.0,
         dependencies=[],
         labels=["implementation"],
     )
@@ -334,7 +334,7 @@ async def demo_safety_check():
     print("\nMarcus understands natural language but enforces logical constraints!")
 
 
-async def main():
+async def main() -> None:
     """Run all demos"""
     print("🤖 Marcus Natural Language Demo\n")
     print("This demo shows how to use Marcus with natural language input.\n")

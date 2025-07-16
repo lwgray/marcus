@@ -115,7 +115,7 @@ class ProjectTemplate:
 class WebAppTemplate(ProjectTemplate):
     """Template for full-stack web applications"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         phases = [
             PhaseTemplate(
                 name="Setup",
@@ -466,7 +466,7 @@ class WebAppTemplate(ProjectTemplate):
 class APIServiceTemplate(ProjectTemplate):
     """Template for API-only services"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         phases = [
             PhaseTemplate(
                 name="Setup",
@@ -632,7 +632,7 @@ class APIServiceTemplate(ProjectTemplate):
 class MobileAppTemplate(ProjectTemplate):
     """Template for mobile applications"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         phases = [
             PhaseTemplate(
                 name="Setup",

@@ -10,7 +10,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from src.core.events import Events, EventTypes
 from src.core.models import Priority, Task
@@ -101,9 +101,9 @@ class Context:
     def __init__(
         self,
         events: Optional[Events] = None,
-        persistence=None,
+        persistence: Optional[Any] = None,
         use_hybrid_inference: bool = True,
-        ai_engine=None,
+        ai_engine: Optional[Any] = None,
     ):
         """
         Initialize the Context system.
@@ -139,14 +139,15 @@ class Context:
         if self.persistence:
             asyncio.create_task(self._load_persisted_data())
 
-    async def _load_persisted_data(self):
+    async def _load_persisted_data(self) -> None:
         """Load persisted decisions from storage"""
         try:
             # Load recent decisions
-            persisted_decisions = await self.persistence.get_decisions(limit=100)
-            for decision in persisted_decisions:
-                if decision not in self.decisions:
-                    self.decisions.append(decision)
+            if self.persistence:
+                persisted_decisions = await self.persistence.get_decisions(limit=100)
+                for decision in persisted_decisions:
+                    if decision not in self.decisions:
+                        self.decisions.append(decision)
 
             # Update decision counter
             if self.decisions:
@@ -362,15 +363,15 @@ class Context:
             return dependency_map
 
         # Fallback to pattern-based inference
-        dependency_map: Dict[str, List[str]] = {}
+        fallback_dependency_map: Dict[str, List[str]] = {}
 
         # First, map explicit dependencies
         for task in tasks:
             if task.dependencies:
                 for dep_id in task.dependencies:
-                    if dep_id not in dependency_map:
-                        dependency_map[dep_id] = []
-                    dependency_map[dep_id].append(task.id)
+                    if dep_id not in fallback_dependency_map:
+                        fallback_dependency_map[dep_id] = []
+                    fallback_dependency_map[dep_id].append(task.id)
 
         # Then, infer implicit dependencies if enabled
         if infer_implicit:
@@ -382,10 +383,10 @@ class Context:
 
                     # Check if task depends on other_task
                     if self._infer_dependency(task, other_task):
-                        if other_task.id not in dependency_map:
-                            dependency_map[other_task.id] = []
-                        if task.id not in dependency_map[other_task.id]:
-                            dependency_map[other_task.id].append(task.id)
+                        if other_task.id not in fallback_dependency_map:
+                            fallback_dependency_map[other_task.id] = []
+                        if task.id not in fallback_dependency_map[other_task.id]:
+                            fallback_dependency_map[other_task.id].append(task.id)
                             inferred_count += 1
                             logger.info(
                                 f"Inferred: '{task.name}' depends on '{other_task.name}'"
@@ -395,11 +396,11 @@ class Context:
                 logger.info(f"Inferred {inferred_count} implicit dependencies")
 
         # Check for circular dependencies
-        cycles = self._detect_circular_dependencies(dependency_map, tasks)
+        cycles = self._detect_circular_dependencies(fallback_dependency_map, tasks)
         if cycles:
             logger.warning(f"Circular dependencies detected: {cycles}")
 
-        return dependency_map
+        return fallback_dependency_map
 
     def _infer_dependency(self, task: Task, potential_dependency: Task) -> bool:
         """
@@ -1010,7 +1011,7 @@ class Context:
         # Use negative priority for max heap behavior
         import heapq
 
-        ready = []
+        ready: List[Tuple[int, Any, Task]] = []
         for task in tasks:
             if in_degree[task.id] == 0:
                 # Sort by priority then by creation date
@@ -1083,22 +1084,24 @@ class Context:
             f"Failed to persist implementation for {task_id}"
         )
     )
-    async def _persist_implementation_safe(self, task_id: str):
+    async def _persist_implementation_safe(self, task_id: str) -> None:
         """Persist implementation with graceful degradation"""
-        await self.persistence.store(
-            "implementations", task_id, self.implementations[task_id]
-        )
+        if self.persistence:
+            await self.persistence.store(
+                "implementations", task_id, self.implementations[task_id]
+            )
 
     @with_fallback(
         lambda self, decision: logger.warning(
             f"Failed to persist decision {decision.decision_id}"
         )
     )
-    async def _persist_decision_safe(self, decision: Decision):
+    async def _persist_decision_safe(self, decision: Decision) -> None:
         """Persist decision with graceful degradation"""
-        await self.persistence.store(
-            "decisions", decision.decision_id, decision.__dict__
-        )
+        if self.persistence:
+            await self.persistence.store(
+                "decisions", decision.decision_id, decision.__dict__
+            )
 
     def get_implementation_summary(self) -> Dict[str, Any]:
         """

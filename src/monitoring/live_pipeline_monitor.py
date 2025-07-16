@@ -132,7 +132,8 @@ class LivePipelineMonitor:
                 await asyncio.sleep(1)  # Update every second
 
             except Exception as e:
-                print(f"Monitoring error: {e}")
+                import sys
+                print(f"Monitoring error: {e}", file=sys.stderr)
                 await asyncio.sleep(5)
 
     async def track_flow_progress(self, flow_id: str) -> ProgressUpdate:

@@ -176,7 +176,7 @@ def build_tiered_instructions(
     return "\n".join(instructions_parts)
 
 
-async def request_next_task(agent_id: str, state: Any) -> Dict[str, Any]:
+async def request_next_task(agent_id: str, state: Any) -> Any:
     """
     Agents call this to request their next optimal task.
 
@@ -491,7 +491,7 @@ async def request_next_task(agent_id: str, state: Any) -> Dict[str, Any]:
                     active_project = await state.project_registry.get_active_project()
 
                 # Serialize the response properly
-                response = {
+                response: Dict[str, Any] = {
                     "success": True,
                     "task": {
                         "id": optimal_task.id,
@@ -611,7 +611,7 @@ async def report_task_progress(
         )
 
         # Update task in kanban
-        update_data = {"progress": progress}
+        update_data: Dict[str, Any] = {"progress": progress}
 
         if status == "completed":
             update_data["status"] = TaskStatus.DONE
@@ -901,14 +901,14 @@ async def find_optimal_task_basic(
         return None
 
     best_task = None
-    best_score = -1
+    best_score: float = -1.0
 
     # Check if this is a deployment task
     deployment_keywords = ["deploy", "release", "production", "launch", "rollout"]
 
     for task in available_tasks:
         # Calculate skill match score
-        skill_score = 0
+        skill_score: float = 0.0
         if agent.skills and task.labels:
             matching_skills = set(agent.skills) & set(task.labels)
             skill_score = len(matching_skills) / len(task.labels) if task.labels else 0

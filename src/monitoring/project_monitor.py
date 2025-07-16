@@ -244,7 +244,8 @@ class ProjectMonitor:
                 self._record_metrics()
 
             except Exception as e:
-                print(f"Error in monitoring loop: {e}")
+                import sys
+                print(f"Error in monitoring loop: {e}", file=sys.stderr)
 
             # Wait before next check
             await asyncio.sleep(self.check_interval)
@@ -1175,10 +1176,12 @@ class ProjectMonitor:
 
     async def _handle_project_completion(self) -> None:
         """Handle project completion by triggering learning and assessment."""
-        print(f"🎉 Project '{self.current_state.project_name}' appears to be complete!")
-        print(f"   Progress: {self.current_state.progress_percent:.1f}%")
+        import sys
+        print(f"🎉 Project '{self.current_state.project_name}' appears to be complete!", file=sys.stderr)
+        print(f"   Progress: {self.current_state.progress_percent:.1f}%", file=sys.stderr)
         print(
-            f"   Completed Tasks: {self.current_state.completed_tasks}/{self.current_state.total_tasks}"
+            f"   Completed Tasks: {self.current_state.completed_tasks}/{self.current_state.total_tasks}",
+            file=sys.stderr
         )
 
         # Get configuration
@@ -1239,19 +1242,20 @@ class ProjectMonitor:
         )
 
         # Log results
-        print(f"\n📊 Quality Assessment Complete:")
-        print(f"   Overall Score: {assessment.overall_score:.1%}")
-        print(f"   Success: {'✅ Yes' if assessment.is_successful else '❌ No'}")
-        print(f"   Confidence: {assessment.success_confidence:.1%}")
-        print(f"\n📈 Key Insights:")
+        import sys
+        print(f"\n📊 Quality Assessment Complete:", file=sys.stderr)
+        print(f"   Overall Score: {assessment.overall_score:.1%}", file=sys.stderr)
+        print(f"   Success: {'✅ Yes' if assessment.is_successful else '❌ No'}", file=sys.stderr)
+        print(f"   Confidence: {assessment.success_confidence:.1%}", file=sys.stderr)
+        print(f"\n📈 Key Insights:", file=sys.stderr)
         for insight in assessment.quality_insights[:3]:
-            print(f"   • {insight}")
-        print(f"\n🎯 Improvement Areas:")
+            print(f"   • {insight}", file=sys.stderr)
+        print(f"\n🎯 Improvement Areas:", file=sys.stderr)
         for area in assessment.improvement_areas[:3]:
-            print(f"   • {area}")
-        print(f"\n🧠 Pattern Learning Complete:")
-        print(f"   Confidence Score: {pattern.confidence_score:.1%}")
-        print(f"   Patterns in Database: {len(self.pattern_learner.learned_patterns)}")
+            print(f"   • {area}", file=sys.stderr)
+        print(f"\n🧠 Pattern Learning Complete:", file=sys.stderr)
+        print(f"   Confidence Score: {pattern.confidence_score:.1%}", file=sys.stderr)
+        print(f"   Patterns in Database: {len(self.pattern_learner.learned_patterns)}", file=sys.stderr)
 
     def _calculate_project_duration(self) -> int:
         """Calculate project duration in days from historical data."""
@@ -1360,10 +1364,11 @@ class ProjectMonitor:
         )
 
         # Log completion event with insights
-        print(f"✅ Project '{self.current_state.project_name}' completed:")
-        print(f"   - Quality Score: {assessment.overall_score:.1%}")
-        print(f"   - Pattern Confidence: {pattern.confidence_score:.1%}")
-        print(f"   - Key Success Factors: {', '.join(pattern.success_factors[:3])}")
+        import sys
+        print(f"✅ Project '{self.current_state.project_name}' completed:", file=sys.stderr)
+        print(f"   - Quality Score: {assessment.overall_score:.1%}", file=sys.stderr)
+        print(f"   - Pattern Confidence: {pattern.confidence_score:.1%}", file=sys.stderr)
+        print(f"   - Key Success Factors: {', '.join(pattern.success_factors[:3])}", file=sys.stderr)
 
         return {
             "pattern_learning": {

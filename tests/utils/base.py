@@ -5,7 +5,7 @@ Base test classes with common utilities for Marcus tests.
 import os
 import tempfile
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union, cast
 from unittest.mock import AsyncMock, Mock
 
 from src.core.models import Priority, Task, TaskStatus, WorkerStatus
@@ -18,31 +18,33 @@ class BaseTestCase:
     Provides common test setup, teardown, and utility methods
     that can be inherited by test classes.
     """
+    
+    test_dir: str
 
     @classmethod
-    def setup_class(cls):
+    def setup_class(cls) -> None:
         """Set up test class - runs once per test class."""
         cls.test_dir = tempfile.mkdtemp(prefix="marcus_test_")
 
     @classmethod
-    def teardown_class(cls):
+    def teardown_class(cls) -> None:
         """Clean up after test class - runs once after all tests."""
         import shutil
 
         if hasattr(cls, "test_dir") and os.path.exists(cls.test_dir):
             shutil.rmtree(cls.test_dir)
 
-    def setup_method(self):
+    def setup_method(self) -> None:
         """Set up before each test method."""
         self.test_start_time = datetime.now()
 
-    def teardown_method(self):
+    def teardown_method(self) -> None:
         """Clean up after each test method."""
         pass
 
     # Task creation helpers
 
-    def create_sample_task(self, **kwargs) -> Task:
+    def create_sample_task(self, **kwargs: Any) -> Task:
         """
         Create a sample task with sensible defaults.
 
@@ -64,9 +66,23 @@ class BaseTestCase:
             "labels": ["test"],
         }
         defaults.update(kwargs)
-        return Task(**defaults)
+        return Task(
+            id=cast(str, defaults["id"]),
+            name=cast(str, defaults["name"]),
+            description=cast(str, defaults["description"]),
+            status=cast(TaskStatus, defaults["status"]),
+            priority=cast(Priority, defaults["priority"]),
+            assigned_to=cast(Optional[str], defaults["assigned_to"]),
+            created_at=cast(datetime, defaults["created_at"]),
+            updated_at=cast(datetime, defaults["updated_at"]),
+            due_date=cast(Optional[datetime], defaults["due_date"]),
+            estimated_hours=cast(float, defaults["estimated_hours"]),
+            actual_hours=cast(float, defaults["actual_hours"]),
+            dependencies=cast(List[str], defaults["dependencies"]),
+            labels=cast(List[str], defaults["labels"])
+        )
 
-    def create_task_batch(self, count: int, **kwargs) -> List[Task]:
+    def create_task_batch(self, count: int, **kwargs: Any) -> List[Task]:
         """Create multiple tasks with sequential IDs."""
         tasks = []
         for i in range(count):
@@ -78,7 +94,7 @@ class BaseTestCase:
 
     # Worker creation helpers
 
-    def create_sample_worker(self, **kwargs) -> WorkerStatus:
+    def create_sample_worker(self, **kwargs: Any) -> WorkerStatus:
         """
         Create a sample worker with sensible defaults.
 
@@ -105,7 +121,18 @@ class BaseTestCase:
             "performance_score": 1.0,
         }
         defaults.update(kwargs)
-        return WorkerStatus(**defaults)
+        return WorkerStatus(
+            worker_id=cast(str, defaults["worker_id"]),
+            name=cast(str, defaults["name"]),
+            role=cast(str, defaults["role"]),
+            email=cast(Optional[str], defaults["email"]),
+            current_tasks=cast(List[Task], defaults["current_tasks"]),
+            completed_tasks_count=cast(int, defaults["completed_tasks_count"]),
+            capacity=cast(int, defaults["capacity"]),
+            skills=cast(List[str], defaults["skills"]),
+            availability=cast(Dict[str, bool], defaults["availability"]),
+            performance_score=cast(float, defaults["performance_score"])
+        )
 
     # Assertion helpers
 
@@ -192,7 +219,7 @@ class BaseTestCase:
 
     def create_test_file(self, filename: str, content: str = "") -> str:
         """Create a test file in the test directory."""
-        filepath = os.path.join(self.test_dir, filename)
+        filepath = os.path.join(self.__class__.test_dir, filename)
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
         with open(filepath, "w") as f:
             f.write(content)
@@ -200,7 +227,7 @@ class BaseTestCase:
 
     def read_test_file(self, filename: str) -> str:
         """Read content from a test file."""
-        filepath = os.path.join(self.test_dir, filename)
+        filepath = os.path.join(self.__class__.test_dir, filename)
         with open(filepath, "r") as f:
             return f.read()
 

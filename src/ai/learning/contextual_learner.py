@@ -80,7 +80,7 @@ class ContextualLearningSystem:
     rather than generic patterns.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Learning storage
         self.team_learnings: Dict[str, TeamLearnings] = {}
         self.technology_learnings: Dict[str, TechnologyLearnings] = {}
@@ -223,8 +223,8 @@ class ContextualLearningSystem:
         project_type = project_context.get("project_type", "general")
 
         # Get relevant learnings
-        team_learning = self.team_learnings.get(team_id)
-        tech_learning = self.technology_learnings.get(tech_stack)
+        team_learning = self.team_learnings.get(team_id) if team_id else None
+        tech_learning = self.technology_learnings.get(tech_stack) if tech_stack else None
         project_learning = self.project_type_learnings.get(project_type)
 
         adapted_templates = {}
@@ -266,7 +266,7 @@ class ContextualLearningSystem:
         Returns:
             Context-specific recommendations
         """
-        recommendations = {
+        recommendations: Dict[str, List[str]] = {
             "team_recommendations": [],
             "technology_recommendations": [],
             "process_recommendations": [],
@@ -444,7 +444,7 @@ class ContextualLearningSystem:
         patterns = {}
 
         # Analyze common project structures
-        structures = Counter()
+        structures: Counter[str] = Counter()
         for outcome in outcomes:
             structure = outcome.get("project_structure", "standard")
             structures[structure] += 1
@@ -493,7 +493,7 @@ class ContextualLearningSystem:
     ) -> List[Tuple[str, str]]:
         """Identify common technology dependencies"""
         dependencies = []
-        dependency_counter = Counter()
+        dependency_counter: Counter[Tuple[str, str]] = Counter()
 
         for outcome in outcomes:
             project_deps = outcome.get("dependencies", [])
@@ -515,7 +515,7 @@ class ContextualLearningSystem:
 
     def _analyze_tech_risks(self, outcomes: List[Dict[str, Any]]) -> Dict[str, float]:
         """Analyze technology-specific risks"""
-        risks = defaultdict(int)
+        risks: defaultdict[str, int] = defaultdict(int)
         total_projects = len(outcomes)
 
         for outcome in outcomes:
@@ -533,7 +533,7 @@ class ContextualLearningSystem:
 
     def _extract_best_practices(self, outcomes: List[Dict[str, Any]]) -> List[str]:
         """Extract best practices from successful projects"""
-        practices = Counter()
+        practices: Counter[str] = Counter()
 
         for outcome in outcomes:
             success_rate = outcome.get("success_metrics", {}).get(

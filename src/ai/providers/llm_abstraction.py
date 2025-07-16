@@ -29,9 +29,10 @@ Examples
 import asyncio
 import logging
 import os
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from src.core.models import Priority, Task
+from src.core.models import Priority, Task, TaskStatus
 
 from .base_provider import (
     BaseLLMProvider,
@@ -84,14 +85,14 @@ class LLMAbstraction:
         self.providers: Dict[str, BaseLLMProvider] = {}
         self.current_provider = os.getenv("MARCUS_LLM_PROVIDER", "anthropic")
         # Build fallback list based on available providers
-        self.fallback_providers = []
+        self.fallback_providers: List[str] = []
 
         # Initialize providers (deferred to avoid circular imports)
         self.providers = {}
         self._providers_initialized = False
 
         # Performance tracking initialized after providers load
-        self.provider_stats = {}
+        self.provider_stats: Dict[str, Dict[str, Any]] = {}
 
         logger.info(
             f"LLM abstraction initialized with primary provider: "
@@ -234,9 +235,10 @@ class LLMAbstraction:
         -----
         Automatically falls back to alternative providers on failure.
         """
-        return await self._execute_with_fallback(
+        result = await self._execute_with_fallback(
             "analyze_task", task=task, context=context
         )
+        return result  # type: ignore
 
     async def infer_dependencies_semantic(
         self, tasks: List[Task]
@@ -259,7 +261,8 @@ class LLMAbstraction:
         Complements rule-based dependency detection with semantic
         understanding.
         """
-        return await self._execute_with_fallback("infer_dependencies", tasks=tasks)
+        result = await self._execute_with_fallback("infer_dependencies", tasks=tasks)
+        return result  # type: ignore
 
     async def generate_enhanced_description(
         self, task: Task, context: Dict[str, Any]
@@ -279,9 +282,10 @@ class LLMAbstraction:
         str
             Enhanced description with more detail and clarity
         """
-        return await self._execute_with_fallback(
+        result = await self._execute_with_fallback(
             "generate_enhanced_description", task=task, context=context
         )
+        return result  # type: ignore
 
     async def estimate_effort_intelligently(
         self, task: Task, context: Dict[str, Any]
@@ -301,9 +305,10 @@ class LLMAbstraction:
         EffortEstimate
             AI-powered time estimate with confidence and factors
         """
-        return await self._execute_with_fallback(
+        result = await self._execute_with_fallback(
             "estimate_effort", task=task, context=context
         )
+        return result  # type: ignore
 
     async def analyze_blocker_and_suggest_solutions(
         self,
@@ -341,11 +346,12 @@ class LLMAbstraction:
             "agent": agent,
         }
 
-        return await self._execute_with_fallback(
+        result = await self._execute_with_fallback(
             "analyze_blocker", task=task, blocker=blocker_description, context=context
         )
+        return result  # type: ignore
 
-    async def _execute_with_fallback(self, method_name: str, **kwargs) -> Any:
+    async def _execute_with_fallback(self, method_name: str, **kwargs: Any) -> Any:
         """
         Execute method with automatic provider fallback.
 
@@ -462,11 +468,12 @@ class LLMAbstraction:
         # Ensure providers are initialized before trying to use them
         self._initialize_providers()
 
-        return await self._execute_with_fallback(
+        result = await self._execute_with_fallback(
             "complete",
             prompt=prompt,
             max_tokens=context.max_tokens if hasattr(context, "max_tokens") else 2000,
         )
+        return result  # type: ignore
 
     async def switch_provider(self, provider_name: str) -> bool:
         """
@@ -538,8 +545,13 @@ class LLMAbstraction:
                     id="health-check",
                     name="Test task",
                     description="Health check test",
-                    status="TODO",
+                    status=TaskStatus.TODO,
                     priority=Priority.LOW,
+                    assigned_to=None,
+                    created_at=datetime.now(),
+                    updated_at=datetime.now(),
+                    due_date=None,
+                    estimated_hours=1.0,
                 )
 
                 await asyncio.wait_for(

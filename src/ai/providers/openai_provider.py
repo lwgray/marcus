@@ -368,7 +368,7 @@ Provide JSON array of 3-5 specific solutions:
             response.raise_for_status()
 
             data = response.json()
-            return data["choices"][0]["message"]["content"]
+            return str(data["choices"][0]["message"]["content"])
 
         except httpx.TimeoutException:
             raise Exception("OpenAI API request timed out")
@@ -489,6 +489,6 @@ Provide JSON array of 3-5 specific solutions:
             logger.error(f"OpenAI completion failed: {e}")
             raise
 
-    async def close(self):
+    async def close(self) -> None:
         """Close HTTP client"""
         await self.client.aclose()

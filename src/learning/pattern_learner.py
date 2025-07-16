@@ -60,7 +60,7 @@ class Pattern:
 class PatternLearner:
     """Learns patterns from completed projects"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.patterns: Dict[str, Pattern] = {}
         self.project_history: List[CompletedProject] = []
 

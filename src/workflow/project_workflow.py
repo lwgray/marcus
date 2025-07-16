@@ -135,7 +135,8 @@ class ProjectWorkflowManager:
                 await asyncio.sleep(10)
 
             except Exception as e:
-                print(f"Error in auto-assign loop: {e}")
+                import sys
+                print(f"Error in auto-assign loop: {e}", file=sys.stderr)
                 await asyncio.sleep(30)
 
     async def _monitor_workflow(self, workflow_id: str):
@@ -188,7 +189,8 @@ class ProjectWorkflowManager:
                 await asyncio.sleep(30)
 
             except Exception as e:
-                print(f"Error in workflow monitoring: {e}")
+                import sys
+                print(f"Error in workflow monitoring: {e}", file=sys.stderr)
                 await asyncio.sleep(60)
 
     def pause_workflow(self, workflow_id: str):

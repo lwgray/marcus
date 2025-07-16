@@ -14,7 +14,7 @@ from src.logging.conversation_logger import conversation_logger
 logger = logging.getLogger(__name__)
 
 
-async def list_projects(server, arguments: Dict[str, Any]) -> List[Dict[str, Any]]:
+async def list_projects(server: Any, arguments: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     List all available projects
 
@@ -66,7 +66,7 @@ async def list_projects(server, arguments: Dict[str, Any]) -> List[Dict[str, Any
     return result
 
 
-async def switch_project(server, arguments: Dict[str, Any]) -> Dict[str, Any]:
+async def switch_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
     """
     Switch to a different project
 
@@ -133,7 +133,7 @@ async def switch_project(server, arguments: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": f"Failed to switch to project: {project_id}"}
 
 
-async def get_current_project(server, arguments: Dict[str, Any]) -> Dict[str, Any]:
+async def get_current_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
     """
     Get the currently active project
 
@@ -168,7 +168,7 @@ async def get_current_project(server, arguments: Dict[str, Any]) -> Dict[str, An
         return {"project": None, "error": "No active project"}
 
 
-async def add_project(server, arguments: Dict[str, Any]) -> Dict[str, Any]:
+async def add_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
     """
     Add a new project configuration
 
@@ -214,7 +214,7 @@ async def add_project(server, arguments: Dict[str, Any]) -> Dict[str, Any]:
     conversation_logger.log_pm_decision(
         decision=f"Created new project '{name}'",
         rationale="User requested new project configuration",
-        metadata={"project_id": project_id, "provider": provider, "tags": tags},
+        decision_factors={"project_id": project_id, "provider": provider, "tags": tags},
     )
 
     # Switch to new project if requested
@@ -234,7 +234,7 @@ async def add_project(server, arguments: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-async def remove_project(server, arguments: Dict[str, Any]) -> Dict[str, Any]:
+async def remove_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
     """
     Remove a project from the registry
 
@@ -273,7 +273,7 @@ async def remove_project(server, arguments: Dict[str, Any]) -> Dict[str, Any]:
         conversation_logger.log_pm_decision(
             decision=f"Deleted project '{project.name}'",
             rationale="User requested project deletion",
-            metadata={"project_id": project_id, "was_active": was_active},
+            decision_factors={"project_id": project_id, "was_active": was_active},
         )
 
         # If it was active, update server's kanban client
@@ -289,7 +289,7 @@ async def remove_project(server, arguments: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": "Failed to delete project"}
 
 
-async def update_project(server, arguments: Dict[str, Any]) -> Dict[str, Any]:
+async def update_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
     """
     Update project configuration
 

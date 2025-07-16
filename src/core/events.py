@@ -10,7 +10,7 @@ import json
 import logging
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from src.core.resilience import resilient_persistence, with_fallback
 
@@ -51,7 +51,7 @@ class Events:
     - Optional persistence to disk
     """
 
-    def __init__(self, store_history: bool = False, persistence=None):
+    def __init__(self, store_history: bool = False, persistence: Optional[Any] = None):
         """
         Initialize the event system.
 
@@ -59,13 +59,13 @@ class Events:
             store_history: Whether to keep event history in memory
             persistence: Optional Persistence instance for storing events
         """
-        self.subscribers: Dict[str, List[Callable]] = {}
+        self.subscribers: Dict[str, List[Callable[..., Any]]] = {}
         self.store_history = store_history
         self.history: List[Event] = []
         self._event_counter = 0
         self.persistence = persistence
 
-    def subscribe(self, event_type: str, handler: Callable) -> None:
+    def subscribe(self, event_type: str, handler: Callable[..., Any]) -> None:
         """
         Subscribe to an event type.
 
@@ -78,7 +78,7 @@ class Events:
         self.subscribers[event_type].append(handler)
         logger.debug(f"Handler subscribed to {event_type} events")
 
-    def unsubscribe(self, event_type: str, handler: Callable) -> None:
+    def unsubscribe(self, event_type: str, handler: Callable[..., Any]) -> None:
         """
         Unsubscribe from an event type.
 
@@ -146,7 +146,7 @@ class Events:
             tasks = []
             for handler in handlers:
                 # Wrap in try/except to isolate errors
-                async def safe_handler(h, e):
+                async def safe_handler(h: Callable[..., Any], e: Event) -> None:
                     try:
                         await h(e)
                     except Exception as err:
@@ -169,9 +169,10 @@ class Events:
     @with_fallback(
         lambda self, event: logger.warning(f"Event {event.event_id} not persisted")
     )
-    async def _persist_event_safe(self, event: Event):
+    async def _persist_event_safe(self, event: Event) -> None:
         """Persist event with graceful degradation"""
-        await self.persistence.store_event(event)
+        if self.persistence:
+            await self.persistence.store_event(event)
 
     async def get_history(
         self,
@@ -193,9 +194,11 @@ class Events:
         # Try persistence first if available
         if self.persistence:
             try:
-                return await self.persistence.get_events(
+                result = await self.persistence.get_events(
                     event_type=event_type, source=source, limit=limit
                 )
+                if result is not None:
+                    return result  # type: ignore[no-any-return]
             except Exception as e:
                 logger.error(f"Failed to get events from persistence: {e}")
 
@@ -258,7 +261,7 @@ class Events:
         received_event = None
         event_received = asyncio.Event()
 
-        async def capture_handler(event: Event):
+        async def capture_handler(event: Event) -> None:
             nonlocal received_event
             received_event = event
             event_received.set()

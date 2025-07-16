@@ -54,14 +54,14 @@ class TestCreateProjectFromNaturalLanguage:
         return Task(
             id=f"task-{len(self.created_tasks) + 1}",
             name=task_data.get("name", "Mock Task"),
-            description=task_data.get("description", ""),
+            description=task_data.get("description", "Mock task description"),
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
-            labels=task_data.get("labels", []),
             assigned_to=None,
             created_at=datetime.now(),
             updated_at=datetime.now(),
-            estimated_hours=task_data.get("estimated_hours", 0),
+            due_date=None,
+            estimated_hours=task_data.get("estimated_hours", 1.0),
         )
 
     @pytest.mark.asyncio

@@ -17,21 +17,21 @@ class PipelineFlow:
         self.stages: List[PipelineStage] = []
         self.status = "created"
         self.created_at = datetime.now().isoformat()
-        self.metadata = {}
+        self.metadata: Dict[str, Any] = {}
 
-    def add_stage(self, stage: PipelineStage):
+    def add_stage(self, stage: PipelineStage) -> None:
         """Add a stage to the flow"""
         self.stages.append(stage)
 
-    def start(self):
+    def start(self) -> None:
         """Start the flow"""
         self.status = "running"
 
-    def complete(self):
+    def complete(self) -> None:
         """Complete the flow"""
         self.status = "completed"
 
-    def fail(self, error: str):
+    def fail(self, error: str) -> None:
         """Fail the flow"""
         self.status = "failed"
         self.metadata["error"] = error

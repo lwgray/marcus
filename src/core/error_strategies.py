@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union, Tuple
 
 from .error_framework import (
     ErrorCategory,
@@ -61,8 +61,8 @@ class RetryConfig:
     max_delay: float = 60.0  # seconds
     multiplier: float = 2.0
     jitter: bool = True
-    retry_on: tuple = (TransientError, IntegrationError)
-    stop_on: tuple = ()  # Exceptions that stop retries (empty by default)
+    retry_on: tuple[type[Exception], ...] = (TransientError, IntegrationError)
+    stop_on: tuple[type[Exception], ...] = ()  # Exceptions that stop retries (empty by default)
 
 
 @dataclass
@@ -95,13 +95,13 @@ class CircuitBreaker:
     Prevents cascading failures by temporarily blocking calls to failing services.
     """
 
-    def __init__(self, name: str, config: CircuitBreakerConfig = None):
+    def __init__(self, name: str, config: Optional[CircuitBreakerConfig] = None):
         self.name = name
         self.config = config or CircuitBreakerConfig()
         self.state = CircuitBreakerStatus()
         self._lock = asyncio.Lock()
 
-    async def call(self, func: Callable, *args, **kwargs):
+    async def call(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Execute function with circuit breaker protection."""
         async with self._lock:
             # Check if circuit should transition states
@@ -140,7 +140,7 @@ class CircuitBreaker:
                 await self._record_failure(e)
             raise
 
-    async def _update_state(self):
+    async def _update_state(self) -> None:
         """Update circuit breaker state based on current conditions."""
         now = datetime.now()
 
@@ -167,7 +167,7 @@ class CircuitBreaker:
             if failure_time > cutoff_time
         ]
 
-    async def _record_success(self):
+    async def _record_success(self) -> None:
         """Record a successful operation."""
         if self.state.state == CircuitBreakerState.HALF_OPEN:
             self.state.success_count += 1
@@ -181,7 +181,7 @@ class CircuitBreaker:
 
         logger.debug(f"Circuit breaker {self.name} recorded success")
 
-    async def _record_failure(self, exception: Exception):
+    async def _record_failure(self, exception: Exception) -> None:
         """Record a failed operation."""
         now = datetime.now()
         self.state.failure_count += 1
@@ -217,11 +217,11 @@ class RetryHandler:
     Supports exponential backoff, jitter, and configurable retry policies.
     """
 
-    def __init__(self, config: RetryConfig = None):
+    def __init__(self, config: Optional[RetryConfig] = None):
         self.config = config or RetryConfig()
 
     async def execute(
-        self, func: Callable, *args, context: ErrorContext = None, **kwargs
+        self, func: Callable[..., Any], *args: Any, context: Optional[ErrorContext] = None, **kwargs: Any
     ) -> Any:
         """Execute function with retry logic."""
         last_exception = None
@@ -340,21 +340,21 @@ class FallbackHandler:
 
     def __init__(self, name: str):
         self.name = name
-        self.fallback_functions: List[Callable] = []
+        self.fallback_functions: List[Tuple[int, Callable[..., Any]]] = []
         self.cache: Dict[str, Any] = {}
 
-    def add_fallback(self, func: Callable, priority: int = 0):
+    def add_fallback(self, func: Callable[..., Any], priority: int = 0) -> None:
         """Add a fallback function with priority (lower = higher priority)."""
         self.fallback_functions.append((priority, func))
         self.fallback_functions.sort(key=lambda x: x[0])  # Sort by priority
 
     async def execute_with_fallback(
         self,
-        primary_func: Callable,
-        *args,
-        cache_key: str = None,
-        context: ErrorContext = None,
-        **kwargs,
+        primary_func: Callable[..., Any],
+        *args: Any,
+        cache_key: Optional[str] = None,
+        context: Optional[ErrorContext] = None,
+        **kwargs: Any,
     ) -> Any:
         """Execute primary function with fallback options."""
         context = context or ErrorContext()
@@ -446,12 +446,12 @@ class ErrorAggregator:
         self.successes: int = 0
         self.total_operations: int = 0
 
-    def add_success(self):
+    def add_success(self) -> None:
         """Record a successful operation."""
         self.successes += 1
         self.total_operations += 1
 
-    def add_error(self, error: Exception, item_context: Dict[str, Any] = None):
+    def add_error(self, error: Exception, item_context: Optional[Dict[str, Any]] = None) -> None:
         """Add an error to the aggregation."""
         self.total_operations += 1
 
@@ -484,7 +484,7 @@ class ErrorAggregator:
 
     def get_summary(self) -> Dict[str, Any]:
         """Get summary of batch operation results."""
-        error_summary = {}
+        error_summary: Dict[str, List[Dict[str, Any]]] = {}
         for error in self.errors:
             error_type = error.__class__.__name__
             if error_type not in error_summary:
@@ -495,7 +495,7 @@ class ErrorAggregator:
                     "correlation_id": error.context.correlation_id,
                     "item_context": error.context.custom_context.get(
                         "item_context", {}
-                    ),
+                    ) if error.context.custom_context else {},
                 }
             )
 
@@ -520,7 +520,7 @@ class ErrorAggregator:
         """Get only critical errors from the batch."""
         return [e for e in self.errors if e.severity == ErrorSeverity.CRITICAL]
 
-    def raise_if_critical(self):
+    def raise_if_critical(self) -> None:
         """Raise exception if any critical errors were encountered."""
         critical_errors = self.get_critical_errors()
         if critical_errors:
@@ -544,19 +544,19 @@ class ErrorAggregator:
 # =============================================================================
 
 
-def with_retry(config: RetryConfig = None):
+def with_retry(config: Optional[RetryConfig] = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorator for adding retry logic to functions."""
     retry_config = config or RetryConfig()
 
-    def decorator(func):
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
-        async def async_wrapper(*args, **kwargs):
+        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             retry_handler = RetryHandler(retry_config)
             context = ErrorContext(operation=func.__name__)
             return await retry_handler.execute(func, *args, context=context, **kwargs)
 
         @wraps(func)
-        def sync_wrapper(*args, **kwargs):
+        def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             return asyncio.run(async_wrapper(*args, **kwargs))
 
         if asyncio.iscoroutinefunction(func):
@@ -567,17 +567,17 @@ def with_retry(config: RetryConfig = None):
     return decorator
 
 
-def with_circuit_breaker(name: str, config: CircuitBreakerConfig = None):
+def with_circuit_breaker(name: str, config: Optional[CircuitBreakerConfig] = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorator for adding circuit breaker protection to functions."""
     circuit_breaker = CircuitBreaker(name, config)
 
-    def decorator(func):
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
-        async def async_wrapper(*args, **kwargs):
+        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             return await circuit_breaker.call(func, *args, **kwargs)
 
         @wraps(func)
-        def sync_wrapper(*args, **kwargs):
+        def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             return asyncio.run(async_wrapper(*args, **kwargs))
 
         if asyncio.iscoroutinefunction(func):
@@ -588,12 +588,12 @@ def with_circuit_breaker(name: str, config: CircuitBreakerConfig = None):
     return decorator
 
 
-def with_fallback(*fallback_functions):
+def with_fallback(*fallback_functions: Callable[..., Any]) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorator for adding fallback functions."""
 
-    def decorator(func):
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
-        async def async_wrapper(*args, **kwargs):
+        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             fallback_handler = FallbackHandler(func.__name__)
 
             # Add fallback functions
@@ -606,7 +606,7 @@ def with_fallback(*fallback_functions):
             )
 
         @wraps(func)
-        def sync_wrapper(*args, **kwargs):
+        def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             return asyncio.run(async_wrapper(*args, **kwargs))
 
         if asyncio.iscoroutinefunction(func):
@@ -625,13 +625,13 @@ def with_fallback(*fallback_functions):
 class ErrorStrategyRegistry:
     """Registry for managing error handling strategies across the application."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.circuit_breakers: Dict[str, CircuitBreaker] = {}
         self.fallback_handlers: Dict[str, FallbackHandler] = {}
         self.retry_configs: Dict[str, RetryConfig] = {}
 
     def get_circuit_breaker(
-        self, name: str, config: CircuitBreakerConfig = None
+        self, name: str, config: Optional[CircuitBreakerConfig] = None
     ) -> CircuitBreaker:
         """Get or create a circuit breaker for a service."""
         if name not in self.circuit_breakers:
@@ -644,7 +644,7 @@ class ErrorStrategyRegistry:
             self.fallback_handlers[name] = FallbackHandler(name)
         return self.fallback_handlers[name]
 
-    def register_retry_config(self, operation: str, config: RetryConfig):
+    def register_retry_config(self, operation: str, config: RetryConfig) -> None:
         """Register a retry configuration for an operation."""
         self.retry_configs[operation] = config
 
@@ -674,4 +674,4 @@ class ErrorStrategyRegistry:
 
 
 # Global registry instance
-error_strategy_registry = ErrorStrategyRegistry()
+error_strategy_registry: ErrorStrategyRegistry = ErrorStrategyRegistry()

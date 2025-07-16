@@ -14,7 +14,7 @@ from src.core.models import Priority, Task
 class BasicEnricher:
     """Basic task enricher that improves poorly defined tasks"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Keywords for priority detection
         self.priority_keywords = {
             Priority.URGENT: ["urgent", "critical", "emergency", "asap", "immediately"],

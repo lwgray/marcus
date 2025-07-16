@@ -5,6 +5,8 @@ Real MCP Tool Interaction Examples
 This shows the ACTUAL MCP tools Claude uses when talking to Marcus
 """
 
+from typing import Any, Dict, List
+
 print("🔧 MARCUS MCP TOOLS - WHAT CLAUDE ACTUALLY CALLS")
 print("=" * 70)
 print()
@@ -14,7 +16,7 @@ print("📱 REAL EXAMPLE: Building a Todo App")
 print("-" * 70)
 print()
 
-interactions = [
+interactions: List[Dict[str, Any]] = [
     {
         "step": 1,
         "user_says": "I want to build a todo app with user accounts",

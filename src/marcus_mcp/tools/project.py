@@ -12,7 +12,7 @@ from src.logging.conversation_logger import conversation_logger
 from src.marcus_mcp.utils import serialize_for_mcp
 
 
-async def get_project_status(state: Any) -> Dict[str, Any]:
+async def get_project_status(state: Any) -> Any:
     """
     Get current project status and metrics.
 

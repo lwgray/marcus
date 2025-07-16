@@ -31,8 +31,8 @@ class TaskOutcome:
     actual_hours: float
     success: bool
     blockers: List[str] = field(default_factory=list)
-    started_at: datetime = None
-    completed_at: datetime = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
 
     @property
     def estimation_accuracy(self) -> float:
@@ -128,27 +128,27 @@ class Memory:
         self.persistence = persistence
 
         # Working Memory (volatile, current state)
-        self.working = {
+        self.working: Dict[str, Any] = {
             "active_tasks": {},  # agent_id -> current task
             "recent_events": [],  # last N events
             "system_state": {},  # current system metrics
         }
 
         # Episodic Memory (task execution history)
-        self.episodic = {
+        self.episodic: Dict[str, Any] = {
             "outcomes": [],  # List of TaskOutcome
             "timeline": defaultdict(list),  # date -> events
         }
 
         # Semantic Memory (learned facts)
-        self.semantic = {
+        self.semantic: Dict[str, Any] = {
             "agent_profiles": {},  # agent_id -> AgentProfile
             "task_patterns": {},  # pattern_id -> TaskPattern
             "success_factors": {},  # factor -> impact
         }
 
         # Procedural Memory (workflows and strategies)
-        self.procedural = {
+        self.procedural: Dict[str, Any] = {
             "workflows": {},  # workflow_id -> steps
             "strategies": {},  # situation -> strategy
             "optimizations": {},  # pattern -> optimization
@@ -162,7 +162,7 @@ class Memory:
         if self.persistence:
             asyncio.create_task(self._load_persisted_memory())
 
-    async def _load_persisted_memory(self):
+    async def _load_persisted_memory(self) -> None:
         """Load memory from persistence"""
         try:
             # Load recent outcomes
@@ -229,7 +229,7 @@ class Memory:
         task_id: str,
         success: bool,
         actual_hours: float,
-        blockers: List[str] = None,
+        blockers: Optional[List[str]] = None,
     ) -> TaskOutcome:
         """Record task completion and learn from it"""
         # Get task info from working memory
@@ -550,7 +550,7 @@ class Memory:
 
         # Historical blockers from similar tasks
         similar_outcomes = await self.find_similar_outcomes(task, limit=20)
-        historical_blockers = {}
+        historical_blockers: Dict[str, int] = {}
         for outcome in similar_outcomes:
             for blocker in outcome.blockers:
                 historical_blockers[blocker] = historical_blockers.get(blocker, 0) + 1

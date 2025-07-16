@@ -129,7 +129,7 @@ class DependencyGraph:
 class DependencyInferer:
     """Infers dependencies between tasks to prevent illogical assignments"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Core dependency patterns that prevent illogical assignments
         self.dependency_patterns = [
             # Setup/Configuration comes before everything

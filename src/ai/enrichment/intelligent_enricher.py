@@ -35,7 +35,7 @@ class EnhancementResult:
     changes_made: Dict[str, Any]
     enhancement_timestamp: datetime
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if (
             not hasattr(self, "enhancement_timestamp")
             or self.enhancement_timestamp is None
@@ -64,7 +64,7 @@ class IntelligentTaskEnricher:
     AI for semantic understanding and intelligent enhancement.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.llm_client = LLMAbstraction()
 
         # Enhancement settings
@@ -186,7 +186,7 @@ class IntelligentTaskEnricher:
         """
         logger.info(f"Enriching batch of {len(tasks)} tasks")
 
-        results = []
+        results: List[EnhancementResult] = []
 
         # Enrich tasks with context awareness
         for i, task in enumerate(tasks):

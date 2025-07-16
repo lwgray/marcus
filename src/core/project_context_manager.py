@@ -10,7 +10,10 @@ import logging
 from collections import OrderedDict
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import asyncio
 
 from src.config.config_loader import get_config
 from src.core.assignment_persistence import AssignmentPersistence
@@ -73,7 +76,7 @@ class ProjectContextManager:
         self._lock = asyncio.Lock()
 
         # Background task for cleanup
-        self._cleanup_task: Optional[asyncio.Task] = None
+        self._cleanup_task: Optional[asyncio.Task[None]] = None
 
     async def initialize(self) -> None:
         """Initialize the context manager"""
@@ -124,7 +127,7 @@ class ProjectContextManager:
                     decision=f"Failed to switch to project {project_id}",
                     rationale="Project not found in registry",
                     confidence_score=1.0,
-                    metadata={"project_id": project_id, "error": "not_found"},
+                    decision_factors={"project_id": project_id, "error": "not_found"},
                 )
                 return False
 

@@ -78,7 +78,7 @@ class ParsedPRD:
 class PRDParser:
     """Extracts structured requirements from various PRD formats"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Patterns for extracting different types of information
         self.feature_patterns = [
             r"(?i)feature[:\s]*(.+?)(?=\n|feature|requirement|user story|$)",
