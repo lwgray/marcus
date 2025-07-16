@@ -594,6 +594,19 @@ class MarcusServer:
     async def run(self) -> None:
         """Run the MCP server"""
         try:
+            # Force unbuffered output for immediate response delivery
+            import os
+            import sys
+
+            # Set Python to use unbuffered output
+            os.environ["PYTHONUNBUFFERED"] = "1"
+
+            # Ensure stdout/stderr are unbuffered
+            if hasattr(sys.stdout, "reconfigure"):
+                sys.stdout.reconfigure(line_buffering=True)
+            if hasattr(sys.stderr, "reconfigure"):
+                sys.stderr.reconfigure(line_buffering=True)
+
             async with stdio_server() as (read_stream, write_stream):
                 await self.server.run(
                     read_stream,

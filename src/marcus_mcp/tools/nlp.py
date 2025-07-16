@@ -184,12 +184,59 @@ async def create_project(
             create_project_from_natural_language_tracked,
         )
 
-        result = await create_project_from_natural_language_tracked(
-            description=description,
-            project_name=project_name,
-            state=state,
-            options=options,
-            flow_id=flow_id,
+        # Log before calling the function
+        state.log_event("create_project_calling", {"project_name": project_name})
+
+        # Ensure we await the result properly
+        try:
+            result = await create_project_from_natural_language_tracked(
+                description=description,
+                project_name=project_name,
+                state=state,
+                options=options,
+                flow_id=flow_id,
+            )
+        except Exception as e:
+            state.log_event(
+                "create_project_exception",
+                {
+                    "project_name": project_name,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                },
+            )
+            # Re-raise to be handled by outer try/catch
+            raise
+
+        # Log after function returns
+        state.log_event(
+            "create_project_returned",
+            {
+                "project_name": project_name,
+                "success": result.get("success", False) if result else False,
+                "task_count": result.get("tasks_created", 0) if result else 0,
+            },
+        )
+
+        # Ensure we have a proper response structure
+        if result is None:
+            result = {
+                "success": False,
+                "error": "No result returned from task creation",
+            }
+
+        # Log immediately before returning to MCP
+        state.log_event(
+            "create_project_returning_to_mcp",
+            {
+                "project_name": project_name,
+                "result_keys": (
+                    list(result.keys()) if isinstance(result, dict) else "not_dict"
+                ),
+                "success": (
+                    result.get("success", False) if isinstance(result, dict) else False
+                ),
+            },
         )
 
         # Track successful completion (non-blocking)
@@ -218,8 +265,19 @@ async def create_project(
             asyncio.create_task(asyncio.to_thread(track_completion))
 
         # Normalize result to include task_count
-        if "tasks_created" in result and "task_count" not in result:
-            result["task_count"] = result["tasks_created"]
+        if isinstance(result, dict):
+            if "tasks_created" in result and "task_count" not in result:
+                result["task_count"] = result["tasks_created"]
+
+        # Final log before return
+        state.log_event(
+            "create_project_final_return",
+            {
+                "project_name": project_name,
+                "returning": True,
+                "result_type": type(result).__name__,
+            },
+        )
 
         return result
 
@@ -227,16 +285,18 @@ async def create_project(
         # Track error (non-blocking)
         if hasattr(state, "pipeline_visualizer"):
             duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+            error_type = type(exc).__name__
+            error_str = str(exc)
 
             def track_error():
                 state.pipeline_visualizer.add_event(
                     flow_id=flow_id,
                     stage=PipelineStage.TASK_COMPLETION,
                     event_type="pipeline_failed",
-                    data={"error_type": type(exc).__name__},
+                    data={"error_type": error_type},
                     duration_ms=duration_ms,
                     status="failed",
-                    error=str(exc),
+                    error=error_str,
                 )
 
             # Run in background without blocking

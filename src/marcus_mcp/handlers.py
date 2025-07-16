@@ -837,11 +837,34 @@ async def handle_tool_call(
 
         # Natural language tools
         elif name == "create_project":
+            # Log tool call start
+            state.log_event(
+                "mcp_tool_call_start",
+                {
+                    "tool": "create_project",
+                    "project_name": arguments.get("project_name", "unknown"),
+                },
+            )
+
             result = await create_project(
                 description=arguments.get("description"),
                 project_name=arguments.get("project_name"),
                 options=arguments.get("options"),
                 state=state,
+            )
+
+            # Log tool call complete
+            state.log_event(
+                "mcp_tool_call_complete",
+                {
+                    "tool": "create_project",
+                    "project_name": arguments.get("project_name", "unknown"),
+                    "success": (
+                        result.get("success", False)
+                        if isinstance(result, dict)
+                        else False
+                    ),
+                },
             )
 
         elif name == "add_feature":
@@ -945,6 +968,16 @@ async def handle_tool_call(
         else:
             result = {"error": f"Unknown tool: {name}"}
 
+        # Log response creation
+        state.log_event(
+            "mcp_creating_response",
+            {
+                "tool": name,
+                "has_result": result is not None,
+                "result_type": type(result).__name__ if result else "None",
+            },
+        )
+
         response = [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
         # Ensure stdio buffer is flushed for immediate response delivery
@@ -952,6 +985,12 @@ async def handle_tool_call(
 
         sys.stdout.flush()
         sys.stderr.flush()
+
+        # Log response return
+        state.log_event(
+            "mcp_returning_response",
+            {"tool": name, "response_length": len(response[0].text) if response else 0},
+        )
 
         return response
 
