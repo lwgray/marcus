@@ -250,7 +250,22 @@ async def request_next_task(agent_id: str, state: Any) -> Dict[str, Any]:
                 # Get enhanced context if Context system is available
                 context_data = None
                 dependency_awareness = None
-                if hasattr(state, "context") and state.context:
+
+                # Skip context building during project creation to avoid blocking
+                # Context can be built asynchronously after task assignment
+                build_context = hasattr(state, "context") and state.context
+
+                # Check if we're in project creation mode (lots of tasks being created)
+                if build_context and hasattr(state, "project_tasks"):
+                    # If more than 5 tasks in TODO state, we're likely creating a project
+                    todo_count = sum(
+                        1 for t in state.project_tasks if t.status == TaskStatus.TODO
+                    )
+                    if todo_count > 5:
+                        # Skip context during bulk creation
+                        build_context = False
+
+                if build_context:
                     # Add any GitHub implementations to context first
                     if previous_implementations:
                         await state.context.add_implementation(
@@ -498,9 +513,9 @@ async def request_next_task(agent_id: str, state: Any) -> Dict[str, Any]:
                 if predictions:
                     response["task"]["predictions"] = predictions
 
-                # Emit event if Events system is available
+                # Emit event if Events system is available (non-blocking)
                 if hasattr(state, "events") and state.events:
-                    await state.events.publish(
+                    await state.events.publish_nowait(
                         "task_assigned",
                         "marcus",
                         {

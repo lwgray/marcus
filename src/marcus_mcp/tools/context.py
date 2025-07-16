@@ -8,8 +8,6 @@ This module contains tools for context management:
 
 from typing import Any, Dict
 
-from src.core.models import TaskStatus
-
 
 async def log_decision(
     agent_id: str, task_id: str, decision: str, state: Any
@@ -69,9 +67,9 @@ async def log_decision(
 
             await state.kanban_client.add_comment(task_id, comment)
 
-        # Log event
+        # Log event (non-blocking)
         if hasattr(state, "events") and state.events:
-            await state.events.publish(
+            await state.events.publish_nowait(
                 "decision_logged", agent_id, logged_decision.to_dict()
             )
 

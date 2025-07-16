@@ -945,10 +945,18 @@ async def handle_tool_call(
         else:
             result = {"error": f"Unknown tool: {name}"}
 
-        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+        response = [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        # Ensure stdio buffer is flushed for immediate response delivery
+        import sys
+
+        sys.stdout.flush()
+        sys.stderr.flush()
+
+        return response
 
     except Exception as e:
-        return [
+        error_response = [
             types.TextContent(
                 type="text",
                 text=json.dumps(
@@ -957,3 +965,11 @@ async def handle_tool_call(
                 ),
             )
         ]
+
+        # Ensure stdio buffer is flushed for immediate error delivery
+        import sys
+
+        sys.stdout.flush()
+        sys.stderr.flush()
+
+        return error_response

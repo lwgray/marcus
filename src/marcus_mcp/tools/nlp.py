@@ -6,6 +6,7 @@ This module contains tools for natural language project/task creation:
 - add_feature: Add feature to existing project using natural language
 """
 
+import asyncio
 from typing import Any, Dict, Optional
 
 from src.integrations.nlp_tools import add_feature_natural_language
@@ -145,20 +146,24 @@ async def create_project(
     # Start tracking pipeline flow
     flow_id = str(uuid.uuid4())
     if hasattr(state, "pipeline_visualizer"):
-        state.pipeline_visualizer.start_flow(flow_id, project_name)
+        # Make pipeline tracking non-blocking
+        def track_start():
+            state.pipeline_visualizer.start_flow(flow_id, project_name)
+            # Track the MCP request
+            state.pipeline_visualizer.add_event(
+                flow_id=flow_id,
+                stage=PipelineStage.MCP_REQUEST,
+                event_type="create_project_request",
+                data={
+                    "project_name": project_name,
+                    "description_length": len(description),
+                    "options": options or {},
+                },
+                status="completed",
+            )
 
-        # Track the MCP request
-        state.pipeline_visualizer.add_event(
-            flow_id=flow_id,
-            stage=PipelineStage.MCP_REQUEST,
-            event_type="create_project_request",
-            data={
-                "project_name": project_name,
-                "description_length": len(description),
-                "options": options or {},
-            },
-            status="completed",
-        )
+        # Run in background without blocking
+        asyncio.create_task(asyncio.to_thread(track_start))
 
         # Also log to real-time log for UI server
         state.log_event(
@@ -187,26 +192,30 @@ async def create_project(
             flow_id=flow_id,
         )
 
-        # Track successful completion
+        # Track successful completion (non-blocking)
         if hasattr(state, "pipeline_visualizer"):
             duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
-            state.pipeline_visualizer.add_event(
-                flow_id=flow_id,
-                stage=PipelineStage.TASK_COMPLETION,
-                event_type="pipeline_completed",
-                data={
-                    "success": result.get("success", False),
-                    "task_count": result.get(
-                        "tasks_created", result.get("task_count", 0)
-                    ),
-                    "total_duration_ms": duration_ms,
-                },
-                duration_ms=duration_ms,
-                status="completed",
-            )
 
-            # Complete the flow
-            state.pipeline_visualizer.complete_flow(flow_id)
+            def track_completion():
+                state.pipeline_visualizer.add_event(
+                    flow_id=flow_id,
+                    stage=PipelineStage.TASK_COMPLETION,
+                    event_type="pipeline_completed",
+                    data={
+                        "success": result.get("success", False),
+                        "task_count": result.get(
+                            "tasks_created", result.get("task_count", 0)
+                        ),
+                        "total_duration_ms": duration_ms,
+                    },
+                    duration_ms=duration_ms,
+                    status="completed",
+                )
+                # Complete the flow
+                state.pipeline_visualizer.complete_flow(flow_id)
+
+            # Run in background without blocking
+            asyncio.create_task(asyncio.to_thread(track_completion))
 
         # Normalize result to include task_count
         if "tasks_created" in result and "task_count" not in result:
@@ -214,19 +223,24 @@ async def create_project(
 
         return result
 
-    except Exception as e:
-        # Track error
+    except Exception as exc:
+        # Track error (non-blocking)
         if hasattr(state, "pipeline_visualizer"):
             duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
-            state.pipeline_visualizer.add_event(
-                flow_id=flow_id,
-                stage=PipelineStage.TASK_COMPLETION,
-                event_type="pipeline_failed",
-                data={"error_type": type(e).__name__},
-                duration_ms=duration_ms,
-                status="failed",
-                error=str(e),
-            )
+
+            def track_error():
+                state.pipeline_visualizer.add_event(
+                    flow_id=flow_id,
+                    stage=PipelineStage.TASK_COMPLETION,
+                    event_type="pipeline_failed",
+                    data={"error_type": type(exc).__name__},
+                    duration_ms=duration_ms,
+                    status="failed",
+                    error=str(exc),
+                )
+
+            # Run in background without blocking
+            asyncio.create_task(asyncio.to_thread(track_error))
 
         raise
 
