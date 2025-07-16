@@ -4,6 +4,7 @@ Planka implementation using KanbanClient
 Direct integration without the mcp_function_caller abstraction
 """
 
+import logging
 import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -11,6 +12,8 @@ from typing import Any, Dict, List, Optional
 from src.core.models import Priority, Task, TaskStatus
 from src.integrations.kanban_client_with_create import KanbanClientWithCreate
 from src.integrations.kanban_interface import KanbanInterface, KanbanProvider
+
+logger = logging.getLogger(__name__)
 
 
 class Planka(KanbanInterface):
@@ -41,7 +44,9 @@ class Planka(KanbanInterface):
 
         self.client = KanbanClientWithCreate()
         self.connected = False
-        print(
+        # Don't print to stdout - it corrupts MCP protocol
+        # Use logging instead if needed
+        logger.info(
             f"[Planka] Initialized with board_id={self.client.board_id}, project_id={self.client.project_id}"
         )
 
@@ -75,7 +80,7 @@ class Planka(KanbanInterface):
             tasks = await self.client.get_available_tasks()
             return tasks
         except Exception as e:
-            print(f"Error getting tasks: {e}")
+            logger.error(f"Error getting tasks: {e}")
             return []
 
     async def get_all_tasks(self) -> List[Task]:
@@ -84,7 +89,7 @@ class Planka(KanbanInterface):
             tasks = await self.client.get_all_tasks()
             return tasks
         except Exception as e:
-            print(f"Error getting all tasks: {e}")
+            logger.error(f"Error getting all tasks: {e}")
             return []
 
     async def get_task_by_id(self, task_id: str) -> Optional[Task]:
@@ -98,7 +103,7 @@ class Planka(KanbanInterface):
                     return task
             return None
         except Exception as e:
-            print(f"Error getting task {task_id}: {e}")
+            logger.error(f"Error getting task {task_id}: {e}")
             return None
 
     async def create_task(self, task_data: Dict[str, Any]) -> Task:
@@ -110,7 +115,7 @@ class Planka(KanbanInterface):
             # Use the extended client's create_task method
             return await self.client.create_task(task_data)
         except Exception as e:
-            print(f"Error creating task: {e}")
+            logger.error(f"Error creating task: {e}")
             raise
 
     async def update_task(self, task_id: str, updates: Dict[str, Any]) -> Task:
@@ -130,7 +135,7 @@ class Planka(KanbanInterface):
             task = await self.get_task_by_id(task_id)
             return task
         except Exception as e:
-            print(f"Error updating task {task_id}: {e}")
+            logger.error(f"Error updating task {task_id}: {e}")
             # Return the current task state on error
             return await self.get_task_by_id(task_id)
 
@@ -140,7 +145,7 @@ class Planka(KanbanInterface):
             await self.client.add_comment(task_id, comment)
             return True
         except Exception as e:
-            print(f"Error adding comment to task {task_id}: {e}")
+            logger.error(f"Error adding comment to task {task_id}: {e}")
             return False
 
     async def get_agent_tasks(self, agent_id: str) -> List[Task]:
@@ -151,7 +156,7 @@ class Planka(KanbanInterface):
             # This would need to be implemented based on board structure
             return []
         except Exception as e:
-            print(f"Error getting agent tasks: {e}")
+            logger.error(f"Error getting agent tasks: {e}")
             return []
 
     async def get_board_summary(self) -> Dict[str, Any]:
@@ -160,7 +165,7 @@ class Planka(KanbanInterface):
             summary = await self.client.get_board_summary()
             return summary
         except Exception as e:
-            print(f"Error getting board summary: {e}")
+            logger.error(f"Error getting board summary: {e}")
             return {}
 
     async def assign_task(self, task_id: str, assignee_id: str) -> bool:
@@ -169,7 +174,7 @@ class Planka(KanbanInterface):
             await self.client.assign_task(task_id, assignee_id)
             return True
         except Exception as e:
-            print(f"Error assigning task {task_id}: {e}")
+            logger.error(f"Error assigning task {task_id}: {e}")
             return False
 
     async def move_task_to_column(self, task_id: str, column_name: str) -> bool:
@@ -184,7 +189,7 @@ class Planka(KanbanInterface):
                 pass
             return True
         except Exception as e:
-            print(f"Error moving task {task_id} to {column_name}: {e}")
+            logger.error(f"Error moving task {task_id} to {column_name}: {e}")
             return False
 
     async def get_project_metrics(self) -> Dict[str, Any]:
@@ -200,7 +205,7 @@ class Planka(KanbanInterface):
                 "blocked_tasks": 0,  # Not tracked in simple client
             }
         except Exception as e:
-            print(f"Error getting project metrics: {e}")
+            logger.error(f"Error getting project metrics: {e}")
             return {
                 "total_tasks": 0,
                 "backlog_tasks": 0,
@@ -219,7 +224,7 @@ class Planka(KanbanInterface):
             await self.client.add_comment(task_id, comment)
             return True
         except Exception as e:
-            print(f"Error reporting blocker on task {task_id}: {e}")
+            logger.error(f"Error reporting blocker on task {task_id}: {e}")
             return False
 
     async def update_task_progress(
@@ -240,5 +245,5 @@ class Planka(KanbanInterface):
 
             return True
         except Exception as e:
-            print(f"Error updating task progress for {task_id}: {e}")
+            logger.error(f"Error updating task progress for {task_id}: {e}")
             return False

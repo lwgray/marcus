@@ -14,10 +14,10 @@ from typing import Any, Dict, List, Optional
 class SharedPipelineEvents:
     """Minimal stub for pipeline event tracking"""
 
-    def __init__(self):
-        self.events = []
+    def __init__(self) -> None:
+        self.events: List[Dict[str, Any]] = []
 
-    def log_event(self, event_type: str, data: Dict[str, Any]):
+    def log_event(self, event_type: str, data: Dict[str, Any]) -> None:
         """Log a pipeline event"""
         event = {
             "timestamp": datetime.now().isoformat(),
@@ -38,10 +38,10 @@ class SharedPipelineEvents:
 class SharedPipelineVisualizer:
     """Minimal stub for pipeline visualization"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.pipeline_events = SharedPipelineEvents()
 
-    def log_event(self, event_type: str, data: Dict[str, Any]):
+    def log_event(self, event_type: str, data: Dict[str, Any]) -> None:
         """Log an event to the pipeline"""
         self.pipeline_events.log_event(event_type, data)
 
@@ -49,15 +49,19 @@ class SharedPipelineVisualizer:
         """Get current flow state"""
         return {"events": len(self.pipeline_events.events), "status": "running"}
 
-    def start_flow(self, flow_id: str, metadata: Dict[str, Any] = None):
+    def start_flow(
+        self, flow_id: str, metadata: Optional[Dict[str, Any]] = None
+    ) -> None:
         """Start a new pipeline flow"""
         self.log_event("flow_start", {"flow_id": flow_id, "metadata": metadata or {}})
 
-    def end_flow(self, flow_id: str, result: Dict[str, Any] = None):
+    def end_flow(self, flow_id: str, result: Optional[Dict[str, Any]] = None) -> None:
         """End a pipeline flow"""
         self.log_event("flow_end", {"flow_id": flow_id, "result": result or {}})
 
-    def complete_flow(self, flow_id: str, result: Dict[str, Any] = None):
+    def complete_flow(
+        self, flow_id: str, result: Optional[Dict[str, Any]] = None
+    ) -> None:
         """Complete a pipeline flow (alias for end_flow for compatibility)"""
         self.end_flow(flow_id, result)
 
@@ -102,23 +106,23 @@ class PipelineStage:
     TASK_CREATION = "task_creation"
     TASK_COMPLETION = "task_completion"
 
-    def __init__(self, name: str, stage_type: str = "general"):
+    def __init__(self, name: str, stage_type: str = "general") -> None:
         self.name = name
         self.stage_type = stage_type
         self.status = "pending"
-        self.metadata = {}
+        self.metadata: Dict[str, Any] = {}
 
-    def start(self):
+    def start(self) -> None:
         """Mark stage as started"""
         self.status = "running"
 
-    def complete(self, result: Any = None):
+    def complete(self, result: Any = None) -> None:
         """Mark stage as completed"""
         self.status = "completed"
         if result is not None:
             self.metadata["result"] = result
 
-    def fail(self, error: str):
+    def fail(self, error: str) -> None:
         """Mark stage as failed"""
         self.status = "failed"
         self.metadata["error"] = error

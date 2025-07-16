@@ -6,6 +6,7 @@ for creating new tasks on the kanban board.
 """
 
 import json
+import logging
 import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -16,6 +17,8 @@ from mcp import ClientSession, StdioServerParameters
 from src.core.models import Priority, Task, TaskStatus
 from src.integrations.kanban_client import KanbanClient
 from src.integrations.label_helper import LabelManagerHelper
+
+logger = logging.getLogger(__name__)
 
 
 class KanbanClientWithCreate(KanbanClient):
@@ -219,23 +222,23 @@ class KanbanClientWithCreate(KanbanClient):
 
                     # Add acceptance criteria as checklist items
                     if task_data.get("acceptance_criteria"):
-                        print(
-                            f"DEBUG: Found {len(task_data['acceptance_criteria'])} acceptance criteria for task '{card_name}'"
+                        logger.debug(
+                            f"Found {len(task_data['acceptance_criteria'])} acceptance criteria for task '{card_name}'"
                         )
                         for criteria in task_data["acceptance_criteria"]:
                             checklist_items.append(f"✓ {criteria}")
 
                     # Add subtasks as checklist items
                     if task_data.get("subtasks"):
-                        print(
-                            f"DEBUG: Found {len(task_data['subtasks'])} subtasks for task '{card_name}'"
+                        logger.debug(
+                            f"Found {len(task_data['subtasks'])} subtasks for task '{card_name}'"
                         )
                         for subtask in task_data["subtasks"]:
                             checklist_items.append(f"• {subtask}")
 
                     if checklist_items:
-                        print(
-                            f"DEBUG: Adding {len(checklist_items)} checklist items to card"
+                        logger.debug(
+                            f"Adding {len(checklist_items)} checklist items to card"
                         )
                         await self._add_checklist_items(
                             session, created_card["id"], checklist_items
@@ -350,10 +353,10 @@ class KanbanClientWithCreate(KanbanClient):
             added_ids = await label_helper.add_labels_to_card(card_id, labels)
 
             if added_ids:
-                print(f"Successfully added {len(added_ids)} labels to card")
+                logger.info(f"Successfully added {len(added_ids)} labels to card")
 
         except Exception as e:
-            print(f"Error in _add_labels_to_card: {e}")
+            logger.error(f"Error in _add_labels_to_card: {e}")
             # Don't fail task creation if labels fail
 
     async def _add_checklist_items(
@@ -385,19 +388,19 @@ class KanbanClientWithCreate(KanbanClient):
                         },
                     )
                     if result and hasattr(result, "content"):
-                        print(
-                            f"DEBUG: Created checklist item '{item[:30]}...' - response has content"
+                        logger.debug(
+                            f"Created checklist item '{item[:30]}...' - response has content"
                         )
                     else:
-                        print(
-                            f"DEBUG: Created checklist item '{item[:30]}...' - no response content"
+                        logger.debug(
+                            f"Created checklist item '{item[:30]}...' - no response content"
                         )
                     position += 65536
                 except Exception as e:
-                    print(f"Failed to create checklist item '{item}': {e}")
+                    logger.error(f"Failed to create checklist item '{item}': {e}")
 
         except Exception as e:
-            print(f"Error in _add_checklist_items: {e}")
+            logger.error(f"Error in _add_checklist_items: {e}")
             # Don't fail task creation if checklist fails
 
     async def create_tasks_batch(self, tasks_data: list[Dict[str, Any]]) -> list[Task]:
@@ -426,7 +429,7 @@ class KanbanClientWithCreate(KanbanClient):
                 task = await self.create_task(task_data)
                 created_tasks.append(task)
             except Exception as e:
-                print(
+                logger.error(
                     f"Failed to create task '{task_data.get('name', 'Unknown')}': {str(e)}"
                 )
                 # Continue with other tasks even if one fails
