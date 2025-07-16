@@ -22,7 +22,7 @@ class MemoryAdvanced(Memory):
     Advanced memory system with improved predictions and learning algorithms.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize enhanced memory system"""
         super().__init__(*args, **kwargs)
 
@@ -363,7 +363,7 @@ class MemoryAdvanced(Memory):
                     "type": "high_complexity",
                     "severity": "medium",
                     "description": f"Task is {complexity_factor:.1f}x more complex than usual",
-                    "complexity_factor": complexity_factor,
+                    "complexity_factor": str(complexity_factor),
                 }
             )
 

@@ -10,6 +10,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Dict
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -18,7 +19,7 @@ from src.ai.advanced.prd.advanced_parser import AdvancedPRDParser, ProjectConstr
 from src.core.models import Priority, Task, TaskStatus
 
 
-async def demo_natural_language():
+async def demo_natural_language() -> None:
     """Show how to convert natural language to tasks"""
 
     print("🤖 Marcus Natural Language Demo\n")
@@ -106,7 +107,7 @@ async def demo_natural_language():
 
     # Show task breakdown by phase
     print("\n📊 Task Breakdown by Type:")
-    task_types = {}
+    task_types: Dict[str, int] = {}
     for task in result2.tasks:
         task_type = task.labels[0] if task.labels else "other"
         task_types[task_type] = task_types.get(task_type, 0) + 1
@@ -154,7 +155,7 @@ async def demo_natural_language():
     print("\n✨ Marcus understands context and intent, not just keywords!")
 
 
-async def main():
+async def main() -> None:
     """Run the demo"""
     # Set to test mode
     os.environ["MARCUS_AI_ENABLED"] = "false"

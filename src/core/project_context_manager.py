@@ -10,7 +10,7 @@ import logging
 from collections import OrderedDict
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
     import asyncio
@@ -104,7 +104,7 @@ class ProjectContextManager:
         for context in self.contexts.values():
             if context.kanban_client and context.is_connected:
                 try:
-                    await context.kanban_client.disconnect()
+                    await context.kanban_client.disconnect()  # type: ignore[no-untyped-call]  # type: ignore[no-untyped-call]
                 except Exception as e:
                     logger.error(f"Error disconnecting client: {e}")
 
@@ -369,7 +369,7 @@ class ProjectContextManager:
             "project_states",
             project_id,
             {
-                "state": context.project_state.to_dict(),
+                "state": context.project_state.__dict__,
                 "saved_at": datetime.now().isoformat(),
             },
         )
@@ -411,7 +411,7 @@ class ProjectContextManager:
         # Disconnect client
         if context.kanban_client and context.is_connected:
             try:
-                await context.kanban_client.disconnect()
+                await context.kanban_client.disconnect()  # type: ignore[no-untyped-call]
             except Exception as e:
                 logger.error(f"Error disconnecting client: {e}")
 

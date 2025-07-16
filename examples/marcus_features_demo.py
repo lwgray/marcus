@@ -14,7 +14,7 @@ from datetime import datetime
 os.environ["MARCUS_AI_ENABLED"] = "false"
 
 
-async def main():
+async def main() -> None:
     print("🤖 MARCUS AI - COMPLETE FEATURE SHOWCASE")
     print("=" * 80)
     print(

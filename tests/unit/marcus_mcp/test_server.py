@@ -38,6 +38,14 @@ from src.core.models import (
 from src.marcus_mcp.server import MarcusServer
 
 
+def get_text_content(content: types.TextContent | types.ImageContent | types.EmbeddedResource) -> str:
+    """Helper to extract text from MCP content types."""
+    if isinstance(content, types.TextContent):
+        return content.text
+    else:
+        raise TypeError(f"Expected TextContent, got {type(content)}")
+
+
 class MockConfigLoader:
     """Mock config loader that behaves like the real ConfigLoader"""
 
@@ -289,7 +297,7 @@ class TestKanbanInitialization:
         error = exc_info.value
         assert "client_initialization failed for board planka" in str(error)
         assert (
-            error.context.custom_context.get("details")
+            error.context.custom_context and error.context.custom_context.get("details")
             and "does not support task creation"
             in error.context.custom_context["details"]
         )
@@ -313,7 +321,7 @@ class TestKanbanInitialization:
         error = exc_info.value
         assert "client_initialization failed for board planka" in str(error)
         assert (
-            error.context.custom_context.get("details")
+            error.context.custom_context and error.context.custom_context.get("details")
             and "Failed to initialize kanban client"
             in error.context.custom_context["details"]
         )
@@ -609,7 +617,7 @@ class TestMCPHandlers:
 
         assert len(result) == 1
         assert result[0].type == "text"
-        data = json.loads(result[0].text)
+        data = json.loads(get_text_content(result[0]))
         assert data["status"] == "online"
         assert data["echo"] == "test"
         assert data["success"] is True
@@ -887,7 +895,7 @@ class TestToolIntegration:
             server,
         )
 
-        data = json.loads(result[0].text)
+        data = json.loads(get_text_content(result[0]))
         assert data["success"] is True
         assert data["agent_id"] == "test-001"
         assert "test-001" in server.agent_status
@@ -915,7 +923,7 @@ class TestToolIntegration:
             "request_next_task", {"agent_id": "test-001"}, server
         )
 
-        data = json.loads(result[0].text)
+        data = json.loads(get_text_content(result[0]))
         # Should handle no available tasks gracefully
         assert "success" in data or "task" in data
 
@@ -932,7 +940,7 @@ class TestToolIntegration:
 
         result = await handle_tool_call("get_project_status", {}, server)
 
-        data = json.loads(result[0].text)
+        data = json.loads(get_text_content(result[0]))
         assert "success" in data or "project" in data or "error" in data
 
 

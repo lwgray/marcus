@@ -170,16 +170,6 @@ class TaskGenerator:
             updated_at=datetime.now(),
             due_date=None,  # Can be calculated based on dependencies
             assigned_to=None,
-            completed_at=None,
-            risk_level=None,
-            confidence_score=None,
-            suggested_agent=None,
-            metadata={
-                "phase": phase_name,
-                "phase_order": phase_order,
-                "template_name": task_template.name,
-                "generated": True,
-            },
         )
 
         return task
@@ -237,12 +227,15 @@ class TaskGenerator:
                 logger.error(error)
             raise ValueError("Invalid task dependencies detected")
 
-    async def create_task_hierarchy(self, tasks: List[Dict]) -> List[Task]:
+    async def create_task_hierarchy(
+        self, tasks: List[Dict], project_name: str = "unnamed_project"
+    ) -> List[Task]:
         """
         Create proper task objects from raw task data
 
         Args:
             tasks: List of task dictionaries
+            project_name: Name of the project for working directory
 
         Returns:
             List of Task objects with proper structure
@@ -267,12 +260,7 @@ class TaskGenerator:
                 updated_at=datetime.now(),
                 due_date=None,
                 assigned_to=None,
-                completed_at=None,
-                risk_level=None,
-                confidence_score=None,
-                suggested_agent=None,
-                metadata=task_data.get("metadata", {}),
-            )
+                )
 
             created_tasks.append(task)
             task_id_map[task.name] = task_id

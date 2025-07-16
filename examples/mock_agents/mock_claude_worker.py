@@ -16,7 +16,7 @@ import random
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent))
@@ -35,11 +35,11 @@ class MockClaudeWorker:
         self.name = name
         self.role = role
         self.skills = skills
-        self.current_task = None
+        self.current_task: Optional[Dict[str, Any]] = None
         self.pm_client = None  # Would be MCP client in real scenario
         self.system_prompt = self._load_system_prompt(role)
 
-    async def register(self):
+    async def register(self) -> None:
         """Register with PM Agent"""
         print(f"[{self.name}] Registering with PM Agent...")
 
@@ -134,23 +134,25 @@ class MockClaudeWorker:
                 },
             }
 
-            self.current_task = task["task"]
-            print(f"[{self.name}] ✓ Assigned task: {task['task']['title']}")
+            task_data = task["task"]
+            if isinstance(task_data, dict):
+                self.current_task = task_data
+                print(f"[{self.name}] ✓ Assigned task: {task_data['title']}")
 
-            # Log task assignment
-            conversation_logger.log_worker_message(
-                self.agent_id,
-                "from_pm",
-                f"Task assigned: {task['task']['title']}",
-                task["task"],
-            )
+                # Log task assignment
+                conversation_logger.log_worker_message(
+                    self.agent_id,
+                    "from_pm",
+                    f"Task assigned: {task_data['title']}",
+                    task_data,
+                )
 
             return task
         else:
             print(f"[{self.name}] No tasks available")
             return {"has_task": False}
 
-    async def work_on_task(self):
+    async def work_on_task(self) -> None:
         """Simulate working on the assigned task"""
         if not self.current_task:
             return
@@ -199,10 +201,11 @@ class MockClaudeWorker:
                 await self._report_blocker(task_id)
                 await asyncio.sleep(5)  # Wait before continuing
 
+        # Removed line with unreachable issue
         print(f"[{self.name}] ✓ Task completed: {task_title}")
         self.current_task = None
 
-    async def _report_blocker(self, task_id: str):
+    async def _report_blocker(self, task_id: str) -> None:
         """Report a blocker"""
         blockers = [
             "Database connection timeout",
@@ -236,9 +239,11 @@ class MockClaudeWorker:
             "escalated": severity == "high",
         }
 
-        if response["suggestions"]:
+        suggestions = response.get("suggestions", [])
+        if suggestions and isinstance(suggestions, list):
+            suggestion_strs = [str(s) for s in suggestions]
             print(
-                f"[{self.name}] Received suggestions: {', '.join(response['suggestions'])}"
+                f"[{self.name}] Received suggestions: {', '.join(suggestion_strs)}"
             )
 
     def _generate_progress_message(self, progress: int) -> str:
@@ -324,7 +329,7 @@ class MockClaudeWorker:
 
         return random.choice(messages.get(progress, ["Progress update"]))
 
-    async def run(self):
+    async def run(self) -> None:
         """Main worker loop"""
         print(f"\n[{self.name}] Claude Worker Starting...")
         print(f"[{self.name}] Skills: {', '.join(self.skills)}")
@@ -342,7 +347,7 @@ class MockClaudeWorker:
             # Request a task
             task_response = await self.request_task()
 
-            if task_response.get("has_task"):
+            if task_response and task_response.get("has_task"):
                 # Work on the task
                 await self.work_on_task()
                 work_cycles += 1
@@ -360,7 +365,7 @@ class MockClaudeWorker:
         print(f"\n[{self.name}] Completed {work_cycles} tasks. Shutting down.")
 
 
-async def main():
+async def main() -> None:
     """Run the mock worker"""
     parser = argparse.ArgumentParser(description="Mock Claude Worker")
     parser.add_argument("--name", default="worker_1", help="Worker name")

@@ -78,7 +78,7 @@ class FilePersistence(PersistenceBackend):
         async with lock:
             # Load existing data
             file_path = self._get_collection_file(collection)
-            existing_data = {}
+            existing_data: Dict[str, Any] = {}
 
             if file_path.exists():
                 try:

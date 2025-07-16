@@ -166,7 +166,10 @@ class Memory:
         """Load memory from persistence"""
         try:
             # Load recent outcomes
-            outcomes_data = await self.persistence.query("task_outcomes", limit=500)
+            if self.persistence:
+                outcomes_data = await self.persistence.query("task_outcomes", limit=500)
+            else:
+                outcomes_data = []
             for data in outcomes_data:
                 # Reconstruct TaskOutcome
                 outcome = TaskOutcome(
@@ -191,7 +194,12 @@ class Memory:
                 self.episodic["outcomes"].append(outcome)
 
             # Load agent profiles
-            profiles_data = await self.persistence.query("agent_profiles", limit=100)
+            if self.persistence:
+                profiles_data = await self.persistence.query(
+                    "agent_profiles", limit=100
+                )
+            else:
+                profiles_data = []
             for data in profiles_data:
                 self.semantic["agent_profiles"][data["agent_id"]] = AgentProfile(**data)
 
@@ -230,7 +238,7 @@ class Memory:
         success: bool,
         actual_hours: float,
         blockers: Optional[List[str]] = None,
-    ) -> TaskOutcome:
+    ) -> Optional[TaskOutcome]:
         """Record task completion and learn from it"""
         # Get task info from working memory
         active_task = self.working["active_tasks"].get(agent_id, {})
@@ -374,7 +382,7 @@ class Memory:
             - blockage_risk: 0-1
             - risk_factors: list of potential issues
         """
-        predictions = {
+        predictions: Dict[str, Any] = {
             "success_probability": 0.5,  # Default
             "estimated_duration": task.estimated_hours,
             "blockage_risk": 0.3,
@@ -415,7 +423,10 @@ class Memory:
 
                 # Use pattern data if more reliable
                 predictions["estimated_duration"] = pattern.average_duration
-                predictions["risk_factors"].extend(pattern.common_blockers)
+                if isinstance(pattern.common_blockers, list):
+                    risk_factors = predictions["risk_factors"]
+                    if isinstance(risk_factors, list):
+                        risk_factors.extend(pattern.common_blockers)
 
         return predictions
 

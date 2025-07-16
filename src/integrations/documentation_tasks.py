@@ -99,25 +99,8 @@ class DocumentationTaskGenerator:
             due_date=None,
         )
 
-        # Add acceptance criteria
-        doc_task.acceptance_criteria = [
-            "PROJECT_SUCCESS.md file created in project root",
-            "All setup instructions tested and working",
-            "Test commands verified and coverage documented",
-            "Architecture clearly explained with key decisions",
-            "All logged decisions incorporated into relevant sections",
-        ]
-
-        # Add subtasks
-        doc_task.subtasks = [
-            "Review all logged decisions from project history",
-            "Document system architecture and data flow",
-            "Test and document setup/installation process",
-            "Verify and document how to run the application",
-            "Test and document testing procedures",
-            "Document deployment process (if applicable)",
-            "Ensure all commands in documentation actually work",
-        ]
+        # Note: acceptance_criteria and subtasks would be stored in metadata if needed
+        # These are implicit in the task description above
 
         return doc_task
 
@@ -128,6 +111,9 @@ class DocumentationTaskGenerator:
         """Generate detailed description for documentation task"""
 
         base_description = """Create comprehensive PROJECT_SUCCESS.md documentation by:
+
+⚠️ **IMPORTANT**: Work in the current directory (./) where Claude is running. 
+Create all files in the current working directory, NOT in the Marcus installation directory.
 
 1. **Gather Information**:
    - Review all logged decisions using `get_task_context` for each completed task

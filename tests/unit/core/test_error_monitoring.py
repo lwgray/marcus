@@ -10,6 +10,7 @@ import json
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any, Type
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -116,7 +117,9 @@ class TestErrorMonitor:
         """Clean up test fixtures"""
         Path(self.temp_file.name).unlink(missing_ok=True)
 
-    def create_test_error(self, error_type=NetworkTimeoutError, **kwargs):
+    def create_test_error(
+        self, error_type: Type[Exception] = NetworkTimeoutError, **kwargs: Any
+    ) -> Exception:
         """Create a test error for monitoring tests"""
         default_context = ErrorContext(
             operation="test_operation", agent_id="agent_123", task_id="task_456"

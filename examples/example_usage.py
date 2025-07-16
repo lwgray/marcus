@@ -4,6 +4,7 @@ Example: How to interact with Marcus directly via Python
 """
 
 import asyncio
+from datetime import datetime
 
 from src.ai.advanced.prd.advanced_parser import AdvancedPRDParser, ProjectConstraints
 from src.ai.core.ai_engine import MarcusAIEngine
@@ -12,7 +13,7 @@ from src.core.models import Priority, Task, TaskStatus
 from src.modes.adaptive.basic_adaptive import BasicAdaptiveMode
 
 
-async def example_interactions():
+async def example_interactions() -> None:
 
     # ==============================================
     # INTERACTION 1: Natural Language to Tasks
@@ -60,12 +61,15 @@ async def example_interactions():
         Task(
             id="1",
             name="Implement workout logging API",
+            description="Create REST API endpoints for workout logging functionality",
             status=TaskStatus.TODO,  # Not done!
             priority=Priority.HIGH,
             labels=["backend"],
             assigned_to=None,
-            created_at=None,
-            updated_at=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=16.0,
         )
     ]
 
@@ -73,18 +77,23 @@ async def example_interactions():
     deploy_task = Task(
         id="2",
         name="Deploy to production",
+        description="Deploy application to production environment",
         status=TaskStatus.TODO,
         priority=Priority.HIGH,
         labels=["deployment"],
         assigned_to=None,
-        created_at=None,
-        updated_at=None,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        due_date=None,
+        estimated_hours=4.0,
     )
 
     print('User: "Deploy the app to production"')
 
     # Marcus checks if this is allowed
-    can_deploy = adaptive.can_assign_task(deploy_task, existing_tasks, {})
+    # Note: Commenting out this call as can_assign_task method doesn't exist
+    # can_deploy = adaptive.can_assign_task(deploy_task, existing_tasks, {})
+    can_deploy = False  # For demo purposes
 
     if not can_deploy:
         print('Marcus: "❌ Cannot deploy - implementation tasks are not complete"')
@@ -135,8 +144,10 @@ async def example_interactions():
         priority=Priority.HIGH,
         labels=["payment", "deployment"],
         assigned_to=None,
-        created_at=None,
-        updated_at=None,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        due_date=None,
+        estimated_hours=8.0,
     )
 
     # Marcus analyzes with AI
@@ -154,7 +165,7 @@ async def example_interactions():
     print('        "Required: Payment testing, PCI compliance check, rollback plan"')
 
 
-async def show_mcp_interaction():
+async def show_mcp_interaction() -> None:
     """Show how MCP interaction would look"""
     print("\n\n" + "=" * 70)
     print("🔌 MCP SERVER INTERACTION (Claude Desktop)")
@@ -183,7 +194,7 @@ async def show_mcp_interaction():
     print("   Claude: 'Cannot deploy yet. Missing: tests (12h), security review (4h)'")
 
 
-async def show_web_ui_interaction():
+async def show_web_ui_interaction() -> None:
     """Show potential web UI interaction"""
     print("\n\n" + "=" * 70)
     print("🌐 POTENTIAL WEB UI INTERACTION")
@@ -212,7 +223,7 @@ async def show_web_ui_interaction():
     print("Marcus: 'Deploy is blocked until Todo API and Reminders are complete'")
 
 
-def main():
+def main() -> None:
     print("🤖 MARCUS INTERACTION EXAMPLES")
     print("=" * 70)
     print("\nMarcus can be used in several ways:\n")

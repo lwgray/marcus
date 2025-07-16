@@ -18,10 +18,11 @@ sys.path.insert(
 from mcp.client.stdio import stdio_client
 
 from mcp import ClientSession, StdioServerParameters
+from src.core.models import TaskStatus
 from src.integrations.kanban_client import KanbanClient
 
 
-async def create_mcp_function_caller():
+async def create_mcp_function_caller() -> Any:
     """Create a real MCP function caller for testing"""
 
     @asynccontextmanager
@@ -48,22 +49,19 @@ async def create_mcp_function_caller():
     return mcp_call
 
 
-async def test_simple():
+async def test_simple() -> None:
     """Test basic KanbanClient operations"""
     # Create MCP function caller
-    mcp_caller = await create_mcp_function_caller()
-
-    # Create client with MCP caller
-    client = KanbanClient(mcp_caller)
+    # Create client (current implementation doesn't need mcp_caller)
+    client = KanbanClient()
 
     print("🔍 Testing KanbanClient")
     print("=" * 60)
 
     try:
-        # Initialize the client
-        print("\n1. Initializing client...")
-        await client.initialize("Task Master Test")
-        print(f"✅ Initialized successfully")
+        # Note: Current implementation auto-initializes from config
+        print("\n1. Checking client configuration...")
+        print(f"✅ Client created successfully")
         print(f"  - Project ID: {client.project_id}")
         print(f"  - Board ID: {client.board_id}")
 
@@ -119,5 +117,10 @@ async def test_simple():
         traceback.print_exc()
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Main entry point."""
     asyncio.run(test_simple())
+
+
+if __name__ == "__main__":
+    main()

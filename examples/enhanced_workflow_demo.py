@@ -13,6 +13,7 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 # Add marcus to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -27,7 +28,7 @@ from src.core.persistence import Persistence, SQLitePersistence
 class MockMarcus:
     """Simplified Marcus for demonstration"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Create persistence
         self.persistence = Persistence(
             backend=SQLitePersistence(Path("./demo_marcus.db"))
@@ -135,12 +136,12 @@ class MockMarcus:
             ),
         ]
 
-    async def run_demo(self):
+    async def run_demo(self) -> None:
         """Run the demo workflow"""
         print("🚀 Marcus Enhanced Features Demo\n")
 
         # Subscribe to events for monitoring
-        async def event_monitor(event):
+        async def event_monitor(event: Any) -> None:
             print(
                 f"📡 Event: {event.event_type} | Source: {event.source} | "
                 f"Data: {json.dumps(event.data, indent=2)}"
@@ -238,7 +239,7 @@ class MockMarcus:
         if Path("./demo_marcus.db").exists():
             Path("./demo_marcus.db").unlink()
 
-    async def assign_task(self, agent_id: str, task: Task):
+    async def assign_task(self, agent_id: str, task: Task) -> Task:
         """Simulate task assignment with context and predictions"""
         print(f"\n📋 Assigning '{task.name}' to {agent_id}")
 
@@ -274,7 +275,7 @@ class MockMarcus:
 
     async def complete_task(
         self, agent_id: str, task: Task, success: bool, actual_hours: float
-    ):
+    ) -> None:
         """Simulate task completion"""
         outcome = await self.memory.record_task_completion(
             agent_id=agent_id,
@@ -318,7 +319,7 @@ class MockMarcus:
         )
 
 
-async def main():
+async def main() -> None:
     """Run the demo"""
     marcus = MockMarcus()
     await marcus.run_demo()

@@ -168,7 +168,7 @@ class MarcusServer:
                 events=self.events,
                 persistence=self.persistence,
                 use_hybrid_inference=use_hybrid
-                and hybrid_config.get("enable_ai_inference", False),
+                and hybrid_config.enable_ai_inference,
                 ai_engine=self.ai_engine if use_hybrid else None,
             )
             # Apply context-specific settings
