@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from src.core.models import Task
+from src.core.models import Task, TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -480,7 +480,7 @@ class AdaptiveDependencyInferer:
         original_confidence: float,
         user_confirmed: bool,
         reason: Optional[str] = None,
-    ):
+    ) -> None:
         """
         Record user feedback on a dependency inference.
 
@@ -516,7 +516,7 @@ class AdaptiveDependencyInferer:
 
     def _adjust_weights_from_feedback(
         self, feedback: DependencyFeedback, decrease: bool
-    ):
+    ) -> None:
         """Adjust feature weights based on feedback"""
         # Simple weight adjustment (in production, use more sophisticated ML)
         adjustment = 0.05 if not decrease else -0.05
@@ -531,7 +531,7 @@ class AdaptiveDependencyInferer:
         total = sum(self.feature_weights.values())
         self.feature_weights = {k: v / total for k, v in self.feature_weights.items()}
 
-    def _learn_pattern_from_feedback(self, task_a_id: str, task_b_id: str):
+    def _learn_pattern_from_feedback(self, task_a_id: str, task_b_id: str) -> None:
         """Learn a new pattern from confirmed dependency"""
         # In a real implementation, this would extract features from the actual tasks
         # and create/update a pattern
@@ -608,8 +608,8 @@ class AdaptiveDependencyInferer:
                         self._learn_from_confirmed_dependency(task, dep_task)
 
         # Learn from task completion order
-        completed_tasks = [t for t in tasks if t.status == "completed"]
-        completed_tasks.sort(key=lambda t: t.completed_at or t.created_at)
+        completed_tasks = [t for t in tasks if t.status == TaskStatus.DONE]
+        completed_tasks.sort(key=lambda t: t.updated_at)
 
         # Tasks completed in sequence might have implicit dependencies
         for i in range(len(completed_tasks) - 1):
@@ -617,14 +617,13 @@ class AdaptiveDependencyInferer:
             task_after = completed_tasks[i + 1]
 
             # If completed close in time, might indicate workflow
-            if task_after.completed_at and task_before.completed_at:
-                time_diff = (
-                    task_after.completed_at - task_before.completed_at
-                ).total_seconds() / 3600
-                if time_diff < 4:  # Within 4 hours
-                    # Weak signal of potential dependency
-                    features = self._extract_features(task_after, task_before)
-                    self._update_pattern_weights(features, strength=0.3)
+            time_diff = (
+                task_after.updated_at - task_before.updated_at
+            ).total_seconds() / 3600
+            if time_diff < 4:  # Within 4 hours
+                # Weak signal of potential dependency
+                features = self._extract_features(task_after, task_before)
+                self._update_pattern_weights(features, strength=0.3)
 
     def _learn_from_confirmed_dependency(
         self, dependent: Task, dependency: Task

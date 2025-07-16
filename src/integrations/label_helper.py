@@ -10,7 +10,11 @@ specific requirements of the kanban-mcp label manager including:
 """
 
 import json
+import logging
+import sys
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class LabelManagerHelper:
@@ -162,7 +166,7 @@ class LabelManagerHelper:
             expected_color = self.get_color_for_label(name)
             if cached_label["color"] != expected_color:
                 # Update the label color
-                print(
+                logger.info(
                     f"Updating label '{name}' color from {cached_label['color']} to {expected_color}"
                 )
                 try:
@@ -185,7 +189,7 @@ class LabelManagerHelper:
                         updated_label = json.loads(update_result.content[0].text)
                         self._label_cache[normalized_name] = updated_label
                 except Exception as e:
-                    print(f"Failed to update label color: {e}")
+                    logger.error(f"Failed to update label color: {e}")
             return str(cached_label["id"])
 
         # Refresh cache and check again
@@ -196,7 +200,7 @@ class LabelManagerHelper:
             expected_color = self.get_color_for_label(name)
             if cached_label["color"] != expected_color:
                 # Update the label color
-                print(
+                logger.info(
                     f"Updating label '{name}' color from {cached_label['color']} to {expected_color}"
                 )
                 try:
@@ -219,7 +223,7 @@ class LabelManagerHelper:
                         updated_label = json.loads(update_result.content[0].text)
                         self._label_cache[normalized_name] = updated_label
                 except Exception as e:
-                    print(f"Failed to update label color: {e}")
+                    logger.error(f"Failed to update label color: {e}")
             return str(cached_label["id"])
 
         # Need to create the label
@@ -287,7 +291,7 @@ class LabelManagerHelper:
                 added_label_ids.append(label_id)
 
             except Exception as e:
-                print(f"Warning: Failed to add label '{label_name}' to card: {e}")
+                logger.warning(f"Failed to add label '{label_name}' to card: {e}")
 
         return added_label_ids
 
@@ -394,12 +398,13 @@ async def example_usage(session: Any, board_id: str, card_id: str) -> None:
     # Add labels to a card (creates them if they don't exist)
     labels_to_add = ["backend", "python", "high-priority"]
     added_ids = await helper.add_labels_to_card(card_id, labels_to_add)
-    print(f"Added {len(added_ids)} labels to card")
+    # Example usage - should use logger in real code
+    print(f"Added {len(added_ids)} labels to card", file=sys.stderr)
 
     # Get all labels on the board
     all_labels = await helper.refresh_labels()
-    print(f"Board has {len(all_labels)} total labels")
+    print(f"Board has {len(all_labels)} total labels", file=sys.stderr)
 
     # Get color for a label type
     color = LabelManagerHelper.get_color_for_label("frontend")
-    print(f"Recommended color for 'frontend': {color}")
+    print(f"Recommended color for 'frontend': {color}", file=sys.stderr)

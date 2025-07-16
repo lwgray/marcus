@@ -149,7 +149,10 @@ class Settings:
                     file_config = json.load(f)
                     config = self._deep_merge(config, file_config)
             except Exception as e:
-                print(f"Error loading config file: {e}")
+                # Don't print to stdout - corrupts MCP protocol
+                import sys
+
+                print(f"Error loading config file: {e}", file=sys.stderr)
         else:
             try:
                 # Get configuration from centralized loader
@@ -207,7 +210,12 @@ class Settings:
 
             except Exception as e:
                 # If config loader fails, just use defaults
-                print(f"Warning: Could not load from config loader: {e}")
+                # Don't print to stdout - corrupts MCP protocol
+                import sys
+
+                print(
+                    f"Warning: Could not load from config loader: {e}", file=sys.stderr
+                )
 
         # Environment variables still override everything
         config = self._load_env_overrides(config)
@@ -547,12 +555,23 @@ class Settings:
 
         # Check for API key if AI is being used
         if not os.environ.get("ANTHROPIC_API_KEY"):
-            print("Warning: ANTHROPIC_API_KEY not found in environment")
+            # Don't print to stdout - corrupts MCP protocol
+            import sys
+
+            print(
+                "Warning: ANTHROPIC_API_KEY not found in environment", file=sys.stderr
+            )
 
         # Validate monitoring interval
         monitoring_interval = self.get("monitoring_interval")
         if monitoring_interval < 60:
-            print("Warning: Monitoring interval is very short (< 60 seconds)")
+            # Don't print to stdout - corrupts MCP protocol
+            import sys
+
+            print(
+                "Warning: Monitoring interval is very short (< 60 seconds)",
+                file=sys.stderr,
+            )
 
         # Validate communication channels
         if not any(
@@ -562,6 +581,9 @@ class Settings:
                 self.get("kanban_comments_enabled"),
             ]
         ):
-            print("Warning: No communication channels enabled")
+            # Don't print to stdout - corrupts MCP protocol
+            import sys
+
+            print("Warning: No communication channels enabled", file=sys.stderr)
 
         return True

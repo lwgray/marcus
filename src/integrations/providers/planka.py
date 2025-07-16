@@ -67,7 +67,7 @@ class Planka(KanbanInterface):
             self.connected = True
             return True
         except Exception as e:
-            print(f"Failed to connect to Planka: {e}")
+            logger.error(f"Failed to connect to Planka: {e}")
             return False
 
     async def disconnect(self):

@@ -11,7 +11,7 @@ Standardized error response formatting for different contexts:
 
 import json
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -48,7 +48,7 @@ class ErrorResponseConfig:
     include_remediation: bool = True
     max_message_length: int = 500
     sanitize_sensitive_data: bool = True
-    custom_fields: Dict[str, Any] = None
+    custom_fields: Dict[str, Any] = field(default_factory=dict)
 
 
 class ErrorResponseFormatter:
@@ -59,7 +59,7 @@ class ErrorResponseFormatter:
     maintaining security and usability.
     """
 
-    def __init__(self, config: ErrorResponseConfig = None):
+    def __init__(self, config: Optional[ErrorResponseConfig] = None):
         self.config = config or ErrorResponseConfig()
         self.sensitive_fields = {
             "password",
@@ -77,7 +77,7 @@ class ErrorResponseFormatter:
         self,
         error: Union[MarcusBaseError, Exception],
         format_type: ResponseFormat,
-        additional_context: Dict[str, Any] = None,
+        additional_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Format error for specified response type.
@@ -130,7 +130,7 @@ class ErrorResponseFormatter:
 
     def _format_for_mcp(self, error: MarcusBaseError) -> Dict[str, Any]:
         """Format error for MCP protocol response."""
-        base_response = {
+        base_response: Dict[str, Any] = {
             "success": False,
             "error": {
                 "code": error.error_code,
@@ -143,7 +143,8 @@ class ErrorResponseFormatter:
 
         # Add context information
         if error.context:
-            base_response["error"]["context"] = {
+            error_dict = base_response["error"]
+            error_dict["context"] = {
                 "operation": error.context.operation,
                 "correlation_id": error.context.correlation_id,
                 "timestamp": error.context.timestamp.isoformat(),
@@ -153,9 +154,7 @@ class ErrorResponseFormatter:
 
             # Add custom context if present
             if error.context.custom_context:
-                base_response["error"]["context"][
-                    "custom_context"
-                ] = error.context.custom_context
+                error_dict["context"]["custom_context"] = error.context.custom_context
 
         # Add remediation if enabled
         if self.config.include_remediation and error.remediation:
@@ -168,19 +167,19 @@ class ErrorResponseFormatter:
                 remediation["retry"] = error.remediation.retry_strategy
 
             if remediation:
-                base_response["error"]["remediation"] = remediation
+                error_dict["remediation"] = remediation
 
         # Add debug information if enabled
         if self.config.include_debug_info:
             debug_info = self._build_debug_info(error)
             if debug_info:
-                base_response["error"]["debug"] = debug_info
+                error_dict["debug"] = debug_info
 
         return base_response
 
     def _format_for_json_api(self, error: MarcusBaseError) -> Dict[str, Any]:
         """Format error for JSON API response."""
-        response = {
+        response: Dict[str, Any] = {
             "error": {
                 "id": error.context.correlation_id,
                 "status": self._get_http_status_code(error),
@@ -198,7 +197,8 @@ class ErrorResponseFormatter:
 
         # Add source information
         if error.context.operation:
-            response["error"]["source"] = {
+            error_dict = response["error"]
+            error_dict["source"] = {
                 "operation": error.context.operation,
                 "agent_id": error.context.agent_id,
                 "task_id": error.context.task_id,
@@ -230,7 +230,7 @@ class ErrorResponseFormatter:
                 )
 
             if suggestions:
-                response["error"]["meta"]["suggestions"] = suggestions
+                error_dict["meta"]["suggestions"] = suggestions
 
         return response
 
@@ -262,7 +262,7 @@ class ErrorResponseFormatter:
 
     def _format_for_logging(self, error: MarcusBaseError) -> Dict[str, Any]:
         """Format error for structured logging."""
-        log_data = {
+        log_data: Dict[str, Any] = {
             "error_code": error.error_code,
             "error_type": error.__class__.__name__,
             "message": error.message,
@@ -333,7 +333,7 @@ class ErrorResponseFormatter:
         self, error: MarcusBaseError, include_all: bool = False
     ) -> Dict[str, Any]:
         """Build debug information for error."""
-        debug_info = {}
+        debug_info: Dict[str, Any] = {}
 
         # Stack trace
         if self.config.include_stack_trace or include_all:
@@ -364,7 +364,7 @@ class ErrorResponseFormatter:
     ) -> List[Dict[str, Any]]:
         """Build chain of exception causes."""
         chain = []
-        current = cause
+        current: Optional[Exception] = cause
         depth = 0
 
         while current and depth < max_depth:
@@ -407,7 +407,7 @@ class ErrorResponseFormatter:
         else:
             return 500  # Internal Server Error
 
-    def _truncate_message(self, message: str, max_length: int = None) -> str:
+    def _truncate_message(self, message: str, max_length: Optional[int] = None) -> str:
         """Truncate message to maximum length."""
         max_len = max_length or self.config.max_message_length
         if len(message) <= max_len:
@@ -418,7 +418,7 @@ class ErrorResponseFormatter:
     def _sanitize_response(self, response: Dict[str, Any]) -> Dict[str, Any]:
         """Remove sensitive information from response."""
 
-        def sanitize_dict(obj):
+        def sanitize_dict(obj: Any) -> Any:
             if isinstance(obj, dict):
                 sanitized = {}
                 for key, value in obj.items():
@@ -444,7 +444,7 @@ class BatchErrorResponseFormatter:
     Provides summary views and detailed breakdowns of batch operation results.
     """
 
-    def __init__(self, formatter: ErrorResponseFormatter = None):
+    def __init__(self, formatter: Optional[ErrorResponseFormatter] = None):
         self.formatter = formatter or ErrorResponseFormatter()
 
     def format_batch_response(
@@ -462,7 +462,7 @@ class BatchErrorResponseFormatter:
         success_rate = successes / total_operations if total_operations > 0 else 0
 
         # Group errors by type
-        error_groups = {}
+        error_groups: Dict[str, List[MarcusBaseError]] = {}
         for error in errors:
             error_type = error.__class__.__name__
             if error_type not in error_groups:
@@ -518,19 +518,19 @@ class BatchErrorResponseFormatter:
             return {"total_errors": 0}
 
         # Group by severity
-        severity_counts = {}
+        severity_counts: Dict[str, int] = {}
         for error in errors:
             severity = error.severity.value
             severity_counts[severity] = severity_counts.get(severity, 0) + 1
 
         # Group by category
-        category_counts = {}
+        category_counts: Dict[str, int] = {}
         for error in errors:
             category = error.category.value
             category_counts[category] = category_counts.get(category, 0) + 1
 
         # Find most common error types
-        error_type_counts = {}
+        error_type_counts: Dict[str, int] = {}
         for error in errors:
             error_type = error.__class__.__name__
             error_type_counts[error_type] = error_type_counts.get(error_type, 0) + 1
@@ -560,7 +560,7 @@ class BatchErrorResponseFormatter:
 def create_success_response(
     data: Any = None,
     message: str = "Operation completed successfully",
-    metadata: Dict[str, Any] = None,
+    metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Create a standardized success response."""
     response = {
@@ -581,8 +581,8 @@ def create_success_response(
 def create_error_response(
     error: Union[MarcusBaseError, Exception],
     format_type: ResponseFormat = ResponseFormat.MCP,
-    config: ErrorResponseConfig = None,
-    additional_context: Dict[str, Any] = None,
+    config: Optional[ErrorResponseConfig] = None,
+    additional_context: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Create a standardized error response."""
     formatter = ErrorResponseFormatter(config)
@@ -590,7 +590,7 @@ def create_error_response(
 
 
 def handle_mcp_tool_error(
-    error: Exception, tool_name: str, arguments: Dict[str, Any] = None
+    error: Exception, tool_name: str, arguments: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """Helper for handling errors in MCP tool calls."""
     from .error_framework import ErrorContext

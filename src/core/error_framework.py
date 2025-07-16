@@ -87,9 +87,9 @@ class MarcusBaseError(Exception):
     def __init__(
         self,
         message: str,
-        error_code: str = None,
+        error_code: Optional[str] = None,
         context: Optional[ErrorContext] = None,
-        remediation: Optional[RemediationSuggestion] = None,
+        remediation: Optional[Union[RemediationSuggestion, Dict[str, Any]]] = None,
         severity: ErrorSeverity = ErrorSeverity.MEDIUM,
         retryable: bool = False,
         cause: Optional[Exception] = None,
@@ -102,8 +102,10 @@ class MarcusBaseError(Exception):
         # Handle remediation as either RemediationSuggestion or dict
         if isinstance(remediation, dict):
             self.remediation = RemediationSuggestion(**remediation)
+        elif remediation is not None:
+            self.remediation = remediation
         else:
-            self.remediation = remediation or RemediationSuggestion()
+            self.remediation = RemediationSuggestion()
 
         self.severity = severity
         self.retryable = retryable
@@ -121,7 +123,7 @@ class MarcusBaseError(Exception):
         # Override in subclasses for specific categorization
         return ErrorCategory.SYSTEM
 
-    def _log_error(self):
+    def _log_error(self) -> None:
         """Log error with appropriate level based on severity."""
         log_data = {
             "error_code": self.error_code,
@@ -180,7 +182,7 @@ class MarcusBaseError(Exception):
 class TransientError(MarcusBaseError):
     """Base class for transient errors that can be automatically retried."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         kwargs.setdefault("retryable", True)
         kwargs.setdefault("severity", ErrorSeverity.MEDIUM)
         super().__init__(*args, **kwargs)
@@ -193,8 +195,12 @@ class NetworkTimeoutError(TransientError):
     """Network operation timed out."""
 
     def __init__(
-        self, service_name: str = "unknown", timeout_seconds: int = 30, *args, **kwargs
-    ):
+        self,
+        service_name: str = "unknown",
+        timeout_seconds: int = 30,
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         # Extract service_name from kwargs if not provided positionally
         if "service_name" in kwargs:
             service_name = kwargs.pop("service_name")
@@ -218,7 +224,9 @@ class NetworkTimeoutError(TransientError):
 class ServiceUnavailableError(TransientError):
     """External service is temporarily unavailable."""
 
-    def __init__(self, service_name: str = "unknown", *args, **kwargs):
+    def __init__(
+        self, service_name: str = "unknown", *args: Any, **kwargs: Any
+    ) -> None:
         message = f"Service {service_name} is temporarily unavailable"
         kwargs.setdefault(
             "remediation",
@@ -235,8 +243,12 @@ class RateLimitError(TransientError):
     """Rate limit exceeded for API calls."""
 
     def __init__(
-        self, service_name: str = "unknown", retry_after: int = 60, *args, **kwargs
-    ):
+        self,
+        service_name: str = "unknown",
+        retry_after: int = 60,
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         message = f"Rate limit exceeded for {service_name}. Retry after {retry_after}s"
         kwargs.setdefault(
             "remediation",
@@ -252,7 +264,9 @@ class RateLimitError(TransientError):
 class TemporaryResourceError(TransientError):
     """Temporary resource unavailability (memory, disk, etc.)."""
 
-    def __init__(self, resource_type: str = "unknown", *args, **kwargs):
+    def __init__(
+        self, resource_type: str = "unknown", *args: Any, **kwargs: Any
+    ) -> None:
         message = f"Temporary {resource_type} resource unavailability"
         kwargs.setdefault(
             "remediation",
@@ -273,7 +287,7 @@ class TemporaryResourceError(TransientError):
 class ConfigurationError(MarcusBaseError):
     """Base class for configuration-related errors."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         kwargs.setdefault("severity", ErrorSeverity.HIGH)
         kwargs.setdefault("retryable", False)
         super().__init__(*args, **kwargs)
@@ -289,9 +303,9 @@ class MissingCredentialsError(ConfigurationError):
         self,
         service_name: str = "unknown",
         credential_type: str = "API key",
-        *args,
-        **kwargs,
-    ):
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         message = f"Missing {credential_type} for {service_name}"
         kwargs.setdefault(
             "remediation",
@@ -308,8 +322,12 @@ class InvalidConfigurationError(ConfigurationError):
     """Configuration values are invalid."""
 
     def __init__(
-        self, config_key: str = "unknown", expected_format: str = "", *args, **kwargs
-    ):
+        self,
+        config_key: str = "unknown",
+        expected_format: str = "",
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         message = f"Invalid configuration for {config_key}"
         if expected_format:
             message += f". Expected format: {expected_format}"
@@ -327,7 +345,9 @@ class InvalidConfigurationError(ConfigurationError):
 class MissingDependencyError(ConfigurationError):
     """Required dependency is missing."""
 
-    def __init__(self, dependency_name: str = "unknown", *args, **kwargs):
+    def __init__(
+        self, dependency_name: str = "unknown", *args: Any, **kwargs: Any
+    ) -> None:
         message = f"Missing required dependency: {dependency_name}"
         kwargs.setdefault(
             "remediation",
@@ -343,7 +363,9 @@ class MissingDependencyError(ConfigurationError):
 class EnvironmentError(ConfigurationError):
     """Environment setup is incorrect."""
 
-    def __init__(self, environment_issue: str = "unknown", *args, **kwargs):
+    def __init__(
+        self, environment_issue: str = "unknown", *args: Any, **kwargs: Any
+    ) -> None:
         message = f"Environment setup issue: {environment_issue}"
         kwargs.setdefault(
             "remediation",
@@ -364,7 +386,7 @@ class EnvironmentError(ConfigurationError):
 class BusinessLogicError(MarcusBaseError):
     """Base class for business logic violations."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         kwargs.setdefault("severity", ErrorSeverity.MEDIUM)
         kwargs.setdefault("retryable", False)
         super().__init__(*args, **kwargs)
@@ -381,9 +403,9 @@ class TaskAssignmentError(BusinessLogicError):
         task_id: str = "unknown",
         agent_id: str = "unknown",
         reason: str = "",
-        *args,
-        **kwargs,
-    ):
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         message = f"Cannot assign task {task_id} to agent {agent_id}"
         if reason:
             message += f": {reason}"
@@ -401,7 +423,9 @@ class TaskAssignmentError(BusinessLogicError):
 class WorkflowViolationError(BusinessLogicError):
     """Workflow rule violation."""
 
-    def __init__(self, workflow_rule: str = "unknown", *args, **kwargs):
+    def __init__(
+        self, workflow_rule: str = "unknown", *args: Any, **kwargs: Any
+    ) -> None:
         message = f"Workflow violation: {workflow_rule}"
         kwargs.setdefault(
             "remediation",
@@ -418,8 +442,12 @@ class ValidationError(BusinessLogicError):
     """Data validation failed."""
 
     def __init__(
-        self, field_name: str = "unknown", validation_rule: str = "", *args, **kwargs
-    ):
+        self,
+        field_name: str = "unknown",
+        validation_rule: str = "",
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         message = f"Validation failed for {field_name}"
         if validation_rule:
             message += f": {validation_rule}"
@@ -437,7 +465,9 @@ class ValidationError(BusinessLogicError):
 class StateConflictError(BusinessLogicError):
     """System state conflict detected."""
 
-    def __init__(self, conflict_description: str = "unknown", *args, **kwargs):
+    def __init__(
+        self, conflict_description: str = "unknown", *args: Any, **kwargs: Any
+    ) -> None:
         message = f"State conflict: {conflict_description}"
         kwargs.setdefault(
             "remediation",
@@ -458,7 +488,7 @@ class StateConflictError(BusinessLogicError):
 class IntegrationError(MarcusBaseError):
     """Base class for external integration errors."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         # Handle different initialization patterns
         message = None
         service_name = "unknown"
@@ -502,8 +532,12 @@ class KanbanIntegrationError(IntegrationError):
     """Kanban board integration error."""
 
     def __init__(
-        self, board_name: str = "unknown", operation: str = "unknown", *args, **kwargs
-    ):
+        self,
+        board_name: str = "unknown",
+        operation: str = "unknown",
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         message = f"Kanban integration error: {operation} failed for board {board_name}"
         kwargs.setdefault(
             "remediation",
@@ -523,9 +557,9 @@ class AIProviderError(IntegrationError):
         self,
         provider_name: str = "unknown",
         operation: str = "unknown",
-        *args,
-        **kwargs,
-    ):
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         message = f"AI provider error: {operation} failed for {provider_name}"
         kwargs.setdefault(
             "remediation",
@@ -544,7 +578,9 @@ class AIProviderError(IntegrationError):
 class AuthenticationError(IntegrationError):
     """Authentication failed for external service."""
 
-    def __init__(self, service_name: str = "unknown", *args, **kwargs):
+    def __init__(
+        self, service_name: str = "unknown", *args: Any, **kwargs: Any
+    ) -> None:
         message = f"Authentication failed for {service_name}"
         kwargs.setdefault("severity", ErrorSeverity.HIGH)
         kwargs.setdefault("retryable", False)
@@ -563,8 +599,12 @@ class ExternalServiceError(IntegrationError):
     """Generic external service error."""
 
     def __init__(
-        self, service_name: str = "unknown", error_details: str = "", *args, **kwargs
-    ):
+        self,
+        service_name: str = "unknown",
+        error_details: str = "",
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         message = f"External service error: {service_name}"
         if error_details:
             message += f" - {error_details}"
@@ -587,7 +627,7 @@ class ExternalServiceError(IntegrationError):
 class SecurityError(MarcusBaseError):
     """Base class for security-related errors."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         kwargs.setdefault("severity", ErrorSeverity.CRITICAL)
         kwargs.setdefault("retryable", False)
         super().__init__(*args, **kwargs)
@@ -603,9 +643,9 @@ class AuthorizationError(SecurityError):
         self,
         resource: str = "unknown",
         required_permission: str = "unknown",
-        *args,
-        **kwargs,
-    ):
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         message = f"Authorization failed: insufficient permissions for {resource}"
         kwargs.setdefault(
             "remediation",
@@ -622,8 +662,12 @@ class WorkspaceSecurityError(SecurityError):
     """Workspace security violation."""
 
     def __init__(
-        self, path: str = "unknown", violation_type: str = "unknown", *args, **kwargs
-    ):
+        self,
+        path: str = "unknown",
+        violation_type: str = "unknown",
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         message = f"Workspace security violation: {violation_type} for path {path}"
         kwargs.setdefault(
             "remediation",
@@ -640,8 +684,12 @@ class PermissionError(SecurityError):
     """Permission denied for operation."""
 
     def __init__(
-        self, operation: str = "unknown", resource: str = "unknown", *args, **kwargs
-    ):
+        self,
+        operation: str = "unknown",
+        resource: str = "unknown",
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         message = f"Permission denied: {operation} on {resource}"
         kwargs.setdefault(
             "remediation",
@@ -662,7 +710,7 @@ class PermissionError(SecurityError):
 class SystemError(MarcusBaseError):
     """Base class for critical system errors."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         kwargs.setdefault("severity", ErrorSeverity.CRITICAL)
         kwargs.setdefault("retryable", False)
         super().__init__(*args, **kwargs)
@@ -675,8 +723,12 @@ class ResourceExhaustionError(SystemError):
     """System resource exhaustion."""
 
     def __init__(
-        self, resource_type: str = "unknown", current_usage: str = "", *args, **kwargs
-    ):
+        self,
+        resource_type: str = "unknown",
+        current_usage: str = "",
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         message = f"Resource exhaustion: {resource_type}"
         if current_usage:
             message += f" (current usage: {current_usage})"
@@ -695,8 +747,12 @@ class CorruptedStateError(SystemError):
     """System state corruption detected."""
 
     def __init__(
-        self, component: str = "unknown", corruption_details: str = "", *args, **kwargs
-    ):
+        self,
+        component: str = "unknown",
+        corruption_details: str = "",
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         message = f"Corrupted state detected in {component}"
         if corruption_details:
             message += f": {corruption_details}"
@@ -715,8 +771,12 @@ class DatabaseError(SystemError):
     """Database operation failed."""
 
     def __init__(
-        self, operation: str = "unknown", table: str = "unknown", *args, **kwargs
-    ):
+        self,
+        operation: str = "unknown",
+        table: str = "unknown",
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         message = f"Database error: {operation} failed for table {table}"
         kwargs.setdefault(
             "remediation",
@@ -736,9 +796,9 @@ class CriticalDependencyError(SystemError):
         self,
         dependency_name: str = "unknown",
         failure_reason: str = "",
-        *args,
-        **kwargs,
-    ):
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         message = f"Critical dependency failure: {dependency_name}"
         if failure_reason:
             message += f" - {failure_reason}"
@@ -761,11 +821,11 @@ class CriticalDependencyError(SystemError):
 @contextmanager
 def error_context(
     operation: str,
-    agent_id: str = None,
-    task_id: str = None,
-    integration_name: str = None,
-    custom_context: Dict[str, Any] = None,
-):
+    agent_id: Optional[str] = None,
+    task_id: Optional[str] = None,
+    integration_name: Optional[str] = None,
+    custom_context: Optional[Dict[str, Any]] = None,
+) -> Any:
     """
     Context manager for automatic error context injection.
 
@@ -815,15 +875,17 @@ class ErrorResponseFormatter:
         error: MarcusBaseError, include_debug: bool = False
     ) -> Dict[str, Any]:
         """Format error for MCP protocol response."""
-        response = {"success": False, "error": error.to_dict()}
+        response: Dict[str, Any] = {"success": False, "error": error.to_dict()}
 
         if include_debug:
-            response["error"]["debug"] = {
-                "stack_trace": error.stack_trace,
-                "cause": str(error.cause) if error.cause else None,
-                "system_state": error.context.system_state,
-                "integration_state": error.context.integration_state,
-            }
+            error_dict = response["error"]
+            if isinstance(error_dict, dict):
+                error_dict["debug"] = {
+                    "stack_trace": error.stack_trace,
+                    "cause": str(error.cause) if error.cause else None,
+                    "system_state": error.context.system_state,
+                    "integration_state": error.context.integration_state,
+                }
 
         return response
 

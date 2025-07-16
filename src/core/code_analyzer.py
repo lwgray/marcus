@@ -8,7 +8,7 @@ context-aware information to workers about implemented features.
 import json
 import re
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from src.core.models import Task, WorkerStatus
 
@@ -36,7 +36,7 @@ class CodeAnalyzer:
     ... )
     """
 
-    def __init__(self, mcp_caller: Optional[callable] = None) -> None:
+    def __init__(self, mcp_caller: Optional[Callable[..., Any]] = None) -> None:
         """
         Initialize the code analyzer.
 
@@ -97,21 +97,21 @@ class CodeAnalyzer:
         ... )
         >>> print(analysis["recommendations"])
         """
-        analysis = {
+        analysis: Dict[str, Any] = {
             "task_id": task.id,
             "task_name": task.name,
-            "worker_id": worker.agent_id,
+            "worker_id": worker.worker_id,
             "findings": {},
             "recommendations": [],
         }
 
         # Check for recent commits by the worker
-        commits = await self._get_recent_commits(owner, repo, worker.agent_id)
+        commits = await self._get_recent_commits(owner, repo, worker.worker_id)
         if commits:
             analysis["findings"]["commits"] = commits
 
         # Check for PRs
-        prs = await self._get_worker_prs(owner, repo, worker.agent_id)
+        prs = await self._get_worker_prs(owner, repo, worker.worker_id)
         if prs:
             analysis["findings"]["pull_requests"] = prs
 
@@ -164,7 +164,7 @@ class CodeAnalyzer:
         >>> for endpoint in details["implementations"]:
         ...     print(f"{endpoint['method']} {endpoint['path']}")
         """
-        details = {"feature_type": feature_type, "implementations": []}
+        details: Dict[str, Any] = {"feature_type": feature_type, "implementations": []}
 
         if feature_type == "endpoints":
             details["implementations"] = await self._find_endpoints(owner, repo)
@@ -321,7 +321,7 @@ class CodeAnalyzer:
                 {"owner": owner, "repo": repo, "pullNumber": pr_number},
             )
 
-            analysis = {
+            analysis: Dict[str, Any] = {
                 "endpoints": [],
                 "models": [],
                 "configurations": [],
@@ -701,3 +701,13 @@ class CodeAnalyzer:
         added = len(re.findall(r"^\+[^+]", patch, re.MULTILINE))
         removed = len(re.findall(r"^-[^-]", patch, re.MULTILINE))
         return f"{added} additions, {removed} deletions"
+
+    async def _find_models(self, owner: str, repo: str) -> List[Dict[str, Any]]:
+        """Find data models in the repository."""
+        # TODO: Implement model finding logic
+        return []
+
+    async def _find_schemas(self, owner: str, repo: str) -> List[Dict[str, Any]]:
+        """Find data schemas in the repository."""
+        # TODO: Implement schema finding logic
+        return []

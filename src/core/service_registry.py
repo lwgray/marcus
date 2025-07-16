@@ -25,7 +25,7 @@ class MarcusServiceRegistry:
     Clients like Seneca can find running Marcus instances automatically.
     """
 
-    def __init__(self, instance_id: str = None):
+    def __init__(self, instance_id: Optional[str] = None):
         """
         Initialize service registry
 
@@ -53,9 +53,9 @@ class MarcusServiceRegistry:
         self,
         mcp_command: str,
         log_dir: str,
-        project_name: str = None,
-        provider: str = None,
-        **kwargs,
+        project_name: Optional[str] = None,
+        provider: Optional[str] = None,
+        **kwargs: Any,
     ) -> Dict[str, Any]:
         """
         Register this Marcus instance as available service
@@ -100,7 +100,7 @@ class MarcusServiceRegistry:
 
         return service_info
 
-    def update_heartbeat(self, **updates):
+    def update_heartbeat(self, **updates: Any) -> None:
         """Update service heartbeat and optional fields"""
         if not self.registry_file.exists():
             return
@@ -118,7 +118,7 @@ class MarcusServiceRegistry:
         except (json.JSONDecodeError, FileNotFoundError):
             pass
 
-    def unregister_service(self):
+    def unregister_service(self) -> None:
         """Remove service registration"""
         if self.registry_file.exists():
             self.registry_file.unlink()
@@ -134,7 +134,7 @@ class MarcusServiceRegistry:
             List of available Marcus services
         """
         registry = cls()
-        services = []
+        services: List[Dict[str, Any]] = []
 
         if not registry.registry_dir.exists():
             return services
@@ -183,7 +183,7 @@ class MarcusServiceRegistry:
             return False
 
         try:
-            return psutil.pid_exists(pid)
+            return psutil.pid_exists(pid)  # type: ignore[no-any-return]
         except:
             return False
 
@@ -192,7 +192,7 @@ class MarcusServiceRegistry:
 _service_registry = None
 
 
-def get_service_registry(instance_id: str = None) -> MarcusServiceRegistry:
+def get_service_registry(instance_id: Optional[str] = None) -> MarcusServiceRegistry:
     """Get or create global service registry instance"""
     global _service_registry
     if _service_registry is None:
@@ -200,13 +200,13 @@ def get_service_registry(instance_id: str = None) -> MarcusServiceRegistry:
     return _service_registry
 
 
-def register_marcus_service(**kwargs) -> Dict[str, Any]:
+def register_marcus_service(**kwargs: Any) -> Dict[str, Any]:
     """Convenience function to register Marcus service"""
     registry = get_service_registry()
     return registry.register_service(**kwargs)
 
 
-def unregister_marcus_service():
+def unregister_marcus_service() -> None:
     """Convenience function to unregister Marcus service"""
     registry = get_service_registry()
     registry.unregister_service()
