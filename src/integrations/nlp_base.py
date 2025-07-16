@@ -170,11 +170,14 @@ class NaturalLanguageTaskCreator(ABC):
         Returns:
             List of tasks with updated dependencies
         """
-        # Apply deployment dependencies
-        tasks = self.safety_checker.apply_deployment_dependencies(tasks)
+        # Apply implementation dependencies (implementation depends on design)
+        tasks = self.safety_checker.apply_implementation_dependencies(tasks)
 
-        # Apply testing dependencies
+        # Apply testing dependencies (testing depends on implementation)
         tasks = self.safety_checker.apply_testing_dependencies(tasks)
+
+        # Apply deployment dependencies (deployment depends on everything)
+        tasks = self.safety_checker.apply_deployment_dependencies(tasks)
 
         return tasks
 

@@ -159,6 +159,16 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 safe_tasks = await self.apply_safety_checks(tasks)
                 logger.info(f"Safety checks passed, {len(safe_tasks)} tasks ready")
 
+                # Add documentation task if appropriate
+                from src.integrations.documentation_tasks import (
+                    enhance_project_with_documentation,
+                )
+
+                safe_tasks = enhance_project_with_documentation(
+                    safe_tasks, description, project_name
+                )
+                logger.info(f"After documentation enhancement: {len(safe_tasks)} tasks")
+
                 # Log safety check impact
                 added_tasks = len(safe_tasks) - len(tasks)
                 if added_tasks > 0:
@@ -206,6 +216,13 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             }
 
             logger.info(f"Successfully created project with {len(created_tasks)} tasks")
+
+            # Schedule cleanup to run in background after response is sent
+            # This prevents cleanup from delaying the MCP response
+            import asyncio
+
+            asyncio.create_task(self._cleanup_background())
+
             return result
 
         except Exception as e:
@@ -248,6 +265,32 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                         "options": options,
                     },
                 )
+
+    async def _cleanup_background(self):
+        """Cleanup AI engine and tasks in background after response is sent"""
+        try:
+            # Ensure AI engine cleanup
+            if hasattr(self.ai_engine, "cleanup"):
+                try:
+                    await self.ai_engine.cleanup()
+                except Exception as cleanup_error:
+                    logger.warning(f"AI engine cleanup failed: {cleanup_error}")
+
+            # Force cleanup of any remaining async tasks
+            try:
+                import asyncio
+
+                loop = asyncio.get_event_loop()
+                pending = asyncio.all_tasks(loop)
+                for task in pending:
+                    if not task.done() and task != asyncio.current_task():
+                        task.cancel()
+                # Give tasks a moment to cancel
+                await asyncio.sleep(0.1)
+            except Exception as task_cleanup_error:
+                logger.warning(f"Task cleanup failed: {task_cleanup_error}")
+        except Exception as e:
+            logger.warning(f"Background cleanup failed: {e}")
 
     def _build_constraints(
         self, options: Optional[Dict[str, Any]]
@@ -306,8 +349,9 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         if "deadline" in options:
             try:
                 constraints.deadline = datetime.fromisoformat(options["deadline"])
-            except:
-                pass
+            except (ValueError, TypeError):
+                # Invalid date format, use default (no deadline)
+                pass  # nosec B110
 
         return constraints
 

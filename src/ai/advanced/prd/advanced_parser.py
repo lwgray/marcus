@@ -1544,7 +1544,12 @@ class AdvancedPRDParser:
         elif domain == "ecommerce":
             labels.append("component:ecommerce")
         else:
-            labels.append("component:backend")  # Default
+            # For REST API projects, use API label
+            project_type = context.get("project_type", "").lower()
+            if "api" in project_type or "rest" in project_type:
+                labels.append("component:api")
+            else:
+                labels.append("component:backend")  # Default
 
         # Type labels
         if task_type == "design":

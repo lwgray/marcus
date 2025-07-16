@@ -21,7 +21,7 @@ Marcus coordinates AI agents (Claude, GPT, etc.) to work together on projects wi
 ### **1. Setup Planka Board (1 minute)**
 ```bash
 # Clone and start the kanban-mcp server
-git clone https://github.com/joshuacc/kanban-mcp.git ~/dev/kanban-mcp
+git clone https://github.com/bradrisse/kanban-mcp.git ~/dev/kanban-mcp
 cd ~/dev/kanban-mcp
 docker-compose up -d
 
@@ -128,6 +128,23 @@ When agents get stuck, Marcus provides:
 - Add new AI providers (OpenAI, local models)
 - Connect to GitHub Projects or Linear
 - Build custom MCP tools
+
+---
+
+## 💡 **Pro Tips**
+
+### **Project Location**
+⚠️ **Always build projects outside Marcus root** - Create in `~/projects/` or similar to avoid git conflicts
+
+### **Multi-Agent Strategies**
+- **Option 1**: Git worktrees - Each agent on separate branch, merge when done
+  ```bash
+  git worktree add ../project-agent1 agent1-branch
+  ```
+- **Option 2**: Single agent with subagents - No merging needed, sequential work
+
+### **Enable Context Awareness**
+Set `"context_dependency": true` in `config_marcus.json` - Agents see previous implementations, API endpoints, and decisions
 
 ---
 

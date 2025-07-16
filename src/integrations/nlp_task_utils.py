@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 class TaskType(Enum):
     """Task type classification"""
 
+    DESIGN = "design"
     DEPLOYMENT = "deployment"
     IMPLEMENTATION = "implementation"
     TESTING = "testing"
@@ -30,6 +31,19 @@ class TaskClassifier:
 
     # Keyword mappings for task classification
     TASK_KEYWORDS = {
+        TaskType.DESIGN: [
+            "design",
+            "architect",
+            "plan",
+            "specification",
+            "wireframe",
+            "mockup",
+            "diagram",
+            "blueprint",
+            "prototype",
+            "architecture",
+            "planning",
+        ],
         TaskType.DEPLOYMENT: [
             "deploy",
             "release",
@@ -37,9 +51,10 @@ class TaskClassifier:
             "launch",
             "rollout",
             "publish",
-            "ship",
             "go-live",
             "deliver",
+            "staging",
+            "live",
         ],
         TaskType.IMPLEMENTATION: [
             "implement",
@@ -49,9 +64,9 @@ class TaskClassifier:
             "code",
             "construct",
             "write",
-            "design",
-            "architect",
             "refactor",
+            "program",
+            "engineer",
         ],
         TaskType.TESTING: [
             "test",
@@ -61,9 +76,10 @@ class TaskClassifier:
             "validate",
             "check",
             "assert",
-            "spec",
             "unittest",
             "integration",
+            "e2e",
+            "coverage",
         ],
         TaskType.DOCUMENTATION: [
             "document",
@@ -104,8 +120,19 @@ class TaskClassifier:
         # Combine name and description for better classification
         text_to_check = f"{task.name} {task.description}".lower()
 
-        # Check each task type's keywords
-        for task_type, keywords in list(cls.TASK_KEYWORDS.items()):
+        # Check in priority order - more specific types first
+        # Testing should be checked before Implementation to catch "Write tests" tasks
+        priority_order = [
+            TaskType.DEPLOYMENT,  # Most specific - deployment keywords are unique
+            TaskType.TESTING,  # Check before implementation to catch "write tests"
+            TaskType.DOCUMENTATION,  # Check before implementation to catch "write docs"
+            TaskType.DESIGN,  # Check before implementation to catch "design API"
+            TaskType.INFRASTRUCTURE,  # Specific setup/config tasks
+            TaskType.IMPLEMENTATION,  # Most general - catches remaining dev work
+        ]
+
+        for task_type in priority_order:
+            keywords = cls.TASK_KEYWORDS.get(task_type, [])
             if any(keyword in text_to_check for keyword in keywords):
                 return task_type
 
@@ -242,6 +269,37 @@ class SafetyChecker:
                     test_task.dependencies.append(impl_task.id)
                     logger.debug(
                         f"Added dependency: {test_task.name} depends on {impl_task.name}"
+                    )
+
+        return tasks
+
+    @staticmethod
+    def apply_implementation_dependencies(tasks: List[Task]) -> List[Task]:
+        """
+        Ensure implementation tasks depend on design tasks.
+
+        Args:
+            tasks: List of tasks to check
+
+        Returns:
+            List of tasks with updated dependencies
+        """
+        design_tasks = TaskClassifier.filter_by_type(tasks, TaskType.DESIGN)
+        implementation_tasks = TaskClassifier.filter_by_type(
+            tasks, TaskType.IMPLEMENTATION
+        )
+
+        for impl_task in implementation_tasks:
+            # Find related design tasks (by matching labels or keywords)
+            related_design_tasks = SafetyChecker._find_related_tasks(
+                impl_task, design_tasks
+            )
+
+            for design_task in related_design_tasks:
+                if design_task.id not in impl_task.dependencies:
+                    impl_task.dependencies.append(design_task.id)
+                    logger.debug(
+                        f"Added dependency: {impl_task.name} depends on {design_task.name}"
                     )
 
         return tasks

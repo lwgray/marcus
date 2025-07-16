@@ -810,11 +810,44 @@ async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Tas
             set(assigned_task_ids) | persisted_assigned_ids | state.tasks_being_assigned
         )
 
+        # Get completed task IDs for dependency checking
+        completed_task_ids = {
+            t.id for t in state.project_tasks if t.status == TaskStatus.DONE
+        }
+
+        # Filter tasks: TODO, not assigned, and all dependencies completed
         available_tasks = [
             t
             for t in state.project_tasks
-            if t.status == TaskStatus.TODO and t.id not in all_assigned_ids
+            if t.status == TaskStatus.TODO
+            and t.id not in all_assigned_ids
+            and all(dep_id in completed_task_ids for dep_id in (t.dependencies or []))
         ]
+
+        # Further filter to deprioritize deployment tasks
+        # Separate deployment and non-deployment tasks
+        deployment_keywords = ["deploy", "release", "production", "launch", "rollout"]
+        non_deployment_tasks = []
+        deployment_tasks = []
+
+        for task in available_tasks:
+            task_name_lower = task.name.lower()
+            task_labels_lower = [label.lower() for label in (task.labels or [])]
+
+            is_deployment = any(
+                keyword in task_name_lower or keyword in " ".join(task_labels_lower)
+                for keyword in deployment_keywords
+            )
+
+            if is_deployment:
+                deployment_tasks.append(task)
+            else:
+                non_deployment_tasks.append(task)
+
+        # Prefer non-deployment tasks; only use deployment if nothing else available
+        available_tasks = (
+            non_deployment_tasks if non_deployment_tasks else deployment_tasks
+        )
 
         if not available_tasks:
             return None
@@ -855,6 +888,9 @@ async def find_optimal_task_basic(
     best_task = None
     best_score = -1
 
+    # Check if this is a deployment task
+    deployment_keywords = ["deploy", "release", "production", "launch", "rollout"]
+
     for task in available_tasks:
         # Calculate skill match score
         skill_score = 0
@@ -870,8 +906,19 @@ async def find_optimal_task_basic(
             Priority.LOW: 0.2,
         }.get(task.priority, 0.5)
 
-        # Combined score
-        total_score = (skill_score * 0.6) + (priority_score * 0.4)
+        # Deployment penalty - reduce score for deployment tasks
+        task_name_lower = task.name.lower()
+        task_labels_lower = [label.lower() for label in (task.labels or [])]
+        is_deployment = any(
+            keyword in task_name_lower or keyword in " ".join(task_labels_lower)
+            for keyword in deployment_keywords
+        )
+        deployment_penalty = 0.5 if is_deployment else 1.0
+
+        # Combined score with deployment penalty
+        total_score = (
+            (skill_score * 0.6) + (priority_score * 0.4)
+        ) * deployment_penalty
 
         if total_score > best_score:
             best_score = total_score
