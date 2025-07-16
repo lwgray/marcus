@@ -126,7 +126,7 @@ class MarcusServer:
         self.events: Optional[Events] = None
         self.context: Optional[Context] = None
         self.memory: Any = None
-        
+
         # Get feature configurations with granular settings
         config_loader = get_config()
         events_config = config_loader.get_feature_config("events")
@@ -167,7 +167,8 @@ class MarcusServer:
             self.context = Context(
                 events=self.events,
                 persistence=self.persistence,
-                use_hybrid_inference=use_hybrid and hybrid_config.enable_ai_inference,
+                use_hybrid_inference=use_hybrid
+                and hybrid_config.get("enable_ai_inference", False),
                 ai_engine=self.ai_engine if use_hybrid else None,
             )
             # Apply context-specific settings
@@ -207,7 +208,7 @@ class MarcusServer:
                 EventIntegratedVisualizer,
             )
 
-            self.event_visualizer = EventIntegratedVisualizer(self.events)
+            self.event_visualizer = EventIntegratedVisualizer()
 
         # Log startup
         self.log_event(
@@ -224,7 +225,7 @@ class MarcusServer:
     def _register_handlers(self) -> None:
         """Register MCP tool handlers"""
 
-        @self.server.list_tools()
+        @self.server.list_tools()  # type: ignore[no-untyped-call,misc]
         async def handle_list_tools() -> List[types.Tool]:
             """Return list of available tools"""
             # Determine role based on client type
@@ -239,29 +240,29 @@ class MarcusServer:
 
             return get_tool_definitions(role)
 
-        @self.server.call_tool()
+        @self.server.call_tool()  # type: ignore[no-untyped-call,misc]
         async def handle_call_tool(
             name: str, arguments: Optional[Dict[str, Any]]
         ) -> List[types.TextContent | types.ImageContent | types.EmbeddedResource]:
             """Handle tool calls"""
             return await handle_tool_call(name, arguments, self)
 
-        @self.server.list_prompts()
+        @self.server.list_prompts()  # type: ignore[no-untyped-call,misc]
         async def handle_list_prompts() -> List[types.Prompt]:
             """Return list of available prompts - not used by Marcus"""
             return []
 
-        @self.server.list_resources()
+        @self.server.list_resources()  # type: ignore[no-untyped-call,misc]
         async def handle_list_resources() -> List[types.Resource]:
             """Return list of available resources - not used by Marcus"""
             return []
 
-        @self.server.read_resource()
+        @self.server.read_resource()  # type: ignore[no-untyped-call,misc]
         async def handle_read_resource(uri: str) -> str:
             """Read a resource - Marcus doesn't use resources currently"""
             raise ValueError(f"Resource not found: {uri}")
 
-        @self.server.get_prompt()
+        @self.server.get_prompt()  # type: ignore[no-untyped-call,misc]
         async def handle_get_prompt(
             name: str, arguments: Optional[Dict[str, str]] = None
         ) -> types.GetPromptResult:
@@ -348,7 +349,7 @@ class MarcusServer:
         """Migrate legacy configuration to multi-project format"""
         if self.kanban_client and not self.config.is_multi_project_mode():
             # Create a project from the legacy config
-            config_data = getattr(self.config, '_config', None)
+            config_data = getattr(self.config, "_config", None)
             if config_data is not None:
                 project_id = await self.project_registry.create_from_legacy_config(
                     config_data
@@ -403,7 +404,7 @@ class MarcusServer:
                     self.assignment_monitor = AssignmentMonitor(
                         self.assignment_persistence, self.kanban_client
                     )
-                    await self.assignment_monitor.start()
+                    await self.assignment_monitor.start()  # type: ignore[no-untyped-call]
 
                 # Kanban client initialized successfully
 
@@ -520,7 +521,8 @@ class MarcusServer:
         """Helper to publish events asynchronously"""
         try:
             source = data.get("source", "marcus")
-            await self.events.publish(event_type, source, data)
+            if self.events:
+                await self.events.publish(event_type, source, data)
         except Exception as e:
             # Don't let event publishing errors affect main flow
             print(f"Error publishing event: {e}", file=sys.stderr)
@@ -553,7 +555,7 @@ class MarcusServer:
                     ]
                 )
 
-                board_id = getattr(self.kanban_client, 'board_id', 'unknown')
+                board_id = getattr(self.kanban_client, "board_id", "unknown")
                 self.project_state = ProjectState(
                     board_id=board_id,
                     project_name="Current Project",  # Would need to get from board

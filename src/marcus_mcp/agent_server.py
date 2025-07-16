@@ -9,7 +9,7 @@ This server only exposes the tools necessary for agents to perform their tasks.
 import asyncio
 import sys
 from pathlib import Path
-from typing import Any, List, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -26,15 +26,17 @@ class AgentMarcusServer(MarcusServer):
     def _register_handlers(self) -> None:
         """Register MCP tool handlers with agent restrictions"""
 
-        @self.server.list_tools()
+        @self.server.list_tools()  # type: ignore[no-untyped-call,misc]
         async def handle_list_tools() -> List[types.Tool]:
             """Return list of available tools for agents"""
             # Force "agent" role to restrict tool access
             return get_tool_definitions(role="agent")
 
         # Use parent class tool handler
-        @self.server.call_tool()
-        async def handle_call_tool(name: str, arguments: Optional[Dict[str, Any]]) -> List[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+        @self.server.call_tool()  # type: ignore[no-untyped-call,misc]
+        async def handle_call_tool(
+            name: str, arguments: Optional[Dict[str, Any]]
+        ) -> List[types.TextContent | types.ImageContent | types.EmbeddedResource]:
             """Handle tool calls"""
             # Check if this is an allowed agent tool
             allowed_tools = [
@@ -66,6 +68,7 @@ class AgentMarcusServer(MarcusServer):
 async def main() -> None:
     """Main entry point for agent server"""
     import sys
+
     server = AgentMarcusServer()
     print("\nMarcus Agent MCP Server Running (Restricted Tools)", file=sys.stderr)
     print("=" * 50, file=sys.stderr)

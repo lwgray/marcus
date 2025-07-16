@@ -10,12 +10,15 @@ import asyncio
 from typing import Any, Dict, Optional
 
 from src.integrations.nlp_tools import add_feature_natural_language
+
 # Use type: ignore to suppress the export warning and avoid redefinition
 try:
-    from src.visualization.pipeline_flow import PipelineStage  # type: ignore
+    from src.visualization.pipeline_flow import (
+        PipelineStage,  # type: ignore[attr-defined]
+    )
 except ImportError:
     # Fallback if PipelineStage is not available
-    class PipelineStage:  # type: ignore[misc]
+    class PipelineStage:  # type: ignore[no-redef]
         MCP_REQUEST = "mcp_request"
         TASK_COMPLETION = "task_completion"
 
@@ -224,13 +227,6 @@ async def create_project(
                     "task_count": result.get("tasks_created", 0) if result else 0,
                 },
             )
-
-        # Ensure we have a proper response structure
-        if result is None:
-            result = {
-                "success": False,
-                "error": "No result returned from task creation",
-            }
 
         # Log immediately before returning to MCP
         state.log_event(
