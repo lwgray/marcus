@@ -131,7 +131,7 @@ def build_tiered_instructions(
                 if skill_names:
                     risk_parts.append(
                         f"📈 You're improving in {skill_names[0]} - "
-                "great opportunity to excel!"
+                        "great opportunity to excel!"
                     )
             if pt.get("recommendations"):
                 risk_parts.append(f"💡 {pt['recommendations'][0]}")

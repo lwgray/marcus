@@ -1,12 +1,16 @@
 # 🏛️ Marcus - AI Agent Coordination Platform
 
-**The first AI-native project coordinator. Watch multiple AI agents build complete applications together.**
+## What is Marcus?
+
+Marcus is an AI-powered project coordinator that breaks down requirements into tasks and assigns them to your AI
+agents. It's designed around a simple philosophy: give agents clear context and let them work autonomously.
+[Learn more about our approach →](docs/philosophy.md)
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Protocol](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
 [![MIT License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Marcus coordinates AI agents (Claude, GPT, etc.) to work together on projects with **context sharing**, **dependency resolution**, and **continuous learning**. Unlike traditional project management, Marcus is built specifically for autonomous AI agents.
+Ultimately, Marcus coordinates AI agents (Claude, GPT, etc.) to work together on projects with **context sharing**, **dependency resolution**, and **continuous learning**. Unlike traditional project management, Marcus is built specifically for autonomous AI agents.
 
 ---
 
@@ -16,9 +20,12 @@ Marcus coordinates AI agents (Claude, GPT, etc.) to work together on projects wi
 - Python 3.11+
 - Docker
 - Claude Code
-- Anthropic API key
+- AI Model (choose one):
+  - Anthropic API key (for Claude) - [Get one here](https://console.anthropic.com/)
+  - OR local model with Ollama - [Setup guide](docs/user-guide/how-to/setup-local-llm.md)
 
-### **1. Setup Planka Board (1 minute)**
+### **1. Setup Planka Board (1 minute)** Marcus maintains context with a Kanban Board
+#### Bring Your Own Board (BYOB)
 ```bash
 # Clone and start the kanban-mcp server
 git clone https://github.com/bradrisse/kanban-mcp.git ~/dev/kanban-mcp
@@ -49,17 +56,28 @@ python setup_marcus_demo.py
 # - Give you final setup instructions
 ```
 
-### **4. Connect Claude Code (30 seconds)**
+### **4. Starting Marcus (30 seconds)**
 ```bash
-# Add Marcus to Claude Code MCP
+# Start Marcus from the root directory
+cd /path/to/marcus
+python -m src.marcus_mcp.server
+
+# Marcus will start and be ready to accept connections
+```
+
+### **5. Connect Claude Code (30 seconds)**
+```bash
+# In a DIFFERENT directory (not marcus root), configure Claude Code:
+cd ~/my-project  # or any directory outside marcus
 claude mcp add python /path/to/marcus/src/marcus_mcp/server.py
 ```
 
-### **5. Run Demo & Watch Magic (30 seconds)**
+### **6. Run Demo & Watch Magic (30 seconds)**
 ```bash
 # In Claude Code:
 # 1. Copy content from prompts/Agent_prompt.md as your system prompt
 # 2. Add your Anthropic API key to config_marcus.json
+#    Or use a local model - see docs/user-guide/how-to/setup-local-llm.md
 # 3. Say: "Register with Marcus and start working"
 # 4. Watch agent automatically complete tasks in Planka!
 ```
@@ -125,7 +143,7 @@ When agents get stuck, Marcus provides:
 - Build with multiple agents: Register different agent types
 
 ### **Extend Marcus**
-- Add new AI providers (OpenAI, local models)
+- Add new AI providers ([OpenAI](docs/systems/07-ai-intelligence-engine.md), [local models with Ollama](docs/user-guide/how-to/setup-local-llm.md))
 - Connect to GitHub Projects or Linear
 - Build custom MCP tools
 
@@ -153,14 +171,6 @@ Set `"context_dependency": true` in `config_marcus.json` - Agents see previous i
 - 💬 **Questions**: [GitHub Discussions](https://github.com/lwgray/marcus/discussions)
 - 🐛 **Bug Reports**: [GitHub Issues](https://github.com/lwgray/marcus/issues)
 - 📖 **Documentation**: [Full Docs](docs/)
-
----
-
-## 🌟 **Why AI Agents Love Marcus**
-
-> *"Marcus gave me context about what the previous agent built. I knew exactly how to integrate my API with their database models."* - Claude Agent #2
-
-> *"When I got stuck on a complex deployment issue, Marcus suggested 3 solutions based on similar past projects. The second one worked perfectly."* - GPT Agent #5
 
 ---
 

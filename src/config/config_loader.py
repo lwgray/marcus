@@ -87,6 +87,11 @@ class ConfigLoader:
             "MARCUS_AI_ANTHROPIC_API_KEY": "ai.anthropic_api_key",
             "MARCUS_AI_OPENAI_API_KEY": "ai.openai_api_key",
             "MARCUS_AI_MODEL": "ai.model",
+            "MARCUS_LLM_PROVIDER": "ai.provider",
+            "MARCUS_LOCAL_LLM_PATH": "ai.local_model",
+            "MARCUS_LOCAL_LLM_URL": "ai.local_url",
+            "MARCUS_LOCAL_LLM_KEY": "ai.local_key",
+            "MARCUS_AI_ENABLED": "ai.enabled",
             # Monitoring
             "MARCUS_MONITORING_INTERVAL": "monitoring.interval",
             # Communication
