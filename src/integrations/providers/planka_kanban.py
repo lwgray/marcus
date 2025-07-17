@@ -108,9 +108,16 @@ class PlankaKanban(KanbanInterface):
         if not self.connected:
             await self.connect()
 
+        # Debug logging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"update_task called with task_id={task_id}, updates={updates}")
+
         # Check if status is being updated
         if "status" in updates:
             status = updates["status"]
+            logger.info(f"Status update requested: {status} (type: {type(status)})")
+            
             # Map TaskStatus to column names
             status_to_column = {
                 TaskStatus.TODO: "backlog",
@@ -121,7 +128,10 @@ class PlankaKanban(KanbanInterface):
 
             # Move to appropriate column if status changed
             if status in status_to_column:
+                logger.info(f"Moving task to column: {status_to_column[status]}")
                 await self.move_task_to_column(task_id, status_to_column[status])
+            else:
+                logger.warning(f"Status {status} not found in status_to_column mapping")
 
         # Update card details (if update_task_details exists)
         if hasattr(self.client, "update_task_details"):
@@ -161,6 +171,13 @@ class PlankaKanban(KanbanInterface):
 
         # Find target list
         lists = await self.client._get_lists()
+        
+        # Debug logging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Looking for list: '{target_list_name}' (from column_name: '{column_name}')")
+        logger.info(f"Available lists: {[l['name'] for l in lists]}")
+        
         target_list = None
         for list_data in lists:
             if target_list_name.lower() in list_data["name"].lower():
@@ -168,6 +185,7 @@ class PlankaKanban(KanbanInterface):
                 break
 
         if not target_list:
+            logger.error(f"Could not find list matching '{target_list_name}'")
             return False
 
         # Move card
