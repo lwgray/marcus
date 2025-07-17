@@ -1,5 +1,5 @@
 """
-Task Management Tools for Marcus MCP
+Task Management Tools for Marcus MCP.
 
 This module contains tools for task operations in the Marcus system:
 - request_next_task: Get optimal task assignment for an agent
@@ -45,13 +45,16 @@ def build_tiered_instructions(
     if context_data and context_data.get("previous_implementations"):
         impl_count = len(context_data["previous_implementations"])
         instructions_parts.append(
-            f"\n\n📚 IMPLEMENTATION CONTEXT:\n{impl_count} relevant implementations found. Use these patterns and interfaces to maintain consistency."
+            f"\n\n📚 IMPLEMENTATION CONTEXT:\n{impl_count} relevant implementations found. "
+            "Use these patterns and interfaces to maintain consistency."
         )
 
     # Layer 3: Dependency Awareness
     if dependency_awareness:
         instructions_parts.append(
-            f"\n\n🔗 DEPENDENCY AWARENESS:\n{dependency_awareness}\n\nConsider these future needs when making implementation decisions. Your choices will directly impact these dependent tasks."
+            f"\n\n🔗 DEPENDENCY AWARENESS:\n{dependency_awareness}\n\n"
+            "Consider these future needs when making implementation decisions. "
+            "Your choices will directly impact these dependent tasks."
         )
 
     # Layer 4: Decision Logging Prompt
@@ -60,10 +63,13 @@ def build_tiered_instructions(
         instructions_parts.append(
             "\n\n📝 ARCHITECTURAL DECISIONS:\n"
             "This task has significant downstream impact. When making technical choices that affect other tasks:\n"
-            "Use: 'Marcus, log decision: I chose [WHAT] because [WHY]. This affects [IMPACT].'\n"
+            "Use: 'Marcus, log decision: I chose [WHAT] because [WHY]. "
+            "This affects [IMPACT].'\n"
             "Examples:\n"
-            "- 'I chose JWT tokens because mobile apps need stateless auth. This affects all API endpoints.'\n"
-            "- 'I chose PostgreSQL because we need ACID compliance. This affects all data models.'"
+            "- 'I chose JWT tokens because mobile apps need stateless auth. "
+            "This affects all API endpoints.'\n"
+            "- 'I chose PostgreSQL because we need ACID compliance. "
+            "This affects all data models.'"
         )
 
     # Layer 5: Predictions and Warnings
@@ -81,7 +87,8 @@ def build_tiered_instructions(
             ct = predictions["completion_time"]
             risk_parts.append(
                 f"⏱️ Expected duration: {ct['expected_hours']:.1f} hours "
-                + f"({ct['confidence_interval']['lower']:.1f}-{ct['confidence_interval']['upper']:.1f} hours)"
+                + f"({ct['confidence_interval']['lower']:.1f}-"
+                + f"{ct['confidence_interval']['upper']:.1f} hours)"
             )
             if ct.get("factors"):
                 risk_parts.append("   Time factors: " + "; ".join(ct["factors"][:2]))
@@ -110,7 +117,8 @@ def build_tiered_instructions(
         ):
             ce = predictions["cascade_effects"]
             risk_parts.append(
-                f"🌊 CASCADE WARNING: Delays will impact {len(ce['affected_tasks'])} dependent tasks"
+                f"🌊 CASCADE WARNING: Delays will impact "
+                f"{len(ce['affected_tasks'])} dependent tasks"
             )
             if ce.get("mitigation_options"):
                 risk_parts.append(f"   Mitigation: {ce['mitigation_options'][0]}")
@@ -122,7 +130,8 @@ def build_tiered_instructions(
                 skill_names = list(pt["improving_skills"].keys())[:1]
                 if skill_names:
                     risk_parts.append(
-                        f"📈 You're improving in {skill_names[0]} - great opportunity to excel!"
+                        f"📈 You're improving in {skill_names[0]} - "
+                "great opportunity to excel!"
                     )
             if pt.get("recommendations"):
                 risk_parts.append(f"💡 {pt['recommendations'][0]}")
@@ -139,7 +148,8 @@ def build_tiered_instructions(
         # API tasks
         if any(label.lower() in ["api", "endpoint", "rest"] for label in task.labels):
             guidance_parts.append(
-                "🌐 API Guidelines: Follow RESTful conventions, include proper error handling, document response formats"
+                "🌐 API Guidelines: Follow RESTful conventions, "
+                "include proper error handling, document response formats"
             )
 
         # Frontend tasks
@@ -147,7 +157,8 @@ def build_tiered_instructions(
             label.lower() in ["frontend", "ui", "react", "vue"] for label in task.labels
         ):
             guidance_parts.append(
-                "🎨 Frontend Guidelines: Ensure responsive design, follow component patterns, handle loading/error states"
+                "🎨 Frontend Guidelines: Ensure responsive design, "
+                "follow component patterns, handle loading/error states"
             )
 
         # Database tasks
@@ -156,7 +167,8 @@ def build_tiered_instructions(
             for label in task.labels
         ):
             guidance_parts.append(
-                "🗄️ Database Guidelines: Include rollback migrations, test with sample data, document schema changes"
+                "🗄️ Database Guidelines: Include rollback migrations, "
+                "test with sample data, document schema changes"
             )
 
         # Security tasks
@@ -165,7 +177,8 @@ def build_tiered_instructions(
             for label in task.labels
         ):
             guidance_parts.append(
-                "🔒 Security Guidelines: Follow OWASP best practices, implement proper validation, use secure defaults"
+                "🔒 Security Guidelines: Follow OWASP best practices, "
+                "implement proper validation, use secure defaults"
             )
 
         if guidance_parts:
@@ -189,7 +202,8 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
         agent_id: The requesting agent's ID
         state: Marcus server state instance
 
-    Returns:
+    Returns
+    -------
         Dict with task details and instructions if successful
     """
     # Log task request
@@ -407,7 +421,7 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 # Log decision process
                 conversation_logger.log_pm_decision(
                     decision=f"Assign task '{optimal_task.name}' to {agent_id}",
-                    rationale=f"Best skill match and highest priority",
+                    rationale="Best skill match and highest priority",
                     alternatives_considered=[
                         {"task": "Other Task 1", "score": 0.7},
                         {"task": "Other Task 2", "score": 0.6},
@@ -576,7 +590,8 @@ async def report_task_progress(
         message: Progress update message
         state: Marcus server state instance
 
-    Returns:
+    Returns
+    -------
         Dict with success status
     """
     # Log progress update
@@ -668,6 +683,12 @@ async def report_task_progress(
                             f"🤖 Code Analysis:\n{json.dumps(analysis['findings'], indent=2)}",
                         )
 
+        elif status == "in_progress":
+            update_data["status"] = TaskStatus.IN_PROGRESS
+            # Include assigned_to for Planka provider compatibility
+            if agent_id:
+                update_data["assigned_to"] = agent_id
+
         elif status == "blocked":
             update_data["status"] = TaskStatus.BLOCKED
 
@@ -729,7 +750,8 @@ async def report_blocker(
         severity: Blocker severity (low, medium, high)
         state: Marcus server state instance
 
-    Returns:
+    Returns
+    -------
         Dict with AI suggestions and success status
     """
     # Log blocker report
@@ -778,7 +800,7 @@ async def report_blocker(
 
         # Log Marcus decision
         conversation_logger.log_pm_decision(
-            decision=f"Acknowledge blocker and provide suggestions",
+            decision="Acknowledge blocker and provide suggestions",
             rationale="Help agent overcome the blocker with AI guidance",
             confidence_score=0.8,
             decision_factors={
@@ -791,7 +813,7 @@ async def report_blocker(
         conversation_logger.log_worker_message(
             agent_id,
             "from_pm",
-            f"Blocker acknowledged. Suggestions provided.",
+            "Blocker acknowledged. Suggestions provided.",
             {"suggestions": suggestions, "severity": severity},
         )
 
@@ -809,7 +831,7 @@ async def report_blocker(
 
 
 async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Task]:
-    """Find the best task for an agent using AI-powered analysis"""
+    """Find the best task for an agent using AI-powered analysis."""
     async with state.assignment_lock:
         agent = state.agent_status.get(agent_id)
 
@@ -895,7 +917,7 @@ async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Tas
 async def find_optimal_task_basic(
     agent_id: str, available_tasks: List[Task], state: Any
 ) -> Optional[Task]:
-    """Basic task assignment logic (fallback)"""
+    """Find optimal task using basic assignment logic (fallback)."""
     agent = state.agent_status.get(agent_id)
     if not agent:
         return None
