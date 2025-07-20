@@ -217,11 +217,9 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
 
             logger.info(f"Successfully created project with {len(created_tasks)} tasks")
 
-            # Schedule cleanup to run in background after response is sent
-            # This prevents cleanup from delaying the MCP response
-            import asyncio
-
-            asyncio.create_task(self._cleanup_background())
+            # Skip background cleanup to prevent hanging
+            # The cleanup can be handled by the next request or a periodic task
+            # asyncio.create_task(self._cleanup_background())
 
             return result
 

@@ -170,8 +170,8 @@ async def create_project(
                 status="completed",
             )
 
-        # Run in background without blocking
-        asyncio.create_task(asyncio.to_thread(track_start))
+        # Track start synchronously to avoid hanging
+        track_start()
 
         # Also log to real-time log for UI server
         state.log_event(
@@ -262,8 +262,8 @@ async def create_project(
                 # Complete the flow
                 state.pipeline_visualizer.complete_flow(flow_id)
 
-            # Run in background without blocking
-            asyncio.create_task(asyncio.to_thread(track_completion))
+            # Track completion synchronously to avoid hanging
+            track_completion()
 
         # Normalize result to include task_count
         if isinstance(result, dict):
