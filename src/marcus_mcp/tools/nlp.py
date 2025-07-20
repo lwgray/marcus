@@ -170,9 +170,11 @@ async def create_project(
                 status="completed",
             )
 
-        # Run tracking in background without blocking
-        # Using fire-and-forget pattern
-        asyncio.create_task(asyncio.to_thread(track_start))
+        # Skip tracking for MCP calls to prevent hanging
+        # The tracking is non-essential and can be handled elsewhere
+        if not getattr(state, '_is_mcp_call', True):
+            # Only run tracking if not in MCP context
+            asyncio.create_task(asyncio.to_thread(track_start))
 
         # Also log to real-time log for UI server
         state.log_event(
@@ -263,9 +265,10 @@ async def create_project(
                 # Complete the flow
                 state.pipeline_visualizer.complete_flow(flow_id)
 
-            # Run tracking in background without blocking
-            # Using fire-and-forget pattern
-            asyncio.create_task(asyncio.to_thread(track_completion))
+            # Skip tracking for MCP calls to prevent hanging
+            if not getattr(state, '_is_mcp_call', True):
+                # Only run tracking if not in MCP context
+                asyncio.create_task(asyncio.to_thread(track_completion))
 
         # Normalize result to include task_count
         if isinstance(result, dict):
@@ -305,8 +308,10 @@ async def create_project(
                     error=error_str,
                 )
 
-            # Run tracking in background without blocking
-            asyncio.create_task(asyncio.to_thread(track_error))
+            # Skip tracking for MCP calls to prevent hanging
+            if not getattr(state, '_is_mcp_call', True):
+                # Only run tracking if not in MCP context
+                asyncio.create_task(asyncio.to_thread(track_error))
 
         raise
 
