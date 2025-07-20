@@ -66,12 +66,9 @@ class AgentMarcusServer(MarcusServer):
 
 
 async def main() -> None:
-    """Main entry point for agent server"""
-    import sys
-
+    """Main entry point for agent server."""
     server = AgentMarcusServer()
-    print("\nMarcus Agent MCP Server Running (Restricted Tools)", file=sys.stderr)
-    print("=" * 50, file=sys.stderr)
+    # Run server silently
     await server.run()
 
 
