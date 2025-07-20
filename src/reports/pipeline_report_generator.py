@@ -7,6 +7,7 @@ offline analysis, team reviews, and documentation.
 
 import json
 import os
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -43,8 +44,10 @@ class PipelineReportGenerator:
         # Create templates directory if it doesn't exist
         self.template_dir.mkdir(parents=True, exist_ok=True)
 
-        # Initialize template environment
-        self.env = Environment(loader=FileSystemLoader(str(self.template_dir)))
+        # Initialize template environment with autoescape for security
+        self.env = Environment(
+            loader=FileSystemLoader(str(self.template_dir)), autoescape=True
+        )
 
         # Create default templates if they don't exist
         self._create_default_templates()
@@ -688,7 +691,7 @@ class PipelineReportGenerator:
                 md_path = output_path / f"summary_{flow_id}.md"
                 md_path.write_text(md)
 
-                print(f"Generated reports for {flow_id}")
+                print(f"Generated reports for {flow_id}", file=sys.stderr)
 
             except Exception as e:
-                print(f"Error generating report for {flow_id}: {e}")
+                print(f"Error generating report for {flow_id}: {e}", file=sys.stderr)

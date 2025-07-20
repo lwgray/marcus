@@ -1,0 +1,124 @@
+name: Marcus Bug Analyzer with Claude Code
+
+on:
+  issues:
+    types: [opened, labeled]
+  issue_comment:
+    types: [created]
+
+jobs:
+  analyze-marcus-bug:
+    # Trigger on 'bug' label or '/analyze' comment
+    if: |
+      (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'bug')) ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '/analyze'))
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-cov
+
+      - name: Extract issue information
+        id: issue_info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+
+            // Determine bug type based on title/content
+            const title = issue.data.title.toLowerCase();
+            const body = issue.data.body.toLowerCase();
+
+            let bugType = 'general';
+            if (title.includes('mcp') || body.includes('json-rpc')) {
+              bugType = 'mcp-communication';
+            } else if (title.includes('task') && (title.includes('order') || title.includes('dependency'))) {
+              bugType = 'task-scheduling';
+            }
+
+            core.setOutput('title', issue.data.title);
+            core.setOutput('body', issue.data.body);
+            core.setOutput('number', context.issue.number);
+            core.setOutput('bug_type', bugType);
+
+      - name: Run Claude Code Analysis
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Bug Report: ${{ steps.issue_info.outputs.title }}
+            Type: ${{ steps.issue_info.outputs.bug_type }}
+
+            Issue Description:
+            ${{ steps.issue_info.outputs.body }}
+
+            Please analyze this Marcus bug:
+
+            For MCP communication bugs:
+            - Check stdout/stderr handling in src/marcus_mcp/
+            - Verify JSON-RPC response formatting
+            - Look for print statements that could corrupt communication
+
+            For task scheduling bugs:
+            - Analyze dependency inference in src/intelligence/
+            - Check task ordering logic in src/integrations/nlp_task_utils.py
+            - Verify request_next_task implementation
+
+            Provide:
+            1. Root cause analysis
+            2. Specific code locations causing the issue
+            3. Proposed fix with code changes
+            4. Test cases to verify the fix
+
+          # Create a branch for the fix
+          auto-commit: true
+          branch: fix/${{ steps.issue_info.outputs.bug_type }}-${{ steps.issue_info.outputs.number }}
+
+      - name: Run tests on fix
+        run: |
+          pytest tests/ -v --cov=src --cov-report=term-missing
+        continue-on-error: true
+
+      - name: Comment on issue with analysis
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const analysisComment = `
+            ## 🤖 Claude Code Analysis
+
+            I've analyzed this bug and created a fix in branch: \`fix/${{ steps.issue_info.outputs.bug_type }}-${{ steps.issue_info.outputs.number }}\`
+
+            ### Bug Type: ${{ steps.issue_info.outputs.bug_type }}
+
+            The analysis and proposed fix have been committed to the branch.
+            Please review the changes and test them locally.
+
+            To test the fix:
+            \`\`\`bash
+            git fetch origin
+            git checkout fix/${{ steps.issue_info.outputs.bug_type }}-${{ steps.issue_info.outputs.number }}
+            pytest tests/ -v
+            \`\`\`
+            `;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: analysisComment
+            });

@@ -8,6 +8,7 @@ using multiple data sources including GitHub, task metrics, and AI analysis.
 import asyncio
 import json
 import statistics
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
@@ -155,7 +156,7 @@ class ProjectQualityAssessor:
                 process_metrics = await self._analyze_process_quality(github_data)
             except Exception as e:
                 # Continue without GitHub data
-                print(f"GitHub analysis failed: {e}")
+                print(f"GitHub analysis failed: {e}", file=sys.stderr)
 
         # Calculate component scores
         code_score = self._calculate_code_quality_score(code_metrics)
@@ -380,7 +381,7 @@ class ProjectQualityAssessor:
                 data["reviews"].extend(reviews_result.get("reviews", []))
 
         except Exception as e:
-            print(f"Error collecting GitHub data: {e}")
+            print(f"Error collecting GitHub data: {e}", file=sys.stderr)
 
         return data
 

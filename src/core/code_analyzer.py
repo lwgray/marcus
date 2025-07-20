@@ -7,6 +7,7 @@ context-aware information to workers about implemented features.
 
 import json
 import re
+import sys
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -225,7 +226,7 @@ class CodeAnalyzer:
 
             return commits
         except Exception as e:
-            print(f"Error getting commits: {e}")
+            print(f"Error getting commits: {e}", file=sys.stderr)
             return []
 
     async def _get_worker_prs(
@@ -281,7 +282,7 @@ class CodeAnalyzer:
 
             return prs
         except Exception as e:
-            print(f"Error getting PRs: {e}")
+            print(f"Error getting PRs: {e}", file=sys.stderr)
             return []
 
     async def _analyze_pr_changes(
@@ -363,7 +364,7 @@ class CodeAnalyzer:
             return analysis
 
         except Exception as e:
-            print(f"Error analyzing PR: {e}")
+            print(f"Error analyzing PR: {e}", file=sys.stderr)
             return {}
 
     async def _find_endpoints(self, owner: str, repo: str) -> List[Dict[str, Any]]:
@@ -418,7 +419,7 @@ class CodeAnalyzer:
             return endpoints
 
         except Exception as e:
-            print(f"Error finding endpoints: {e}")
+            print(f"Error finding endpoints: {e}", file=sys.stderr)
             return []
 
     def _extract_endpoints(self, content: str) -> List[Dict[str, Any]]:
