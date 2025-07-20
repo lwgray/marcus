@@ -170,8 +170,9 @@ async def create_project(
                 status="completed",
             )
 
-        # Track start synchronously to avoid hanging
-        track_start()
+        # Run tracking in background without blocking
+        # Using fire-and-forget pattern
+        asyncio.create_task(asyncio.to_thread(track_start))
 
         # Also log to real-time log for UI server
         state.log_event(
@@ -262,8 +263,9 @@ async def create_project(
                 # Complete the flow
                 state.pipeline_visualizer.complete_flow(flow_id)
 
-            # Track completion synchronously to avoid hanging
-            track_completion()
+            # Run tracking in background without blocking
+            # Using fire-and-forget pattern
+            asyncio.create_task(asyncio.to_thread(track_completion))
 
         # Normalize result to include task_count
         if isinstance(result, dict):
@@ -279,6 +281,9 @@ async def create_project(
                 "result_type": type(result).__name__,
             },
         )
+
+        # No need to wait for background tasks
+        # They are fire-and-forget for tracking purposes
 
         return result
 
@@ -300,7 +305,7 @@ async def create_project(
                     error=error_str,
                 )
 
-            # Run in background without blocking
+            # Run tracking in background without blocking
             asyncio.create_task(asyncio.to_thread(track_error))
 
         raise

@@ -618,11 +618,21 @@ class MarcusServer:
                 sys.stderr.reconfigure(line_buffering=True)
 
             async with stdio_server() as (read_stream, write_stream):
-                await self.server.run(
-                    read_stream,
-                    write_stream,
-                    self.server.create_initialization_options(),
-                )
+                try:
+                    await self.server.run(
+                        read_stream,
+                        write_stream,
+                        self.server.create_initialization_options(),
+                    )
+                finally:
+                    # Cancel all pending tasks to ensure clean shutdown
+                    pending = asyncio.all_tasks() - {asyncio.current_task()}
+                    for task in pending:
+                        task.cancel()
+                    
+                    # Wait briefly for cancellations
+                    if pending:
+                        await asyncio.gather(*pending, return_exceptions=True)
         except Exception as e:
             print(f"❌ MCP server error: {e}", file=sys.stderr)
             import traceback
