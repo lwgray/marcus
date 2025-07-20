@@ -121,14 +121,40 @@ class Planka(KanbanInterface):
     async def update_task(self, task_id: str, updates: Dict[str, Any]) -> Task:
         """Update task status or properties"""
         try:
-            # Map status updates to list movements
+            logger.info(
+                f"[Planka] update_task called with task_id={task_id}, updates={updates}"
+            )
+
+            # Handle assignment if provided
+            if "assigned_to" in updates:
+                logger.info(
+                    f"[Planka] Assigning task {task_id} to {updates['assigned_to']}"
+                )
+                await self.client.assign_task(task_id, updates["assigned_to"])
+
+            # Map status updates to column movements
             if "status" in updates:
                 status = updates["status"]
-                if status == TaskStatus.IN_PROGRESS:
-                    # Move to in progress by assigning
-                    if "assigned_to" in updates:
-                        await self.client.assign_task(task_id, updates["assigned_to"])
+                logger.info(
+                    f"[Planka] Status update requested: {status} (type: {type(status)})"
+                )
+
+                # Map TaskStatus to column names
+                status_to_column = {
+                    TaskStatus.TODO: "backlog",
+                    TaskStatus.IN_PROGRESS: "in progress",
+                    TaskStatus.DONE: "done",
+                    TaskStatus.BLOCKED: "blocked",
+                }
+
+                # Move to appropriate column if status changed
+                if status in status_to_column:
+                    column = status_to_column[status]
+                    logger.info(f"[Planka] Moving task {task_id} to column: {column}")
+                    await self.move_task_to_column(task_id, column)
                 elif status == TaskStatus.COMPLETED:
+                    # Handle COMPLETED as alias for DONE
+                    logger.info(f"[Planka] Completing task {task_id}")
                     await self.client.complete_task(task_id)
 
             # Get and return the updated task
@@ -171,6 +197,7 @@ class Planka(KanbanInterface):
     async def assign_task(self, task_id: str, assignee_id: str) -> bool:
         """Assign a task to a worker"""
         try:
+            # KanbanClient.assign_task already moves the task to "In Progress"
             await self.client.assign_task(task_id, assignee_id)
             return True
         except Exception as e:
@@ -180,13 +207,19 @@ class Planka(KanbanInterface):
     async def move_task_to_column(self, task_id: str, column_name: str) -> bool:
         """Move task to a specific column/status"""
         try:
-            # KanbanClient doesn't have direct column movement
-            # We'll use status updates as a proxy
-            if column_name.lower() in ["done", "completed"]:
-                await self.client.complete_task(task_id)
-            elif column_name.lower() in ["in progress", "doing"]:
-                # This is handled by assign_task in KanbanClient
-                pass
+            # Use KanbanClient's update_task_status for column movements
+            # Map column names to status names that KanbanClient understands
+            column_to_status = {
+                "backlog": "todo",
+                "todo": "todo",
+                "in progress": "in_progress",
+                "blocked": "blocked",
+                "done": "done",
+                "completed": "done",
+            }
+
+            status = column_to_status.get(column_name.lower(), column_name.lower())
+            await self.client.update_task_status(task_id, status)
             return True
         except Exception as e:
             logger.error(f"Error moving task {task_id} to {column_name}: {e}")

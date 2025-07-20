@@ -10,6 +10,7 @@ including Slack, email, and kanban board comments.
 
 import asyncio
 import json
+import sys
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
@@ -532,7 +533,7 @@ Have a productive day! 🚀""",
         """
         # This would integrate with the kanban client
         # For now, we'll simulate it
-        print(f"[KANBAN] Task {task_id}: {comment}")
+        print(f"[KANBAN] Task {task_id}: {comment}", file=sys.stderr)
 
     async def _send_slack_message(self, recipient: str, message: str) -> None:
         """
@@ -554,7 +555,7 @@ Have a productive day! 🚀""",
         """
         # This would integrate with Slack SDK
         # For now, we'll simulate it
-        print(f"[SLACK] To {recipient}: {message}")
+        print(f"[SLACK] To {recipient}: {message}", file=sys.stderr)
 
     async def _send_email(self, recipient: str, subject: str, body: str) -> None:
         """
@@ -578,8 +579,8 @@ Have a productive day! 🚀""",
         """
         # This would integrate with email service
         # For now, we'll simulate it
-        print(f"[EMAIL] To {recipient} - Subject: {subject}")
-        print(f"Body: {body[:200]}...")
+        print(f"[EMAIL] To {recipient} - Subject: {subject}", file=sys.stderr)
+        print(f"Body: {body[:200]}...", file=sys.stderr)
 
     def set_agent_preferences(self, agent_id: str, preferences: Dict[str, Any]) -> None:
         """

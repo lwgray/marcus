@@ -19,6 +19,7 @@ Examples
 
 import json
 import os
+import sys
 from typing import Any, Dict, Optional, Union
 
 from src.legacy.marcus_mvp import MarcusMVP
@@ -127,7 +128,9 @@ class ConfigurablePMAgent(MarcusMVP):
         if os.path.exists(self.config_file):
             with open(self.config_file, "r") as f:
                 config = json.load(f)
-                print(f"📋 Loaded configuration from {self.config_file}")
+                print(
+                    f"📋 Loaded configuration from {self.config_file}", file=sys.stderr
+                )
 
         # Override with environment variables if present
         if os.getenv("MARCUS_PROJECT_ID"):
@@ -139,12 +142,13 @@ class ConfigurablePMAgent(MarcusMVP):
         if config.get("project_id"):
             self.kanban_client.project_id = config["project_id"]
             print(
-                f"🎯 Configured for project: {config.get('project_name', config['project_id'])}"
+                f"🎯 Configured for project: {config.get('project_name', config['project_id'])}",
+                file=sys.stderr,
             )
 
         if config.get("board_id"):
             self.kanban_client.board_id = config["board_id"]
-            print(f"📋 Configured for board: {config['board_id']}")
+            print(f"📋 Configured for board: {config['board_id']}", file=sys.stderr)
 
         # Update Planka credentials if provided
         if config.get("planka"):
@@ -182,13 +186,16 @@ class ConfigurablePMAgent(MarcusMVP):
         """
         # If board_id not set but project_id is, try to find the board
         if self.kanban_client.project_id and not self.kanban_client.board_id:
-            print("🔍 Finding board for project...")
+            print("🔍 Finding board for project...", file=sys.stderr)
             async with self.kanban_client.connect() as conn:
                 # The connect method will auto-find the board
                 if self.kanban_client.board_id:
-                    print(f"✅ Found board: {self.kanban_client.board_id}")
+                    print(
+                        f"✅ Found board: {self.kanban_client.board_id}",
+                        file=sys.stderr,
+                    )
                 else:
-                    print("⚠️  No board found, will need to create one")
+                    print("⚠️  No board found, will need to create one", file=sys.stderr)
 
         # Continue with normal startup
         await super().start()

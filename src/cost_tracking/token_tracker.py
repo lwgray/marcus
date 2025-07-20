@@ -7,6 +7,7 @@ based on actual usage rather than naive hourly estimates.
 
 import asyncio
 import json
+import sys
 import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
@@ -72,7 +73,7 @@ class TokenTracker:
                         float, data.get("project_costs", {})
                     )
             except Exception as e:
-                print(f"Failed to load token history: {e}")
+                print(f"Failed to load token history: {e}", file=sys.stderr)
 
     def save_data(self):
         """Persist token usage data."""
@@ -313,7 +314,8 @@ class TokenTracker:
                         if current_rate > avg_rate * 2 and current_rate > 10000:
                             # Alert: Spending spike detected
                             print(
-                                f"⚠️ Token spend spike for {project_id}: {current_rate:.0f} tokens/hour"
+                                f"⚠️ Token spend spike for {project_id}: {current_rate:.0f} tokens/hour",
+                                file=sys.stderr,
                             )
 
                 # Periodic save
@@ -322,7 +324,7 @@ class TokenTracker:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                print(f"Error in rate monitor: {e}")
+                print(f"Error in rate monitor: {e}", file=sys.stderr)
 
 
 # Global instance
