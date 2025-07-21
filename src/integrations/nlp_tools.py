@@ -217,11 +217,13 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
 
             logger.info(f"Successfully created project with {len(created_tasks)} tasks")
 
-            # Skip background cleanup for MCP calls to prevent hanging
-            # Cleanup can be handled by periodic maintenance instead
-            if not getattr(state, '_is_mcp_call', False):
-                import asyncio
-                asyncio.create_task(self._cleanup_background())
+            # Run cleanup synchronously with a short timeout
+            # This ensures resources are cleaned up without hanging
+            import asyncio
+            try:
+                await asyncio.wait_for(self._cleanup_background(), timeout=0.5)
+            except asyncio.TimeoutError:
+                logger.warning("Cleanup timed out after 0.5s, continuing anyway")
 
             return result
 
@@ -267,28 +269,15 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 )
 
     async def _cleanup_background(self):
-        """Cleanup AI engine and tasks in background after response is sent"""
+        """Cleanup AI engine after response is sent"""
         try:
-            # Ensure AI engine cleanup
+            # Only cleanup AI engine, skip task cancellation
+            # Task cancellation was causing issues
             if hasattr(self.ai_engine, "cleanup"):
                 try:
                     await self.ai_engine.cleanup()
                 except Exception as cleanup_error:
                     logger.warning(f"AI engine cleanup failed: {cleanup_error}")
-
-            # Force cleanup of any remaining async tasks
-            try:
-                import asyncio
-
-                loop = asyncio.get_event_loop()
-                pending = asyncio.all_tasks(loop)
-                for task in pending:
-                    if not task.done() and task != asyncio.current_task():
-                        task.cancel()
-                # Give tasks a moment to cancel
-                await asyncio.sleep(0.1)
-            except Exception as task_cleanup_error:
-                logger.warning(f"Task cleanup failed: {task_cleanup_error}")
         except Exception as e:
             logger.warning(f"Background cleanup failed: {e}")
 

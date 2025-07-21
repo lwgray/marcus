@@ -64,9 +64,6 @@ class MarcusServer:
         # Config is already loaded by marcus.py, but ensure it's available
         self.config = get_config()
         self.settings = Settings()
-        
-        # Mark this as an MCP context to disable background tasks
-        self._is_mcp_call = True
 
         # Initialize project management components
         self.project_registry = ProjectRegistry()
