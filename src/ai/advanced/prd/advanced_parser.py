@@ -499,6 +499,8 @@ class AdvancedPRDParser:
                     "original_name": task["name"],
                     "type": task["type"],
                     "epic_id": nfr_epic_id,
+                    "description": task.get("description", ""),
+                    "nfr_data": task.get("nfr_data", {}),
                 }
 
             hierarchy[nfr_epic_id] = [task["id"] for task in nfr_tasks]
@@ -900,11 +902,16 @@ class AdvancedPRDParser:
                     f"NFR deviated from template format. Expected 'id' field, generated: {nfr_id}"
                 )
 
+            # Get the description from the NFR data
+            nfr_description = nfr.get("description", "")
+            
             tasks.append(
                 {
                     "id": f"nfr_task_{nfr_id}",
                     "name": f"Implement {nfr_name}",
                     "type": "nfr",
+                    "description": nfr_description,  # Store the NFR description
+                    "nfr_data": nfr,  # Store full NFR data for later use
                 }
             )
         return tasks
@@ -1517,7 +1524,14 @@ class AdvancedPRDParser:
                     name = f"Implement {nfr_type} Requirements"
                 else:
                     name = "Implement Non-Functional Requirements"
-            description = f"Address performance, security, and scalability requirements for {project_type}. Implement caching, optimize database queries, add security headers, and ensure system reliability. Target: {objectives[0] if objectives else 'system performance'}."
+            # Use the stored NFR description if available
+            task_metadata = self._task_metadata.get(task_id, {})
+            stored_description = task_metadata.get("description", "")
+            if stored_description:
+                description = stored_description
+            else:
+                # Fallback to generic description
+                description = f"Address performance, security, and scalability requirements for {project_type}. Implement caching, optimize database queries, add security headers, and ensure system reliability. Target: {objectives[0] if objectives else 'system performance'}."
         elif any(keyword in task_id.lower() for keyword in ["req_0", "req_1", "req_2"]):
             req_index = next(
                 (
