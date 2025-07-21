@@ -1507,7 +1507,16 @@ class AdvancedPRDParser:
 
         # Try to infer from task_id what this might be about
         if "nfr" in task_id.lower():
-            name = "Implement Non-Functional Requirements"
+            # Use original_name if available to preserve unique NFR names
+            if original_name and original_name != "":
+                name = original_name
+            else:
+                # Extract NFR type from task_id if possible (e.g., nfr_task_performance)
+                nfr_type = task_id.replace("nfr_task_", "").replace("_", " ").title()
+                if nfr_type and nfr_type != task_id:
+                    name = f"Implement {nfr_type} Requirements"
+                else:
+                    name = "Implement Non-Functional Requirements"
             description = f"Address performance, security, and scalability requirements for {project_type}. Implement caching, optimize database queries, add security headers, and ensure system reliability. Target: {objectives[0] if objectives else 'system performance'}."
         elif any(keyword in task_id.lower() for keyword in ["req_0", "req_1", "req_2"]):
             req_index = next(
