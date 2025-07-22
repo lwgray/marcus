@@ -241,10 +241,5 @@ class TestSafetyCheckerDependencies:
 
         task_type = TaskClassifier.classify(task)
 
-        # This currently fails because "write" matches implementation before "tests" matches testing
-        # assert task_type == TaskType.TESTING, f"Expected TESTING but got {task_type}"
-
-        # Document the current behavior
-        assert (
-            task_type == TaskType.IMPLEMENTATION
-        ), "Currently misclassifies 'Write tests' as implementation"
+        # With the enhanced classifier integrated, this now correctly identifies "Write tests" as TESTING
+        assert task_type == TaskType.TESTING, f"Expected TESTING but got {task_type}"

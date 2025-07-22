@@ -12,9 +12,9 @@ from src.core.models import Task
 from src.integrations.nlp_task_utils import (
     SafetyChecker,
     TaskBuilder,
-    TaskClassifier,
     TaskType,
 )
+from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class NaturalLanguageTaskCreator(ABC):
         """
         self.kanban_client = kanban_client
         self.ai_engine = ai_engine
-        self.task_classifier = TaskClassifier()
+        self.task_classifier = EnhancedTaskClassifier()
         self.task_builder = TaskBuilder()
         self.safety_checker = SafetyChecker()
 
