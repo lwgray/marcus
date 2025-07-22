@@ -9,12 +9,12 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 
 from src.core.models import Task
+from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
 from src.integrations.nlp_task_utils import (
     SafetyChecker,
     TaskBuilder,
     TaskType,
 )
-from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
 
 logger = logging.getLogger(__name__)
 

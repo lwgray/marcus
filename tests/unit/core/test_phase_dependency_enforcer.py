@@ -11,9 +11,8 @@ from unittest.mock import Mock, patch
 import pytest
 
 from src.core.models import Priority, Task, TaskStatus
-from src.core.models.task_execution_order import (
+from src.core.phase_dependency_enforcer import (
     DependencyType,
-    EnhancedTask,
     TaskPhase,
 )
 from src.core.phase_dependency_enforcer import (

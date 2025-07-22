@@ -45,8 +45,8 @@ class DependencyType(Enum):
 
 # For now, use regular Task model instead of EnhancedTask to avoid circular imports
 EnhancedTask = Task
-from src.integrations.nlp_task_utils import TaskType
 from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
+from src.integrations.nlp_task_utils import TaskType
 
 logger = logging.getLogger(__name__)
 
