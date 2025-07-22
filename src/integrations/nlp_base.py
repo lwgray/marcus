@@ -6,9 +6,9 @@ Provides shared functionality for create_project and add_feature tools.
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from src.core.models import Task, TaskStatus
+from src.core.models import Task
 from src.integrations.nlp_task_utils import (
     SafetyChecker,
     TaskBuilder,
@@ -170,6 +170,16 @@ class NaturalLanguageTaskCreator(ABC):
         Returns:
             List of tasks with updated dependencies
         """
+        # Import phase dependency enforcer
+        from src.core.phase_dependency_enforcer import PhaseDependencyEnforcer
+
+        # First apply phase-based dependencies for proper ordering
+        phase_enforcer = PhaseDependencyEnforcer()
+        tasks = phase_enforcer.enforce_phase_dependencies(tasks)
+
+        # Then apply legacy safety checks for additional constraints
+        # These may add extra dependencies but won't conflict with phase ordering
+
         # Apply implementation dependencies (implementation depends on design)
         tasks = self.safety_checker.apply_implementation_dependencies(tasks)
 
