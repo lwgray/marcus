@@ -45,7 +45,7 @@ class NaturalLanguageTaskCreator(ABC):
         self.safety_checker = SafetyChecker()
 
     async def create_tasks_on_board(
-        self, tasks: List[Task], skip_validation: bool = False
+        self, tasks: List[Task], skip_validation: bool = False, update_dependencies: bool = True
     ) -> List[Task]:
         """
         Create tasks on the kanban board.
@@ -55,6 +55,7 @@ class NaturalLanguageTaskCreator(ABC):
         Args:
             tasks: List of tasks to create
             skip_validation: Skip dependency validation if True
+            update_dependencies: Update task dependencies with new IDs after creation
 
         Returns:
             List of created tasks

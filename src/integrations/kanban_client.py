@@ -325,6 +325,26 @@ class KanbanClient:
                     task = self._card_to_task(card)
                     tasks.append(task)
 
+                # Build mapping of original IDs to new IDs
+                id_mapping = {}
+                for task in tasks:
+                    if hasattr(task, '_original_id') and task._original_id:
+                        id_mapping[task._original_id] = task.id
+                
+                # Resolve dependencies using the mapping
+                if id_mapping:
+                    logger.debug(f"Resolving dependencies with ID mapping: {id_mapping}")
+                    for task in tasks:
+                        if task.dependencies:
+                            resolved_deps = []
+                            for dep_id in task.dependencies:
+                                # Try to resolve using the mapping, fall back to original ID
+                                resolved_id = id_mapping.get(dep_id, dep_id)
+                                if resolved_id != dep_id:
+                                    logger.debug(f"Resolved dependency {dep_id} -> {resolved_id}")
+                                resolved_deps.append(resolved_id)
+                            task.dependencies = resolved_deps
+
                 return tasks
 
     async def assign_task(self, task_id: str, agent_id: str) -> None:
@@ -543,6 +563,7 @@ class KanbanClient:
         # Parse dependencies from description if they exist
         description = card.get("description", "")
         dependencies = self._parse_dependencies_from_description(description)
+        original_id = self._parse_original_id_from_description(description)
         
         # Parse labels from the card
         labels = []
@@ -553,7 +574,7 @@ class KanbanClient:
                 elif isinstance(label, str):
                     labels.append(label)
 
-        return Task(
+        task = Task(
             id=card.get("id", ""),
             name=task_name,
             description=description,
@@ -568,6 +589,12 @@ class KanbanClient:
             dependencies=dependencies,
             labels=labels,
         )
+        
+        # Store original ID as a custom attribute
+        if original_id:
+            task._original_id = original_id
+            
+        return task
 
     def _parse_dependencies_from_description(self, description: str) -> List[str]:
         """
@@ -602,6 +629,37 @@ class KanbanClient:
             return dependencies
         
         return []
+    
+    def _parse_original_id_from_description(self, description: str) -> Optional[str]:
+        """
+        Parse the original task ID from the description field.
+        
+        Original ID is stored in the description as:
+        🏷️ Original ID: task_get_hello_design
+        
+        Parameters
+        ----------
+        description : str
+            Task description that may contain original ID
+            
+        Returns
+        -------
+        Optional[str]
+            Original task ID if found, None otherwise
+        """
+        if not description:
+            return None
+            
+        import re
+        
+        # Look for the original ID line
+        pattern = r'🏷️ Original ID:\s*([^\n]+)'
+        match = re.search(pattern, description)
+        
+        if match:
+            return match.group(1).strip()
+        
+        return None
 
     async def add_comment(self, task_id: str, comment_text: str) -> None:
         """

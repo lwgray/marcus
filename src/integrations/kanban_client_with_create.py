@@ -65,6 +65,10 @@ class KanbanClientWithCreate(KanbanClient):
         """
         metadata_parts = []
 
+        # Always include original ID if present
+        if task_data.get("original_id"):
+            metadata_parts.append(f"🏷️ Original ID: {task_data['original_id']}")
+
         if task_data.get("estimated_hours"):
             metadata_parts.append(f"⏱️ Estimated: {task_data['estimated_hours']} hours")
 

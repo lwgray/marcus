@@ -174,6 +174,8 @@ class TaskBuilder:
             "labels": task.labels,
             "estimated_hours": task.estimated_hours,
             "dependencies": task.dependencies,
+            # Store the original task ID for dependency mapping
+            "original_id": task.id,
             # Include acceptance criteria if available
             "acceptance_criteria": getattr(task, "acceptance_criteria", []),
             # Include subtasks if available
