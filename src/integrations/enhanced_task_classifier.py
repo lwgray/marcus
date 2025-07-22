@@ -49,6 +49,11 @@ class EnhancedTaskClassifier:
                 "specification",
                 "spec",
                 "specs",
+                "research",
+                "analyze",
+                "analysis",
+                "study",
+                "investigate",
             ],
             "secondary": [
                 "wireframe",
@@ -63,7 +68,6 @@ class EnhancedTaskClassifier:
                 "ui/ux",
                 "ux",
                 "ui",
-                "flow",
                 "workflow",
                 "concept",
                 "draft",
@@ -91,9 +95,13 @@ class EnhancedTaskClassifier:
                 "develop",
                 "code",
                 "program",
-                "create",
                 "construct",
                 "engineer",
+                "fix",
+                "bug",
+                "bugfix",
+                "patch",
+                "repair",
             ],
             "secondary": [
                 "feature",
@@ -110,7 +118,6 @@ class EnhancedTaskClassifier:
                 "logic",
                 "algorithm",
                 "function",
-                "method",
                 "class",
                 "handler",
                 "controller",
@@ -187,9 +194,9 @@ class EnhancedTaskClassifier:
                 "guide",
                 "manual",
                 "wiki",
+                "tutorial",
             ],
             "secondary": [
-                "tutorial",
                 "howto",
                 "how-to",
                 "reference",
@@ -205,6 +212,7 @@ class EnhancedTaskClassifier:
                 "annotations",
                 "description",
                 "explanation",
+                "onboarding",
             ],
             "verbs": [
                 "document",
@@ -416,7 +424,11 @@ class EnhancedTaskClassifier:
 
         # Calculate confidence based on score and uniqueness
         total_score = sum(scores.values())
-        confidence = best_score / total_score if total_score > 0 else 0.0
+        # Ensure minimum confidence if we have matches
+        if best_score > 0:
+            confidence = max(0.5, best_score / total_score) if total_score > 0 else 0.8
+        else:
+            confidence = 0.0
 
         # Boost confidence if we have strong indicators
         if matched_patterns[best_type]:
@@ -452,13 +464,15 @@ class EnhancedTaskClassifier:
 
         # Check primary keywords (higher weight)
         for keyword in keywords_dict.get("primary", []):
-            if keyword in text:
+            # Use word boundary matching for better accuracy
+            if re.search(rf"\b{re.escape(keyword)}\b", text):
                 score += 2.0
                 matched_keywords.append(keyword)
 
         # Check secondary keywords
         for keyword in keywords_dict.get("secondary", []):
-            if keyword in text:
+            # Use word boundary matching for better accuracy
+            if re.search(rf"\b{re.escape(keyword)}\b", text):
                 score += 1.0
                 matched_keywords.append(keyword)
 

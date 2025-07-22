@@ -183,6 +183,7 @@ class PhaseDependencyEnforcer:
                 "authentication",
                 "auth",
                 "user-management",
+                "user-mgmt",
                 "payment",
                 "dashboard",
                 "api",

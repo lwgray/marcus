@@ -14,8 +14,6 @@ from src.core.models import Priority, Task, TaskStatus
 from src.core.phase_dependency_enforcer import (
     DependencyType,
     TaskPhase,
-)
-from src.core.phase_dependency_enforcer import (
     FeatureGroup,
     PhaseDependencyEnforcer,
 )
