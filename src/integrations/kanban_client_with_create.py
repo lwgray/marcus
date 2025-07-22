@@ -46,6 +46,43 @@ class KanbanClientWithCreate(KanbanClient):
         if "PLANKA_AGENT_PASSWORD" not in os.environ:
             os.environ["PLANKA_AGENT_PASSWORD"] = "demo"
 
+    def _build_task_metadata(self, task_data: Dict[str, Any]) -> Optional[str]:
+        """
+        Build metadata comment for task description.
+        
+        This includes priority, estimates, and dependencies formatted
+        in a way that can be parsed back out when reading tasks.
+        
+        Parameters
+        ----------
+        task_data : Dict[str, Any]
+            Task data dictionary
+            
+        Returns
+        -------
+        Optional[str]
+            Formatted metadata comment or None if no metadata
+        """
+        metadata_parts = []
+
+        if task_data.get("estimated_hours"):
+            metadata_parts.append(f"⏱️ Estimated: {task_data['estimated_hours']} hours")
+
+        if task_data.get("priority"):
+            priority_emoji = {"urgent": "🔴", "high": "🟠", "medium": "🟡", "low": "🟢"}
+            emoji = priority_emoji.get(task_data["priority"].lower(), "⚪")
+            metadata_parts.append(f"{emoji} Priority: {task_data['priority'].upper()}")
+
+        if task_data.get("dependencies"):
+            deps = ", ".join(task_data["dependencies"])
+            metadata_parts.append(f"🔗 Dependencies: {deps}")
+
+        if metadata_parts:
+            header = "📋 Task Metadata (Auto-generated)\n"
+            return header + "\n".join(metadata_parts)
+
+        return None
+
     async def create_task(self, task_data: Dict[str, Any]) -> Task:
         """
         Create a new task on the kanban board.
