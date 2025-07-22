@@ -853,13 +853,51 @@ async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Tas
         }
 
         # Filter tasks: TODO, not assigned, and all dependencies completed
-        available_tasks = [
-            t
-            for t in state.project_tasks
-            if t.status == TaskStatus.TODO
-            and t.id not in all_assigned_ids
-            and all(dep_id in completed_task_ids for dep_id in (t.dependencies or []))
-        ]
+        available_tasks = []
+        for t in state.project_tasks:
+            if t.status != TaskStatus.TODO:
+                continue
+            if t.id in all_assigned_ids:
+                continue
+            
+            # Check dependencies
+            deps = t.dependencies or []
+            all_deps_complete = all(dep_id in completed_task_ids for dep_id in deps)
+            
+            if not all_deps_complete:
+                # Log which dependencies are not complete
+                incomplete_deps = [dep_id for dep_id in deps if dep_id not in completed_task_ids]
+                logger.debug(
+                    f"Task '{t.name}' has incomplete dependencies: {incomplete_deps}"
+                )
+                continue
+                
+            available_tasks.append(t)
+        
+        # Special handling for PROJECT_SUCCESS documentation
+        # Calculate project completion percentage
+        total_non_doc_tasks = len([
+            t for t in state.project_tasks 
+            if not any(label in (t.labels or []) for label in ["documentation", "final", "verification"])
+        ])
+        completed_non_doc_tasks = len([
+            t for t in state.project_tasks 
+            if t.status == TaskStatus.DONE
+            and not any(label in (t.labels or []) for label in ["documentation", "final", "verification"])
+        ])
+        
+        if total_non_doc_tasks > 0:
+            completion_percentage = (completed_non_doc_tasks / total_non_doc_tasks) * 100
+            
+            # Filter out PROJECT_SUCCESS tasks if project is not nearly complete
+            if completion_percentage < 95:
+                available_tasks = [
+                    t for t in available_tasks
+                    if "PROJECT_SUCCESS" not in t.name
+                ]
+                logger.debug(
+                    f"Filtering out PROJECT_SUCCESS tasks - project only {completion_percentage:.1f}% complete"
+                )
         
         # Apply phase-based task filtering
         from src.core.phase_dependency_enforcer import PhaseDependencyEnforcer
@@ -933,9 +971,10 @@ async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Tas
                         )
                         if phase_exists:
                             phase_allowed = False
-                            logger.debug(
+                            logger.info(
                                 f"Task '{task.name}' ({task_phase.value}) blocked - "
-                                f"waiting for {req_phase.name} phase to complete in same feature"
+                                f"waiting for {req_phase.name} phase to complete in same feature. "
+                                f"Task labels: {task.labels}, Required phase: {req_phase.name}"
                             )
                             break
             

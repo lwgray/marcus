@@ -83,6 +83,38 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         if not prd_result.tasks:
             logger.warning("PRD parser returned no tasks!")
             logger.debug(f"PRD result: {prd_result}")
+            return []
+        
+        # Apply the inferred dependencies to the task objects
+        if prd_result.dependencies:
+            logger.info(f"Applying {len(prd_result.dependencies)} inferred dependencies to tasks")
+            
+            # Create a mapping of task IDs to tasks for quick lookup
+            task_map = {task.id: task for task in prd_result.tasks}
+            
+            # Apply each dependency
+            for dep in prd_result.dependencies:
+                dependent_task_id = dep.get("dependent_task_id")
+                dependency_task_id = dep.get("dependency_task_id")
+                
+                if dependent_task_id in task_map and dependency_task_id in task_map:
+                    dependent_task = task_map[dependent_task_id]
+                    
+                    # Add the dependency if not already present
+                    if dependency_task_id not in dependent_task.dependencies:
+                        dependent_task.dependencies.append(dependency_task_id)
+                        logger.debug(
+                            f"Added dependency: {task_map[dependent_task_id].name} "
+                            f"depends on {task_map[dependency_task_id].name} "
+                            f"(reason: {dep.get('reasoning', 'inferred')})"
+                        )
+                else:
+                    logger.warning(
+                        f"Could not apply dependency: {dependent_task_id} -> {dependency_task_id} "
+                        f"(task not found in task map)"
+                    )
+        else:
+            logger.info("No dependencies returned from PRD parser")
 
         return prd_result.tasks
 

@@ -159,6 +159,15 @@ class DependencyInferer:
                 confidence=0.85,
                 mandatory=False,
             ),
+            # Design before implementation
+            DependencyPattern(
+                name="design_before_implementation",
+                description="Design must complete before implementation",
+                condition_pattern=r"(implement|build|create|develop)",
+                dependency_pattern=r"(design|architect|plan)",
+                confidence=0.95,
+                mandatory=True,
+            ),
             # Implementation before testing
             DependencyPattern(
                 name="implementation_before_testing",

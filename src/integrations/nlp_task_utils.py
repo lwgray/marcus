@@ -266,11 +266,21 @@ class SafetyChecker:
             related_impl_tasks = SafetyChecker._find_related_tasks(
                 test_task, implementation_tasks
             )
+            
+            if not related_impl_tasks:
+                logger.warning(
+                    f"No related implementation tasks found for test task '{test_task.name}' "
+                    f"with labels: {test_task.labels}"
+                )
+            else:
+                logger.info(
+                    f"Found {len(related_impl_tasks)} related implementation tasks for '{test_task.name}'"
+                )
 
             for impl_task in related_impl_tasks:
                 if impl_task.id not in test_task.dependencies:
                     test_task.dependencies.append(impl_task.id)
-                    logger.debug(
+                    logger.info(
                         f"Added dependency: {test_task.name} depends on {impl_task.name}"
                     )
 
@@ -296,11 +306,21 @@ class SafetyChecker:
             related_design_tasks = SafetyChecker._find_related_tasks(
                 impl_task, design_tasks
             )
+            
+            if not related_design_tasks:
+                logger.warning(
+                    f"No related design tasks found for implementation task '{impl_task.name}' "
+                    f"with labels: {impl_task.labels}"
+                )
+            else:
+                logger.info(
+                    f"Found {len(related_design_tasks)} related design tasks for '{impl_task.name}'"
+                )
 
             for design_task in related_design_tasks:
                 if design_task.id not in impl_task.dependencies:
                     impl_task.dependencies.append(design_task.id)
-                    logger.debug(
+                    logger.info(
                         f"Added dependency: {impl_task.name} depends on {design_task.name}"
                     )
 
@@ -311,23 +331,40 @@ class SafetyChecker:
         """Find tasks that are related based on labels and keywords"""
         related = []
 
-        # Check label overlap
-        task_labels = set(task.labels)
+        # Extract feature labels from task
+        task_feature_labels = {label for label in task.labels if label.startswith("feature:")}
+        
         for candidate in candidate_tasks:
-            candidate_labels = set(candidate.labels)
-            if task_labels & candidate_labels:  # If there's any overlap
+            # First priority: Check feature label overlap (tasks in same feature)
+            candidate_feature_labels = {label for label in candidate.labels if label.startswith("feature:")}
+            if task_feature_labels & candidate_feature_labels:
+                related.append(candidate)
+                continue
+            
+            # Second priority: Check component label overlap
+            task_component_labels = {label for label in task.labels if label.startswith("component:")}
+            candidate_component_labels = {label for label in candidate.labels if label.startswith("component:")}
+            if task_component_labels & candidate_component_labels:
                 related.append(candidate)
                 continue
 
-            # Check keyword similarity in names
+            # Third priority: Check any label overlap (excluding type labels)
+            task_other_labels = set(task.labels) - {label for label in task.labels if label.startswith("type:")}
+            candidate_other_labels = set(candidate.labels) - {label for label in candidate.labels if label.startswith("type:")}
+            if task_other_labels & candidate_other_labels:
+                related.append(candidate)
+                continue
+
+            # Fourth priority: Check keyword similarity in names
             task_words = set(task.name.lower().split())
             candidate_words = set(candidate.name.lower().split())
             # Remove common words
-            common_words = {"the", "a", "an", "and", "or", "for", "to", "in", "of"}
+            common_words = {"the", "a", "an", "and", "or", "for", "to", "in", "of", "design", "implement", "test", "create", "build", "develop"}
             task_words -= common_words
             candidate_words -= common_words
 
-            if task_words & candidate_words:  # If there's any overlap
+            # Need at least 2 matching words for keyword-based relation
+            if len(task_words & candidate_words) >= 2:
                 related.append(candidate)
 
         return related

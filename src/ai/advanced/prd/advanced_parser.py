@@ -1025,6 +1025,12 @@ class AdvancedPRDParser:
 
         # Generate appropriate labels based on context and requirements
         labels = self._generate_labels(task_type, project_context, constraints)
+        
+        # Add feature label based on epic_id to group related tasks
+        # This ensures tasks from the same feature share a common label for phase enforcement
+        if epic_id and epic_id.startswith("epic_"):
+            feature_name = epic_id.replace("epic_", "").replace("_", "-")
+            labels.append(f"feature:{feature_name}")
 
         # Generate acceptance criteria based on task type
         acceptance_criteria = self._generate_acceptance_criteria(

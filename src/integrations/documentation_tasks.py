@@ -74,12 +74,15 @@ class DocumentationTaskGenerator:
             logger.info("No implementation tasks found, skipping documentation task")
             return None
 
-        # Documentation depends on all major tasks
-        dependencies = (
-            [t.id for t in implementation_tasks]
-            + [t.id for t in test_tasks]
-            + [t.id for t in deploy_tasks]
-        )
+        # PROJECT_SUCCESS depends on ALL non-documentation tasks
+        # This ensures it's only available when the entire project is complete
+        dependencies = [
+            t.id for t in existing_tasks
+            if not any(label in t.labels for label in ["documentation", "final", "verification"])
+        ]
+        
+        # Log dependency count for debugging
+        logger.info(f"PROJECT_SUCCESS task will depend on {len(dependencies)} tasks")
 
         # Create the documentation task
         doc_task = Task(
