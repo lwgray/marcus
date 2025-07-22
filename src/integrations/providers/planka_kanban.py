@@ -4,13 +4,14 @@ Planka implementation of KanbanInterface
 Adapts the existing MCP Kanban client to work with the common interface
 """
 
-import asyncio
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+import logging
+from typing import Any, Dict, List, Optional, Union
 
-from src.core.models import Priority, Task, TaskStatus
+from src.core.models import Task, TaskStatus
 from src.integrations.kanban_client import KanbanClient
 from src.integrations.kanban_interface import KanbanInterface, KanbanProvider
+
+logger = logging.getLogger(__name__)
 
 
 class PlankaKanban(KanbanInterface):
@@ -110,6 +111,7 @@ class PlankaKanban(KanbanInterface):
 
         # Debug logging
         import logging
+
         logger = logging.getLogger(__name__)
         logger.info(f"update_task called with task_id={task_id}, updates={updates}")
 
@@ -117,7 +119,7 @@ class PlankaKanban(KanbanInterface):
         if "status" in updates:
             status = updates["status"]
             logger.info(f"Status update requested: {status} (type: {type(status)})")
-            
+
             # Map TaskStatus to column names
             status_to_column = {
                 TaskStatus.TODO: "backlog",
@@ -171,13 +173,16 @@ class PlankaKanban(KanbanInterface):
 
         # Find target list
         lists = await self.client._get_lists()
-        
+
         # Debug logging
         import logging
+
         logger = logging.getLogger(__name__)
-        logger.info(f"Looking for list: '{target_list_name}' (from column_name: '{column_name}')")
-        logger.info(f"Available lists: {[l['name'] for l in lists]}")
-        
+        logger.info(
+            f"Looking for list: '{target_list_name}' (from column_name: '{column_name}')"
+        )
+        logger.info(f"Available lists: {[lst['name'] for lst in lists]}")
+
         target_list = None
         for list_data in lists:
             if target_list_name.lower() in list_data["name"].lower():
@@ -211,8 +216,7 @@ class PlankaKanban(KanbanInterface):
         cards = await self.client._get_cards()
         lists = await self.client._get_lists()
 
-        # Create list name to ID mapping
-        list_map = {list_data["name"].lower(): list_data["id"] for list_data in lists}
+        # Create list name to ID mapping (removed - not used)
 
         metrics = {
             "total_tasks": len(cards),
@@ -317,3 +321,195 @@ class PlankaKanban(KanbanInterface):
         except Exception as e:
             # Log error but don't fail the progress update
             logger.warning(f"Could not update checklist items: {e}")
+
+    # Attachment methods implementation for Planka
+
+    async def upload_attachment(
+        self,
+        task_id: str,
+        filename: str,
+        content: Union[str, bytes],
+        content_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Upload an attachment to a Planka card.
+
+        Uses the kanban-mcp attachment manager to upload files.
+        """
+        if not self.connected:
+            await self.connect()
+
+        try:
+            # If content is bytes, convert to base64
+            if isinstance(content, bytes):
+                import base64
+
+                content = base64.b64encode(content).decode()
+
+            # Call the MCP attachment manager
+            result = await self.client.mcp_call(
+                "mcp_kanban_attachment_manager",
+                {
+                    "action": "upload",
+                    "cardId": task_id,
+                    "filename": filename,
+                    "content": content,
+                    "contentType": content_type,
+                },
+            )
+
+            if result:
+                return {
+                    "success": True,
+                    "data": {
+                        "id": result.get("id"),
+                        "filename": result.get("filename", filename),
+                        "url": result.get("url"),
+                        "size": len(content) if isinstance(content, str) else 0,
+                    },
+                }
+            else:
+                return {"success": False, "error": "Failed to upload attachment"}
+
+        except Exception as e:
+            logger.error(f"Error uploading attachment: {str(e)}")
+            return {"success": False, "error": f"Failed to upload attachment: {str(e)}"}
+
+    async def get_attachments(self, task_id: str) -> Dict[str, Any]:
+        """Get all attachments for a Planka card."""
+        if not self.connected:
+            await self.connect()
+
+        try:
+            result = await self.client.mcp_call(
+                "mcp_kanban_attachment_manager",
+                {
+                    "action": "get_all",
+                    "cardId": task_id,
+                },
+            )
+
+            if isinstance(result, list):
+                # Format attachments
+                attachments = []
+                for att in result:
+                    attachments.append(
+                        {
+                            "id": att.get("id"),
+                            "filename": att.get("name"),
+                            "url": att.get("url"),
+                            "created_at": att.get("createdAt"),
+                            "created_by": att.get("userId"),
+                        }
+                    )
+
+                return {"success": True, "data": attachments}
+            else:
+                return {"success": True, "data": []}
+
+        except Exception as e:
+            logger.error(f"Error getting attachments: {str(e)}")
+            return {"success": False, "error": f"Failed to get attachments: {str(e)}"}
+
+    async def download_attachment(
+        self, attachment_id: str, filename: str, task_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Download an attachment from Planka."""
+        if not self.connected:
+            await self.connect()
+
+        try:
+            result = await self.client.mcp_call(
+                "mcp_kanban_attachment_manager",
+                {
+                    "action": "download",
+                    "id": attachment_id,
+                    "filename": filename,
+                },
+            )
+
+            if result and result.get("content"):
+                return {
+                    "success": True,
+                    "data": {
+                        "content": result.get("content"),
+                        "filename": result.get("filename", filename),
+                        "content_type": None,  # Planka doesn't provide this
+                    },
+                }
+            else:
+                return {"success": False, "error": "Failed to download attachment"}
+
+        except Exception as e:
+            logger.error(f"Error downloading attachment: {str(e)}")
+            return {
+                "success": False,
+                "error": f"Failed to download attachment: {str(e)}",
+            }
+
+    async def delete_attachment(
+        self, attachment_id: str, task_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Delete an attachment from Planka."""
+        if not self.connected:
+            await self.connect()
+
+        try:
+            result = await self.client.mcp_call(
+                "mcp_kanban_attachment_manager",
+                {
+                    "action": "delete",
+                    "id": attachment_id,
+                },
+            )
+
+            return {
+                "success": result.get("success", False),
+                "error": result.get("error") if not result.get("success") else None,
+            }
+
+        except Exception as e:
+            logger.error(f"Error deleting attachment: {str(e)}")
+            return {"success": False, "error": f"Failed to delete attachment: {str(e)}"}
+
+    async def update_attachment(
+        self,
+        attachment_id: str,
+        filename: Optional[str] = None,
+        task_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Update attachment metadata in Planka."""
+        if not self.connected:
+            await self.connect()
+
+        if not filename:
+            return {
+                "success": False,
+                "error": "Filename is required for Planka attachment updates",
+            }
+
+        try:
+            result = await self.client.mcp_call(
+                "mcp_kanban_attachment_manager",
+                {
+                    "action": "update",
+                    "id": attachment_id,
+                    "name": filename,
+                },
+            )
+
+            if result:
+                return {
+                    "success": True,
+                    "data": {
+                        "id": result.get("id"),
+                        "filename": result.get("name", filename),
+                        "url": result.get("url"),
+                    },
+                }
+            else:
+                return {"success": False, "error": "Failed to update attachment"}
+
+        except Exception as e:
+            logger.error(f"Error updating attachment: {str(e)}")
+            return {"success": False, "error": f"Failed to update attachment: {str(e)}"}

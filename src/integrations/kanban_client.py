@@ -18,6 +18,7 @@ for each operation to ensure reliability.
 
 import asyncio
 import json
+import logging
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -28,6 +29,8 @@ from mcp.client.stdio import stdio_client
 
 from mcp import ClientSession, StdioServerParameters
 from src.core.models import Priority, Task, TaskStatus
+
+logger = logging.getLogger(__name__)
 
 
 class KanbanClient:
@@ -228,6 +231,41 @@ class KanbanClient:
                     if not task.assigned_to and self._is_available_task(card):
                         tasks.append(task)
 
+                # Apply the same dependency ID mapping and filtering as get_all_tasks()
+                # Build mapping of original IDs to new IDs
+                id_mapping = {}
+                for task in tasks:
+                    if hasattr(task, "_original_id") and task._original_id:
+                        id_mapping[task._original_id] = task.id
+
+                # Resolve dependencies using the mapping
+                if id_mapping:
+                    logger.debug(
+                        f"Resolving dependencies with ID mapping: {id_mapping}"
+                    )
+                    for task in tasks:
+                        if task.dependencies:
+                            resolved_deps = []
+                            for dep_id in task.dependencies:
+                                if dep_id in id_mapping:
+                                    # Dependency exists on the board - resolve it
+                                    resolved_id = id_mapping[dep_id]
+                                    logger.debug(
+                                        f"Resolved dependency {dep_id} -> {resolved_id}"
+                                    )
+                                    resolved_deps.append(resolved_id)
+                                else:
+                                    # Dependency doesn't exist on the board - check if it's already a board ID
+                                    if dep_id in [t.id for t in tasks]:
+                                        # It's a valid board ID, keep it
+                                        resolved_deps.append(dep_id)
+                                    else:
+                                        # Orphaned dependency - skip it
+                                        logger.warning(
+                                            f"Skipping orphaned dependency '{dep_id}' for task '{task.name}'"
+                                        )
+                            task.dependencies = resolved_deps
+
                 return tasks
 
     async def get_all_tasks(self) -> List[Task]:
@@ -328,21 +366,35 @@ class KanbanClient:
                 # Build mapping of original IDs to new IDs
                 id_mapping = {}
                 for task in tasks:
-                    if hasattr(task, '_original_id') and task._original_id:
+                    if hasattr(task, "_original_id") and task._original_id:
                         id_mapping[task._original_id] = task.id
-                
+
                 # Resolve dependencies using the mapping
                 if id_mapping:
-                    logger.debug(f"Resolving dependencies with ID mapping: {id_mapping}")
+                    logger.debug(
+                        f"Resolving dependencies with ID mapping: {id_mapping}"
+                    )
                     for task in tasks:
                         if task.dependencies:
                             resolved_deps = []
                             for dep_id in task.dependencies:
-                                # Try to resolve using the mapping, fall back to original ID
-                                resolved_id = id_mapping.get(dep_id, dep_id)
-                                if resolved_id != dep_id:
-                                    logger.debug(f"Resolved dependency {dep_id} -> {resolved_id}")
-                                resolved_deps.append(resolved_id)
+                                if dep_id in id_mapping:
+                                    # Dependency exists on the board - resolve it
+                                    resolved_id = id_mapping[dep_id]
+                                    logger.debug(
+                                        f"Resolved dependency {dep_id} -> {resolved_id}"
+                                    )
+                                    resolved_deps.append(resolved_id)
+                                else:
+                                    # Dependency doesn't exist on the board - check if it's already a board ID
+                                    if dep_id in [t.id for t in tasks]:
+                                        # It's a valid board ID, keep it
+                                        resolved_deps.append(dep_id)
+                                    else:
+                                        # Orphaned dependency - skip it
+                                        logger.warning(
+                                            f"Skipping orphaned dependency '{dep_id}' for task '{task.name}'"
+                                        )
                             task.dependencies = resolved_deps
 
                 return tasks
@@ -564,7 +616,7 @@ class KanbanClient:
         description = card.get("description", "")
         dependencies = self._parse_dependencies_from_description(description)
         original_id = self._parse_original_id_from_description(description)
-        
+
         # Parse labels from the card
         labels = []
         if card.get("labels"):
@@ -589,25 +641,25 @@ class KanbanClient:
             dependencies=dependencies,
             labels=labels,
         )
-        
+
         # Store original ID as a custom attribute
         if original_id:
             task._original_id = original_id
-            
+
         return task
 
     def _parse_dependencies_from_description(self, description: str) -> List[str]:
         """
         Parse task dependencies from the description field.
-        
+
         Dependencies are stored in the description as:
         🔗 Dependencies: task_id_1, task_id_2, task_id_3
-        
+
         Parameters
         ----------
         description : str
             Task description that may contain dependencies
-            
+
         Returns
         -------
         List[str]
@@ -615,33 +667,33 @@ class KanbanClient:
         """
         if not description:
             return []
-            
+
         import re
-        
+
         # Look for the dependencies line
-        pattern = r'🔗 Dependencies:\s*([^\n]+)'
+        pattern = r"🔗 Dependencies:\s*([^\n]+)"
         match = re.search(pattern, description)
-        
+
         if match:
             deps_str = match.group(1)
             # Split by comma and clean up each dependency ID
-            dependencies = [dep.strip() for dep in deps_str.split(',') if dep.strip()]
+            dependencies = [dep.strip() for dep in deps_str.split(",") if dep.strip()]
             return dependencies
-        
+
         return []
-    
+
     def _parse_original_id_from_description(self, description: str) -> Optional[str]:
         """
         Parse the original task ID from the description field.
-        
+
         Original ID is stored in the description as:
         🏷️ Original ID: task_get_hello_design
-        
+
         Parameters
         ----------
         description : str
             Task description that may contain original ID
-            
+
         Returns
         -------
         Optional[str]
@@ -649,16 +701,16 @@ class KanbanClient:
         """
         if not description:
             return None
-            
+
         import re
-        
+
         # Look for the original ID line
-        pattern = r'🏷️ Original ID:\s*([^\n]+)'
+        pattern = r"🏷️ Original ID:\s*([^\n]+)"
         match = re.search(pattern, description)
-        
+
         if match:
             return match.group(1).strip()
-        
+
         return None
 
     async def add_comment(self, task_id: str, comment_text: str) -> None:

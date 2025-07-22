@@ -830,13 +830,51 @@ async def report_blocker(
 # Helper functions for task assignment
 
 
-async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Task]:
-    """Find the best task for an agent using AI-powered analysis."""
+async def find_optimal_task_for_agent(
+    agent_id: str, state: Any
+) -> tuple[Optional[Task], Dict[str, Any]]:
+    """
+    Find the best task for an agent using AI-powered analysis.
+
+    Returns:
+        tuple: (Optional[Task], assignment_details)
+        assignment_details contains:
+        - success: bool
+        - task: Optional[Task]
+        - filtering_stats: Dict with counts of filtered tasks by reason
+        - reason: str explaining why no task was found (if applicable)
+    """
     async with state.assignment_lock:
+        # Initialize detailed tracking
+        filtering_stats = {
+            "total_tasks": len(state.project_tasks) if state.project_tasks else 0,
+            "todo_status": 0,
+            "already_assigned": 0,
+            "incomplete_dependencies": 0,
+            "project_success_filtered": 0,
+            "phase_restrictions": 0,
+            "deployment_deprioritized": 0,
+            "ai_safety_filtered": 0,
+            "skills_mismatch": 0,
+            "final_available": 0,
+        }
         agent = state.agent_status.get(agent_id)
 
-        if not agent or not state.project_state:
-            return None
+        if not agent:
+            return None, {
+                "success": False,
+                "task": None,
+                "filtering_stats": filtering_stats,
+                "reason": "agent_not_registered",
+            }
+
+        if not state.project_state:
+            return None, {
+                "success": False,
+                "task": None,
+                "filtering_stats": filtering_stats,
+                "reason": "no_project_state",
+            }
 
         # Get available tasks
         assigned_task_ids = [a.task_id for a in state.agent_tasks.values()]
@@ -856,83 +894,105 @@ async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Tas
         available_tasks = []
         for t in state.project_tasks:
             if t.status != TaskStatus.TODO:
+                filtering_stats["todo_status"] += 1
                 continue
             if t.id in all_assigned_ids:
+                filtering_stats["already_assigned"] += 1
                 continue
-            
+
             # Check dependencies
             deps = t.dependencies or []
             all_deps_complete = all(dep_id in completed_task_ids for dep_id in deps)
-            
+
             if not all_deps_complete:
+                filtering_stats["incomplete_dependencies"] += 1
                 # Log which dependencies are not complete
-                incomplete_deps = [dep_id for dep_id in deps if dep_id not in completed_task_ids]
+                incomplete_deps = [
+                    dep_id for dep_id in deps if dep_id not in completed_task_ids
+                ]
                 logger.debug(
                     f"Task '{t.name}' has incomplete dependencies: {incomplete_deps}"
                 )
                 continue
-                
+
             available_tasks.append(t)
-        
+
         # Special handling for PROJECT_SUCCESS documentation
         # Calculate project completion percentage
-        total_non_doc_tasks = len([
-            t for t in state.project_tasks 
-            if not any(label in (t.labels or []) for label in ["documentation", "final", "verification"])
-        ])
-        completed_non_doc_tasks = len([
-            t for t in state.project_tasks 
-            if t.status == TaskStatus.DONE
-            and not any(label in (t.labels or []) for label in ["documentation", "final", "verification"])
-        ])
-        
+        total_non_doc_tasks = len(
+            [
+                t
+                for t in state.project_tasks
+                if not any(
+                    label in (t.labels or [])
+                    for label in ["documentation", "final", "verification"]
+                )
+            ]
+        )
+        completed_non_doc_tasks = len(
+            [
+                t
+                for t in state.project_tasks
+                if t.status == TaskStatus.DONE
+                and not any(
+                    label in (t.labels or [])
+                    for label in ["documentation", "final", "verification"]
+                )
+            ]
+        )
+
         if total_non_doc_tasks > 0:
-            completion_percentage = (completed_non_doc_tasks / total_non_doc_tasks) * 100
-            
+            completion_percentage = (
+                completed_non_doc_tasks / total_non_doc_tasks
+            ) * 100
+
             # Filter out PROJECT_SUCCESS tasks if project is not nearly complete
             if completion_percentage < 95:
                 available_tasks = [
-                    t for t in available_tasks
-                    if "PROJECT_SUCCESS" not in t.name
+                    t for t in available_tasks if "PROJECT_SUCCESS" not in t.name
                 ]
                 logger.debug(
                     f"Filtering out PROJECT_SUCCESS tasks - project only {completion_percentage:.1f}% complete"
                 )
-        
+
         # Apply phase-based task filtering
         from src.core.phase_dependency_enforcer import PhaseDependencyEnforcer
         from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
-        
+
         phase_enforcer = PhaseDependencyEnforcer()
         classifier = EnhancedTaskClassifier()
-        
+
         # Get in-progress tasks to check phase constraints
         in_progress_task_ids = {
             t.id for t in state.project_tasks if t.status == TaskStatus.IN_PROGRESS
         }
-        
+
         # Further filter available tasks based on phase constraints
         phase_eligible_tasks = []
         for task in available_tasks:
             task_type = classifier.classify(task)
             task_phase = phase_enforcer._get_task_phase(task_type)
-            
+
             # Check if this phase is allowed given current in-progress tasks
             phase_allowed = True
-            
+
             # First check against in-progress tasks
             for ip_task_id in in_progress_task_ids:
-                ip_task = next((t for t in state.project_tasks if t.id == ip_task_id), None)
+                ip_task = next(
+                    (t for t in state.project_tasks if t.id == ip_task_id), None
+                )
                 if ip_task:
                     ip_type = classifier.classify(ip_task)
                     ip_phase = phase_enforcer._get_task_phase(ip_type)
-                    
+
                     # Check if tasks share the same feature (by labels)
                     if task.labels and ip_task.labels:
                         shared_labels = set(task.labels) & set(ip_task.labels)
                         if shared_labels:
                             # Same feature - check phase order
-                            if phase_enforcer._should_depend_on_phase(task_phase, ip_phase):
+                            if phase_enforcer._should_depend_on_phase(
+                                task_phase, ip_phase
+                            ):
                                 # This task's phase should wait for in-progress phase
                                 phase_allowed = False
                                 logger.debug(
@@ -941,31 +1001,35 @@ async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Tas
                                     f"in same feature"
                                 )
                                 break
-            
+
             # Also check if all required earlier phases have been completed
             if phase_allowed and task.labels:
                 # Get all completed tasks in the same feature
                 feature_completed_tasks = [
-                    t for t in state.project_tasks 
-                    if t.status == TaskStatus.DONE 
-                    and t.labels 
+                    t
+                    for t in state.project_tasks
+                    if t.status == TaskStatus.DONE
+                    and t.labels
                     and set(t.labels) & set(task.labels)
                 ]
-                
+
                 # Check which phases have been completed
                 completed_phases = set()
                 for comp_task in feature_completed_tasks:
                     comp_type = classifier.classify(comp_task)
                     comp_phase = phase_enforcer._get_task_phase(comp_type)
                     completed_phases.add(comp_phase)
-                
+
                 # Check if all required earlier phases are complete
-                required_phases = [p for p in phase_enforcer.PHASE_ORDER if p.value < task_phase.value]
+                required_phases = [
+                    p for p in phase_enforcer.PHASE_ORDER if p.value < task_phase.value
+                ]
                 for req_phase in required_phases:
                     if req_phase not in completed_phases:
                         # Check if there are any tasks of this phase at all
                         phase_exists = any(
-                            phase_enforcer._get_task_phase(classifier.classify(t)) == req_phase
+                            phase_enforcer._get_task_phase(classifier.classify(t))
+                            == req_phase
                             for t in state.project_tasks
                             if t.labels and set(t.labels) & set(task.labels)
                         )
@@ -977,17 +1041,17 @@ async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Tas
                                 f"Task labels: {task.labels}, Required phase: {req_phase.name}"
                             )
                             break
-            
+
             if phase_allowed:
                 phase_eligible_tasks.append(task)
-        
+
         # Log filtering results
         if len(available_tasks) != len(phase_eligible_tasks):
             logger.info(
                 f"Phase enforcement filtered tasks: {len(available_tasks)} -> "
                 f"{len(phase_eligible_tasks)} eligible"
             )
-        
+
         available_tasks = phase_eligible_tasks
 
         # Further filter to deprioritize deployment tasks

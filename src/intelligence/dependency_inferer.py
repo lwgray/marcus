@@ -141,39 +141,30 @@ class DependencyInferer:
                 confidence=0.95,
                 mandatory=True,
             ),
-            # Design comes before implementation
+            # Design comes before implementation (unified pattern with specific task prefixes)
             DependencyPattern(
                 name="design_before_implementation",
                 description="Design must complete before implementation",
-                condition_pattern=r"(implement|build|create|code)",
-                dependency_pattern=r"(design|architect|plan|wireframe|spec)",
-                confidence=0.90,
+                condition_pattern=r"\b(implement|build|create|code|develop)\b",
+                dependency_pattern=r"\b(design|architect|plan|wireframe|spec)\b",
+                confidence=0.95,
                 mandatory=True,
             ),
             # Models/Backend before Frontend
             DependencyPattern(
                 name="backend_before_frontend",
                 description="Backend/API must exist before frontend integration",
-                condition_pattern=r"(frontend|ui|client|interface)",
-                dependency_pattern=r"(backend|api|server|endpoint|service)",
+                condition_pattern=r"\b(frontend|ui|client|interface)\b",
+                dependency_pattern=r"\b(backend|api|server|endpoint|service)\b",
                 confidence=0.85,
                 mandatory=False,
-            ),
-            # Design before implementation
-            DependencyPattern(
-                name="design_before_implementation",
-                description="Design must complete before implementation",
-                condition_pattern=r"(implement|build|create|develop)",
-                dependency_pattern=r"(design|architect|plan)",
-                confidence=0.95,
-                mandatory=True,
             ),
             # Implementation before testing
             DependencyPattern(
                 name="implementation_before_testing",
                 description="Implementation must complete before testing",
-                condition_pattern=r"(test|qa|quality|verify)",
-                dependency_pattern=r"(implement|build|create|develop)",
+                condition_pattern=r"\b(test|qa|quality|verify|testing)\b",
+                dependency_pattern=r"\b(implement|build|create|develop)\b",
                 confidence=0.95,
                 mandatory=True,
             ),
@@ -181,8 +172,8 @@ class DependencyInferer:
             DependencyPattern(
                 name="testing_before_deployment",
                 description="Testing must complete before deployment",
-                condition_pattern=r"(deploy|release|launch|production)",
-                dependency_pattern=r"(test|qa|quality|verify)",
+                condition_pattern=r"\b(deploy|release|launch|production)\b",
+                dependency_pattern=r"\b(test|qa|quality|verify|testing)\b",
                 confidence=0.95,
                 mandatory=True,
             ),
@@ -379,6 +370,26 @@ class DependencyInferer:
             if len(intersection) == 0:
                 return False
 
+        # Prevent circular dependencies by enforcing logical task ordering
+        dependent_task_type = self._classify_task_type(dependent_task.name)
+        dependency_task_type = self._classify_task_type(dependency_task.name)
+
+        # Define logical task ordering: design < implementation < testing < deployment
+        task_order = {
+            "design": 1,
+            "implementation": 2,
+            "testing": 3,
+            "deployment": 4,
+            "other": 2.5,  # Default to implementation level
+        }
+
+        dependent_order = task_order.get(dependent_task_type, task_order["other"])
+        dependency_order = task_order.get(dependency_task_type, task_order["other"])
+
+        # Dependency task should come before dependent task in logical order
+        if dependency_order >= dependent_order:
+            return False
+
         # Check temporal logic - dependency should typically come before dependent
         if (
             hasattr(dependency_task, "created_at")
@@ -392,6 +403,52 @@ class DependencyInferer:
                 return False
 
         return True
+
+    def _classify_task_type(self, task_name: str) -> str:
+        """
+        Classify task into type based on name patterns.
+
+        Returns: 'design', 'implementation', 'testing', 'deployment', or 'other'
+        """
+        name_lower = task_name.lower()
+
+        # Design/planning tasks
+        if any(
+            word in name_lower
+            for word in [
+                "design",
+                "plan",
+                "architect",
+                "wireframe",
+                "spec",
+                "research",
+                "analyze",
+            ]
+        ):
+            return "design"
+
+        # Testing tasks
+        if any(
+            word in name_lower
+            for word in ["test", "qa", "quality", "verify", "validation", "check"]
+        ):
+            return "testing"
+
+        # Deployment tasks
+        if any(
+            word in name_lower
+            for word in ["deploy", "release", "launch", "production", "publish"]
+        ):
+            return "deployment"
+
+        # Implementation tasks (check last since many contain these words)
+        if any(
+            word in name_lower
+            for word in ["implement", "build", "create", "develop", "code", "write"]
+        ):
+            return "implementation"
+
+        return "other"
 
     def _clean_dependencies(
         self, dependencies: List[InferredDependency]
@@ -410,10 +467,102 @@ class DependencyInferer:
             best_dep = max(deps, key=lambda d: d.confidence)
             cleaned.append(best_dep)
 
+        # Remove circular dependencies
+        cleaned = self._remove_circular_dependencies(cleaned)
+
         # Remove transitive dependencies that are implied by other dependencies
         # (A -> B -> C implies A -> C, so we can remove direct A -> C)
         cleaned = self._remove_transitive_dependencies(cleaned)
 
+        return cleaned
+
+    def _remove_circular_dependencies(
+        self, dependencies: List[InferredDependency]
+    ) -> List[InferredDependency]:
+        """
+        Remove circular dependencies by breaking cycles.
+
+        Strategy: Build a graph, detect cycles, and remove the lowest confidence
+        dependency from each cycle to break it.
+        """
+        # Build adjacency list
+        graph = defaultdict(list)
+        dep_map = {}  # (from_id, to_id) -> dependency
+
+        for dep in dependencies:
+            graph[dep.dependency_task_id].append(dep.dependent_task_id)
+            dep_map[(dep.dependency_task_id, dep.dependent_task_id)] = dep
+
+        # Detect cycles using DFS
+        visited = set()
+        rec_stack = set()
+        cycles_found = []
+
+        def detect_cycle(node, path):
+            if node in rec_stack:
+                # Found cycle - extract it
+                cycle_start = path.index(node)
+                cycle = path[cycle_start:] + [node]
+                cycles_found.append(cycle)
+                return True
+
+            if node in visited:
+                return False
+
+            visited.add(node)
+            rec_stack.add(node)
+
+            for neighbor in graph[node]:
+                if detect_cycle(neighbor, path + [neighbor]):
+                    break  # Only need to find one cycle per path
+
+            rec_stack.remove(node)
+            return False
+
+        # Find cycles
+        for node in list(
+            graph.keys()
+        ):  # Convert to list to avoid dictionary size change during iteration
+            if node not in visited:
+                detect_cycle(node, [node])
+
+        # Remove lowest confidence dependency from each cycle
+        dependencies_to_remove = set()
+
+        for cycle in cycles_found:
+            if len(cycle) < 2:
+                continue
+
+            logger.warning(f"Detected circular dependency: {' -> '.join(cycle)}")
+
+            # Find the lowest confidence dependency in the cycle
+            cycle_deps = []
+            for i in range(len(cycle) - 1):
+                from_task = cycle[i]
+                to_task = cycle[i + 1]
+                if (from_task, to_task) in dep_map:
+                    cycle_deps.append(dep_map[(from_task, to_task)])
+
+            if cycle_deps:
+                # Remove the dependency with lowest confidence
+                weakest_dep = min(cycle_deps, key=lambda d: d.confidence)
+                dependencies_to_remove.add(
+                    (weakest_dep.dependency_task_id, weakest_dep.dependent_task_id)
+                )
+                logger.info(
+                    f"Breaking circular dependency by removing: {weakest_dep.dependency_task_id} -> {weakest_dep.dependent_task_id} (confidence: {weakest_dep.confidence})"
+                )
+
+        # Filter out the dependencies we decided to remove
+        cleaned = []
+        for dep in dependencies:
+            key = (dep.dependency_task_id, dep.dependent_task_id)
+            if key not in dependencies_to_remove:
+                cleaned.append(dep)
+
+        logger.info(
+            f"Removed {len(dependencies) - len(cleaned)} dependencies to break circular references"
+        )
         return cleaned
 
     def _remove_transitive_dependencies(

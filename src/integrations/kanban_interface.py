@@ -8,7 +8,7 @@ integrations (Planka, Linear, GitHub Projects) must implement.
 from abc import ABC, abstractmethod
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from src.core.models import Priority, Task, TaskStatus
 
@@ -266,3 +266,127 @@ class KanbanInterface(ABC):
         if isinstance(provider_status, str):
             return status_map.get(provider_status.lower(), TaskStatus.BACKLOG)
         return TaskStatus.BACKLOG
+
+    # Attachment/artifact methods - these provide a generic interface
+    # for design document sharing across different kanban providers
+
+    @abstractmethod
+    async def upload_attachment(
+        self,
+        task_id: str,
+        filename: str,
+        content: Union[str, bytes],
+        content_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Upload an attachment to a task.
+
+        This method provides a generic interface for uploading design artifacts,
+        documentation, and other files to tasks across different kanban providers.
+
+        Args:
+            task_id: The task identifier (provider-specific format)
+            filename: Name for the attachment
+            content: File content (base64 string or bytes)
+            content_type: MIME type (e.g., 'application/json', 'text/markdown')
+
+        Returns:
+            Dict with attachment details including:
+            - success: bool indicating if upload was successful
+            - data: Dict containing:
+                - id: Attachment identifier
+                - filename: The filename
+                - url: URL to access the attachment (if available)
+                - size: File size in bytes
+            - error: Error message if success is False
+        """
+        pass
+
+    @abstractmethod
+    async def get_attachments(self, task_id: str) -> Dict[str, Any]:
+        """
+        Get all attachments for a task.
+
+        Args:
+            task_id: The task identifier
+
+        Returns:
+            Dict containing:
+            - success: bool
+            - data: List of attachment objects with:
+                - id: Attachment identifier
+                - filename: The filename
+                - url: URL to access the attachment
+                - created_at: Creation timestamp (ISO format)
+                - created_by: User who uploaded it (if available)
+            - error: Error message if success is False
+        """
+        pass
+
+    @abstractmethod
+    async def download_attachment(
+        self, attachment_id: str, filename: str, task_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Download an attachment.
+
+        Args:
+            attachment_id: The attachment ID
+            filename: The filename (required by some providers)
+            task_id: Optional task ID (required by some providers)
+
+        Returns:
+            Dict containing:
+            - success: bool
+            - data: Dict with:
+                - content: Base64 encoded file content
+                - filename: The filename
+                - content_type: MIME type if available
+            - error: Error message if success is False
+        """
+        pass
+
+    async def delete_attachment(
+        self, attachment_id: str, task_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Delete an attachment (optional - not all providers support this).
+
+        Args:
+            attachment_id: The attachment ID
+            task_id: Optional task ID (required by some providers)
+
+        Returns:
+            Dict containing:
+            - success: bool
+            - error: Error message if not supported or failed
+        """
+        return {
+            "success": False,
+            "error": "Attachment deletion not supported by this provider",
+        }
+
+    async def update_attachment(
+        self,
+        attachment_id: str,
+        filename: Optional[str] = None,
+        task_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Update attachment metadata (optional - not all providers support this).
+
+        Args:
+            attachment_id: The attachment ID
+            filename: New filename
+            task_id: Optional task ID (required by some providers)
+
+        Returns:
+            Dict containing:
+            - success: bool
+            - data: Updated attachment info if successful
+            - error: Error message if not supported or failed
+        """
+        return {
+            "success": False,
+            "error": "Attachment updates not supported by this provider",
+        }
