@@ -87,32 +87,21 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         
         # Apply the inferred dependencies to the task objects
         if prd_result.dependencies:
-            logger.info(f"Applying {len(prd_result.dependencies)} inferred dependencies to tasks")
+            logger.info(f"PRD parser returned {len(prd_result.dependencies)} dependencies")
+            logger.warning(
+                "Dependency mapping between parser IDs and kanban IDs is not yet implemented. "
+                "Tasks will be created without dependencies for now."
+            )
             
-            # Create a mapping of task IDs to tasks for quick lookup
-            task_map = {task.id: task for task in prd_result.tasks}
-            
-            # Apply each dependency
-            for dep in prd_result.dependencies:
-                dependent_task_id = dep.get("dependent_task_id")
-                dependency_task_id = dep.get("dependency_task_id")
-                
-                if dependent_task_id in task_map and dependency_task_id in task_map:
-                    dependent_task = task_map[dependent_task_id]
-                    
-                    # Add the dependency if not already present
-                    if dependency_task_id not in dependent_task.dependencies:
-                        dependent_task.dependencies.append(dependency_task_id)
-                        logger.debug(
-                            f"Added dependency: {task_map[dependent_task_id].name} "
-                            f"depends on {task_map[dependency_task_id].name} "
-                            f"(reason: {dep.get('reasoning', 'inferred')})"
-                        )
-                else:
-                    logger.warning(
-                        f"Could not apply dependency: {dependent_task_id} -> {dependency_task_id} "
-                        f"(task not found in task map)"
+            # TODO: Implement proper ID mapping when tasks are created on the board
+            # For now, clear dependencies to avoid invalid references
+            for task in prd_result.tasks:
+                if task.dependencies:
+                    logger.debug(
+                        f"Clearing {len(task.dependencies)} dependencies from task '{task.name}' "
+                        f"to avoid invalid ID references"
                     )
+                    task.dependencies = []
         else:
             logger.info("No dependencies returned from PRD parser")
 
