@@ -540,10 +540,23 @@ class KanbanClient:
         elif card.get("assigned_to"):  # Another alternative
             assigned_to = card.get("assigned_to")
 
+        # Parse dependencies from description if they exist
+        description = card.get("description", "")
+        dependencies = self._parse_dependencies_from_description(description)
+        
+        # Parse labels from the card
+        labels = []
+        if card.get("labels"):
+            for label in card.get("labels", []):
+                if isinstance(label, dict) and label.get("name"):
+                    labels.append(label["name"])
+                elif isinstance(label, str):
+                    labels.append(label)
+
         return Task(
             id=card.get("id", ""),
             name=task_name,
-            description=card.get("description", ""),
+            description=description,
             status=status,
             priority=Priority.MEDIUM,
             assigned_to=assigned_to,
@@ -552,9 +565,43 @@ class KanbanClient:
             due_date=None,
             estimated_hours=0.0,
             actual_hours=0.0,
-            dependencies=[],
-            labels=[],
+            dependencies=dependencies,
+            labels=labels,
         )
+
+    def _parse_dependencies_from_description(self, description: str) -> List[str]:
+        """
+        Parse task dependencies from the description field.
+        
+        Dependencies are stored in the description as:
+        🔗 Dependencies: task_id_1, task_id_2, task_id_3
+        
+        Parameters
+        ----------
+        description : str
+            Task description that may contain dependencies
+            
+        Returns
+        -------
+        List[str]
+            List of task IDs that this task depends on
+        """
+        if not description:
+            return []
+            
+        import re
+        
+        # Look for the dependencies line
+        pattern = r'🔗 Dependencies:\s*([^\n]+)'
+        match = re.search(pattern, description)
+        
+        if match:
+            deps_str = match.group(1)
+            # Split by comma and clean up each dependency ID
+            dependencies = [dep.strip() for dep in deps_str.split(',') if dep.strip()]
+            return dependencies
+        
+        return []
 
     async def add_comment(self, task_id: str, comment_text: str) -> None:
         """

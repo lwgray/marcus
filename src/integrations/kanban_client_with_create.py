@@ -166,6 +166,14 @@ class KanbanClientWithCreate(KanbanClient):
                 # Prepare card data
                 card_name = task_data.get("name", "Untitled Task")
                 card_description = task_data.get("description", "")
+                
+                # Add metadata (including dependencies) to description
+                metadata = self._build_task_metadata(task_data)
+                if metadata:
+                    if card_description:
+                        card_description = f"{card_description}\n\n{metadata}"
+                    else:
+                        card_description = metadata
 
                 # Create the card
                 create_result = await session.call_tool(
