@@ -203,9 +203,13 @@ class TaskBuilder:
 
 class SafetyChecker:
     """Apply safety checks to ensure logical task ordering"""
+    
+    def __init__(self):
+        """Initialize SafetyChecker with enhanced task classifier."""
+        from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
+        self.task_classifier = EnhancedTaskClassifier()
 
-    @staticmethod
-    def apply_deployment_dependencies(tasks: List[Task]) -> List[Task]:
+    def apply_deployment_dependencies(self, tasks: List[Task]) -> List[Task]:
         """
         Ensure deployment tasks depend on implementation and testing tasks.
 
@@ -217,11 +221,11 @@ class SafetyChecker:
         Returns:
             List of tasks with updated dependencies
         """
-        deployment_tasks = TaskClassifier.filter_by_type(tasks, TaskType.DEPLOYMENT)
-        implementation_tasks = TaskClassifier.filter_by_type(
+        deployment_tasks = self.task_classifier.filter_by_type(tasks, TaskType.DEPLOYMENT)
+        implementation_tasks = self.task_classifier.filter_by_type(
             tasks, TaskType.IMPLEMENTATION
         )
-        testing_tasks = TaskClassifier.filter_by_type(tasks, TaskType.TESTING)
+        testing_tasks = self.task_classifier.filter_by_type(tasks, TaskType.TESTING)
 
         for deploy_task in deployment_tasks:
             # Ensure deployment depends on ALL implementation tasks
@@ -242,8 +246,7 @@ class SafetyChecker:
 
         return tasks
 
-    @staticmethod
-    def apply_testing_dependencies(tasks: List[Task]) -> List[Task]:
+    def apply_testing_dependencies(self, tasks: List[Task]) -> List[Task]:
         """
         Ensure testing tasks depend on implementation tasks.
 
@@ -253,8 +256,8 @@ class SafetyChecker:
         Returns:
             List of tasks with updated dependencies
         """
-        testing_tasks = TaskClassifier.filter_by_type(tasks, TaskType.TESTING)
-        implementation_tasks = TaskClassifier.filter_by_type(
+        testing_tasks = self.task_classifier.filter_by_type(tasks, TaskType.TESTING)
+        implementation_tasks = self.task_classifier.filter_by_type(
             tasks, TaskType.IMPLEMENTATION
         )
 
@@ -273,8 +276,7 @@ class SafetyChecker:
 
         return tasks
 
-    @staticmethod
-    def apply_implementation_dependencies(tasks: List[Task]) -> List[Task]:
+    def apply_implementation_dependencies(self, tasks: List[Task]) -> List[Task]:
         """
         Ensure implementation tasks depend on design tasks.
 
@@ -284,8 +286,8 @@ class SafetyChecker:
         Returns:
             List of tasks with updated dependencies
         """
-        design_tasks = TaskClassifier.filter_by_type(tasks, TaskType.DESIGN)
-        implementation_tasks = TaskClassifier.filter_by_type(
+        design_tasks = self.task_classifier.filter_by_type(tasks, TaskType.DESIGN)
+        implementation_tasks = self.task_classifier.filter_by_type(
             tasks, TaskType.IMPLEMENTATION
         )
 

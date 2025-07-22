@@ -217,9 +217,6 @@ class EnhancedTaskClassifier:
             "verbs": [
                 "document",
                 "write",
-                "create",
-                "update",
-                "maintain",
                 "annotate",
                 "comment",
                 "describe",
@@ -424,6 +421,17 @@ class EnhancedTaskClassifier:
 
         # Calculate confidence based on score and uniqueness
         total_score = sum(scores.values())
+        
+        # If score is too low, treat as OTHER with 0 confidence
+        if best_score < 1.0:
+            return ClassificationResult(
+                task_type=TaskType.OTHER,
+                confidence=0.0,
+                matched_keywords=[],
+                matched_patterns=[],
+                reasoning="Insufficient evidence for classification",
+            )
+            
         # Ensure minimum confidence if we have matches
         if best_score > 0:
             confidence = max(0.5, best_score / total_score) if total_score > 0 else 0.8
@@ -465,21 +473,41 @@ class EnhancedTaskClassifier:
         # Check primary keywords (higher weight)
         for keyword in keywords_dict.get("primary", []):
             # Use word boundary matching for better accuracy
-            if re.search(rf"\b{re.escape(keyword)}\b", text):
-                score += 2.0
+            # Also check for plural forms
+            pattern = rf"\b{re.escape(keyword)}s?\b"
+            match = re.search(pattern, text)
+            if match:
+                # Give extra weight if keyword appears at the beginning
+                position_weight = 1.5 if match.start() < 10 else 1.0
+                
+                # Give testing keywords extra weight to avoid misclassification
+                if task_type == TaskType.TESTING and keyword in ["test", "testing"]:
+                    score += 3.0 * position_weight  # Higher weight for testing keywords
+                else:
+                    score += 2.0 * position_weight
                 matched_keywords.append(keyword)
 
         # Check secondary keywords
         for keyword in keywords_dict.get("secondary", []):
             # Use word boundary matching for better accuracy
-            if re.search(rf"\b{re.escape(keyword)}\b", text):
+            # Also check for plural forms
+            pattern = rf"\b{re.escape(keyword)}s?\b"
+            if re.search(pattern, text):
                 score += 1.0
                 matched_keywords.append(keyword)
 
         # Check verb usage
         for verb in keywords_dict.get("verbs", []):
             if re.search(rf"\b{verb}\b", text):
-                score += 1.5
+                # Special case: generic verbs need more context
+                if verb in ["update", "create", "write", "add", "build"] and len(text.split()) <= 3:
+                    # Very short task names with generic verbs get lower scores
+                    score += 0.5
+                    # Skip if the verb is the entire classification basis for testing
+                    if task_type == TaskType.TESTING and "test" in text:
+                        continue  # Don't let "write" override "test"
+                else:
+                    score += 1.5
                 if verb not in matched_keywords:
                     matched_keywords.append(verb)
 

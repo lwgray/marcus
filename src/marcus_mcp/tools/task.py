@@ -860,6 +860,96 @@ async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Tas
             and t.id not in all_assigned_ids
             and all(dep_id in completed_task_ids for dep_id in (t.dependencies or []))
         ]
+        
+        # Apply phase-based task filtering
+        from src.core.phase_dependency_enforcer import PhaseDependencyEnforcer
+        from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
+        
+        phase_enforcer = PhaseDependencyEnforcer()
+        classifier = EnhancedTaskClassifier()
+        
+        # Get in-progress tasks to check phase constraints
+        in_progress_task_ids = {
+            t.id for t in state.project_tasks if t.status == TaskStatus.IN_PROGRESS
+        }
+        
+        # Further filter available tasks based on phase constraints
+        phase_eligible_tasks = []
+        for task in available_tasks:
+            task_type = classifier.classify(task)
+            task_phase = phase_enforcer._get_task_phase(task_type)
+            
+            # Check if this phase is allowed given current in-progress tasks
+            phase_allowed = True
+            
+            # First check against in-progress tasks
+            for ip_task_id in in_progress_task_ids:
+                ip_task = next((t for t in state.project_tasks if t.id == ip_task_id), None)
+                if ip_task:
+                    ip_type = classifier.classify(ip_task)
+                    ip_phase = phase_enforcer._get_task_phase(ip_type)
+                    
+                    # Check if tasks share the same feature (by labels)
+                    if task.labels and ip_task.labels:
+                        shared_labels = set(task.labels) & set(ip_task.labels)
+                        if shared_labels:
+                            # Same feature - check phase order
+                            if phase_enforcer._should_depend_on_phase(task_phase, ip_phase):
+                                # This task's phase should wait for in-progress phase
+                                phase_allowed = False
+                                logger.debug(
+                                    f"Task '{task.name}' ({task_phase.value}) blocked by "
+                                    f"in-progress task '{ip_task.name}' ({ip_phase.value}) "
+                                    f"in same feature"
+                                )
+                                break
+            
+            # Also check if all required earlier phases have been completed
+            if phase_allowed and task.labels:
+                # Get all completed tasks in the same feature
+                feature_completed_tasks = [
+                    t for t in state.project_tasks 
+                    if t.status == TaskStatus.DONE 
+                    and t.labels 
+                    and set(t.labels) & set(task.labels)
+                ]
+                
+                # Check which phases have been completed
+                completed_phases = set()
+                for comp_task in feature_completed_tasks:
+                    comp_type = classifier.classify(comp_task)
+                    comp_phase = phase_enforcer._get_task_phase(comp_type)
+                    completed_phases.add(comp_phase)
+                
+                # Check if all required earlier phases are complete
+                required_phases = [p for p in phase_enforcer.PHASE_ORDER if p.value < task_phase.value]
+                for req_phase in required_phases:
+                    if req_phase not in completed_phases:
+                        # Check if there are any tasks of this phase at all
+                        phase_exists = any(
+                            phase_enforcer._get_task_phase(classifier.classify(t)) == req_phase
+                            for t in state.project_tasks
+                            if t.labels and set(t.labels) & set(task.labels)
+                        )
+                        if phase_exists:
+                            phase_allowed = False
+                            logger.debug(
+                                f"Task '{task.name}' ({task_phase.value}) blocked - "
+                                f"waiting for {req_phase.name} phase to complete in same feature"
+                            )
+                            break
+            
+            if phase_allowed:
+                phase_eligible_tasks.append(task)
+        
+        # Log filtering results
+        if len(available_tasks) != len(phase_eligible_tasks):
+            logger.info(
+                f"Phase enforcement filtered tasks: {len(available_tasks)} -> "
+                f"{len(phase_eligible_tasks)} eligible"
+            )
+        
+        available_tasks = phase_eligible_tasks
 
         # Further filter to deprioritize deployment tasks
         # Separate deployment and non-deployment tasks

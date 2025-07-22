@@ -8,7 +8,7 @@ including tasks, workers, assignments, and project state tracking.
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 class TaskStatus(Enum):
@@ -136,6 +136,12 @@ class Task:
     labels: List[str] = field(default_factory=list)
     project_id: Optional[str] = None
     project_name: Optional[str] = None
+    
+    # Fields for generalization support
+    source_type: Optional[str] = None  # "nlp_project", "predefined", "github_issue"
+    source_context: Optional[Dict[str, Any]] = None  # Original context data
+    completion_criteria: Optional[Dict[str, Any]] = None  # Success conditions
+    validation_spec: Optional[str] = None  # How to validate completion
 
 
 @dataclass

@@ -126,7 +126,7 @@ class TestTaskExecutionOrderIntegration:
         tasks = await task_creator.process_natural_language("Build authentication system")
         
         # Classify tasks
-        classified = task_creator.classify_tasks(tasks)
+        classified = task_creator.classify_tasks_with_details(tasks)
         
         expected_types = ["design", "infrastructure", "implementation", "testing", "documentation"]
         

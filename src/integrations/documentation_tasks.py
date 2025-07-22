@@ -196,17 +196,55 @@ def enhance_project_with_documentation(
     Returns:
         Task list with documentation task added if appropriate
     """
-    generator = DocumentationTaskGenerator()
-
+    # Import here to avoid circular imports
+    from src.integrations.adaptive_documentation import (
+        AdaptiveDocumentationGenerator,
+        create_documentation_context,
+    )
+    
+    # Use adaptive generator for more intelligent documentation
+    adaptive_generator = AdaptiveDocumentationGenerator()
+    
+    # Create context for documentation decisions
+    context = create_documentation_context(
+        tasks=tasks,
+        project_name=project_name,
+        source_type="nlp_project",  # Default for now
+        metadata={"description": project_description}
+    )
+    
     # Check if we should add documentation
-    if not generator.should_add_documentation_task(project_description, len(tasks)):
+    if not adaptive_generator.should_add_documentation(context):
         logger.info("Skipping documentation task for this project")
         return tasks
-
-    # Create documentation task
+    
+    # Generate appropriate documentation tasks
+    doc_tasks = adaptive_generator.create_documentation_tasks(context)
+    
+    if doc_tasks:
+        for task in doc_tasks:
+            logger.info(f"Added documentation task: {task.name}")
+        return tasks + doc_tasks
+    
+    # Fallback to legacy behavior if no tasks generated
+    generator = DocumentationTaskGenerator()
     doc_task = generator.create_documentation_task(tasks, project_name)
-
+    
     if doc_task:
+        # Extract feature labels from tasks to add to doc task
+        feature_labels = set()
+        for task in tasks:
+            if task.labels:
+                for label in task.labels:
+                    if (label.startswith("feature:") or 
+                        label.startswith("component:") or
+                        label in ["backend", "frontend", "api", "database"]):
+                        feature_labels.add(label)
+        
+        # Add feature labels to documentation task for phase enforcement
+        if feature_labels:
+            doc_task.labels = list(set(doc_task.labels) | feature_labels)
+            
         logger.info(f"Added documentation task: {doc_task.name}")
         return tasks + [doc_task]
 

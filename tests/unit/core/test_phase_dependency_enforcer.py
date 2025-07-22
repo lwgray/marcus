@@ -20,6 +20,26 @@ from src.core.phase_dependency_enforcer import (
 from src.integrations.nlp_task_utils import TaskType
 
 
+def create_test_task(id, name, labels=None, **kwargs):
+    """Helper to create tasks with default values for testing"""
+    from datetime import datetime
+    
+    defaults = {
+        "description": f"Description for {name}",
+        "status": TaskStatus.TODO,
+        "priority": Priority.MEDIUM,
+        "assigned_to": None,
+        "created_at": datetime.now(),
+        "updated_at": datetime.now(),
+        "due_date": None,
+        "estimated_hours": 4.0,
+        "dependencies": [],
+        "labels": labels or [],
+    }
+    defaults.update(kwargs)
+    return Task(id=id, name=name, **defaults)
+
+
 class TestPhaseDependencyEnforcer:
     """Test suite for PhaseDependencyEnforcer"""
 
@@ -31,6 +51,8 @@ class TestPhaseDependencyEnforcer:
     @pytest.fixture
     def sample_tasks(self):
         """Create sample tasks for testing"""
+        from datetime import datetime
+        
         return [
             Task(
                 id="design-001",
@@ -40,6 +62,11 @@ class TestPhaseDependencyEnforcer:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 dependencies=[],
+                assigned_to=None,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                due_date=None,
+                estimated_hours=4.0,
             ),
             Task(
                 id="impl-001",
@@ -49,6 +76,11 @@ class TestPhaseDependencyEnforcer:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 dependencies=[],
+                assigned_to=None,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                due_date=None,
+                estimated_hours=8.0,
             ),
             Task(
                 id="test-001",
@@ -58,6 +90,11 @@ class TestPhaseDependencyEnforcer:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 dependencies=[],
+                assigned_to=None,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                due_date=None,
+                estimated_hours=4.0,
             ),
             Task(
                 id="doc-001",
@@ -67,6 +104,11 @@ class TestPhaseDependencyEnforcer:
                 status=TaskStatus.TODO,
                 priority=Priority.LOW,
                 dependencies=[],
+                assigned_to=None,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                due_date=None,
+                estimated_hours=2.0,
             ),
         ]
 
@@ -97,13 +139,13 @@ class TestPhaseDependencyEnforcer:
         """Test that dependencies are isolated within features"""
         tasks = [
             # Auth feature
-            Task(id="auth-design", name="Design auth system", labels=["auth"]),
-            Task(id="auth-impl", name="Implement auth", labels=["auth"]),
-            Task(id="auth-test", name="Test auth", labels=["auth"]),
+            create_test_task("auth-design", "Design auth system", labels=["auth"]),
+            create_test_task("auth-impl", "Implement auth", labels=["auth"]),
+            create_test_task("auth-test", "Test auth", labels=["auth"]),
             # Payment feature
-            Task(id="pay-design", name="Design payment system", labels=["payment"]),
-            Task(id="pay-impl", name="Implement payment", labels=["payment"]),
-            Task(id="pay-test", name="Test payment", labels=["payment"]),
+            create_test_task("pay-design", "Design payment system", labels=["payment"]),
+            create_test_task("pay-impl", "Implement payment", labels=["payment"]),
+            create_test_task("pay-test", "Test payment", labels=["payment"]),
         ]
 
         result_tasks = enforcer.enforce_phase_dependencies(tasks)
@@ -119,9 +161,9 @@ class TestPhaseDependencyEnforcer:
 
     def test_feature_identification_from_name(self, enforcer):
         """Test feature identification from task names"""
-        task1 = Task(id="1", name="Design authentication flow", labels=[])
-        task2 = Task(id="2", name="Build payment processing", labels=[])
-        task3 = Task(id="3", name="Create user dashboard", labels=[])
+        task1 = create_test_task("1", "Design authentication flow", labels=[])
+        task2 = create_test_task("2", "Build payment processing", labels=[])
+        task3 = create_test_task("3", "Create user dashboard", labels=[])
 
         assert enforcer._identify_task_feature(task1) == "auth"
         assert enforcer._identify_task_feature(task2) == "payment"
@@ -129,8 +171,8 @@ class TestPhaseDependencyEnforcer:
 
     def test_feature_identification_from_labels(self, enforcer):
         """Test feature identification prioritizes explicit labels"""
-        task1 = Task(id="1", name="Generic task", labels=["feature:checkout"])
-        task2 = Task(id="2", name="Another task", labels=["authentication"])
+        task1 = create_test_task("1", "Generic task", labels=["feature:checkout"])
+        task2 = create_test_task("2", "Another task", labels=["authentication"])
 
         assert enforcer._identify_task_feature(task1) == "checkout"
         assert enforcer._identify_task_feature(task2) == "authentication"
@@ -138,10 +180,10 @@ class TestPhaseDependencyEnforcer:
     def test_phase_classification(self, enforcer):
         """Test task phase classification"""
         tasks = [
-            Task(id="1", name="Design API architecture", labels=[]),
-            Task(id="2", name="Implement user service", labels=[]),
-            Task(id="3", name="Write unit tests for API", labels=[]),
-            Task(id="4", name="Document API endpoints", labels=[]),
+            create_test_task("1", "Design API architecture", labels=[]),
+            create_test_task("2", "Implement user service", labels=[]),
+            create_test_task("3", "Write unit tests for API", labels=[]),
+            create_test_task("4", "Document API endpoints", labels=[]),
         ]
 
         phase_tasks = enforcer._classify_tasks_by_phase(tasks)
@@ -181,9 +223,9 @@ class TestPhaseDependencyEnforcer:
     def test_preserve_existing_dependencies(self, enforcer):
         """Test that existing manual dependencies are preserved"""
         tasks = [
-            Task(id="design-001", name="Design API", dependencies=[]),
-            Task(id="impl-001", name="Implement API", dependencies=["external-001"]),
-            Task(id="test-001", name="Test API", dependencies=["manual-001"]),
+            create_test_task("design-001", "Design API", dependencies=[]),
+            create_test_task("impl-001", "Implement API", dependencies=["external-001"]),
+            create_test_task("test-001", "Test API", dependencies=["manual-001"]),
         ]
 
         result_tasks = enforcer.enforce_phase_dependencies(tasks)
@@ -201,9 +243,9 @@ class TestPhaseDependencyEnforcer:
         """Test phase ordering validation"""
         # Valid ordering
         valid_tasks = [
-            Task(id="1", name="Design", dependencies=[]),
-            Task(id="2", name="Implement", dependencies=["1"]),
-            Task(id="3", name="Test", dependencies=["2"]),
+            create_test_task("1", "Design", dependencies=[]),
+            create_test_task("2", "Implement", dependencies=["1"]),
+            create_test_task("3", "Test", dependencies=["2"]),
         ]
 
         is_valid, errors = enforcer.validate_phase_ordering(valid_tasks)
@@ -212,8 +254,8 @@ class TestPhaseDependencyEnforcer:
 
         # Invalid ordering - test depends on documentation
         invalid_tasks = [
-            Task(id="1", name="Test something", dependencies=["2"]),
-            Task(id="2", name="Document something", dependencies=[]),
+            create_test_task("1", "Test something", dependencies=["2"]),
+            create_test_task("2", "Document something", dependencies=[]),
         ]
 
         is_valid, errors = enforcer.validate_phase_ordering(invalid_tasks)
@@ -228,7 +270,7 @@ class TestPhaseDependencyEnforcer:
 
     def test_single_task_project(self, enforcer):
         """Test project with single task"""
-        tasks = [Task(id="1", name="Implement feature", dependencies=[])]
+        tasks = [create_test_task("1", "Implement feature", dependencies=[])]
         result = enforcer.enforce_phase_dependencies(tasks)
 
         assert len(result) == 1
@@ -237,9 +279,9 @@ class TestPhaseDependencyEnforcer:
     def test_all_same_phase_tasks(self, enforcer):
         """Test project where all tasks are in same phase"""
         tasks = [
-            Task(id="1", name="Implement feature A", labels=["feature-a"]),
-            Task(id="2", name="Implement feature B", labels=["feature-b"]),
-            Task(id="3", name="Implement feature C", labels=["feature-c"]),
+            create_test_task("1", "Implement feature A", labels=["feature-a"]),
+            create_test_task("2", "Implement feature B", labels=["feature-b"]),
+            create_test_task("3", "Implement feature C", labels=["feature-c"]),
         ]
 
         result = enforcer.enforce_phase_dependencies(tasks)
@@ -251,9 +293,9 @@ class TestPhaseDependencyEnforcer:
     def test_infrastructure_phase_ordering(self, enforcer):
         """Test that infrastructure phase is ordered correctly"""
         tasks = [
-            Task(id="design-001", name="Design system architecture", labels=["infra"]),
-            Task(id="infra-001", name="Setup database", labels=["infra"]),
-            Task(id="impl-001", name="Implement API", labels=["infra"]),
+            create_test_task("design-001", "Design system architecture", labels=["infra"]),
+            create_test_task("infra-001", "Setup database", labels=["infra"]),
+            create_test_task("impl-001", "Implement API", labels=["infra"]),
         ]
 
         result_tasks = enforcer.enforce_phase_dependencies(tasks)
@@ -294,7 +336,7 @@ class TestPhaseDependencyEnforcer:
         ]
 
         for task_name, expected_feature in test_cases:
-            task = Task(id="1", name=task_name, labels=[])
+            task = create_test_task("1", task_name, labels=[])
             assert enforcer._identify_task_feature(task) == expected_feature
 
     @pytest.mark.parametrize(

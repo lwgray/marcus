@@ -208,6 +208,31 @@ class NaturalLanguageTaskCreator(ABC):
             classified[task_type].append(task)
 
         return classified
+    
+    def classify_tasks_with_details(self, tasks: List[Task]) -> Dict[str, Dict[str, Any]]:
+        """
+        Classify tasks and return detailed classification info per task.
+        
+        Args:
+            tasks: List of tasks to classify
+            
+        Returns:
+            Dictionary mapping task IDs to classification details
+        """
+        from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
+        
+        classifier = EnhancedTaskClassifier()
+        results = {}
+        
+        for task in tasks:
+            result = classifier.classify_with_confidence(task)
+            results[task.id] = {
+                "type": result.task_type.value,
+                "confidence": result.confidence,
+                "reasoning": result.reasoning
+            }
+            
+        return results
 
     def get_tasks_by_type(self, tasks: List[Task], task_type: TaskType) -> List[Task]:
         """Get all tasks of a specific type"""

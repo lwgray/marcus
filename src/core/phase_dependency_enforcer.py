@@ -177,6 +177,9 @@ class PhaseDependencyEnforcer:
             for label in task.labels:
                 if label.startswith("feature:"):
                     return label.replace("feature:", "")
+                # Also check for feature-X pattern
+                if label.startswith("feature-"):
+                    return label
 
             # Check for component labels
             component_labels = [
@@ -264,6 +267,7 @@ class PhaseDependencyEnforcer:
         - Preserve existing manual dependencies
         """
         phase_tasks = feature_group.phase_tasks
+        violations_corrected = 0
 
         # Process phases in order
         for i, current_phase in enumerate(self.PHASE_ORDER):
@@ -281,23 +285,33 @@ class PhaseDependencyEnforcer:
             # Add dependencies from previous phases
             if previous_phase_tasks:
                 for task in current_phase_tasks:
-                    self._add_phase_dependencies(task, previous_phase_tasks)
+                    violations = self._add_phase_dependencies(task, previous_phase_tasks)
+                    violations_corrected += violations
+                    
+        if violations_corrected > 0:
+            logger.warning(
+                f"Corrected {violations_corrected} phase ordering violations in feature '{feature_group.feature_name}'"
+            )
 
     def _add_phase_dependencies(
         self, dependent_task: Task, dependency_tasks: List[Task]
-    ) -> None:
+    ) -> int:
         """
         Add phase-based dependencies to a task.
 
         Args:
             dependent_task: Task that will depend on others
             dependency_tasks: Tasks that must complete first
+            
+        Returns:
+            Number of violations corrected
         """
         if not dependency_tasks:
-            return
+            return 0
 
         # Track additions for logging
         added_count = 0
+        violations_found = 0
 
         # Ensure dependencies list exists
         if (
@@ -313,6 +327,7 @@ class PhaseDependencyEnforcer:
             ):
                 dependent_task.dependencies.append(dep_task.id)
                 added_count += 1
+                violations_found += 1
 
                 # Add metadata if task supports it
                 if hasattr(dependent_task, "add_dependency"):
@@ -320,8 +335,8 @@ class PhaseDependencyEnforcer:
 
                 logger.debug(
                     f"Added phase dependency: {dependent_task.name} "
-                    f"({self._get_task_phase(dependent_task)}) depends on "
-                    f"{dep_task.name} ({self._get_task_phase(dep_task)})"
+                    f"({self._get_task_phase_name(dependent_task)}) depends on "
+                    f"{dep_task.name} ({self._get_task_phase_name(dep_task)})"
                 )
 
         # Mark task as having phase dependencies added
@@ -331,8 +346,10 @@ class PhaseDependencyEnforcer:
             logger.debug(
                 f"Added {added_count} phase dependencies to task: {dependent_task.name}"
             )
+            
+        return violations_found
 
-    def _get_task_phase(self, task: Task) -> str:
+    def _get_task_phase_name(self, task: Task) -> str:
         """Get the phase name for a task."""
         if hasattr(task, "phase") and task.phase:
             return task.phase.name
@@ -387,6 +404,14 @@ class PhaseDependencyEnforcer:
         # Fallback to type classification
         task_type = self.task_classifier.classify(task)
         return self.TYPE_TO_PHASE_MAP.get(task_type)
+    
+    def _get_task_phase(self, task_type: TaskType) -> TaskPhase:
+        """Convert TaskType to TaskPhase."""
+        return self.TYPE_TO_PHASE_MAP.get(task_type, TaskPhase.IMPLEMENTATION)
+    
+    def _should_depend_on_phase(self, task_phase: TaskPhase, other_phase: TaskPhase) -> bool:
+        """Check if task_phase should depend on other_phase based on phase ordering."""
+        return task_phase.value > other_phase.value
 
     def get_phase_statistics(self, tasks: List[Task]) -> Dict[str, Any]:
         """
@@ -406,7 +431,7 @@ class PhaseDependencyEnforcer:
         # Count tasks by phase
         phase_counts: Dict[str, int] = defaultdict(int)
         for task in tasks:
-            phase = self._get_task_phase(task)
+            phase = self._get_task_phase_name(task)
             phase_counts[phase] += 1
 
             # Count dependencies

@@ -374,11 +374,11 @@ class TestTaskExecutionOrderComprehensive:
     def test_full_workflow_integration(self, enforcer, classifier):
         """Test complete workflow from classification to dependency enforcement."""
         raw_tasks = [
-            self.create_task("1", "Create authentication architecture"),
-            self.create_task("2", "Build login and registration endpoints"),
-            self.create_task("3", "Write unit tests for authentication"),
-            self.create_task("4", "Create API documentation for auth"),
-            self.create_task("5", "Deploy authentication service"),
+            self.create_task("1", "Create authentication architecture", labels=["auth"]),
+            self.create_task("2", "Build login and registration endpoints", labels=["auth"]),
+            self.create_task("3", "Write unit tests for authentication", labels=["auth"]),
+            self.create_task("4", "Create API documentation for auth", labels=["auth"]),
+            self.create_task("5", "Deploy authentication service", labels=["auth"]),
         ]
         
         # Classify tasks

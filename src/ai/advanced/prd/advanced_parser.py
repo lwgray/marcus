@@ -596,6 +596,13 @@ class AdvancedPRDParser:
             estimated_hours=enhanced_details.get("estimated_hours", 1.0),
             dependencies=[],  # Will be filled by dependency inference
             labels=enhanced_details.get("labels", []),
+            # New generalization fields
+            source_type="nlp_project",
+            source_context={
+                "prd_analysis": analysis.__dict__ if hasattr(analysis, "__dict__") else {},
+                "task_info": task_info,
+                "constraints": constraints.__dict__ if hasattr(constraints, "__dict__") else {},
+            },
         )
 
         # Note: acceptance_criteria and subtasks would need to be added to Task model
