@@ -17,6 +17,7 @@ from .tools import (  # Agent tools; Task tools; Project tools; System tools; NL
     create_project,
     get_agent_status,
     get_project_status,
+    get_task_context,
     list_registered_agents,
     log_artifact,
     ping,
@@ -26,7 +27,6 @@ from .tools import (  # Agent tools; Task tools; Project tools; System tools; NL
     request_next_task,
 )
 from .tools.context import (  # Context tools
-    get_task_context,
     log_decision,
 )
 
@@ -235,7 +235,7 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
             name="get_task_context",
             description=(
                 "Get the full context for a specific task including "
-                "dependencies and decisions"
+                "dependencies, decisions, and artifacts stored in the repository"
             ),
             inputSchema={
                 "type": "object",
@@ -251,10 +251,10 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
         types.Tool(
             name="log_artifact",
             description=(
-                "Log an artifact with smart routing to appropriate storage location. "
-                "Automatically determines whether to store artifacts in the repository "
-                "(for specifications/documentation) or as kanban attachments "
-                "(for reference/temporary materials)."
+                "Store an artifact with smart location management. "
+                "Artifacts are automatically stored in organized directories based on type "
+                "(e.g., API specs → docs/api/, designs → docs/design/). "
+                "You can optionally override the location for special cases."
             ),
             inputSchema={
                 "type": "object",
@@ -266,13 +266,16 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                     },
                     "content": {
                         "type": "string",
-                        "description": "Artifact content as string",
+                        "description": "The artifact content to store",
                     },
                     "artifact_type": {
                         "type": "string",
                         "description": "Type of artifact",
                         "enum": [
                             "specification",
+                            "api",
+                            "design",
+                            "architecture",
                             "documentation",
                             "reference",
                             "temporary",
@@ -282,6 +285,11 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                         "type": "string",
                         "description": "Optional description of the artifact",
                         "default": "",
+                    },
+                    "location": {
+                        "type": "string",
+                        "description": "Optional override for storage location (relative path)",
+                        "default": None,
                     },
                 },
                 "required": ["task_id", "filename", "content", "artifact_type"],
@@ -1000,6 +1008,7 @@ async def handle_tool_call(
                     content=content,
                     artifact_type=artifact_type,
                     description=arguments.get("description", ""),
+                    location=arguments.get("location"),  # Optional override
                     state=state,
                 )
 

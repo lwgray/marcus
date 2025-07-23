@@ -127,7 +127,9 @@ async def get_task_context(task_id: str, state: Any) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
-async def _collect_task_artifacts(task_id: str, task: Any, state: Any) -> List[Dict[str, Any]]:
+async def _collect_task_artifacts(
+    task_id: str, task: Any, state: Any
+) -> List[Dict[str, Any]]:
     """
     Collect all artifacts available for this task from multiple sources.
 
@@ -144,11 +146,10 @@ async def _collect_task_artifacts(task_id: str, task: Any, state: Any) -> List[D
         artifacts.extend(repo_artifacts)
 
         # 2. Collect kanban attachments for this task
-        if state.kanban_client and task.kanban_card_id:
+        if state.kanban_client:
             try:
-                result = await state.kanban_client.get_attachments(
-                    card_id=task.kanban_card_id
-                )
+                card_id = getattr(task, "kanban_card_id", None) or task.id
+                result = await state.kanban_client.get_attachments(card_id=card_id)
                 if result.get("success", False):
                     attachments = result.get("data", [])
                     for attachment in attachments:
@@ -188,10 +189,13 @@ async def _collect_task_artifacts(task_id: str, task: Any, state: Any) -> List[D
                     artifacts.extend(dep_repo_artifacts)
 
                     # Kanban attachments from dependency
-                    if state.kanban_client and dep_task.kanban_card_id:
+                    if state.kanban_client:
                         try:
+                            dep_card_id = (
+                                getattr(dep_task, "kanban_card_id", None) or dep_task.id
+                            )
                             result = await state.kanban_client.get_attachments(
-                                card_id=dep_task.kanban_card_id
+                                card_id=dep_card_id
                             )
                             if result.get("success", False):
                                 attachments = result.get("data", [])
@@ -200,9 +204,9 @@ async def _collect_task_artifacts(task_id: str, task: Any, state: Any) -> List[D
                                         {
                                             "filename": attachment.get("name"),
                                             "location": (
-                                    f"./attachments/{attachment.get('id')}/"
-                                    f"{attachment.get('name')}"
-                                ),
+                                                f"./attachments/{attachment.get('id')}/"
+                                                f"{attachment.get('name')}"
+                                            ),
                                             "storage_type": "attachment",
                                             "artifact_type": "reference",
                                             "created_by": attachment.get("userId"),

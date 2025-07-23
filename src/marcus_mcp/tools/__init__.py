@@ -12,11 +12,8 @@ This package contains all MCP tool implementations organized by domain:
 
 from .agent import get_agent_status, list_registered_agents, register_agent
 from .attachment import (
-    download_design_artifact,
-    get_dependency_artifacts,
-    list_design_artifacts,
+    get_task_context,
     log_artifact,
-    upload_design_artifact,
 )
 from .nlp import add_feature, create_project
 from .project import get_project_status
@@ -32,12 +29,9 @@ __all__ = [
     "request_next_task",
     "report_task_progress",
     "report_blocker",
-    # Attachment tools
-    "upload_design_artifact",
-    "download_design_artifact",
-    "list_design_artifacts",
-    "get_dependency_artifacts",
+    # Artifact tools
     "log_artifact",
+    "get_task_context",
     # Project tools
     "get_project_status",
     # System tools

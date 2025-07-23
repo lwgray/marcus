@@ -1,426 +1,26 @@
 """
-Attachment management tools for design artifact sharing.
+Artifact management tools with prescriptive storage locations.
 
-These tools allow agents to upload, download, and manage attachments
-on kanban cards, enabling design artifacts to be shared between tasks.
+These tools help agents store and track design artifacts in organized
+locations while allowing flexibility when needed.
 """
 
-import base64
+import logging
 from pathlib import Path
-from typing import Any, List, Optional, Union
-
-from src.core.logging import get_logger
-from src.marcus_mcp.tool_outputs import ToolResult
-
-logger = get_logger(__name__)
-
-
-async def upload_design_artifact(
-    task_id: str,
-    filename: str,
-    content: Union[str, bytes],
-    content_type: Optional[str] = None,
-    description: Optional[str] = None,
-    state: Any = None,
-) -> ToolResult:
-    """
-    Upload a design artifact (file) to a task.
-
-    This tool allows agents to attach design documents, API specifications,
-    wireframes, data models, and other artifacts to tasks for dependent
-    tasks to reference.
-
-    Args:
-        task_id: The task ID to attach the artifact to
-        filename: Name for the attachment file
-        content: File content as string or bytes (will be base64 encoded if string)
-        content_type: MIME type of the content (e.g., 'application/json')
-        description: Optional description of the artifact
-        state: MCP state object
-
-    Returns:
-        ToolResult with attachment information
-    """
-    try:
-        # Get kanban client from state
-        kanban = state.kanban_client
-        if not kanban:
-            return ToolResult(
-                success=False,
-                error="Kanban client not available",
-                data={"task_id": task_id},
-            )
-
-        # Find the task's card ID
-        task = next((t for t in state.project_tasks if t.id == task_id), None)
-        if not task:
-            return ToolResult(
-                success=False,
-                error=f"Task {task_id} not found",
-                data={"task_id": task_id},
-            )
-
-        if not task.kanban_card_id:
-            return ToolResult(
-                success=False,
-                error=f"Task {task_id} has no associated kanban card",
-                data={"task_id": task_id},
-            )
-
-        # Encode content to base64 if it's not already bytes
-        if isinstance(content, str):
-            # If it looks like it's already base64, use it as is
-            try:
-                base64.b64decode(content)
-                encoded_content = content
-            except Exception:
-                # Otherwise encode it
-                encoded_content = base64.b64encode(content.encode()).decode()
-        else:
-            encoded_content = base64.b64encode(content).decode()
-
-        # Upload attachment
-        result = await kanban.upload_attachment(
-            card_id=task.kanban_card_id,
-            filename=filename,
-            content=encoded_content,
-            content_type=content_type,
-        )
-
-        if not result.get("success", False):
-            return ToolResult(
-                success=False,
-                error=result.get("error", "Failed to upload attachment"),
-                data={"task_id": task_id, "filename": filename},
-            )
-
-        attachment = result.get("data", {})
-
-        # Add comment describing the artifact if provided
-        if description:
-            await kanban.add_comment(
-                card_id=task.kanban_card_id,
-                text=f"📎 Uploaded design artifact: {filename}\n\n{description}",
-            )
-
-        logger.info(f"Successfully uploaded artifact {filename} to task {task_id}")
-
-        return ToolResult(
-            success=True,
-            data={
-                "task_id": task_id,
-                "attachment_id": attachment.get("id"),
-                "filename": filename,
-                "url": attachment.get("url"),
-                "size": len(encoded_content),
-            },
-        )
-
-    except Exception as e:
-        logger.error(f"Error uploading design artifact: {str(e)}")
-        return ToolResult(
-            success=False,
-            error=f"Failed to upload artifact: {str(e)}",
-            data={"task_id": task_id, "filename": filename},
-        )
-
-
-async def download_design_artifact(
-    task_id: str,
-    attachment_id: str,
-    save_to_path: Optional[str] = None,
-    state: Any = None,
-) -> ToolResult:
-    """
-    Download a design artifact from a task.
-
-    This tool allows agents to retrieve design documents and other
-    artifacts that were uploaded by previous tasks.
-
-    Args:
-        task_id: The task ID to download from
-        attachment_id: The attachment ID to download
-        save_to_path: Optional local path to save the file
-        state: MCP state object
-
-    Returns:
-        ToolResult with file content or save path
-    """
-    try:
-        # Get kanban client from state
-        kanban = state.kanban_client
-        if not kanban:
-            return ToolResult(
-                success=False,
-                error="Kanban client not available",
-                data={"task_id": task_id},
-            )
-
-        # Find the task's card ID
-        task = next((t for t in state.project_tasks if t.id == task_id), None)
-        if not task:
-            return ToolResult(
-                success=False,
-                error=f"Task {task_id} not found",
-                data={"task_id": task_id},
-            )
-
-        if not task.kanban_card_id:
-            return ToolResult(
-                success=False,
-                error=f"Task {task_id} has no associated kanban card",
-                data={"task_id": task_id},
-            )
-
-        # Get attachment details first
-        attachments = await kanban.get_attachments(card_id=task.kanban_card_id)
-        attachment = next(
-            (a for a in attachments.get("data", []) if a.get("id") == attachment_id),
-            None,
-        )
-
-        if not attachment:
-            return ToolResult(
-                success=False,
-                error=f"Attachment {attachment_id} not found on task {task_id}",
-                data={"task_id": task_id, "attachment_id": attachment_id},
-            )
-
-        # Download the attachment
-        result = await kanban.download_attachment(
-            attachment_id=attachment_id, filename=attachment.get("name", "download")
-        )
-
-        if not result.get("success", False):
-            return ToolResult(
-                success=False,
-                error=result.get("error", "Failed to download attachment"),
-                data={"task_id": task_id, "attachment_id": attachment_id},
-            )
-
-        content = result.get("data", {}).get("content", "")
-        filename = attachment.get("name", "download")
-
-        # Save to file if path provided
-        if save_to_path:
-            save_path = Path(save_to_path)
-            save_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # Decode base64 content
-            decoded_content = base64.b64decode(content)
-            save_path.write_bytes(decoded_content)
-
-            logger.info(
-                f"Downloaded artifact {filename} from task {task_id} to {save_path}"
-            )
-
-            return ToolResult(
-                success=True,
-                data={
-                    "task_id": task_id,
-                    "attachment_id": attachment_id,
-                    "filename": filename,
-                    "saved_to": str(save_path),
-                    "size": len(decoded_content),
-                },
-            )
-        else:
-            # Return content directly
-            logger.info(f"Downloaded artifact {filename} from task {task_id}")
-
-            return ToolResult(
-                success=True,
-                data={
-                    "task_id": task_id,
-                    "attachment_id": attachment_id,
-                    "filename": filename,
-                    "content": content,  # Base64 encoded
-                    "size": len(base64.b64decode(content)),
-                },
-            )
-
-    except Exception as e:
-        logger.error(f"Error downloading design artifact: {str(e)}")
-        return ToolResult(
-            success=False,
-            error=f"Failed to download artifact: {str(e)}",
-            data={"task_id": task_id, "attachment_id": attachment_id},
-        )
-
-
-async def list_design_artifacts(
-    task_id: str,
-    state: Any = None,
-) -> ToolResult:
-    """
-    List all design artifacts attached to a task.
-
-    This tool allows agents to see what design documents and artifacts
-    are available on a task.
-
-    Args:
-        task_id: The task ID to list artifacts for
-        state: MCP state object
-
-    Returns:
-        ToolResult with list of attachments
-    """
-    try:
-        # Get kanban client from state
-        kanban = state.kanban_client
-        if not kanban:
-            return ToolResult(
-                success=False,
-                error="Kanban client not available",
-                data={"task_id": task_id},
-            )
-
-        # Find the task's card ID
-        task = next((t for t in state.project_tasks if t.id == task_id), None)
-        if not task:
-            return ToolResult(
-                success=False,
-                error=f"Task {task_id} not found",
-                data={"task_id": task_id},
-            )
-
-        if not task.kanban_card_id:
-            return ToolResult(
-                success=False,
-                error=f"Task {task_id} has no associated kanban card",
-                data={"task_id": task_id},
-            )
-
-        # Get attachments
-        result = await kanban.get_attachments(card_id=task.kanban_card_id)
-
-        if not result.get("success", False):
-            return ToolResult(
-                success=False,
-                error=result.get("error", "Failed to get attachments"),
-                data={"task_id": task_id},
-            )
-
-        attachments = result.get("data", [])
-
-        # Format attachment list
-        artifact_list = []
-        for attachment in attachments:
-            artifact_list.append(
-                {
-                    "id": attachment.get("id"),
-                    "filename": attachment.get("name"),
-                    "url": attachment.get("url"),
-                    "created_at": attachment.get("createdAt"),
-                    "created_by": attachment.get("userId"),
-                }
-            )
-
-        logger.info(f"Found {len(artifact_list)} artifacts on task {task_id}")
-
-        return ToolResult(
-            success=True,
-            data={
-                "task_id": task_id,
-                "artifacts": artifact_list,
-                "count": len(artifact_list),
-            },
-        )
-
-    except Exception as e:
-        logger.error(f"Error listing design artifacts: {str(e)}")
-        return ToolResult(
-            success=False,
-            error=f"Failed to list artifacts: {str(e)}",
-            data={"task_id": task_id},
-        )
-
-
-async def get_dependency_artifacts(
-    task_id: str,
-    artifact_types: Optional[List[str]] = None,
-    state: Any = None,
-) -> ToolResult:
-    """
-    Get all design artifacts from tasks that this task depends on.
-
-    This tool helps agents discover and retrieve design documents
-    from their dependency tasks, enabling them to understand the
-    design context for their implementation.
-
-    Args:
-        task_id: The current task ID
-        artifact_types: Optional list of file extensions to filter (e.g., ['json', 'yaml', 'md'])
-        state: MCP state object
-
-    Returns:
-        ToolResult with artifacts from dependency tasks
-    """
-    try:
-        # Get task
-        task = next((t for t in state.project_tasks if t.id == task_id), None)
-        if not task:
-            return ToolResult(
-                success=False,
-                error=f"Task {task_id} not found",
-                data={"task_id": task_id},
-            )
-
-        # Get all dependency tasks
-        dependency_artifacts = []
-
-        for dep_id in task.dependencies:
-            # Get artifacts from dependency
-            result = await list_design_artifacts(dep_id, state)
-
-            if result.success:
-                dep_task = next(
-                    (t for t in state.project_tasks if t.id == dep_id), None
-                )
-                dep_name = dep_task.name if dep_task else dep_id
-
-                artifacts = result.data.get("artifacts", [])
-
-                # Filter by type if specified
-                if artifact_types:
-                    artifacts = [
-                        a
-                        for a in artifacts
-                        if any(
-                            a.get("filename", "").endswith(f".{ext}")
-                            for ext in artifact_types
-                        )
-                    ]
-
-                # Add dependency context to each artifact
-                for artifact in artifacts:
-                    artifact["dependency_task_id"] = dep_id
-                    artifact["dependency_task_name"] = dep_name
-
-                dependency_artifacts.extend(artifacts)
-
-        logger.info(
-            f"Found {len(dependency_artifacts)} artifacts from "
-            f"{len(task.dependencies)} dependency tasks for task {task_id}"
-        )
-
-        return ToolResult(
-            success=True,
-            data={
-                "task_id": task_id,
-                "dependency_artifacts": dependency_artifacts,
-                "total_count": len(dependency_artifacts),
-                "dependency_count": len(task.dependencies),
-            },
-        )
-
-    except Exception as e:
-        logger.error(f"Error getting dependency artifacts: {str(e)}")
-        return ToolResult(
-            success=False,
-            error=f"Failed to get dependency artifacts: {str(e)}",
-            data={"task_id": task_id},
-        )
+from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
+
+# Default artifact storage paths by type
+ARTIFACT_PATHS = {
+    "specification": "docs/specifications",
+    "api": "docs/api",
+    "design": "docs/design",
+    "architecture": "docs/architecture",
+    "documentation": "docs",
+    "reference": "docs/references",
+    "temporary": "tmp/artifacts",  # Should be .gitignored
+}
 
 
 async def log_artifact(
@@ -429,99 +29,71 @@ async def log_artifact(
     content: str,
     artifact_type: str,
     description: Optional[str] = None,
+    location: Optional[str] = None,  # Optional override
     state: Any = None,
-) -> ToolResult:
+) -> Dict[str, Any]:
     """
-    Log an artifact with smart routing to appropriate storage location.
+    Store an artifact with prescriptive location management.
 
-    This tool automatically determines whether to store artifacts in the
-    repository (for specifications/documentation) or as kanban attachments
-    (for reference/temporary materials).
+    By default, artifacts are stored in standard locations based on their type:
+    - specifications → docs/specifications/
+    - api → docs/api/
+    - design → docs/design/
+    - architecture → docs/architecture/
+    - documentation → docs/
+    - reference → docs/references/
+    - temporary → tmp/artifacts/
 
     Args:
         task_id: The current task ID
         filename: Name for the artifact file
-        content: Artifact content as string
-        artifact_type: Type of artifact ("specification", "documentation", "reference", "temporary")
+        content: The artifact content to store
+        artifact_type: Type of artifact (determines default location)
         description: Optional description of the artifact
+        location: Optional override for storage location (relative path)
         state: MCP state object
 
     Returns:
-        ToolResult with artifact location and storage type
+        Dict with artifact location and storage details
     """
     try:
         # Validate artifact type
-        valid_types = ["specification", "documentation", "reference", "temporary"]
+        valid_types = [
+            "specification",
+            "api",
+            "design",
+            "architecture",
+            "documentation",
+            "reference",
+            "temporary",
+        ]
         if artifact_type not in valid_types:
-            return ToolResult(
-                success=False,
-                error=(
+            return {
+                "success": False,
+                "error": (
                     f"Invalid artifact_type '{artifact_type}'. "
                     f"Must be one of: {', '.join(valid_types)}"
                 ),
-                data={"task_id": task_id, "filename": filename},
-            )
+                "data": {"task_id": task_id, "filename": filename},
+            }
 
-        # Determine storage method based on artifact type
-        if artifact_type in ["specification", "documentation"]:
-            # Store in repository
-            return await _store_artifact_in_repo(
-                task_id, filename, content, artifact_type, description, state
-            )
+        # Determine storage location
+        if location:
+            # Use provided location (but ensure it's relative)
+            artifact_path = Path(location)
+            if artifact_path.is_absolute():
+                return {
+                    "success": False,
+                    "error": "Location must be a relative path",
+                    "data": {"task_id": task_id, "filename": filename},
+                }
         else:
-            # Store as kanban attachment
-            return await _store_artifact_as_attachment(
-                task_id, filename, content, artifact_type, description, state
-            )
-
-    except Exception as e:
-        logger.error(f"Error logging artifact: {str(e)}")
-        return ToolResult(
-            success=False,
-            error=f"Failed to log artifact: {str(e)}",
-            data={"task_id": task_id, "filename": filename},
-        )
-
-
-async def _store_artifact_in_repo(
-    task_id: str,
-    filename: str,
-    content: str,
-    artifact_type: str,
-    description: Optional[str],
-    state: Any,
-) -> ToolResult:
-    """Store artifact in repository with appropriate path structure."""
-    try:
-        # Determine appropriate directory based on artifact type and filename
-        if artifact_type == "specification":
-            if filename.endswith((".yaml", ".yml", ".json")) or filename.endswith(
-                ".sql"
-            ):
-                if "api" in filename.lower() or "openapi" in filename.lower():
-                    directory = "docs/api"
-                elif "schema" in filename.lower() or "database" in filename.lower():
-                    directory = "docs/schema"
-                else:
-                    directory = "docs/specifications"
-            else:
-                directory = "docs/specifications"
-        elif artifact_type == "documentation":
-            if filename.endswith(".md"):
-                if "architecture" in filename.lower() or "design" in filename.lower():
-                    directory = "docs/architecture"
-                elif "setup" in filename.lower() or "install" in filename.lower():
-                    directory = "docs/setup"
-                else:
-                    directory = "docs"
-            else:
-                directory = "docs"
-        else:
-            directory = "docs/artifacts"
+            # Use default location based on type
+            base_dir = ARTIFACT_PATHS.get(artifact_type, "docs/artifacts")
+            artifact_path = Path(base_dir) / filename
 
         # Create full path
-        repo_path = Path(directory) / filename
-        full_path = Path.cwd() / repo_path
+        full_path = Path.cwd() / artifact_path
 
         # Ensure directory exists
         full_path.parent.mkdir(parents=True, exist_ok=True)
@@ -529,79 +101,207 @@ async def _store_artifact_in_repo(
         # Write content to file
         full_path.write_text(content, encoding="utf-8")
 
+        # Initialize task_artifacts if not exists
+        if not hasattr(state, "task_artifacts"):
+            state.task_artifacts = {}
+
+        if task_id not in state.task_artifacts:
+            state.task_artifacts[task_id] = []
+
+        # Log the artifact
+        artifact_entry = {
+            "filename": filename,
+            "location": str(artifact_path),
+            "artifact_type": artifact_type,
+            "description": description,
+            "is_default_location": location is None,
+        }
+
+        state.task_artifacts[task_id].append(artifact_entry)
+
         # Add a comment to the task if kanban is available
         if state.kanban_client and description:
-            task = next((t for t in state.project_tasks if t.id == task_id), None)
-            if task and task.kanban_card_id:
-                await state.kanban_client.add_comment(
-                    card_id=task.kanban_card_id,
-                    text=f"📄 Created {artifact_type}: {repo_path}\n\n{description}",
-                )
+            try:
+                # Find the task
+                task = next((t for t in state.project_tasks if t.id == task_id), None)
+                if task:
+                    card_id = getattr(task, "kanban_card_id", None) or task.id
+                    location_type = "default" if location is None else "custom"
+                    await state.kanban_client.add_comment(
+                        task_id=card_id,
+                        comment=(
+                            f"📄 Created {artifact_type} artifact: {filename}\n"
+                            f"Location: {artifact_path} ({location_type})\n\n{description}"
+                        ),
+                    )
+            except Exception as e:
+                logger.warning(f"Could not add comment: {e}")
 
         logger.info(
-            f"Stored {artifact_type} artifact {filename} in repository at {repo_path}"
+            f"Stored {artifact_type} artifact {filename} for task {task_id} at {artifact_path}"
         )
 
-        return ToolResult(
-            success=True,
-            data={
+        return {
+            "success": True,
+            "data": {
                 "task_id": task_id,
                 "filename": filename,
-                "location": str(repo_path),
-                "storage_type": "repository",
-                "artifact_type": artifact_type,
+                "location": str(artifact_path),
                 "full_path": str(full_path),
+                "artifact_type": artifact_type,
+                "is_default_location": location is None,
+                "description": description,
             },
-        )
+        }
 
     except Exception as e:
-        logger.error(f"Error storing artifact in repo: {str(e)}")
-        return ToolResult(
-            success=False,
-            error=f"Failed to store artifact in repository: {str(e)}",
-            data={"task_id": task_id, "filename": filename},
-        )
+        logger.error(f"Error storing artifact: {str(e)}")
+        return {
+            "success": False,
+            "error": f"Failed to store artifact: {str(e)}",
+            "data": {"task_id": task_id, "filename": filename},
+        }
 
 
-async def _store_artifact_as_attachment(
+async def get_task_context(
     task_id: str,
-    filename: str,
-    content: str,
-    artifact_type: str,
-    description: Optional[str],
-    state: Any,
-) -> ToolResult:
-    """Store artifact as kanban attachment."""
+    include_dependencies: bool = True,
+    include_blockers: bool = True,
+    include_artifacts: bool = True,
+    state: Any = None,
+) -> Dict[str, Any]:
+    """
+    Get comprehensive context for a task including dependencies and artifacts.
+
+    This tool provides agents with all relevant context about a task including:
+    - Task details and current status
+    - Dependencies (tasks that must be completed before this one)
+    - Blockers (current issues preventing progress)
+    - Artifacts (design documents with their storage locations)
+
+    Args:
+        task_id: The task ID to get context for
+        include_dependencies: Whether to include dependency information
+        include_blockers: Whether to include blocker information
+        include_artifacts: Whether to include artifact information
+        state: MCP state object
+
+    Returns:
+        Dict with comprehensive task context
+    """
     try:
-        # Use existing upload_design_artifact function
-        result = await upload_design_artifact(
-            task_id=task_id,
-            filename=filename,
-            content=content,
-            description=(
-                f"{artifact_type.title()} artifact: {description}"
-                if description
-                else f"{artifact_type.title()} artifact"
-            ),
-            state=state,
-        )
+        # Find the task
+        task = next((t for t in state.project_tasks if t.id == task_id), None)
+        if not task:
+            return {
+                "success": False,
+                "error": f"Task {task_id} not found",
+                "data": {"task_id": task_id},
+            }
 
-        if result.success:
-            # Update the result data to include artifact type and storage type
-            result.data.update(
-                {
-                    "storage_type": "attachment",
-                    "artifact_type": artifact_type,
-                    "location": f"./attachments/{result.data.get('attachment_id')}/{filename}",
-                }
-            )
+        # Build context object
+        context = {
+            "task": {
+                "id": task.id,
+                "title": task.title,
+                "description": task.description,
+                "status": task.status.value if task.status else None,
+                "priority": task.priority.value if task.priority else None,
+                "assigned_to": task.assigned_to,
+                "labels": task.labels,
+                "created_at": task.created_at.isoformat() if task.created_at else None,
+                "updated_at": task.updated_at.isoformat() if task.updated_at else None,
+            }
+        }
 
-        return result
+        # Add dependencies if requested
+        if include_dependencies:
+            dependencies = []
+            if hasattr(task, "dependencies") and task.dependencies:
+                for dep_id in task.dependencies:
+                    dep_task = next(
+                        (t for t in state.project_tasks if t.id == dep_id), None
+                    )
+                    if dep_task:
+                        dependencies.append(
+                            {
+                                "id": dep_task.id,
+                                "title": dep_task.title,
+                                "status": (
+                                    dep_task.status.value if dep_task.status else None
+                                ),
+                                "completed": dep_task.status
+                                and dep_task.status.value
+                                in ["completed", "done", "closed"],
+                            }
+                        )
+            context["dependencies"] = dependencies
+
+        # Add blockers if requested
+        if include_blockers:
+            blockers = []
+            if hasattr(state, "task_blockers") and task_id in state.task_blockers:
+                blockers = state.task_blockers[task_id]
+            context["blockers"] = blockers
+
+        # Add artifacts if requested
+        if include_artifacts:
+            artifacts = []
+            if hasattr(state, "task_artifacts") and task_id in state.task_artifacts:
+                artifacts = state.task_artifacts[task_id]
+
+            # Also scan filesystem for artifacts in standard locations
+            # This helps discover artifacts created outside of log_artifact
+            discovered = await _discover_artifacts_in_standard_locations()
+
+            # Merge discovered artifacts (avoiding duplicates)
+            existing_locations = {a["location"] for a in artifacts}
+            for artifact in discovered:
+                if artifact["location"] not in existing_locations:
+                    artifact["discovered"] = True
+                    artifacts.append(artifact)
+
+            context["artifacts"] = artifacts
+
+        # Add any logged decisions
+        decisions = []
+        if hasattr(state, "task_decisions") and task_id in state.task_decisions:
+            decisions = state.task_decisions[task_id]
+        context["decisions"] = decisions
+
+        logger.info(f"Retrieved context for task {task_id}")
+
+        return {"success": True, "context": context}
 
     except Exception as e:
-        logger.error(f"Error storing artifact as attachment: {str(e)}")
-        return ToolResult(
-            success=False,
-            error=f"Failed to store artifact as attachment: {str(e)}",
-            data={"task_id": task_id, "filename": filename},
-        )
+        logger.error(f"Error getting task context: {str(e)}")
+        return {
+            "success": False,
+            "error": f"Failed to get task context: {str(e)}",
+            "data": {"task_id": task_id},
+        }
+
+
+async def _discover_artifacts_in_standard_locations() -> List[Dict[str, Any]]:
+    """Scan standard artifact directories for files."""
+    discovered = []
+
+    for artifact_type, base_path in ARTIFACT_PATHS.items():
+        path = Path(base_path)
+        if path.exists():
+            try:
+                for file_path in path.rglob("*"):
+                    if file_path.is_file() and not file_path.name.startswith("."):
+                        discovered.append(
+                            {
+                                "filename": file_path.name,
+                                "location": str(file_path.relative_to(Path.cwd())),
+                                "artifact_type": artifact_type,
+                                "description": f"Discovered {artifact_type} file",
+                                "is_default_location": True,
+                            }
+                        )
+            except Exception as e:
+                logger.warning(f"Error scanning {base_path}: {e}")
+
+    return discovered

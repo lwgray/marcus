@@ -280,3 +280,71 @@ class Planka(KanbanInterface):
         except Exception as e:
             logger.error(f"Error updating task progress for {task_id}: {e}")
             return False
+
+    async def upload_attachment(
+        self,
+        task_id: str,
+        filename: str,
+        content: Any,
+        content_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Upload an attachment to a task.
+
+        Note: Attachment functionality not yet implemented for Planka integration.
+        This is a placeholder to satisfy the abstract interface.
+
+        Args:
+            task_id: The task identifier
+            filename: Name for the attachment
+            content: File content
+            content_type: MIME type
+
+        Returns:
+            Dict with success=False indicating not implemented
+        """
+        return {
+            "success": False,
+            "error": "Attachment upload not implemented for Planka integration",
+        }
+
+    async def get_attachments(self, task_id: str) -> Dict[str, Any]:
+        """
+        Get all attachments for a task.
+
+        Note: Attachment functionality not yet implemented for Planka integration.
+        This is a placeholder to satisfy the abstract interface.
+
+        Args:
+            task_id: The task identifier
+
+        Returns:
+            Dict with empty attachments list
+        """
+        return {
+            "success": True,
+            "data": [],
+            "message": "Attachment functionality not yet implemented",
+        }
+
+    async def download_attachment(
+        self, attachment_id: str, filename: str, task_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Download an attachment.
+
+        Note: Attachment functionality not yet implemented for Planka integration.
+        This is a placeholder to satisfy the abstract interface.
+
+        Args:
+            attachment_id: The attachment ID
+            filename: The filename
+            task_id: Optional task ID
+
+        Returns:
+            Dict with success=False indicating not implemented
+        """
+        return {
+            "success": False,
+            "error": "Attachment download not implemented for Planka integration",
+        }
