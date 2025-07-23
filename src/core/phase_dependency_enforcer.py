@@ -199,8 +199,15 @@ class PhaseDependencyEnforcer:
                 "notification",
             ]
             for label in task.labels:
-                if label.lower() in component_labels:
-                    return label.lower()
+                label_lower = label.lower()
+                # Check direct match
+                if label_lower in component_labels:
+                    return label_lower
+                # Check with component: prefix
+                if label_lower.startswith("component:"):
+                    component = label_lower.replace("component:", "")
+                    if component in component_labels:
+                        return component
 
         # Extract from task name
         name_lower = task.name.lower()
