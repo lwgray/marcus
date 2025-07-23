@@ -18,6 +18,7 @@ from .tools import (  # Agent tools; Task tools; Project tools; System tools; NL
     get_agent_status,
     get_project_status,
     list_registered_agents,
+    log_artifact,
     ping,
     register_agent,
     report_blocker,
@@ -245,6 +246,45 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                     }
                 },
                 "required": ["task_id"],
+            },
+        ),
+        types.Tool(
+            name="log_artifact",
+            description=(
+                "Log an artifact with smart routing to appropriate storage location. "
+                "Automatically determines whether to store artifacts in the repository "
+                "(for specifications/documentation) or as kanban attachments "
+                "(for reference/temporary materials)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string", "description": "The current task ID"},
+                    "filename": {
+                        "type": "string",
+                        "description": "Name for the artifact file",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Artifact content as string",
+                    },
+                    "artifact_type": {
+                        "type": "string",
+                        "description": "Type of artifact",
+                        "enum": [
+                            "specification",
+                            "documentation",
+                            "reference",
+                            "temporary",
+                        ],
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Optional description of the artifact",
+                        "default": "",
+                    },
+                },
+                "required": ["task_id", "filename", "content", "artifact_type"],
             },
         ),
         # Natural Language Tools (also available to agents)
@@ -942,6 +982,26 @@ async def handle_tool_call(
                 result = {"error": "task_id is required"}
             else:
                 result = await get_task_context(task_id=task_id, state=state)
+
+        elif name == "log_artifact":
+            task_id = arguments.get("task_id") if arguments else None
+            filename = arguments.get("filename") if arguments else None
+            content = arguments.get("content") if arguments else None
+            artifact_type = arguments.get("artifact_type") if arguments else None
+
+            if not task_id or not filename or not content or not artifact_type:
+                result = {
+                    "error": "task_id, filename, content, and artifact_type are required"
+                }
+            else:
+                result = await log_artifact(
+                    task_id=task_id,
+                    filename=filename,
+                    content=content,
+                    artifact_type=artifact_type,
+                    description=arguments.get("description", ""),
+                    state=state,
+                )
 
         # Project Management Tools
         elif name == "list_projects":

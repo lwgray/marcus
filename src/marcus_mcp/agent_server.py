@@ -47,6 +47,9 @@ class AgentMarcusServer(MarcusServer):
                 "report_task_progress",
                 "report_blocker",
                 "get_project_status",
+                "get_task_context",
+                "log_decision",
+                "log_artifact",
                 "ping",
                 "check_assignment_health",
             ]

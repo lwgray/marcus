@@ -15,6 +15,7 @@ from .attachment import (
     download_design_artifact,
     get_dependency_artifacts,
     list_design_artifacts,
+    log_artifact,
     upload_design_artifact,
 )
 from .nlp import add_feature, create_project
@@ -36,6 +37,7 @@ __all__ = [
     "download_design_artifact",
     "list_design_artifacts",
     "get_dependency_artifacts",
+    "log_artifact",
     # Project tools
     "get_project_status",
     # System tools

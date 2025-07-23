@@ -6,7 +6,8 @@ This module contains tools for context management:
 - get_task_context: Get context for a specific task
 """
 
-from typing import Any, Dict
+from pathlib import Path
+from typing import Any, Dict, List
 
 
 async def log_decision(
@@ -114,8 +115,164 @@ async def get_task_context(task_id: str, state: Any) -> Dict[str, Any]:
 
         # Get context
         context = await state.context.get_context(task_id, task.dependencies or [])
+        context_dict = context.to_dict()
 
-        return {"success": True, "context": context.to_dict()}
+        # Add artifact information
+        artifacts = await _collect_task_artifacts(task_id, task, state)
+        context_dict["artifacts"] = artifacts
+
+        return {"success": True, "context": context_dict}
 
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+async def _collect_task_artifacts(task_id: str, task: Any, state: Any) -> List[Dict[str, Any]]:
+    """
+    Collect all artifacts available for this task from multiple sources.
+
+    Returns artifacts from:
+    1. Repository-based artifacts (docs/ directory)
+    2. Kanban attachments for this task
+    3. Artifacts from dependency tasks
+    """
+    artifacts = []
+
+    try:
+        # 1. Collect repository-based artifacts
+        repo_artifacts = _scan_repository_artifacts(task_id)
+        artifacts.extend(repo_artifacts)
+
+        # 2. Collect kanban attachments for this task
+        if state.kanban_client and task.kanban_card_id:
+            try:
+                result = await state.kanban_client.get_attachments(
+                    card_id=task.kanban_card_id
+                )
+                if result.get("success", False):
+                    attachments = result.get("data", [])
+                    for attachment in attachments:
+                        artifacts.append(
+                            {
+                                "filename": attachment.get("name"),
+                                "location": (
+                                    f"./attachments/{attachment.get('id')}/"
+                                    f"{attachment.get('name')}"
+                                ),
+                                "storage_type": "attachment",
+                                "artifact_type": "reference",  # Default for attachments
+                                "created_by": attachment.get("userId"),
+                                "created_at": attachment.get("createdAt"),
+                                "description": f"Attachment from task {task_id}",
+                            }
+                        )
+            except Exception:
+                # Don't fail the whole operation if kanban is unavailable
+                pass
+
+        # 3. Collect artifacts from dependency tasks
+        if task.dependencies:
+            for dep_id in task.dependencies:
+                dep_task = next(
+                    (t for t in state.project_tasks if t.id == dep_id), None
+                )
+                if dep_task:
+                    # Repository artifacts from dependency
+                    dep_repo_artifacts = _scan_repository_artifacts(dep_id)
+                    for artifact in dep_repo_artifacts:
+                        artifact["dependency_task_id"] = dep_id
+                        artifact["dependency_task_name"] = dep_task.name
+                        artifact["description"] = (
+                            f"{artifact['description']} (from dependency: {dep_task.name})"
+                        )
+                    artifacts.extend(dep_repo_artifacts)
+
+                    # Kanban attachments from dependency
+                    if state.kanban_client and dep_task.kanban_card_id:
+                        try:
+                            result = await state.kanban_client.get_attachments(
+                                card_id=dep_task.kanban_card_id
+                            )
+                            if result.get("success", False):
+                                attachments = result.get("data", [])
+                                for attachment in attachments:
+                                    artifacts.append(
+                                        {
+                                            "filename": attachment.get("name"),
+                                            "location": (
+                                    f"./attachments/{attachment.get('id')}/"
+                                    f"{attachment.get('name')}"
+                                ),
+                                            "storage_type": "attachment",
+                                            "artifact_type": "reference",
+                                            "created_by": attachment.get("userId"),
+                                            "created_at": attachment.get("createdAt"),
+                                            "dependency_task_id": dep_id,
+                                            "dependency_task_name": dep_task.name,
+                                            "description": (
+                                                f"Attachment from dependency: {dep_task.name}"
+                                            ),
+                                        }
+                                    )
+                        except Exception:
+                            # Don't fail if kanban is unavailable
+                            pass
+
+    except Exception:
+        # Don't fail the whole context operation if artifact collection fails
+        pass
+
+    return artifacts
+
+
+def _scan_repository_artifacts(task_id: str) -> List[Dict[str, Any]]:
+    """
+    Scan repository for artifacts that might be relevant to this task.
+
+    Looks in docs/ directories for specifications, documentation, etc.
+    """
+    artifacts = []
+    docs_paths = [
+        "docs/api",
+        "docs/schema",
+        "docs/specifications",
+        "docs/architecture",
+        "docs/setup",
+        "docs",
+    ]
+
+    for docs_path in docs_paths:
+        path = Path(docs_path)
+        if path.exists() and path.is_dir():
+            for file_path in path.rglob("*"):
+                if file_path.is_file() and not file_path.name.startswith("."):
+                    # Determine artifact type based on location and content
+                    artifact_type = _determine_artifact_type(file_path)
+
+                    artifacts.append(
+                        {
+                            "filename": file_path.name,
+                            "location": str(file_path),
+                            "storage_type": "repository",
+                            "artifact_type": artifact_type,
+                            "description": f"{artifact_type.title()} file in repository",
+                        }
+                    )
+
+    return artifacts
+
+
+def _determine_artifact_type(file_path: Path) -> str:
+    """Determine artifact type based on file path and extension."""
+    file_str = str(file_path).lower()
+
+    if "api" in file_str or file_path.suffix in [".yaml", ".yml", ".json"]:
+        if "schema" in file_str or "database" in file_str:
+            return "specification"
+        return "specification"
+    elif file_path.suffix == ".md":
+        if "architecture" in file_str or "design" in file_str:
+            return "documentation"
+        return "documentation"
+    else:
+        return "documentation"

@@ -421,3 +421,187 @@ async def get_dependency_artifacts(
             error=f"Failed to get dependency artifacts: {str(e)}",
             data={"task_id": task_id},
         )
+
+
+async def log_artifact(
+    task_id: str,
+    filename: str,
+    content: str,
+    artifact_type: str,
+    description: Optional[str] = None,
+    state: Any = None,
+) -> ToolResult:
+    """
+    Log an artifact with smart routing to appropriate storage location.
+
+    This tool automatically determines whether to store artifacts in the
+    repository (for specifications/documentation) or as kanban attachments
+    (for reference/temporary materials).
+
+    Args:
+        task_id: The current task ID
+        filename: Name for the artifact file
+        content: Artifact content as string
+        artifact_type: Type of artifact ("specification", "documentation", "reference", "temporary")
+        description: Optional description of the artifact
+        state: MCP state object
+
+    Returns:
+        ToolResult with artifact location and storage type
+    """
+    try:
+        # Validate artifact type
+        valid_types = ["specification", "documentation", "reference", "temporary"]
+        if artifact_type not in valid_types:
+            return ToolResult(
+                success=False,
+                error=(
+                    f"Invalid artifact_type '{artifact_type}'. "
+                    f"Must be one of: {', '.join(valid_types)}"
+                ),
+                data={"task_id": task_id, "filename": filename},
+            )
+
+        # Determine storage method based on artifact type
+        if artifact_type in ["specification", "documentation"]:
+            # Store in repository
+            return await _store_artifact_in_repo(
+                task_id, filename, content, artifact_type, description, state
+            )
+        else:
+            # Store as kanban attachment
+            return await _store_artifact_as_attachment(
+                task_id, filename, content, artifact_type, description, state
+            )
+
+    except Exception as e:
+        logger.error(f"Error logging artifact: {str(e)}")
+        return ToolResult(
+            success=False,
+            error=f"Failed to log artifact: {str(e)}",
+            data={"task_id": task_id, "filename": filename},
+        )
+
+
+async def _store_artifact_in_repo(
+    task_id: str,
+    filename: str,
+    content: str,
+    artifact_type: str,
+    description: Optional[str],
+    state: Any,
+) -> ToolResult:
+    """Store artifact in repository with appropriate path structure."""
+    try:
+        # Determine appropriate directory based on artifact type and filename
+        if artifact_type == "specification":
+            if filename.endswith((".yaml", ".yml", ".json")) or filename.endswith(
+                ".sql"
+            ):
+                if "api" in filename.lower() or "openapi" in filename.lower():
+                    directory = "docs/api"
+                elif "schema" in filename.lower() or "database" in filename.lower():
+                    directory = "docs/schema"
+                else:
+                    directory = "docs/specifications"
+            else:
+                directory = "docs/specifications"
+        elif artifact_type == "documentation":
+            if filename.endswith(".md"):
+                if "architecture" in filename.lower() or "design" in filename.lower():
+                    directory = "docs/architecture"
+                elif "setup" in filename.lower() or "install" in filename.lower():
+                    directory = "docs/setup"
+                else:
+                    directory = "docs"
+            else:
+                directory = "docs"
+        else:
+            directory = "docs/artifacts"
+
+        # Create full path
+        repo_path = Path(directory) / filename
+        full_path = Path.cwd() / repo_path
+
+        # Ensure directory exists
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Write content to file
+        full_path.write_text(content, encoding="utf-8")
+
+        # Add a comment to the task if kanban is available
+        if state.kanban_client and description:
+            task = next((t for t in state.project_tasks if t.id == task_id), None)
+            if task and task.kanban_card_id:
+                await state.kanban_client.add_comment(
+                    card_id=task.kanban_card_id,
+                    text=f"📄 Created {artifact_type}: {repo_path}\n\n{description}",
+                )
+
+        logger.info(
+            f"Stored {artifact_type} artifact {filename} in repository at {repo_path}"
+        )
+
+        return ToolResult(
+            success=True,
+            data={
+                "task_id": task_id,
+                "filename": filename,
+                "location": str(repo_path),
+                "storage_type": "repository",
+                "artifact_type": artifact_type,
+                "full_path": str(full_path),
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Error storing artifact in repo: {str(e)}")
+        return ToolResult(
+            success=False,
+            error=f"Failed to store artifact in repository: {str(e)}",
+            data={"task_id": task_id, "filename": filename},
+        )
+
+
+async def _store_artifact_as_attachment(
+    task_id: str,
+    filename: str,
+    content: str,
+    artifact_type: str,
+    description: Optional[str],
+    state: Any,
+) -> ToolResult:
+    """Store artifact as kanban attachment."""
+    try:
+        # Use existing upload_design_artifact function
+        result = await upload_design_artifact(
+            task_id=task_id,
+            filename=filename,
+            content=content,
+            description=(
+                f"{artifact_type.title()} artifact: {description}"
+                if description
+                else f"{artifact_type.title()} artifact"
+            ),
+            state=state,
+        )
+
+        if result.success:
+            # Update the result data to include artifact type and storage type
+            result.data.update(
+                {
+                    "storage_type": "attachment",
+                    "artifact_type": artifact_type,
+                    "location": f"./attachments/{result.data.get('attachment_id')}/{filename}",
+                }
+            )
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error storing artifact as attachment: {str(e)}")
+        return ToolResult(
+            success=False,
+            error=f"Failed to store artifact as attachment: {str(e)}",
+            data={"task_id": task_id, "filename": filename},
+        )
