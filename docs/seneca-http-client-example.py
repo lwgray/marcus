@@ -34,7 +34,7 @@ class MarcusHttpClient:
         Parameters
         ----------
         base_url : Optional[str]
-            Base URL for Marcus HTTP endpoint (e.g., "http://localhost:3000")
+            Base URL for Marcus HTTP endpoint (e.g., "http://localhost:8765")
         timeout : int
             Request timeout in seconds
         """
@@ -321,7 +321,7 @@ class MarcusClientFactory:
 async def test_http_client():
     """Test the HTTP client implementation"""
     # Create HTTP client
-    client = MarcusHttpClient("http://localhost:3000")
+    client = MarcusHttpClient("http://localhost:8765")
 
     try:
         # Connect
@@ -356,7 +356,7 @@ async def test_factory():
     try:
         # Let factory auto-detect transport
         client = await MarcusClientFactory.create_client(
-            transport="auto", http_url="http://localhost:3000"
+            transport="auto", http_url="http://localhost:8765"
         )
 
         # Use the client

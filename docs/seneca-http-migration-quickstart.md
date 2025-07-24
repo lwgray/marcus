@@ -13,7 +13,7 @@ Since port 8080 is already used by Seneca, update Marcus to use a different port
   "type": "http",
   "http": {
     "host": "127.0.0.1",
-    "port": 3000,
+    "port": 4298,
     "path": "/mcp",
     "log_level": "info"
   }
@@ -44,7 +44,7 @@ import uuid
 from typing import Dict, Any, Optional
 
 class MarcusHttpClient:
-    def __init__(self, base_url: str = "http://localhost:3000"):
+    def __init__(self, base_url: str = "http://localhost:4298"):
         self.base_url = base_url
         self.session = None
         self.connected = False
@@ -106,7 +106,7 @@ import os
 async def connect_to_marcus():
     # Check for HTTP transport preference
     use_http = os.getenv("MARCUS_TRANSPORT", "stdio") == "http"
-    http_url = os.getenv("MARCUS_HTTP_URL", "http://localhost:3000")
+    http_url = os.getenv("MARCUS_HTTP_URL", "http://localhost:4298")
 
     if use_http:
         from mcp_client.marcus_http_client import MarcusHttpClient
@@ -128,14 +128,14 @@ async def connect_to_marcus():
 
 1. Start Marcus with HTTP:
    ```bash
-   # Update config_marcus.json to use port 3000
+   # Update config_marcus.json to use port 4298
    python run_marcus.py --http
    ```
 
 2. Start Seneca with HTTP transport:
    ```bash
    export MARCUS_TRANSPORT=http
-   export MARCUS_HTTP_URL=http://localhost:3000
+   export MARCUS_HTTP_URL=http://localhost:4298
    python start_seneca.py
    ```
 
