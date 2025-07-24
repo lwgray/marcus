@@ -9,12 +9,15 @@ to specialized modules for better maintainability.
 import asyncio
 import atexit
 import json
+import logging
 import os
 import signal
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -397,7 +400,8 @@ class MarcusServer:
             self.kanban_client = await self.project_manager.get_kanban_client()
             if self.kanban_client:
                 await self.project_registry.get_active_project()
-                # Active project found - don't print as it interferes with MCP stdio
+                # Initialize monitors and lease system even in multi-project mode
+                await self._initialize_monitoring_systems()
         else:
             # Legacy mode - create kanban client directly
             await self.initialize_kanban()
@@ -434,6 +438,10 @@ class MarcusServer:
                         self.kanban_client = (
                             await self.project_manager.get_kanban_client()
                         )
+                        
+                        # Initialize monitoring systems for the synced project
+                        if self.kanban_client:
+                            await self._initialize_monitoring_systems()
 
                         # Project synced - don't print as it interferes with MCP
 
@@ -476,6 +484,57 @@ class MarcusServer:
             await self.project_manager.switch_project(project_id)
 
             # Successfully migrated to multi-project mode
+    
+    async def _initialize_monitoring_systems(self) -> None:
+        """Initialize assignment monitor and lease manager for the current kanban client"""
+        if not self.kanban_client:
+            return
+        
+        # Initialize assignment monitor
+        if self.assignment_monitor is None:
+            self.assignment_monitor = AssignmentMonitor(
+                self.assignment_persistence, self.kanban_client
+            )
+            await self.assignment_monitor.start()  # type: ignore[no-untyped-call]
+        
+        # Initialize lease management
+        if self.lease_manager is None:
+            from src.core.assignment_lease import (
+                AssignmentLeaseManager,
+                LeaseMonitor,
+            )
+            
+            # Get lease configuration - project-specific or global
+            lease_config = {}
+            
+            # Check for project-specific lease config
+            if hasattr(self, "project_registry") and self.project_registry:
+                active_project = await self.project_registry.get_active_project()
+                if active_project and hasattr(active_project, "task_lease"):
+                    lease_config = active_project.task_lease
+            
+            # Fall back to global config
+            if not lease_config:
+                lease_config = self.config.get("task_lease", {})
+            
+            self.lease_manager = AssignmentLeaseManager(
+                self.kanban_client,
+                self.assignment_persistence,
+                default_lease_hours=lease_config.get("default_hours", 2.0),
+                max_renewals=lease_config.get("max_renewals", 10),
+                warning_threshold_hours=lease_config.get("warning_hours", 0.5),
+                priority_multipliers=lease_config.get("priority_multipliers"),
+                complexity_multipliers=lease_config.get("complexity_multipliers"),
+                grace_period_minutes=lease_config.get("grace_period_minutes", 30),
+                renewal_decay_factor=lease_config.get("renewal_decay_factor", 0.9),
+                min_lease_hours=lease_config.get("min_lease_hours", 1.0),
+                max_lease_hours=lease_config.get("max_lease_hours", 24.0),
+                stuck_task_threshold_renewals=lease_config.get("stuck_threshold_renewals", 5),
+                enable_adaptive_leases=lease_config.get("enable_adaptive", True)
+            )
+            self.lease_monitor = LeaseMonitor(self.lease_manager)
+            await self.lease_monitor.start()
+            logger.info("Assignment lease system initialized")
 
     async def initialize_kanban(self) -> None:
         """Initialize kanban client if not already done"""
@@ -513,63 +572,8 @@ class MarcusServer:
                 if hasattr(self.kanban_client, "connect"):
                     await self.kanban_client.connect()
 
-                # Initialize assignment monitor
-                if self.assignment_monitor is None:
-                    self.assignment_monitor = AssignmentMonitor(
-                        self.assignment_persistence, self.kanban_client
-                    )
-                    await self.assignment_monitor.start()  # type: ignore[no-untyped-call]
-
-                # Initialize lease management
-                if self.lease_manager is None:
-                    from src.core.assignment_lease import (
-                        AssignmentLeaseManager,
-                        LeaseMonitor,
-                    )
-
-                    # Get lease configuration - project-specific or global
-                    lease_config = {}
-
-                    # Check for project-specific lease config
-                    if hasattr(self, "project_registry") and self.project_registry:
-                        active_project = (
-                            await self.project_registry.get_active_project()
-                        )
-                        if active_project and hasattr(active_project, "task_lease"):
-                            lease_config = active_project.task_lease
-
-                    # Fall back to global config
-                    if not lease_config:
-                        lease_config = self.config.get("task_lease", {})
-
-                    self.lease_manager = AssignmentLeaseManager(
-                        self.kanban_client,
-                        self.assignment_persistence,
-                        default_lease_hours=lease_config.get("default_hours", 2.0),
-                        max_renewals=lease_config.get("max_renewals", 10),
-                        warning_threshold_hours=lease_config.get("warning_hours", 0.5),
-                        priority_multipliers=lease_config.get("priority_multipliers"),
-                        complexity_multipliers=lease_config.get(
-                            "complexity_multipliers"
-                        ),
-                        grace_period_minutes=lease_config.get(
-                            "grace_period_minutes", 30
-                        ),
-                        renewal_decay_factor=lease_config.get(
-                            "renewal_decay_factor", 0.9
-                        ),
-                        min_lease_hours=lease_config.get("min_lease_hours", 1.0),
-                        max_lease_hours=lease_config.get("max_lease_hours", 24.0),
-                        stuck_task_threshold_renewals=lease_config.get(
-                            "stuck_threshold_renewals", 5
-                        ),
-                        enable_adaptive_leases=lease_config.get(
-                            "enable_adaptive", True
-                        ),
-                    )
-                    self.lease_monitor = LeaseMonitor(self.lease_manager)
-                    await self.lease_monitor.start()
-                    print("Assignment lease system initialized")
+                # Initialize monitoring systems
+                await self._initialize_monitoring_systems()
 
                 # Kanban client initialized successfully
 
