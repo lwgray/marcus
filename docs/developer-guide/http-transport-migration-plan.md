@@ -267,6 +267,78 @@ The transport used by Marcus as a server is completely independent from the tran
 }
 ```
 
+## Client Migration Strategy
+
+### Seneca Integration
+
+Seneca is Marcus's observability and visual analytics tool that connects as an MCP client. With HTTP transport, we have several options:
+
+#### Recommended: Dual Transport Support
+
+Marcus should support both transports simultaneously:
+
+1. **Stdio Transport** (default)
+   - Maintains backward compatibility
+   - No changes needed for existing clients
+   - Simple, proven reliability
+
+2. **HTTP Transport** (enhanced)
+   - Session persistence across interruptions
+   - WebSocket support for real-time updates
+   - Better for long-running analytics sessions
+
+#### Implementation Approach
+
+```python
+# Marcus server configuration
+{
+  "transport": {
+    "dual_mode": true,  // Enable both transports
+    "stdio": {
+      "enabled": true   // Keep stdio active
+    },
+    "http": {
+      "enabled": true,
+      "host": "127.0.0.1",
+      "port": 8080,
+      "path": "/mcp"
+    }
+  }
+}
+```
+
+#### Seneca Migration Path
+
+1. **Phase 1**: Keep Seneca on stdio (no changes needed)
+2. **Phase 2**: Add HTTP support to Seneca for enhanced features
+3. **Phase 3**: Gradually migrate analytics workflows to HTTP
+
+### Benefits for Seneca
+
+HTTP transport offers specific advantages for analytics:
+
+- **Persistent Sessions**: Analytics queries survive interruptions
+- **Real-time Updates**: WebSocket for live data streaming
+- **Concurrent Connections**: Multiple analytics views
+- **Better Error Recovery**: Automatic reconnection
+
+### Engineering Considerations
+
+1. **Backward Compatibility First**
+   - Both transports run simultaneously
+   - No forced migration
+   - Clients choose their transport
+
+2. **Feature Parity**
+   - All MCP tools work on both transports
+   - Same API, different delivery mechanism
+   - Transport is transparent to tool logic
+
+3. **Gradual Migration**
+   - Start with stdio
+   - Add HTTP for specific use cases
+   - Migrate when benefits are clear
+
 ## Timeline Estimate
 
 - Phase 1: 2-3 hours (infrastructure setup)
