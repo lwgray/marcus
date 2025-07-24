@@ -84,22 +84,24 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             logger.warning("PRD parser returned no tasks!")
             logger.debug(f"PRD result: {prd_result}")
             return []
-        
+
         # Apply the inferred dependencies to the task objects
         if prd_result.dependencies:
-            logger.info(f"Applying {len(prd_result.dependencies)} inferred dependencies to tasks")
-            
+            logger.info(
+                f"Applying {len(prd_result.dependencies)} inferred dependencies to tasks"
+            )
+
             # Create a mapping of task IDs to tasks for quick lookup
             task_map = {task.id: task for task in prd_result.tasks}
-            
+
             # Apply each dependency
             for dep in prd_result.dependencies:
                 dependent_task_id = dep.get("dependent_task_id")
                 dependency_task_id = dep.get("dependency_task_id")
-                
+
                 if dependent_task_id in task_map and dependency_task_id in task_map:
                     dependent_task = task_map[dependent_task_id]
-                    
+
                     # Add the dependency if not already present
                     if dependency_task_id not in dependent_task.dependencies:
                         dependent_task.dependencies.append(dependency_task_id)
@@ -252,10 +254,11 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             # Run cleanup synchronously with a short timeout
             # This ensures resources are cleaned up without hanging
             import asyncio
+
             try:
-                await asyncio.wait_for(self._cleanup_background(), timeout=0.5)
+                await asyncio.wait_for(self._cleanup_background(), timeout=5.0)
             except asyncio.TimeoutError:
-                logger.warning("Cleanup timed out after 0.5s, continuing anyway")
+                logger.warning("Cleanup timed out after 5.0s, continuing anyway")
 
             return result
 

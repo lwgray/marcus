@@ -799,6 +799,14 @@ class MarcusServer:
                 sys.stderr.reconfigure(line_buffering=True)
 
             async with stdio_server() as (read_stream, write_stream):
+                # Enable debug logging if requested
+                if os.environ.get("MCP_DEBUG") == "1":
+                    from .debug_stdio_simple import wrap_stdio_for_debug
+
+                    read_stream, write_stream = wrap_stdio_for_debug(
+                        read_stream, write_stream
+                    )
+
                 try:
                     await self.server.run(
                         read_stream,
