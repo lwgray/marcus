@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import mcp.types as types  # noqa: E402
 from mcp.server import Server  # noqa: E402
+from mcp.server.fastmcp import FastMCP  # noqa: E402
 from mcp.server.stdio import stdio_server  # noqa: E402
 
 from src.communication.communication_hub import CommunicationHub  # noqa: E402
@@ -243,6 +244,9 @@ class MarcusServer:
         # Setup signal handlers for graceful shutdown
         self._setup_signal_handlers()
 
+        # FastMCP instance for HTTP transport (created on demand)
+        self._fastmcp = None
+
     def _register_handlers(self) -> None:
         """Register MCP tool handlers"""
 
@@ -322,7 +326,8 @@ class MarcusServer:
             # Clean up tasks being assigned
             if self.tasks_being_assigned:
                 print(
-                    f"  Clearing {len(self.tasks_being_assigned)} pending task assignments"
+                    f"  Clearing {len(self.tasks_being_assigned)} pending task "
+                    "assignments"
                 )
                 self.tasks_being_assigned.clear()
 
@@ -351,7 +356,8 @@ class MarcusServer:
             # Clean up tasks being assigned
             if self.tasks_being_assigned:
                 print(
-                    f"  Clearing {len(self.tasks_being_assigned)} pending task assignments"
+                    f"  Clearing {len(self.tasks_being_assigned)} pending task "
+                    "assignments"
                 )
                 self.tasks_being_assigned.clear()
 
@@ -495,7 +501,7 @@ class MarcusServer:
             # Successfully migrated to multi-project mode
 
     async def _initialize_monitoring_systems(self) -> None:
-        """Initialize assignment monitor and lease manager for the current kanban client"""
+        """Initialize assignment monitor and lease manager for current kanban client."""
         if not self.kanban_client:
             return
 
@@ -782,8 +788,126 @@ class MarcusServer:
             self.log_event("project_state_refresh_error", {"error": str(e)})
             raise
 
+    def _create_fastmcp(self) -> FastMCP:
+        """Create and configure FastMCP instance with all tools"""
+        if self._fastmcp is None:
+            self._fastmcp = FastMCP(
+                "marcus",
+                instructions=(
+                    "Marcus - Multi-Agent Resource Coordination and "
+                    "Understanding System"
+                ),
+            )
+
+            # Register all tools with FastMCP
+            self._register_fastmcp_tools()
+
+        return self._fastmcp
+
+    def _register_fastmcp_tools(self) -> None:
+        """Register all tools with FastMCP instance"""
+        # Import only what we need for avoiding duplicates
+        # Actual imports happen inside each function to avoid conflicts
+
+        # Store reference to self for closures
+        server = self
+
+        # Register core tools with proper signatures
+        @self._fastmcp.tool()
+        async def ping(echo: str = "") -> Dict[str, Any]:
+            """Check Marcus status and connectivity."""
+            from .tools.system import ping as ping_impl
+
+            return await ping_impl(echo=echo, state=server)
+
+        @self._fastmcp.tool()
+        async def register_agent(
+            agent_id: str, name: str, role: str, skills: List[str] = []
+        ) -> Dict[str, Any]:
+            """Register a new agent with the Marcus system."""
+            from .tools.agent import register_agent as impl
+
+            return await impl(
+                agent_id=agent_id, name=name, role=role, skills=skills, state=server
+            )
+
+        @self._fastmcp.tool()
+        async def get_agent_status(agent_id: str) -> Dict[str, Any]:
+            """Get status and current assignment for an agent."""
+            from .tools.agent import get_agent_status as impl
+
+            return await impl(agent_id=agent_id, state=server)
+
+        @self._fastmcp.tool()
+        async def request_next_task(agent_id: str) -> Dict[str, Any]:
+            """Request the next optimal task assignment for an agent."""
+            from .tools.task import request_next_task as impl
+
+            return await impl(agent_id=agent_id, state=server)
+
+        @self._fastmcp.tool()
+        async def report_task_progress(
+            agent_id: str,
+            task_id: str,
+            status: str,
+            progress: int = 0,
+            message: str = "",
+        ) -> Dict[str, Any]:
+            """Report progress on a task."""
+            from .tools.task import report_task_progress as impl
+
+            return await impl(
+                agent_id=agent_id,
+                task_id=task_id,
+                status=status,
+                progress=progress,
+                message=message,
+                state=server,
+            )
+
+        @self._fastmcp.tool()
+        async def report_blocker(
+            agent_id: str,
+            task_id: str,
+            blocker_description: str,
+            severity: str = "medium",
+        ) -> Dict[str, Any]:
+            """Report a blocker on a task."""
+            from .tools.task import report_blocker as impl
+
+            return await impl(
+                agent_id=agent_id,
+                task_id=task_id,
+                blocker_description=blocker_description,
+                severity=severity,
+                state=server,
+            )
+
+        @self._fastmcp.tool()
+        async def get_project_status() -> Dict[str, Any]:
+            """Get current project status and metrics."""
+            from .tools.agent import get_project_status as impl
+
+            return await impl(state=server)
+
+        @self._fastmcp.tool()
+        async def create_project(
+            description: str,
+            project_name: str,
+            options: Optional[Dict[str, Any]] = None,
+        ) -> Dict[str, Any]:
+            """Create a complete project from natural language description."""
+            from .tools.nlp import create_project as impl
+
+            return await impl(
+                description=description,
+                project_name=project_name,
+                options=options,
+                state=server,
+            )
+
     async def run(self) -> None:
-        """Run the MCP server"""
+        """Run the MCP server."""
         try:
             # Force unbuffered output for immediate response delivery
             import os
@@ -832,6 +956,17 @@ class MarcusServer:
 
 async def main() -> None:
     """Run the Marcus MCP server."""
+    # Get transport from config
+    config = get_config()
+    transport_config = config.get("transport", {})
+    transport = transport_config.get("type", "stdio")
+
+    # Command line overrides
+    if "--http" in sys.argv:
+        transport = "http"
+    elif "--stdio" in sys.argv:
+        transport = "stdio"
+
     try:
         server = MarcusServer()
 
@@ -855,8 +990,42 @@ async def main() -> None:
             provider=server.provider,
         )
 
-        # Now run the server with clean stdio
-        await server.run()
+        # Run server with selected transport
+        if transport == "http":
+            # Use FastMCP for HTTP transport
+            fastmcp = server._create_fastmcp()
+
+            # Get HTTP configuration from config file
+            http_config = transport_config.get("http", {})
+            host = http_config.get("host", "127.0.0.1")
+            port = http_config.get("port", 8080)
+            path = http_config.get("path", "/mcp")
+            log_level = http_config.get("log_level", "info")
+
+            # Pretty output similar to Jupyter
+            print("\n" + "=" * 70)
+            print("    Marcus MCP Server (HTTP Mode)")
+            print("=" * 70)
+            print(f"\n[I] Server URL:    http://{host}:{port}{path}")
+            print("[I] Transport:     Streamable HTTP")
+            print(f"[I] Log level:     {log_level}")
+            print("\n[I] The Marcus server is running at:")
+            print(f"    http://{host}:{port}{path}")
+            print("\n[I] To connect Claude, use this configuration:")
+            print(f'    {{"url": "http://{host}:{port}{path}"}}')
+
+            # For HTTP transport, we need to run it differently
+            # FastMCP uses "streamable-http" as the transport name
+            import uvicorn
+
+            # Create the Starlette app from FastMCP
+            app = fastmcp.streamable_http_app()
+
+            # Run with uvicorn
+            uvicorn.run(app, host=host, port=port, log_level=log_level)
+        else:
+            # Use existing stdio transport
+            await server.run()
     except Exception as e:
         # Log errors to stderr only in case of failure
         print(f"Failed to start Marcus MCP server: {e}", file=sys.stderr)
@@ -867,4 +1036,110 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Load config first to get transport settings
+    config = get_config()
+
+    # Get transport type from config, with command line override
+    transport_config = config.get("transport", {})
+    transport = transport_config.get("type", "stdio")
+
+    # Command line arguments override config
+    if "--http" in sys.argv:
+        transport = "http"
+    elif "--stdio" in sys.argv:
+        transport = "stdio"
+
+    if transport == "http":
+        # For HTTP mode, run the async initialization first
+        async def setup_http_server():
+            """Setup HTTP server with async initialization."""
+            server = MarcusServer()
+            await server.initialize()
+
+            # Register service for discovery
+            current_project = None
+            if hasattr(server.project_manager, "get_current_project"):
+                try:
+                    current_project = server.project_manager.get_current_project()
+                    current_project = current_project.name if current_project else None
+                except Exception:
+                    pass  # nosec B110
+
+            register_marcus_service(
+                mcp_command=sys.executable + " " + " ".join(sys.argv),
+                log_dir=str(Path(server.realtime_log.name).parent),
+                project_name=current_project,
+                provider=server.provider,
+            )
+
+            return server
+
+        # Run the async setup
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        server = loop.run_until_complete(setup_http_server())
+
+        # Create FastMCP instance
+        fastmcp = server._create_fastmcp()
+
+        # Get HTTP configuration from config file
+        http_config = transport_config.get("http", {})
+        host = http_config.get("host", "127.0.0.1")
+        port = http_config.get("port", 8080)
+        path = http_config.get("path", "/mcp")
+        log_level = http_config.get("log_level", "info")
+
+        # Pretty output similar to Jupyter
+        print("\n" + "=" * 70)
+        print("    Marcus MCP Server (HTTP Mode)")
+        print("=" * 70)
+        print(f"\n[I] Server URL:    http://{host}:{port}{path}")
+        print("[I] Transport:     Streamable HTTP")
+        print(f"[I] Log level:     {log_level}")
+        print("\n[I] The Marcus server is running at:")
+        print(f"    http://{host}:{port}{path}")
+        print("\n[I] To connect Claude, use this configuration:")
+        print(f'    {{"url": "http://{host}:{port}{path}"}}')
+
+        # Setup shutdown handler for HTTP mode
+        def http_signal_handler(signum: int, frame: Any) -> None:
+            """Handle shutdown for HTTP server."""
+            print(f"\n⚠️  Received signal {signum}, initiating graceful shutdown...")
+
+            # Run cleanup in the event loop
+            if hasattr(server, "_shutdown_event"):
+                server._shutdown_event.set()
+
+            # Perform sync cleanup
+            if hasattr(server, "_sync_cleanup"):
+                server._sync_cleanup()
+
+        # Register signal handlers
+        signal.signal(signal.SIGINT, http_signal_handler)
+        signal.signal(signal.SIGTERM, http_signal_handler)
+
+        # Run with uvicorn directly
+        import uvicorn
+
+        app = fastmcp.streamable_http_app()
+
+        # Configure uvicorn with graceful shutdown
+        config = uvicorn.Config(
+            app=app,
+            host=host,
+            port=port,
+            log_level=log_level,
+            loop="asyncio",
+            access_log=False,  # Reduce noise
+        )
+
+        server_instance = uvicorn.Server(config)
+
+        # Run the server (this will handle shutdown gracefully)
+        try:
+            server_instance.run()
+        except KeyboardInterrupt:
+            print("\n✅ HTTP server shutdown complete")
+    else:
+        # For stdio mode, use the standard async run
+        asyncio.run(main())
