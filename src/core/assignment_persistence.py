@@ -170,3 +170,14 @@ class AssignmentPersistence:
                 if assignment["task_id"] == task_id:
                     return worker_id
             return None
+
+    async def cleanup(self) -> None:
+        """Clean up any resources and persist final state"""
+        try:
+            # Persist any cached data one final time
+            if self._assignments_cache:
+                await self._write_assignments()
+
+            logger.info("Assignment persistence cleanup completed")
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")

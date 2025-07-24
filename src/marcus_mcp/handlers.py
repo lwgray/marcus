@@ -26,6 +26,10 @@ from .tools import (  # Agent tools; Task tools; Project tools; System tools; NL
     report_task_progress,
     request_next_task,
 )
+from .tools.board_health import (  # Board health tools
+    check_board_health,
+    check_task_dependencies,
+)
 from .tools.context import (  # Context tools
     log_decision,
 )
@@ -195,13 +199,24 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
         # System Health Tools
         types.Tool(
             name="ping",
-            description="Check Marcus status and connectivity",
+            description="""Check Marcus status and connectivity with special diagnostic commands.
+
+Special commands:
+- 'health': Get detailed system health including lease statistics and assignment state
+- 'cleanup': Force cleanup of stuck task assignments (safe recovery operation)
+- 'reset': Clear ALL assignment state - WARNING: use only when system is stuck!
+
+Examples:
+- ping("hello") - Simple connectivity check
+- ping("health") - Full system health report
+- ping("cleanup") - Clean stuck assignments after interruption
+- ping("reset") - Complete assignment reset""",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "echo": {
                         "type": "string",
-                        "description": "Optional message to echo back",
+                        "description": "Message to echo or command: 'health'|'cleanup'|'reset'",
                         "default": "",
                     }
                 },
@@ -404,6 +419,48 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
             name="check_assignment_health",
             description="Check the health of the assignment tracking system",
             inputSchema={"type": "object", "properties": {}, "required": []},
+        ),
+        types.Tool(
+            name="check_board_health",
+            description="""Analyze overall board health and detect systemic issues.
+
+Detects:
+- Skill mismatches: Tasks no agent can handle
+- Circular dependencies: Task cycles that block progress
+- Bottlenecks: Tasks blocking many others
+- Chain blocks: Long sequential dependency chains
+- Stale tasks: In-progress tasks not updated recently
+- Workload issues: Overloaded or idle agents
+
+Returns health score (0-100) with detailed issue analysis and recommendations.
+
+Usage: check_board_health()""",
+            inputSchema={"type": "object", "properties": {}, "required": []},
+        ),
+        types.Tool(
+            name="check_task_dependencies",
+            description="""Check dependencies for a specific task and analyze its position in the workflow.
+
+Shows:
+- What this task depends on (upstream dependencies)
+- What depends on this task (downstream impact)
+- Whether task is part of circular dependencies
+- If task is a bottleneck (blocking 3+ tasks)
+- Recommended completion order
+
+Helps identify critical path tasks and dependency issues.
+
+Usage: check_task_dependencies("task-123")""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task_id": {
+                        "type": "string",
+                        "description": "ID of the task to analyze (e.g., 'task-123')",
+                    },
+                },
+                "required": ["task_id"],
+            },
         ),
         # Project Management Tools (human only)
         types.Tool(
@@ -914,6 +971,16 @@ async def handle_tool_call(
 
         elif name == "check_assignment_health":
             result = await check_assignment_health(state=state)
+
+        elif name == "check_board_health":
+            result = await check_board_health(state=state)
+
+        elif name == "check_task_dependencies":
+            task_id = arguments.get("task_id") if arguments else None
+            if not task_id:
+                result = {"error": "task_id is required"}
+            else:
+                result = await check_task_dependencies(task_id=task_id, state=state)
 
         # Natural language tools
         elif name == "create_project":

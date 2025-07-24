@@ -470,8 +470,24 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                     },
                 )
 
+                # Create lease for this assignment if lease manager available
+                if hasattr(state, "lease_manager") and state.lease_manager:
+                    lease = await state.lease_manager.create_lease(
+                        optimal_task.id, agent_id, optimal_task
+                    )
+                    logger.info(
+                        f"Created lease for task {optimal_task.id} "
+                        f"(expires: {lease.lease_expires.isoformat()})"
+                    )
+
                 # Remove from pending assignments
                 state.tasks_being_assigned.discard(optimal_task.id)
+
+                # Track in server for cleanup on disconnect
+                if hasattr(state, "_active_operations"):
+                    state._active_operations.discard(
+                        f"task_assignment_{optimal_task.id}"
+                    )
 
                 # Log task assignment
                 conversation_logger.log_worker_message(
@@ -663,6 +679,12 @@ async def report_task_progress(
                 # Remove from persistent storage
                 await state.assignment_persistence.remove_assignment(agent_id)
 
+                # Remove lease for completed task
+                if hasattr(state, "lease_manager") and state.lease_manager:
+                    if task_id in state.lease_manager.active_leases:
+                        del state.lease_manager.active_leases[task_id]
+                        logger.info(f"Removed lease for completed task {task_id}")
+
                 # Code analysis for GitHub
                 if state.provider == "github" and state.code_analyzer:
                     owner = os.getenv("GITHUB_OWNER")
@@ -716,6 +738,23 @@ async def report_task_progress(
         await state.kanban_client.update_task_progress(
             task_id, {"progress": progress, "status": status, "message": message}
         )
+
+        # Renew lease on progress update (except for completed tasks)
+        if (
+            hasattr(state, "lease_manager")
+            and state.lease_manager
+            and status != "completed"
+        ):
+            renewed_lease = await state.lease_manager.renew_lease(
+                task_id, progress, message
+            )
+            if renewed_lease:
+                logger.info(
+                    f"Renewed lease for task {task_id} "
+                    f"(expires: {renewed_lease.lease_expires.isoformat()})"
+                )
+            else:
+                logger.warning(f"Failed to renew lease for task {task_id}")
 
         # Log response
         conversation_logger.log_worker_message(
@@ -1096,6 +1135,11 @@ async def find_optimal_task_for_agent(
 
                 if optimal_task:
                     state.tasks_being_assigned.add(optimal_task.id)
+                    # Track in server for cleanup on disconnect
+                    if hasattr(state, "_active_operations"):
+                        state._active_operations.add(
+                            f"task_assignment_{optimal_task.id}"
+                        )
                     return optimal_task
             except Exception as e:
                 # Log error using log_pm_thinking instead
@@ -1156,5 +1200,8 @@ async def find_optimal_task_basic(
 
     if best_task:
         state.tasks_being_assigned.add(best_task.id)
+        # Track in server for cleanup on disconnect
+        if hasattr(state, "_active_operations"):
+            state._active_operations.add(f"task_assignment_{best_task.id}")
 
     return best_task

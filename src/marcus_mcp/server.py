@@ -10,6 +10,7 @@ import asyncio
 import atexit
 import json
 import os
+import signal
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -118,8 +119,17 @@ class MarcusServer:
         # Assignment monitoring
         self.assignment_monitor: Optional[AssignmentMonitor] = None
 
+        # Lease management
+        self.lease_manager = None
+        self.lease_monitor = None
+
         # Pipeline flow visualization (shared between processes)
         self.pipeline_visualizer = SharedPipelineVisualizer()
+
+        # Track active connections and cleanup state
+        self._cleanup_done = False
+        self._active_operations = set()
+        self._shutdown_event = asyncio.Event()
 
         # New enhancement systems (optional based on config)
         # Declare optional attributes
@@ -221,6 +231,9 @@ class MarcusServer:
         # Register handlers
         self._register_handlers()
 
+        # Setup signal handlers for graceful shutdown
+        self._setup_signal_handlers()
+
     def _register_handlers(self) -> None:
         """Register MCP tool handlers"""
 
@@ -267,6 +280,108 @@ class MarcusServer:
         ) -> types.GetPromptResult:
             """Get a prompt - Marcus doesn't use prompts currently"""
             raise ValueError(f"Prompt not found: {name}")
+
+    def _setup_signal_handlers(self) -> None:
+        """Setup signal handlers for graceful shutdown"""
+
+        def signal_handler(signum: int, frame: Any) -> None:
+            """Handle interrupt signals gracefully"""
+            print(f"\n⚠️  Received signal {signum}, initiating graceful shutdown...")
+            # Set shutdown event
+            self._shutdown_event.set()
+            # Create task for async cleanup
+            if asyncio.get_event_loop().is_running():
+                asyncio.create_task(self._cleanup_on_shutdown())
+            else:
+                # If no event loop, do sync cleanup
+                self._sync_cleanup()
+
+        # Register handlers for common interruption signals
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
+    def _sync_cleanup(self) -> None:
+        """Synchronous cleanup for when event loop is not available"""
+        if self._cleanup_done:
+            return
+
+        self._cleanup_done = True
+
+        try:
+            print("🧹 Performing synchronous cleanup...")
+
+            # Clean up tasks being assigned
+            if self.tasks_being_assigned:
+                print(
+                    f"  Clearing {len(self.tasks_being_assigned)} pending task assignments"
+                )
+                self.tasks_being_assigned.clear()
+
+            # Close realtime log
+            if hasattr(self, "realtime_log") and self.realtime_log:
+                self.realtime_log.close()
+
+            print("✅ Cleanup completed")
+
+        except Exception as e:
+            print(f"❌ Error during cleanup: {e}")
+
+        # Force exit after cleanup
+        os._exit(0)
+
+    async def _cleanup_on_shutdown(self) -> None:
+        """Clean up resources on shutdown"""
+        if self._cleanup_done:
+            return
+
+        self._cleanup_done = True
+
+        try:
+            print("🧹 Cleaning up active operations...")
+
+            # Clean up tasks being assigned
+            if self.tasks_being_assigned:
+                print(
+                    f"  Clearing {len(self.tasks_being_assigned)} pending task assignments"
+                )
+                self.tasks_being_assigned.clear()
+
+            # Cancel active operations and clean up task assignments
+            if self._active_operations:
+                print(f"  Cancelling {len(self._active_operations)} active operations")
+                for op in self._active_operations:
+                    if isinstance(op, str) and op.startswith("task_assignment_"):
+                        # Extract task ID and remove from being assigned
+                        task_id = op.replace("task_assignment_", "")
+                        if task_id in self.tasks_being_assigned:
+                            self.tasks_being_assigned.discard(task_id)
+                            print(f"    Cleaned up task assignment: {task_id}")
+                    elif asyncio.iscoroutine(op) or asyncio.isfuture(op):
+                        op.cancel()
+
+            # Stop assignment monitor if running
+            if self.assignment_monitor and hasattr(self.assignment_monitor, "_running"):
+                self.assignment_monitor._running = False
+
+            # Stop lease monitor if running
+            if self.lease_monitor:
+                await self.lease_monitor.stop()
+
+            # Close realtime log
+            if hasattr(self, "realtime_log") and self.realtime_log:
+                self.realtime_log.close()
+
+            # Persist any pending state
+            if self.assignment_persistence:
+                await self.assignment_persistence.cleanup()
+
+            print("✅ Cleanup completed")
+
+        except Exception as e:
+            print(f"❌ Error during cleanup: {e}")
+
+        # Force exit after cleanup
+        os._exit(0)
 
     async def initialize(self) -> None:
         """Initialize all Marcus server components"""
@@ -404,6 +519,57 @@ class MarcusServer:
                         self.assignment_persistence, self.kanban_client
                     )
                     await self.assignment_monitor.start()  # type: ignore[no-untyped-call]
+
+                # Initialize lease management
+                if self.lease_manager is None:
+                    from src.core.assignment_lease import (
+                        AssignmentLeaseManager,
+                        LeaseMonitor,
+                    )
+
+                    # Get lease configuration - project-specific or global
+                    lease_config = {}
+
+                    # Check for project-specific lease config
+                    if hasattr(self, "project_registry") and self.project_registry:
+                        active_project = (
+                            await self.project_registry.get_active_project()
+                        )
+                        if active_project and hasattr(active_project, "task_lease"):
+                            lease_config = active_project.task_lease
+
+                    # Fall back to global config
+                    if not lease_config:
+                        lease_config = self.config.get("task_lease", {})
+
+                    self.lease_manager = AssignmentLeaseManager(
+                        self.kanban_client,
+                        self.assignment_persistence,
+                        default_lease_hours=lease_config.get("default_hours", 2.0),
+                        max_renewals=lease_config.get("max_renewals", 10),
+                        warning_threshold_hours=lease_config.get("warning_hours", 0.5),
+                        priority_multipliers=lease_config.get("priority_multipliers"),
+                        complexity_multipliers=lease_config.get(
+                            "complexity_multipliers"
+                        ),
+                        grace_period_minutes=lease_config.get(
+                            "grace_period_minutes", 30
+                        ),
+                        renewal_decay_factor=lease_config.get(
+                            "renewal_decay_factor", 0.9
+                        ),
+                        min_lease_hours=lease_config.get("min_lease_hours", 1.0),
+                        max_lease_hours=lease_config.get("max_lease_hours", 24.0),
+                        stuck_task_threshold_renewals=lease_config.get(
+                            "stuck_threshold_renewals", 5
+                        ),
+                        enable_adaptive_leases=lease_config.get(
+                            "enable_adaptive", True
+                        ),
+                    )
+                    self.lease_monitor = LeaseMonitor(self.lease_manager)
+                    await self.lease_monitor.start()
+                    print("Assignment lease system initialized")
 
                 # Kanban client initialized successfully
 
@@ -629,7 +795,7 @@ class MarcusServer:
                     pending = asyncio.all_tasks() - {asyncio.current_task()}
                     for task in pending:
                         task.cancel()
-                    
+
                     # Wait briefly for cancellations
                     if pending:
                         await asyncio.gather(*pending, return_exceptions=True)

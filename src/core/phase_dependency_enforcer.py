@@ -292,9 +292,11 @@ class PhaseDependencyEnforcer:
             # Add dependencies from previous phases
             if previous_phase_tasks:
                 for task in current_phase_tasks:
-                    violations = self._add_phase_dependencies(task, previous_phase_tasks)
+                    violations = self._add_phase_dependencies(
+                        task, previous_phase_tasks
+                    )
                     violations_corrected += violations
-                    
+
         if violations_corrected > 0:
             logger.warning(
                 f"Corrected {violations_corrected} phase ordering violations in feature '{feature_group.feature_name}'"
@@ -309,7 +311,7 @@ class PhaseDependencyEnforcer:
         Args:
             dependent_task: Task that will depend on others
             dependency_tasks: Tasks that must complete first
-            
+
         Returns:
             Number of violations corrected
         """
@@ -353,7 +355,7 @@ class PhaseDependencyEnforcer:
             logger.debug(
                 f"Added {added_count} phase dependencies to task: {dependent_task.name}"
             )
-            
+
         return violations_found
 
     def _get_task_phase_name(self, task: Task) -> str:
@@ -411,12 +413,14 @@ class PhaseDependencyEnforcer:
         # Fallback to type classification
         task_type = self.task_classifier.classify(task)
         return self.TYPE_TO_PHASE_MAP.get(task_type)
-    
+
     def _get_task_phase(self, task_type: TaskType) -> TaskPhase:
         """Convert TaskType to TaskPhase."""
         return self.TYPE_TO_PHASE_MAP.get(task_type, TaskPhase.IMPLEMENTATION)
-    
-    def _should_depend_on_phase(self, task_phase: TaskPhase, other_phase: TaskPhase) -> bool:
+
+    def _should_depend_on_phase(
+        self, task_phase: TaskPhase, other_phase: TaskPhase
+    ) -> bool:
         """Check if task_phase should depend on other_phase based on phase ordering."""
         return task_phase.value > other_phase.value
 

@@ -7,8 +7,8 @@ to prevent workers from being stuck with reverted tasks.
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Set
+from datetime import datetime
+from typing import Dict, Optional
 
 from src.core.assignment_persistence import AssignmentPersistence
 from src.core.assignment_reconciliation import AssignmentReconciler

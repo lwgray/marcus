@@ -65,13 +65,77 @@ Workers should handle connection failures gracefully and implement retry logic.
 import asyncio
 import json
 import os
-import subprocess
+import random
+import time
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional, TypeVar
 
 from mcp.client.stdio import stdio_client
 
 from mcp import ClientSession, StdioServerParameters
+
+# Type variable for retry decorator
+T = TypeVar("T")
+
+
+def retry_with_backoff(
+    max_attempts: int = 3,
+    initial_delay: float = 1.0,
+    max_delay: float = 60.0,
+    exponential_base: float = 2.0,
+    jitter: bool = True,
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
+    """
+    Decorator for retrying operations with exponential backoff.
+
+    Args:
+        max_attempts: Maximum number of retry attempts
+        initial_delay: Initial delay in seconds
+        max_delay: Maximum delay between retries
+        exponential_base: Base for exponential backoff
+        jitter: Whether to add random jitter to delays
+
+    Returns:
+        Decorated function that retries on failure
+    """
+
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        async def wrapper(*args, **kwargs) -> T:
+            last_exception = None
+
+            for attempt in range(max_attempts):
+                try:
+                    return await func(*args, **kwargs)
+                except (ConnectionError, RuntimeError, asyncio.TimeoutError) as e:
+                    last_exception = e
+
+                    if attempt == max_attempts - 1:
+                        # Last attempt failed
+                        print(
+                            f"❌ {func.__name__} failed after {max_attempts} attempts: {e}"
+                        )
+                        raise
+
+                    # Calculate delay with exponential backoff
+                    delay = min(initial_delay * (exponential_base**attempt), max_delay)
+
+                    # Add jitter if enabled
+                    if jitter:
+                        delay = delay * (0.5 + random.random())
+
+                    print(
+                        f"⚠️  {func.__name__} failed (attempt {attempt + 1}/{max_attempts}), "
+                        f"retrying in {delay:.1f}s: {e}"
+                    )
+
+                    await asyncio.sleep(delay)
+
+            # Should never reach here, but just in case
+            raise last_exception or RuntimeError(f"{func.__name__} failed unexpectedly")
+
+        return wrapper
+
+    return decorator
 
 
 class WorkerMCPClient:
@@ -182,6 +246,8 @@ class WorkerMCPClient:
         None
         """
         self.session: Optional[ClientSession] = None
+        self._connection_attempts = 0
+        self._last_connection_time = 0.0
 
     @asynccontextmanager
     async def connect_to_marcus(self) -> AsyncIterator[ClientSession]:
@@ -266,6 +332,41 @@ class WorkerMCPClient:
                 )
 
                 yield session
+
+    def _should_attempt_reconnect(self) -> bool:
+        """Check if we should attempt to reconnect based on recent attempts"""
+        current_time = time.time()
+
+        # Reset attempt counter if it's been more than 5 minutes
+        if current_time - self._last_connection_time > 300:
+            self._connection_attempts = 0
+
+        # Allow up to 5 rapid reconnection attempts
+        return self._connection_attempts < 5
+
+    async def ensure_connected(self) -> bool:
+        """Ensure we have an active connection, attempt reconnect if needed"""
+        if self.session and not getattr(self.session, "_closed", True):
+            return True
+
+        if not self._should_attempt_reconnect():
+            print("⚠️  Too many reconnection attempts, please wait before retrying")
+            return False
+
+        print("🔄 Attempting to reconnect to Marcus...")
+        self._connection_attempts += 1
+        self._last_connection_time = time.time()
+
+        try:
+            # Try to establish new connection
+            async with self.connect_to_marcus() as session:
+                self.session = session
+                print("✅ Reconnected to Marcus successfully")
+                self._connection_attempts = 0  # Reset on success
+                return True
+        except Exception as e:
+            print(f"❌ Reconnection failed: {e}")
+            return False
 
     async def register_agent(
         self, agent_id: str, name: str, role: str, skills: List[str]
@@ -368,6 +469,7 @@ class WorkerMCPClient:
 
         return json.loads(result.content[0].text) if result.content else {}
 
+    @retry_with_backoff(max_attempts=3, initial_delay=2.0)
     async def request_next_task(self, agent_id: str) -> Dict[str, Any]:
         """
         Request next available task assignment from Marcus.
@@ -475,6 +577,7 @@ class WorkerMCPClient:
 
         return json.loads(result.content[0].text) if result.content else {}
 
+    @retry_with_backoff(max_attempts=3, initial_delay=1.0, max_delay=30.0)
     async def report_task_progress(
         self,
         agent_id: str,
@@ -620,6 +723,7 @@ class WorkerMCPClient:
 
         return json.loads(result.content[0].text) if result.content else {}
 
+    @retry_with_backoff(max_attempts=3, initial_delay=1.0, max_delay=30.0)
     async def report_blocker(
         self,
         agent_id: str,

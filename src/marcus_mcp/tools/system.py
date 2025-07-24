@@ -17,17 +17,23 @@ from src.monitoring.assignment_monitor import AssignmentHealthChecker
 
 async def ping(echo: str, state: Any) -> Dict[str, Any]:
     """
-    Check Marcus status and connectivity.
+    Check Marcus status and connectivity with enhanced health diagnostics.
 
-    Simple health check endpoint that verifies the Marcus system
-    is online and responsive. Can echo back a message.
+    Extended health check endpoint that verifies the Marcus system
+    is online and responsive. Can echo back a message and provide
+    detailed system health information.
+
+    Special echo commands:
+    - "health": Return detailed health information
+    - "cleanup": Force cleanup of stuck task assignments
+    - "reset": Clear all pending assignments (use with caution)
 
     Args:
-        echo: Optional message to echo back
+        echo: Optional message to echo back or special command
         state: Marcus server state instance
 
     Returns:
-        Dict with status, provider info, and timestamp
+        Dict with status, provider info, timestamp, and optional health data
     """
 
     # Determine client type from echo
@@ -59,6 +65,7 @@ async def ping(echo: str, state: Any) -> Dict[str, Any]:
     # Log thinking with client identification
     log_thinking("marcus", f"Received ping from {client_type} client with echo: {echo}")
 
+    # Base response
     response = {
         "success": True,
         "status": "online",
@@ -76,6 +83,96 @@ async def ping(echo: str, state: Any) -> Dict[str, Any]:
             ),
         },
     }
+
+    # Handle special commands
+    if echo:
+        echo_lower = echo.lower().strip()
+
+        if echo_lower == "health":
+            # Add detailed health information
+            response["health"] = {
+                "tasks_being_assigned": list(state.tasks_being_assigned),
+                "active_agents": len(state.agent_status),
+                "assigned_tasks": len(state.agent_tasks),
+                "shutdown_pending": getattr(state, "_shutdown_event", None)
+                and state._shutdown_event.is_set(),
+                "active_operations": len(getattr(state, "_active_operations", set())),
+            }
+
+            # Add assignment health check
+            try:
+                health_checker = AssignmentHealthChecker(
+                    state.assignment_persistence,
+                    state.kanban_client,
+                    state.assignment_monitor,
+                )
+                assignment_health = await health_checker.check_assignment_health()
+                response["health"]["assignment_system"] = assignment_health
+            except Exception as e:
+                response["health"]["assignment_system"] = {"error": str(e)}
+
+            # Add lease statistics if lease manager is available
+            try:
+                if hasattr(state, "lease_manager") and state.lease_manager:
+                    lease_stats = state.lease_manager.get_lease_statistics()
+                    response["health"]["lease_statistics"] = lease_stats
+                else:
+                    response["health"]["lease_statistics"] = {
+                        "status": "not_initialized",
+                        "message": "Lease manager not yet initialized",
+                    }
+            except Exception as e:
+                response["health"]["lease_statistics"] = {"error": str(e)}
+
+        elif echo_lower == "cleanup":
+            # Force cleanup of stuck assignments
+            cleanup_count = 0
+
+            if state.tasks_being_assigned:
+                cleanup_count = len(state.tasks_being_assigned)
+                state.tasks_being_assigned.clear()
+                log_thinking(
+                    "marcus",
+                    f"Forced cleanup of {cleanup_count} stuck task assignments",
+                )
+
+            # Clear active operations tracking
+            if hasattr(state, "_active_operations"):
+                op_count = len(state._active_operations)
+                state._active_operations.clear()
+                cleanup_count += op_count
+
+            response["cleanup"] = {
+                "success": True,
+                "cleaned_up": cleanup_count,
+                "message": f"Cleaned up {cleanup_count} stuck assignments/operations",
+            }
+
+        elif echo_lower == "reset":
+            # Complete reset of assignment state (use with caution)
+            reset_info = {
+                "tasks_cleared": len(state.tasks_being_assigned),
+                "agents_cleared": len(state.agent_tasks),
+                "operations_cleared": len(getattr(state, "_active_operations", set())),
+            }
+
+            # Clear all assignment state
+            state.tasks_being_assigned.clear()
+            state.agent_tasks.clear()
+            if hasattr(state, "_active_operations"):
+                state._active_operations.clear()
+
+            # Reset assignment monitor
+            if state.assignment_monitor:
+                state.assignment_monitor._pending_assignments.clear()
+
+            log_thinking("marcus", "Performed full assignment state reset")
+
+            response["reset"] = {
+                "success": True,
+                "reset_info": reset_info,
+                "warning": "All assignment state has been cleared!",
+            }
 
     # Log the response immediately
     state.log_event("ping_response", response)
