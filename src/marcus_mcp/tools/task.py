@@ -869,19 +869,12 @@ async def report_blocker(
 # Helper functions for task assignment
 
 
-async def find_optimal_task_for_agent(
-    agent_id: str, state: Any
-) -> tuple[Optional[Task], Dict[str, Any]]:
+async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Task]:
     """
     Find the best task for an agent using AI-powered analysis.
 
     Returns:
-        tuple: (Optional[Task], assignment_details)
-        assignment_details contains:
-        - success: bool
-        - task: Optional[Task]
-        - filtering_stats: Dict with counts of filtered tasks by reason
-        - reason: str explaining why no task was found (if applicable)
+        Optional[Task]: The best task for the agent, or None if no suitable task found
     """
     async with state.assignment_lock:
         # Initialize detailed tracking
@@ -900,20 +893,10 @@ async def find_optimal_task_for_agent(
         agent = state.agent_status.get(agent_id)
 
         if not agent:
-            return None, {
-                "success": False,
-                "task": None,
-                "filtering_stats": filtering_stats,
-                "reason": "agent_not_registered",
-            }
+            return None
 
         if not state.project_state:
-            return None, {
-                "success": False,
-                "task": None,
-                "filtering_stats": filtering_stats,
-                "reason": "no_project_state",
-            }
+            return None
 
         # Get available tasks
         assigned_task_ids = [a.task_id for a in state.agent_tasks.values()]

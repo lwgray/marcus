@@ -408,7 +408,8 @@ class BoardOrganizer:
         priority_tasks = defaultdict(list)
 
         for task in tasks:
-            priority = task.priority or Priority.MEDIUM
+            # Task.priority is always set (non-optional Priority enum)
+            priority = task.priority
             priority_distribution[priority.value] += 1
             priority_tasks[priority.value].append(task)
 
@@ -469,9 +470,7 @@ class BoardOrganizer:
             max_matches = 0
             for phase_name, phase_config in list(self.development_phases.items()):
                 keywords = list(phase_config["keywords"])
-                matches = sum(
-                    1 for keyword in keywords if keyword in task_text
-                )
+                matches = sum(1 for keyword in keywords if keyword in task_text)
                 if matches > max_matches:
                     max_matches = matches
                     task_phase = phase_name

@@ -79,13 +79,13 @@ class DependencyGraph:
     def get_critical_path(self) -> List[str]:
         """Get the critical path (longest dependency chain)"""
         # Topological sort to find longest path
-        in_degree = defaultdict(int)
+        in_degree: Dict[str, int] = defaultdict(int)
         for node_id in self.nodes:
             for dep in self.adjacency_list.get(node_id, []):
                 in_degree[dep] += 1
 
         # Initialize distances
-        distances = {node_id: 0 for node_id in self.nodes}
+        distances: Dict[str, float] = {node_id: 0.0 for node_id in self.nodes}
 
         # BFS-like approach for longest path
         queue = deque([node_id for node_id in self.nodes if in_degree[node_id] == 0])
@@ -111,7 +111,7 @@ class DependencyGraph:
 
         # Reconstruct path
         path = []
-        current = end_node
+        current: Optional[str] = end_node
 
         while current:
             path.append(current)
@@ -498,7 +498,7 @@ class DependencyInferer:
         rec_stack = set()
         cycles_found = []
 
-        def detect_cycle(node, path):
+        def detect_cycle(node: str, path: List[str]) -> Optional[List[str]]:
             if node in rec_stack:
                 # Found cycle - extract it
                 cycle_start = path.index(node)
@@ -679,7 +679,7 @@ class DependencyInferer:
         cycles = []
         visited = set()
 
-        def dfs(node: str, path: List[str], visited_in_path: Set[str]):
+        def dfs(node: str, path: List[str], visited_in_path: Set[str]) -> None:
             if node in visited_in_path:
                 # Found a cycle
                 cycle_start = path.index(node)

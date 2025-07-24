@@ -7,7 +7,7 @@ pattern matching, and context-aware classification for 95%+ accuracy.
 
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List, Pattern, Tuple
 
 from src.core.models import Task
 from src.integrations.nlp_task_utils import TaskType
@@ -360,7 +360,7 @@ class EnhancedTaskClassifier:
     def __init__(self) -> None:
         """Initialize the enhanced classifier."""
         # Compile patterns for efficiency
-        self._compiled_patterns = {}
+        self._compiled_patterns: Dict[TaskType, List[Pattern[str]]] = {}
         for task_type, patterns in self.TASK_PATTERNS.items():
             self._compiled_patterns[task_type] = [
                 re.compile(pattern, re.IGNORECASE) for pattern in patterns

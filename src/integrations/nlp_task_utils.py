@@ -206,7 +206,7 @@ class TaskBuilder:
 class SafetyChecker:
     """Apply safety checks to ensure logical task ordering"""
     
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize SafetyChecker with enhanced task classifier."""
         from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
         self.task_classifier = EnhancedTaskClassifier()

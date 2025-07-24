@@ -15,7 +15,7 @@ import signal
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,12 @@ from mcp.server.stdio import stdio_server  # noqa: E402
 from src.communication.communication_hub import CommunicationHub  # noqa: E402
 from src.config.config_loader import get_config  # noqa: E402
 from src.config.settings import Settings  # noqa: E402
+
+# Import for type annotations only
+from src.core.assignment_lease import (  # noqa: E402
+    AssignmentLeaseManager,
+    LeaseMonitor,
+)
 from src.core.assignment_persistence import AssignmentPersistence  # noqa: E402
 from src.core.code_analyzer import CodeAnalyzer  # noqa: E402
 from src.core.context import Context  # noqa: E402
@@ -123,15 +129,15 @@ class MarcusServer:
         self.assignment_monitor: Optional[AssignmentMonitor] = None
 
         # Lease management
-        self.lease_manager = None
-        self.lease_monitor = None
+        self.lease_manager: Optional[AssignmentLeaseManager] = None
+        self.lease_monitor: Optional[LeaseMonitor] = None
 
         # Pipeline flow visualization (shared between processes)
         self.pipeline_visualizer = SharedPipelineVisualizer()
 
         # Track active connections and cleanup state
         self._cleanup_done = False
-        self._active_operations = set()
+        self._active_operations: Set[Any] = set()
         self._shutdown_event = asyncio.Event()
 
         # New enhancement systems (optional based on config)
@@ -360,7 +366,10 @@ class MarcusServer:
                             self.tasks_being_assigned.discard(task_id)
                             print(f"    Cleaned up task assignment: {task_id}")
                     elif asyncio.iscoroutine(op) or asyncio.isfuture(op):
-                        op.cancel()
+                        try:
+                            op.cancel()  # type: ignore[union-attr]
+                        except AttributeError:
+                            pass
 
             # Stop assignment monitor if running
             if self.assignment_monitor and hasattr(self.assignment_monitor, "_running"):
@@ -438,7 +447,7 @@ class MarcusServer:
                         self.kanban_client = (
                             await self.project_manager.get_kanban_client()
                         )
-                        
+
                         # Initialize monitoring systems for the synced project
                         if self.kanban_client:
                             await self._initialize_monitoring_systems()
@@ -484,39 +493,39 @@ class MarcusServer:
             await self.project_manager.switch_project(project_id)
 
             # Successfully migrated to multi-project mode
-    
+
     async def _initialize_monitoring_systems(self) -> None:
         """Initialize assignment monitor and lease manager for the current kanban client"""
         if not self.kanban_client:
             return
-        
+
         # Initialize assignment monitor
         if self.assignment_monitor is None:
             self.assignment_monitor = AssignmentMonitor(
                 self.assignment_persistence, self.kanban_client
             )
             await self.assignment_monitor.start()  # type: ignore[no-untyped-call]
-        
+
         # Initialize lease management
         if self.lease_manager is None:
             from src.core.assignment_lease import (
                 AssignmentLeaseManager,
                 LeaseMonitor,
             )
-            
+
             # Get lease configuration - project-specific or global
             lease_config = {}
-            
+
             # Check for project-specific lease config
             if hasattr(self, "project_registry") and self.project_registry:
                 active_project = await self.project_registry.get_active_project()
                 if active_project and hasattr(active_project, "task_lease"):
                     lease_config = active_project.task_lease
-            
+
             # Fall back to global config
             if not lease_config:
                 lease_config = self.config.get("task_lease", {})
-            
+
             self.lease_manager = AssignmentLeaseManager(
                 self.kanban_client,
                 self.assignment_persistence,
@@ -529,8 +538,10 @@ class MarcusServer:
                 renewal_decay_factor=lease_config.get("renewal_decay_factor", 0.9),
                 min_lease_hours=lease_config.get("min_lease_hours", 1.0),
                 max_lease_hours=lease_config.get("max_lease_hours", 24.0),
-                stuck_task_threshold_renewals=lease_config.get("stuck_threshold_renewals", 5),
-                enable_adaptive_leases=lease_config.get("enable_adaptive", True)
+                stuck_task_threshold_renewals=lease_config.get(
+                    "stuck_threshold_renewals", 5
+                ),
+                enable_adaptive_leases=lease_config.get("enable_adaptive", True),
             )
             self.lease_monitor = LeaseMonitor(self.lease_manager)
             await self.lease_monitor.start()

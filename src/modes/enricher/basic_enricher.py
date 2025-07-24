@@ -6,7 +6,7 @@ Simple task enrichment without requiring board context.
 
 import re
 from datetime import datetime
-from typing import List
+from typing import Any, Dict, List
 
 from src.core.models import Priority, Task
 
@@ -23,7 +23,7 @@ class BasicEnricher:
         }
 
         # Common task patterns and their estimates
-        self.task_patterns = {
+        self.task_patterns: Dict[str, Dict[str, Any]] = {
             "bug": {"hours": 4, "labels": ["bug", "fix"]},
             "feature": {"hours": 8, "labels": ["feature", "enhancement"]},
             "test": {"hours": 3, "labels": ["testing", "qa"]},
@@ -95,9 +95,11 @@ class BasicEnricher:
         # Add labels based on task patterns
         for pattern, config in list(self.task_patterns.items()):
             if pattern in name_lower:
-                for label in config["labels"]:
-                    if label not in labels:
-                        labels.append(label)
+                pattern_labels = config.get("labels", [])
+                if isinstance(pattern_labels, list):
+                    for label in pattern_labels:
+                        if label not in labels:
+                            labels.append(label)
 
         # Add technology-specific labels
         tech_keywords = {
@@ -132,7 +134,7 @@ class BasicEnricher:
 
         return task.priority
 
-    def _estimate_hours(self, task: Task) -> int:
+    def _estimate_hours(self, task: Task) -> float:
         """Estimate effort hours based on task type"""
         if task.estimated_hours:
             return task.estimated_hours
@@ -142,7 +144,8 @@ class BasicEnricher:
         # Check patterns
         for pattern, config in list(self.task_patterns.items()):
             if pattern in name_lower:
-                return config["hours"]
+                hours = config.get("hours", 4)
+                return float(hours) if hours is not None else 4.0
 
         # Default estimate
-        return 4
+        return 4.0

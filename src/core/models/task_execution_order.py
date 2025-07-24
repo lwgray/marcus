@@ -306,13 +306,13 @@ class DependencyGraph:
         # Simplified critical path - longest dependency chain
         execution_order = self.get_execution_order()
         path_lengths = {node: 0 for node in self.nodes}
-        predecessors = {node: None for node in self.nodes}
+        predecessors: Dict[str, Optional[str]] = {node: None for node in self.nodes}
 
         for node in execution_order:
             for dep in self.get_dependencies(node):
                 if path_lengths[dep] + 1 > path_lengths[node]:
                     path_lengths[node] = path_lengths[dep] + 1
-                    predecessors[node] = dep
+                    predecessors[node] = dep  # dep is str, not Optional[str]
 
         # Find node with longest path
         end_node = max(path_lengths.items(), key=lambda x: x[1])[0]

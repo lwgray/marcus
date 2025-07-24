@@ -53,7 +53,7 @@ class KanbanInterface(ABC):
         pass
 
     @abstractmethod
-    async def disconnect(self):
+    async def disconnect(self) -> None:
         """Close connection to the kanban service"""
         pass
 
@@ -252,9 +252,9 @@ class KanbanInterface(ABC):
         """
         # Default implementation - override in specific providers
         status_map = {
-            "backlog": TaskStatus.BACKLOG,
-            "todo": TaskStatus.BACKLOG,
-            "ready": TaskStatus.READY,
+            "backlog": TaskStatus.TODO,
+            "todo": TaskStatus.TODO,
+            "ready": TaskStatus.TODO,
             "in progress": TaskStatus.IN_PROGRESS,
             "in_progress": TaskStatus.IN_PROGRESS,
             "blocked": TaskStatus.BLOCKED,
@@ -264,8 +264,8 @@ class KanbanInterface(ABC):
         }
 
         if isinstance(provider_status, str):
-            return status_map.get(provider_status.lower(), TaskStatus.BACKLOG)
-        return TaskStatus.BACKLOG
+            return status_map.get(provider_status.lower(), TaskStatus.TODO)
+        return TaskStatus.TODO
 
     # Attachment/artifact methods - these provide a generic interface
     # for design document sharing across different kanban providers

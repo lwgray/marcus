@@ -290,20 +290,10 @@ class BoardQualityValidator:
 
     def _validate_priority(self, task: Task) -> Tuple[float, List[QualityIssue]]:
         """Validate task priority"""
-        issues = []
+        issues: List[QualityIssue] = []
 
-        if not task.priority:
-            issues.append(
-                QualityIssue(
-                    task_id=task.id,
-                    issue_type="missing_priority",
-                    severity="warning",
-                    message=f"Task '{task.name}' has no priority set",
-                    suggestion="Set priority (urgent/high/medium/low) to guide sequencing",
-                )
-            )
-            return 0.0, issues
-
+        # Task.priority is always a Priority enum, never None
+        # Just return success since priority is always present
         return 1.0, issues
 
     def _calculate_board_metrics(self, tasks: List[Task]) -> Dict[str, Any]:
@@ -331,16 +321,24 @@ class BoardQualityValidator:
 
         # Calculate percentages
         metrics["description_coverage"] = (
-            cast(int, metrics["tasks_with_descriptions"]) / total_tasks if total_tasks > 0 else 0
+            cast(int, metrics["tasks_with_descriptions"]) / total_tasks
+            if total_tasks > 0
+            else 0
         )
         metrics["label_coverage"] = (
-            cast(int, metrics["tasks_with_labels"]) / total_tasks if total_tasks > 0 else 0
+            cast(int, metrics["tasks_with_labels"]) / total_tasks
+            if total_tasks > 0
+            else 0
         )
         metrics["estimate_coverage"] = (
-            cast(int, metrics["tasks_with_estimates"]) / total_tasks if total_tasks > 0 else 0
+            cast(int, metrics["tasks_with_estimates"]) / total_tasks
+            if total_tasks > 0
+            else 0
         )
         metrics["dependency_coverage"] = (
-            cast(int, metrics["tasks_with_dependencies"]) / total_tasks if total_tasks > 0 else 0
+            cast(int, metrics["tasks_with_dependencies"]) / total_tasks
+            if total_tasks > 0
+            else 0
         )
 
         return metrics

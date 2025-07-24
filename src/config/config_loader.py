@@ -23,17 +23,17 @@ class ConfigLoader:
     _config = None
     _config_path = None
 
-    def __new__(cls):
+    def __new__(cls) -> "ConfigLoader":
         if cls._instance is None:
             cls._instance = super(ConfigLoader, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the config loader"""
         if self._config is None:
             self._load_config()
 
-    def _load_config(self):
+    def _load_config(self) -> None:
         """Load configuration from marcus.config.json"""
         # Find config file
         # Try multiple locations in order of preference
@@ -64,7 +64,7 @@ class ConfigLoader:
         # Apply environment variable overrides
         self._apply_env_overrides()
 
-    def _apply_env_overrides(self):
+    def _apply_env_overrides(self) -> None:
         """Apply environment variable overrides to config"""
         # Map of environment variables to config paths
         env_mappings = {
@@ -107,13 +107,15 @@ class ConfigLoader:
             if env_var in os.environ:
                 self._set_nested_value(config_path, os.environ[env_var])
 
-    def _set_nested_value(self, path: str, value: str):
+    def _set_nested_value(self, path: str, value: str) -> None:
         """Set a nested value in the config using dot notation"""
         keys = path.split(".")
         config = self._config
 
         # Navigate to the parent of the target key
         for key in keys[:-1]:
+            if config is None:
+                return
             if key not in config:
                 config[key] = {}
             config = config[key]
@@ -122,7 +124,7 @@ class ConfigLoader:
         final_key = keys[-1]
 
         # Type conversion based on current value type
-        if final_key in config:
+        if config is not None and final_key in config:
             current_value = config[final_key]
             if isinstance(current_value, bool):
                 config[final_key] = value.lower() in ("true", "1", "yes", "on")
@@ -132,7 +134,7 @@ class ConfigLoader:
                 config[final_key] = float(value)
             else:
                 config[final_key] = value
-        else:
+        elif config is not None:
             # Default to string if key doesn't exist
             config[final_key] = value
 
@@ -197,17 +199,20 @@ class ConfigLoader:
 
     def get_ai_config(self) -> Dict[str, Any]:
         """Get the complete AI configuration"""
-        return self.get("ai", {})
+        result = self.get("ai", {})
+        return result if isinstance(result, dict) else {}
 
     def get_monitoring_config(self) -> Dict[str, Any]:
         """Get the complete monitoring configuration"""
-        return self.get("monitoring", {})
+        result = self.get("monitoring", {})
+        return result if isinstance(result, dict) else {}
 
     def get_communication_config(self) -> Dict[str, Any]:
         """Get the complete communication configuration"""
-        return self.get("communication", {})
+        result = self.get("communication", {})
+        return result if isinstance(result, dict) else {}
 
-    def get_hybrid_inference_config(self) -> Dict[str, Any]:
+    def get_hybrid_inference_config(self) -> Any:
         """Get the hybrid inference configuration"""
         from src.config.hybrid_inference_config import HybridInferenceConfig
 
@@ -224,10 +229,14 @@ class ConfigLoader:
             logger.warning(f"Invalid hybrid inference config, using defaults: {e}")
             return HybridInferenceConfig()
 
-    def _migrate_legacy_config(self):
+    def _migrate_legacy_config(self) -> None:
         """Migrate legacy single-project config to multi-project format"""
         # Check if this is a legacy config (has project_id but no projects section)
-        if "project_id" in self._config and "projects" not in self._config:
+        if (
+            self._config is not None
+            and "project_id" in self._config
+            and "projects" not in self._config
+        ):
             logger.info(
                 "Detected legacy configuration format. Migrating to multi-project format..."
             )
@@ -238,23 +247,27 @@ class ConfigLoader:
             default_project_id = str(uuid.uuid4())
 
             # Determine provider
-            provider = self._config.get("kanban", {}).get("provider", "planka")
+            provider = (
+                self._config.get("kanban", {}).get("provider", "planka")
+                if self._config
+                else "planka"
+            )
 
             # Extract provider-specific config
             provider_config = {}
-            if provider == "planka":
+            if provider == "planka" and self._config:
                 provider_config = {
                     "project_id": self._config.get("project_id"),
                     "board_id": self._config.get("board_id"),
                 }
-            elif provider == "github":
+            elif provider == "github" and self._config:
                 github_cfg = self._config.get("github", {})
                 provider_config = {
                     "owner": github_cfg.get("owner"),
                     "repo": github_cfg.get("repo"),
                     "project_number": github_cfg.get("project_number", 1),
                 }
-            elif provider == "linear":
+            elif provider == "linear" and self._config:
                 linear_cfg = self._config.get("linear", {})
                 provider_config = {
                     "team_id": linear_cfg.get("team_id"),
@@ -262,27 +275,28 @@ class ConfigLoader:
                 }
 
             # Create projects section
-            self._config["projects"] = {
-                default_project_id: {
-                    "name": self._config.get("project_name", "Default Project"),
-                    "provider": provider,
-                    "config": provider_config,
-                    "tags": ["default", "migrated"],
+            if self._config:
+                self._config["projects"] = {
+                    default_project_id: {
+                        "name": self._config.get("project_name", "Default Project"),
+                        "provider": provider,
+                        "config": provider_config,
+                        "tags": ["default", "migrated"],
+                    }
                 }
-            }
 
-            # Set active project
-            self._config["active_project"] = default_project_id
+                # Set active project
+                self._config["active_project"] = default_project_id
 
             # Move provider credentials to providers section
-            if "providers" not in self._config:
+            if self._config and "providers" not in self._config:
                 self._config["providers"] = {}
 
-            if "planka" in self._config:
+            if self._config and "planka" in self._config:
                 self._config["providers"]["planka"] = self._config["planka"]
-            if "github" in self._config:
+            if self._config and "github" in self._config:
                 self._config["providers"]["github"] = self._config["github"]
-            if "linear" in self._config:
+            if self._config and "linear" in self._config:
                 self._config["providers"]["linear"] = self._config["linear"]
 
             logger.info(
@@ -291,21 +305,33 @@ class ConfigLoader:
 
     def is_multi_project_mode(self) -> bool:
         """Check if config is in multi-project mode"""
-        return "projects" in self._config
+        return bool(self._config is not None and "projects" in self._config)
 
     def get_projects_config(self) -> Dict[str, Any]:
         """Get all project configurations"""
-        return self._config.get("projects", {})
+        if self._config is None:
+            return {}
+        result = self._config.get("projects", {})
+        return result if isinstance(result, dict) else {}
 
     def get_active_project_id(self) -> Optional[str]:
         """Get the active project ID"""
-        return self._config.get("active_project")
+        if self._config is None:
+            return None
+        result = self._config.get("active_project")
+        return result if isinstance(result, str) or result is None else None
 
     def get_provider_credentials(self, provider: str) -> Dict[str, Any]:
         """Get credentials for a specific provider"""
-        return self._config.get("providers", {}).get(provider, {})
+        if self._config is None:
+            return {}
+        providers = self._config.get("providers", {})
+        if not isinstance(providers, dict):
+            return {}
+        result = providers.get(provider, {})
+        return result if isinstance(result, dict) else {}
 
-    def reload(self):
+    def reload(self) -> None:
         """Reload the configuration from disk"""
         self._config = None
         self._load_config()
@@ -313,6 +339,8 @@ class ConfigLoader:
     @property
     def config_path(self) -> Path:
         """Get the path to the loaded config file"""
+        if self._config_path is None:
+            raise RuntimeError("Config not loaded yet")
         return self._config_path
 
     def __repr__(self) -> str:
@@ -339,14 +367,17 @@ def get_config_value(path: str, default: Any = None) -> Any:
 
 def get_kanban_provider() -> str:
     """Get the configured kanban provider"""
-    return get_config().get("kanban.provider", "planka")
+    result = get_config().get("kanban.provider", "planka")
+    return result if isinstance(result, str) else "planka"
 
 
 def get_anthropic_api_key() -> Optional[str]:
     """Get the Anthropic API key"""
-    return get_config().get("ai.anthropic_api_key")
+    result = get_config().get("ai.anthropic_api_key")
+    return result if isinstance(result, str) or result is None else None
 
 
 def get_planka_config() -> Dict[str, Any]:
     """Get Planka configuration"""
-    return get_config().get("kanban.planka", {})
+    result = get_config().get("kanban.planka", {})
+    return result if isinstance(result, dict) else {}

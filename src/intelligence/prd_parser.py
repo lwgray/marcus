@@ -172,8 +172,9 @@ class PRDParser:
 
         # Look for markdown heading
         for line in lines[:10]:  # Check first 10 lines
-            if re.match(r"^#{1,2}\s+(.+)", line):
-                return re.match(r"^#{1,2}\s+(.+)", line).group(1).strip()
+            match = re.match(r"^#{1,2}\s+(.+)", line)
+            if match:
+                return match.group(1).strip()
 
         # Look for title patterns
         title_patterns = [
@@ -330,7 +331,7 @@ class PRDParser:
     def _split_features(self, features_text: str) -> List[str]:
         """Split features section into individual feature blocks"""
         # Split by markdown headers or bullet points
-        feature_blocks = []
+        feature_blocks: List[str] = []
 
         # Try splitting by headers first
         header_splits = re.split(r"\n#+\s+", features_text)

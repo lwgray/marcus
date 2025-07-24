@@ -200,10 +200,10 @@ async def get_task_context(
             }
 
         # Build context object
-        context = {
+        context: Dict[str, Any] = {
             "task": {
                 "id": task.id,
-                "title": task.title,
+                "name": task.name,
                 "description": task.description,
                 "status": task.status.value if task.status else None,
                 "priority": task.priority.value if task.priority else None,

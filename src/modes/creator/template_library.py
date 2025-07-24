@@ -5,7 +5,6 @@ Provides project templates to prevent illogical task assignments like
 "Deploy to production" before any code exists.
 """
 
-import json
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -62,10 +61,10 @@ class ProjectTemplate:
     phases: List[PhaseTemplate]
     default_size: ProjectSize = ProjectSize.MEDIUM
 
-    def get_all_tasks(self, size: ProjectSize = None) -> List[TaskTemplate]:
+    def get_all_tasks(self, size: Optional[ProjectSize] = None) -> List[TaskTemplate]:
         """Get all tasks adjusted for project size"""
         tasks = []
-        target_size = size or self.default_size
+        target_size = size if size is not None else self.default_size
 
         for phase in self.phases:
             for task in phase.tasks:

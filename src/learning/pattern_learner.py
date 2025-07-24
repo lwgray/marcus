@@ -76,7 +76,7 @@ class PatternLearner:
             "bugfix": r"(fix|bug|issue|error)",
         }
 
-    async def learn_from_project(self, project: CompletedProject):
+    async def learn_from_project(self, project: CompletedProject) -> None:
         """
         Extract learnings from a completed project
 
@@ -103,7 +103,7 @@ class PatternLearner:
 
         logger.info(f"Updated {len(self.patterns)} patterns from project learnings")
 
-    async def update_patterns(self, learnings: ProjectLearnings):
+    async def update_patterns(self, learnings: ProjectLearnings) -> None:
         """
         Update pattern library based on new learnings
 
@@ -131,7 +131,7 @@ class PatternLearner:
         self, project: CompletedProject
     ) -> Dict[str, float]:
         """Analyze how accurate task estimates were"""
-        accuracy_by_type = {}
+        accuracy_by_type: Dict[str, float] = {}
 
         for task in project.tasks:
             if not task.estimated_hours or not hasattr(task, "actual_hours"):
@@ -162,7 +162,7 @@ class PatternLearner:
 
         # Analyze task completion order
         completed_tasks = [t for t in project.tasks if t.status == TaskStatus.DONE]
-        completed_tasks.sort(key=lambda t: t.completed_at or t.updated_at)
+        completed_tasks.sort(key=lambda t: t.updated_at)
 
         # Look for sequential patterns
         for i in range(len(completed_tasks) - 1):
@@ -191,15 +191,15 @@ class PatternLearner:
         self, project: CompletedProject
     ) -> Dict[str, Any]:
         """Analyze workflow patterns"""
-        patterns = {}
+        patterns: Dict[str, Any] = {}
 
         # Analyze parallelism
         max_concurrent = 0
-        daily_progress = defaultdict(int)
+        daily_progress: Dict[Any, int] = defaultdict(int)
 
         for task in project.tasks:
-            if task.completed_at:
-                completion_day = task.completed_at.date()
+            if task.status == TaskStatus.DONE and task.updated_at:
+                completion_day = task.updated_at.date()
                 daily_progress[completion_day] += 1
                 max_concurrent = max(max_concurrent, daily_progress[completion_day])
 
@@ -209,7 +209,7 @@ class PatternLearner:
         )
 
         # Analyze phase distribution
-        phase_distribution = defaultdict(int)
+        phase_distribution: Dict[str, int] = defaultdict(int)
         for task in project.tasks:
             task_type = self._classify_task_type(task)
             phase_distribution[task_type] += 1
@@ -304,7 +304,7 @@ class PatternLearner:
         )
 
         # Analyze task distribution by type
-        task_type_counts = defaultdict(int)
+        task_type_counts: Dict[str, int] = defaultdict(int)
         for task in project.tasks:
             task_type = self._classify_task_type(task)
             task_type_counts[task_type] += 1
@@ -313,7 +313,7 @@ class PatternLearner:
 
         return performance
 
-    async def _update_estimation_patterns(self, accuracy_data: Dict[str, float]):
+    async def _update_estimation_patterns(self, accuracy_data: Dict[str, float]) -> None:
         """Update estimation accuracy patterns"""
         for task_type, accuracy in accuracy_data.items():
             pattern_id = f"estimation_{task_type}"
@@ -345,7 +345,7 @@ class PatternLearner:
 
     async def _update_dependency_patterns(
         self, dependency_patterns: List[Dict[str, Any]]
-    ):
+    ) -> None:
         """Update dependency patterns"""
         for pattern_data in dependency_patterns:
             pattern_id = f"dependency_{pattern_data['pattern']}"
@@ -367,7 +367,7 @@ class PatternLearner:
                     last_updated=datetime.now(),
                 )
 
-    async def _update_workflow_patterns(self, workflow_data: Dict[str, Any]):
+    async def _update_workflow_patterns(self, workflow_data: Dict[str, Any]) -> None:
         """Update workflow patterns"""
         pattern_id = "workflow_characteristics"
 
@@ -442,7 +442,7 @@ class PatternLearner:
                     last_updated=datetime.now(),
                 )
 
-    async def _prune_patterns(self):
+    async def _prune_patterns(self) -> None:
         """Remove old or low-confidence patterns"""
         cutoff_date = datetime.now() - timedelta(days=180)  # 6 months old
         min_confidence = 0.3
@@ -545,7 +545,7 @@ class PatternLearner:
             "pattern_count": len(self.patterns),
         }
 
-    async def import_patterns(self, pattern_data: Dict[str, Any]):
+    async def import_patterns(self, pattern_data: Dict[str, Any]) -> None:
         """Import patterns from persistence"""
         for pattern_id, pattern_dict in pattern_data.get("patterns", {}).items():
             # Convert datetime strings back to datetime objects
