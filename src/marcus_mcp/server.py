@@ -998,7 +998,7 @@ async def main() -> None:
             # Get HTTP configuration from config file
             http_config = transport_config.get("http", {})
             host = http_config.get("host", "127.0.0.1")
-            port = http_config.get("port", 8080)
+            port = http_config.get("port", 4298)
             path = http_config.get("path", "/mcp")
             log_level = http_config.get("log_level", "info")
 

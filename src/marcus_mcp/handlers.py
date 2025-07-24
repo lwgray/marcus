@@ -7,7 +7,7 @@ in a centralized location.
 """
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import mcp.types as types
 
@@ -25,6 +25,10 @@ from .tools import (  # Agent tools; Task tools; Project tools; System tools; NL
     report_blocker,
     report_task_progress,
     request_next_task,
+)
+from .tools.auth import (
+    REGISTER_CLIENT_TOOL,
+    register_client,
 )
 from .tools.board_health import (  # Board health tools
     check_board_health,

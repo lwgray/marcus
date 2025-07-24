@@ -38,7 +38,7 @@ def main():
         http_config = transport_config.get("http", {})
         print(
             f"URL: http://{http_config.get('host', '127.0.0.1')}:"
-            f"{http_config.get('port', 8080)}{http_config.get('path', '/mcp')}"
+            f"{http_config.get('port', 4298)}{http_config.get('path', '/mcp')}"
         )
 
     # Run the server
