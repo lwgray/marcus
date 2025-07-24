@@ -162,9 +162,13 @@ async def ping(echo: str, state: Any) -> Dict[str, Any]:
             if hasattr(state, "_active_operations"):
                 state._active_operations.clear()
 
-            # Reset assignment monitor
+            # Reset assignment monitor tracking
             if state.assignment_monitor:
-                state.assignment_monitor._pending_assignments.clear()
+                # Clear reversion tracking
+                if hasattr(state.assignment_monitor, "_reversion_count"):
+                    state.assignment_monitor._reversion_count.clear()
+                if hasattr(state.assignment_monitor, "_last_known_states"):
+                    state.assignment_monitor._last_known_states.clear()
 
             log_thinking("marcus", "Performed full assignment state reset")
 

@@ -2,614 +2,754 @@
 
 ## Executive Summary
 
-The Board Health Analyzer System is a comprehensive diagnostic and monitoring framework that continuously evaluates Kanban board health, identifies bottlenecks, and provides actionable insights for optimizing project flow. It combines real-time metrics analysis, pattern detection, and predictive modeling to ensure boards operate at peak efficiency while maintaining sustainable agent workloads.
+The Board Health Analyzer System is a sophisticated diagnostic tool that identifies six critical board health issues: skill mismatches, circular dependencies, bottlenecks, chain blocks, stale tasks, and workload imbalances. It provides both real-time analysis through MCP tools and comprehensive health reports with actionable recommendations for resolving detected issues.
 
 ## System Architecture
 
 ### Core Components
 
-The Board Health Analyzer consists of four primary analytical engines:
+The Board Health Analyzer consists of:
 
 ```
 Board Health Analyzer Architecture
-├── health_analyzer.py (Core Analysis Engine)
-│   ├── BoardHealthAnalyzer (Main orchestrator)
-│   ├── HealthMetrics (Metric calculations)
-│   ├── HealthScore (Composite scoring)
-│   └── HealthReport (Result formatting)
-├── metric_collectors.py (Data Collection)
-│   ├── FlowMetricCollector (Cycle time, throughput)
-│   ├── CapacityMetricCollector (WIP limits, utilization)
-│   ├── QualityMetricCollector (Defect rates, rework)
-│   └── AgentMetricCollector (Performance, availability)
-├── pattern_detection.py (Anomaly Detection)
-│   ├── BottleneckDetector (Flow impediments)
-│   ├── TrendAnalyzer (Historical patterns)
-│   ├── AnomalyDetector (Unusual behaviors)
-│   └── PredictiveAnalyzer (Future issues)
-└── health_recommendations.py (Actionable Insights)
-    ├── RecommendationEngine (Suggestion generation)
-    ├── PriorityCalculator (Issue ranking)
-    ├── RemediationPlanner (Fix strategies)
-    └── ImpactEstimator (Change predictions)
+├── board_health_analyzer.py (Core Analysis)
+│   ├── BoardHealthAnalyzer (Main analyzer class)
+│   ├── BoardHealthIssue (Issue data structure)
+│   ├── IssueSeverity (LOW, MEDIUM, HIGH, CRITICAL)
+│   └── Six Analysis Methods:
+│       ├── _analyze_skill_mismatches()
+│       ├── _analyze_circular_dependencies()
+│       ├── _analyze_bottlenecks()
+│       ├── _analyze_chain_blocks()
+│       ├── _analyze_stale_tasks()
+│       └── _analyze_workload_balance()
+└── board_health.py (MCP Tool Integration)
+    ├── check_board_health (Full health analysis)
+    └── check_task_dependencies (Dependency graph)
 ```
 
-### Analysis Pipeline
+### Analysis Flow
 
 ```
-Board State Data
-      │
-      ▼
-Metric Collection ────────► Real-time Metrics
-      │                           │
-      ▼                           ▼
-Pattern Detection         Historical Analysis
-      │                           │
-      ├───────────┬───────────────┤
-      ▼           ▼               ▼
-Bottlenecks   Anomalies    Trend Patterns
-      │           │               │
-      └───────────┴───────────────┘
-                  │
-                  ▼
-           Health Scoring
-                  │
-                  ▼
-         Recommendations
-                  │
-                  ▼
-          Health Report
+Board State (Tasks + Agents)
+            │
+            ▼
+    Load Board Data
+            │
+            ├─► Skill Analysis ──────► Mismatches Found
+            │
+            ├─► Dependency Graph ────► Circular Deps
+            │
+            ├─► Column Analysis ─────► Bottlenecks
+            │
+            ├─► Chain Detection ─────► Blocked Chains
+            │
+            ├─► Time Analysis ───────► Stale Tasks
+            │
+            └─► Workload Check ──────► Imbalances
+                        │
+                        ▼
+                 Aggregate Issues
+                        │
+                        ▼
+                Generate Recommendations
+                        │
+                        ▼
+                  Health Report
 ```
 
-## Core Health Metrics
+## Core Health Issues Detected
 
-### 1. Flow Metrics
+### 1. Skill Mismatches
 
-Measure how work moves through the board:
+Detects when required skills aren't available:
+
+```python
+def _analyze_skill_mismatches(
+    self,
+    tasks: List[Task],
+    agents: List[WorkerAgent]
+) -> List[BoardHealthIssue]:
+    """Analyze tasks that require skills not available in team"""
+    issues = []
+
+    # Collect all available skills
+    available_skills = set()
+    for agent in agents:
+        if agent.status == WorkerStatus.ACTIVE:
+            available_skills.update(skill.lower() for skill in agent.skills)
+
+    # Check each TODO/BLOCKED task
+    for task in tasks:
+        if task.status in [TaskStatus.TODO, TaskStatus.BLOCKED]:
+            if hasattr(task, 'required_skills') and task.required_skills:
+                missing = set(s.lower() for s in task.required_skills) - available_skills
+                if missing:
+                    issues.append(BoardHealthIssue(
+                        type="skill_mismatch",
+                        severity=IssueSeverity.HIGH,
+                        title="Missing Required Skills",
+                        description=f"Task '{task.title}' requires {missing} but no active agents have these skills",
+                        affected_tasks=[task.id],
+                        recommendations=[
+                            f"Find agents with skills: {', '.join(missing)}",
+                            "Consider training existing agents",
+                            "Break down task to use available skills"
+                        ]
+                    ))
+
+    return issues
+```
+
+### 2. Circular Dependencies
+
+Detects dependency cycles using DFS:
+
+```python
+def _analyze_circular_dependencies(
+    self,
+    tasks: List[Task]
+) -> List[BoardHealthIssue]:
+    """Detect circular dependencies in task graph"""
+    # Build dependency graph
+    graph: Dict[str, List[str]] = {}
+    task_map = {task.id: task for task in tasks}
+
+    for task in tasks:
+        if hasattr(task, 'dependencies') and task.dependencies:
+            graph[task.id] = task.dependencies
+        else:
+            graph[task.id] = []
+
+    # Find cycles using DFS
+    cycles = []
+    visited = set()
+    rec_stack = set()
+
+    def dfs(node: str, path: List[str]) -> None:
+        visited.add(node)
+        rec_stack.add(node)
+        path.append(node)
+
+        for neighbor in graph.get(node, []):
+            if neighbor in rec_stack:
+                # Found cycle
+                cycle_start = path.index(neighbor)
+                cycle = path[cycle_start:]
+                cycles.append(cycle)
+            elif neighbor not in visited and neighbor in task_map:
+                dfs(neighbor, path.copy())
+
+        rec_stack.remove(node)
+
+    # Check all nodes
+    for task_id in graph:
+        if task_id not in visited:
+            dfs(task_id, [])
+
+    # Create issues for cycles
+    if cycles:
+        return [BoardHealthIssue(
+            type="circular_dependency",
+            severity=IssueSeverity.CRITICAL,
+            title=f"Circular Dependency Detected",
+            description=f"Tasks form a dependency cycle: {' → '.join(cycle + [cycle[0]])}",
+            affected_tasks=cycle,
+            recommendations=[
+                "Break the cycle by removing one dependency",
+                "Restructure tasks to eliminate circular references",
+                "Consider merging related tasks"
+            ]
+        ) for cycle in cycles]
+
+    return []
+```
+
+### 3. Bottleneck Detection
+
+Identifies columns with too many tasks:
+
+```python
+def _analyze_bottlenecks(self, tasks: List[Task]) -> List[BoardHealthIssue]:
+    """Identify bottlenecks in the workflow"""
+    issues = []
+
+    # Count tasks by status
+    status_counts = {}
+    for task in tasks:
+        status = task.status.value if hasattr(task.status, 'value') else str(task.status)
+        status_counts[status] = status_counts.get(status, 0) + 1
+
+    # Thresholds for bottlenecks
+    thresholds = {
+        'TODO': 20,
+        'IN_PROGRESS': 10,
+        'BLOCKED': 5,
+        'IN_REVIEW': 8
+    }
+
+    for status, count in status_counts.items():
+        threshold = thresholds.get(status.upper(), 15)
+        if count > threshold:
+            severity = IssueSeverity.HIGH if count > threshold * 1.5 else IssueSeverity.MEDIUM
+
+            issues.append(BoardHealthIssue(
+                type="bottleneck",
+                severity=severity,
+                title=f"Bottleneck in {status}",
+                description=f"{count} tasks in {status} (threshold: {threshold})",
+                affected_tasks=[t.id for t in tasks if str(t.status).upper() == status.upper()],
+                recommendations=[
+                    f"Review and prioritize {status} tasks",
+                    "Assign more resources to this stage",
+                    "Identify and remove blockers",
+                    "Consider work-in-progress limits"
+                ]
+            ))
+
+    return issues
+```
+
+## Additional Health Checks
+
+### 4. Chain Block Detection
+
+Finds chains of blocked dependencies:
+
+```python
+def _analyze_chain_blocks(self, tasks: List[Task]) -> List[BoardHealthIssue]:
+    """Find chains where blocked tasks block other tasks"""
+    issues = []
+    task_map = {task.id: task for task in tasks}
+
+    # Find blocked tasks that have dependents
+    blocked_tasks = [t for t in tasks if t.status == TaskStatus.BLOCKED]
+
+    for blocked_task in blocked_tasks:
+        # Find tasks depending on this blocked task
+        dependent_tasks = [
+            t for t in tasks
+            if hasattr(t, 'dependencies') and
+            blocked_task.id in t.dependencies
+        ]
+
+        if dependent_tasks:
+            chain_length = 1 + len(dependent_tasks)
+            severity = IssueSeverity.HIGH if chain_length > 3 else IssueSeverity.MEDIUM
+
+            issues.append(BoardHealthIssue(
+                type="chain_block",
+                severity=severity,
+                title=f"Blocked Task Creating Chain",
+                description=(
+                    f"Blocked task '{blocked_task.title}' is blocking "
+                    f"{len(dependent_tasks)} other tasks"
+                ),
+                affected_tasks=[blocked_task.id] + [t.id for t in dependent_tasks],
+                recommendations=[
+                    f"Prioritize unblocking '{blocked_task.title}'",
+                    "Consider alternative approaches for dependent tasks",
+                    "Review if dependencies can be relaxed"
+                ]
+            ))
+
+    return issues
+```
+
+### 5. Stale Task Detection
+
+Identifies tasks that haven't been updated:
+
+```python
+def _analyze_stale_tasks(self, tasks: List[Task]) -> List[BoardHealthIssue]:
+    """Find tasks that haven't been updated recently"""
+    issues = []
+    now = datetime.now()
+
+    # Thresholds by status
+    staleness_thresholds = {
+        TaskStatus.IN_PROGRESS: timedelta(days=3),
+        TaskStatus.IN_REVIEW: timedelta(days=2),
+        TaskStatus.BLOCKED: timedelta(days=7),
+        TaskStatus.TODO: timedelta(days=14)
+    }
+
+    stale_tasks = []
+    for task in tasks:
+        if task.status == TaskStatus.DONE:
+            continue
+
+        threshold = staleness_thresholds.get(task.status, timedelta(days=7))
+        last_update = task.updated_at if hasattr(task, 'updated_at') else task.created_at
+
+        if now - last_update > threshold:
+            stale_tasks.append((task, now - last_update))
+
+    if stale_tasks:
+        stale_tasks.sort(key=lambda x: x[1], reverse=True)
+
+        description_parts = []
+        for task, age in stale_tasks[:5]:  # Show top 5
+            age_days = age.days
+            description_parts.append(f"• '{task.title}' ({age_days} days old)")
+
+        issues.append(BoardHealthIssue(
+            type="stale_tasks",
+            severity=IssueSeverity.MEDIUM,
+            title=f"{len(stale_tasks)} Stale Tasks Detected",
+            description="\n".join(description_parts),
+            affected_tasks=[t[0].id for t in stale_tasks],
+            recommendations=[
+                "Review and update stale tasks",
+                "Close tasks that are no longer relevant",
+                "Reassign tasks that are stuck",
+                "Add progress updates to active tasks"
+            ]
+        ))
+
+    return issues
+```
+
+### 6. Workload Balance Analysis
+
+Checks for uneven task distribution:
+
+```python
+def _analyze_workload_balance(
+    self,
+    tasks: List[Task],
+    agents: List[WorkerAgent]
+) -> List[BoardHealthIssue]:
+    """Analyze if workload is balanced across agents"""
+    issues = []
+
+    # Count tasks per agent
+    agent_task_count = {}
+    for agent in agents:
+        if agent.status == WorkerStatus.ACTIVE:
+            agent_task_count[agent.id] = 0
+
+    # Count assigned tasks
+    for task in tasks:
+        if task.status == TaskStatus.IN_PROGRESS and task.assigned_to:
+            if task.assigned_to in agent_task_count:
+                agent_task_count[task.assigned_to] += 1
+
+    if not agent_task_count:
+        return issues
+
+    # Calculate statistics
+    counts = list(agent_task_count.values())
+    avg_tasks = sum(counts) / len(counts) if counts else 0
+    max_tasks = max(counts) if counts else 0
+    min_tasks = min(counts) if counts else 0
+
+    # Check for imbalance
+    if max_tasks > avg_tasks * 2 and max_tasks >= 3:
+        overloaded = [aid for aid, count in agent_task_count.items() if count == max_tasks]
+        underutilized = [aid for aid, count in agent_task_count.items() if count <= 1]
+
+        issues.append(BoardHealthIssue(
+            type="workload_imbalance",
+            severity=IssueSeverity.MEDIUM,
+            title="Uneven Workload Distribution",
+            description=(
+                f"Some agents have {max_tasks} tasks while others have {min_tasks}. "
+                f"Average is {avg_tasks:.1f} tasks per agent."
+            ),
+            affected_tasks=[],
+            recommendations=[
+                f"Reassign tasks from overloaded agents: {', '.join(overloaded)}",
+                f"Utilize available agents: {', '.join(underutilized)}",
+                "Review task assignment algorithm",
+                "Consider agent skills when distributing tasks"
+            ]
+        ))
+
+    return issues
+```
+
+## Issue Data Structure
 
 ```python
 @dataclass
-class FlowMetrics:
-    cycle_time: timedelta              # Time from start to done
-    lead_time: timedelta               # Time from created to done
-    throughput: float                  # Tasks completed per day
-    flow_efficiency: float             # Active time / total time
+class BoardHealthIssue:
+    """Represents a health issue found during board analysis"""
+    type: str  # skill_mismatch, circular_dependency, etc.
+    severity: IssueSeverity
+    title: str
+    description: str
+    affected_tasks: List[str]
+    affected_agents: List[str] = field(default_factory=list)
+    recommendations: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
-    def calculate_cycle_time(self, tasks: List[Task]) -> timedelta:
-        """Average time tasks spend in active states"""
-        cycle_times = []
-        for task in tasks:
-            if task.completed_at and task.started_at:
-                cycle_times.append(task.completed_at - task.started_at)
-
-        return sum(cycle_times, timedelta()) / len(cycle_times)
-
-    def calculate_flow_efficiency(self, task: Task) -> float:
-        """Ratio of active work time to total time"""
-        active_time = self._calculate_active_time(task)
-        total_time = task.completed_at - task.created_at
-
-        return active_time.total_seconds() / total_time.total_seconds()
+class IssueSeverity(Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
 ```
 
-### 2. Capacity Metrics
+## MCP Tool Integration
 
-Evaluate board and agent capacity:
+### check_board_health Tool
+
+Provides comprehensive board analysis:
 
 ```python
-@dataclass
-class CapacityMetrics:
-    wip_current: int                   # Current work in progress
-    wip_limit: int                     # Maximum WIP allowed
-    utilization_rate: float            # Current vs max capacity
-    queue_sizes: Dict[str, int]        # Tasks per column
+async def check_board_health(
+    kanban_client: KanbanInterface,
+    agent_manager: AgentManager
+) -> Dict[str, Any]:
+    """Analyze board health and return issues with recommendations"""
 
-    def calculate_utilization(self) -> float:
-        """How much of available capacity is used"""
-        return self.wip_current / self.wip_limit if self.wip_limit > 0 else 0
+    # Get current board state
+    tasks = await kanban_client.get_all_tasks()
+    agents = agent_manager.get_all_agents()
 
-    def identify_overloaded_stages(self) -> List[str]:
-        """Find columns exceeding healthy limits"""
-        overloaded = []
-        for stage, count in self.queue_sizes.items():
-            if count > self._healthy_limit_for_stage(stage):
-                overloaded.append(stage)
-        return overloaded
+    # Run analysis
+    analyzer = BoardHealthAnalyzer()
+    issues = analyzer.analyze_board_health(tasks, agents)
+
+    # Format response
+    return {
+        "healthy": len(issues) == 0,
+        "issue_count": len(issues),
+        "critical_issues": sum(1 for i in issues if i.severity == IssueSeverity.CRITICAL),
+        "issues": [
+            {
+                "type": issue.type,
+                "severity": issue.severity.value,
+                "title": issue.title,
+                "description": issue.description,
+                "affected_tasks": issue.affected_tasks,
+                "recommendations": issue.recommendations
+            }
+            for issue in issues
+        ],
+        "summary": _generate_health_summary(issues)
+    }
 ```
 
-### 3. Quality Metrics
+### check_task_dependencies Tool
 
-Track work quality and rework:
+Analyzes task dependency graph:
 
 ```python
-@dataclass
-class QualityMetrics:
-    defect_rate: float                 # Bugs per completed task
-    rework_rate: float                 # Tasks requiring revision
-    first_pass_yield: float            # Tasks done right first time
-    blocker_frequency: float           # Blockers per task
+async def check_task_dependencies(
+    task_id: str,
+    kanban_client: KanbanInterface
+) -> Dict[str, Any]:
+    """Check dependencies for a specific task"""
 
-    def calculate_quality_score(self) -> float:
-        """Composite quality score (0-100)"""
-        score = 100.0
-        score -= self.defect_rate * 10
-        score -= self.rework_rate * 20
-        score -= (1 - self.first_pass_yield) * 30
-        score -= self.blocker_frequency * 5
+    tasks = await kanban_client.get_all_tasks()
+    task_map = {t.id: t for t in tasks}
 
-        return max(0, score)
+    if task_id not in task_map:
+        raise ValueError(f"Task {task_id} not found")
+
+    target_task = task_map[task_id]
+
+    # Build dependency information
+    dependencies = {
+        "direct_dependencies": [],
+        "direct_dependents": [],
+        "transitive_dependencies": [],
+        "transitive_dependents": [],
+        "is_blocked": False,
+        "blocking_tasks": [],
+        "is_part_of_cycle": False,
+        "cycle_tasks": []
+    }
+
+    # Analyze dependencies
+    # ... (implementation details)
+
+    return dependencies
 ```
 
-## Health Scoring Algorithm
+## Real-World Examples
 
-### Composite Health Score Calculation
+### Example 1: Circular Dependency Detection
 
-The system calculates a weighted health score:
+```bash
+$ check_board_health
+
+🚑 CRITICAL: Circular Dependency Detected
+Tasks form a dependency cycle: task-123 → task-456 → task-789 → task-123
+
+Recommendations:
+• Break the cycle by removing one dependency
+• Restructure tasks to eliminate circular references
+• Consider merging related tasks
+```
+
+### Example 2: Skill Mismatch Alert
+
+```bash
+$ check_board_health
+
+⚠️  HIGH: Missing Required Skills
+Task 'Implement OAuth2' requires {'oauth', 'security'} but no active agents have these skills
+
+Recommendations:
+• Find agents with skills: oauth, security
+• Consider training existing agents
+• Break down task to use available skills
+```
+
+### Example 3: Bottleneck Warning
+
+```bash
+$ check_board_health
+
+⚠️  HIGH: Bottleneck in IN_REVIEW
+18 tasks in IN_REVIEW (threshold: 8)
+
+Recommendations:
+• Review and prioritize IN_REVIEW tasks
+• Assign more resources to this stage
+• Identify and remove blockers
+• Consider work-in-progress limits
+```
+
+## Implementation Details
+
+### Complete Analysis Method
 
 ```python
-class HealthScoreCalculator:
-    def calculate_board_health(self, metrics: BoardMetrics) -> HealthScore:
-        """Calculate overall board health score (0-100)"""
+class BoardHealthAnalyzer:
+    """Analyzes Kanban board health and identifies issues"""
 
-        # Component scores
-        flow_score = self._calculate_flow_score(metrics.flow_metrics)
-        capacity_score = self._calculate_capacity_score(metrics.capacity_metrics)
-        quality_score = self._calculate_quality_score(metrics.quality_metrics)
-        agent_score = self._calculate_agent_score(metrics.agent_metrics)
+    def analyze_board_health(
+        self,
+        tasks: List[Task],
+        agents: List[WorkerAgent]
+    ) -> List[BoardHealthIssue]:
+        """Run all health checks and return issues"""
+        all_issues = []
 
-        # Weighted composite
-        weights = {
-            'flow': 0.35,
-            'capacity': 0.25,
-            'quality': 0.25,
-            'agents': 0.15
+        # Run all analysis methods
+        all_issues.extend(self._analyze_skill_mismatches(tasks, agents))
+        all_issues.extend(self._analyze_circular_dependencies(tasks))
+        all_issues.extend(self._analyze_bottlenecks(tasks))
+        all_issues.extend(self._analyze_chain_blocks(tasks))
+        all_issues.extend(self._analyze_stale_tasks(tasks))
+        all_issues.extend(self._analyze_workload_balance(tasks, agents))
+
+        # Sort by severity
+        severity_order = {
+            IssueSeverity.CRITICAL: 0,
+            IssueSeverity.HIGH: 1,
+            IssueSeverity.MEDIUM: 2,
+            IssueSeverity.LOW: 3
         }
 
-        overall_score = (
-            flow_score * weights['flow'] +
-            capacity_score * weights['capacity'] +
-            quality_score * weights['quality'] +
-            agent_score * weights['agents']
+        all_issues.sort(key=lambda x: severity_order[x.severity])
+
+        return all_issues
+```
+
+### Summary Generation
+
+```python
+def _generate_health_summary(issues: List[BoardHealthIssue]) -> str:
+    """Generate a human-readable summary of board health"""
+    if not issues:
+        return "🎉 Board is healthy! No issues detected."
+
+    summary_parts = []
+
+    # Count by severity
+    severity_counts = {}
+    for issue in issues:
+        severity_counts[issue.severity] = severity_counts.get(issue.severity, 0) + 1
+
+    # Build summary
+    if IssueSeverity.CRITICAL in severity_counts:
+        summary_parts.append(
+            f"🚑 {severity_counts[IssueSeverity.CRITICAL]} CRITICAL issues"
+        )
+    if IssueSeverity.HIGH in severity_counts:
+        summary_parts.append(
+            f"⚠️  {severity_counts[IssueSeverity.HIGH]} HIGH priority issues"
+        )
+    if IssueSeverity.MEDIUM in severity_counts:
+        summary_parts.append(
+            f"🟡 {severity_counts[IssueSeverity.MEDIUM]} MEDIUM priority issues"
+        )
+    if IssueSeverity.LOW in severity_counts:
+        summary_parts.append(
+            f"🟢 {severity_counts[IssueSeverity.LOW]} LOW priority issues"
         )
 
-        return HealthScore(
-            overall=overall_score,
-            flow=flow_score,
-            capacity=capacity_score,
-            quality=quality_score,
-            agents=agent_score,
-            status=self._determine_status(overall_score)
-        )
+    return " | ".join(summary_parts)
 ```
 
-### Health Status Levels
+## Configuration
 
-```python
-class HealthStatus(Enum):
-    EXCELLENT = "excellent"    # 90-100: Optimal performance
-    GOOD = "good"             # 75-89: Minor optimizations needed
-    FAIR = "fair"             # 60-74: Some issues to address
-    POOR = "poor"             # 40-59: Significant problems
-    CRITICAL = "critical"     # 0-39: Immediate attention required
-```
+### Analysis Thresholds
 
-## Pattern Detection
+Configurable in `config_marcus.json`:
 
-### 1. Bottleneck Detection
-
-Identify flow impediments:
-
-```python
-class BottleneckDetector:
-    def detect_bottlenecks(self, board_state: BoardState) -> List[Bottleneck]:
-        bottlenecks = []
-
-        # Stage-based bottlenecks
-        for stage in board_state.stages:
-            if self._is_bottleneck(stage):
-                bottlenecks.append(Bottleneck(
-                    type="stage_congestion",
-                    location=stage.name,
-                    severity=self._calculate_severity(stage),
-                    impact=self._estimate_impact(stage),
-                    causes=self._analyze_causes(stage)
-                ))
-
-        # Agent-based bottlenecks
-        for agent in board_state.agents:
-            if self._is_agent_bottleneck(agent):
-                bottlenecks.append(Bottleneck(
-                    type="agent_overload",
-                    location=agent.id,
-                    severity="high",
-                    impact=f"{len(agent.tasks)} tasks blocked"
-                ))
-
-        return bottlenecks
-
-    def _is_bottleneck(self, stage: Stage) -> bool:
-        """Detect if stage is constraining flow"""
-        return (
-            stage.task_count > stage.wip_limit * 0.8 or
-            stage.average_time > stage.target_time * 1.5 or
-            stage.exit_rate < stage.entry_rate * 0.7
-        )
-```
-
-### 2. Anomaly Detection
-
-Identify unusual patterns:
-
-```python
-class AnomalyDetector:
-    def detect_anomalies(self, metrics_history: List[BoardMetrics]) -> List[Anomaly]:
-        anomalies = []
-
-        # Statistical anomalies
-        for metric_name, values in self._extract_time_series(metrics_history).items():
-            if anomaly := self._detect_statistical_anomaly(values):
-                anomalies.append(Anomaly(
-                    type="statistical",
-                    metric=metric_name,
-                    deviation=anomaly.deviation,
-                    timestamp=anomaly.timestamp
-                ))
-
-        # Pattern anomalies
-        if pattern_break := self._detect_pattern_break(metrics_history):
-            anomalies.append(Anomaly(
-                type="pattern_break",
-                description=pattern_break.description,
-                confidence=pattern_break.confidence
-            ))
-
-        return anomalies
-```
-
-## Health Recommendations
-
-### Recommendation Engine
-
-Generate actionable insights based on health analysis:
-
-```python
-class RecommendationEngine:
-    def generate_recommendations(
-        self,
-        health_report: HealthReport
-    ) -> List[Recommendation]:
-        recommendations = []
-
-        # Flow-based recommendations
-        if health_report.flow_score < 70:
-            recommendations.extend(self._flow_recommendations(health_report))
-
-        # Capacity recommendations
-        if health_report.has_bottlenecks():
-            recommendations.extend(self._bottleneck_recommendations(health_report))
-
-        # Quality recommendations
-        if health_report.quality_score < 80:
-            recommendations.extend(self._quality_recommendations(health_report))
-
-        # Agent recommendations
-        if health_report.agent_issues:
-            recommendations.extend(self._agent_recommendations(health_report))
-
-        # Prioritize by impact
-        return self._prioritize_recommendations(recommendations)
-
-    def _flow_recommendations(self, report: HealthReport) -> List[Recommendation]:
-        recs = []
-
-        if report.cycle_time > report.target_cycle_time * 1.5:
-            recs.append(Recommendation(
-                title="Reduce Cycle Time",
-                description="Current cycle time is 50% above target",
-                actions=[
-                    "Review and reduce task complexity",
-                    "Identify and remove wait states",
-                    "Consider parallel work streams"
-                ],
-                impact="high",
-                effort="medium",
-                expected_improvement="20-30% cycle time reduction"
-            ))
-
-        return recs
-```
-
-## Integration with Marcus Ecosystem
-
-### Event System Integration
-
-The Health Analyzer publishes health events:
-
-```python
-HEALTH_EVENTS = {
-    "HEALTH_CHECK_COMPLETED": "Periodic health analysis finished",
-    "HEALTH_DEGRADED": "Board health dropped below threshold",
-    "BOTTLENECK_DETECTED": "New bottleneck identified",
-    "ANOMALY_DETECTED": "Unusual pattern detected",
-    "HEALTH_IMPROVED": "Board health significantly improved"
+```json
+{
+  "board_health": {
+    "enabled": true,
+    "bottleneck_thresholds": {
+      "TODO": 20,
+      "IN_PROGRESS": 10,
+      "BLOCKED": 5,
+      "IN_REVIEW": 8
+    },
+    "staleness_days": {
+      "IN_PROGRESS": 3,
+      "IN_REVIEW": 2,
+      "BLOCKED": 7,
+      "TODO": 14
+    },
+    "workload_imbalance_factor": 2.0,
+    "min_tasks_for_imbalance_check": 3
+  }
 }
-```
-
-### Monitoring Integration
-
-Health metrics feed into Marcus monitoring:
-
-```python
-class HealthMonitoringAdapter:
-    async def export_metrics(self, health_report: HealthReport):
-        """Export health metrics to monitoring system"""
-        metrics = {
-            "board_health_score": health_report.overall_score,
-            "flow_efficiency": health_report.flow_metrics.efficiency,
-            "wip_utilization": health_report.capacity_metrics.utilization,
-            "quality_score": health_report.quality_metrics.score,
-            "bottleneck_count": len(health_report.bottlenecks),
-            "anomaly_count": len(health_report.anomalies)
-        }
-
-        await self.monitoring_client.push_metrics(metrics)
-```
-
-## Real-Time Analysis Features
-
-### 1. Continuous Health Monitoring
-
-```python
-class ContinuousHealthMonitor:
-    def __init__(self, analyzer: BoardHealthAnalyzer):
-        self.analyzer = analyzer
-        self.check_interval = 300  # 5 minutes
-        self.alert_thresholds = {
-            'critical': 40,
-            'warning': 60,
-            'info': 75
-        }
-
-    async def monitor_board_health(self, board_id: str):
-        """Continuously monitor board health"""
-        while True:
-            try:
-                health = await self.analyzer.analyze_board(board_id)
-
-                # Check for alerts
-                if health.overall_score < self.alert_thresholds['critical']:
-                    await self._send_critical_alert(board_id, health)
-                elif health.overall_score < self.alert_thresholds['warning']:
-                    await self._send_warning_alert(board_id, health)
-
-                # Store historical data
-                await self._store_health_snapshot(board_id, health)
-
-                await asyncio.sleep(self.check_interval)
-
-            except Exception as e:
-                logger.error(f"Health monitoring error: {e}")
-```
-
-### 2. Predictive Health Analysis
-
-```python
-class PredictiveHealthAnalyzer:
-    def predict_future_health(
-        self,
-        historical_data: List[HealthSnapshot],
-        horizon_days: int = 7
-    ) -> HealthPrediction:
-        """Predict board health trends"""
-
-        # Extract features
-        features = self._extract_trend_features(historical_data)
-
-        # Apply prediction model
-        predictions = self.model.predict(features, horizon_days)
-
-        # Identify risks
-        risks = []
-        if predictions.shows_degradation():
-            risks.append(Risk(
-                type="health_degradation",
-                probability=predictions.degradation_probability,
-                timeframe=predictions.degradation_timeframe,
-                mitigation="Increase capacity or reduce incoming work"
-            ))
-
-        return HealthPrediction(
-            future_scores=predictions.scores,
-            confidence=predictions.confidence,
-            risks=risks
-        )
-```
-
-## Visualization and Reporting
-
-### Health Dashboard Data
-
-```python
-@dataclass
-class HealthDashboard:
-    # Current state
-    current_score: float
-    score_trend: str  # "improving", "stable", "degrading"
-
-    # Key metrics
-    cycle_time_trend: List[float]
-    throughput_trend: List[float]
-    quality_trend: List[float]
-
-    # Issues
-    active_bottlenecks: List[Bottleneck]
-    recent_anomalies: List[Anomaly]
-
-    # Recommendations
-    top_recommendations: List[Recommendation]
-
-    # Agent health
-    agent_utilization: Dict[str, float]
-    agent_performance: Dict[str, float]
-```
-
-### Report Generation
-
-```python
-class HealthReportGenerator:
-    def generate_report(
-        self,
-        health_data: HealthAnalysis,
-        format: str = "markdown"
-    ) -> str:
-        """Generate human-readable health report"""
-
-        if format == "markdown":
-            return self._generate_markdown_report(health_data)
-        elif format == "json":
-            return self._generate_json_report(health_data)
-        elif format == "html":
-            return self._generate_html_report(health_data)
 ```
 
 ## Pros and Cons
 
 ### Advantages
 
-1. **Proactive Issue Detection**: Identifies problems before they impact delivery
-2. **Data-Driven Insights**: Objective metrics guide improvements
-3. **Comprehensive Analysis**: Covers flow, capacity, quality, and agents
-4. **Actionable Recommendations**: Specific steps to improve health
-5. **Continuous Monitoring**: Real-time awareness of board state
-6. **Historical Learning**: Improves predictions over time
-7. **Integration-Ready**: Works with existing Marcus systems
+1. **Comprehensive Detection**: Covers 6 major types of board issues
+2. **Actionable Insights**: Each issue comes with specific recommendations
+3. **Severity Ranking**: Prioritizes issues by impact
+4. **Dependency Analysis**: Detects complex circular dependencies
+5. **Resource Optimization**: Identifies skill gaps and workload imbalances
+6. **Easy Integration**: Simple MCP tool interface
+7. **Real-Time Analysis**: On-demand health checks
 
 ### Disadvantages
 
-1. **Computational Overhead**: Continuous analysis requires resources
-2. **Data Requirements**: Needs sufficient historical data
-3. **Metric Complexity**: Many metrics can overwhelm users
-4. **False Positives**: May flag normal variations as issues
-5. **Configuration Burden**: Requires tuning for each board
-6. **Change Resistance**: Teams may resist metric-driven changes
+1. **Static Thresholds**: Fixed limits may not suit all projects
+2. **No Historical Tracking**: Doesn't track health trends over time
+3. **Limited Context**: May miss project-specific nuances
+4. **Manual Invocation**: Requires explicit tool calls
+5. **No Auto-Remediation**: Provides recommendations but doesn't fix issues
 
 ## Why This Approach
 
-The comprehensive health analysis approach was chosen because:
+The focused issue detection approach was chosen because:
 
-1. **Holistic View**: Single metrics miss systemic issues
-2. **Early Warning**: Predictive analysis prevents crises
-3. **Objective Measurement**: Reduces subjective assessments
-4. **Continuous Improvement**: Regular analysis drives optimization
-5. **Scalability**: Automated analysis scales with board count
-6. **Learning System**: Improves recommendations over time
+1. **Specific Problems**: Targets known pain points in Kanban boards
+2. **Actionable Results**: Each issue has clear remediation steps
+3. **Quick Analysis**: Fast execution for real-time feedback
+4. **Developer-Friendly**: Clear categories match developer mental models
+5. **Integration**: Works seamlessly with existing Marcus workflow
+6. **Practical Focus**: Addresses real problems teams face daily
 
-## Board-Specific Adaptations
+## Usage Examples
 
-### Kanban Board Analysis
-
-Standard flow metrics with WIP limit focus:
+### Basic Health Check
 
 ```python
-class KanbanBoardAnalyzer(BoardHealthAnalyzer):
-    def analyze_kanban_specific(self, board: KanbanBoard):
-        # WIP limit violations
-        wip_violations = self._check_wip_limits(board)
+# From MCP client
+result = await client.call_tool(
+    "check_board_health",
+    {}
+)
 
-        # Pull vs push patterns
-        pull_efficiency = self._analyze_pull_patterns(board)
-
-        # Column utilization
-        column_balance = self._analyze_column_balance(board)
-
-        return KanbanHealthMetrics(
-            wip_violations=wip_violations,
-            pull_efficiency=pull_efficiency,
-            column_balance=column_balance
-        )
+if not result["healthy"]:
+    print(f"Found {result['issue_count']} issues:")
+    for issue in result["issues"]:
+        print(f"- [{issue['severity']}] {issue['title']}")
 ```
 
-### Scrum Board Analysis
-
-Sprint-focused metrics:
+### Dependency Analysis
 
 ```python
-class ScrumBoardAnalyzer(BoardHealthAnalyzer):
-    def analyze_scrum_specific(self, board: ScrumBoard):
-        # Sprint velocity trends
-        velocity_analysis = self._analyze_velocity(board.sprints)
+# Check specific task dependencies
+result = await client.call_tool(
+    "check_task_dependencies",
+    {"task_id": "task-123"}
+)
 
-        # Burndown patterns
-        burndown_health = self._analyze_burndown(board.current_sprint)
+if result["is_blocked"]:
+    print(f"Task is blocked by: {result['blocking_tasks']}")
 
-        # Sprint planning accuracy
-        planning_accuracy = self._analyze_estimation_accuracy(board)
-
-        return ScrumHealthMetrics(
-            velocity_trend=velocity_analysis,
-            burndown_health=burndown_health,
-            planning_accuracy=planning_accuracy
-        )
+if result["is_part_of_cycle"]:
+    print(f"WARNING: Task is in a dependency cycle with: {result['cycle_tasks']}")
 ```
 
-## Future Evolution
+### Automated Health Monitoring
 
-### Short-term Enhancements
+```python
+# Set up periodic health checks
+async def monitor_board_health():
+    while True:
+        result = await client.call_tool("check_board_health", {})
 
-1. **ML-Powered Predictions**: Deep learning for health forecasting
-2. **Custom Metrics**: User-defined health indicators
-3. **Automated Remediation**: Self-healing board adjustments
-4. **Comparative Analysis**: Cross-board health comparisons
+        critical_count = result["critical_issues"]
+        if critical_count > 0:
+            # Send alert
+            await notify_team(
+                f"CRITICAL: {critical_count} critical board health issues detected!"
+            )
+
+        await asyncio.sleep(300)  # Check every 5 minutes
+```
+
+## Integration with Other Systems
+
+### Assignment Lease System
+
+Health analyzer can detect stuck tasks from lease data:
+
+```python
+# Detect tasks with too many lease renewals
+if hasattr(state, 'lease_manager'):
+    lease_stats = state.lease_manager.get_statistics()
+    if lease_stats['stuck_tasks'] > 0:
+        issues.append(BoardHealthIssue(
+            type="stuck_tasks_from_leases",
+            severity=IssueSeverity.HIGH,
+            title=f"{lease_stats['stuck_tasks']} Stuck Tasks (Lease System)",
+            description="Tasks have been renewed too many times",
+            recommendations=["Review stuck tasks", "Consider reassignment"]
+        ))
+```
+
+### Assignment Monitor
+
+Integrates with assignment monitor for orphan detection:
+
+```python
+# Check for orphaned assignments
+if hasattr(state, 'assignment_monitor'):
+    health = await state.assignment_monitor.check_assignment_health()
+    if not health['healthy']:
+        for issue in health['issues']:
+            if issue['type'] == 'orphaned_assignments':
+                # Add to board health issues
+                ...
+```
+
+## Future Enhancements
+
+### Short-term Improvements
+
+1. **Auto-Remediation**: Automatically fix simple issues (e.g., unblock tasks)
+2. **Health Trends**: Track health over time for pattern detection
+3. **Custom Checks**: Allow project-specific health checks
+4. **Integration API**: Webhook notifications for critical issues
 
 ### Long-term Vision
 
-1. **AI Health Assistant**: Natural language health insights
-2. **Prescriptive Analytics**: Specific optimization paths
-3. **Team Coaching**: Behavioral recommendations
-4. **Industry Benchmarking**: Compare against best practices
-
-## Configuration Options
-
-```python
-@dataclass
-class HealthAnalyzerConfig:
-    # Analysis frequency
-    analysis_interval_minutes: int = 15
-    deep_analysis_interval_hours: int = 24
-
-    # Thresholds
-    health_score_thresholds: Dict[str, float] = field(
-        default_factory=lambda: {
-            'excellent': 90,
-            'good': 75,
-            'fair': 60,
-            'poor': 40
-        }
-    )
-
-    # Metric weights
-    metric_weights: Dict[str, float] = field(
-        default_factory=lambda: {
-            'flow': 0.35,
-            'capacity': 0.25,
-            'quality': 0.25,
-            'agents': 0.15
-        }
-    )
-
-    # Detection sensitivity
-    anomaly_sensitivity: float = 0.95
-    bottleneck_threshold: float = 0.8
-
-    # Reporting
-    generate_reports: bool = True
-    report_formats: List[str] = field(
-        default_factory=lambda: ['markdown', 'json']
-    )
-```
+1. **Predictive Analysis**: Forecast future bottlenecks
+2. **AI Recommendations**: ML-based suggestion improvements
+3. **Team Analytics**: Correlate health with team performance
+4. **Automated Workflows**: Trigger actions based on health status
 
 ## Conclusion
 
-The Board Health Analyzer System provides Marcus with sophisticated diagnostic capabilities that transform raw board data into actionable health insights. By continuously monitoring flow metrics, capacity utilization, quality indicators, and agent performance, the system enables proactive management of Kanban boards before issues impact project delivery.
+The Board Health Analyzer System provides Marcus with targeted diagnostic capabilities that identify and help resolve six critical board health issues. By analyzing skill mismatches, circular dependencies, bottlenecks, chain blocks, stale tasks, and workload imbalances, the system helps teams maintain healthy, efficient Kanban boards.
 
-The analyzer's integration with Marcus's broader ecosystem—including events, monitoring, and visualization systems—creates a comprehensive board health management solution. As teams increasingly rely on Kanban boards for complex project coordination, the Board Health Analyzer ensures these critical tools operate at peak efficiency while maintaining sustainable workloads for all participants.
+The analyzer's practical focus on real-world problems, combined with actionable recommendations for each issue type, makes it an essential tool for project managers and team leads. Its integration as simple MCP tools ensures easy access for both human users and AI agents, enabling proactive board management and preventing common workflow problems before they impact project delivery.
