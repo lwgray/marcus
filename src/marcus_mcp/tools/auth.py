@@ -54,6 +54,11 @@ ROLE_TOOLS = {
         "get_agent_metrics",  # Individual agent performance
         "get_project_metrics",  # Project health and velocity
         "get_task_metrics",  # Aggregated task analytics
+        # Code production metrics tools
+        "get_code_metrics",  # Individual code production metrics
+        "get_repository_metrics",  # Repository-wide statistics
+        "get_code_review_metrics",  # Review activity and participation
+        "get_code_quality_metrics",  # Static analysis and quality gates
     ],
     "developer": [
         # Everything observers have (read access)

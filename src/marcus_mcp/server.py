@@ -1359,6 +1359,73 @@ class MarcusServer:
                     state=server,
                 )
 
+        # Code production metrics tools
+        if "get_code_metrics" in allowed_tools:
+
+            @app.tool()
+            async def get_code_metrics(
+                agent_id: str,
+                start_date: Optional[str] = None,
+                end_date: Optional[str] = None,
+            ) -> Dict[str, Any]:
+                """Get code production metrics for a specific agent."""
+                from .tools.code_metrics import get_code_metrics as impl
+
+                return await impl(
+                    agent_id=agent_id,
+                    start_date=start_date,
+                    end_date=end_date,
+                    state=server,
+                )
+
+        if "get_repository_metrics" in allowed_tools:
+
+            @app.tool()
+            async def get_repository_metrics(
+                repository: str,
+                time_window: str = "7d",
+            ) -> Dict[str, Any]:
+                """Get code metrics for an entire repository."""
+                from .tools.code_metrics import get_repository_metrics as impl
+
+                return await impl(
+                    repository=repository,
+                    time_window=time_window,
+                    state=server,
+                )
+
+        if "get_code_review_metrics" in allowed_tools:
+
+            @app.tool()
+            async def get_code_review_metrics(
+                agent_id: Optional[str] = None,
+                time_window: str = "7d",
+            ) -> Dict[str, Any]:
+                """Get code review activity and participation metrics."""
+                from .tools.code_metrics import get_code_review_metrics as impl
+
+                return await impl(
+                    agent_id=agent_id,
+                    time_window=time_window,
+                    state=server,
+                )
+
+        if "get_code_quality_metrics" in allowed_tools:
+
+            @app.tool()
+            async def get_code_quality_metrics(
+                repository: str,
+                branch: str = "main",
+            ) -> Dict[str, Any]:
+                """Get code quality metrics from static analysis."""
+                from .tools.code_metrics import get_code_quality_metrics as impl
+
+                return await impl(
+                    repository=repository,
+                    branch=branch,
+                    state=server,
+                )
+
         # TODO: Add remaining analytics tools for Seneca endpoint
         # This includes all pipeline analysis tools, board health tools, etc.
 
