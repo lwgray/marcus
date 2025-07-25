@@ -1160,7 +1160,7 @@ class MarcusServer:
             @app.tool()
             async def get_task_context(task_id: str) -> Dict[str, Any]:
                 """Get the full context for a specific task."""
-                from .tools.task import get_task_context as impl
+                from .tools.context import get_task_context as impl
 
                 return await impl(task_id=task_id, state=server)
 
@@ -1194,7 +1194,7 @@ class MarcusServer:
                 location: Optional[str] = None,
             ) -> Dict[str, Any]:
                 """Store an artifact with smart location management."""
-                from .tools.context import log_artifact as impl
+                from .tools.attachment import log_artifact as impl
 
                 return await impl(
                     task_id=task_id,
