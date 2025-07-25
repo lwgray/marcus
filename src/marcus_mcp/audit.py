@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-import aiofiles
+import aiofiles  # type: ignore[import-untyped]
 
 
 class AuditLogger:
@@ -191,7 +191,7 @@ class AuditLogger:
         Dict[str, Any]
             Usage statistics
         """
-        stats = {
+        stats: Dict[str, Any] = {
             "total_events": 0,
             "by_client_type": {},
             "by_tool": {},
@@ -205,7 +205,7 @@ class AuditLogger:
             async with aiofiles.open(log_file, mode="r") as f:
                 async for line in f:
                     try:
-                        event = json.loads(line.strip())
+                        event: Dict[str, Any] = json.loads(line.strip())
 
                         # Check date range
                         event_time = datetime.fromisoformat(event["timestamp"])

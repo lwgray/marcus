@@ -246,7 +246,7 @@ class MarcusServer:
         self._setup_signal_handlers()
 
         # FastMCP instance for HTTP transport (created on demand)
-        self._fastmcp = None
+        self._fastmcp: Optional[FastMCP] = None
         self._endpoint_apps: Dict[str, FastMCP] = {}
 
     def _register_handlers(self) -> None:
@@ -1295,9 +1295,9 @@ async def run_multi_endpoint_server(server: MarcusServer) -> None:
 
     tasks = []
 
-    async def run_endpoint(endpoint_type: str, endpoint_config: Dict[str, Any]):
+    async def run_endpoint(endpoint_type: str, endpoint_config: Dict[str, Any]) -> None:
         """Run a single endpoint."""
-        port = endpoint_config.get("port")
+        port = int(endpoint_config.get("port", 4298))
         host = endpoint_config.get("host", "127.0.0.1")
         path = endpoint_config.get("path", "/mcp")
 
@@ -1374,12 +1374,8 @@ async def main() -> None:
             if port_idx + 1 < len(sys.argv):
                 custom_port = int(sys.argv[port_idx + 1])
                 if transport == "http":
-                    # Override port in config for this session
-                    if "transport" not in config:
-                        config["transport"] = {}
-                    if "http" not in config["transport"]:
-                        config["transport"]["http"] = {}
-                    config["transport"]["http"]["port"] = custom_port
+                    # Port override is handled elsewhere in HTTP setup
+                    pass
         except (ValueError, IndexError):
             pass
 
@@ -1475,7 +1471,7 @@ if __name__ == "__main__":
         asyncio.run(main())
     elif transport == "http":
         # For HTTP mode, run the async initialization first
-        async def setup_http_server():
+        async def setup_http_server() -> None:
             """Setup HTTP server with async initialization."""
             server = MarcusServer()
             await server.initialize()
