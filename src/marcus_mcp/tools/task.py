@@ -876,7 +876,9 @@ async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Tas
     Returns:
         Optional[Task]: The best task for the agent, or None if no suitable task found
     """
-    async with state.assignment_lock:
+    # Get lock with proper event loop binding
+    lock = state.assignment_lock  # This property creates lock if needed
+    async with lock:
         # Initialize detailed tracking
         filtering_stats = {
             "total_tasks": len(state.project_tasks) if state.project_tasks else 0,

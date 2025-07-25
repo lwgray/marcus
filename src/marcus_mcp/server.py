@@ -40,6 +40,7 @@ from src.core.assignment_lease import (  # noqa: E402
 from src.core.assignment_persistence import AssignmentPersistence  # noqa: E402
 from src.core.code_analyzer import CodeAnalyzer  # noqa: E402
 from src.core.context import Context  # noqa: E402
+from src.core.event_loop_utils import EventLoopLockManager  # noqa: E402
 from src.core.events import Events  # noqa: E402
 from src.core.models import (  # noqa: E402
     ProjectState,
@@ -124,7 +125,7 @@ class MarcusServer:
 
         # Assignment persistence and locking
         self.assignment_persistence = AssignmentPersistence()
-        self._assignment_lock: Optional[asyncio.Lock] = None
+        self._lock_manager = EventLoopLockManager()
         self.tasks_being_assigned: set[str] = set()
 
         # Assignment monitoring
@@ -251,10 +252,8 @@ class MarcusServer:
 
     @property
     def assignment_lock(self) -> asyncio.Lock:
-        """Get assignment lock, creating it if needed in the current event loop."""
-        if self._assignment_lock is None:
-            self._assignment_lock = asyncio.Lock()
-        return self._assignment_lock
+        """Get assignment lock for the current event loop."""
+        return self._lock_manager.get_lock()
 
     def _register_handlers(self) -> None:
         """Register MCP tool handlers"""
@@ -416,6 +415,14 @@ class MarcusServer:
 
         # Initialize project management
         await self.project_manager.initialize()
+
+        # CRITICAL: Force creation of all locks in the current event loop
+        # This prevents "lock is bound to a different event loop" errors
+        _ = self.assignment_lock  # Force lock creation
+        if self.assignment_persistence:
+            _ = self.assignment_persistence.lock  # Force lock creation
+        if self.project_manager:
+            _ = self.project_manager.lock  # Force lock creation
 
         # Check if we're in multi-project mode or legacy mode
         if self.config.is_multi_project_mode():
@@ -1340,8 +1347,10 @@ async def run_multi_endpoint_server(server: MarcusServer) -> None:
 
     print("\n[I] All endpoints started successfully!")
     print("\n[I] Connection examples:")
-    print("    Human (Claude Code): "
-          "claude mcp add -t http marcus-human http://localhost:4298/mcp")
+    print(
+        "    Human (Claude Code): "
+        "claude mcp add -t http marcus-human http://localhost:4298/mcp"
+    )
     print("    Agent workers:       Configure to connect to http://localhost:4299/mcp")
     print("    Seneca analytics:    Configure to connect to http://localhost:4300/mcp")
     print("\n[I] Press Ctrl+C to stop all endpoints")
