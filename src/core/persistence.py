@@ -60,11 +60,11 @@ class FilePersistence(PersistenceBackend):
             storage_dir = marcus_root / "data" / "marcus_state"
         self.storage_dir = storage_dir
         self.storage_dir.mkdir(parents=True, exist_ok=True)
-        self._locks: Dict[str, asyncio.Lock] = {}
+        self._locks: Dict[str, Optional[asyncio.Lock]] = {}
 
     def _get_lock(self, collection: str) -> asyncio.Lock:
-        """Get or create a lock for a collection"""
-        if collection not in self._locks:
+        """Get or create a lock for a collection, ensuring correct event loop binding"""
+        if collection not in self._locks or self._locks[collection] is None:
             self._locks[collection] = asyncio.Lock()
         return self._locks[collection]
 
@@ -496,11 +496,11 @@ class MemoryPersistence(PersistenceBackend):
     def __init__(self) -> None:
         """Initialize memory persistence"""
         self.data: Dict[str, Dict[str, Dict[str, Any]]] = {}
-        self._locks: Dict[str, asyncio.Lock] = {}
+        self._locks: Dict[str, Optional[asyncio.Lock]] = {}
 
     def _get_lock(self, collection: str) -> asyncio.Lock:
-        """Get or create a lock for a collection"""
-        if collection not in self._locks:
+        """Get or create a lock for a collection, ensuring correct event loop binding"""
+        if collection not in self._locks or self._locks[collection] is None:
             self._locks[collection] = asyncio.Lock()
         return self._locks[collection]
 
