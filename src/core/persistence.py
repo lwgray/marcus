@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional, Union
 import aiofiles
 
 from src.core.context import Decision
+from src.core.event_loop_utils import EventLoopLockManager
 from src.core.events import Event
 
 logger = logging.getLogger(__name__)
@@ -60,13 +61,13 @@ class FilePersistence(PersistenceBackend):
             storage_dir = marcus_root / "data" / "marcus_state"
         self.storage_dir = storage_dir
         self.storage_dir.mkdir(parents=True, exist_ok=True)
-        self._locks: Dict[str, Optional[asyncio.Lock]] = {}
+        self._lock_managers: Dict[str, EventLoopLockManager] = {}
 
     def _get_lock(self, collection: str) -> asyncio.Lock:
         """Get or create a lock for a collection, ensuring correct event loop binding"""
-        if collection not in self._locks or self._locks[collection] is None:
-            self._locks[collection] = asyncio.Lock()
-        return self._locks[collection]
+        if collection not in self._lock_managers:
+            self._lock_managers[collection] = EventLoopLockManager()
+        return self._lock_managers[collection].get_lock()
 
     def _get_collection_file(self, collection: str) -> Path:
         """Get the file path for a collection"""
@@ -496,13 +497,13 @@ class MemoryPersistence(PersistenceBackend):
     def __init__(self) -> None:
         """Initialize memory persistence"""
         self.data: Dict[str, Dict[str, Dict[str, Any]]] = {}
-        self._locks: Dict[str, Optional[asyncio.Lock]] = {}
+        self._lock_managers: Dict[str, EventLoopLockManager] = {}
 
     def _get_lock(self, collection: str) -> asyncio.Lock:
         """Get or create a lock for a collection, ensuring correct event loop binding"""
-        if collection not in self._locks or self._locks[collection] is None:
-            self._locks[collection] = asyncio.Lock()
-        return self._locks[collection]
+        if collection not in self._lock_managers:
+            self._lock_managers[collection] = EventLoopLockManager()
+        return self._lock_managers[collection].get_lock()
 
     async def store(self, collection: str, key: str, data: Dict[str, Any]) -> None:
         """Store data in memory"""

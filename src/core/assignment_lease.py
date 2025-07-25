@@ -20,6 +20,7 @@ from enum import Enum
 from typing import Dict, List, Optional, Set, Tuple
 
 from src.core.assignment_persistence import AssignmentPersistence
+from src.core.event_loop_utils import EventLoopLockManager
 from src.core.models import Task, TaskStatus
 from src.integrations.kanban_interface import KanbanInterface
 
@@ -189,15 +190,13 @@ class AssignmentLeaseManager:
         # Track lease history for analysis
         self.lease_history: List[Dict] = []
 
-        # Prevent concurrent lease operations
-        self._lease_lock: Optional[asyncio.Lock] = None
+        # Lock manager for event loop safe operations
+        self._lock_manager = EventLoopLockManager()
 
     @property
     def lease_lock(self) -> asyncio.Lock:
-        """Get lease lock, creating it if needed in the current event loop."""
-        if self._lease_lock is None:
-            self._lease_lock = asyncio.Lock()
-        return self._lease_lock
+        """Get lease lock for the current event loop."""
+        return self._lock_manager.get_lock()
 
     async def create_lease(
         self, task_id: str, agent_id: str, task: Optional[Task] = None

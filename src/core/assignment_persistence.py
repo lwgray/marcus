@@ -14,6 +14,8 @@ from typing import Any, Dict, Optional
 
 import aiofiles
 
+from src.core.event_loop_utils import EventLoopLockManager
+
 logger = logging.getLogger(__name__)
 
 
@@ -40,14 +42,12 @@ class AssignmentPersistence:
 
         # In-memory cache
         self._assignments_cache: Dict[str, Dict[str, Any]] = {}
-        self._lock: Optional[asyncio.Lock] = None
+        self._lock_manager = EventLoopLockManager()
 
     @property
     def lock(self) -> asyncio.Lock:
-        """Get lock, creating it if needed in the current event loop."""
-        if self._lock is None:
-            self._lock = asyncio.Lock()
-        return self._lock
+        """Get lock for the current event loop."""
+        return self._lock_manager.get_lock()
 
     async def save_assignment(
         self, worker_id: str, task_id: str, task_data: Dict[str, Any]

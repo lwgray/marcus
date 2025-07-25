@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 from src.config.config_loader import get_config
 from src.core.assignment_persistence import AssignmentPersistence
 from src.core.context import Context
+from src.core.event_loop_utils import EventLoopLockManager
 from src.core.events import Events
 from src.core.models import ProjectState
 from src.core.persistence import Persistence
@@ -72,18 +73,16 @@ class ProjectContextManager:
         self.contexts: OrderedDict[str, ProjectContext] = OrderedDict()
         self.active_project_id: Optional[str] = None
 
-        # Lock for thread-safe operations
-        self._context_lock: Optional[asyncio.Lock] = None
+        # Lock manager for event loop safe operations
+        self._lock_manager = EventLoopLockManager()
 
         # Background task for cleanup
         self._cleanup_task: Optional[asyncio.Task[None]] = None
 
     @property
     def lock(self) -> asyncio.Lock:
-        """Get context lock, creating it if needed in the current event loop."""
-        if self._context_lock is None:
-            self._context_lock = asyncio.Lock()
-        return self._context_lock
+        """Get context lock for the current event loop."""
+        return self._lock_manager.get_lock()
 
     async def initialize(self) -> None:
         """Initialize the context manager"""
