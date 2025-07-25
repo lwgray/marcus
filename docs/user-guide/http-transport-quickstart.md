@@ -8,9 +8,8 @@ When you start Marcus without any special flags, it now defaults to **Agent Mode
 marcus start
 ```
 
-This gives you access to 11 agent tools:
+This gives you access to 10 agent tools:
 - `ping` - Check connection
-- `authenticate` - Get access
 - `register_agent` - Register yourself as an agent
 - `request_next_task` - Get your next task
 - `report_task_progress` - Update task status
@@ -49,7 +48,7 @@ marcus start --multi
 
 This starts:
 - Human tools on port 4298 (9 tools)
-- Agent tools on port 4299 (11 tools)
+- Agent tools on port 4299 (10 tools)
 - Analytics tools on port 4300 (42 tools)
 
 ### Custom Ports

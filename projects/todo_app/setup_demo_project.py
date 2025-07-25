@@ -345,13 +345,13 @@ def print_next_steps(project_id, board_id):
 
     print(f"\n{Colors.BOLD}Ready to Run Marcus Demo:{Colors.END}")
     print(f"  1. Start Marcus MCP server:")
-    print(f"     {Colors.BLUE}cd ~/dev/marcus{Colors.END}")
-    print(f"     {Colors.BLUE}python src/marcus_mcp/server.py{Colors.END}")
+    print(f"     {Colors.BLUE}marcus start{Colors.END}")
 
     print(f"\n  2. In Claude Code, add Marcus MCP:")
     print(
         f"     {Colors.BLUE}claude mcp add python ~/dev/marcus/src/marcus_mcp/server.py{Colors.END}"
     )
+    print(f"     {Colors.YELLOW}Note: Marcus server must be running first{Colors.END}")
 
     print(f"\n  3. Copy the agent prompt:")
     print(f"     {Colors.BLUE}cat ~/dev/marcus/prompts/Agent_prompt.md{Colors.END}")

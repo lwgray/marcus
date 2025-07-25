@@ -24,7 +24,6 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
     "agent": {
         # Core workflow tools for autonomous agents
         "ping",
-        "authenticate",
         "register_agent",
         "request_next_task",
         "report_task_progress",

@@ -13,7 +13,7 @@ Usage:
     marcus --help
 
 Examples:
-    marcus start              # Start with agent tools (default)
+    marcus start              # Start with 10 essential agent tools (default)
     marcus start --all-tools  # Start with all tools available
     marcus start --stdio      # Start with stdio transport
     marcus start --multi      # Start multi-endpoint mode (default ports)
@@ -363,7 +363,7 @@ class MarcusCLI:
 
                 http_config = config.get("transport", {}).get("http", {})
                 host = http_config.get("host", "127.0.0.1")
-                mode = "All Tools" if all_tools else "Agent Tools (11 tools)"
+                mode = "All Tools" if all_tools else "Agent Tools (10 tools)"
                 print(f"   Transport: HTTP")
                 print(f"   Endpoint: http://{host}:{port}/mcp")
                 print(f"   Mode: {mode}")
@@ -471,7 +471,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  marcus start              Start with agent tools (default)
+  marcus start              Start with 10 essential agent tools (default)
   marcus start --all-tools  Start with all tools available
   marcus start --stdio      Start with stdio transport
   marcus start --multi      Start multi-endpoint mode (default ports)

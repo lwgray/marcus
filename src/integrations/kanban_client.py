@@ -399,6 +399,9 @@ class KanbanClient:
 
                 return tasks
 
+        # If no lists were found or lists_result was empty, return empty list
+        return []
+
     async def assign_task(self, task_id: str, agent_id: str) -> None:
         """
         Assign a task to an agent.
