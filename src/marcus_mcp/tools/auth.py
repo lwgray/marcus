@@ -8,12 +8,14 @@ from typing import Any, Dict, List, Optional
 
 from mcp.types import TextContent, Tool
 
+from ..audit import get_audit_logger
+
 # Define role-based tool access
 ROLE_TOOLS = {
     "observer": [
         # Basic connectivity and authentication
         "ping",
-        "register_client",
+        "authenticate",
         # Read-only project visibility
         "get_project_status",
         "get_current_project",
@@ -30,6 +32,17 @@ ROLE_TOOLS = {
         "pipeline_report",
         "pipeline_predict_risk",
         "pipeline_find_similar",
+        "pipeline_compare",
+        "pipeline_replay_start",
+        "pipeline_replay_forward",
+        "pipeline_replay_backward",
+        "pipeline_replay_jump",
+        # Project management (PMs need this)
+        "remove_project",  # Delete projects
+        # System health monitoring
+        "check_assignment_health",  # Debug assignments
+        # Audit and usage analytics
+        "get_usage_report",  # Usage statistics
     ],
     "developer": [
         # Everything observers have (read access)
@@ -58,6 +71,7 @@ ROLE_TOOLS = {
         # Minimal project awareness
         "get_project_status",
         # Core agent workflow
+        "register_agent",  # Register themselves
         "request_next_task",  # Get assignments
         "report_task_progress",  # Update progress
         "report_blocker",  # Report issues
@@ -68,39 +82,6 @@ ROLE_TOOLS = {
         # Dependency awareness
         "check_task_dependencies",  # Understand relationships
     ],
-    "coordinator": [
-        # Everything developers have
-        "ping",
-        "register_client",
-        "get_project_status",
-        "get_current_project",
-        "list_projects",
-        "list_registered_agents",
-        "get_agent_status",
-        "check_board_health",
-        "check_task_dependencies",
-        "create_project",
-        "add_feature",
-        "switch_project",
-        "add_project",
-        "update_project",
-        "get_task_context",
-        # Additional coordination capabilities
-        "register_agent",  # Manage agent roster
-        "remove_project",  # Delete projects
-        "check_assignment_health",  # Debug assignments
-        # All pipeline tools for analysis
-        "pipeline_monitor_dashboard",
-        "pipeline_monitor_flow",
-        "pipeline_report",
-        "pipeline_predict_risk",
-        "pipeline_find_similar",
-        "pipeline_compare",
-        "pipeline_replay_start",
-        "pipeline_replay_forward",
-        "pipeline_replay_backward",
-        "pipeline_replay_jump",
-    ],
     "admin": [
         # Admins get all tools
         "*"
@@ -109,10 +90,10 @@ ROLE_TOOLS = {
 
 # Default tools available before registration
 # These allow basic connectivity and authentication
-DEFAULT_TOOLS = ["ping", "register_client"]
+DEFAULT_TOOLS = ["ping", "authenticate"]
 
 
-async def register_client(
+async def authenticate(
     client_id: str,
     client_type: str,
     role: str,
@@ -120,25 +101,80 @@ async def register_client(
     state: Any = None,
 ) -> Dict[str, Any]:
     """
-    Register a client with Marcus and assign role-based access.
+    Authenticate with Marcus and establish role-based access.
+
+    This tool establishes a client's identity and determines which Marcus tools
+    they can access based on their client_type. Authentication is required before
+    using most Marcus tools and enables audit logging of all client actions.
+
+    Note: Admin access is controlled at the deployment level. Anyone who can
+    start Marcus effectively has admin access. The admin role here is for
+    tracking and audit purposes only.
 
     Parameters
     ----------
     client_id : str
         Unique identifier for the client (e.g., "seneca-001", "user-john", "agent-backend-01")
+        This should be consistent across sessions for the same client
+
     client_type : str
-        Type of client: "observer", "developer", "agent", "coordinator", "admin"
+        Must be one of: "observer", "developer", "agent", "admin"
+        - observer: Read-only access for monitoring/analytics (e.g., Seneca, PMs)
+        - developer: Can create/manage projects and features via NLP
+        - agent: AI agents that execute tasks (register → request → progress → complete)
+        - admin: Full access to all tools
+
     role : str
-        Specific role within the client type (e.g., "analytics", "developer", "backend")
+        Specific role within the client type for identification (e.g., "analytics", "frontend", "pm")
+        This is descriptive and helps with audit logs but doesn't affect permissions
+
     metadata : Optional[Dict[str, Any]]
-        Additional client metadata
+        Additional client metadata such as:
+        - version: Client version
+        - capabilities: List of client capabilities
+        - environment: Development/production/staging
+        - team: Team name or identifier
+
     state : Any
-        Marcus server state
+        Marcus server state (automatically provided)
 
     Returns
     -------
     Dict[str, Any]
-        Registration result with available tools
+        {
+            "success": True,
+            "client_id": "your-client-id",
+            "client_type": "observer|developer|agent|admin",
+            "role": "your-role",
+            "available_tools": ["tool1", "tool2", ...],  # List of tools you can now use
+            "message": "Registration confirmation"
+        }
+
+    Examples
+    --------
+    # Authenticate Seneca as an observer for analytics
+    authenticate(
+        client_id="seneca-prod-001",
+        client_type="observer",
+        role="analytics",
+        metadata={"version": "2.0", "environment": "production"}
+    )
+
+    # Authenticate an AI agent (they still need to call register_agent after this)
+    authenticate(
+        client_id="agent-backend-01",
+        client_type="agent",
+        role="backend_developer",
+        metadata={"capabilities": ["python", "api", "database"]}
+    )
+
+    # Authenticate a developer using Claude
+    authenticate(
+        client_id="user-alice",
+        client_type="developer",
+        role="frontend_lead",
+        metadata={"team": "ui-team"}
+    )
     """
     # Store client registration
     if not hasattr(state, "_registered_clients"):
@@ -156,6 +192,9 @@ async def register_client(
 
     state._registered_clients[client_id] = client_info
 
+    # Set current client ID for tracking
+    state._current_client_id = client_id
+
     # Log the registration
     state.log_event(
         "client_registered",
@@ -164,6 +203,15 @@ async def register_client(
             "client_type": client_type,
             "role": role,
         },
+    )
+
+    # Audit the registration
+    audit_logger = get_audit_logger()
+    await audit_logger.log_registration(
+        client_id=client_id,
+        client_type=client_type,
+        role=role,
+        metadata=metadata,
     )
 
     # Get available tools for this client type
@@ -175,7 +223,7 @@ async def register_client(
         "client_type": client_type,
         "role": role,
         "available_tools": available_tools,
-        "message": f"Client '{client_id}' registered as {client_type} with role '{role}'",
+        "message": f"Client '{client_id}' authenticated as {client_type} with role '{role}'",
     }
 
 
@@ -237,26 +285,26 @@ def get_tool_definitions_for_client(client_id: Optional[str], state: Any) -> Lis
     List[Tool]
         List of tool definitions available to the client
     """
-    from ..handlers import get_tool_definitions
+    from ..handlers import get_all_tool_definitions
 
     # Get allowed tools for this client
     allowed_tools = get_client_tools(client_id, state)
 
     # Get all tool definitions
-    all_tools = get_tool_definitions("admin")  # Get all tools
+    all_tools_map = get_all_tool_definitions()
 
     # Filter based on client access
     if "*" in allowed_tools:
-        return all_tools
+        return list(all_tools_map.values())
 
-    return [tool for tool in all_tools if tool.name in allowed_tools]
+    return [all_tools_map[name] for name in allowed_tools if name in all_tools_map]
 
 
 # Tool definition for registration
-REGISTER_CLIENT_TOOL = Tool(
-    name="register_client",
-    description="Register a client with Marcus and get role-based tool access",
-    input_schema={
+AUTHENTICATE_TOOL = Tool(
+    name="authenticate",
+    description="Authenticate with Marcus and establish role-based tool access",
+    inputSchema={
         "type": "object",
         "properties": {
             "client_id": {
@@ -265,7 +313,7 @@ REGISTER_CLIENT_TOOL = Tool(
             },
             "client_type": {
                 "type": "string",
-                "enum": ["observer", "developer", "agent", "coordinator", "admin"],
+                "enum": ["observer", "developer", "agent", "admin"],
                 "description": "Type of client determining tool access",
             },
             "role": {

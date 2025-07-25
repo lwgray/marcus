@@ -60,6 +60,7 @@ from src.integrations.ai_analysis_engine import AIAnalysisEngine  # noqa: E402
 from src.integrations.kanban_factory import KanbanFactory  # noqa: E402
 from src.integrations.kanban_interface import KanbanInterface  # noqa: E402
 from src.marcus_mcp.handlers import get_tool_definitions, handle_tool_call  # noqa: E402
+from src.marcus_mcp.tool_groups import get_tools_for_endpoint  # noqa: E402
 from src.monitoring.assignment_monitor import AssignmentMonitor  # noqa: E402
 from src.monitoring.project_monitor import ProjectMonitor  # noqa: E402
 from src.visualization.shared_pipeline_events import (  # noqa: E402
@@ -246,24 +247,24 @@ class MarcusServer:
 
         # FastMCP instance for HTTP transport (created on demand)
         self._fastmcp = None
+        self._endpoint_apps: Dict[str, FastMCP] = {}
 
     def _register_handlers(self) -> None:
         """Register MCP tool handlers"""
 
         @self.server.list_tools()  # type: ignore[no-untyped-call,misc]
         async def handle_list_tools() -> List[types.Tool]:
-            """Return list of available tools"""
-            # Determine role based on client type
-            # For now, we'll check if this is being called by an agent or human
-            # Agents typically have "agent" in their client name or metadata
-            # This can be enhanced with proper authentication/role detection
-            role = "agent"  # Default to agent for limited tool access
+            """Return list of available tools based on client role"""
+            # Import here to avoid circular dependency
+            from src.marcus_mcp.tools.auth import get_tool_definitions_for_client
 
-            # If we detect this is an agent client, limit tools
-            # This would be enhanced with proper client identification
-            # For now, we assume all clients get agent-level access only
+            # Get current client ID if available
+            client_id = None
+            if hasattr(self, "_current_client_id"):
+                client_id = self._current_client_id
 
-            return get_tool_definitions(role)
+            # Get tools based on client access
+            return get_tool_definitions_for_client(client_id, self)
 
         @self.server.call_tool()  # type: ignore[no-untyped-call,misc]
         async def handle_call_tool(
@@ -789,20 +790,55 @@ class MarcusServer:
             raise
 
     def _create_fastmcp(self) -> FastMCP:
-        """Create and configure FastMCP instance with all tools"""
+        """Create and configure FastMCP instance with agent tools by default"""
         if self._fastmcp is None:
-            self._fastmcp = FastMCP(
-                "marcus",
-                instructions=(
-                    "Marcus - Multi-Agent Resource Coordination and "
-                    "Understanding System"
-                ),
-            )
+            # Check if we should use all tools or agent tools
+            use_all_tools = "--all-tools" in sys.argv
 
-            # Register all tools with FastMCP
-            self._register_fastmcp_tools()
+            if use_all_tools:
+                self._fastmcp = FastMCP(
+                    "marcus",
+                    instructions=(
+                        "Marcus - Multi-Agent Resource Coordination and "
+                        "Understanding System (All Tools)"
+                    ),
+                )
+                # Register all tools with FastMCP
+                self._register_fastmcp_tools()
+            else:
+                # Default to agent tools for new users
+                self._fastmcp = FastMCP(
+                    "marcus-agent",
+                    instructions=(
+                        "Marcus - Multi-Agent Resource Coordination and "
+                        "Understanding System (Agent Mode)"
+                    ),
+                )
+                # Register only agent tools
+                self._register_endpoint_tools(self._fastmcp, "agent")
 
         return self._fastmcp
+
+    def _create_endpoint_app(self, endpoint_type: str) -> FastMCP:
+        """Create FastMCP instance for a specific endpoint type."""
+        if endpoint_type not in self._endpoint_apps:
+            # Create unique app name for each endpoint
+            app_name = f"marcus-{endpoint_type}"
+            instructions = {
+                "human": "Marcus MCP Server - Human Developer Tools",
+                "agent": "Marcus MCP Server - Autonomous Agent Tools",
+                "analytics": "Marcus MCP Server - Analytics & Monitoring Tools",
+            }.get(endpoint_type, "Marcus MCP Server")
+
+            # Create FastMCP instance
+            app = FastMCP(app_name, instructions=instructions)
+
+            # Register only tools allowed for this endpoint
+            self._register_endpoint_tools(app, endpoint_type)
+
+            self._endpoint_apps[endpoint_type] = app
+
+        return self._endpoint_apps[endpoint_type]
 
     def _register_fastmcp_tools(self) -> None:
         """Register all tools with FastMCP instance"""
@@ -906,6 +942,268 @@ class MarcusServer:
                 state=server,
             )
 
+    def _register_endpoint_tools(self, app: FastMCP, endpoint_type: str) -> None:
+        """Register tools for a specific endpoint based on allowed tools."""
+        # Get allowed tools for this endpoint
+        allowed_tools = get_tools_for_endpoint(endpoint_type)
+
+        # Store reference to self for closures
+        server = self
+
+        # Register each allowed tool
+        if "ping" in allowed_tools:
+
+            @app.tool()
+            async def ping(echo: str = "") -> Dict[str, Any]:
+                """Check Marcus status and connectivity."""
+                from .tools.system import ping as ping_impl
+
+                return await ping_impl(echo=echo, state=server)
+
+        if "authenticate" in allowed_tools:
+
+            @app.tool()
+            async def authenticate(
+                client_id: str,
+                client_type: str,
+                role: str,
+                metadata: Optional[Dict[str, Any]] = None,
+            ) -> Dict[str, Any]:
+                """Authenticate a client with role-based access."""
+                from .tools.auth import authenticate as auth_impl
+
+                return await auth_impl(
+                    client_id=client_id,
+                    client_type=client_type,
+                    role=role,
+                    metadata=metadata,
+                    state=server,
+                )
+
+        if "register_agent" in allowed_tools:
+
+            @app.tool()
+            async def register_agent(
+                agent_id: str, name: str, role: str, skills: List[str] = []
+            ) -> Dict[str, Any]:
+                """Register a new agent with the Marcus system."""
+                from .tools.agent import register_agent as impl
+
+                return await impl(
+                    agent_id=agent_id, name=name, role=role, skills=skills, state=server
+                )
+
+        if "get_agent_status" in allowed_tools:
+
+            @app.tool()
+            async def get_agent_status(agent_id: str) -> Dict[str, Any]:
+                """Get status and current assignment for an agent."""
+                from .tools.agent import get_agent_status as impl
+
+                return await impl(agent_id=agent_id, state=server)
+
+        if "request_next_task" in allowed_tools:
+
+            @app.tool()
+            async def request_next_task(agent_id: str) -> Dict[str, Any]:
+                """Request the next optimal task assignment for an agent."""
+                from .tools.task import request_next_task as impl
+
+                return await impl(agent_id=agent_id, state=server)
+
+        if "report_task_progress" in allowed_tools:
+
+            @app.tool()
+            async def report_task_progress(
+                agent_id: str,
+                task_id: str,
+                status: str,
+                progress: int = 0,
+                message: str = "",
+            ) -> Dict[str, Any]:
+                """Report progress on a task."""
+                from .tools.task import report_task_progress as impl
+
+                return await impl(
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    status=status,
+                    progress=progress,
+                    message=message,
+                    state=server,
+                )
+
+        if "report_blocker" in allowed_tools:
+
+            @app.tool()
+            async def report_blocker(
+                agent_id: str,
+                task_id: str,
+                blocker_description: str,
+                severity: str = "medium",
+            ) -> Dict[str, Any]:
+                """Report a blocker on a task."""
+                from .tools.task import report_blocker as impl
+
+                return await impl(
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    blocker_description=blocker_description,
+                    severity=severity,
+                    state=server,
+                )
+
+        if "get_project_status" in allowed_tools:
+
+            @app.tool()
+            async def get_project_status() -> Dict[str, Any]:
+                """Get current project status and metrics."""
+                from .tools.agent import get_project_status as impl
+
+                return await impl(state=server)
+
+        if "create_project" in allowed_tools:
+
+            @app.tool()
+            async def create_project(
+                description: str,
+                project_name: str,
+                options: Optional[Dict[str, Any]] = None,
+            ) -> Dict[str, Any]:
+                """Create a complete project from natural language description."""
+                from .tools.nlp import create_project as impl
+
+                return await impl(
+                    description=description,
+                    project_name=project_name,
+                    options=options,
+                    state=server,
+                )
+
+        if "list_projects" in allowed_tools:
+
+            @app.tool()
+            async def list_projects() -> Dict[str, Any]:
+                """List all available projects."""
+                from .tools.project_management import list_projects as impl
+
+                return await impl(state=server)
+
+        if "switch_project" in allowed_tools:
+
+            @app.tool()
+            async def switch_project(project_name: str) -> Dict[str, Any]:
+                """Switch to a different project."""
+                from .tools.project_management import switch_project as impl
+
+                return await impl(project_name=project_name, state=server)
+
+        if "get_current_project" in allowed_tools:
+
+            @app.tool()
+            async def get_current_project() -> Dict[str, Any]:
+                """Get the currently active project."""
+                from .tools.project_management import get_current_project as impl
+
+                return await impl(state=server)
+
+        if "add_feature" in allowed_tools:
+
+            @app.tool()
+            async def add_feature(
+                description: str,
+                context: Optional[Dict[str, Any]] = None,
+            ) -> Dict[str, Any]:
+                """Add a feature to existing project using natural language."""
+                from .tools.nlp import add_feature as impl
+
+                return await impl(
+                    description=description,
+                    context=context or {},
+                    state=server,
+                )
+
+        if "get_usage_report" in allowed_tools:
+
+            @app.tool()
+            async def get_usage_report(
+                start_date: Optional[str] = None,
+                end_date: Optional[str] = None,
+                group_by: str = "day",
+            ) -> Dict[str, Any]:
+                """Generate usage analytics and audit reports."""
+                from .tools.audit_tools import get_usage_report as impl
+
+                return await impl(
+                    start_date=start_date,
+                    end_date=end_date,
+                    group_by=group_by,
+                    state=server,
+                )
+
+        if "get_task_context" in allowed_tools:
+
+            @app.tool()
+            async def get_task_context(task_id: str) -> Dict[str, Any]:
+                """Get the full context for a specific task."""
+                from .tools.task import get_task_context as impl
+
+                return await impl(task_id=task_id, state=server)
+
+        if "log_decision" in allowed_tools:
+
+            @app.tool()
+            async def log_decision(
+                agent_id: str,
+                task_id: str,
+                decision: str,
+            ) -> Dict[str, Any]:
+                """Log an architectural decision."""
+                from .tools.context import log_decision as impl
+
+                return await impl(
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    decision=decision,
+                    state=server,
+                )
+
+        if "log_artifact" in allowed_tools:
+
+            @app.tool()
+            async def log_artifact(
+                task_id: str,
+                filename: str,
+                content: str,
+                artifact_type: str,
+                description: str = "",
+                location: Optional[str] = None,
+            ) -> Dict[str, Any]:
+                """Store an artifact with smart location management."""
+                from .tools.context import log_artifact as impl
+
+                return await impl(
+                    task_id=task_id,
+                    filename=filename,
+                    content=content,
+                    artifact_type=artifact_type,
+                    description=description,
+                    location=location,
+                    state=server,
+                )
+
+        if "check_task_dependencies" in allowed_tools:
+
+            @app.tool()
+            async def check_task_dependencies(task_id: str) -> Dict[str, Any]:
+                """Check dependencies for a specific task."""
+                from .tools.board_health import check_task_dependencies as impl
+
+                return await impl(task_id=task_id, state=server)
+
+        # TODO: Add remaining analytics tools for Seneca endpoint
+        # This includes all pipeline analysis tools, board health tools, etc.
+
     async def run(self) -> None:
         """Run the MCP server."""
         try:
@@ -954,6 +1252,106 @@ class MarcusServer:
             raise
 
 
+async def run_multi_endpoint_server(server: MarcusServer) -> None:
+    """Run Marcus with multiple endpoints on different ports."""
+    import argparse
+    import asyncio
+
+    import uvicorn
+
+    # Parse command line arguments for port overrides
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--multi", action="store_true")
+    parser.add_argument("--human-port", type=int)
+    parser.add_argument("--agent-port", type=int)
+    parser.add_argument("--analytics-port", type=int)
+    args, _ = parser.parse_known_args()
+
+    # Get multi-endpoint config
+    config = get_config()
+    base_config = config.get(
+        "multi_endpoint",
+        {
+            "human": {"port": 4298, "enabled": True},
+            "agent": {"port": 4299, "enabled": True},
+            "analytics": {"port": 4300, "enabled": True},
+        },
+    )
+
+    # Override ports with command line arguments if provided
+    multi_endpoint_config = {}
+    for endpoint_type in ["human", "agent", "analytics"]:
+        multi_endpoint_config[endpoint_type] = base_config.get(endpoint_type, {}).copy()
+
+        # Check for command line override
+        port_arg = getattr(args, f"{endpoint_type}_port", None)
+        if port_arg:
+            multi_endpoint_config[endpoint_type]["port"] = port_arg
+
+    # Pretty output
+    print("\n" + "=" * 70)
+    print("    Marcus MCP Server (Multi-Endpoint Mode)")
+    print("=" * 70)
+
+    tasks = []
+
+    async def run_endpoint(endpoint_type: str, endpoint_config: Dict[str, Any]):
+        """Run a single endpoint."""
+        port = endpoint_config.get("port")
+        host = endpoint_config.get("host", "127.0.0.1")
+        path = endpoint_config.get("path", "/mcp")
+
+        # Create app for this endpoint
+        app = server._create_endpoint_app(endpoint_type)
+
+        print(f"\n[I] {endpoint_type.capitalize()} endpoint:")
+        print(f"    URL: http://{host}:{port}{path}")
+        print(f"    Tools: {len(get_tools_for_endpoint(endpoint_type))} available")
+
+        # Create Starlette app
+        starlette_app = app.streamable_http_app()
+
+        # Configure uvicorn
+        config = uvicorn.Config(
+            app=starlette_app,
+            host=host,
+            port=port,
+            log_level="error",  # Reduce noise
+            access_log=False,
+            loop="asyncio",
+        )
+
+        # Create and run server
+        server_instance = uvicorn.Server(config)
+        await server_instance.serve()
+
+    # Start all endpoints
+    for endpoint_type, endpoint_config in multi_endpoint_config.items():
+        if endpoint_config.get("enabled", True):
+            task = asyncio.create_task(run_endpoint(endpoint_type, endpoint_config))
+            tasks.append(task)
+
+    print("\n[I] All endpoints started successfully!")
+    print("\n[I] Connection examples:")
+    print(
+        "    Human (Claude Code): claude mcp add -t http marcus-human http://localhost:4298/mcp"
+    )
+    print("    Agent workers:       Configure to connect to http://localhost:4299/mcp")
+    print("    Seneca analytics:    Configure to connect to http://localhost:4300/mcp")
+    print("\n[I] Press Ctrl+C to stop all endpoints")
+
+    try:
+        # Wait for all servers
+        await asyncio.gather(*tasks)
+    except KeyboardInterrupt:
+        print("\n⚠️  Shutting down all endpoints...")
+        # Cancel all tasks
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        print("✅ All endpoints stopped")
+
+
 async def main() -> None:
     """Run the Marcus MCP server."""
     # Get transport from config
@@ -966,6 +1364,24 @@ async def main() -> None:
         transport = "http"
     elif "--stdio" in sys.argv:
         transport = "stdio"
+    elif "--multi" in sys.argv:
+        transport = "multi"
+
+    # Parse port argument for single endpoint mode
+    if "--port" in sys.argv:
+        try:
+            port_idx = sys.argv.index("--port")
+            if port_idx + 1 < len(sys.argv):
+                custom_port = int(sys.argv[port_idx + 1])
+                if transport == "http":
+                    # Override port in config for this session
+                    if "transport" not in config:
+                        config["transport"] = {}
+                    if "http" not in config["transport"]:
+                        config["transport"]["http"] = {}
+                    config["transport"]["http"]["port"] = custom_port
+        except (ValueError, IndexError):
+            pass
 
     try:
         server = MarcusServer()
@@ -991,7 +1407,10 @@ async def main() -> None:
         )
 
         # Run server with selected transport
-        if transport == "http":
+        if transport == "multi":
+            # Run multi-endpoint mode
+            await run_multi_endpoint_server(server)
+        elif transport == "http":
             # Use FastMCP for HTTP transport
             fastmcp = server._create_fastmcp()
 
@@ -1048,8 +1467,13 @@ if __name__ == "__main__":
         transport = "http"
     elif "--stdio" in sys.argv:
         transport = "stdio"
+    elif "--multi" in sys.argv:
+        transport = "multi"
 
-    if transport == "http":
+    if transport == "multi":
+        # For multi-endpoint mode, use asyncio.run
+        asyncio.run(main())
+    elif transport == "http":
         # For HTTP mode, run the async initialization first
         async def setup_http_server():
             """Setup HTTP server with async initialization."""

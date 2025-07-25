@@ -56,24 +56,7 @@ Marcus serves multiple types of clients with different needs. This document defi
 - Collaboration tools (decisions, artifacts)
 - Cannot see other agents' tasks or manipulate assignments
 
-### 4. **Coordinator** (Project Managers)
-**Primary User**: Team leads, project managers, Marcus admin UI
-
-**Scenarios**:
-- Manage multiple projects
-- Override task assignments when needed
-- Handle blocked tasks
-- Manage agent registrations
-- Access all monitoring capabilities
-- Clean up stuck assignments
-
-**Needs**:
-- Everything developers have
-- Agent management capabilities
-- Assignment override abilities
-- Board health management
-
-### 5. **Admin** (System Administrators)
+### 4. **Admin** (System Administrators)
 **Primary User**: Marcus system administrators
 
 **Scenarios**:
@@ -92,7 +75,7 @@ Marcus serves multiple types of clients with different needs. This document defi
 ### Public Tools (Available to Everyone)
 These tools are safe for any client:
 - `ping` - Basic connectivity check
-- `register_client` - Client authentication
+- `authenticate` - Client authentication
 
 ### Read-Only Tools (Safe for Observers)
 These provide information without side effects:
@@ -103,31 +86,27 @@ These provide information without side effects:
 - `get_agent_status` - Individual agent info
 - `check_board_health` - Board health metrics
 - `check_task_dependencies` - Task relationships
-- Pipeline monitoring tools (dashboard, flow, reports)
+- All pipeline tools (dashboard, flow, reports, compare, replay)
+- `remove_project` - Delete projects (PMs need this)
+- `check_assignment_health` - Debug assignments
 
-### Project Management Tools (For Developers/Coordinators)
+### Project Management Tools (For Developers)
 These create or modify project structure:
 - `create_project` - Create new project from NLP
 - `add_feature` - Add feature to project
 - `switch_project` - Change active project
 - `add_project` - Add existing project
 - `update_project` - Modify project config
-- `remove_project` - Delete project
 
 ### Agent Workflow Tools (For Agents Only)
 These are the core agent work cycle:
+- `register_agent` - Register themselves
 - `request_next_task` - Get work assignment
 - `report_task_progress` - Update progress
 - `report_blocker` - Report impediments
 - `get_task_context` - Get full context
 - `log_decision` - Document choices
 - `log_artifact` - Store work products
-
-### Coordination Tools (For Coordinators/Admins)
-These affect system state:
-- `register_agent` - Add new agents
-- `check_assignment_health` - Debug assignments
-- Manual assignment overrides (future)
 
 ### Admin Tools (System Level)
 These are potentially dangerous:
@@ -137,42 +116,62 @@ These are potentially dangerous:
 
 ## Security Considerations
 
-1. **Default Deny**: Clients start with minimal access
-2. **Progressive Authorization**: Gain access by authenticating
-3. **Audit Trail**: All role changes are logged
-4. **Session Management**: Roles tied to sessions, not permanent
-5. **Least Privilege**: Each role gets minimum required access
+**Important**: Marcus is an open-source tool. Role-based access is designed for:
+- **Organization**: Preventing accidental misuse of tools
+- **Clarity**: Making it clear what each client type should do
+- **Audit Trail**: Tracking who does what for debugging
+- **NOT Security**: Anyone with access to run Marcus has full control
+
+### Real Security Happens At:
+1. **Infrastructure Level**: Who can access the server running Marcus
+2. **Network Level**: Firewall rules, VPNs, private networks
+3. **OS Level**: File permissions, user access controls
+4. **Deployment Level**: Kubernetes RBAC, Cloud IAM, reverse proxies
+
+### Role-Based Access Benefits:
+1. **Prevents Accidents**: Agents won't accidentally delete projects
+2. **Clear Interfaces**: Each client type knows its available tools
+3. **Usage Tracking**: Audit logs show patterns and issues
+4. **Tool Discovery**: Clients can see what tools they have access to
 
 ## Implementation Strategy
 
 1. **Phase 1**: Basic roles (Observer, Developer, Agent)
-2. **Phase 2**: Advanced roles (Coordinator, Admin)
-3. **Phase 3**: Custom roles and fine-grained permissions
+2. **Phase 2**: Admin role for tracking (no auth needed)
+3. **Phase 3**: Enhanced audit logging and usage analytics
 
 ## Example Registrations
 
 ```python
-# Seneca registers as observer
-await register_client(
+# Seneca authenticates as observer
+await authenticate(
     client_id="seneca-prod-001",
     client_type="observer",
     role="analytics",
     metadata={"tool": "seneca", "version": "1.0"}
 )
 
-# Claude registers as developer
-await register_client(
+# Claude authenticates as developer
+await authenticate(
     client_id="claude-user-john",
     client_type="developer",
     role="frontend",
     metadata={"user": "john@company.com"}
 )
 
-# Agent registers
-await register_client(
+# Agent authenticates (then calls register_agent)
+await authenticate(
     client_id="agent-backend-01",
     client_type="agent",
     role="backend",
     metadata={"model": "claude-3", "skills": ["python", "fastapi"]}
+)
+
+# Admin authenticates (no additional security - access controlled at deployment level)
+await authenticate(
+    client_id="admin-marcus",
+    client_type="admin",
+    role="system_admin",
+    metadata={"user": "admin@company.com", "purpose": "system_maintenance"}
 )
 ```

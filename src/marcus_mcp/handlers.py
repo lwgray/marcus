@@ -7,10 +7,12 @@ in a centralized location.
 """
 
 import json
+import time
 from typing import Any, Dict, List, Optional, Set
 
 import mcp.types as types
 
+from .audit import get_audit_logger
 from .tools import (  # Agent tools; Task tools; Project tools; System tools; NLP tools
     add_feature,
     check_assignment_health,
@@ -26,9 +28,14 @@ from .tools import (  # Agent tools; Task tools; Project tools; System tools; NL
     report_task_progress,
     request_next_task,
 )
+from .tools.audit_tools import (
+    USAGE_REPORT_TOOL,
+    get_usage_report,
+)
 from .tools.auth import (
-    REGISTER_CLIENT_TOOL,
-    register_client,
+    AUTHENTICATE_TOOL,
+    authenticate,
+    get_client_tools,
 )
 from .tools.board_health import (  # Board health tools
     check_board_health,
@@ -71,6 +78,35 @@ from .tools.project_management import (  # Project management tools
     switch_project,
     update_project,
 )
+
+
+def get_all_tool_definitions() -> Dict[str, types.Tool]:
+    """
+    Get all tool definitions as a mapping.
+
+    Returns
+    -------
+        Dict mapping tool name to Tool definition
+    """
+    # Build complete tool map
+    all_tools = {}
+
+    # Get all tools from both agent and human definitions
+    for tool in get_tool_definitions("agent"):
+        all_tools[tool.name] = tool
+    for tool in get_tool_definitions("human"):
+        all_tools[tool.name] = tool
+
+    # Add auth and audit tools
+    all_tools["authenticate"] = AUTHENTICATE_TOOL
+    all_tools["get_usage_report"] = USAGE_REPORT_TOOL
+
+    return all_tools
+
+
+def get_all_tool_names() -> List[str]:
+    """Get list of all available tool names."""
+    return list(get_all_tool_definitions().keys())
 
 
 def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
@@ -866,6 +902,8 @@ Usage: check_task_dependencies("task-123")""",
             },
         ),
         # Pattern Learning Tools removed - only accessible via visualization UI API
+        # Audit and analytics tools
+        USAGE_REPORT_TOOL,
     ]
 
     return human_tools
@@ -889,12 +927,65 @@ async def handle_tool_call(
     if arguments is None:
         arguments = {}
 
+    # Track timing
+    start_time = time.time()
+
+    # Get client info if available
+    client_id = None
+    client_type = None
+    if hasattr(state, "_current_client_id"):
+        client_id = state._current_client_id
+    if hasattr(state, "_registered_clients") and client_id:
+        client_info = state._registered_clients.get(client_id, {})
+        client_type = client_info.get("client_type")
+
+    # Get audit logger
+    audit_logger = get_audit_logger()
+
+    # Check access control
+    allowed_tools = get_client_tools(client_id, state)
+    if name not in allowed_tools and "*" not in allowed_tools:
+        # Audit access denied
+        await audit_logger.log_access_denied(
+            client_id=client_id,
+            client_type=client_type,
+            tool_name=name,
+            reason=f"Tool '{name}' not allowed for client type '{client_type or 'unregistered'}'",
+        )
+
+        return [
+            types.TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "error": f"Access denied: Tool '{name}' not available for your client type",
+                        "client_type": client_type or "unregistered",
+                        "allowed_tools": allowed_tools,
+                    },
+                    indent=2,
+                ),
+            )
+        ]
+
     try:
         # Initialize result variable with proper type
         result: Any = None
 
+        # Authentication tools (special handling)
+        if name == "authenticate":
+            result = await authenticate(
+                client_id=arguments.get("client_id"),
+                client_type=arguments.get("client_type"),
+                role=arguments.get("role"),
+                metadata=arguments.get("metadata"),
+                state=state,
+            )
+            # Client has been registered, update tracking
+            client_id = arguments.get("client_id")
+            client_type = arguments.get("client_type")
+
         # Agent management tools
-        if name == "register_agent":
+        elif name == "register_agent":
             agent_id = arguments.get("agent_id") if arguments else None
             agent_name = arguments.get("name") if arguments else None
             role = arguments.get("role") if arguments else None
@@ -975,6 +1066,10 @@ async def handle_tool_call(
 
         elif name == "check_assignment_health":
             result = await check_assignment_health(state=state)
+
+        elif name == "get_usage_report":
+            days = arguments.get("days", 7) if arguments else 7
+            result = await get_usage_report(days=days, state=state)
 
         elif name == "check_board_health":
             result = await check_board_health(state=state)
@@ -1196,9 +1291,34 @@ async def handle_tool_call(
             },
         )
 
+        # Audit successful tool call
+        duration_ms = (time.time() - start_time) * 1000
+        await audit_logger.log_tool_call(
+            client_id=client_id,
+            client_type=client_type,
+            tool_name=name,
+            arguments=arguments,
+            result=result,
+            duration_ms=duration_ms,
+            success=True,
+        )
+
         return response
 
     except Exception as e:
+        # Audit failed tool call
+        duration_ms = (time.time() - start_time) * 1000
+        await audit_logger.log_tool_call(
+            client_id=client_id,
+            client_type=client_type,
+            tool_name=name,
+            arguments=arguments,
+            result=None,
+            duration_ms=duration_ms,
+            success=False,
+            error=str(e),
+        )
+
         error_response: List[
             types.TextContent | types.ImageContent | types.EmbeddedResource
         ] = [

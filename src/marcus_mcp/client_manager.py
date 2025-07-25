@@ -6,6 +6,7 @@ allowing dynamic tool access based on client roles.
 """
 
 import asyncio
+import asyncio.tasks as asyncio_tasks
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
 
@@ -35,7 +36,7 @@ class ClientSession:
         client_type: str,
         role: str,
         metadata: Optional[Dict[str, Any]] = None,
-    ):
+    ) -> None:
         """Authenticate the client and set permissions."""
         self.client_id = client_id
         self.client_type = client_type
@@ -47,8 +48,7 @@ class ClientSession:
         tools = ROLE_TOOLS.get(client_type, DEFAULT_TOOLS)
         if isinstance(tools, list):
             self.allowed_tools = set(tools)
-        else:
-            self.allowed_tools = set(DEFAULT_TOOLS)
+        # else case is unreachable since we always get a list or use DEFAULT_TOOLS
 
     def has_access_to_tool(self, tool_name: str) -> bool:
         """Check if client has access to a specific tool."""
@@ -56,7 +56,7 @@ class ClientSession:
             return True
         return tool_name in self.allowed_tools
 
-    def update_activity(self):
+    def update_activity(self) -> None:
         """Update last activity timestamp."""
         self.last_activity = datetime.now()
 
@@ -67,14 +67,14 @@ class ClientManager:
     def __init__(self, server_instance: Any):
         self.server = server_instance
         self.sessions: Dict[str, ClientSession] = {}
-        self._cleanup_task: Optional[asyncio.Task] = None
+        self._cleanup_task: Optional[asyncio_tasks.Task[None]] = None
 
-    async def start(self):
+    async def start(self) -> None:
         """Start the client manager."""
         # Start cleanup task for expired sessions
         self._cleanup_task = asyncio.create_task(self._cleanup_expired_sessions())
 
-    async def stop(self):
+    async def stop(self) -> None:
         """Stop the client manager."""
         if self._cleanup_task:
             self._cleanup_task.cancel()
@@ -95,7 +95,7 @@ class ClientManager:
         """Get a client session by ID."""
         return self.sessions.get(session_id)
 
-    def remove_session(self, session_id: str):
+    def remove_session(self, session_id: str) -> None:
         """Remove a client session."""
         if session_id in self.sessions:
             del self.sessions[session_id]
@@ -161,7 +161,7 @@ class ClientManager:
             return tool_name in DEFAULT_TOOLS
         return session.has_access_to_tool(tool_name)
 
-    async def _cleanup_expired_sessions(self):
+    async def _cleanup_expired_sessions(self) -> None:
         """Periodically clean up expired sessions."""
         while True:
             try:

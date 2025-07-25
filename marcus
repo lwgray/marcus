@@ -1,0 +1,565 @@
+#!/usr/bin/env python3
+"""
+Marcus CLI - Multi-Agent Resource Coordination and Understanding System
+
+Usage:
+    marcus start [--http] [--port PORT] [--stdio] [--multi] [--all-tools]
+    marcus start --multi [--human-port PORT] [--agent-port PORT] [--analytics-port PORT]
+    marcus stop
+    marcus status
+    marcus logs [--tail N]
+    marcus config [--show | --edit]
+    marcus --version
+    marcus --help
+
+Examples:
+    marcus start              # Start with agent tools (default)
+    marcus start --all-tools  # Start with all tools available
+    marcus start --stdio      # Start with stdio transport
+    marcus start --multi      # Start multi-endpoint mode (default ports)
+    marcus start --multi --human-port 5001 --agent-port 5002
+    marcus start --port 5000  # Start HTTP on custom port
+    marcus status            # Check if Marcus is running
+    marcus logs --tail 50    # View recent logs
+"""
+
+import argparse
+import json
+import os
+import signal
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+
+import psutil
+
+# Add Marcus to path - resolve symlink to get actual project root
+MARCUS_ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(MARCUS_ROOT))
+
+from src.config.config_loader import get_config
+
+
+class MarcusCLI:
+    """Command-line interface for Marcus"""
+
+    def __init__(self):
+        self.config_file = MARCUS_ROOT / "config_marcus.json"
+        self.pid_file = Path.home() / ".marcus" / "marcus.pid"
+        self.log_dir = MARCUS_ROOT / "logs"
+
+    def start(self, args):
+        """Start Marcus server"""
+        # Check if already running
+        if self._is_running():
+            print("❌ Marcus is already running")
+            print("   Run 'marcus stop' first or 'marcus status' for details")
+            return 1
+
+        print("🚀 Starting Marcus...")
+
+        # Build command
+        cmd = [sys.executable, "-m", "src.marcus_mcp.server"]
+
+        # Determine transport mode
+        # Priority: explicit flags > config file
+        config = get_config()
+        transport = config.get("transport", {}).get("type", "http")
+
+        if args.stdio:
+            cmd.append("--stdio")
+            transport = "stdio"
+        elif args.multi:
+            cmd.append("--multi")
+            transport = "multi"
+
+            # Add custom port arguments if provided
+            if hasattr(args, "human_port") and args.human_port:
+                cmd.extend(["--human-port", str(args.human_port)])
+            if hasattr(args, "agent_port") and args.agent_port:
+                cmd.extend(["--agent-port", str(args.agent_port)])
+            if hasattr(args, "analytics_port") and args.analytics_port:
+                cmd.extend(["--analytics-port", str(args.analytics_port)])
+
+            # Save multi-endpoint config for status command
+            multi_config = config.get("multi_endpoint", {})
+            runtime_config = {
+                "human": {
+                    "port": (
+                        args.human_port
+                        if hasattr(args, "human_port") and args.human_port
+                        else multi_config.get("human", {}).get("port", 4298)
+                    )
+                },
+                "agent": {
+                    "port": (
+                        args.agent_port
+                        if hasattr(args, "agent_port") and args.agent_port
+                        else multi_config.get("agent", {}).get("port", 4299)
+                    )
+                },
+                "analytics": {
+                    "port": (
+                        args.analytics_port
+                        if hasattr(args, "analytics_port") and args.analytics_port
+                        else multi_config.get("analytics", {}).get("port", 4300)
+                    )
+                },
+            }
+            config_file = self.pid_file.parent / "marcus_multi_config.json"
+            config_file.parent.mkdir(exist_ok=True)
+            with open(config_file, "w") as f:
+                json.dump(runtime_config, f)
+        elif args.http or transport == "http":
+            cmd.append("--http")
+            if args.port:
+                cmd.extend(["--port", str(args.port)])
+            if hasattr(args, "all_tools") and args.all_tools:
+                cmd.append("--all-tools")
+            transport = "http"
+
+            # Save runtime config for status command
+            runtime_config = {}
+            if args.port:
+                runtime_config["port"] = args.port
+            if hasattr(args, "all_tools") and args.all_tools:
+                runtime_config["all_tools"] = True
+
+            if runtime_config:
+                config_file = self.pid_file.parent / "marcus_runtime_config.json"
+                config_file.parent.mkdir(exist_ok=True)
+                with open(config_file, "w") as f:
+                    json.dump(runtime_config, f)
+
+        # Start in background
+        if args.foreground:
+            # Run in foreground
+            try:
+                subprocess.run(cmd)
+            except KeyboardInterrupt:
+                print("\n✅ Marcus stopped")
+                return 0
+        else:
+            # Run as daemon
+            log_file = (
+                self.log_dir / f"marcus_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+            )
+            log_file.parent.mkdir(exist_ok=True)
+
+            # Check if running in stdio mode
+            if transport == "stdio":
+                # For stdio mode, we need to handle it differently
+
+                # Create a pipe for stdin that stays open
+                stdin_r, stdin_w = os.pipe()
+
+                with open(log_file, "w") as f:
+                    process = subprocess.Popen(
+                        cmd,
+                        stdin=stdin_r,
+                        stdout=f,
+                        stderr=subprocess.STDOUT,
+                        start_new_session=True,
+                        cwd=str(MARCUS_ROOT),
+                    )
+                    # Close the read end in parent process
+                    os.close(stdin_r)
+                    # Keep the write end open to prevent EOF on stdin
+                    self._save_stdio_pipe(stdin_w)
+            else:
+                # HTTP mode doesn't need stdin
+                with open(log_file, "w") as f:
+                    process = subprocess.Popen(
+                        cmd,
+                        stdout=f,
+                        stderr=subprocess.STDOUT,
+                        start_new_session=True,
+                        cwd=str(MARCUS_ROOT),
+                    )
+
+            # Save PID
+            self.pid_file.parent.mkdir(exist_ok=True)
+            self.pid_file.write_text(str(process.pid))
+
+            # Wait a moment and check if it started
+            import time
+
+            time.sleep(2)
+
+            if self._is_running():
+                print("✅ Marcus started successfully")
+                print(f"   PID: {process.pid}")
+                print(f"   Logs: {log_file}")
+
+                # Show connection info based on actual transport used
+                if transport == "multi":
+                    multi_config = config.get("multi_endpoint", {})
+                    human_port = (
+                        args.human_port
+                        if hasattr(args, "human_port") and args.human_port
+                        else multi_config.get("human", {}).get("port", 4298)
+                    )
+                    agent_port = (
+                        args.agent_port
+                        if hasattr(args, "agent_port") and args.agent_port
+                        else multi_config.get("agent", {}).get("port", 4299)
+                    )
+                    analytics_port = (
+                        args.analytics_port
+                        if hasattr(args, "analytics_port") and args.analytics_port
+                        else multi_config.get("analytics", {}).get("port", 4300)
+                    )
+
+                    print("   Transport: Multi-endpoint HTTP")
+                    print(f"   Human endpoint: http://localhost:{human_port}/mcp")
+                    print(f"   Agent endpoint: http://localhost:{agent_port}/mcp")
+                    print(
+                        f"   Analytics endpoint: http://localhost:{analytics_port}/mcp"
+                    )
+                elif transport == "http":
+                    port = args.port or config.get("transport", {}).get("http", {}).get(
+                        "port", 4298
+                    )
+                    mode = (
+                        "All Tools"
+                        if (hasattr(args, "all_tools") and args.all_tools)
+                        else "Agent Tools"
+                    )
+                    print(f"   HTTP endpoint: http://localhost:{port}/mcp")
+                    print(f"   Mode: {mode}")
+                else:
+                    print("   Transport: stdio")
+
+                return 0
+            else:
+                print("❌ Failed to start Marcus")
+                print(f"   Check logs: {log_file}")
+                return 1
+
+    def stop(self, args):
+        """Stop Marcus server"""
+        if not self._is_running():
+            print("❌ Marcus is not running")
+            return 1
+
+        pid = self._get_pid()
+        if pid:
+            print(f"🛑 Stopping Marcus (PID: {pid})...")
+            try:
+                # Send SIGTERM for graceful shutdown
+                os.kill(pid, signal.SIGTERM)
+
+                # Wait for process to stop
+                import time
+
+                for i in range(10):
+                    if not self._is_running():
+                        print("✅ Marcus stopped successfully")
+                        self.pid_file.unlink(missing_ok=True)
+                        # Clean up stdio pipe if exists
+                        pipe_file = self.pid_file.parent / "marcus_stdio.pipe"
+                        if pipe_file.exists():
+                            try:
+                                pipe_fd = int(pipe_file.read_text().strip())
+                                os.close(pipe_fd)
+                            except:
+                                pass
+                            pipe_file.unlink(missing_ok=True)
+                        # Clean up config files
+                        multi_config_file = (
+                            self.pid_file.parent / "marcus_multi_config.json"
+                        )
+                        multi_config_file.unlink(missing_ok=True)
+                        runtime_config_file = (
+                            self.pid_file.parent / "marcus_runtime_config.json"
+                        )
+                        runtime_config_file.unlink(missing_ok=True)
+                        return 0
+                    time.sleep(0.5)
+
+                # Force kill if still running
+                print("⚠️  Graceful shutdown failed, forcing stop...")
+                os.kill(pid, signal.SIGKILL)
+                self.pid_file.unlink(missing_ok=True)
+                # Clean up stdio pipe if exists
+                pipe_file = self.pid_file.parent / "marcus_stdio.pipe"
+                if pipe_file.exists():
+                    try:
+                        pipe_fd = int(pipe_file.read_text().strip())
+                        os.close(pipe_fd)
+                    except:
+                        pass
+                    pipe_file.unlink(missing_ok=True)
+                # Clean up config files
+                multi_config_file = self.pid_file.parent / "marcus_multi_config.json"
+                multi_config_file.unlink(missing_ok=True)
+                runtime_config_file = (
+                    self.pid_file.parent / "marcus_runtime_config.json"
+                )
+                runtime_config_file.unlink(missing_ok=True)
+                print("✅ Marcus stopped (forced)")
+                return 0
+
+            except ProcessLookupError:
+                print("✅ Marcus already stopped")
+                self.pid_file.unlink(missing_ok=True)
+                return 0
+            except Exception as e:
+                print(f"❌ Error stopping Marcus: {e}")
+                return 1
+
+    def status(self, args):
+        """Check Marcus status"""
+        if self._is_running():
+            pid = self._get_pid()
+            print("✅ Marcus is running")
+            print(f"   PID: {pid}")
+
+            # Get process info
+            try:
+                process = psutil.Process(pid)
+                print(f"   CPU: {process.cpu_percent(interval=0.1):.1f}%")
+                print(f"   Memory: {process.memory_info().rss / 1024 / 1024:.1f} MB")
+                print(
+                    f"   Uptime: {datetime.now() - datetime.fromtimestamp(process.create_time())}"
+                )
+            except:
+                pass
+
+            # Show transport info
+            config = get_config()
+            transport = config.get("transport", {}).get("type", "stdio")
+
+            # Check if running in multi mode by looking for config
+            multi_config_file = self.pid_file.parent / "marcus_multi_config.json"
+            if multi_config_file.exists():
+                with open(multi_config_file) as f:
+                    multi_config = json.load(f)
+                print(f"   Transport: Multi-endpoint HTTP")
+                print(
+                    f"   Human endpoint: http://localhost:{multi_config['human']['port']}/mcp"
+                )
+                print(
+                    f"   Agent endpoint: http://localhost:{multi_config['agent']['port']}/mcp"
+                )
+                print(
+                    f"   Analytics endpoint: http://localhost:{multi_config['analytics']['port']}/mcp"
+                )
+            elif transport == "http":
+                # Check for runtime config first
+                runtime_config_file = (
+                    self.pid_file.parent / "marcus_runtime_config.json"
+                )
+                all_tools = False
+                if runtime_config_file.exists():
+                    with open(runtime_config_file) as f:
+                        runtime_config = json.load(f)
+                    port = runtime_config.get("port", 4298)
+                    all_tools = runtime_config.get("all_tools", False)
+                else:
+                    http_config = config.get("transport", {}).get("http", {})
+                    port = http_config.get("port", 4298)
+
+                http_config = config.get("transport", {}).get("http", {})
+                host = http_config.get("host", "127.0.0.1")
+                mode = "All Tools" if all_tools else "Agent Tools (11 tools)"
+                print(f"   Transport: HTTP")
+                print(f"   Endpoint: http://{host}:{port}/mcp")
+                print(f"   Mode: {mode}")
+            else:
+                print(f"   Transport: stdio")
+
+        else:
+            print("❌ Marcus is not running")
+            print("   Run 'marcus start' to start the server")
+
+        return 0
+
+    def logs(self, args):
+        """View Marcus logs"""
+        if not self.log_dir.exists():
+            print("❌ No logs found")
+            return 1
+
+        # Find most recent log file
+        log_files = sorted(
+            self.log_dir.glob("marcus_*.log"), key=os.path.getmtime, reverse=True
+        )
+
+        if not log_files:
+            print("❌ No log files found")
+            return 1
+
+        log_file = log_files[0]
+        print(f"📄 Viewing: {log_file}")
+        print("-" * 60)
+
+        if args.tail:
+            # Show last N lines
+            subprocess.run(["tail", f"-n{args.tail}", str(log_file)])
+        elif args.follow:
+            # Follow log in real-time
+            try:
+                subprocess.run(["tail", "-f", str(log_file)])
+            except KeyboardInterrupt:
+                print("\n✅ Stopped following logs")
+        else:
+            # Show all
+            subprocess.run(["cat", str(log_file)])
+
+        return 0
+
+    def config(self, args):
+        """Manage Marcus configuration"""
+        if args.edit:
+            # Open in editor
+            editor = os.environ.get("EDITOR", "vi")
+            subprocess.run([editor, str(self.config_file)])
+        else:
+            # Show config
+            if self.config_file.exists():
+                with open(self.config_file) as f:
+                    config = json.load(f)
+                print(json.dumps(config, indent=2))
+            else:
+                print("❌ Config file not found")
+
+        return 0
+
+    def _is_running(self):
+        """Check if Marcus is running"""
+        pid = self._get_pid()
+        if pid:
+            try:
+                # Check if process exists
+                os.kill(pid, 0)
+                return True
+            except ProcessLookupError:
+                # Process doesn't exist, clean up PID file
+                self.pid_file.unlink(missing_ok=True)
+                return False
+        return False
+
+    def _get_pid(self):
+        """Get Marcus PID from file"""
+        if self.pid_file.exists():
+            try:
+                return int(self.pid_file.read_text().strip())
+            except:
+                pass
+        return None
+
+    def _get_transport_type(self):
+        """Get transport type from config"""
+        config = get_config()
+        return config.get("transport", {}).get("type", "stdio")
+
+    def _save_stdio_pipe(self, pipe_fd):
+        """Save stdio pipe file descriptor to keep it open"""
+        # Save the pipe fd in a file so we can close it on stop
+        pipe_file = self.pid_file.parent / "marcus_stdio.pipe"
+        pipe_file.write_text(str(pipe_fd))
+
+
+def main():
+    """Main CLI entry point"""
+    cli = MarcusCLI()
+
+    parser = argparse.ArgumentParser(
+        description="Marcus - Multi-Agent Resource Coordination and Understanding System",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  marcus start              Start with agent tools (default)
+  marcus start --all-tools  Start with all tools available
+  marcus start --stdio      Start with stdio transport
+  marcus start --multi      Start multi-endpoint mode (default ports)
+  marcus start --multi --human-port 5001 --agent-port 5002
+  marcus status            Check if running
+  marcus logs --tail 20    View recent logs
+  marcus stop              Stop the server
+        """,
+    )
+
+    parser.add_argument("--version", action="version", version="Marcus 2.0.0")
+
+    subparsers = parser.add_subparsers(dest="command", help="Commands")
+
+    # Start command
+    start_parser = subparsers.add_parser("start", help="Start Marcus server")
+    start_parser.add_argument(
+        "--http", action="store_true", help="Use HTTP transport (default)"
+    )
+    start_parser.add_argument(
+        "--stdio", action="store_true", help="Use stdio transport"
+    )
+    start_parser.add_argument(
+        "--multi", action="store_true", help="Start multi-endpoint mode"
+    )
+    start_parser.add_argument(
+        "--all-tools",
+        action="store_true",
+        help="Enable all tools (default: agent tools only)",
+    )
+    start_parser.add_argument(
+        "--port", type=int, help="HTTP port (default: 4298, single endpoint only)"
+    )
+    start_parser.add_argument(
+        "--human-port",
+        type=int,
+        help="Human endpoint port (default: 4298, multi mode only)",
+    )
+    start_parser.add_argument(
+        "--agent-port",
+        type=int,
+        help="Agent endpoint port (default: 4299, multi mode only)",
+    )
+    start_parser.add_argument(
+        "--analytics-port",
+        type=int,
+        help="Analytics endpoint port (default: 4300, multi mode only)",
+    )
+    start_parser.add_argument(
+        "-f", "--foreground", action="store_true", help="Run in foreground"
+    )
+
+    # Stop command
+    stop_parser = subparsers.add_parser("stop", help="Stop Marcus server")
+
+    # Status command
+    status_parser = subparsers.add_parser("status", help="Check Marcus status")
+
+    # Logs command
+    logs_parser = subparsers.add_parser("logs", help="View Marcus logs")
+    logs_parser.add_argument("--tail", "-n", type=int, help="Show last N lines")
+    logs_parser.add_argument(
+        "--follow", "-f", action="store_true", help="Follow log output"
+    )
+
+    # Config command
+    config_parser = subparsers.add_parser("config", help="Manage configuration")
+    config_parser.add_argument(
+        "--edit", "-e", action="store_true", help="Edit config file"
+    )
+
+    args = parser.parse_args()
+
+    # Execute command
+    if args.command == "start":
+        return cli.start(args)
+    elif args.command == "stop":
+        return cli.stop(args)
+    elif args.command == "status":
+        return cli.status(args)
+    elif args.command == "logs":
+        return cli.logs(args)
+    elif args.command == "config":
+        return cli.config(args)
+    else:
+        parser.print_help()
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
