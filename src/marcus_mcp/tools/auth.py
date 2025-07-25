@@ -6,7 +6,7 @@ This module provides tools for client registration and role-based access control
 
 from typing import Any, Dict, List, Optional
 
-from mcp.types import TextContent, Tool
+from mcp.types import Tool
 
 from ..audit import get_audit_logger
 
@@ -43,6 +43,12 @@ ROLE_TOOLS = {
         "check_assignment_health",  # Debug assignments
         # Audit and usage analytics
         "get_usage_report",  # Usage statistics
+        # Prediction and AI intelligence tools
+        "predict_completion_time",  # Project completion predictions
+        "predict_task_outcome",  # Task success probability
+        "predict_blockage_probability",  # Blockage risk analysis
+        "predict_cascade_effects",  # Delay impact analysis
+        "get_task_assignment_score",  # Agent-task fitness scoring
     ],
     "developer": [
         # Everything observers have (read access)

@@ -1215,6 +1215,87 @@ class MarcusServer:
 
                 return await impl(task_id=task_id, state=server)
 
+        # Prediction and AI intelligence tools
+        if "predict_completion_time" in allowed_tools:
+
+            @app.tool()
+            async def predict_completion_time(
+                project_id: Optional[str] = None,
+                include_confidence: bool = True,
+            ) -> Dict[str, Any]:
+                """Predict project completion time with confidence intervals."""
+                from .tools.predictions import predict_completion_time as impl
+
+                return await impl(
+                    project_id=project_id,
+                    include_confidence=include_confidence,
+                    state=server,
+                )
+
+        if "predict_task_outcome" in allowed_tools:
+
+            @app.tool()
+            async def predict_task_outcome(
+                task_id: str,
+                agent_id: Optional[str] = None,
+            ) -> Dict[str, Any]:
+                """Predict the outcome of a task assignment."""
+                from .tools.predictions import predict_task_outcome as impl
+
+                return await impl(
+                    task_id=task_id,
+                    agent_id=agent_id,
+                    state=server,
+                )
+
+        if "predict_blockage_probability" in allowed_tools:
+
+            @app.tool()
+            async def predict_blockage_probability(
+                task_id: str,
+                include_mitigation: bool = True,
+            ) -> Dict[str, Any]:
+                """Predict probability of task becoming blocked."""
+                from .tools.predictions import predict_blockage_probability as impl
+
+                return await impl(
+                    task_id=task_id,
+                    include_mitigation=include_mitigation,
+                    state=server,
+                )
+
+        if "predict_cascade_effects" in allowed_tools:
+
+            @app.tool()
+            async def predict_cascade_effects(
+                task_id: str,
+                delay_days: int = 1,
+            ) -> Dict[str, Any]:
+                """Predict cascade effects of task delays."""
+                from .tools.predictions import predict_cascade_effects as impl
+
+                return await impl(
+                    task_id=task_id,
+                    delay_days=delay_days,
+                    state=server,
+                )
+
+        if "get_task_assignment_score" in allowed_tools:
+
+            @app.tool()
+            async def get_task_assignment_score(
+                task_id: str,
+                agent_id: str,
+            ) -> Dict[str, Any]:
+                """Get assignment fitness score for agent-task pairing."""
+                from .tools.predictions import get_task_assignment_score as impl
+
+                return await impl(
+                    task_id=task_id,
+                    agent_id=agent_id,
+                    state=server,
+                )
+
         # TODO: Add remaining analytics tools for Seneca endpoint
         # This includes all pipeline analysis tools, board health tools, etc.
 
