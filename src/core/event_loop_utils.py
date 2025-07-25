@@ -31,8 +31,10 @@ class EventLoopLockManager:
         """
         Get or create a lock for the current event loop.
 
-        Returns:
-            asyncio.Lock: A lock bound to the current event loop
+        Returns
+        -------
+        asyncio.Lock
+            A lock bound to the current event loop
         """
         try:
             loop = asyncio.get_running_loop()
@@ -66,12 +68,15 @@ class ThreadLocalLockManager:
         """
         Get or create a lock for the current thread.
 
-        Returns:
-            asyncio.Lock: A lock for the current thread
+        Returns
+        -------
+        asyncio.Lock
+            A lock for the current thread
         """
         if not hasattr(self._local, "lock"):
             self._local.lock = asyncio.Lock()
-        return self._local.lock
+        lock: asyncio.Lock = self._local.lock
+        return lock
 
 
 def create_event_loop_safe_lock() -> asyncio.Lock:
@@ -81,7 +86,9 @@ def create_event_loop_safe_lock() -> asyncio.Lock:
     This is a simple factory function that creates a new lock
     in the current event loop context.
 
-    Returns:
-        asyncio.Lock: A new lock bound to the current event loop
+    Returns
+    -------
+    asyncio.Lock
+        A new lock bound to the current event loop
     """
     return asyncio.Lock()
