@@ -59,7 +59,7 @@ from src.cost_tracking.token_tracker import token_tracker  # noqa: E402
 from src.integrations.ai_analysis_engine import AIAnalysisEngine  # noqa: E402
 from src.integrations.kanban_factory import KanbanFactory  # noqa: E402
 from src.integrations.kanban_interface import KanbanInterface  # noqa: E402
-from src.marcus_mcp.handlers import get_tool_definitions, handle_tool_call  # noqa: E402
+from src.marcus_mcp.handlers import handle_tool_call  # noqa: E402
 from src.marcus_mcp.tool_groups import get_tools_for_endpoint  # noqa: E402
 from src.monitoring.assignment_monitor import AssignmentMonitor  # noqa: E402
 from src.monitoring.project_monitor import ProjectMonitor  # noqa: E402
@@ -124,7 +124,7 @@ class MarcusServer:
 
         # Assignment persistence and locking
         self.assignment_persistence = AssignmentPersistence()
-        self.assignment_lock = asyncio.Lock()
+        self._assignment_lock: Optional[asyncio.Lock] = None
         self.tasks_being_assigned: set[str] = set()
 
         # Assignment monitoring
@@ -248,6 +248,13 @@ class MarcusServer:
         # FastMCP instance for HTTP transport (created on demand)
         self._fastmcp: Optional[FastMCP] = None
         self._endpoint_apps: Dict[str, FastMCP] = {}
+
+    @property
+    def assignment_lock(self) -> asyncio.Lock:
+        """Get assignment lock, creating it if needed in the current event loop."""
+        if self._assignment_lock is None:
+            self._assignment_lock = asyncio.Lock()
+        return self._assignment_lock
 
     def _register_handlers(self) -> None:
         """Register MCP tool handlers"""
@@ -1333,9 +1340,8 @@ async def run_multi_endpoint_server(server: MarcusServer) -> None:
 
     print("\n[I] All endpoints started successfully!")
     print("\n[I] Connection examples:")
-    print(
-        "    Human (Claude Code): claude mcp add -t http marcus-human http://localhost:4298/mcp"
-    )
+    print("    Human (Claude Code): "
+          "claude mcp add -t http marcus-human http://localhost:4298/mcp")
     print("    Agent workers:       Configure to connect to http://localhost:4299/mcp")
     print("    Seneca analytics:    Configure to connect to http://localhost:4300/mcp")
     print("\n[I] Press Ctrl+C to stop all endpoints")
@@ -1369,15 +1375,8 @@ async def main() -> None:
 
     # Parse port argument for single endpoint mode
     if "--port" in sys.argv:
-        try:
-            port_idx = sys.argv.index("--port")
-            if port_idx + 1 < len(sys.argv):
-                custom_port = int(sys.argv[port_idx + 1])
-                if transport == "http":
-                    # Port override is handled elsewhere in HTTP setup
-                    pass
-        except (ValueError, IndexError):
-            pass
+        # Port override is handled by CLI argument parsing
+        pass
 
     try:
         server = MarcusServer()
