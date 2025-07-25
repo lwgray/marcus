@@ -99,11 +99,18 @@ class CircuitBreaker:
         self.name = name
         self.config = config or CircuitBreakerConfig()
         self.state = CircuitBreakerStatus()
-        self._lock = asyncio.Lock()
+        self._circuit_lock: Optional[asyncio.Lock] = None
+
+    @property
+    def lock(self) -> asyncio.Lock:
+        """Get circuit breaker lock, creating it if needed in the current event loop."""
+        if self._circuit_lock is None:
+            self._circuit_lock = asyncio.Lock()
+        return self._circuit_lock
 
     async def call(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Execute function with circuit breaker protection."""
-        async with self._lock:
+        async with self.lock:
             # Check if circuit should transition states
             await self._update_state()
 
@@ -129,14 +136,14 @@ class CircuitBreaker:
                 result = func(*args, **kwargs)
 
             # Record success
-            async with self._lock:
+            async with self.lock:
                 await self._record_success()
 
             return result
 
         except Exception as e:
             # Record failure
-            async with self._lock:
+            async with self.lock:
                 await self._record_failure(e)
             raise
 
