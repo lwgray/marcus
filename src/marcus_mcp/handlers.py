@@ -28,6 +28,12 @@ from .tools import (  # Agent tools; Task tools; Project tools; System tools; NL
     report_task_progress,
     request_next_task,
 )
+from .tools.analytics import (  # Analytics tools
+    get_agent_metrics,
+    get_project_metrics,
+    get_system_metrics,
+    get_task_metrics,
+)
 from .tools.audit_tools import (
     USAGE_REPORT_TOOL,
     get_usage_report,
@@ -40,6 +46,12 @@ from .tools.auth import (
 from .tools.board_health import (  # Board health tools
     check_board_health,
     check_task_dependencies,
+)
+from .tools.code_metrics import (  # Code metrics tools
+    get_code_metrics,
+    get_code_quality_metrics,
+    get_code_review_metrics,
+    get_repository_metrics,
 )
 from .tools.context import (  # Context tools
     log_decision,
@@ -69,6 +81,13 @@ from .tools.pipeline import (  # Pipeline tools
     start_replay,
     start_what_if_analysis,
     track_flow_progress,
+)
+from .tools.predictions import (  # Prediction tools
+    get_task_assignment_score,
+    predict_blockage_probability,
+    predict_cascade_effects,
+    predict_completion_time,
+    predict_task_outcome,
 )
 from .tools.project_management import (  # Project management tools
     add_project,
@@ -1234,6 +1253,133 @@ async def handle_tool_call(
 
         elif name == "pipeline_find_similar":
             result = await find_similar_flows(state, arguments)
+
+        # Prediction and AI intelligence tools
+        elif name == "predict_completion_time":
+            result = await predict_completion_time(
+                project_id=arguments.get("project_id"),
+                include_confidence=arguments.get("include_confidence", True),
+                state=state,
+            )
+
+        elif name == "predict_task_outcome":
+            task_id = arguments.get("task_id") if arguments else None
+            if not task_id:
+                result = {"error": "task_id is required"}
+            else:
+                result = await predict_task_outcome(
+                    task_id=task_id,
+                    agent_id=arguments.get("agent_id"),
+                    state=state,
+                )
+
+        elif name == "predict_blockage_probability":
+            task_id = arguments.get("task_id") if arguments else None
+            if not task_id:
+                result = {"error": "task_id is required"}
+            else:
+                result = await predict_blockage_probability(
+                    task_id=task_id,
+                    include_mitigation=arguments.get("include_mitigation", True),
+                    state=state,
+                )
+
+        elif name == "predict_cascade_effects":
+            task_id = arguments.get("task_id") if arguments else None
+            if not task_id:
+                result = {"error": "task_id is required"}
+            else:
+                result = await predict_cascade_effects(
+                    task_id=task_id,
+                    delay_days=arguments.get("delay_days", 1),
+                    state=state,
+                )
+
+        elif name == "get_task_assignment_score":
+            task_id = arguments.get("task_id") if arguments else None
+            agent_id = arguments.get("agent_id") if arguments else None
+            if not task_id or not agent_id:
+                result = {"error": "task_id and agent_id are required"}
+            else:
+                result = await get_task_assignment_score(
+                    task_id=task_id,
+                    agent_id=agent_id,
+                    state=state,
+                )
+
+        # Analytics and metrics tools
+        elif name == "get_system_metrics":
+            result = await get_system_metrics(
+                time_window=arguments.get("time_window", "1h"),
+                state=state,
+            )
+
+        elif name == "get_agent_metrics":
+            agent_id = arguments.get("agent_id") if arguments else None
+            if not agent_id:
+                result = {"error": "agent_id is required"}
+            else:
+                result = await get_agent_metrics(
+                    agent_id=agent_id,
+                    time_window=arguments.get("time_window", "7d"),
+                    state=state,
+                )
+
+        elif name == "get_project_metrics":
+            result = await get_project_metrics(
+                project_id=arguments.get("project_id"),
+                time_window=arguments.get("time_window", "7d"),
+                state=state,
+            )
+
+        elif name == "get_task_metrics":
+            result = await get_task_metrics(
+                time_window=arguments.get("time_window", "30d"),
+                group_by=arguments.get("group_by", "status"),
+                state=state,
+            )
+
+        # Code production metrics tools
+        elif name == "get_code_metrics":
+            agent_id = arguments.get("agent_id") if arguments else None
+            if not agent_id:
+                result = {"error": "agent_id is required"}
+            else:
+                result = await get_code_metrics(
+                    agent_id=agent_id,
+                    start_date=arguments.get("start_date"),
+                    end_date=arguments.get("end_date"),
+                    state=state,
+                )
+
+        elif name == "get_repository_metrics":
+            repository = arguments.get("repository") if arguments else None
+            if not repository:
+                result = {"error": "repository is required"}
+            else:
+                result = await get_repository_metrics(
+                    repository=repository,
+                    time_window=arguments.get("time_window", "7d"),
+                    state=state,
+                )
+
+        elif name == "get_code_review_metrics":
+            result = await get_code_review_metrics(
+                agent_id=arguments.get("agent_id"),
+                time_window=arguments.get("time_window", "7d"),
+                state=state,
+            )
+
+        elif name == "get_code_quality_metrics":
+            repository = arguments.get("repository") if arguments else None
+            if not repository:
+                result = {"error": "repository is required"}
+            else:
+                result = await get_code_quality_metrics(
+                    repository=repository,
+                    branch=arguments.get("branch", "main"),
+                    state=state,
+                )
 
         # Pattern Learning Tools removed - only accessible via visualization UI API
         elif name in [

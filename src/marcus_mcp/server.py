@@ -1426,8 +1426,233 @@ class MarcusServer:
                     state=server,
                 )
 
-        # TODO: Add remaining analytics tools for Seneca endpoint
-        # This includes all pipeline analysis tools, board health tools, etc.
+        # Pipeline tools
+        if "pipeline_replay_start" in allowed_tools:
+
+            @app.tool()
+            async def pipeline_replay_start(flow_id: str) -> Dict[str, Any]:
+                """Start replay session for a pipeline flow."""
+                from .tools.pipeline import start_replay as impl
+
+                return await impl(state=server, arguments={"flow_id": flow_id})
+
+        if "pipeline_replay_forward" in allowed_tools:
+
+            @app.tool()
+            async def pipeline_replay_forward() -> Dict[str, Any]:
+                """Step forward in pipeline replay."""
+                from .tools.pipeline import replay_step_forward as impl
+
+                return await impl(state=server, arguments={})
+
+        if "pipeline_replay_backward" in allowed_tools:
+
+            @app.tool()
+            async def pipeline_replay_backward() -> Dict[str, Any]:
+                """Step backward in pipeline replay."""
+                from .tools.pipeline import replay_step_backward as impl
+
+                return await impl(state=server, arguments={})
+
+        if "pipeline_replay_jump" in allowed_tools:
+
+            @app.tool()
+            async def pipeline_replay_jump(position: int) -> Dict[str, Any]:
+                """Jump to specific position in replay."""
+                from .tools.pipeline import replay_jump_to as impl
+
+                return await impl(state=server, arguments={"position": position})
+
+        if "what_if_start" in allowed_tools:
+
+            @app.tool()
+            async def what_if_start(flow_id: str) -> Dict[str, Any]:
+                """Start what-if analysis session."""
+                from .tools.pipeline import start_what_if_analysis as impl
+
+                return await impl(state=server, arguments={"flow_id": flow_id})
+
+        if "what_if_simulate" in allowed_tools:
+
+            @app.tool()
+            async def what_if_simulate(
+                modifications: List[Dict[str, Any]],
+            ) -> Dict[str, Any]:
+                """Simulate pipeline with modifications."""
+                from .tools.pipeline import simulate_modification as impl
+
+                return await impl(
+                    state=server, arguments={"modifications": modifications}
+                )
+
+        if "what_if_compare" in allowed_tools:
+
+            @app.tool()
+            async def what_if_compare() -> Dict[str, Any]:
+                """Compare all what-if scenarios."""
+                from .tools.pipeline import compare_what_if_scenarios as impl
+
+                return await impl(state=server, arguments={})
+
+        if "pipeline_compare" in allowed_tools:
+
+            @app.tool()
+            async def pipeline_compare(flow_ids: List[str]) -> Dict[str, Any]:
+                """Compare multiple pipeline flows."""
+                from .tools.pipeline import compare_pipelines as impl
+
+                return await impl(state=server, arguments={"flow_ids": flow_ids})
+
+        if "pipeline_report" in allowed_tools:
+
+            @app.tool()
+            async def pipeline_report(
+                flow_id: str, format: str = "html"
+            ) -> Dict[str, Any]:
+                """Generate pipeline report."""
+                from .tools.pipeline import generate_report as impl
+
+                return await impl(
+                    state=server, arguments={"flow_id": flow_id, "format": format}
+                )
+
+        if "pipeline_monitor_dashboard" in allowed_tools:
+
+            @app.tool()
+            async def pipeline_monitor_dashboard() -> Dict[str, Any]:
+                """Get live monitoring dashboard data."""
+                from .tools.pipeline import get_live_dashboard as impl
+
+                return await impl(state=server, arguments={})
+
+        if "pipeline_monitor_flow" in allowed_tools:
+
+            @app.tool()
+            async def pipeline_monitor_flow(flow_id: str) -> Dict[str, Any]:
+                """Track specific flow progress."""
+                from .tools.pipeline import track_flow_progress as impl
+
+                return await impl(state=server, arguments={"flow_id": flow_id})
+
+        if "pipeline_predict_risk" in allowed_tools:
+
+            @app.tool()
+            async def pipeline_predict_risk(flow_id: str) -> Dict[str, Any]:
+                """Predict failure risk for a flow."""
+                from .tools.pipeline import predict_failure_risk as impl
+
+                return await impl(state=server, arguments={"flow_id": flow_id})
+
+        if "pipeline_recommendations" in allowed_tools:
+
+            @app.tool()
+            async def pipeline_recommendations(flow_id: str) -> Dict[str, Any]:
+                """Get recommendations for a pipeline flow."""
+                from .tools.pipeline import get_recommendations as impl
+
+                return await impl(state=server, arguments={"flow_id": flow_id})
+
+        if "pipeline_find_similar" in allowed_tools:
+
+            @app.tool()
+            async def pipeline_find_similar(
+                flow_id: str, limit: int = 5
+            ) -> Dict[str, Any]:
+                """Find similar pipeline flows."""
+                from .tools.pipeline import find_similar_flows as impl
+
+                return await impl(
+                    state=server, arguments={"flow_id": flow_id, "limit": limit}
+                )
+
+        # Project management tools
+        if "add_project" in allowed_tools:
+
+            @app.tool()
+            async def add_project(
+                name: str,
+                provider: str,
+                config: Dict[str, Any],
+                tags: List[str] = [],
+                make_active: bool = True,
+            ) -> Dict[str, Any]:
+                """Add a new project configuration."""
+                from .tools.project_management import add_project as impl
+
+                return await impl(
+                    state=server,
+                    arguments={
+                        "name": name,
+                        "provider": provider,
+                        "config": config,
+                        "tags": tags,
+                        "make_active": make_active,
+                    },
+                )
+
+        if "remove_project" in allowed_tools:
+
+            @app.tool()
+            async def remove_project(
+                project_id: str, confirm: bool = False
+            ) -> Dict[str, Any]:
+                """Remove a project from the registry."""
+                from .tools.project_management import remove_project as impl
+
+                return await impl(
+                    state=server,
+                    arguments={"project_id": project_id, "confirm": confirm},
+                )
+
+        if "update_project" in allowed_tools:
+
+            @app.tool()
+            async def update_project(
+                project_id: str,
+                name: Optional[str] = None,
+                tags: Optional[List[str]] = None,
+                config: Optional[Dict[str, Any]] = None,
+            ) -> Dict[str, Any]:
+                """Update project configuration."""
+                from .tools.project_management import update_project as impl
+
+                return await impl(
+                    state=server,
+                    arguments={
+                        "project_id": project_id,
+                        "name": name,
+                        "tags": tags,
+                        "config": config,
+                    },
+                )
+
+        # Agent management tools
+        if "list_registered_agents" in allowed_tools:
+
+            @app.tool()
+            async def list_registered_agents() -> Dict[str, Any]:
+                """List all registered agents."""
+                from .tools.agent import list_registered_agents as impl
+
+                return await impl(state=server)
+
+        if "check_assignment_health" in allowed_tools:
+
+            @app.tool()
+            async def check_assignment_health() -> Dict[str, Any]:
+                """Check the health of the assignment tracking system."""
+                from .tools.agent import check_assignment_health as impl
+
+                return await impl(state=server)
+
+        if "check_board_health" in allowed_tools:
+
+            @app.tool()
+            async def check_board_health() -> Dict[str, Any]:
+                """Analyze overall board health and detect systemic issues."""
+                from .tools.board_health import check_board_health as impl
+
+                return await impl(state=server)
 
     async def run(self) -> None:
         """Run the MCP server."""

@@ -82,6 +82,22 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "pipeline_predict_risk",
         "pipeline_recommendations",
         "pipeline_find_similar",
+        # Prediction and AI intelligence tools
+        "predict_completion_time",
+        "predict_task_outcome",
+        "predict_blockage_probability",
+        "predict_cascade_effects",
+        "get_task_assignment_score",
+        # Analytics and metrics tools
+        "get_system_metrics",
+        "get_agent_metrics",
+        "get_project_metrics",
+        "get_task_metrics",
+        # Code production metrics tools
+        "get_code_metrics",
+        "get_repository_metrics",
+        "get_code_review_metrics",
+        "get_code_quality_metrics",
     },
 }
 
