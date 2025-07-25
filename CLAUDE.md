@@ -11,6 +11,7 @@ FILE_MANAGEMENT:
   DEVELOPMENT_BEST_PRACTICES:
   - Always use TDD when developing - no exceptions
   - Always Make sure all tests pass and you have 80% coverage
+  - Always fix the mypy errors for your code changes
 
   DOCUMENTATION_PLACEMENT_RULES:
   When creating or updating documentation:

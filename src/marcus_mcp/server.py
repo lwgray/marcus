@@ -1296,6 +1296,69 @@ class MarcusServer:
                     state=server,
                 )
 
+        # Analytics and metrics tools
+        if "get_system_metrics" in allowed_tools:
+
+            @app.tool()
+            async def get_system_metrics(
+                time_window: str = "1h",
+            ) -> Dict[str, Any]:
+                """Get current system-wide performance metrics."""
+                from .tools.analytics import get_system_metrics as impl
+
+                return await impl(
+                    time_window=time_window,
+                    state=server,
+                )
+
+        if "get_agent_metrics" in allowed_tools:
+
+            @app.tool()
+            async def get_agent_metrics(
+                agent_id: str,
+                time_window: str = "7d",
+            ) -> Dict[str, Any]:
+                """Get performance metrics for a specific agent."""
+                from .tools.analytics import get_agent_metrics as impl
+
+                return await impl(
+                    agent_id=agent_id,
+                    time_window=time_window,
+                    state=server,
+                )
+
+        if "get_project_metrics" in allowed_tools:
+
+            @app.tool()
+            async def get_project_metrics(
+                project_id: Optional[str] = None,
+                time_window: str = "7d",
+            ) -> Dict[str, Any]:
+                """Get metrics for a project including velocity and health."""
+                from .tools.analytics import get_project_metrics as impl
+
+                return await impl(
+                    project_id=project_id,
+                    time_window=time_window,
+                    state=server,
+                )
+
+        if "get_task_metrics" in allowed_tools:
+
+            @app.tool()
+            async def get_task_metrics(
+                time_window: str = "30d",
+                group_by: str = "status",
+            ) -> Dict[str, Any]:
+                """Get aggregated task metrics grouped by various fields."""
+                from .tools.analytics import get_task_metrics as impl
+
+                return await impl(
+                    time_window=time_window,
+                    group_by=group_by,
+                    state=server,
+                )
+
         # TODO: Add remaining analytics tools for Seneca endpoint
         # This includes all pipeline analysis tools, board health tools, etc.
 

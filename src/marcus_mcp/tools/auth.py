@@ -49,6 +49,11 @@ ROLE_TOOLS = {
         "predict_blockage_probability",  # Blockage risk analysis
         "predict_cascade_effects",  # Delay impact analysis
         "get_task_assignment_score",  # Agent-task fitness scoring
+        # Analytics and metrics tools
+        "get_system_metrics",  # System-wide performance metrics
+        "get_agent_metrics",  # Individual agent performance
+        "get_project_metrics",  # Project health and velocity
+        "get_task_metrics",  # Aggregated task analytics
     ],
     "developer": [
         # Everything observers have (read access)
