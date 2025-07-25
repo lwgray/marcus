@@ -190,7 +190,14 @@ class AssignmentLeaseManager:
         self.lease_history: List[Dict] = []
 
         # Prevent concurrent lease operations
-        self.lease_lock = asyncio.Lock()
+        self._lease_lock: Optional[asyncio.Lock] = None
+
+    @property
+    def lease_lock(self) -> asyncio.Lock:
+        """Get lease lock, creating it if needed in the current event loop."""
+        if self._lease_lock is None:
+            self._lease_lock = asyncio.Lock()
+        return self._lease_lock
 
     async def create_lease(
         self, task_id: str, agent_id: str, task: Optional[Task] = None

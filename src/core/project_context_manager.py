@@ -73,10 +73,17 @@ class ProjectContextManager:
         self.active_project_id: Optional[str] = None
 
         # Lock for thread-safe operations
-        self._lock = asyncio.Lock()
+        self._context_lock: Optional[asyncio.Lock] = None
 
         # Background task for cleanup
         self._cleanup_task: Optional[asyncio.Task[None]] = None
+
+    @property
+    def lock(self) -> asyncio.Lock:
+        """Get context lock, creating it if needed in the current event loop."""
+        if self._context_lock is None:
+            self._context_lock = asyncio.Lock()
+        return self._context_lock
 
     async def initialize(self) -> None:
         """Initialize the context manager"""
@@ -118,7 +125,7 @@ class ProjectContextManager:
         Returns:
             True if successful
         """
-        async with self._lock:
+        async with self.lock:
             # Get project config
             project = await self.registry.get_project(project_id)
             if not project:
@@ -425,7 +432,7 @@ class ProjectContextManager:
             try:
                 await asyncio.sleep(300)  # Check every 5 minutes
 
-                async with self._lock:
+                async with self.lock:
                     now = datetime.now()
                     idle_threshold = now - timedelta(minutes=self.IDLE_TIMEOUT_MINUTES)
 

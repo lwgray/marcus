@@ -40,7 +40,14 @@ class AssignmentPersistence:
 
         # In-memory cache
         self._assignments_cache: Dict[str, Dict[str, Any]] = {}
-        self._lock = asyncio.Lock()
+        self._lock: Optional[asyncio.Lock] = None
+
+    @property
+    def lock(self) -> asyncio.Lock:
+        """Get lock, creating it if needed in the current event loop."""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     async def save_assignment(
         self, worker_id: str, task_id: str, task_data: Dict[str, Any]
@@ -53,7 +60,7 @@ class AssignmentPersistence:
             task_id: ID of the task being assigned
             task_data: Additional task information to store
         """
-        async with self._lock:
+        async with self.lock:
             # Update cache
             self._assignments_cache[worker_id] = {
                 "task_id": task_id,
@@ -71,7 +78,7 @@ class AssignmentPersistence:
         Args:
             worker_id: ID of the worker to remove assignment for
         """
-        async with self._lock:
+        async with self.lock:
             if worker_id in self._assignments_cache:
                 del self._assignments_cache[worker_id]
                 await self._write_assignments()
@@ -86,7 +93,7 @@ class AssignmentPersistence:
         Returns:
             Assignment data or None if no assignment exists
         """
-        async with self._lock:
+        async with self.lock:
             return self._assignments_cache.get(worker_id)
 
     async def get_all_assigned_task_ids(self) -> set[str]:
@@ -96,7 +103,7 @@ class AssignmentPersistence:
         Returns:
             Set of task IDs that are currently assigned
         """
-        async with self._lock:
+        async with self.lock:
             return {
                 assignment["task_id"] for assignment in self._assignments_cache.values()
             }
@@ -108,7 +115,7 @@ class AssignmentPersistence:
         Returns:
             Dictionary of worker_id -> assignment data
         """
-        async with self._lock:
+        async with self.lock:
             if not self.assignments_file.exists():
                 return {}
 
@@ -149,7 +156,7 @@ class AssignmentPersistence:
         Returns:
             True if the task is assigned, False otherwise
         """
-        async with self._lock:
+        async with self.lock:
             for assignment in self._assignments_cache.values():
                 if assignment["task_id"] == task_id:
                     return True
@@ -165,7 +172,7 @@ class AssignmentPersistence:
         Returns:
             Worker ID or None if task is not assigned
         """
-        async with self._lock:
+        async with self.lock:
             for worker_id, assignment in self._assignments_cache.items():
                 if assignment["task_id"] == task_id:
                     return worker_id
