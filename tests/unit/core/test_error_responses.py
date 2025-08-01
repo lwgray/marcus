@@ -46,7 +46,7 @@ class TestErrorResponseConfig:
         assert config.include_remediation is True
         assert config.max_message_length == 500
         assert config.sanitize_sensitive_data is True
-        assert config.custom_fields is None
+        assert config.custom_fields == {}
 
     def test_config_custom_values(self):
         """Test ErrorResponseConfig with custom values"""
