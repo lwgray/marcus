@@ -38,7 +38,9 @@ from src.core.models import (
 from src.marcus_mcp.server import MarcusServer
 
 
-def get_text_content(content: types.TextContent | types.ImageContent | types.EmbeddedResource) -> str:
+def get_text_content(
+    content: types.TextContent | types.ImageContent | types.EmbeddedResource,
+) -> str:
     """Helper to extract text from MCP content types."""
     if isinstance(content, types.TextContent):
         return content.text
@@ -146,7 +148,7 @@ class TestMarcusServerInitialization:
     @patch("src.config.config_loader.ConfigLoader")
     @patch("pathlib.Path.exists")
     @patch("builtins.open", new_callable=mock_open)
-    @patch("src.marcus_mcp.server.Path.mkdir")
+    @patch("src.marcus_mcp.server.core.Path.mkdir")
     def test_server_initialization_success(
         self,
         mock_mkdir,
@@ -187,7 +189,7 @@ class TestMarcusServerInitialization:
     @patch("src.config.config_loader.ConfigLoader")
     @patch("pathlib.Path.exists")
     @patch("builtins.open", new_callable=mock_open)
-    @patch("src.marcus_mcp.server.Path.mkdir")
+    @patch("src.marcus_mcp.server.core.Path.mkdir")
     @patch.dict(os.environ, {}, clear=True)
     def test_server_initialization_with_github(
         self, mock_mkdir, mock_file, mock_path_exists, mock_config_loader_class
@@ -243,7 +245,7 @@ class TestKanbanInitialization:
         with patch("src.config.config_loader.ConfigLoader") as mock_config_loader_class:
             with patch("pathlib.Path.exists", return_value=False):
                 with patch("builtins.open", mock_open()):
-                    with patch("src.marcus_mcp.server.Path.mkdir"):
+                    with patch("src.marcus_mcp.server.core.Path.mkdir"):
                         config_data = {
                             "kanban": {"provider": "planka"},
                             "features": {
@@ -259,7 +261,7 @@ class TestKanbanInitialization:
                         return server
 
     @pytest.mark.asyncio
-    @patch("src.marcus_mcp.server.KanbanFactory.create")
+    @patch("src.kanban.kanban_factory.KanbanFactory.create")
     @patch.object(MarcusServer, "_ensure_environment_config")
     async def test_initialize_kanban_success(
         self, mock_ensure_config, mock_factory, server
@@ -281,7 +283,7 @@ class TestKanbanInitialization:
         assert server.assignment_monitor is not None
 
     @pytest.mark.asyncio
-    @patch("src.marcus_mcp.server.KanbanFactory.create")
+    @patch("src.kanban.kanban_factory.KanbanFactory.create")
     @patch.object(MarcusServer, "_ensure_environment_config")
     async def test_initialize_kanban_invalid_client(
         self, mock_ensure_config, mock_factory, server
@@ -297,13 +299,14 @@ class TestKanbanInitialization:
         error = exc_info.value
         assert "client_initialization failed for board planka" in str(error)
         assert (
-            error.context.custom_context and error.context.custom_context.get("details")
+            error.context.custom_context
+            and error.context.custom_context.get("details")
             and "does not support task creation"
             in error.context.custom_context["details"]
         )
 
     @pytest.mark.asyncio
-    @patch("src.marcus_mcp.server.KanbanFactory.create")
+    @patch("src.kanban.kanban_factory.KanbanFactory.create")
     @patch.object(MarcusServer, "_ensure_environment_config")
     async def test_initialize_kanban_connection_failure(
         self, mock_ensure_config, mock_factory, server
@@ -321,7 +324,8 @@ class TestKanbanInitialization:
         error = exc_info.value
         assert "client_initialization failed for board planka" in str(error)
         assert (
-            error.context.custom_context and error.context.custom_context.get("details")
+            error.context.custom_context
+            and error.context.custom_context.get("details")
             and "Failed to initialize kanban client"
             in error.context.custom_context["details"]
         )
@@ -348,7 +352,7 @@ class TestEnvironmentConfiguration:
         with patch("src.config.config_loader.ConfigLoader") as mock_config_loader_class:
             with patch("pathlib.Path.exists", return_value=False):
                 with patch("builtins.open", mock_open()):
-                    with patch("src.marcus_mcp.server.Path.mkdir"):
+                    with patch("src.marcus_mcp.server.core.Path.mkdir"):
                         config_data = {
                             "kanban": {"provider": "planka"},
                             "features": {
@@ -438,7 +442,7 @@ class TestEventLogging:
                 mock_config_loader_class.return_value = mock_config_loader
                 mock_file = MagicMock()
                 with patch("builtins.open", return_value=mock_file):
-                    with patch("src.marcus_mcp.server.Path.mkdir"):
+                    with patch("src.marcus_mcp.server.core.Path.mkdir"):
                         server = MarcusServer()
                         server.realtime_log = mock_file
                         return server
@@ -498,7 +502,7 @@ class TestProjectStateRefresh:
                 mock_config_loader = MockConfigLoader(config_data)
                 mock_config_loader_class.return_value = mock_config_loader
                 with patch("builtins.open", mock_open()):
-                    with patch("src.marcus_mcp.server.Path.mkdir"):
+                    with patch("src.marcus_mcp.server.core.Path.mkdir"):
                         server = MarcusServer()
                         server.kanban_client = AsyncMock()
                         server.kanban_client.board_id = "test-board-id"
@@ -588,7 +592,7 @@ class TestMCPHandlers:
                 mock_config_loader = MockConfigLoader(config_data)
                 mock_config_loader_class.return_value = mock_config_loader
                 with patch("builtins.open", mock_open()):
-                    with patch("src.marcus_mcp.server.Path.mkdir"):
+                    with patch("src.marcus_mcp.server.core.Path.mkdir"):
                         return MarcusServer()
 
     @pytest.mark.asyncio
@@ -642,11 +646,11 @@ class TestServerRunMethod:
                 mock_config_loader = MockConfigLoader(config_data)
                 mock_config_loader_class.return_value = mock_config_loader
                 with patch("builtins.open", mock_open()):
-                    with patch("src.marcus_mcp.server.Path.mkdir"):
+                    with patch("src.marcus_mcp.server.core.Path.mkdir"):
                         return MarcusServer()
 
     @pytest.mark.asyncio
-    @patch("src.marcus_mcp.server.stdio_server")
+    @patch("src.marcus_mcp.server.lifecycle.stdio_server")
     async def test_run_method(self, mock_stdio, server):
         """Test server run method"""
         # Mock stdio server context manager
@@ -686,7 +690,7 @@ class TestEdgeCases:
                 mock_config_loader = MockConfigLoader(config_data)
                 mock_config_loader_class.return_value = mock_config_loader
                 with patch("builtins.open", mock_open()):
-                    with patch("src.marcus_mcp.server.Path.mkdir"):
+                    with patch("src.marcus_mcp.server.core.Path.mkdir"):
                         return MarcusServer()
 
     def test_server_initialization_with_missing_config(self):
@@ -703,14 +707,14 @@ class TestEdgeCases:
         mock_config = MockConfigLoader(config_data)
         # Provide valid JSON content for all file reads
         default_json = "{}"
-        with patch("src.marcus_mcp.server.get_config", return_value=mock_config):
+        with patch("src.config.config_loader.get_config", return_value=mock_config):
             with patch("src.config.config_loader.get_config", return_value=mock_config):
                 with patch(
                     "src.core.project_context_manager.get_config",
                     return_value=mock_config,
                 ):
                     with patch("builtins.open", mock_open(read_data=default_json)):
-                        with patch("src.marcus_mcp.server.Path.mkdir"):
+                        with patch("src.marcus_mcp.server.core.Path.mkdir"):
                             server = MarcusServer()
                             # Should default to planka
                             assert server.provider == "planka"
@@ -768,7 +772,7 @@ class TestEdgeCases:
                 mock_config_loader = MockConfigLoader(config_data)
                 mock_config_loader_class.return_value = mock_config_loader
                 with patch("builtins.open", mock_open()) as mock_file:
-                    with patch("src.marcus_mcp.server.Path.mkdir"):
+                    with patch("src.marcus_mcp.server.core.Path.mkdir"):
                         with patch("atexit.register") as mock_atexit:
                             server = MarcusServer()
 
@@ -800,7 +804,7 @@ class TestConcurrencyAndLocking:
                 mock_config_loader = MockConfigLoader(config_data)
                 mock_config_loader_class.return_value = mock_config_loader
                 with patch("builtins.open", mock_open()):
-                    with patch("src.marcus_mcp.server.Path.mkdir"):
+                    with patch("src.marcus_mcp.server.core.Path.mkdir"):
                         return MarcusServer()
 
     def test_assignment_lock_created(self, server):
@@ -821,7 +825,7 @@ class TestMainEntryPoint:
     """Test suite for main entry point"""
 
     @pytest.mark.asyncio
-    @patch("src.marcus_mcp.server.register_marcus_service")
+    @patch("src.core.service_registry.register_marcus_service")
     @patch("src.marcus_mcp.server.MarcusServer")
     async def test_main_function(self, mock_server_class, mock_register_service):
         """Test main entry point function"""
@@ -866,7 +870,7 @@ class TestToolIntegration:
                 mock_config_loader = MockConfigLoader(config_data)
                 mock_config_loader_class.return_value = mock_config_loader
                 with patch("builtins.open", mock_open()):
-                    with patch("src.marcus_mcp.server.Path.mkdir"):
+                    with patch("src.marcus_mcp.server.core.Path.mkdir"):
                         server = MarcusServer()
                         # Mock kanban client
                         server.kanban_client = AsyncMock()

@@ -69,6 +69,7 @@ strict_equality = true
 ignore_missing_imports = true
 namespace_packages = true
 explicit_package_bases = true
+exclude = ["src/marcus_mcp/server.py"]  # Exclude compatibility shim to avoid duplicate module error
 
 # Per-module options for gradual adoption
 [[tool.mypy.overrides]]
