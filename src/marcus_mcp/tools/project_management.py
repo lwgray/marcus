@@ -9,7 +9,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from src.core.project_registry import ProjectConfig
-from src.logging.conversation_logger import conversation_logger
+from src.logging.conversation import conversation_logger
 
 logger = logging.getLogger(__name__)
 

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from src.logging.agent_events import log_agent_event
-from src.logging.conversation_logger import conversation_logger, log_thinking
+from src.logging.conversation import conversation_logger, log_thinking
 from src.monitoring.assignment_monitor import AssignmentHealthChecker
 
 

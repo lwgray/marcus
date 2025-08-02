@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, Optional
 
 from src.cost_tracking.token_tracker import token_tracker
-from src.logging.conversation_logger import conversation_logger
+from src.logging.conversation import conversation_logger
 
 
 class AIUsageMiddleware:

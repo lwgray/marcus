@@ -9,7 +9,7 @@ import logging
 from typing import Any, Dict
 
 from src.core.board_health_analyzer import BoardHealthAnalyzer
-from src.logging.conversation_logger import log_thinking
+from src.logging.conversation import log_thinking
 from src.marcus_mcp.utils import serialize_for_mcp
 
 logger = logging.getLogger(__name__)
