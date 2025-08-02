@@ -30,7 +30,9 @@ from src.marcus_mcp.handlers.tool_executor import handle_tool_call
 from src.marcus_mcp.server.core import MarcusServer
 
 
-def get_text_content(content: types.TextContent | types.ImageContent | types.EmbeddedResource) -> str:
+def get_text_content(
+    content: types.TextContent | types.ImageContent | types.EmbeddedResource,
+) -> str:
     """Helper to extract text from MCP content types."""
     if isinstance(content, types.TextContent):
         return content.text
