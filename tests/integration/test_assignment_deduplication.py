@@ -20,7 +20,7 @@ from src.core.models import Priority, Task, TaskStatus, WorkerStatus
 from src.integrations.kanban_interface import KanbanInterface
 
 # Import the components we'll be testing
-from src.marcus_mcp.server import MarcusServer
+from src.marcus_mcp.server.core import MarcusServer
 from src.marcus_mcp.tools.task import find_optimal_task_for_agent, request_next_task
 
 

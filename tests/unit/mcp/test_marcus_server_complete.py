@@ -25,8 +25,9 @@ from src.core.models import (
     TaskStatus,
     WorkerStatus,
 )
-from src.marcus_mcp.handlers import get_tool_definitions, handle_tool_call
-from src.marcus_mcp.server import MarcusServer
+from src.marcus_mcp.handlers.tool_definitions import get_tool_definitions
+from src.marcus_mcp.handlers.tool_executor import handle_tool_call
+from src.marcus_mcp.server.core import MarcusServer
 
 
 def get_text_content(content: types.TextContent | types.ImageContent | types.EmbeddedResource) -> str:

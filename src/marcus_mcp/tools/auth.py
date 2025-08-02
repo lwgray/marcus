@@ -278,7 +278,7 @@ def get_client_tools(client_id: Optional[str], state: Any) -> List[str]:
     # If admin, return all tools
     if "*" in tools:
         # Return all tool names from the registry
-        from ..handlers import get_all_tool_names
+        from ..handlers.tool_definitions import get_all_tool_names
 
         return get_all_tool_names()
 
@@ -301,7 +301,7 @@ def get_tool_definitions_for_client(client_id: Optional[str], state: Any) -> Lis
     List[Tool]
         List of tool definitions available to the client
     """
-    from ..handlers import get_all_tool_definitions
+    from ..handlers.tool_definitions import get_all_tool_definitions
 
     # Get allowed tools for this client
     allowed_tools = get_client_tools(client_id, state)

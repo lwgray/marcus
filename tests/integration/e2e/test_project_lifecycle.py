@@ -11,8 +11,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.marcus_mcp.handlers import handle_tool_call
-from src.marcus_mcp.server import MarcusServer
+from src.marcus_mcp.handlers.tool_executor import handle_tool_call
+from src.marcus_mcp.server.core import MarcusServer
 from tests.fixtures.factories import AgentFactory, TaskFactory
 from tests.utils.base import BaseTestCase
 

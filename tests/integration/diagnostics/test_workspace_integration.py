@@ -17,7 +17,7 @@ sys.path.insert(
 )
 
 from src.core.workspace import WorkspaceManager, WorkspaceSecurityError
-from src.marcus_mcp.server import MarcusServer
+from src.marcus_mcp.server.core import MarcusServer
 
 
 class TestWorkspaceIntegration:

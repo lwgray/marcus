@@ -1,11 +1,10 @@
 """
 MCP Handlers Module.
 
-This module provides backward compatibility while the actual implementation
-has been refactored into submodules for better organization.
+This module organizes tool handling functionality into logical components.
 """
 
-# Import main functions for backward compatibility
+# Core exports
 from .tool_definitions import (
     get_all_tool_definitions,
     get_all_tool_names,

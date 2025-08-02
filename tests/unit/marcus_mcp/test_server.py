@@ -35,7 +35,7 @@ from src.core.models import (
     TaskStatus,
     WorkerStatus,
 )
-from src.marcus_mcp.server import MarcusServer
+from src.marcus_mcp.server.core import MarcusServer
 
 
 def get_text_content(
@@ -600,7 +600,7 @@ class TestMCPHandlers:
         """Test list_tools handler returns tool definitions"""
         # The handlers are registered via decorators, we can't access them directly
         # Instead, verify that get_tool_definitions is available and returns expected tools
-        from src.marcus_mcp.handlers import get_tool_definitions
+        from src.marcus_mcp.handlers.tool_definitions import get_tool_definitions
 
         tools = get_tool_definitions()
         assert len(tools) > 0  # Should have tools registered
@@ -614,7 +614,7 @@ class TestMCPHandlers:
     @pytest.mark.asyncio
     async def test_call_tool_handler(self, server):
         """Test call_tool handler delegates correctly"""
-        from src.marcus_mcp.handlers import handle_tool_call
+        from src.marcus_mcp.handlers.tool_executor import handle_tool_call
 
         # Test handle_tool_call directly with ping tool
         result = await handle_tool_call("ping", {"echo": "test"}, server)
@@ -842,7 +842,7 @@ class TestMainEntryPoint:
             "log_dir": "/tmp",
         }
 
-        from src.marcus_mcp.server import main
+        from src.marcus_mcp.server.main import main
 
         await main()
 
@@ -886,7 +886,7 @@ class TestToolIntegration:
     @pytest.mark.asyncio
     async def test_register_agent_tool(self, server):
         """Test agent registration through tool handler"""
-        from src.marcus_mcp.handlers import handle_tool_call
+        from src.marcus_mcp.handlers.tool_executor import handle_tool_call
 
         result = await handle_tool_call(
             "register_agent",
@@ -907,7 +907,7 @@ class TestToolIntegration:
     @pytest.mark.asyncio
     async def test_request_next_task_tool(self, server):
         """Test task request through tool handler"""
-        from src.marcus_mcp.handlers import handle_tool_call
+        from src.marcus_mcp.handlers.tool_executor import handle_tool_call
 
         # Register agent first
         server.agent_status["test-001"] = WorkerStatus(
@@ -934,7 +934,7 @@ class TestToolIntegration:
     @pytest.mark.asyncio
     async def test_get_project_status_tool(self, server):
         """Test project status through tool handler"""
-        from src.marcus_mcp.handlers import handle_tool_call
+        from src.marcus_mcp.handlers.tool_executor import handle_tool_call
 
         # Mock some tasks
         server.kanban_client.get_all_tasks.return_value = [

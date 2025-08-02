@@ -23,8 +23,8 @@ from src.core.error_framework import (
     KanbanIntegrationError,
 )
 from src.core.models import Priority, RiskLevel, TaskStatus, WorkerStatus
-from src.marcus_mcp.handlers import handle_tool_call
-from src.marcus_mcp.server import MarcusServer
+from src.marcus_mcp.handlers.tool_executor import handle_tool_call
+from src.marcus_mcp.server.core import MarcusServer
 from tests.fixtures.factories import (
     AgentFactory,
     BlockerFactory,

@@ -10,7 +10,7 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from src.marcus_mcp.server import MarcusServer
+from src.marcus_mcp.server.core import MarcusServer
 
 
 async def test_create_project():
@@ -42,7 +42,7 @@ async def test_create_project():
     print("Creating project through MCP...")
 
     # Import the handler
-    from src.marcus_mcp.handlers import handle_tool_call
+    from src.marcus_mcp.handlers.tool_executor import handle_tool_call
 
     try:
         # Call the tool

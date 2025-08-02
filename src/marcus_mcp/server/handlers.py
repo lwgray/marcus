@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 
 import mcp.types as types
 
-from src.marcus_mcp.handlers import handle_tool_call
+from src.marcus_mcp.handlers.tool_executor import handle_tool_call
 from src.marcus_mcp.tools.auth import get_tool_definitions_for_client
 
 logger = logging.getLogger(__name__)

@@ -16,8 +16,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import mcp.types as types  # noqa: E402
 
-from src.marcus_mcp.handlers import get_tool_definitions
-from src.marcus_mcp.server import MarcusServer
+from src.marcus_mcp.handlers.tool_definitions import get_tool_definitions
+from src.marcus_mcp.server.core import MarcusServer
 
 
 class AgentMarcusServer(MarcusServer):
@@ -63,7 +63,7 @@ class AgentMarcusServer(MarcusServer):
                 ]
 
             # Call parent handler
-            from src.marcus_mcp.handlers import handle_tool_call
+            from src.marcus_mcp.handlers.tool_executor import handle_tool_call
 
             return await handle_tool_call(name, arguments, self)
 
