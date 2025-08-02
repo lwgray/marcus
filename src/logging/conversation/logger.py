@@ -8,7 +8,6 @@ the original API while delegating to specialized logger components.
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from .base import ConversationLoggerBase
 from .pm_operations import PMOperationsLogger
 from .system_monitoring import SystemMonitoringLogger
 from .task_management import TaskManagementLogger
@@ -170,3 +169,7 @@ class ConversationLogger:
             worker_states,
             performance_indicators,
         )
+
+
+# Create global instance
+conversation_logger = ConversationLogger()

@@ -16,7 +16,8 @@ from typing import Any, Dict, List, Optional
 from src.core.ai_powered_task_assignment import find_optimal_task_for_agent_ai_powered
 from src.core.models import Priority, Task, TaskAssignment, TaskStatus
 from src.logging.agent_events import log_agent_event
-from src.logging.conversation import conversation_logger, log_thinking
+from src.logging.conversation.logger import conversation_logger
+from src.logging.conversation.utils import log_thinking
 from src.marcus_mcp.utils import serialize_for_mcp
 
 logger = logging.getLogger(__name__)

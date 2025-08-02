@@ -16,8 +16,7 @@ from src.core.context import Context
 from src.core.events import Events
 from src.core.models import TaskAssignment
 from src.core.persistence import Persistence, SQLitePersistence
-from src.integrations.github_provider import GitHubProvider
-from src.integrations.planka_provider import PlankaProvider
+from src.integrations.kanban_factory import KanbanFactory
 from src.monitoring.assignment_monitor import AssignmentMonitor
 from src.visualization.event_integrated_visualizer import EventIntegratedVisualizer
 
@@ -213,36 +212,8 @@ class ServerInitializer:
             if not board_name:
                 raise ValueError("No board name configured for single project mode")
 
-            # Create kanban client based on provider
-            if self.server.provider == "planka":
-                base_url = os.getenv("PLANKA_BASE_URL")
-                if not base_url:
-                    raise ValueError("PLANKA_BASE_URL not set")
-
-                kanban_client = PlankaProvider(
-                    base_url=base_url,
-                    email=os.getenv("PLANKA_EMAIL", ""),
-                    password=os.getenv("PLANKA_PASSWORD", ""),
-                )
-                await kanban_client.initialize()
-
-            elif self.server.provider == "github":
-                token = os.getenv("GITHUB_TOKEN")
-                if not token:
-                    raise ValueError("GITHUB_TOKEN not set")
-
-                repo = self.config.get("kanban.github_repo")
-                if not repo:
-                    raise ValueError("GitHub repository not configured")
-
-                kanban_client = GitHubProvider(
-                    token=token,
-                    repo=repo,
-                    project_number=self.config.get("kanban.github_project_number"),
-                )
-                await kanban_client.initialize()
-            else:
-                raise ValueError(f"Unsupported provider: {self.server.provider}")
+            # Create kanban client using factory
+            kanban_client = KanbanFactory.create(self.server.provider)
 
             # Validate board exists
             await kanban_client.get_board(board_name)

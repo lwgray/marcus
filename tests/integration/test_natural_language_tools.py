@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from src.ai.advanced.prd.advanced_parser import TaskGenerationResult
+from src.ai.advanced.prd.parser import TaskGenerationResult
 from src.core.models import Priority, Task, TaskStatus
 
 # Test imports

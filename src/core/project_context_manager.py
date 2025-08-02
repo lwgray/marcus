@@ -25,7 +25,7 @@ from src.core.persistence import Persistence
 from src.core.project_registry import ProjectConfig, ProjectRegistry
 from src.integrations.kanban_factory import KanbanFactory
 from src.integrations.kanban_interface import KanbanInterface
-from src.logging.conversation import conversation_logger
+from src.logging.conversation.logger import conversation_logger
 
 logger = logging.getLogger(__name__)
 

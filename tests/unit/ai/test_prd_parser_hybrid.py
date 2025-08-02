@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from src.ai.advanced.prd.advanced_parser import (
+from src.ai.advanced.prd.parser import (
     AdvancedPRDParser,
     PRDAnalysis,
     ProjectConstraints,
@@ -20,8 +20,8 @@ class TestPRDParserHybridApproach:
     @pytest.fixture
     def parser(self):
         """Create parser with mocked dependencies"""
-        with patch("src.ai.advanced.prd.advanced_parser.LLMAbstraction"):
-            with patch("src.ai.advanced.prd.advanced_parser.HybridDependencyInferer"):
+        with patch("src.ai.advanced.prd.parser.LLMAbstraction"):
+            with patch("src.ai.advanced.prd.parser.HybridDependencyInferer"):
                 return AdvancedPRDParser()
 
     @pytest.fixture

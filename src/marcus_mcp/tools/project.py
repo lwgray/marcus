@@ -8,7 +8,7 @@ This module contains tools for monitoring project progress and metrics:
 from typing import Any, Dict, List
 
 from src.core.models import TaskStatus
-from src.logging.conversation import conversation_logger
+from src.logging.conversation.logger import conversation_logger
 from src.marcus_mcp.utils import serialize_for_mcp
 
 

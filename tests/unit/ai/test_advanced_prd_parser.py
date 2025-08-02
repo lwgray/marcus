@@ -11,7 +11,8 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from src.ai.advanced.prd.advanced_parser import AdvancedPRDParser, ProjectConstraints
+from src.ai.advanced.prd.parser.advanced_parser import AdvancedPRDParser
+from src.ai.advanced.prd.parser.models import ProjectConstraints
 from src.core.error_framework import AIProviderError
 
 
@@ -35,17 +36,18 @@ class TestAdvancedPRDParserErrorHandling:
     @pytest.fixture
     def parser(self, mock_llm_client, mock_dependency_inferer):
         """Create AdvancedPRDParser with mocked dependencies"""
-        with patch(
-            "src.ai.advanced.prd.advanced_parser.LLMAbstraction"
-        ) as mock_llm_class:
+        with patch("src.ai.providers.llm_abstraction.LLMAbstraction") as mock_llm_class:
             mock_llm_class.return_value = mock_llm_client
             with patch(
-                "src.ai.advanced.prd.advanced_parser.HybridDependencyInferer"
+                "src.intelligence.dependency_inferer_hybrid.HybridDependencyInferer"
             ) as mock_dep_class:
                 mock_dep_class.return_value = mock_dependency_inferer
-                parser = AdvancedPRDParser()
-                parser.llm_client = mock_llm_client  # Ensure our mock is used
-                return parser
+                # Need to patch the get_llm_provider method to return our mock
+                with patch.object(
+                    AdvancedPRDParser, "_get_llm_provider", return_value=mock_llm_client
+                ):
+                    parser = AdvancedPRDParser()
+                    return parser
 
     @pytest.fixture
     def sample_prd_content(self):
@@ -73,7 +75,7 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Act & Assert
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(sample_prd_content)
+            await parser.prd_analyzer.analyze_prd_deeply(sample_prd_content)
 
         error = exc_info.value
         assert error.service_name == "LLM"
@@ -103,7 +105,7 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Act & Assert
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(sample_prd_content)
+            await parser.prd_analyzer.analyze_prd_deeply(sample_prd_content)
 
         error = exc_info.value
         assert error.service_name == "LLM"
@@ -131,7 +133,7 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Act & Assert
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(sample_prd_content)
+            await parser.prd_analyzer.analyze_prd_deeply(sample_prd_content)
 
         error = exc_info.value
         assert error.service_name == "LLM"
@@ -156,7 +158,7 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Act & Assert
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(sample_prd_content)
+            await parser.prd_analyzer.analyze_prd_deeply(sample_prd_content)
 
         error = exc_info.value
         assert error.service_name == "LLM"
@@ -180,7 +182,7 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Act & Assert
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(sample_prd_content)
+            await parser.prd_analyzer.analyze_prd_deeply(sample_prd_content)
 
         error = exc_info.value
         assert error.service_name == "LLM"
@@ -230,7 +232,7 @@ class TestAdvancedPRDParserErrorHandling:
         mock_llm_client.analyze.return_value = json.dumps(valid_response)
 
         # Act
-        result = await parser._analyze_prd_deeply(sample_prd_content)
+        result = await parser.prd_analyzer.analyze_prd_deeply(sample_prd_content)
 
         # Assert
         assert len(result.functional_requirements) == 2
@@ -256,7 +258,7 @@ class TestAdvancedPRDParserErrorHandling:
         ) as mock_record:
             # Act & Assert
             with pytest.raises(AIProviderError):
-                await parser._analyze_prd_deeply(sample_prd_content)
+                await parser.prd_analyzer.analyze_prd_deeply(sample_prd_content)
 
             # Verify error was recorded for monitoring
             mock_record.assert_called_once()
@@ -287,7 +289,7 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Act & Assert
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(sample_prd_content)
+            await parser.prd_analyzer.analyze_prd_deeply(sample_prd_content)
 
         error = exc_info.value
         context = error.context.custom_context
@@ -324,12 +326,12 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Test short PRD
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(short_prd)
+            await parser.prd_analyzer.analyze_prd_deeply(short_prd)
         assert exc_info.value.context.custom_context["prd_length"] == len(short_prd)
 
         # Test long PRD
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(long_prd)
+            await parser.prd_analyzer.analyze_prd_deeply(long_prd)
         assert exc_info.value.context.custom_context["prd_length"] == len(long_prd)
 
         # Verify preview is truncated for long content
@@ -344,9 +346,17 @@ class TestAdvancedPRDParserTaskGeneration:
     @pytest.fixture
     def parser(self):
         """Create parser instance with mocked dependencies"""
-        with patch("src.ai.advanced.prd.advanced_parser.LLMAbstraction"):
-            with patch("src.ai.advanced.prd.advanced_parser.HybridDependencyInferer"):
-                return AdvancedPRDParser()
+        mock_llm = Mock()
+        mock_llm.analyze = AsyncMock()
+        with patch("src.ai.providers.llm_abstraction.LLMAbstraction") as mock_llm_class:
+            mock_llm_class.return_value = mock_llm
+            with patch(
+                "src.intelligence.dependency_inferer_hybrid.HybridDependencyInferer"
+            ):
+                with patch.object(
+                    AdvancedPRDParser, "_get_llm_provider", return_value=mock_llm
+                ):
+                    return AdvancedPRDParser()
 
     @pytest.fixture
     def mock_constraints(self):
@@ -379,8 +389,10 @@ class TestAdvancedPRDParserTaskGeneration:
         with patch("src.utils.json_parser.parse_ai_json_response") as mock_parse:
             mock_parse.return_value = camelcase_data
 
-            with patch.object(parser.llm_client, "analyze", new_callable=AsyncMock):
-                result = await parser._analyze_prd_deeply("Test PRD")
+            with patch.object(
+                parser.prd_analyzer.llm_provider, "analyze", new_callable=AsyncMock
+            ):
+                result = await parser.prd_analyzer.analyze_prd_deeply("Test PRD")
 
                 assert len(result.functional_requirements) == 1
                 assert result.functional_requirements[0]["feature"] == "CRUD"
@@ -393,7 +405,7 @@ class TestAdvancedPRDParserTaskGeneration:
         self, parser, mock_constraints
     ):
         """Test that each functional requirement gets a unique epic ID"""
-        from src.ai.advanced.prd.advanced_parser import PRDAnalysis
+        from src.ai.advanced.prd.parser.models import PRDAnalysis
 
         prd_analysis = PRDAnalysis(
             functional_requirements=[
@@ -412,7 +424,7 @@ class TestAdvancedPRDParserTaskGeneration:
             confidence=0.8,
         )
 
-        hierarchy = await parser._generate_task_hierarchy(
+        hierarchy = await parser.hierarchy_builder.generate_task_hierarchy(
             prd_analysis, mock_constraints
         )
 
@@ -428,7 +440,7 @@ class TestAdvancedPRDParserTaskGeneration:
         self, parser, mock_constraints
     ):
         """Test that task IDs are based on feature names"""
-        from src.ai.advanced.prd.advanced_parser import PRDAnalysis
+        from src.ai.advanced.prd.parser.models import PRDAnalysis
 
         req1 = {"feature": "CRUD Operations", "description": "CRUD"}
         req2 = {"feature": "User Auth", "description": "Auth"}
@@ -446,8 +458,12 @@ class TestAdvancedPRDParserTaskGeneration:
             confidence=0.8,
         )
 
-        tasks1 = await parser._break_down_epic(req1, analysis, mock_constraints)
-        tasks2 = await parser._break_down_epic(req2, analysis, mock_constraints)
+        tasks1 = await parser.hierarchy_builder.break_down_epic(
+            req1, analysis, mock_constraints
+        )
+        tasks2 = await parser.hierarchy_builder.break_down_epic(
+            req2, analysis, mock_constraints
+        )
 
         # Check task IDs are unique and based on feature
         assert tasks1[0]["id"] == "task_crud_operations_design"
@@ -473,7 +489,7 @@ class TestAdvancedPRDParserTaskGeneration:
             {"requirement": "Security", "description": "Secure"},
         ]
 
-        tasks = await parser._create_nfr_tasks(nfrs, mock_constraints)
+        tasks = await parser.hierarchy_builder.create_nfr_tasks(nfrs, mock_constraints)
 
         assert len(tasks) == 2
         assert tasks[0]["id"] == "nfr_task_performance"
@@ -487,7 +503,7 @@ class TestAdvancedPRDParserTaskGeneration:
         self, parser, mock_constraints
     ):
         """Test that all functional requirements generate tasks"""
-        from src.ai.advanced.prd.advanced_parser import PRDAnalysis
+        from src.ai.advanced.prd.parser.models import PRDAnalysis
 
         prd_analysis = PRDAnalysis(
             functional_requirements=[
@@ -517,7 +533,7 @@ class TestAdvancedPRDParserTaskGeneration:
         )
 
         # Generate hierarchy
-        hierarchy = await parser._generate_task_hierarchy(
+        hierarchy = await parser.hierarchy_builder.generate_task_hierarchy(
             prd_analysis, mock_constraints
         )
 

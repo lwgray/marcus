@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-from src.ai.advanced.prd.advanced_parser import AdvancedPRDParser
+from src.ai.advanced.prd.parser import AdvancedPRDParser
 from src.core.error_framework import AIProviderError
 
 

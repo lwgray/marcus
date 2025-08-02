@@ -11,7 +11,7 @@ from datetime import datetime
 
 import pytest
 
-from src.ai.advanced.prd.advanced_parser import AdvancedPRDParser, ProjectConstraints
+from src.ai.advanced.prd.parser import AdvancedPRDParser, ProjectConstraints
 from src.core.error_framework import AIProviderError
 
 

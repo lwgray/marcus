@@ -17,7 +17,8 @@ from typing import Any, Dict, List, Optional
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
-from src.ai.advanced.prd.advanced_parser import AdvancedPRDParser, ProjectConstraints
+from src.ai.advanced.prd.parser.advanced_parser import AdvancedPRDParser
+from src.ai.advanced.prd.parser.models import ProjectConstraints
 from src.ai.core.ai_engine import MarcusAIEngine
 from src.ai.types import AnalysisContext
 from src.core.models import Priority, Task, TaskStatus

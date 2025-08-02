@@ -11,7 +11,8 @@ from typing import Any, Dict, List
 
 from src.core.models import WorkerStatus
 from src.logging.agent_events import log_agent_event
-from src.logging.conversation import conversation_logger, log_thinking
+from src.logging.conversation.logger import conversation_logger
+from src.logging.conversation.utils import log_thinking
 
 
 async def register_agent(

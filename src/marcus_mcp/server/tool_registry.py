@@ -38,25 +38,26 @@ from src.marcus_mcp.tools.board_health import (
     check_board_health,
     check_task_dependencies,
 )
-from src.marcus_mcp.tools.code_metrics import (
-    analyze_code_changes,
-    analyze_pr_impact,
-    get_code_metrics,
-    get_pr_complexity,
-)
-from src.marcus_mcp.tools.decision import log_decision
-from src.marcus_mcp.tools.nlp import (
-    analyze_task_clarity,
-    extract_entities,
-    generate_task_summary,
-    suggest_task_labels,
-)
+from src.marcus_mcp.tools.code_metrics import get_code_metrics
+
+# from src.marcus_mcp.tools.decision import log_decision  # Not implemented yet
+from src.marcus_mcp.tools.nlp import add_feature as add_feature_nlp
+from src.marcus_mcp.tools.nlp import create_project as create_project_nlp
+
+# NOTE: These NLP tools are not yet implemented
+# from src.marcus_mcp.tools.nlp import (
+#     analyze_task_clarity,
+#     extract_entities,
+#     generate_task_summary,
+#     suggest_task_labels,
+# )
 from src.marcus_mcp.tools.project_management import (
     get_current_project,
     list_projects,
     switch_project,
 )
-from src.marcus_mcp.tools.security import validate_token
+
+# from src.marcus_mcp.tools.security import validate_token  # Not implemented yet
 
 logger = logging.getLogger(__name__)
 
@@ -316,42 +317,63 @@ class ToolRegistry:
 
     def _register_nlp_tools(self, app: FastMCP) -> None:
         """Register NLP analysis tools."""
+        # NOTE: These NLP analysis tools are not yet implemented
+        # @app.tool(
+        #     name="analyze_task_clarity",
+        #     description="Analyze the clarity and completeness of a task description",
+        # )
+        # async def analyze_task_clarity_tool(task_description: str) -> Dict[str, Any]:
+        #     """Analyze task clarity."""
+        #     return await analyze_task_clarity(task_description, self.server)
 
-        @app.tool(
-            name="analyze_task_clarity",
-            description="Analyze the clarity and completeness of a task description",
-        )
-        async def analyze_task_clarity_tool(task_description: str) -> Dict[str, Any]:
-            """Analyze task clarity."""
-            return await analyze_task_clarity(task_description, self.server)
+        # @app.tool(
+        #     name="generate_task_summary",
+        #     description="Generate a concise summary of a task",
+        # )
+        # async def generate_task_summary_tool(
+        #     task_description: str, max_length: Optional[int] = 100
+        # ) -> Dict[str, Any]:
+        #     """Generate task summary."""
+        #     return await generate_task_summary(
+        #         task_description, self.server, max_length
+        #     )
 
+        # @app.tool(
+        #     name="extract_entities",
+        #     description="Extract entities (technologies, components, etc.) from text",
+        # )
+        # async def extract_entities_tool(text: str) -> Dict[str, Any]:
+        #     """Extract entities."""
+        #     return await extract_entities(text, self.server)
+
+        # @app.tool(
+        #     name="suggest_task_labels",
+        #     description="Suggest appropriate labels for a task",
+        # )
+        # async def suggest_task_labels_tool(task_description: str) -> Dict[str, Any]:
+        #     """Suggest task labels."""
+        #     return await suggest_task_labels(task_description, self.server)
+
+        # Register the actual NLP tools that exist
         @app.tool(
-            name="generate_task_summary",
-            description="Generate a concise summary of a task",
+            name="create_project_from_description",
+            description="Create a new project from natural language description",
         )
-        async def generate_task_summary_tool(
-            task_description: str, max_length: Optional[int] = 100
+        async def create_project_from_description_tool(
+            description: str, project_name: str
         ) -> Dict[str, Any]:
-            """Generate task summary."""
-            return await generate_task_summary(
-                task_description, self.server, max_length
-            )
+            """Create project from natural language."""
+            return await create_project_nlp(description, project_name, self.server)
 
         @app.tool(
-            name="extract_entities",
-            description="Extract entities (technologies, components, etc.) from text",
+            name="add_feature_to_project",
+            description="Add a feature to existing project using natural language",
         )
-        async def extract_entities_tool(text: str) -> Dict[str, Any]:
-            """Extract entities."""
-            return await extract_entities(text, self.server)
-
-        @app.tool(
-            name="suggest_task_labels",
-            description="Suggest appropriate labels for a task",
-        )
-        async def suggest_task_labels_tool(task_description: str) -> Dict[str, Any]:
-            """Suggest task labels."""
-            return await suggest_task_labels(task_description, self.server)
+        async def add_feature_to_project_tool(
+            feature_description: str,
+        ) -> Dict[str, Any]:
+            """Add feature from natural language."""
+            return await add_feature_nlp(feature_description, self.server)
 
     def _register_code_analysis_tools(self, app: FastMCP) -> None:
         """Register code analysis tools (GitHub only)."""
@@ -364,29 +386,30 @@ class ToolRegistry:
             """Get code metrics."""
             return await get_code_metrics(self.server)
 
-        @app.tool(
-            name="analyze_code_changes",
-            description="Analyze code changes in a pull request",
-        )
-        async def analyze_code_changes_tool(pr_number: int) -> Dict[str, Any]:
-            """Analyze code changes."""
-            return await analyze_code_changes(pr_number, self.server)
+        # NOTE: These tools are not yet implemented in code_metrics.py
+        # @app.tool(
+        #     name="analyze_code_changes",
+        #     description="Analyze code changes in a pull request",
+        # )
+        # async def analyze_code_changes_tool(pr_number: int) -> Dict[str, Any]:
+        #     """Analyze code changes."""
+        #     return await analyze_code_changes(pr_number, self.server)
 
-        @app.tool(
-            name="get_pr_complexity",
-            description="Calculate complexity score for a pull request",
-        )
-        async def get_pr_complexity_tool(pr_number: int) -> Dict[str, Any]:
-            """Get PR complexity."""
-            return await get_pr_complexity(pr_number, self.server)
+        # @app.tool(
+        #     name="get_pr_complexity",
+        #     description="Calculate complexity score for a pull request",
+        # )
+        # async def get_pr_complexity_tool(pr_number: int) -> Dict[str, Any]:
+        #     """Get PR complexity."""
+        #     return await get_pr_complexity(pr_number, self.server)
 
-        @app.tool(
-            name="analyze_pr_impact",
-            description="Analyze the potential impact of a pull request",
-        )
-        async def analyze_pr_impact_tool(pr_number: int) -> Dict[str, Any]:
-            """Analyze PR impact."""
-            return await analyze_pr_impact(pr_number, self.server)
+        # @app.tool(
+        #     name="analyze_pr_impact",
+        #     description="Analyze the potential impact of a pull request",
+        # )
+        # async def analyze_pr_impact_tool(pr_number: int) -> Dict[str, Any]:
+        #     """Analyze PR impact."""
+        #     return await analyze_pr_impact(pr_number, self.server)
 
     def _register_agent_endpoint_tools(self, app: FastMCP) -> None:
         """Register tools specific to agent endpoints."""
@@ -413,27 +436,28 @@ class ToolRegistry:
             """Get task context."""
             return await get_task_context(task_id, self.server)
 
-        # Add decision logging
-        @app.tool(
-            name="log_decision",
-            description="Log an important decision made during task execution",
-        )
-        async def log_decision_tool(
-            task_id: str,
-            decision_type: str,
-            description: str,
-            rationale: str,
-            alternatives: Optional[List[str]] = None,
-        ) -> Dict[str, Any]:
-            """Log decision."""
-            return await log_decision(
-                task_id,
-                decision_type,
-                description,
-                rationale,
-                self.server,
-                alternatives,
-            )
+        # NOTE: Decision logging not yet implemented
+        # # Add decision logging
+        # @app.tool(
+        #     name="log_decision",
+        #     description="Log an important decision made during task execution",
+        # )
+        # async def log_decision_tool(
+        #     task_id: str,
+        #     decision_type: str,
+        #     description: str,
+        #     rationale: str,
+        #     alternatives: Optional[List[str]] = None,
+        # ) -> Dict[str, Any]:
+        #     """Log decision."""
+        #     return await log_decision(
+        #         task_id,
+        #         decision_type,
+        #         description,
+        #         rationale,
+        #         self.server,
+        #         alternatives,
+        #     )
 
         # Add artifact logging
         @app.tool(
@@ -478,11 +502,12 @@ class ToolRegistry:
             """Get usage report."""
             return await get_usage_report(self.server, start_date, end_date, group_by)
 
-        # Add token validation
-        @app.tool(name="validate_token", description="Validate an authentication token")
-        async def validate_token_tool(token: str) -> Dict[str, Any]:
-            """Validate token."""
-            return await validate_token(token, self.server)
+        # NOTE: Token validation not yet implemented
+        # # Add token validation
+        # @app.tool(name="validate_token", description="Validate an authentication token")
+        # async def validate_token_tool(token: str) -> Dict[str, Any]:
+        #     """Validate token."""
+        #     return await validate_token(token, self.server)
 
     def _register_public_endpoint_tools(self, app: FastMCP) -> None:
         """Register tools specific to public endpoints."""

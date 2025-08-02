@@ -1,5 +1,6 @@
 """Advanced PRD Parsing Components"""
 
-from .advanced_parser import AdvancedPRDParser, PRDAnalysis, TaskGenerationResult
+from .parser.advanced_parser import AdvancedPRDParser
+from .parser.models import PRDAnalysis, TaskGenerationResult
 
 __all__ = ["AdvancedPRDParser", "TaskGenerationResult", "PRDAnalysis"]

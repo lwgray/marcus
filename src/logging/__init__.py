@@ -47,19 +47,9 @@ Log files are automatically rotated with timestamps for organization.
 The logging system supports real-time visualization and replay capabilities.
 """
 
-from typing import TYPE_CHECKING
-
-from .conversation_logger import (
-    ConversationLogger,
-    ConversationType,
-    conversation_logger,
-    log_conversation,
-    log_thinking,
-)
-
-if TYPE_CHECKING:
-    from datetime import datetime
-    from typing import Any, Dict, List, Optional
+from .conversation.conversation_types import ConversationType
+from .conversation.logger import ConversationLogger, conversation_logger
+from .conversation.utils import log_conversation, log_thinking
 
 __all__ = [
     "ConversationLogger",
