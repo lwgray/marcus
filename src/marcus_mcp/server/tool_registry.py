@@ -103,7 +103,8 @@ class ToolRegistry:
         if self.server.provider == "github":
             self._register_code_analysis_tools(app)
 
-        logger.info(f"Registered {len(app._tools)} tools with FastMCP")
+        # FastMCP doesn't expose tool count directly
+        logger.info("Registered tools with FastMCP")
 
     def register_endpoint_tools(self, app: FastMCP, endpoint_type: str) -> None:
         """

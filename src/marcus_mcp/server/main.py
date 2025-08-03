@@ -48,27 +48,69 @@ async def main() -> None:
     lifecycle = LifecycleManager(server)
     lifecycle.setup_signal_handlers()
 
-    # Check transport mode
-    transport = os.getenv("MCP_TRANSPORT", "stdio")
+    # Check transport mode - command line args take precedence
+    transport = "stdio"  # Safe default
+    
+    # Check command line arguments first
+    if "--http" in sys.argv:
+        transport = "http"
+    elif "--stdio" in sys.argv:
+        transport = "stdio"
+    elif "--multi" in sys.argv:
+        transport = "multi"
+    else:
+        # Check environment variable
+        env_transport = os.getenv("MCP_TRANSPORT")
+        if env_transport:
+            transport = env_transport
+        else:
+            # Check config file
+            transport_config = config.get("transport", {})
+            config_transport = transport_config.get("type")
+            if config_transport:
+                transport = config_transport
 
     if transport == "http":
-        # HTTP transport with multiple endpoints
-        endpoints = config.get("http_endpoints", {})
-        if not endpoints:
-            logger.error("HTTP transport requested but no endpoints configured")
-            sys.exit(1)
-
+        # HTTP transport with FastMCP
         logger.info("Starting Marcus in HTTP transport mode...")
-
+        
+        # Initialize server first
+        initializer = ServerInitializer(server)
+        await initializer.initialize()
+        
+        # Create FastMCP instance using TransportManager
+        from .transport import TransportManager
+        transport_manager = TransportManager(server)
+        fastmcp_app = transport_manager.create_fastmcp()
+        
+        # Run with uvicorn
+        import uvicorn
+        
+        # Get port from command line or config
+        port = 4298  # Default port
+        for i, arg in enumerate(sys.argv):
+            if arg == "--port" and i + 1 < len(sys.argv):
+                try:
+                    port = int(sys.argv[i + 1])
+                except ValueError:
+                    pass
+        
         # Register service
         register_marcus_service(
             name="marcus-mcp-http",
             transport="http",
-            endpoints=endpoints,
+            port=port,
         )
-
-        # Run multi-endpoint server
-        await run_multi_endpoint_server(server)
+        
+        # Run the HTTP server
+        await uvicorn.Server(
+            uvicorn.Config(
+                fastmcp_app,
+                host="0.0.0.0",
+                port=port,
+                log_level="info",
+            )
+        ).serve()
 
     else:
         # Default stdio transport

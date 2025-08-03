@@ -36,14 +36,10 @@ class TransportManager:
             Configured FastMCP instance
         """
         if self.server._fastmcp is None:
-            # Create FastMCP wrapper
+            # Create FastMCP instance
             self.server._fastmcp = FastMCP(
-                self.server.server,
-                info={
-                    "name": "Marcus MCP Server",
-                    "version": "1.0.0",
-                    "description": "AI-powered engineering orchestration server",
-                },
+                "Marcus MCP Server",
+                description="AI-powered engineering orchestration server",
             )
 
             # Register tools
@@ -51,14 +47,6 @@ class TransportManager:
 
             registry = ToolRegistry(self.server)
             registry.register_fastmcp_tools(self.server._fastmcp)
-
-            # Configure middleware
-            @self.server._fastmcp.middleware
-            async def log_requests(request, call_next):
-                """Log all incoming requests."""
-                audit_logger.info(f"FastMCP request: {request.url.path}")
-                response = await call_next(request)
-                return response
 
         return self.server._fastmcp
 
@@ -77,12 +65,8 @@ class TransportManager:
         if endpoint_type not in self.server._endpoint_apps:
             # Create endpoint-specific app
             app = FastMCP(
-                self.server.server,
-                info={
-                    "name": f"Marcus {endpoint_type.title()} Endpoint",
-                    "version": "1.0.0",
-                    "description": f"Marcus MCP {endpoint_type} endpoint",
-                },
+                f"Marcus {endpoint_type.title()} Endpoint",
+                description=f"Marcus MCP {endpoint_type} endpoint",
             )
 
             # Register endpoint-specific tools
@@ -90,16 +74,6 @@ class TransportManager:
 
             registry = ToolRegistry(self.server)
             registry.register_endpoint_tools(app, endpoint_type)
-
-            # Configure middleware
-            @app.middleware
-            async def log_endpoint_requests(request, call_next):
-                """Log endpoint-specific requests."""
-                audit_logger.info(
-                    f"{endpoint_type.upper()} endpoint request: {request.url.path}"
-                )
-                response = await call_next(request)
-                return response
 
             self.server._endpoint_apps[endpoint_type] = app
 
