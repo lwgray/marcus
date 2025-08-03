@@ -96,8 +96,11 @@ async def main() -> None:
                     pass
         
         # Register service
+        import platform
+        from pathlib import Path
         register_marcus_service(
-            name="marcus-mcp-http",
+            mcp_command=f"{sys.executable} -m src.marcus_mcp.server --http --port {port}",
+            log_dir=str(Path.cwd() / "logs"),
             transport="http",
             port=port,
         )
@@ -117,8 +120,10 @@ async def main() -> None:
         logger.info("Starting Marcus in stdio transport mode...")
 
         # Register service
+        from pathlib import Path
         register_marcus_service(
-            name="marcus-mcp-stdio",
+            mcp_command=f"{sys.executable} -m src.marcus_mcp.server --stdio",
+            log_dir=str(Path.cwd() / "logs"),
             transport="stdio",
         )
 
