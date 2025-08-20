@@ -33,6 +33,7 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "log_artifact",
         "check_task_dependencies",
         "get_agent_status",
+        "create_project",  # NLP project creation for autonomous agents
     },
     "analytics": {
         # All tools for comprehensive analytics (Seneca)
