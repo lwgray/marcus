@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Clear all cards from the Task Master Test board
+Clear all cards from specified board
 """
 
 import asyncio
@@ -45,8 +45,8 @@ async def check_board_availability():
         return False
 
 
-async def clear_board():
-    """Clear all cards from the Task Master Test board"""
+async def clear_board(board):
+    """Clear all cards from the board"""
 
     server_params = StdioServerParameters(
         command="node",
@@ -54,7 +54,7 @@ async def clear_board():
         env=os.environ.copy(),
     )
 
-    print("🧹 Board Cleaner for Task Master Test")
+    print(f"🧹 Board Cleaner for {board}")
     print("=" * 50)
 
     # Check if board is available first
@@ -85,8 +85,8 @@ async def clear_board():
             async with ClientSession(read, write) as session:
                 await session.initialize()
 
-                # Find Task Master Test project
-                print("\n📋 Finding Task Master Test project...")
+                # Find project
+                print("\n📋 Finding {board} project...")
                 result = await session.call_tool(
                     "mcp_kanban_project_board_manager",
                     {"action": "get_projects", "page": 1, "perPage": 25},
@@ -95,7 +95,7 @@ async def clear_board():
                 # Check if result has content before parsing
                 if not result or not result.content or not result.content[0].text:
                     raise KanbanIntegrationError(
-                        board_name="Task Master Test",
+                        board_name=board,
                         operation="get_projects",
                         context=ErrorContext(
                             operation="clear_board", integration_name="planka_mcp"
@@ -112,13 +112,13 @@ async def clear_board():
                 board_id = None
 
                 for project in projects_data["items"]:
-                    if project["name"] == "Task Master Test":
+                    if project["name"] == board:
                         project_id = project["id"]
                         print(f"✅ Found project: {project['name']} (ID: {project_id})")
                         break
 
                 if not project_id:
-                    print("❌ Task Master Test project not found!")
+                    print(f"❌ {board} project not found!")
                     return
 
                 # Find the board
@@ -130,7 +130,7 @@ async def clear_board():
                             break
 
                 if not board_id:
-                    print("❌ No board found for Task Master Test!")
+                    print("❌ No board found for {board}!")
                     return
 
                 # Get board summary
@@ -195,7 +195,7 @@ async def clear_board():
 
     except json.JSONDecodeError as e:
         raise KanbanIntegrationError(
-            board_name="Task Master Test",
+            board_name=board,
             operation="parse_response",
             context=ErrorContext(
                 operation="clear_board",
@@ -223,7 +223,7 @@ async def clear_board():
 
         # Wrap other errors
         raise KanbanIntegrationError(
-            board_name="Task Master Test",
+            board_name=board,
             operation="clear_board",
             context=ErrorContext(
                 operation="clear_board",
@@ -252,7 +252,7 @@ async def clear_board_silent():
         async with ClientSession(read, write) as session:
             await session.initialize()
 
-            # Find Task Master Test project
+            # Find project
             result = await session.call_tool(
                 "mcp_kanban_project_board_manager",
                 {"action": "get_projects", "page": 1, "perPage": 25},
@@ -263,12 +263,12 @@ async def clear_board_silent():
             board_id = None
 
             for project in projects_data["items"]:
-                if project["name"] == "Task Master Test":
+                if project["name"] == board:
                     project_id = project["id"]
                     break
 
             if not project_id:
-                return False, "Task Master Test project not found!"
+                return False, f"{board} project not found!"
 
             # Find the board
             if "boards" in projects_data.get("included", {}):
@@ -278,7 +278,7 @@ async def clear_board_silent():
                         break
 
             if not board_id:
-                return False, "No board found for Task Master Test!"
+                return False, f"No board found for {board}!"
 
             # Get board summary
             summary_result = await session.call_tool(
@@ -337,7 +337,7 @@ def display_marcus_error(error):
 
 if __name__ == "__main__":
     try:
-        asyncio.run(clear_board())
+        asyncio.run(clear_board(sys.argv[1]))
     except (ServiceUnavailableError, KanbanIntegrationError) as e:
         display_marcus_error(e)
         sys.exit(1)
