@@ -943,11 +943,14 @@ async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Tas
 
         # Special handling for PROJECT_SUCCESS documentation
         # Calculate project completion percentage
+        # Exclude PROJECT_SUCCESS tasks from the calculation since they should only
+        # be assigned after other tasks are complete
         total_non_doc_tasks = len(
             [
                 t
                 for t in state.project_tasks
-                if not any(
+                if "PROJECT_SUCCESS" not in t.name
+                and not any(
                     label in (t.labels or [])
                     for label in ["documentation", "final", "verification"]
                 )
@@ -958,6 +961,7 @@ async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Tas
                 t
                 for t in state.project_tasks
                 if t.status == TaskStatus.DONE
+                and "PROJECT_SUCCESS" not in t.name
                 and not any(
                     label in (t.labels or [])
                     for label in ["documentation", "final", "verification"]
@@ -965,13 +969,23 @@ async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Tas
             ]
         )
 
-        if total_non_doc_tasks > 0:
+        # Special case: If PROJECT_SUCCESS is the only task left, make it available
+        project_success_tasks = [
+            t for t in available_tasks if "PROJECT_SUCCESS" in t.name
+        ]
+        if project_success_tasks and len(available_tasks) == len(project_success_tasks):
+            # All available tasks are PROJECT_SUCCESS tasks, don't filter them
+            logger.debug(
+                "PROJECT_SUCCESS is the only available task - making it assignable"
+            )
+        elif total_non_doc_tasks > 0:
             completion_percentage = (
                 completed_non_doc_tasks / total_non_doc_tasks
             ) * 100
 
             # Filter out PROJECT_SUCCESS tasks if project is not nearly complete
-            if completion_percentage < 95:
+            # Using 90% threshold since some tasks might be blocked or optional
+            if completion_percentage < 90:
                 available_tasks = [
                     t for t in available_tasks if "PROJECT_SUCCESS" not in t.name
                 ]
