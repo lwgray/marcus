@@ -1,8 +1,8 @@
 """
-Integration tests for artifact working directory handling.
+Integration tests for artifact project root handling.
 
-These tests verify that artifacts are created in the correct directories
-and that Marcus installation directory is never used for artifact storage.
+These tests verify that artifacts are created in the project root directory
+and that all agents working on the same project can see each other's artifacts.
 No mocking - uses real file system operations.
 """
 
@@ -31,23 +31,23 @@ class MockState:
         self.kanban_client = None
 
 
-class TestArtifactWorkingDirectory:
-    """Test suite for artifact working directory handling."""
+class TestArtifactProjectRoot:
+    """Test suite for artifact project root handling."""
 
     @pytest.mark.asyncio
-    async def test_log_artifact_with_working_directory(self):
-        """Test that artifacts are created in the specified working directory."""
+    async def test_log_artifact_with_project_root(self):
+        """Test that artifacts are created in the specified project root directory."""
         with tempfile.TemporaryDirectory() as temp_dir:
             working_dir = Path(temp_dir)
             state = MockState()
 
-            # Create artifact with working_directory
+            # Create artifact with project_root
             result = await log_artifact(
                 task_id="test-task-1",
                 filename="api_spec.md",
                 content="# API Specification\n\nTest content",
                 artifact_type="api",
-                working_directory=str(working_dir),
+                project_root=str(working_dir),
                 description="Test API spec",
                 state=state,
             )
@@ -69,11 +69,11 @@ class TestArtifactWorkingDirectory:
             assert artifacts[0]["location"] == "docs/api/api_spec.md"
 
     @pytest.mark.asyncio
-    async def test_log_artifact_without_working_directory_fails(self):
-        """Test that log_artifact fails when working_directory is not provided."""
+    async def test_log_artifact_without_project_root_fails(self):
+        """Test that log_artifact fails when project_root is not provided."""
         state = MockState()
 
-        # Try to create artifact without working_directory
+        # Try to create artifact without project_root
         result = await log_artifact(
             task_id="test-task-2",
             filename="design.md",
@@ -84,7 +84,7 @@ class TestArtifactWorkingDirectory:
 
         # Should fail
         assert result["success"] is False
-        assert "working_directory is required" in result["error"]
+        assert "project_root is required" in result["error"]
 
         # No artifacts should be created
         assert "test-task-2" not in state.task_artifacts
@@ -96,7 +96,7 @@ class TestArtifactWorkingDirectory:
         marcus_dir = Path(__file__).parent.parent.parent  # Marcus root
 
         # Try various ways that might default to Marcus directory
-        # 1. Without working_directory
+        # 1. Without project_root
         result1 = await log_artifact(
             task_id="test-task-3",
             filename="test1.md",
@@ -112,7 +112,7 @@ class TestArtifactWorkingDirectory:
             filename="test2.md",
             content="Test",
             artifact_type="documentation",
-            working_directory="",
+            project_root="",
             state=state,
         )
         assert result2["success"] is False
@@ -123,7 +123,7 @@ class TestArtifactWorkingDirectory:
             filename="test3.md",
             content="Test",
             artifact_type="documentation",
-            working_directory=None,
+            project_root=None,
             state=state,
         )
         assert result3["success"] is False
@@ -138,7 +138,7 @@ class TestArtifactWorkingDirectory:
                 ), f"{test_file} should not exist in Marcus directory"
 
     @pytest.mark.asyncio
-    async def test_get_task_context_with_working_directory(self):
+    async def test_get_task_context_with_project_root(self):
         """Test that get_task_context only returns artifacts from specified directory."""
         with tempfile.TemporaryDirectory() as temp_dir:
             working_dir = Path(temp_dir)
@@ -169,7 +169,7 @@ class TestArtifactWorkingDirectory:
                 filename="spec.md",
                 content="# Specification",
                 artifact_type="specification",
-                working_directory=str(working_dir),
+                project_root=str(working_dir),
                 state=state,
             )
 
@@ -182,14 +182,14 @@ class TestArtifactWorkingDirectory:
                     filename="other.md",
                     content="# Other",
                     artifact_type="documentation",
-                    working_directory=str(other_working_dir),
+                    project_root=str(other_working_dir),
                     state=other_state,
                 )
 
-                # Get context with working_directory
+                # Get context with project_root
                 result = await get_task_context(
                     task_id="test-task-4",
-                    working_directory=str(working_dir),
+                    project_root=str(working_dir),
                     state=state,
                 )
 
@@ -208,8 +208,8 @@ class TestArtifactWorkingDirectory:
                 assert not any("other.md" in a["filename"] for a in artifacts)
 
     @pytest.mark.asyncio
-    async def test_get_task_context_without_working_directory_returns_empty(self):
-        """Test that get_task_context returns empty artifacts without working_directory."""
+    async def test_get_task_context_without_project_root_returns_empty(self):
+        """Test that get_task_context returns empty artifacts without project_root."""
         state = MockState()
 
         # Create a task
@@ -231,7 +231,7 @@ class TestArtifactWorkingDirectory:
         )
         state.project_tasks = [task]
 
-        # Get context without working_directory
+        # Get context without project_root
         result = await get_task_context(
             task_id="test-task-5",
             state=state,
@@ -244,71 +244,56 @@ class TestArtifactWorkingDirectory:
         assert context["artifacts"] == []  # No artifacts without working directory
 
     @pytest.mark.asyncio
-    async def test_multiple_agents_artifact_isolation(self):
-        """Test that artifacts from different agents remain isolated."""
-        # Create separate directories for two agents
-        with (
-            tempfile.TemporaryDirectory() as agent1_dir,
-            tempfile.TemporaryDirectory() as agent2_dir,
-        ):
-            agent1_working = Path(agent1_dir)
-            agent2_working = Path(agent2_dir)
+    async def test_multiple_agents_same_project_share_artifacts(self):
+        """Test that multiple agents working in the same project directory share artifacts."""
+        # Create a single project directory used by all agents
+        with tempfile.TemporaryDirectory() as project_dir:
+            project_root_path = Path(project_dir)
 
             state1 = MockState()
             state2 = MockState()
 
-            # Agent 1 creates artifacts
+            # Agent 1 creates artifacts in the project directory
             await log_artifact(
                 task_id="task-agent1",
                 filename="agent1_design.md",
                 content="# Agent 1 Design",
                 artifact_type="design",
-                working_directory=str(agent1_working),
+                project_root=str(project_root_path),  # Same project directory
                 state=state1,
             )
 
-            # Agent 2 creates artifacts
+            # Agent 2 creates artifacts in the same project directory
             await log_artifact(
                 task_id="task-agent2",
                 filename="agent2_design.md",
                 content="# Agent 2 Design",
                 artifact_type="design",
-                working_directory=str(agent2_working),
+                project_root=str(project_root_path),  # Same project directory
                 state=state2,
             )
 
-            # Verify isolation - Agent 1's artifacts only in agent1_dir
-            agent1_design = agent1_working / "docs" / "design" / "agent1_design.md"
+            # Verify both artifacts exist in the same project directory
+            agent1_design = project_root_path / "docs" / "design" / "agent1_design.md"
+            agent2_design = project_root_path / "docs" / "design" / "agent2_design.md"
             assert agent1_design.exists()
-            assert not (
-                agent1_working / "docs" / "design" / "agent2_design.md"
-            ).exists()
-
-            # Verify isolation - Agent 2's artifacts only in agent2_dir
-            agent2_design = agent2_working / "docs" / "design" / "agent2_design.md"
             assert agent2_design.exists()
-            assert not (
-                agent2_working / "docs" / "design" / "agent1_design.md"
-            ).exists()
 
-            # Verify artifact discovery is isolated
-            discovered1 = await _discover_artifacts_in_standard_locations(
-                working_dir=agent1_working
-            )
-            discovered2 = await _discover_artifacts_in_standard_locations(
-                working_dir=agent2_working
+            # Verify artifact discovery finds both artifacts
+            discovered = await _discover_artifacts_in_standard_locations(
+                working_dir=project_root_path
             )
 
-            # Each should only find their own artifacts
-            assert any("agent1_design.md" in a["filename"] for a in discovered1)
-            assert not any("agent2_design.md" in a["filename"] for a in discovered1)
+            # All agents can see all artifacts in the project
+            assert any("agent1_design.md" in a["filename"] for a in discovered)
+            assert any("agent2_design.md" in a["filename"] for a in discovered)
 
-            assert any("agent2_design.md" in a["filename"] for a in discovered2)
-            assert not any("agent1_design.md" in a["filename"] for a in discovered2)
+            # Both artifacts should be in the same directory
+            assert agent1_design.parent == agent2_design.parent
 
     @pytest.mark.asyncio
-    async def test_invalid_working_directory_paths(self):
-        """Test that invalid working directory paths are rejected."""
+    async def test_invalid_project_root_paths(self):
+        """Test that invalid project root paths are rejected."""
         state = MockState()
 
         # Test with relative path
@@ -317,11 +302,11 @@ class TestArtifactWorkingDirectory:
             filename="test.md",
             content="Test",
             artifact_type="documentation",
-            working_directory="./relative/path",
+            project_root="./relative/path",
             state=state,
         )
         assert result["success"] is False
-        assert "must be absolute path" in result["error"]
+        assert "must be an absolute path" in result["error"]
 
         # Test with non-existent directory
         result = await log_artifact(
@@ -329,15 +314,15 @@ class TestArtifactWorkingDirectory:
             filename="test.md",
             content="Test",
             artifact_type="documentation",
-            working_directory="/nonexistent/directory/path",
+            project_root="/nonexistent/directory/path",
             state=state,
         )
         assert result["success"] is False
         assert "does not exist" in result["error"]
 
     @pytest.mark.asyncio
-    async def test_artifact_with_custom_location_within_working_directory(self):
-        """Test that custom locations are still relative to working directory."""
+    async def test_artifact_with_custom_location_within_project_root(self):
+        """Test that custom locations are still relative to project root."""
         with tempfile.TemporaryDirectory() as temp_dir:
             working_dir = Path(temp_dir)
             state = MockState()
@@ -348,7 +333,7 @@ class TestArtifactWorkingDirectory:
                 filename="custom.md",
                 content="# Custom Location",
                 artifact_type="documentation",
-                working_directory=str(working_dir),
+                project_root=str(working_dir),
                 location="custom/path/to/custom.md",  # Custom relative path including filename
                 state=state,
             )

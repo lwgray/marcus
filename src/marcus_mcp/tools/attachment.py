@@ -28,7 +28,7 @@ async def log_artifact(
     filename: str,
     content: str,
     artifact_type: str,
-    working_directory: Optional[str] = None,
+    project_root: Optional[str] = None,
     description: Optional[str] = None,
     location: Optional[str] = None,  # Optional override
     state: Any = None,
@@ -50,7 +50,8 @@ async def log_artifact(
         filename: Name for the artifact file
         content: The artifact content to store
         artifact_type: Type of artifact (determines default location)
-        working_directory: Absolute path to agent's working directory (required)
+        project_root: Absolute path to the project root directory where artifacts
+                      will be created. All agents should use the same path.
         description: Optional description of the artifact
         location: Optional override for storage location (relative path)
         state: MCP state object
@@ -61,26 +62,26 @@ async def log_artifact(
         Dict with artifact location and storage details
     """
     try:
-        # Validate working_directory is provided
-        if not working_directory:
+        # Validate project_root is provided
+        if not project_root:
             return {
                 "success": False,
-                "error": "working_directory is required",
+                "error": "project_root is required",
                 "data": {"task_id": task_id, "filename": filename},
             }
 
-        # Validate working_directory is absolute and exists
-        work_dir = Path(working_directory)
-        if not work_dir.is_absolute():
+        # Validate project_root is absolute and exists
+        project_root_path = Path(project_root)
+        if not project_root_path.is_absolute():
             return {
                 "success": False,
-                "error": "working_directory must be absolute path",
+                "error": "project_root must be an absolute path",
                 "data": {"task_id": task_id, "filename": filename},
             }
-        if not work_dir.exists():
+        if not project_root_path.exists():
             return {
                 "success": False,
-                "error": f"Directory {working_directory} does not exist",
+                "error": f"project_root directory does not exist: {project_root}",
                 "data": {"task_id": task_id, "filename": filename},
             }
 
@@ -119,8 +120,8 @@ async def log_artifact(
             base_dir = ARTIFACT_PATHS.get(artifact_type, "docs/artifacts")
             artifact_path = Path(base_dir) / filename
 
-        # Create full path using working_directory instead of Path.cwd()
-        full_path = work_dir / artifact_path
+        # Create full path using project_root instead of Path.cwd()
+        full_path = project_root_path / artifact_path
 
         # Ensure directory exists
         full_path.parent.mkdir(parents=True, exist_ok=True)
@@ -192,7 +193,7 @@ async def log_artifact(
 
 async def get_task_context(
     task_id: str,
-    working_directory: Optional[str] = None,
+    project_root: Optional[str] = None,
     include_dependencies: bool = True,
     include_blockers: bool = True,
     include_artifacts: bool = True,
@@ -209,7 +210,7 @@ async def get_task_context(
 
     Args:
         task_id: The task ID to get context for
-        working_directory: Agent's working directory for artifact discovery
+        project_root: Absolute path to the project root directory for artifact discovery
         include_dependencies: Whether to include dependency information
         include_blockers: Whether to include blocker information
         include_artifacts: Whether to include artifact information
@@ -281,13 +282,13 @@ async def get_task_context(
             if hasattr(state, "task_artifacts") and task_id in state.task_artifacts:
                 artifacts = state.task_artifacts[task_id]
 
-            # Only scan filesystem if working_directory is provided
-            if working_directory:
-                work_dir = Path(working_directory)
-                if work_dir.is_absolute() and work_dir.exists():
-                    # Scan for artifacts in the agent's working directory
+            # Only scan filesystem if project_root is provided
+            if project_root:
+                project_root_path = Path(project_root)
+                if project_root_path.is_absolute() and project_root_path.exists():
+                    # Scan for artifacts in the project directory
                     discovered = await _discover_artifacts_in_standard_locations(
-                        working_dir=work_dir
+                        working_dir=project_root_path
                     )
 
                     # Merge discovered artifacts (avoiding duplicates)
@@ -321,10 +322,10 @@ async def get_task_context(
 async def _discover_artifacts_in_standard_locations(
     working_dir: Path,
 ) -> List[Dict[str, Any]]:
-    """Scan standard artifact directories for files in the specified working directory.
+    """Scan standard artifact directories for files in the specified project directory.
 
     Args:
-        working_dir: The directory to scan for artifacts
+        working_dir: The project root directory to scan for artifacts
 
     Returns
     -------

@@ -318,9 +318,14 @@ Examples:
                         "type": "string",
                         "description": "Task ID to get context for",
                     },
-                    "working_directory": {
+                    "project_root": {
                         "type": "string",
-                        "description": "Agent's working directory for artifact discovery",
+                        "description": (
+                            "Absolute path to the project root directory. "
+                            "Used to discover artifacts created in the project workspace. "
+                            "All agents working on this project should pass the same path "
+                            "to see each other's artifacts."
+                        ),
                     },
                 },
                 "required": ["task_id"],
@@ -359,9 +364,15 @@ Examples:
                             "temporary",
                         ],
                     },
-                    "working_directory": {
+                    "project_root": {
                         "type": "string",
-                        "description": "Absolute path to agent's working directory (required)",
+                        "description": (
+                            "Absolute path to the project root directory where artifacts should be created. "
+                            "All agents working on this project should pass the same path. "
+                            "Artifacts will be created relative to this path based on their type "
+                            "(e.g., an 'api' artifact will go in {project_root}/docs/api/). "
+                            "Typically this is os.getcwd() when the agent is running from the project root."
+                        ),
                     },
                     "description": {
                         "type": "string",
@@ -379,7 +390,7 @@ Examples:
                     "filename",
                     "content",
                     "artifact_type",
-                    "working_directory",
+                    "project_root",
                 ],
             },
         ),
