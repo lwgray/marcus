@@ -12,7 +12,7 @@
 - [ ] Add safety checks preventing test before implementation
 - [ ] Create unit tests for ordering scenarios
 - [ ] Test with real project: "Build a REST API"
-- **Related Issues:** 
+- **Related Issues:**
   - [#34: PROJECT_SUCCESS task not being assigned](https://github.com/lwgray/marcus/issues/34)
   - [#36: Task execution order verification test suite](https://github.com/lwgray/marcus/issues/36)
 - **Files:** `src/core/context.py`, `src/intelligence/dependency_inferer_hybrid.py`
@@ -48,12 +48,12 @@
   - Artifacts being written to wrong location
   - Causes accumulation across all projects
   - **Impact:** High - affects all artifact management
-  
+
 - [ ] **[#38](https://github.com/lwgray/marcus/issues/38):** Fix get_task_context exceeding token limit (40K+ tokens)
   - Direct consequence of #33
   - Blocks agents from getting task context
   - **Impact:** Critical - completely breaks context retrieval
-  
+
 - [ ] **[#39](https://github.com/lwgray/marcus/issues/39):** Implement artifact session isolation (Future)
   - Prepare for working in existing repositories
   - Prevent scanning thousands of existing docs
@@ -265,22 +265,22 @@ gantt
     Fix Task Ordering           :crit, 2025-09-01, 4d
     Pre-commit Errors          :crit, 2025-09-03, 3d
     Dev Branch Setup           :2025-09-05, 1d
-    
+
     section Developer UX
     Quick Start Guide          :2025-09-08, 2d
     Docker Workflow           :2025-09-08, 3d
     Testing Strategy          :2025-09-10, 5d
-    
+
     section Documentation
     Comprehensive Docs        :2025-09-15, 5d
     Contribution Guidelines   :2025-09-18, 2d
     MCP Integration Guide    :2025-09-20, 3d
-    
+
     section Features
     Local LLM Support        :2025-09-22, 4d
     GitHub Default          :2025-09-24, 5d
     System Prompts          :2025-09-28, 3d
-    
+
     section Vision
     Epictetus              :2025-10-01, 14d
     Seneca                :2025-10-15, 10d
@@ -290,7 +290,7 @@ gantt
 ## Success Metrics
 
 1. **Week 1 (Sep 7)**: Task ordering works, pre-commits pass
-2. **Week 2 (Sep 14)**: New developer can start in < 30 minutes  
+2. **Week 2 (Sep 14)**: New developer can start in < 30 minutes
 3. **Week 3 (Sep 21)**: Test coverage > 80% on core modules
 4. **Week 4 (Sep 28)**: Documentation complete and searchable
 5. **Week 6 (Oct 12)**: Local LLM working, GitHub integration complete

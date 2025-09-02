@@ -52,6 +52,7 @@ coverage*.json
 marcus-fresh-env/
 main.py/
 todo-app/
+.misc/
 
 # Runtime
 pids/*.pid
@@ -68,3 +69,4 @@ config_marcus.json
 
 knowledge_graph.html
 config_marcus.json
+config_marcus.json.anthropic

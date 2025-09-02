@@ -58,7 +58,7 @@ Task completed → Remove assignment → Update assignments.json
 }
 ```
 
-**Lifecycle:** 
+**Lifecycle:**
 - Created when task assigned
 - Updated on progress reports
 - Deleted on task completion

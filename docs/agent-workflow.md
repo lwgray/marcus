@@ -33,7 +33,7 @@ Agents have access to these Marcus tools:
   - Task mentions "integrate", "extend", "based on", "following"
   - Need to understand what was previously built
   - Want to check available artifacts
-  
+
 - `get_agent_status` - Check own status and capabilities
 
 ### Documentation Tools
@@ -115,7 +115,7 @@ Agents interact with artifacts intelligently:
 2. Agent decides:
    - Read("docs/api/user-api.yaml")     # Haven't seen this
    - Skip auth-design.md                # Already know JWT with 24h expiry
-   
+
 3. Creates new artifacts:
    - log_artifact("user-impl.md", content, "documentation")
    - log_artifact("user-model.ts", model, "specification")

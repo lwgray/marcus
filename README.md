@@ -1,179 +1,224 @@
 # 🏛️ Marcus - AI Agent Coordination Platform
 
-## What is Marcus?
-
-Marcus is an AI-powered project coordinator that breaks down requirements into tasks and assigns them to your AI
-agents. It's designed around a simple philosophy: give agents clear context and let them work autonomously.
-[Learn more about our approach →](docs/philosophy.md)
-
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![MCP Protocol](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
-[![MIT License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Discord](https://img.shields.io/discord/1409498120739487859?color=7289da&label=Discord&logo=discord&logoColor=white)](https://discord.gg/marcus)
+[![GitHub Stars](https://img.shields.io/github/stars/lwgray/marcus?style=social)](https://github.com/lwgray/marcus)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue?logo=docker)](https://hub.docker.com/r/marcus/marcus)
+[![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-green)](https://modelcontextprotocol.io/)
 
-Ultimately, Marcus coordinates AI agents (Claude, GPT, etc.) to work together on projects with **context sharing**, **dependency resolution**, and **continuous learning**. Unlike traditional project management, Marcus is built specifically for autonomous AI agents.
+## What is Marcus?
+Marcus turns your ideas into working software by coordinating AI agents. Tell Marcus what you want to build in plain English, and it creates a project board that multiple AI agents work from autonomously.
+
+### Why I Built This
+I was stuck between micromanaging every agent decision or letting agents run wild. I wanted to step away and trust that agents had enough context to build what I wanted. Marcus solves this by being the project manager - you describe once, agents build with proper context and boundaries.
+
+### How It Works
+1. **You say:** "Build a todo app with authentication"
+2. **Marcus:** Creates tasks on a GitHub project board with dependencies
+3. **Agents:** Pull tasks, get context from previous work, build autonomously
+4. **You:** Watch progress, intervene only when needed
+
+Each task is locked to one agent until complete, preventing conflicts. Agents share context through the board, seeing what others built without direct communication.
 
 ---
 
-## 🚀 **5-Minute Demo Setup**
+## 🚀 **Quick Start**
 
 ### **Prerequisites**
-- Python 3.11+
 - Docker
-- Claude Code
-- AI Model (choose one):
-  - Anthropic API key (for Claude) - [Get one here](https://console.anthropic.com/)
-  - OR local model with Ollama - [Setup guide](docs/user-guide/how-to/setup-local-llm.md)
+- GitHub account with a [personal access token](https://github.com/settings/tokens) (needs `project` scope)
+- Claude Code or another MCP-compatible AI agent
+- API key for your AI model (Anthropic, OpenAI, or local with Ollama)
 
-### **1. Setup Planka Board (1 minute)** Marcus maintains context with a Kanban Board
-#### Bring Your Own Board (BYOB)
+### **1. Run Marcus with Docker**
 ```bash
-# Clone and start the kanban-mcp server
-git clone https://github.com/bradrisse/kanban-mcp.git ~/dev/kanban-mcp
-cd ~/dev/kanban-mcp
-docker-compose up -d
+# Quick start (config via environment variables)
+docker run -p 4298:4298 \
+  -e GITHUB_TOKEN=your_github_token \
+  -e ANTHROPIC_API_KEY=your_api_key \
+  marcus/marcus:latest
 
-# Planka will be available at http://localhost:3333
-# Default login: demo@demo.demo / demo
-```
+# Or with a config file
+docker run -p 4298:4298 \
+  -v $(pwd)/config_marcus.json:/app/config_marcus.json \
+  marcus/marcus:latest
 
-### **2. Install Marcus (30 seconds)**
-```bash
+# Build from source
 git clone https://github.com/lwgray/marcus.git
 cd marcus
-pip install -r requirements.txt
+cp config_marcus.example.json config_marcus.json
+# Edit config_marcus.json with your settings
+docker build -t marcus .
+docker run -p 4298:4298 -v $(pwd)/config_marcus.json:/app/config_marcus.json marcus
 ```
 
-### **3. One-Command Demo Setup (2.5 minutes)**
+### **2. Connect Your AI Agent**
 ```bash
-# Automated setup: creates Planka project, updates config, creates tasks
-python setup_marcus_demo.py
+# For Claude Code:
+claude mcp add http://localhost:4298/marcus
 
-# This script will:
-# - Guide you through Planka setup if needed
-# - Create "Marcus Todo Demo" project automatically
-# - Update config_marcus.json with correct IDs
-# - Create 17 todo app tasks ready for AI agents
-# - Give you final setup instructions
+# Marcus provides MCP-compatible endpoints for any agent
 ```
 
-### **4. Starting Marcus (30 seconds)**
+### **3. Configure Your Agent**
 ```bash
-# Start Marcus from the root directory
-cd /path/to/marcus
-python -m src.marcus_mcp.server
+# Use this system prompt to establish the Marcus workflow:
+# Copy the contents of prompts/Agent_prompt.md as your agent's system prompt
 
-# Marcus will start and be ready to accept connections
+# This gives your agent the complete workflow including:
+# - Autonomous work loop (register → request → work → report → repeat)
+# - Context sharing through artifacts and decisions
+# - Progress reporting and error recovery
+# - Dependency handling
+
+# Want to build your own workflow? See docs/agent-workflow.md for all components
 ```
 
-### **5. Connect Claude Code (30 seconds)**
+### **4. Start Building**
 ```bash
-# In a DIFFERENT directory (not marcus root), configure Claude Code:
-cd ~/my-project  # or any directory outside marcus
-claude mcp add python /path/to/marcus/src/marcus_mcp/server.py
+# Tell your configured agent:
+"Create a project for a todo app with Marcus and start working"
+
+# The agent will automatically:
+# 1. Register with Marcus
+# 2. Create a GitHub project board from your description
+# 3. Request and work on tasks continuously
+# 4. Report progress as it goes
+# 5. Keep working until all tasks are done
 ```
 
-### **6. Run Demo & Watch Magic (30 seconds)**
+### **✅ What You'll See**
+- Agent registers itself with Marcus ("Agent claude-1 registered")
+- Project created on GitHub with tasks
+- Agent continuously pulling tasks and working
+- Progress updates: "25% complete", "50% complete", etc.
+- Tasks moving through board columns: TODO → IN PROGRESS → DONE
+- Context flowing between tasks (API specs → implementation → tests)
+
+### **5. Add More Agents (Optional)**
 ```bash
-# In Claude Code:
-# 1. Copy content from prompts/Agent_prompt.md as your system prompt
-# 2. Add your Anthropic API key to config_marcus.json
-#    Or use a local model - see docs/user-guide/how-to/setup-local-llm.md
-# 3. Say: "Register with Marcus and start working"
-# 4. Watch agent automatically complete tasks in Planka!
-```
+# Want multiple agents working in parallel? Three options:
 
-### **✅ You Should See:**
-- Tasks moving through board columns in Planka
-- Agent reporting progress and getting new assignments
-- Rich context passed between tasks
-- Automatic error recovery when agents get stuck
+# Option A: Multiple windows (simplest)
+# Open a new terminal/Claude window, connect to Marcus, and start another agent
+# Both agents will pull different tasks from the same board
+
+# Option B: Claude subagents
+# If using Claude, launch subagents with the Task tool
+# Each subagent automatically registers and works independently
+
+# Option C: Git worktrees (prevents code conflicts)
+git worktree add ../project-agent2 -b agent2-branch
+# Each agent works in its own directory/branch
+# Merge when ready
+```
 
 ---
 
-## 🎯 **What Makes Marcus Special**
+## 🎯 **What Makes Marcus Different**
 
-### **🧠 Context Intelligence**
-When Agent A completes "Create User API", Agent B automatically knows:
-- What endpoints were created
-- What data models exist
-- Architectural decisions made
-- How to integrate with existing code
+### **Open Source & Accessible**
+Unlike proprietary AI coding tools, Marcus is completely open source. Anyone can use it, modify it, and contribute to make it better.
 
-### **🔄 Continuous Work Loop**
-Agents never stop working:
-```
-Register → Request Task → Work → Report Progress → Request Next Task → ...
-```
+### **Zero to Software, Fast**
+Marcus empowers anyone - even non-programmers - to build real software. Describe what you want in plain English, and watch it get built.
 
-### **📚 Learning & Adaptation**
-Marcus learns from every project:
-- Successful patterns get recommended
-- Common errors get predicted and prevented
-- Task assignment improves over time
+### **True Autonomous Agents**
+- **Other tools:** You copy-paste between chats or manage each agent
+- **Marcus:** Agents work independently with shared context through the board
+- **Result:** You can actually step away while software gets built
 
-### **🛡️ Error Recovery**
-When agents get stuck, Marcus provides:
-- AI-powered suggestions based on context
-- Alternative approaches
-- Escalation to human when needed
+### **Community-Driven**
+Built by developers, for developers. We're focused on making software creation accessible to everyone, not maximizing profits.
 
 ---
 
-## 🚨 **Quick Troubleshooting**
+## 🚨 **Troubleshooting**
 
 | Problem | Solution |
 |---------|----------|
-| **"No tasks available"** | Run `python setup_marcus_demo.py` to create demo tasks |
-| **"Connection failed"** | Check Planka running at localhost:3333 and API keys in config_marcus.json |
-| **"Agent not found"** | Verify agent used `register_agent` tool first |
-| **Setup script fails** | Ensure Planka is running: `cd ~/dev/kanban-mcp && docker-compose up -d` |
+| **"Connection refused"** | Ensure Marcus Docker container is running on port 4298 |
+| **"No tasks available"** | Agent needs to create a project first with `create_project` |
+| **"Agent not registered"** | Agent must call `register_agent` before requesting tasks |
+| **"GitHub auth failed"** | Check GitHub token has project permissions |
 
 ---
 
-## 📚 **What's Next?**
+## 🤝 **Contributing**
 
-### **Learn More**
-- **[API Documentation](docs/api/)** - Complete MCP tool reference
-- **[System Architecture](docs/systems/)** - Deep dive into all 32 systems
-- **[Agent Prompt Guide](prompts/Agent_prompt.md)** - Understanding the work loop
+Marcus is open source and we need your help! Priority areas:
 
-### **Real Projects**
-- Try the full todo app: `python projects/todo_app/create_all_todo_app_cards.py`
-- Create your own project: Use `create_project` MCP tool
-- Build with multiple agents: Register different agent types
+### **Most Needed**
+1. **Kanban Provider Integrations** - Add support for Jira, Trello, Linear, etc.
+2. **Documentation** - Tutorials, use cases, and examples
+3. **Use Case Definitions** - Show what Marcus can build
 
-### **Extend Marcus**
-- Add new AI providers ([OpenAI](docs/systems/07-ai-intelligence-engine.md), [local models with Ollama](docs/user-guide/how-to/setup-local-llm.md))
-- Connect to GitHub Projects or Linear
-- Build custom MCP tools
+### **Getting Started**
+```bash
+# Fork and clone
+git clone https://github.com/YOUR_USERNAME/marcus.git
+cd marcus
 
----
+# Install dev dependencies
+pip install -r requirements-dev.txt
 
-## 💡 **Pro Tips**
+# Run tests
+pytest tests/
 
-### **Project Location**
-⚠️ **Always build projects outside Marcus root** - Create in `~/projects/` or similar to avoid git conflicts
+# Submit PR with your contribution
+```
 
-### **Multi-Agent Strategies**
-- **Option 1**: Git worktrees - Each agent on separate branch, merge when done
-  ```bash
-  git worktree add ../project-agent1 agent1-branch
-  ```
-- **Option 2**: Single agent with subagents - No merging needed, sequential work
-
-### **Enable Context Awareness**
-Set `"context_dependency": true` in `config_marcus.json` - Agents see previous implementations, API endpoints, and decisions
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ---
 
-## 🤝 **Get Help**
+## ⚙️ **Configuration**
 
-- 💬 **Questions**: [GitHub Discussions](https://github.com/lwgray/marcus/discussions)
-- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/lwgray/marcus/issues)
-- 📖 **Documentation**: [Full Docs](docs/)
+Marcus needs a few settings to work. You can provide them via:
+
+1. **Environment variables** (easiest for Docker):
+   - `GITHUB_TOKEN` - Your GitHub personal access token
+   - `ANTHROPIC_API_KEY` - For Claude models
+   - `OPENAI_API_KEY` - For GPT models
+
+2. **Config file** (`config_marcus.json`):
+   ```json
+   {
+     "github_token": "ghp_...",
+     "anthropic_api_key": "sk-ant-...",
+     "kanban_provider": "github"
+   }
+   ```
+
+See [config_marcus.example.json](config_marcus.example.json) for all options.
 
 ---
 
-**⭐ Star us on GitHub • 🍴 Fork and contribute • 💬 Join our community**
+## 📚 **Documentation**
 
-*Built with ❤️ for the AI development community*
+- **[Agent Prompt](prompts/Agent_prompt.md)** - The complete agent workflow and system prompt
+- **[Configuration Guide](docs/configuration.md)** - All config options explained
+- **[API Reference](docs/api/)** - All MCP tools documented
+- **[Agent Workflow](docs/agent-workflow.md)** - How agents interact with Marcus
+- **[Architecture Overview](docs/architecture.md)** - How Marcus works internally
+
+---
+
+## 🌟 **Community**
+
+- 💬 **Discord**: [Join our Discord](https://discord.gg/marcus) - Real-time help and discussions
+- 🗣️ **Discussions**: [GitHub Discussions](https://github.com/lwgray/marcus/discussions)
+- 🐛 **Issues**: [GitHub Issues](https://github.com/lwgray/marcus/issues)
+- 📖 **Docs**: [Full Documentation](docs/)
+- 🤝 **Contributing**: [Contribution Guide](CONTRIBUTING.md)
+
+---
+
+## 📄 **License**
+
+MIT License - see [LICENSE](LICENSE) for details
+
+---
+
+**⭐ Star us on GitHub if Marcus helps you build something awesome!**
