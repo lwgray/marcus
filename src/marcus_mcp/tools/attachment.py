@@ -28,6 +28,7 @@ async def log_artifact(
     filename: str,
     content: str,
     artifact_type: str,
+    working_directory: Optional[str] = None,
     description: Optional[str] = None,
     location: Optional[str] = None,  # Optional override
     state: Any = None,
@@ -49,14 +50,40 @@ async def log_artifact(
         filename: Name for the artifact file
         content: The artifact content to store
         artifact_type: Type of artifact (determines default location)
+        working_directory: Absolute path to agent's working directory (required)
         description: Optional description of the artifact
         location: Optional override for storage location (relative path)
         state: MCP state object
 
-    Returns:
+    Returns
+    -------
+    Dict[str, Any]
         Dict with artifact location and storage details
     """
     try:
+        # Validate working_directory is provided
+        if not working_directory:
+            return {
+                "success": False,
+                "error": "working_directory is required",
+                "data": {"task_id": task_id, "filename": filename},
+            }
+
+        # Validate working_directory is absolute and exists
+        work_dir = Path(working_directory)
+        if not work_dir.is_absolute():
+            return {
+                "success": False,
+                "error": "working_directory must be absolute path",
+                "data": {"task_id": task_id, "filename": filename},
+            }
+        if not work_dir.exists():
+            return {
+                "success": False,
+                "error": f"Directory {working_directory} does not exist",
+                "data": {"task_id": task_id, "filename": filename},
+            }
+
         # Validate artifact type
         valid_types = [
             "specification",
@@ -92,8 +119,8 @@ async def log_artifact(
             base_dir = ARTIFACT_PATHS.get(artifact_type, "docs/artifacts")
             artifact_path = Path(base_dir) / filename
 
-        # Create full path
-        full_path = Path.cwd() / artifact_path
+        # Create full path using working_directory instead of Path.cwd()
+        full_path = work_dir / artifact_path
 
         # Ensure directory exists
         full_path.parent.mkdir(parents=True, exist_ok=True)
@@ -165,6 +192,7 @@ async def log_artifact(
 
 async def get_task_context(
     task_id: str,
+    working_directory: Optional[str] = None,
     include_dependencies: bool = True,
     include_blockers: bool = True,
     include_artifacts: bool = True,
@@ -181,12 +209,15 @@ async def get_task_context(
 
     Args:
         task_id: The task ID to get context for
+        working_directory: Agent's working directory for artifact discovery
         include_dependencies: Whether to include dependency information
         include_blockers: Whether to include blocker information
         include_artifacts: Whether to include artifact information
         state: MCP state object
 
-    Returns:
+    Returns
+    -------
+    Dict[str, Any]
         Dict with comprehensive task context
     """
     try:
@@ -250,16 +281,21 @@ async def get_task_context(
             if hasattr(state, "task_artifacts") and task_id in state.task_artifacts:
                 artifacts = state.task_artifacts[task_id]
 
-            # Also scan filesystem for artifacts in standard locations
-            # This helps discover artifacts created outside of log_artifact
-            discovered = await _discover_artifacts_in_standard_locations()
+            # Only scan filesystem if working_directory is provided
+            if working_directory:
+                work_dir = Path(working_directory)
+                if work_dir.is_absolute() and work_dir.exists():
+                    # Scan for artifacts in the agent's working directory
+                    discovered = await _discover_artifacts_in_standard_locations(
+                        working_dir=work_dir
+                    )
 
-            # Merge discovered artifacts (avoiding duplicates)
-            existing_locations = {a["location"] for a in artifacts}
-            for artifact in discovered:
-                if artifact["location"] not in existing_locations:
-                    artifact["discovered"] = True
-                    artifacts.append(artifact)
+                    # Merge discovered artifacts (avoiding duplicates)
+                    existing_locations = {a["location"] for a in artifacts}
+                    for artifact in discovered:
+                        if artifact["location"] not in existing_locations:
+                            artifact["discovered"] = True
+                            artifacts.append(artifact)
 
             context["artifacts"] = artifacts
 
@@ -282,12 +318,24 @@ async def get_task_context(
         }
 
 
-async def _discover_artifacts_in_standard_locations() -> List[Dict[str, Any]]:
-    """Scan standard artifact directories for files."""
+async def _discover_artifacts_in_standard_locations(
+    working_dir: Path,
+) -> List[Dict[str, Any]]:
+    """Scan standard artifact directories for files in the specified working directory.
+
+    Args:
+        working_dir: The directory to scan for artifacts
+
+    Returns
+    -------
+    List[Dict[str, Any]]
+        List of discovered artifact dictionaries
+    """
     discovered = []
 
     for artifact_type, base_path in ARTIFACT_PATHS.items():
-        path = Path(base_path)
+        # Use working_dir instead of current directory
+        path = working_dir / base_path
         if path.exists():
             try:
                 for file_path in path.rglob("*"):
@@ -295,7 +343,7 @@ async def _discover_artifacts_in_standard_locations() -> List[Dict[str, Any]]:
                         discovered.append(
                             {
                                 "filename": file_path.name,
-                                "location": str(file_path.relative_to(Path.cwd())),
+                                "location": str(file_path.relative_to(working_dir)),
                                 "artifact_type": artifact_type,
                                 "description": f"Discovered {artifact_type} file",
                                 "is_default_location": True,

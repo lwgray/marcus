@@ -317,7 +317,11 @@ Examples:
                     "task_id": {
                         "type": "string",
                         "description": "Task ID to get context for",
-                    }
+                    },
+                    "working_directory": {
+                        "type": "string",
+                        "description": "Agent's working directory for artifact discovery",
+                    },
                 },
                 "required": ["task_id"],
             },
@@ -355,6 +359,10 @@ Examples:
                             "temporary",
                         ],
                     },
+                    "working_directory": {
+                        "type": "string",
+                        "description": "Absolute path to agent's working directory (required)",
+                    },
                     "description": {
                         "type": "string",
                         "description": "Optional description of the artifact",
@@ -366,7 +374,13 @@ Examples:
                         "default": None,
                     },
                 },
-                "required": ["task_id", "filename", "content", "artifact_type"],
+                "required": [
+                    "task_id",
+                    "filename",
+                    "content",
+                    "artifact_type",
+                    "working_directory",
+                ],
             },
         ),
         # Natural Language Tools (also available to agents)
