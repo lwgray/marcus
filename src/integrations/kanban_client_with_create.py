@@ -1,5 +1,5 @@
 """
-Extended Kanban Client with Create Task Functionality
+Extended Kanban Client with Create Task Functionality.
 
 This module extends the KanbanClient to add create_task functionality
 for creating new tasks on the kanban board.
@@ -29,13 +29,13 @@ class KanbanClientWithCreate(KanbanClient):
     project creation features.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the extended kanban client."""
         super().__init__()
         # Ensure Planka credentials are set for label operations
         self._ensure_planka_credentials()
 
-    def _ensure_planka_credentials(self):
+    def _ensure_planka_credentials(self) -> None:
         """Ensure Planka credentials are set in environment."""
         # These should already be set by parent class, but ensure they're available
         if "PLANKA_BASE_URL" not in os.environ:
@@ -196,9 +196,13 @@ class KanbanClientWithCreate(KanbanClient):
                             custom_context={
                                 "board_id": str(self.board_id),
                                 "task_name": task_data.get("name", "unknown"),
-                                "details": f"No suitable list found for new tasks on board {self.board_id}. "
-                                f"Expected a list named 'Backlog' or 'TODO', or at least one list to exist. "
-                                f"Please check that your kanban board is properly configured with lists.",
+                                "details": (
+                                    f"No suitable list found for new tasks on board "
+                                    f"{self.board_id}. Expected a list named 'Backlog' "
+                                    f"or 'TODO', or at least one list to exist. Please "
+                                    f"check that your kanban "
+                                    f"board is properly configured with lists."
+                                ),
                             },
                         ),
                     )
@@ -243,9 +247,12 @@ class KanbanClientWithCreate(KanbanClient):
                                 "board_id": str(self.board_id),
                                 "task_name": card_name,
                                 "list_id": target_list["id"] if target_list else None,
-                                "details": f"Failed to create card '{card_name}' on board {self.board_id}. "
-                                f"The kanban-mcp server may be down, the board may not exist, "
-                                f"or there may be permission issues. Check kanban-mcp server logs.",
+                                "details": (
+                                    f"Failed to create card '{card_name}' on board "
+                                    f"{self.board_id}. The kanban-mcp server may be "
+                                    f"down, the board may not exist, or there may be "
+                                    f"issues. Check kanban-mcp server logs."
+                                ),
                             },
                         ),
                     )
@@ -271,7 +278,8 @@ class KanbanClientWithCreate(KanbanClient):
                     # Add acceptance criteria as checklist items
                     if task_data.get("acceptance_criteria"):
                         logger.debug(
-                            f"Found {len(task_data['acceptance_criteria'])} acceptance criteria for task '{card_name}'"
+                            f"Found {len(task_data['acceptance_criteria'])} acceptance "
+                            f"criteria for task '{card_name}'"
                         )
                         for criteria in task_data["acceptance_criteria"]:
                             checklist_items.append(f"✓ {criteria}")
@@ -279,7 +287,8 @@ class KanbanClientWithCreate(KanbanClient):
                     # Add subtasks as checklist items
                     if task_data.get("subtasks"):
                         logger.debug(
-                            f"Found {len(task_data['subtasks'])} subtasks for task '{card_name}'"
+                            f"Found {len(task_data['subtasks'])} subtasks for task "
+                            f"'{card_name}'"
                         )
                         for subtask in task_data["subtasks"]:
                             checklist_items.append(f"• {subtask}")
@@ -392,6 +401,11 @@ class KanbanClientWithCreate(KanbanClient):
             List of label names to add
         """
         try:
+            # Ensure board_id is not None for label operations
+            if not self.board_id:
+                logger.error("board_id is required for label operations")
+                return
+
             # Use the label manager helper for simplified label management
             label_helper = LabelManagerHelper(session, self.board_id)
 
@@ -437,11 +451,13 @@ class KanbanClientWithCreate(KanbanClient):
                     )
                     if result and hasattr(result, "content"):
                         logger.debug(
-                            f"Created checklist item '{item[:30]}...' - response has content"
+                            f"Created checklist item '{item[:30]}...' - "
+                            f"response has content"
                         )
                     else:
                         logger.debug(
-                            f"Created checklist item '{item[:30]}...' - no response content"
+                            f"Created checklist item '{item[:30]}...' - "
+                            f"no response content"
                         )
                     position += 65536
                 except Exception as e:
@@ -478,7 +494,8 @@ class KanbanClientWithCreate(KanbanClient):
                 created_tasks.append(task)
             except Exception as e:
                 logger.error(
-                    f"Failed to create task '{task_data.get('name', 'Unknown')}': {str(e)}"
+                    f"Failed to create task '{task_data.get('name', 'Unknown')}': "
+                    f"{str(e)}"
                 )
                 # Continue with other tasks even if one fails
                 continue
