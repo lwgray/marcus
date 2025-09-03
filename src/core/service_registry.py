@@ -156,8 +156,22 @@ class MarcusServiceRegistry:
                 # Clean up invalid service files
                 try:
                     service_file.unlink()
-                except Exception:
-                    pass
+                except (OSError, PermissionError) as e:
+                    # Log specific file system errors but continue discovery
+                    import logging
+
+                    logger = logging.getLogger(__name__)
+                    logger.debug(
+                        f"Could not remove invalid service file {service_file}: {e}"
+                    )
+                except Exception as e:
+                    # Log unexpected errors but continue discovery
+                    import logging
+
+                    logger = logging.getLogger(__name__)
+                    logger.warning(
+                        f"Unexpected error removing service file {service_file}: {e}"
+                    )
 
         return sorted(services, key=lambda x: x.get("started_at", ""))
 

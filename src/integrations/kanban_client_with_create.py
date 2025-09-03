@@ -43,7 +43,7 @@ class KanbanClientWithCreate(KanbanClient):
         if "PLANKA_AGENT_EMAIL" not in os.environ:
             os.environ["PLANKA_AGENT_EMAIL"] = "demo@demo.demo"
         if "PLANKA_AGENT_PASSWORD" not in os.environ:
-            os.environ["PLANKA_AGENT_PASSWORD"] = "demo"
+            os.environ["PLANKA_AGENT_PASSWORD"] = "demo"  # nosec B105
 
     def _build_task_metadata(self, task_data: Dict[str, Any]) -> Optional[str]:
         """

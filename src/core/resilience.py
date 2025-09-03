@@ -7,6 +7,7 @@ and retry logic to ensure Marcus continues working even when components fail.
 
 import asyncio
 import logging
+import secrets
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -156,9 +157,9 @@ def with_retry(
 
                     # Add jitter if enabled
                     if config.jitter:
-                        import random
-
-                        delay *= 0.5 + random.random()
+                        # Use cryptographically secure random for jitter
+                        secure_random = secrets.SystemRandom()
+                        delay *= 0.5 + secure_random.random()
 
                     logger.debug(
                         f"{func.__name__} attempt {attempt + 1} failed, retrying in {delay:.2f}s"
@@ -189,9 +190,9 @@ def with_retry(
                     )
 
                     if config.jitter:
-                        import random
-
-                        delay *= 0.5 + random.random()
+                        # Use cryptographically secure random for jitter
+                        secure_random = secrets.SystemRandom()
+                        delay *= 0.5 + secure_random.random()
 
                     logger.debug(
                         f"{func.__name__} attempt {attempt + 1} failed, retrying in {delay:.2f}s"

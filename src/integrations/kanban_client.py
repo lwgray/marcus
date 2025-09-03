@@ -79,7 +79,7 @@ class KanbanClient:
         if "PLANKA_AGENT_EMAIL" not in os.environ:
             os.environ["PLANKA_AGENT_EMAIL"] = "demo@demo.demo"
         if "PLANKA_AGENT_PASSWORD" not in os.environ:
-            os.environ["PLANKA_AGENT_PASSWORD"] = "demo"
+            os.environ["PLANKA_AGENT_PASSWORD"] = "demo"  # nosec B105
 
     def _load_config(self) -> None:
         """

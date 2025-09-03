@@ -10,9 +10,9 @@ import os
 from typing import Any, Dict, List, Optional, Union
 
 from mcp.client.stdio import stdio_client
-from mcp import ClientSession, StdioServerParameters
 from mcp.types import TextContent
 
+from mcp import ClientSession, StdioServerParameters
 from src.core.models import Task, TaskStatus
 from src.integrations.kanban_client import KanbanClient
 from src.integrations.kanban_interface import KanbanInterface, KanbanProvider
@@ -20,11 +20,11 @@ from src.integrations.kanban_interface import KanbanInterface, KanbanProvider
 logger = logging.getLogger(__name__)
 
 
-def _extract_text_content(result) -> Optional[str]:
+def _extract_text_content(result: Any) -> Optional[str]:
     """Safely extract text content from MCP result"""
-    if not result or not hasattr(result, 'content') or not result.content:
+    if not result or not hasattr(result, "content") or not result.content:
         return None
-    
+
     content = result.content[0]
     if isinstance(content, TextContent):
         return content.text
@@ -47,12 +47,10 @@ class PlankaKanban(KanbanInterface):
         self.client = KanbanClient()
         self.project_name = config.get("project_name", "Task Master Test")
         self.connected = False
-        
+
         # Store server parameters for MCP calls
         self._server_params = StdioServerParameters(
-            command="node", 
-            args=["../kanban-mcp/dist/index.js"], 
-            env=os.environ.copy()
+            command="node", args=["../kanban-mcp/dist/index.js"], env=os.environ.copy()
         )
 
     async def connect(self) -> bool:
@@ -116,30 +114,34 @@ class PlankaKanban(KanbanInterface):
         async with stdio_client(self._server_params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
-                
+
                 # Get lists for the board
                 lists_result = await session.call_tool(
                     "mcp_kanban_list_manager",
                     {"action": "get_all", "boardId": self.client.board_id},
                 )
-                
+
                 lists_text = _extract_text_content(lists_result)
                 if not lists_text:
                     raise ValueError("Could not get board lists")
-                    
+
                 lists_data = json.loads(lists_text)
-                lists = lists_data if isinstance(lists_data, list) else lists_data.get("items", [])
-                
+                lists = (
+                    lists_data
+                    if isinstance(lists_data, list)
+                    else lists_data.get("items", [])
+                )
+
                 # Find backlog list
                 backlog_list = None
                 for list_data in lists:
                     if "backlog" in list_data["name"].lower():
                         backlog_list = list_data
                         break
-                
+
                 if not backlog_list:
                     raise ValueError("No backlog list found")
-                
+
                 # Create card
                 result = await session.call_tool(
                     "mcp_kanban_create_card",
@@ -150,13 +152,13 @@ class PlankaKanban(KanbanInterface):
                         "position": card_data["position"],
                     },
                 )
-                
+
                 result_text = _extract_text_content(result)
                 if not result_text:
                     raise ValueError("Failed to create card")
-                    
+
                 card_result = json.loads(result_text)
-                
+
                 # Convert to Task using the client's method
                 return self.client._card_to_task(card_result)
 
@@ -193,7 +195,7 @@ class PlankaKanban(KanbanInterface):
             async with stdio_client(self._server_params) as (read, write):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
-                    
+
                     update_data = {"id": task_id}
                     if "name" in updates:
                         update_data["name"] = updates["name"]
@@ -201,7 +203,7 @@ class PlankaKanban(KanbanInterface):
                         update_data["description"] = updates["description"]
                     if "due_date" in updates:
                         update_data["dueDate"] = updates["due_date"]
-                    
+
                     await session.call_tool("mcp_kanban_update_card", update_data)
 
         # Get updated task
@@ -239,18 +241,22 @@ class PlankaKanban(KanbanInterface):
         async with stdio_client(self._server_params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
-                
+
                 lists_result = await session.call_tool(
                     "mcp_kanban_list_manager",
                     {"action": "get_all", "boardId": self.client.board_id},
                 )
-                
+
                 lists_text = _extract_text_content(lists_result)
                 if not lists_text:
                     return False
-                    
+
                 lists_data = json.loads(lists_text)
-                lists = lists_data if isinstance(lists_data, list) else lists_data.get("items", [])
+                lists = (
+                    lists_data
+                    if isinstance(lists_data, list)
+                    else lists_data.get("items", [])
+                )
 
                 # Debug logging
                 logger.info(
@@ -267,7 +273,7 @@ class PlankaKanban(KanbanInterface):
                 if not target_list:
                     logger.error(f"Could not find list matching '{target_list_name}'")
                     return False
-                
+
                 # Move card
                 move_result = await session.call_tool(
                     "mcp_kanban_card_manager",
@@ -278,7 +284,7 @@ class PlankaKanban(KanbanInterface):
                         "position": 65535,
                     },
                 )
-                
+
                 return bool(move_result)
 
     async def add_comment(self, task_id: str, comment: str) -> bool:
@@ -308,7 +314,7 @@ class PlankaKanban(KanbanInterface):
             "completed_tasks": 0,
             "blocked_tasks": 0,
         }
-        
+
         # Count tasks by status using Task.status directly
         for task in all_tasks:
             if task.status == TaskStatus.TODO:
@@ -319,7 +325,7 @@ class PlankaKanban(KanbanInterface):
                 metrics["completed_tasks"] += 1
             elif task.status == TaskStatus.BLOCKED:
                 metrics["blocked_tasks"] += 1
-        
+
         return metrics
 
     async def report_blocker(
@@ -378,35 +384,41 @@ class PlankaKanban(KanbanInterface):
             async with stdio_client(self._server_params) as (read, write):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
-                    
+
                     # Get card tasks (checklist items)
                     tasks_result = await session.call_tool(
                         "mcp_kanban_task_manager",
                         {"action": "get_all", "cardId": task_id},
                     )
-                    
+
                     tasks_text = _extract_text_content(tasks_result)
                     if not tasks_text:
                         return
-                        
+
                     checklist_data = json.loads(tasks_text)
-                    checklist_items = checklist_data if isinstance(checklist_data, list) else checklist_data.get("items", [])
-                    
+                    checklist_items = (
+                        checklist_data
+                        if isinstance(checklist_data, list)
+                        else checklist_data.get("items", [])
+                    )
+
                     if not checklist_items:
                         return
-                    
+
                     # Calculate how many items should be completed based on progress
                     total_items = len(checklist_items)
                     items_to_complete = int((progress / 100) * total_items)
-                    
+
                     # Sort items by position to maintain order
-                    sorted_items = sorted(checklist_items, key=lambda x: x.get("position", 0))
-                    
+                    sorted_items = sorted(
+                        checklist_items, key=lambda x: x.get("position", 0)
+                    )
+
                     # Update checklist items
                     for idx, item in enumerate(sorted_items):
                         should_be_completed = idx < items_to_complete
                         is_completed = item.get("isCompleted", False)
-                        
+
                         # Only update if state needs to change
                         if should_be_completed != is_completed:
                             await session.call_tool(
@@ -417,7 +429,7 @@ class PlankaKanban(KanbanInterface):
                                     "isCompleted": should_be_completed,
                                 },
                             )
-        
+
         except Exception as e:
             # Log error but don't fail the progress update
             logger.warning(f"Could not update checklist items: {e}")
@@ -450,7 +462,7 @@ class PlankaKanban(KanbanInterface):
             async with stdio_client(self._server_params) as (read, write):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
-                    
+
                     attachment_result = await session.call_tool(
                         "mcp_kanban_attachment_manager",
                         {
@@ -461,10 +473,9 @@ class PlankaKanban(KanbanInterface):
                             "contentType": content_type,
                         },
                     )
-                    
-                    result = None
-                    if attachment_result and hasattr(attachment_result, 'content'):
-                        result = json.loads(attachment_result.content[0].text)
+
+                    result_text = _extract_text_content(attachment_result)
+                    result = json.loads(result_text) if result_text else None
 
             if result:
                 return {
@@ -492,7 +503,7 @@ class PlankaKanban(KanbanInterface):
             async with stdio_client(self._server_params) as (read, write):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
-                    
+
                     attachment_result = await session.call_tool(
                         "mcp_kanban_attachment_manager",
                         {
@@ -500,10 +511,9 @@ class PlankaKanban(KanbanInterface):
                             "cardId": task_id,
                         },
                     )
-                    
-                    result = None
-                    if attachment_result and hasattr(attachment_result, 'content'):
-                        result = json.loads(attachment_result.content[0].text)
+
+                    result_text = _extract_text_content(attachment_result)
+                    result = json.loads(result_text) if result_text else None
 
             if isinstance(result, list):
                 # Format attachments
@@ -538,7 +548,7 @@ class PlankaKanban(KanbanInterface):
             async with stdio_client(self._server_params) as (read, write):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
-                    
+
                     attachment_result = await session.call_tool(
                         "mcp_kanban_attachment_manager",
                         {
@@ -547,10 +557,9 @@ class PlankaKanban(KanbanInterface):
                             "filename": filename,
                         },
                     )
-                    
-                    result = None
-                    if attachment_result and hasattr(attachment_result, 'content'):
-                        result = json.loads(attachment_result.content[0].text)
+
+                    result_text = _extract_text_content(attachment_result)
+                    result = json.loads(result_text) if result_text else None
 
             if result and result.get("content"):
                 return {
@@ -582,7 +591,7 @@ class PlankaKanban(KanbanInterface):
             async with stdio_client(self._server_params) as (read, write):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
-                    
+
                     attachment_result = await session.call_tool(
                         "mcp_kanban_attachment_manager",
                         {
@@ -590,14 +599,17 @@ class PlankaKanban(KanbanInterface):
                             "id": attachment_id,
                         },
                     )
-                    
-                    result = None
-                    if attachment_result and hasattr(attachment_result, 'content'):
-                        result = json.loads(attachment_result.content[0].text)
+
+                    result_text = _extract_text_content(attachment_result)
+                    result = json.loads(result_text) if result_text else None
 
             return {
                 "success": result.get("success", False) if result else False,
-                "error": result.get("error") if result and not result.get("success") else None,
+                "error": (
+                    result.get("error")
+                    if result and not result.get("success")
+                    else None
+                ),
             }
 
         except Exception as e:
@@ -624,7 +636,7 @@ class PlankaKanban(KanbanInterface):
             async with stdio_client(self._server_params) as (read, write):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
-                    
+
                     attachment_result = await session.call_tool(
                         "mcp_kanban_attachment_manager",
                         {
@@ -633,10 +645,9 @@ class PlankaKanban(KanbanInterface):
                             "name": filename,
                         },
                     )
-                    
-                    result = None
-                    if attachment_result and hasattr(attachment_result, 'content'):
-                        result = json.loads(attachment_result.content[0].text)
+
+                    result_text = _extract_text_content(attachment_result)
+                    result = json.loads(result_text) if result_text else None
 
             if result:
                 return {

@@ -65,7 +65,7 @@ Workers should handle connection failures gracefully and implement retry logic.
 import asyncio
 import json
 import os
-import random
+import secrets
 import time
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional, TypeVar
@@ -121,7 +121,9 @@ def retry_with_backoff(
 
                     # Add jitter if enabled
                     if jitter:
-                        delay = delay * (0.5 + random.random())
+                        # Use cryptographically secure random for jitter
+                        secure_random = secrets.SystemRandom()
+                        delay = delay * (0.5 + secure_random.random())
 
                     print(
                         f"⚠️  {func.__name__} failed (attempt {attempt + 1}/{max_attempts}), "
