@@ -2,7 +2,8 @@
 Phase Dependency Enforcer.
 
 Enforces strict development lifecycle phase dependencies within features,
-ensuring tasks follow the correct order: Design → Implementation → Testing → Documentation
+ensuring tasks follow the correct order:
+Design → Implementation → Testing → Documentation
 """
 
 import logging

@@ -8,12 +8,46 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypedDict, Union
+
+try:
+    from typing import NotRequired  # Python 3.11+
+except ImportError:
+    from typing_extensions import NotRequired
 
 from src.core.models import Priority, Task, TaskStatus
 from src.intelligence.prd_parser import Feature, ParsedPRD, TechStack
 
 logger = logging.getLogger(__name__)
+
+
+class TaskTemplate(TypedDict):
+    """Type definition for task template"""
+
+    name: str
+    description: NotRequired[str]
+    hours: int
+    dependencies: List[str]
+
+
+class FeatureTaskTemplate(TypedDict):
+    """Type definition for feature task template"""
+
+    name: str
+    description: NotRequired[str]
+    phase: str
+    base_hours: int
+    dependencies: List[str]
+
+
+class TechStackTaskTemplate(TypedDict):
+    """Type definition for tech stack task template"""
+
+    name: str
+    description: NotRequired[str]
+    phase: str
+    base_hours: int
+    dependencies: List[str]
 
 
 @dataclass
@@ -409,8 +443,10 @@ class IntelligentTaskGenerator:
             customized_template = self._customize_template_for_feature(
                 template, feature, context
             )
+            # Ensure phase is a string
+            phase_str = str(template.get("phase", "backend"))
             task = self._create_task_from_template(
-                customized_template, str(template["phase"]), context
+                customized_template, phase_str, context
             )
             tasks.append(task)
 
@@ -610,21 +646,28 @@ class IntelligentTaskGenerator:
         customized = template.copy()
 
         # Replace generic names with feature-specific names
-        if "name" in customized:
-            customized["name"] = customized["name"].replace(
-                "user authentication", feature.name.lower()
-            )
-            customized["name"] = customized["name"].replace(
-                "data management", feature.name.lower()
-            )
+        if "name" in customized and isinstance(customized["name"], str):
+            name = customized["name"]
+            name = name.replace("user authentication", feature.name.lower())
+            name = name.replace("data management", feature.name.lower())
+            customized["name"] = name
 
         # Adjust hours based on feature complexity
         complexity_multiplier = self.complexity_multipliers.get(
             feature.estimated_complexity, 1.0
         )
-        customized["hours"] = int(
-            customized.get("base_hours", 4) * complexity_multiplier
-        )
+
+        # Convert to consistent format with hours field
+        base_hours = customized.get("base_hours", 4)
+        if isinstance(base_hours, (int, float)):
+            calculated_hours = int(base_hours * complexity_multiplier)
+        else:
+            calculated_hours = 4
+
+        # Update the template with calculated hours
+        customized["hours"] = calculated_hours
+        if "base_hours" in customized:
+            del customized["base_hours"]
 
         return customized
 
@@ -657,18 +700,28 @@ class IntelligentTaskGenerator:
         if context.tech_stack.backend:
             labels.extend([f"tech:{tech}" for tech in context.tech_stack.backend[:2]])
 
+        # Determine estimated hours based on template type
+        hours_value = template.get("hours") or template.get("base_hours") or 4
+        estimated_hours = (
+            float(hours_value) if isinstance(hours_value, (int, float, str)) else 4.0
+        )
+
+        # Extract name and description safely
+        name = str(template.get("name", "Unnamed Task"))
+        description = str(template.get("description", ""))
+
         # Create task
         task = Task(
             id=task_id,
-            name=template["name"],
-            description=template.get("description", ""),
+            name=name,
+            description=description,
             status=TaskStatus.TODO,
             priority=priority,
             assigned_to=None,
             created_at=datetime.now(),
             updated_at=datetime.now(),
             due_date=None,
-            estimated_hours=template.get("hours", template.get("base_hours", 4)),
+            estimated_hours=estimated_hours,
             dependencies=[],  # Will be resolved later
             labels=labels,
         )
@@ -688,17 +741,38 @@ class IntelligentTaskGenerator:
         task_name_to_id = {task.name: task.id for task in tasks}
 
         for task in tasks:
-            dep_names = (
-                task.source_context.get("dependencies_names", [])
-                if task.source_context
-                else []
-            )
+            # Safely extract dependency names from source_context or metadata (for backward compatibility)
+            dep_names = []
+
+            # Try source_context first (preferred)
+            try:
+                if hasattr(task, "source_context") and task.source_context:
+                    dep_names = task.source_context.get("dependencies_names", [])
+            except (AttributeError, TypeError):
+                pass
+
+            # Try metadata for backward compatibility with tests
+            if not dep_names:
+                try:
+                    if hasattr(task, "metadata") and getattr(task, "metadata", None):
+                        metadata = getattr(task, "metadata")
+                        if isinstance(metadata, dict):
+                            dep_names = metadata.get("dependencies_names", [])
+                            # Ensure we got a list from metadata
+                            if not isinstance(dep_names, list):
+                                dep_names = []
+                except (AttributeError, TypeError):
+                    dep_names = []
+
             task_deps = []
 
             for dep_name in dep_names:
                 if dep_name in task_name_to_id:
                     task_deps.append(task_name_to_id[dep_name])
-                    task.dependencies.append(task_name_to_id[dep_name])
+                    if hasattr(task, "dependencies") and hasattr(
+                        task.dependencies, "append"
+                    ):
+                        task.dependencies.append(task_name_to_id[dep_name])
 
             dependencies[task.id] = task_deps
 

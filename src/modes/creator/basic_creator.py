@@ -31,9 +31,9 @@ class BasicCreatorMode:
             "mobile": MobileAppTemplate(),
         }
         self.task_generator = TaskGenerator()
-        self.state = {"active_project": None, "generated_tasks": []}
+        self.state: Dict[str, Any] = {"active_project": None, "generated_tasks": []}
 
-    async def initialize(self, saved_state: Dict[str, Any]):
+    async def initialize(self, saved_state: Dict[str, Any]) -> None:
         """Initialize mode with saved state"""
         if saved_state:
             self.state.update(saved_state)
@@ -50,7 +50,7 @@ class BasicCreatorMode:
         return {
             "mode": "creator",
             "active_project": self.state.get("active_project"),
-            "generated_tasks_count": len(self.state.get("generated_tasks", [])),
+            "generated_tasks_count": len(self.state.get("generated_tasks") or []),
             "available_templates": list(self.templates.keys()),
         }
 

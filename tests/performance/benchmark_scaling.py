@@ -16,9 +16,13 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import aiohttp
+import websockets
+from aiohttp import ClientSession
+from websockets.legacy.client import WebSocketClientProtocol
+import websockets.client
 import websockets
 
 logging.basicConfig(level=logging.INFO)
@@ -33,11 +37,8 @@ class BenchmarkResult:
     This dataclass captures comprehensive performance metrics from
     a benchmark scenario including connection statistics, response times,
     and error tracking.
-
-    Attributes
-    ----------
-    scenario : str
-        Name of the benchmark scenario.
+    """
+    scenario: str
     total_connections: int
     successful_connections: int
     failed_connections: int
@@ -53,7 +54,6 @@ class BenchmarkResult:
     total_duration: float
     errors: Dict[str, int] = field(default_factory=dict)
     timestamps: List[float] = field(default_factory=list)
-    """
 
 
 class AgentSimulator:
@@ -74,11 +74,11 @@ class AgentSimulator:
         self.agent_id = agent_id
         self.server_url = server_url
         self.ws_url = server_url.replace("http", "ws")
-        self.session = None
-        self.websocket = None
+        self.session: Optional[ClientSession] = None
+        self.websocket: Optional[WebSocketClientProtocol] = None
         self.connected = False
-        self.response_times = []
-        self.errors = []
+        self.response_times: List[float] = []
+        self.errors: List[str] = []
 
     async def connect_http(self):
         """Connect using HTTP session."""
@@ -118,6 +118,8 @@ class AgentSimulator:
 
     async def register_agent(self):
         """Register agent via HTTP."""
+        if not self.session:
+            raise Exception("HTTP session not initialized")
         start_time = time.time()
         try:
             async with self.session.post(
@@ -144,9 +146,12 @@ class AgentSimulator:
         if self.websocket and self.connected:
             # WebSocket request
             try:
-                await self.websocket.send(json.dumps({"type": "request_task"}))
-                response = await self.websocket.recv()
-                data = json.loads(response)
+                if self.websocket:
+                    await self.websocket.send(json.dumps({"type": "request_task"}))
+                    response = await self.websocket.recv()
+                    data = json.loads(response)
+                else:
+                    raise Exception("WebSocket not connected")
                 self.response_times.append(time.time() - start_time)
                 return data.get("task")
             except Exception as e:
@@ -154,6 +159,8 @@ class AgentSimulator:
                 raise
         else:
             # HTTP request
+            if not self.session:
+                raise Exception("HTTP session not initialized")
             try:
                 async with self.session.post(
                     f"{self.server_url}/api/v1/tasks/request",
@@ -176,24 +183,29 @@ class AgentSimulator:
         if self.websocket and self.connected:
             # WebSocket report
             try:
-                await self.websocket.send(
-                    json.dumps(
-                        {
-                            "type": "report_progress",
-                            "task_id": task_id,
-                            "progress": progress,
-                            "status": "in_progress",
-                            "message": f"Progress: {progress}%",
-                        }
+                if self.websocket:
+                    await self.websocket.send(
+                        json.dumps(
+                            {
+                                "type": "report_progress",
+                                "task_id": task_id,
+                                "progress": progress,
+                                "status": "in_progress",
+                                "message": f"Progress: {progress}%",
+                            }
+                        )
                     )
-                )
-                response = await self.websocket.recv()
+                    response = await self.websocket.recv()
+                else:
+                    raise Exception("WebSocket not connected")
                 self.response_times.append(time.time() - start_time)
             except Exception as e:
                 self.errors.append(f"Progress report error (WS): {e}")
                 raise
         else:
             # HTTP report
+            if not self.session:
+                raise Exception("HTTP session not initialized")
             try:
                 async with self.session.post(
                     f"{self.server_url}/api/v1/tasks/progress",
@@ -373,7 +385,7 @@ class LoadTester:
         self.results.append(result)
         return result
 
-    async def run_scaling_test(self):
+    async def run_scaling_test(self) -> None:
         """Run complete scaling test suite."""
         scenarios = [
             # Tier 1: 10-20 connections
@@ -401,7 +413,7 @@ class LoadTester:
             except Exception as e:
                 logger.error(f"Scenario {scenario[0]} failed: {e}")
 
-    def print_result(self, result: BenchmarkResult):
+    def print_result(self, result: BenchmarkResult) -> None:
         """Print benchmark results."""
         print(f"\n{'='*60}")
         print(f"Scenario: {result.scenario}")
@@ -428,7 +440,7 @@ class LoadTester:
             for error_type, count in result.errors.items():
                 print(f"  {error_type}: {count}")
 
-    def generate_report(self, filename: str = "benchmark_results.json"):
+    def generate_report(self, filename: str = "benchmark_results.json") -> None:
         """Generate detailed report."""
         report = {
             "timestamp": datetime.utcnow().isoformat(),
@@ -471,7 +483,7 @@ class LoadTester:
         logger.info(f"Report saved to {filename}")
 
 
-async def stress_test_connection_limit(server_url: str, max_connections: int = 200):
+async def stress_test_connection_limit(server_url: str, max_connections: int = 200) -> int:
     """Test server connection limits."""
     logger.info(f"Testing connection limit up to {max_connections}")
 
@@ -515,7 +527,7 @@ async def stress_test_connection_limit(server_url: str, max_connections: int = 2
     return successful
 
 
-async def main():
+async def main() -> None:
     """Main entry point."""
     import argparse
 

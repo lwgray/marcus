@@ -42,8 +42,8 @@ class TaskGenerator:
         """
         # Extract customizations
         project_size = customizations.get("size", ProjectSize.MEDIUM)
-        excluded_phases = customizations.get("excluded_phases", [])
-        additional_labels = customizations.get("labels", [])
+        excluded_phases: List[str] = customizations.get("excluded_phases", [])
+        additional_labels: List[str] = customizations.get("labels", [])
         project_name = customizations.get("project_name", template.name)
         start_date = customizations.get("start_date", datetime.now())
 
@@ -101,7 +101,7 @@ class TaskGenerator:
         start_date: datetime,
     ) -> List[Task]:
         """Generate tasks for a single phase"""
-        phase_tasks = []
+        phase_tasks: List[Task] = []
 
         for task_template in phase.tasks:
             # Skip optional tasks for MVP
@@ -170,6 +170,11 @@ class TaskGenerator:
             updated_at=datetime.now(),
             due_date=None,  # Can be calculated based on dependencies
             assigned_to=None,
+            source_context={
+                "template_name": task_template.name,
+                "phase_order": phase_order,
+                "phase_name": phase_name,
+            },
         )
 
         return task
@@ -210,7 +215,7 @@ class TaskGenerator:
 
     async def _validate_task_order(self) -> None:
         """Validate that task dependencies make sense"""
-        errors = []
+        errors: List[str] = []
 
         for task in self.generated_tasks:
             task_phase = (
@@ -253,8 +258,8 @@ class TaskGenerator:
         Returns:
             List of Task objects with proper structure
         """
-        created_tasks = []
-        task_id_map = {}  # temporary name -> id mapping
+        created_tasks: List[Task] = []
+        task_id_map: Dict[str, str] = {}  # temporary name -> id mapping
 
         # First pass: create all tasks
         for task_data in tasks:

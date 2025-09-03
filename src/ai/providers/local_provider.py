@@ -117,7 +117,8 @@ class LocalLLMProvider(BaseLLMProvider):
         )
 
         logger.info(
-            f"Local LLM provider initialized with model: {self.model} at {self.base_url}"
+            f"Local LLM provider initialized with model: {self.model} "
+            f"at {self.base_url}"
         )
 
     async def analyze_task(
@@ -246,10 +247,11 @@ Enhanced description:"""
             logger.error(f"Local LLM effort estimation failed: {e}")
             # Safe fallback
             return EffortEstimate(
-                hours_estimate=8.0,
+                estimated_hours=8.0,
                 confidence=0.3,
-                factors_considered=["default_estimate"],
-                reasoning="Local LLM unavailable, using default",
+                factors=["default_estimate"],
+                similar_tasks=[],
+                risk_multiplier=1.0,
             )
 
     async def analyze_blocker(
@@ -307,7 +309,7 @@ Solutions:"""
         self, prompt: str, max_tokens: int = 2000, temperature: float = 0.7
     ) -> str:
         """
-        Generic completion endpoint for direct LLM access.
+        Complete text using local LLM for direct access.
 
         Parameters
         ----------
@@ -359,8 +361,9 @@ Solutions:"""
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are an AI assistant helping with software development task analysis. "
-                    "Provide clear, structured responses focusing on practical implementation details.",
+                    "content": "You are an AI assistant helping with software "
+                    "development task analysis. Provide clear, structured "
+                    "responses focusing on practical implementation details.",
                 },
                 {"role": "user", "content": prompt},
             ],
@@ -374,7 +377,10 @@ Solutions:"""
             response.raise_for_status()
 
             data = response.json()
-            return data["choices"][0]["message"]["content"]
+            content = data["choices"][0]["message"]["content"]
+            if not isinstance(content, str):
+                raise Exception(f"Expected string response, got {type(content)}")
+            return content
 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
@@ -415,7 +421,10 @@ Solutions:"""
             )
             response.raise_for_status()
             data = response.json()
-            return data["response"]
+            response_text = data["response"]
+            if not isinstance(response_text, str):
+                raise Exception(f"Expected string response, got {type(response_text)}")
+            return response_text
 
         except Exception as e:
             logger.error(f"Ollama native API call failed: {e}")
@@ -508,12 +517,19 @@ Focus on clear dependencies like:
     def _parse_dependency_response(self, response: str) -> List[SemanticDependency]:
         """Parse dependency inference response."""
         try:
-            data = parse_ai_json_response(response)
-            if not isinstance(data, list):
-                data = data.get("dependencies", [])
+            parsed_data = parse_ai_json_response(response)
+            # parse_ai_json_response always returns Dict[str, Any]
+            dependency_data = parsed_data.get("dependencies", [])
+
+            # Handle case where dependencies might be the root array
+            if not dependency_data and isinstance(parsed_data, dict):
+                # Check if the whole response is meant to be the array
+                dict_values = list(parsed_data.values())
+                if len(dict_values) == 1 and isinstance(dict_values[0], list):
+                    dependency_data = dict_values[0]
 
             dependencies = []
-            for dep in data:
+            for dep in dependency_data:
                 dependencies.append(
                     SemanticDependency(
                         dependent_task_id=dep["dependent_task_id"],
@@ -559,19 +575,21 @@ Provide a JSON response:
             data = parse_ai_json_response(response)
 
             return EffortEstimate(
-                hours_estimate=float(data.get("hours_estimate", 8.0)),
+                estimated_hours=float(data.get("hours_estimate", 8.0)),
                 confidence=float(data.get("confidence", 0.5)),
-                factors_considered=data.get("factors_considered", []),
-                reasoning=data.get("reasoning", ""),
+                factors=data.get("factors_considered", []),
+                similar_tasks=[],
+                risk_multiplier=1.0,
             )
 
         except Exception as e:
             logger.warning(f"Failed to parse effort estimate: {e}")
             return EffortEstimate(
-                hours_estimate=8.0,
+                estimated_hours=8.0,
                 confidence=0.3,
-                factors_considered=["parse_error"],
-                reasoning=str(e),
+                factors=["parse_error"],
+                similar_tasks=[],
+                risk_multiplier=1.0,
             )
 
     def _get_fallback_solutions(self) -> List[str]:

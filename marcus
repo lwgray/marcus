@@ -31,6 +31,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 import psutil
 
@@ -38,18 +39,18 @@ import psutil
 MARCUS_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(MARCUS_ROOT))
 
-from src.config.config_loader import get_config
+from src.config.config_loader import get_config  # noqa: E402
 
 
 class MarcusCLI:
     """Command-line interface for Marcus"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.config_file = MARCUS_ROOT / "config_marcus.json"
         self.pid_file = Path.home() / ".marcus" / "marcus.pid"
         self.log_dir = MARCUS_ROOT / "logs"
 
-    def start(self, args):
+    def start(self, args: argparse.Namespace) -> int:
         """Start Marcus server"""
         # Check if already running
         if self._is_running():
@@ -84,7 +85,7 @@ class MarcusCLI:
 
             # Save multi-endpoint config for status command
             multi_config = config.get("multi_endpoint", {})
-            runtime_config = {
+            runtime_config: Dict[str, Any] = {
                 "human": {
                     "port": (
                         args.human_port
@@ -120,17 +121,17 @@ class MarcusCLI:
             transport = "http"
 
             # Save runtime config for status command
-            runtime_config = {}
+            http_runtime_config: Dict[str, Any] = {}
             if args.port:
-                runtime_config["port"] = args.port
+                http_runtime_config["port"] = args.port
             if hasattr(args, "all_tools") and args.all_tools:
-                runtime_config["all_tools"] = True
+                http_runtime_config["all_tools"] = True
 
-            if runtime_config:
+            if http_runtime_config:
                 config_file = self.pid_file.parent / "marcus_runtime_config.json"
                 config_file.parent.mkdir(exist_ok=True)
                 with open(config_file, "w") as f:
-                    json.dump(runtime_config, f)
+                    json.dump(http_runtime_config, f)
 
         # Start in background
         if args.foreground:
@@ -237,7 +238,9 @@ class MarcusCLI:
                 print(f"   Check logs: {log_file}")
                 return 1
 
-    def stop(self, args):
+        return 1  # Should not reach here, but mypy needs a return
+
+    def stop(self, args: argparse.Namespace) -> int:
         """Stop Marcus server"""
         if not self._is_running():
             print("❌ Marcus is not running")
@@ -263,7 +266,7 @@ class MarcusCLI:
                             try:
                                 pipe_fd = int(pipe_file.read_text().strip())
                                 os.close(pipe_fd)
-                            except:
+                            except Exception:
                                 pass
                             pipe_file.unlink(missing_ok=True)
                         # Clean up config files
@@ -288,7 +291,7 @@ class MarcusCLI:
                     try:
                         pipe_fd = int(pipe_file.read_text().strip())
                         os.close(pipe_fd)
-                    except:
+                    except Exception:
                         pass
                     pipe_file.unlink(missing_ok=True)
                 # Clean up config files
@@ -309,7 +312,9 @@ class MarcusCLI:
                 print(f"❌ Error stopping Marcus: {e}")
                 return 1
 
-    def status(self, args):
+        return 1  # Should not reach here, but mypy needs a return
+
+    def status(self, args: argparse.Namespace) -> int:
         """Check Marcus status"""
         if self._is_running():
             pid = self._get_pid()
@@ -321,10 +326,10 @@ class MarcusCLI:
                 process = psutil.Process(pid)
                 print(f"   CPU: {process.cpu_percent(interval=0.1):.1f}%")
                 print(f"   Memory: {process.memory_info().rss / 1024 / 1024:.1f} MB")
-                print(
-                    f"   Uptime: {datetime.now() - datetime.fromtimestamp(process.create_time())}"
-                )
-            except:
+                uptime = (datetime.now() - 
+                         datetime.fromtimestamp(process.create_time()))
+                print(f"   Uptime: {uptime}")
+            except Exception:
                 pass
 
             # Show transport info
@@ -336,15 +341,15 @@ class MarcusCLI:
             if multi_config_file.exists():
                 with open(multi_config_file) as f:
                     multi_config = json.load(f)
-                print(f"   Transport: Multi-endpoint HTTP")
+                print("   Transport: Multi-endpoint HTTP")
+                human_port = multi_config['human']['port']
+                print(f"   Human endpoint: http://localhost:{human_port}/mcp")
+                agent_port = multi_config['agent']['port']
+                print(f"   Agent endpoint: http://localhost:{agent_port}/mcp")
+                analytics_port = multi_config['analytics']['port']
                 print(
-                    f"   Human endpoint: http://localhost:{multi_config['human']['port']}/mcp"
-                )
-                print(
-                    f"   Agent endpoint: http://localhost:{multi_config['agent']['port']}/mcp"
-                )
-                print(
-                    f"   Analytics endpoint: http://localhost:{multi_config['analytics']['port']}/mcp"
+                    f"   Analytics endpoint: "
+                    f"http://localhost:{analytics_port}/mcp"
                 )
             elif transport == "http":
                 # Check for runtime config first
@@ -364,11 +369,11 @@ class MarcusCLI:
                 http_config = config.get("transport", {}).get("http", {})
                 host = http_config.get("host", "127.0.0.1")
                 mode = "All Tools" if all_tools else "Agent Tools (10 tools)"
-                print(f"   Transport: HTTP")
+                print("   Transport: HTTP")
                 print(f"   Endpoint: http://{host}:{port}/mcp")
                 print(f"   Mode: {mode}")
             else:
-                print(f"   Transport: stdio")
+                print("   Transport: stdio")
 
         else:
             print("❌ Marcus is not running")
@@ -376,7 +381,7 @@ class MarcusCLI:
 
         return 0
 
-    def logs(self, args):
+    def logs(self, args: argparse.Namespace) -> int:
         """View Marcus logs"""
         if not self.log_dir.exists():
             print("❌ No logs found")
@@ -410,7 +415,7 @@ class MarcusCLI:
 
         return 0
 
-    def config(self, args):
+    def config(self, args: argparse.Namespace) -> int:
         """Manage Marcus configuration"""
         if args.edit:
             # Open in editor
@@ -427,7 +432,7 @@ class MarcusCLI:
 
         return 0
 
-    def _is_running(self):
+    def _is_running(self) -> bool:
         """Check if Marcus is running"""
         pid = self._get_pid()
         if pid:
@@ -441,33 +446,35 @@ class MarcusCLI:
                 return False
         return False
 
-    def _get_pid(self):
+    def _get_pid(self) -> Optional[int]:
         """Get Marcus PID from file"""
         if self.pid_file.exists():
             try:
                 return int(self.pid_file.read_text().strip())
-            except:
+            except Exception:
                 pass
         return None
 
-    def _get_transport_type(self):
+    def _get_transport_type(self) -> str:
         """Get transport type from config"""
         config = get_config()
-        return config.get("transport", {}).get("type", "stdio")
+        transport_type = config.get("transport", {}).get("type", "stdio")
+        return str(transport_type)
 
-    def _save_stdio_pipe(self, pipe_fd):
+    def _save_stdio_pipe(self, pipe_fd: int) -> None:
         """Save stdio pipe file descriptor to keep it open"""
         # Save the pipe fd in a file so we can close it on stop
         pipe_file = self.pid_file.parent / "marcus_stdio.pipe"
         pipe_file.write_text(str(pipe_fd))
 
 
-def main():
+def main() -> int:
     """Main CLI entry point"""
     cli = MarcusCLI()
 
     parser = argparse.ArgumentParser(
-        description="Marcus - Multi-Agent Resource Coordination and Understanding System",
+        description=("Marcus - Multi-Agent Resource Coordination and "
+                     "Understanding System"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -525,10 +532,10 @@ Examples:
     )
 
     # Stop command
-    stop_parser = subparsers.add_parser("stop", help="Stop Marcus server")
+    subparsers.add_parser("stop", help="Stop Marcus server")
 
     # Status command
-    status_parser = subparsers.add_parser("status", help="Check Marcus status")
+    subparsers.add_parser("status", help="Check Marcus status")
 
     # Logs command
     logs_parser = subparsers.add_parser("logs", help="View Marcus logs")

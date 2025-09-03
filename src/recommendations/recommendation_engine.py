@@ -26,7 +26,7 @@ class Recommendation:
     confidence: float
     message: str
     impact: str
-    action: Optional[Callable] = None
+    action: Optional[Callable[[], Any]] = None
     supporting_data: Optional[Dict[str, Any]] = None
 
 
@@ -38,7 +38,7 @@ class ProjectOutcome:
     completion_time_days: float
     quality_score: float
     cost: float
-    failure_reasons: List[str] = None
+    failure_reasons: Optional[List[str]] = None
 
 
 class PatternDatabase:
@@ -49,7 +49,7 @@ class PatternDatabase:
         if db_path is None:
             # Use absolute path to ensure it works regardless of working directory
             marcus_root = Path(__file__).parent.parent.parent
-            db_path = marcus_root / "data" / "pattern_db.json"
+            db_path = str(marcus_root / "data" / "pattern_db.json")
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.patterns = self._load_patterns()
@@ -58,7 +58,8 @@ class PatternDatabase:
         """Load patterns from disk."""
         if self.db_path.exists():
             with open(self.db_path, "r") as f:
-                return json.load(f)
+                loaded_data: Dict[str, Any] = json.load(f)
+                return loaded_data
 
         return {
             "success_patterns": [],
@@ -140,12 +141,12 @@ class PatternDatabase:
 
         # Return highest scoring type
         if type_scores:
-            return max(type_scores, key=type_scores.get)
+            return max(type_scores, key=lambda x: type_scores[x])
         return "general"
 
     def _categorize_tasks(self, tasks: List[Dict[str, Any]]) -> Dict[str, int]:
         """Categorize tasks by type."""
-        categories = defaultdict(int)
+        categories: Dict[str, int] = defaultdict(int)
 
         for task in tasks:
             name = task.get("name", "").lower()
@@ -200,7 +201,7 @@ class SuccessAnalyzer:
             return {}
 
         # Aggregate success factors
-        factors = {
+        factors: Dict[str, Any] = {
             "optimal_task_count": [],
             "optimal_complexity": [],
             "min_confidence": [],
@@ -209,20 +210,27 @@ class SuccessAnalyzer:
         }
 
         for pattern in success_patterns:
-            factors["optimal_task_count"].append(pattern["task_count"])
-            factors["optimal_complexity"].append(pattern["complexity"])
-            factors["min_confidence"].append(pattern["confidence"])
+            task_count_list: List[int] = factors["optimal_task_count"]
+            task_count_list.append(pattern["task_count"])
+            
+            complexity_list: List[float] = factors["optimal_complexity"] 
+            complexity_list.append(pattern["complexity"])
+            
+            confidence_list: List[float] = factors["min_confidence"]
+            confidence_list.append(pattern["confidence"])
 
-            # Task distribution
+            # Task distribution  
             total_tasks = sum(pattern["task_categories"].values())
             if total_tasks > 0:
+                task_dist: Dict[str, List[float]] = factors["task_distribution"]
                 for category, count in pattern["task_categories"].items():
-                    factors["task_distribution"][category].append(count / total_tasks)
+                    task_dist[category].append(count / total_tasks)
 
             # Common decisions
+            common_decisions: Dict[str, int] = factors["common_decisions"]
             for decision in pattern["decisions"]:
                 key = f"{decision['stage']}:{decision['decision']}"
-                factors["common_decisions"][key] += 1
+                common_decisions[key] += 1
 
         # Calculate optimal ranges
         return {
@@ -242,7 +250,7 @@ class SuccessAnalyzer:
             ),
             "ideal_task_distribution": {
                 category: statistics.mean(ratios) if ratios else 0
-                for category, ratios in factors["task_distribution"].items()
+                for category, ratios in task_dist.items()
             },
             "proven_decisions": [
                 decision
@@ -344,7 +352,7 @@ class PipelineRecommendationEngine:
                 similar_flows.append({"flow": flow_data, "similarity": similarity})
 
         # Sort by similarity
-        similar_flows.sort(key=lambda x: x["similarity"], reverse=True)
+        similar_flows.sort(key=lambda x: x["similarity"] if isinstance(x["similarity"], (int, float)) else 0.0, reverse=True)
 
         return similar_flows[:5]  # Top 5 similar flows
 
@@ -412,11 +420,16 @@ class PipelineRecommendationEngine:
     def detect_high_complexity(self, current_flow: Dict[str, Any]) -> bool:
         """Detect if project has high complexity."""
         metrics = current_flow["metrics"]
+        if not isinstance(metrics, dict):
+            return False
 
-        return (
-            metrics["complexity_score"] > 0.8
-            or metrics["task_count"] > 40
-            or (metrics["task_count"] > 25 and metrics["complexity_score"] > 0.6)
+        complexity_score = metrics.get("complexity_score", 0)
+        task_count = metrics.get("task_count", 0)
+        
+        return bool(
+            complexity_score > 0.8
+            or task_count > 40
+            or (task_count > 25 and complexity_score > 0.6)
         )
 
     def _analyze_complexity(
@@ -445,7 +458,7 @@ class PipelineRecommendationEngine:
         recommendations = []
 
         # Categorize current tasks
-        task_categories = defaultdict(int)
+        task_categories: Dict[str, int] = defaultdict(int)
         for task in current_flow["tasks"]:
             name = task.get("name", "").lower()
 
@@ -698,7 +711,7 @@ class PipelineRecommendationEngine:
             {"name": "User guide", "type": "documentation", "priority": "medium"},
         ]
 
-    def learn_from_outcome(self, flow_id: str, outcome: ProjectOutcome):
+    def learn_from_outcome(self, flow_id: str, outcome: ProjectOutcome) -> None:
         """
         Update patterns based on project outcome.
 
@@ -725,7 +738,7 @@ class PipelineRecommendationEngine:
 
     def update_recommendation_weights(
         self, flow_data: Dict[str, Any], outcome: ProjectOutcome
-    ):
+    ) -> None:
         """Update recommendation confidence based on outcomes."""
         # In production, this would update ML model weights
         # For now, track in pattern database
@@ -931,7 +944,7 @@ class PipelineRecommendationEngine:
         self, context: Dict[str, Any], all_patterns: List[Any]
     ) -> List[Recommendation]:
         """Get risk mitigation recommendations from failed patterns."""
-        recommendations = []
+        recommendations: List[Recommendation] = []
 
         # Find failed patterns
         failed_patterns = [p for p in all_patterns if not p.outcome.successful]
