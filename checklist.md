@@ -1,6 +1,6 @@
 # Marcus Development Roadmap - Comprehensive Checklist
 
-**Last Updated:** September 1, 2025
+**Last Updated:** September 3, 2025
 
 ## 🔴 **PRIORITY 1: Foundation & Stability** (Weeks 1-2: Sep 1-14, 2025)
 *These block everything else - must be done first*
@@ -44,20 +44,27 @@
 *These bugs are blocking normal operation and need immediate attention*
 
 ### Critical Bugs to Fix
-- [ ] **[#33](https://github.com/lwgray/marcus/issues/33):** Fix log_artifact writing to Marcus installation directory
-  - Artifacts being written to wrong location
-  - Causes accumulation across all projects
+- [x] **[#33](https://github.com/lwgray/marcus/issues/33):** Fix log_artifact writing to Marcus installation directory ✅
+  - ~~Artifacts being written to wrong location~~
+  - ~~Causes accumulation across all projects~~
+  - **Fixed:** Added `project_root` parameter to specify where artifacts should be created
   - **Impact:** High - affects all artifact management
 
-- [ ] **[#38](https://github.com/lwgray/marcus/issues/38):** Fix get_task_context exceeding token limit (40K+ tokens)
-  - Direct consequence of #33
-  - Blocks agents from getting task context
+- [x] **[#38](https://github.com/lwgray/marcus/issues/38):** Fix get_task_context exceeding token limit (40K+ tokens) ✅
+  - ~~Direct consequence of #33~~
+  - ~~Blocks agents from getting task context~~
+  - **Fixed:** Artifacts now scoped to project directory only
   - **Impact:** Critical - completely breaks context retrieval
 
 - [ ] **[#39](https://github.com/lwgray/marcus/issues/39):** Implement artifact session isolation (Future)
   - Prepare for working in existing repositories
   - Prevent scanning thousands of existing docs
   - **Impact:** Medium (will be High when working in existing repos)
+
+- [ ] **[#40](https://github.com/lwgray/marcus/issues/40):** Enhancement: Implement hybrid artifact filtering
+  - Smart filtering to optimize context retrieval
+  - Balance between relevant context and token limits
+  - **Impact:** Medium - improves performance and usability
 
 ## 🟡 **PRIORITY 2: Developer Experience** (Weeks 2-3: Sep 8-21, 2025)
 *Enable contributors to work effectively*
