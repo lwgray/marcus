@@ -68,12 +68,22 @@ import os
 import secrets
 import time
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional, TypeVar, Union
+from typing import (
+    Any,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    TypeVar,
+    Union,
+)
 
 from mcp.client.stdio import stdio_client
+from mcp.types import CallToolResult, ListToolsResult, TextContent
 
 from mcp import ClientSession, StdioServerParameters
-from mcp.types import TextContent, CallToolResult, ListToolsResult
 
 # Type variable for retry decorator
 T = TypeVar("T")
@@ -81,21 +91,21 @@ T = TypeVar("T")
 
 def _extract_text_from_result(result: CallToolResult) -> str:
     """Extract text content from MCP tool call result.
-    
+
     Args:
         result: The CallToolResult from MCP tool call
-        
+
     Returns:
         str: The text content if available, empty string otherwise
     """
     if not result.content:
         return ""
-    
+
     for content_item in result.content:
         # Check if it's a TextContent object or has a text attribute (for testing)
-        if isinstance(content_item, TextContent) or hasattr(content_item, 'text'):
-            return content_item.text
-    
+        if isinstance(content_item, TextContent) or hasattr(content_item, "text"):
+            return str(content_item.text)
+
     return ""
 
 
@@ -346,11 +356,11 @@ class WorkerMCPClient:
                 # List available tools to verify connection
                 tools_response = await session.list_tools()
                 # Handle both real ListToolsResult objects and mock lists
-                if hasattr(tools_response, 'tools'):
+                if hasattr(tools_response, "tools"):
                     tools = tools_response.tools
                 else:
                     # For testing, tools_response might be a list directly
-                    tools = tools_response  # type: ignore
+                    tools = list(tools_response)
                 print(
                     f"Connected to Marcus. Available tools: {[t.name for t in tools]}"
                 )

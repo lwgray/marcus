@@ -7,7 +7,7 @@ Intercepts all AI provider calls to track token usage per project.
 import asyncio
 import functools
 from datetime import datetime
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, Literal, Optional
 
 from src.cost_tracking.token_tracker import token_tracker
 from src.logging.conversation_logger import conversation_logger
@@ -21,13 +21,13 @@ class AIUsageMiddleware:
     and tracks token consumption per project.
     """
 
-    def __init__(self):
-        self.current_project_context = {}
+    def __init__(self) -> None:
+        self.current_project_context: Dict[str, Dict[str, Any]] = {}
         self.token_tracker = token_tracker
 
     def set_project_context(
         self, agent_id: str, project_id: str, task_id: Optional[str] = None
-    ):
+    ) -> None:
         """
         Set the current project context for an agent.
 
@@ -39,7 +39,7 @@ class AIUsageMiddleware:
             "start_time": datetime.now(),
         }
 
-    def clear_project_context(self, agent_id: str):
+    def clear_project_context(self, agent_id: str) -> None:
         """Clear project context when agent finishes."""
         if agent_id in self.current_project_context:
             del self.current_project_context[agent_id]
@@ -49,7 +49,7 @@ class AIUsageMiddleware:
         context = self.current_project_context.get(agent_id, {})
         return context.get("project_id")
 
-    def track_ai_usage(self, func: Callable) -> Callable:
+    def track_ai_usage(self, func: Callable[..., Any]) -> Callable[..., Any]:
         """
         Decorator to track AI usage for any AI provider method.
 
@@ -57,7 +57,7 @@ class AIUsageMiddleware:
         """
 
         @functools.wraps(func)
-        async def wrapper(*args, **kwargs):
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             # Extract agent context if available
             agent_id = kwargs.get("agent_id") or getattr(args[0], "agent_id", None)
             project_id = None
@@ -97,7 +97,7 @@ class AIUsageMiddleware:
                         metadata={
                             "agent_id": agent_id,
                             "task_id": self.current_project_context.get(
-                                agent_id, {}
+                                agent_id or "system", {}
                             ).get("task_id"),
                             "duration_ms": (end_time - start_time).total_seconds()
                             * 1000,
@@ -108,7 +108,8 @@ class AIUsageMiddleware:
                     # Log significant usage
                     if input_tokens + output_tokens > 1000:
                         conversation_logger.log_pm_thinking(
-                            f"AI token usage for {project_id}: {input_tokens + output_tokens} tokens "
+                            f"AI token usage for {project_id}: "
+                            f"{input_tokens + output_tokens} tokens "
                             f"(${stats['total_cost']:.2f} total)",
                             {
                                 "project_id": project_id,
@@ -158,7 +159,7 @@ class AIUsageMiddleware:
 ai_usage_middleware = AIUsageMiddleware()
 
 
-def track_project_tokens(project_id: str, agent_id: Optional[str] = None):
+def track_project_tokens(project_id: str, agent_id: Optional[str] = None) -> Any:
     """
     Context manager to track AI tokens for a specific project.
 
@@ -173,11 +174,11 @@ def track_project_tokens(project_id: str, agent_id: Optional[str] = None):
             self.project_id = project_id
             self.agent_id = agent_id or "system"
 
-        def __enter__(self):
+        def __enter__(self) -> Any:
             ai_usage_middleware.set_project_context(self.agent_id, self.project_id)
             return self
 
-        def __exit__(self, exc_type, exc_val, exc_tb):
+        def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> Literal[False]:
             ai_usage_middleware.clear_project_context(self.agent_id)
             return False
 

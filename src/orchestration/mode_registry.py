@@ -29,7 +29,7 @@ class ModeSwitch:
 class ModeRegistry:
     """Registry of available Marcus modes"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the mode registry"""
         # Import modes here to avoid circular imports
         from src.modes.adaptive.basic_adaptive import BasicAdaptiveMode
@@ -51,7 +51,10 @@ class ModeRegistry:
         )
 
     async def switch_mode(
-        self, mode: MarcusMode, reason: str = None, user_id: str = None
+        self,
+        mode: MarcusMode,
+        reason: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Switch Marcus to a different operating mode
@@ -140,7 +143,7 @@ class ModeRegistry:
             ],
         }
 
-        mode_info = {
+        mode_info: Dict[str, Any] = {
             "current_mode": self.current_mode.value,
             "description": self._get_mode_description(self.current_mode),
             "capabilities": capabilities.get(self.current_mode, []),
@@ -158,7 +161,7 @@ class ModeRegistry:
         """Get all modes and their availability"""
         return {mode.value: (self.modes.get(mode) is not None) for mode in MarcusMode}
 
-    def get_mode_handler(self, mode: Optional[MarcusMode] = None):
+    def get_mode_handler(self, mode: Optional[MarcusMode] = None) -> Any:
         """
         Get handler for a specific mode or current mode
 
