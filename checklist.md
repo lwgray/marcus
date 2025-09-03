@@ -40,22 +40,10 @@
 - [ ] Create release process (develop → main)
 - **Estimate:** 1 day
 
-## 🔥 **PRIORITY 1.5: Critical Bug Fixes** (Immediate)
-*These bugs are blocking normal operation and need immediate attention*
+## 🔥 **PRIORITY 1.5: Critical Bug Fixes & Enhancements** (Immediate)
+*These need attention for improved operation*
 
-### Critical Bugs to Fix
-- [x] **[#33](https://github.com/lwgray/marcus/issues/33):** Fix log_artifact writing to Marcus installation directory ✅
-  - ~~Artifacts being written to wrong location~~
-  - ~~Causes accumulation across all projects~~
-  - **Fixed:** Added `project_root` parameter to specify where artifacts should be created
-  - **Impact:** High - affects all artifact management
-
-- [x] **[#38](https://github.com/lwgray/marcus/issues/38):** Fix get_task_context exceeding token limit (40K+ tokens) ✅
-  - ~~Direct consequence of #33~~
-  - ~~Blocks agents from getting task context~~
-  - **Fixed:** Artifacts now scoped to project directory only
-  - **Impact:** Critical - completely breaks context retrieval
-
+### Open Issues
 - [ ] **[#39](https://github.com/lwgray/marcus/issues/39):** Implement artifact session isolation (Future)
   - Prepare for working in existing repositories
   - Prevent scanning thousands of existing docs
