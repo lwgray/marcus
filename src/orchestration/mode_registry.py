@@ -1,5 +1,5 @@
 """
-Mode Registry for Marcus Hybrid Approach
+Mode Registry for Marcus Hybrid Approach.
 
 Manages available Marcus modes and handles mode switching.
 """
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ModeSwitch:
-    """Record of a mode switch"""
+    """Record of a mode switch."""
 
     from_mode: Optional[MarcusMode]
     to_mode: MarcusMode
@@ -27,10 +27,10 @@ class ModeSwitch:
 
 
 class ModeRegistry:
-    """Registry of available Marcus modes"""
+    """Registry of available Marcus modes."""
 
     def __init__(self) -> None:
-        """Initialize the mode registry"""
+        """Initialize the mode registry."""
         # Import modes here to avoid circular imports
         from src.modes.adaptive.basic_adaptive import BasicAdaptiveMode
         from src.modes.creator.basic_creator import BasicCreatorMode
@@ -57,14 +57,16 @@ class ModeRegistry:
         user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Switch Marcus to a different operating mode
+        Switch Marcus to a different operating mode.
 
         Args:
             mode: Target mode to switch to
             reason: Optional reason for the switch
             user_id: Optional user who triggered the switch
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Result of the mode switch
         """
         # Check if mode is available
@@ -102,7 +104,8 @@ class ModeRegistry:
             await new_handler.initialize(saved_state)
 
         logger.info(
-            f"Switched from {previous_mode.value} to {mode.value} mode. Reason: {reason}"
+            f"Switched from {previous_mode.value} to {mode.value} mode. "
+            f"Reason: {reason}"
         )
 
         return {
@@ -115,9 +118,11 @@ class ModeRegistry:
 
     async def get_current_mode(self) -> Dict[str, Any]:
         """
-        Get the currently active mode and its capabilities
+        Get the currently active mode and its capabilities.
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Information about the current mode
         """
         mode_handler = self.modes.get(self.current_mode)
@@ -158,34 +163,42 @@ class ModeRegistry:
         return mode_info
 
     def get_available_modes(self) -> Dict[str, bool]:
-        """Get all modes and their availability"""
+        """Get all modes and their availability."""
         return {mode.value: (self.modes.get(mode) is not None) for mode in MarcusMode}
 
     def get_mode_handler(self, mode: Optional[MarcusMode] = None) -> Any:
         """
-        Get handler for a specific mode or current mode
+        Get handler for a specific mode or current mode.
 
         Args:
             mode: Mode to get handler for (None for current)
 
-        Returns:
+        Returns
+        -------
+        Any
             Mode handler instance or None
         """
         target_mode = mode or self.current_mode
         return self.modes.get(target_mode)
 
     def _get_mode_description(self, mode: MarcusMode) -> str:
-        """Get human-readable description of a mode"""
+        """Get human-readable description of a mode."""
         descriptions = {
-            MarcusMode.CREATOR: "Create new project structures from requirements or templates",
-            MarcusMode.ENRICHER: "Organize and enrich existing tasks with metadata and structure",
-            MarcusMode.ADAPTIVE: "Coordinate work within your existing system without changes",
+            MarcusMode.CREATOR: (
+                "Create new project structures from requirements or templates"
+            ),
+            MarcusMode.ENRICHER: (
+                "Organize and enrich existing tasks with metadata and structure"
+            ),
+            MarcusMode.ADAPTIVE: (
+                "Coordinate work within your existing system without changes"
+            ),
         }
 
         return descriptions.get(mode, "Unknown mode")
 
     def get_mode_history(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get recent mode switch history"""
+        """Get recent mode switch history."""
         history = []
 
         for switch in reversed(self.mode_history[-limit:]):
@@ -205,13 +218,15 @@ class ModeRegistry:
         self, board_state: "BoardState", user_intent: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """
-        Suggest a mode switch based on current context
+        Suggest a mode switch based on current context.
 
         Args:
             board_state: Current board analysis
             user_intent: Detected user intent
 
-        Returns:
+        Returns
+        -------
+        Optional[Dict[str, Any]]
             Suggestion for mode switch or None
         """
         # Don't suggest if we just switched
@@ -234,13 +249,20 @@ class ModeRegistry:
         elif board_state.is_chaotic and self.current_mode != MarcusMode.ENRICHER:
             if self.modes.get(MarcusMode.ENRICHER):  # Only if available
                 suggested_mode = MarcusMode.ENRICHER
-                reason = f"Your board has {board_state.task_count} tasks but needs organization"
+                reason = (
+                    f"Your board has {board_state.task_count} tasks "
+                    "but needs organization"
+                )
 
         elif (
-            board_state.is_well_structured and self.current_mode != MarcusMode.ADAPTIVE
+            board_state.is_well_structured 
+            and self.current_mode != MarcusMode.ADAPTIVE
         ):
             suggested_mode = MarcusMode.ADAPTIVE
-            reason = "Your board is well-structured - Adaptive mode can coordinate efficiently"
+            reason = (
+                "Your board is well-structured - Adaptive mode can "
+                "coordinate efficiently"
+            )
 
         if suggested_mode:
             return {

@@ -50,7 +50,7 @@ class PipelineReportGenerator:
         # Create default templates if they don't exist
         self._create_default_templates()
 
-    def _create_default_templates(self):
+    def _create_default_templates(self) -> None:
         """Create default report templates."""
         # HTML report template
         html_template = """
@@ -469,7 +469,7 @@ class PipelineReportGenerator:
 
     def _load_complete_flow(self, flow_id: str) -> Dict[str, Any]:
         """Load complete flow data with all metadata."""
-        events = self.shared_events.get_flow_events(flow_id)
+        events = self.shared_events.get_events()
         flow_data = self.shared_events._read_events()
         flow_info = flow_data["flows"].get(flow_id, {})
 
@@ -499,7 +499,7 @@ class PipelineReportGenerator:
 
     def _create_timeline(self, events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Create timeline from events."""
-        timeline = []
+        timeline: List[Dict[str, Any]] = []
 
         if not events:
             return timeline
@@ -523,7 +523,7 @@ class PipelineReportGenerator:
 
     def _get_event_summary(self, event: Dict[str, Any]) -> str:
         """Generate concise event summary."""
-        event_type = event.get("event_type", "")
+        event_type = str(event.get("event_type", ""))
         data = event.get("data", {})
 
         summaries = {
@@ -533,7 +533,12 @@ class PipelineReportGenerator:
             "quality_metrics": f"Quality Score: {data.get('overall_quality_score', 0) * 100:.0f}%",
         }
 
-        return summaries.get(event_type, event_type.replace("_", " ").title())
+        # Ensure we always return a string
+        summary = summaries.get(event_type)
+        if summary is not None:
+            return summary
+        else:
+            return event_type.replace("_", " ").title()
 
     def _extract_key_decisions(self, flow: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Extract the most important decisions."""
@@ -619,22 +624,31 @@ class PipelineReportGenerator:
     def _analyze_requirements(self, flow: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Analyze requirement coverage."""
         requirements = flow["requirements"]
+        
+        # Ensure requirements is a list of dictionaries for type safety
+        if not isinstance(requirements, list):
+            return []
+        
+        # Convert to proper type to satisfy mypy
+        typed_requirements: List[Dict[str, Any]] = [
+            req for req in requirements if isinstance(req, dict)
+        ]
 
         # Count tasks per requirement
         req_coverage = {}
         for event in flow["events"]:
             if event.get("event_type") == "tasks_generated":
                 # This is simplified - in production, track actual mapping
-                for req in requirements:
+                for req in typed_requirements:
                     req_coverage[req.get("requirement", "")] = flow["metrics"][
                         "task_count"
-                    ] // len(requirements)
+                    ] // len(typed_requirements) if typed_requirements else 0
 
         # Enhance requirements with coverage
-        for req in requirements:
+        for req in typed_requirements:
             req["task_count"] = req_coverage.get(req.get("requirement", ""), 0)
-
-        return requirements
+        
+        return typed_requirements
 
     def _analyze_stage_performance(
         self, events: List[Dict[str, Any]]
@@ -663,7 +677,7 @@ class PipelineReportGenerator:
 
         return list(stage_metrics.values())
 
-    def batch_generate_reports(self, flow_ids: List[str], output_dir: str):
+    def batch_generate_reports(self, flow_ids: List[str], output_dir: str) -> None:
         """
         Generate reports for multiple flows.
 
