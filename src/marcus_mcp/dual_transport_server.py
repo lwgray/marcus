@@ -24,16 +24,16 @@ class DualTransportServer:
     - Gradual migration without breaking changes
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize dual transport server."""
         self.marcus_server = MarcusServer()
         self.http_thread: Optional[threading.Thread] = None
 
-    async def initialize(self):
+    async def initialize(self) -> None:
         """Initialize the Marcus server."""
         await self.marcus_server.initialize()
 
-    def run_http_server(self, host: str = "127.0.0.1", port: int = 8080):
+    def run_http_server(self, host: str = "127.0.0.1", port: int = 8080) -> None:
         """Run HTTP server in a separate thread."""
         import uvicorn
 
@@ -50,7 +50,7 @@ class DualTransportServer:
             access_log=False,
         )
 
-    async def run(self):
+    async def run(self) -> None:
         """Run both stdio and HTTP transports simultaneously."""
         # Get config
         from src.config.config_loader import get_config
@@ -86,7 +86,7 @@ class DualTransportServer:
         await self.marcus_server.run()
 
 
-async def main():
+async def main() -> None:
     """Run Marcus with dual transport support."""
     server = DualTransportServer()
     await server.initialize()

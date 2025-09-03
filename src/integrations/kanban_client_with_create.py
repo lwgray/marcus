@@ -163,12 +163,16 @@ class KanbanClientWithCreate(KanbanClient):
                     and hasattr(lists_result, "content")
                     and lists_result.content
                 ):
-                    lists_data = json.loads(lists_result.content[0].text)
-                    lists = (
-                        lists_data
-                        if isinstance(lists_data, list)
-                        else lists_data.get("items", [])
-                    )
+                    content_item = lists_result.content[0]
+                    if hasattr(content_item, "text"):
+                        lists_data = json.loads(content_item.text)
+                        lists = (
+                            lists_data
+                            if isinstance(lists_data, list)
+                            else lists_data.get("items", [])
+                        )
+                    else:
+                        lists = []
 
                     # Look for Backlog or TODO list
                     for lst in lists:
@@ -258,7 +262,11 @@ class KanbanClientWithCreate(KanbanClient):
                     )
 
                 # Parse the created card
-                created_card_data = json.loads(create_result.content[0].text)
+                content_item = create_result.content[0]
+                if hasattr(content_item, "text"):
+                    created_card_data = json.loads(content_item.text)
+                else:
+                    created_card_data = {}
                 created_card = (
                     created_card_data
                     if isinstance(created_card_data, dict)

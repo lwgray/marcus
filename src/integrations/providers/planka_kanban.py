@@ -27,7 +27,7 @@ def _extract_text_content(result: Any) -> Optional[str]:
 
     content = result.content[0]
     if isinstance(content, TextContent):
-        return content.text
+        return str(content.text) if content.text is not None else None
     return None
 
 

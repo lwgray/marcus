@@ -170,13 +170,16 @@ class Settings:
                         "health_check_interval", config["health_check_interval"]
                     )
                     if "risk_thresholds" in monitoring_config:
-                        config["risk_thresholds"].update(
-                            monitoring_config["risk_thresholds"]
-                        )
+                        if isinstance(config["risk_thresholds"], dict) and isinstance(
+                            monitoring_config["risk_thresholds"], dict
+                        ):
+                            config["risk_thresholds"].update(
+                                monitoring_config["risk_thresholds"]
+                            )
 
                 # Get escalation settings
                 escalation_config = config_loader.get("escalation", {})
-                if escalation_config:
+                if escalation_config and isinstance(config["escalation_rules"], dict):
                     config["escalation_rules"].update(escalation_config)
 
                 # Get communication settings
@@ -191,12 +194,14 @@ class Settings:
                     config["kanban_comments_enabled"] = comm_config.get(
                         "kanban_comments_enabled", config["kanban_comments_enabled"]
                     )
-                    if "rules" in comm_config:
+                    if "rules" in comm_config and isinstance(
+                        config["communication_rules"], dict
+                    ):
                         config["communication_rules"].update(comm_config["rules"])
 
                 # Get AI settings
                 ai_config = config_loader.get("ai", {})
-                if ai_config:
+                if ai_config and isinstance(config["ai_settings"], dict):
                     config["ai_settings"]["model"] = ai_config.get(
                         "model", config["ai_settings"]["model"]
                     )
@@ -398,10 +403,11 @@ class Settings:
         >>> settings.set('new_setting', 'value')
         >>> settings.save()
         """
-        os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
+        if self.config_path:
+            os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
 
-        with open(self.config_path, "w") as f:
-            json.dump(self.config, f, indent=2)
+            with open(self.config_path, "w") as f:
+                json.dump(self.config, f, indent=2)
 
     def get_team_config(self, team_name: str = "default") -> Dict[str, Any]:
         """Get configuration for a specific team.
@@ -428,7 +434,14 @@ class Settings:
         >>> default_config = settings.get_team_config()
         """
         team_configs = self.get("team_config", {})
-        return team_configs.get(team_name, team_configs.get("default", {}))
+        if isinstance(team_configs, dict):
+            result = team_configs.get(team_name)
+            if result is not None and isinstance(result, dict):
+                return dict(result)
+            default_result = team_configs.get("default")
+            if default_result is not None and isinstance(default_result, dict):
+                return dict(default_result)
+        return {}
 
     def get_risk_thresholds(self) -> Dict[str, float]:
         """Get risk assessment thresholds for project monitoring.
@@ -450,7 +463,13 @@ class Settings:
         >>> if project_risk > thresholds['high_risk']:
         ...     send_alert()
         """
-        return self.get("risk_thresholds", self.defaults["risk_thresholds"])
+        risk_thresholds = self.get("risk_thresholds", self.defaults["risk_thresholds"])
+        if isinstance(risk_thresholds, dict):
+            return risk_thresholds
+        # Type assertion - defaults is known to have correct structure
+        from typing import cast
+
+        return cast(Dict[str, float], self.defaults["risk_thresholds"])
 
     def get_escalation_rules(self) -> Dict[str, int]:
         """Get escalation rules for automated issue management.
@@ -472,7 +491,15 @@ class Settings:
         >>> if task_stuck_hours > rules['stuck_task_hours']:
         ...     escalate_task(task)
         """
-        return self.get("escalation_rules", self.defaults["escalation_rules"])
+        escalation_rules = self.get(
+            "escalation_rules", self.defaults["escalation_rules"]
+        )
+        if isinstance(escalation_rules, dict):
+            return escalation_rules
+        # Type assertion - defaults is known to have correct structure
+        from typing import cast
+
+        return cast(Dict[str, int], self.defaults["escalation_rules"])
 
     def get_communication_rules(self) -> Dict[str, str]:
         """Get communication timing rules for automated messaging.
@@ -494,7 +521,15 @@ class Settings:
         >>> daily_time = rules['daily_plan_time']  # "08:00"
         >>> schedule_daily_plans(daily_time)
         """
-        return self.get("communication_rules", self.defaults["communication_rules"])
+        communication_rules = self.get(
+            "communication_rules", self.defaults["communication_rules"]
+        )
+        if isinstance(communication_rules, dict):
+            return communication_rules
+        # Type assertion - defaults is known to have correct structure
+        from typing import cast
+
+        return cast(Dict[str, str], self.defaults["communication_rules"])
 
     def get_ai_settings(self) -> Dict[str, Any]:
         """Get AI model configuration settings.
@@ -520,7 +555,13 @@ class Settings:
         ...     temperature=ai_config['temperature']
         ... )
         """
-        return self.get("ai_settings", self.defaults["ai_settings"])
+        ai_settings = self.get("ai_settings", self.defaults["ai_settings"])
+        if isinstance(ai_settings, dict):
+            return ai_settings
+        # Type assertion - defaults is known to have correct structure
+        from typing import cast
+
+        return cast(Dict[str, Any], self.defaults["ai_settings"])
 
     def validate(self) -> bool:
         """Validate current configuration for consistency and completeness.

@@ -361,7 +361,10 @@ class PhaseDependencyEnforcer:
     def _get_task_phase_name(self, task: Task) -> str:
         """Get the phase name for a task."""
         if hasattr(task, "phase") and task.phase:
-            return str(task.phase.name)
+            if hasattr(task.phase, "name"):
+                return str(task.phase.name)
+            else:
+                return str(task.phase)
 
         # Fallback to type classification
         task_type = self.task_classifier.classify(task)
@@ -408,7 +411,12 @@ class PhaseDependencyEnforcer:
     def _get_task_phase_enum(self, task: Task) -> Optional[TaskPhase]:
         """Get the TaskPhase enum for a task."""
         if hasattr(task, "phase") and task.phase:
-            return task.phase
+            from typing import cast
+
+            # Cast to avoid mypy error - we check isinstance below
+            phase = cast(TaskPhase, task.phase)
+            if isinstance(phase, TaskPhase):
+                return phase
 
         # Fallback to type classification
         task_type = self.task_classifier.classify(task)
@@ -431,7 +439,7 @@ class PhaseDependencyEnforcer:
         Returns:
             Dictionary with phase statistics
         """
-        stats = {
+        stats: Dict[str, Any] = {
             "total_tasks": len(tasks),
             "phase_distribution": {},
             "dependency_count": 0,
@@ -440,7 +448,7 @@ class PhaseDependencyEnforcer:
         }
 
         # Count tasks by phase
-        phase_counts: Dict[str, int] = defaultdict(int)
+        phase_counts: defaultdict[str, int] = defaultdict(int)
         for task in tasks:
             phase = self._get_task_phase_name(task)
             phase_counts[phase] += 1

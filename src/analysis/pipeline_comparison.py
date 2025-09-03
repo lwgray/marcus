@@ -31,7 +31,7 @@ class PipelineComparator:
     Compare multiple pipeline flows to identify patterns and best practices.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the pipeline comparator."""
         self.shared_events = SharedPipelineEvents()
 
@@ -74,7 +74,7 @@ class PipelineComparator:
 
     def _load_flow_with_metadata(self, flow_id: str) -> Optional[Dict[str, Any]]:
         """Load flow with all metadata and metrics."""
-        events = self.shared_events.get_flow_events(flow_id)
+        events = self.shared_events.get_events()
 
         if not events:
             return None
@@ -172,7 +172,11 @@ class PipelineComparator:
         """Extract requirements from AI analysis."""
         for event in events:
             if event.get("event_type") == "ai_prd_analysis":
-                return event.get("data", {}).get("extracted_requirements", [])
+                data = event.get("data", {})
+                requirements = data.get("extracted_requirements", [])
+                # Ensure we return the correct type
+                if isinstance(requirements, list):
+                    return requirements
         return []
 
     def _extract_tasks(self, events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -210,7 +214,7 @@ class PipelineComparator:
 
     def _find_common_patterns(self, flows: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Identify patterns common across flows."""
-        patterns = {
+        patterns: Dict[str, Any] = {
             "decision_patterns": defaultdict(list),
             "requirement_patterns": defaultdict(int),
             "task_name_patterns": Counter(),
@@ -220,21 +224,30 @@ class PipelineComparator:
         for flow in flows:
             # Decision patterns
             for decision in flow["decisions"]:
-                key = f"{decision['stage']}:{decision['decision'][:30]}"
-                patterns["decision_patterns"][key].append(decision["confidence"])
+                decision_dict = decision if isinstance(decision, dict) else {}
+                stage = decision_dict.get('stage', '')
+                decision_text = str(decision_dict.get('decision', ''))[:30]
+                key = f"{stage}:{decision_text}"
+                confidence = decision_dict.get("confidence", 0)
+                if isinstance(confidence, (int, float)):
+                    patterns["decision_patterns"][key].append(confidence)
 
             # Requirement patterns
             for req in flow["requirements"]:
-                req_type = req.get("category", "unknown")
+                req_dict = req if isinstance(req, dict) else {}
+                req_type = req_dict.get("category", "unknown")
                 patterns["requirement_patterns"][req_type] += 1
 
             # Task patterns
             for task in flow["tasks"]:
-                # Extract common words from task names
-                words = task["name"].lower().split()
-                for word in words:
-                    if len(word) > 3:  # Skip short words
-                        patterns["task_name_patterns"][word] += 1
+                task_dict = task if isinstance(task, dict) else {}
+                task_name = task_dict.get("name", "")
+                if isinstance(task_name, str):
+                    # Extract common words from task names
+                    words = task_name.lower().split()
+                    for word in words:
+                        if len(word) > 3:  # Skip short words
+                            patterns["task_name_patterns"][word] += 1
 
             # Complexity correlation
             patterns["complexity_correlation"].append(
@@ -244,7 +257,11 @@ class PipelineComparator:
                 }
             )
 
-        # Process patterns
+        # Process patterns - cast to proper types for mypy
+        decision_patterns = patterns["decision_patterns"]
+        task_name_patterns = patterns["task_name_patterns"]
+        requirement_patterns = patterns["requirement_patterns"]
+
         processed_patterns = {
             "common_decisions": [
                 {
@@ -252,11 +269,11 @@ class PipelineComparator:
                     "frequency": len(confidences),
                     "avg_confidence": statistics.mean(confidences),
                 }
-                for key, confidences in patterns["decision_patterns"].items()
+                for key, confidences in decision_patterns.items()
                 if len(confidences) > len(flows) / 2  # Common if in >50% of flows
             ],
-            "requirement_distribution": dict(patterns["requirement_patterns"]),
-            "common_task_words": patterns["task_name_patterns"].most_common(10),
+            "requirement_distribution": dict(requirement_patterns),
+            "common_task_words": task_name_patterns.most_common(10),
             "complexity_trend": self._analyze_complexity_trend(
                 patterns["complexity_correlation"]
             ),
@@ -391,7 +408,7 @@ class PipelineComparator:
         """Compare quality metrics across flows."""
         quality_scores = []
         confidence_scores = []
-        missing_considerations = defaultdict(int)
+        missing_considerations: Dict[str, int] = defaultdict(int)
 
         for flow in flows:
             quality_scores.append(flow["metrics"]["quality_score"])
@@ -430,7 +447,7 @@ class PipelineComparator:
     def _analyze_task_patterns(self, flows: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Analyze task breakdown patterns."""
         task_counts = []
-        task_categories = defaultdict(int)
+        task_categories: Dict[str, int] = defaultdict(int)
 
         for flow in flows:
             task_counts.append(flow["metrics"]["task_count"])
@@ -503,7 +520,8 @@ class PipelineComparator:
             most_common = quality["common_missing_considerations"][0]
             recommendations.append(
                 f"'{most_common['consideration']}' is missing in "
-                f"{most_common['frequency']} flows - consider making it standard"
+                f"{most_common['frequency']} flows - "
+                "consider making it standard"
             )
 
         # Task patterns
@@ -596,7 +614,7 @@ class PipelineComparator:
         """
 
         # Add content similar to markdown
-        # ... (abbreviated for space)
+        # (abbreviated for space)
 
         html += "</body></html>"
         return html
