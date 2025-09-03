@@ -4,14 +4,31 @@ Planka implementation of KanbanInterface
 Adapts the existing MCP Kanban client to work with the common interface
 """
 
+import json
 import logging
+import os
 from typing import Any, Dict, List, Optional, Union
+
+from mcp.client.stdio import stdio_client
+from mcp import ClientSession, StdioServerParameters
+from mcp.types import TextContent
 
 from src.core.models import Task, TaskStatus
 from src.integrations.kanban_client import KanbanClient
 from src.integrations.kanban_interface import KanbanInterface, KanbanProvider
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_text_content(result) -> Optional[str]:
+    """Safely extract text content from MCP result"""
+    if not result or not hasattr(result, 'content') or not result.content:
+        return None
+    
+    content = result.content[0]
+    if isinstance(content, TextContent):
+        return content.text
+    return None
 
 
 class PlankaKanban(KanbanInterface):
@@ -24,26 +41,33 @@ class PlankaKanban(KanbanInterface):
         Args:
             config: Dictionary containing:
                 - project_name: Name of the project in Planka
-                - mcp_function_caller: Function to call MCP tools
         """
         super().__init__(config)
         self.provider = KanbanProvider.PLANKA
-        self.client = KanbanClient(config.get("mcp_function_caller"))
+        self.client = KanbanClient()
         self.project_name = config.get("project_name", "Task Master Test")
         self.connected = False
+        
+        # Store server parameters for MCP calls
+        self._server_params = StdioServerParameters(
+            command="node", 
+            args=["../kanban-mcp/dist/index.js"], 
+            env=os.environ.copy()
+        )
 
     async def connect(self) -> bool:
         """Connect to Planka via MCP"""
         try:
-            await self.client.initialize(self.project_name)
-            self.connected = True
-            return True
+            # Test connection by trying to get board summary
+            summary = await self.client.get_board_summary()
+            self.connected = bool(summary)
+            return self.connected
         except Exception as e:
             logger.error(f"Failed to connect to Planka: {e}")
             # Re-raise the exception so it propagates up
             raise
 
-    async def disconnect(self):
+    async def disconnect(self) -> None:
         """Disconnect from Planka"""
         self.connected = False
 
@@ -55,15 +79,24 @@ class PlankaKanban(KanbanInterface):
         tasks = await self.client.get_available_tasks()
         return tasks
 
+    async def get_all_tasks(self) -> List[Task]:
+        """Get all tasks from the board"""
+        if not self.connected:
+            await self.connect()
+
+        tasks = await self.client.get_all_tasks()
+        return tasks
+
     async def get_task_by_id(self, task_id: str) -> Optional[Task]:
         """Get specific task by ID"""
         if not self.connected:
             await self.connect()
 
-        cards = await self.client._get_cards()
-        for card_data in cards:
-            if card_data["id"] == task_id:
-                return await self.client._card_to_task(card_data)
+        # Get all tasks and find the one with matching ID
+        all_tasks = await self.client.get_all_tasks()
+        for task in all_tasks:
+            if task.id == task_id:
+                return task
         return None
 
     async def create_task(self, task_data: Dict[str, Any]) -> Task:
@@ -79,30 +112,53 @@ class PlankaKanban(KanbanInterface):
             "position": 65535,  # Default position
         }
 
-        # Find backlog list
-        lists = await self.client._get_lists()
-        backlog_list = None
-        for list_data in lists:
-            if "backlog" in list_data["name"].lower():
-                backlog_list = list_data
-                break
-
-        if not backlog_list:
-            raise ValueError("No backlog list found")
-
-        # Create card
-        result = await self.client.mcp_call(
-            "mcp_kanban_create_card",
-            {
-                "listId": backlog_list["id"],
-                "name": card_data["name"],
-                "description": card_data["description"],
-                "position": card_data["position"],
-            },
-        )
-
-        # Convert to Task
-        return await self.client._card_to_task(result)
+        # Find backlog list and create card using direct MCP call
+        async with stdio_client(self._server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                
+                # Get lists for the board
+                lists_result = await session.call_tool(
+                    "mcp_kanban_list_manager",
+                    {"action": "get_all", "boardId": self.client.board_id},
+                )
+                
+                lists_text = _extract_text_content(lists_result)
+                if not lists_text:
+                    raise ValueError("Could not get board lists")
+                    
+                lists_data = json.loads(lists_text)
+                lists = lists_data if isinstance(lists_data, list) else lists_data.get("items", [])
+                
+                # Find backlog list
+                backlog_list = None
+                for list_data in lists:
+                    if "backlog" in list_data["name"].lower():
+                        backlog_list = list_data
+                        break
+                
+                if not backlog_list:
+                    raise ValueError("No backlog list found")
+                
+                # Create card
+                result = await session.call_tool(
+                    "mcp_kanban_create_card",
+                    {
+                        "listId": backlog_list["id"],
+                        "name": card_data["name"],
+                        "description": card_data["description"],
+                        "position": card_data["position"],
+                    },
+                )
+                
+                result_text = _extract_text_content(result)
+                if not result_text:
+                    raise ValueError("Failed to create card")
+                    
+                card_result = json.loads(result_text)
+                
+                # Convert to Task using the client's method
+                return self.client._card_to_task(card_result)
 
     async def update_task(self, task_id: str, updates: Dict[str, Any]) -> Task:
         """Update existing task"""
@@ -110,9 +166,6 @@ class PlankaKanban(KanbanInterface):
             await self.connect()
 
         # Debug logging
-        import logging
-
-        logger = logging.getLogger(__name__)
         logger.info(f"update_task called with task_id={task_id}, updates={updates}")
 
         # Check if status is being updated
@@ -135,24 +188,35 @@ class PlankaKanban(KanbanInterface):
             else:
                 logger.warning(f"Status {status} not found in status_to_column mapping")
 
-        # Update card details (if update_task_details exists)
-        if hasattr(self.client, "update_task_details"):
-            await self.client.update_task_details(task_id, updates)
+        # Update card details using direct MCP calls for other fields
+        if any(key in updates for key in ["name", "description", "due_date"]):
+            async with stdio_client(self._server_params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    
+                    update_data = {"id": task_id}
+                    if "name" in updates:
+                        update_data["name"] = updates["name"]
+                    if "description" in updates:
+                        update_data["description"] = updates["description"]
+                    if "due_date" in updates:
+                        update_data["dueDate"] = updates["due_date"]
+                    
+                    await session.call_tool("mcp_kanban_update_card", update_data)
 
         # Get updated task
-        return await self.get_task_by_id(task_id)
+        updated_task = await self.get_task_by_id(task_id)
+        if updated_task is None:
+            raise ValueError(f"Task {task_id} not found after update")
+        return updated_task
 
     async def assign_task(self, task_id: str, assignee_id: str) -> bool:
         """Assign task to worker"""
         if not self.connected:
             await self.connect()
 
-        # Add assignment comment
+        # Use the client's assign_task method which handles both comment and move
         await self.client.assign_task(task_id, assignee_id)
-
-        # Move to In Progress column
-        await self.move_task_to_column(task_id, "in progress")
-
         return True
 
     async def move_task_to_column(self, task_id: str, column_name: str) -> bool:
@@ -171,77 +235,91 @@ class PlankaKanban(KanbanInterface):
 
         target_list_name = column_map.get(column_name.lower(), column_name)
 
-        # Find target list
-        lists = await self.client._get_lists()
+        # Find target list using MCP call
+        async with stdio_client(self._server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                
+                lists_result = await session.call_tool(
+                    "mcp_kanban_list_manager",
+                    {"action": "get_all", "boardId": self.client.board_id},
+                )
+                
+                lists_text = _extract_text_content(lists_result)
+                if not lists_text:
+                    return False
+                    
+                lists_data = json.loads(lists_text)
+                lists = lists_data if isinstance(lists_data, list) else lists_data.get("items", [])
 
-        # Debug logging
-        import logging
+                # Debug logging
+                logger.info(
+                    f"Looking for list: '{target_list_name}' (from column_name: '{column_name}')"
+                )
+                logger.info(f"Available lists: {[lst['name'] for lst in lists]}")
 
-        logger = logging.getLogger(__name__)
-        logger.info(
-            f"Looking for list: '{target_list_name}' (from column_name: '{column_name}')"
-        )
-        logger.info(f"Available lists: {[lst['name'] for lst in lists]}")
+                target_list = None
+                for list_data in lists:
+                    if target_list_name.lower() in list_data["name"].lower():
+                        target_list = list_data
+                        break
 
-        target_list = None
-        for list_data in lists:
-            if target_list_name.lower() in list_data["name"].lower():
-                target_list = list_data
-                break
-
-        if not target_list:
-            logger.error(f"Could not find list matching '{target_list_name}'")
-            return False
-
-        # Move card
-        await self.client.mcp_call(
-            "mcp_kanban_move_card",
-            {"cardId": task_id, "listId": target_list["id"], "position": 65535},
-        )
-
-        return True
+                if not target_list:
+                    logger.error(f"Could not find list matching '{target_list_name}'")
+                    return False
+                
+                # Move card
+                move_result = await session.call_tool(
+                    "mcp_kanban_card_manager",
+                    {
+                        "action": "move",
+                        "id": task_id,
+                        "listId": target_list["id"],
+                        "position": 65535,
+                    },
+                )
+                
+                return bool(move_result)
 
     async def add_comment(self, task_id: str, comment: str) -> bool:
         """Add comment to task"""
         if not self.connected:
             await self.connect()
 
-        return await self.client.add_comment(task_id, comment)
+        try:
+            await self.client.add_comment(task_id, comment)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to add comment: {e}")
+            return False
 
     async def get_project_metrics(self) -> Dict[str, Any]:
         """Get project metrics"""
         if not self.connected:
             await self.connect()
 
-        cards = await self.client._get_cards()
-        lists = await self.client._get_lists()
-
-        # Create list name to ID mapping (removed - not used)
+        # Get all tasks using client methods
+        all_tasks = await self.client.get_all_tasks()
 
         metrics = {
-            "total_tasks": len(cards),
+            "total_tasks": len(all_tasks),
             "backlog_tasks": 0,
             "in_progress_tasks": 0,
             "completed_tasks": 0,
             "blocked_tasks": 0,
         }
-
-        # Count tasks by status
-        for card in cards:
-            list_id = card.get("listId")
-            for list_data in lists:
-                if list_data["id"] == list_id:
-                    list_name = list_data["name"].lower()
-                    if "backlog" in list_name or "ready" in list_name:
-                        metrics["backlog_tasks"] += 1
-                    elif "progress" in list_name:
-                        metrics["in_progress_tasks"] += 1
-                    elif "done" in list_name or "complete" in list_name:
-                        metrics["completed_tasks"] += 1
-                    elif "blocked" in list_name:
-                        metrics["blocked_tasks"] += 1
-                    break
-
+        
+        # Count tasks by status using Task.status directly
+        for task in all_tasks:
+            if task.status == TaskStatus.TODO:
+                metrics["backlog_tasks"] += 1
+            elif task.status == TaskStatus.IN_PROGRESS:
+                metrics["in_progress_tasks"] += 1
+            elif task.status == TaskStatus.DONE:
+                metrics["completed_tasks"] += 1
+            elif task.status == TaskStatus.BLOCKED:
+                metrics["blocked_tasks"] += 1
+        
         return metrics
 
     async def report_blocker(
@@ -296,28 +374,50 @@ class PlankaKanban(KanbanInterface):
     async def _update_checklist_progress(self, task_id: str, progress: int) -> None:
         """Update checklist items based on progress percentage"""
         try:
-            # Get all checklist items for the card
-            checklist_items = await self.client.get_card_tasks(task_id)
-
-            if not checklist_items:
-                return
-
-            # Calculate how many items should be completed based on progress
-            total_items = len(checklist_items)
-            items_to_complete = int((progress / 100) * total_items)
-
-            # Sort items by position to maintain order
-            sorted_items = sorted(checklist_items, key=lambda x: x.get("position", 0))
-
-            # Update checklist items
-            for idx, item in enumerate(sorted_items):
-                should_be_completed = idx < items_to_complete
-                is_completed = item.get("isCompleted", False)
-
-                # Only update if state needs to change
-                if should_be_completed != is_completed:
-                    await self.client.update_card_task(item["id"], should_be_completed)
-
+            # Use MCP to get and update checklist items
+            async with stdio_client(self._server_params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    
+                    # Get card tasks (checklist items)
+                    tasks_result = await session.call_tool(
+                        "mcp_kanban_task_manager",
+                        {"action": "get_all", "cardId": task_id},
+                    )
+                    
+                    tasks_text = _extract_text_content(tasks_result)
+                    if not tasks_text:
+                        return
+                        
+                    checklist_data = json.loads(tasks_text)
+                    checklist_items = checklist_data if isinstance(checklist_data, list) else checklist_data.get("items", [])
+                    
+                    if not checklist_items:
+                        return
+                    
+                    # Calculate how many items should be completed based on progress
+                    total_items = len(checklist_items)
+                    items_to_complete = int((progress / 100) * total_items)
+                    
+                    # Sort items by position to maintain order
+                    sorted_items = sorted(checklist_items, key=lambda x: x.get("position", 0))
+                    
+                    # Update checklist items
+                    for idx, item in enumerate(sorted_items):
+                        should_be_completed = idx < items_to_complete
+                        is_completed = item.get("isCompleted", False)
+                        
+                        # Only update if state needs to change
+                        if should_be_completed != is_completed:
+                            await session.call_tool(
+                                "mcp_kanban_task_manager",
+                                {
+                                    "action": "update",
+                                    "id": item["id"],
+                                    "isCompleted": should_be_completed,
+                                },
+                            )
+        
         except Exception as e:
             # Log error but don't fail the progress update
             logger.warning(f"Could not update checklist items: {e}")
@@ -347,16 +447,24 @@ class PlankaKanban(KanbanInterface):
                 content = base64.b64encode(content).decode()
 
             # Call the MCP attachment manager
-            result = await self.client.mcp_call(
-                "mcp_kanban_attachment_manager",
-                {
-                    "action": "upload",
-                    "cardId": task_id,
-                    "filename": filename,
-                    "content": content,
-                    "contentType": content_type,
-                },
-            )
+            async with stdio_client(self._server_params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    
+                    attachment_result = await session.call_tool(
+                        "mcp_kanban_attachment_manager",
+                        {
+                            "action": "upload",
+                            "cardId": task_id,
+                            "filename": filename,
+                            "content": content,
+                            "contentType": content_type,
+                        },
+                    )
+                    
+                    result = None
+                    if attachment_result and hasattr(attachment_result, 'content'):
+                        result = json.loads(attachment_result.content[0].text)
 
             if result:
                 return {
@@ -381,13 +489,21 @@ class PlankaKanban(KanbanInterface):
             await self.connect()
 
         try:
-            result = await self.client.mcp_call(
-                "mcp_kanban_attachment_manager",
-                {
-                    "action": "get_all",
-                    "cardId": task_id,
-                },
-            )
+            async with stdio_client(self._server_params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    
+                    attachment_result = await session.call_tool(
+                        "mcp_kanban_attachment_manager",
+                        {
+                            "action": "get_all",
+                            "cardId": task_id,
+                        },
+                    )
+                    
+                    result = None
+                    if attachment_result and hasattr(attachment_result, 'content'):
+                        result = json.loads(attachment_result.content[0].text)
 
             if isinstance(result, list):
                 # Format attachments
@@ -419,14 +535,22 @@ class PlankaKanban(KanbanInterface):
             await self.connect()
 
         try:
-            result = await self.client.mcp_call(
-                "mcp_kanban_attachment_manager",
-                {
-                    "action": "download",
-                    "id": attachment_id,
-                    "filename": filename,
-                },
-            )
+            async with stdio_client(self._server_params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    
+                    attachment_result = await session.call_tool(
+                        "mcp_kanban_attachment_manager",
+                        {
+                            "action": "download",
+                            "id": attachment_id,
+                            "filename": filename,
+                        },
+                    )
+                    
+                    result = None
+                    if attachment_result and hasattr(attachment_result, 'content'):
+                        result = json.loads(attachment_result.content[0].text)
 
             if result and result.get("content"):
                 return {
@@ -455,17 +579,25 @@ class PlankaKanban(KanbanInterface):
             await self.connect()
 
         try:
-            result = await self.client.mcp_call(
-                "mcp_kanban_attachment_manager",
-                {
-                    "action": "delete",
-                    "id": attachment_id,
-                },
-            )
+            async with stdio_client(self._server_params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    
+                    attachment_result = await session.call_tool(
+                        "mcp_kanban_attachment_manager",
+                        {
+                            "action": "delete",
+                            "id": attachment_id,
+                        },
+                    )
+                    
+                    result = None
+                    if attachment_result and hasattr(attachment_result, 'content'):
+                        result = json.loads(attachment_result.content[0].text)
 
             return {
-                "success": result.get("success", False),
-                "error": result.get("error") if not result.get("success") else None,
+                "success": result.get("success", False) if result else False,
+                "error": result.get("error") if result and not result.get("success") else None,
             }
 
         except Exception as e:
@@ -489,14 +621,22 @@ class PlankaKanban(KanbanInterface):
             }
 
         try:
-            result = await self.client.mcp_call(
-                "mcp_kanban_attachment_manager",
-                {
-                    "action": "update",
-                    "id": attachment_id,
-                    "name": filename,
-                },
-            )
+            async with stdio_client(self._server_params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    
+                    attachment_result = await session.call_tool(
+                        "mcp_kanban_attachment_manager",
+                        {
+                            "action": "update",
+                            "id": attachment_id,
+                            "name": filename,
+                        },
+                    )
+                    
+                    result = None
+                    if attachment_result and hasattr(attachment_result, 'content'):
+                        result = json.loads(attachment_result.content[0].text)
 
             if result:
                 return {

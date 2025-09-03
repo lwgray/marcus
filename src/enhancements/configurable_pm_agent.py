@@ -234,7 +234,7 @@ class ConfigurablePMAgent(MarcusMVP):  # type: ignore[misc]
         'project-123'
         """
         result = await super()._get_project_status()
-        
+
         # Ensure result is dict type
         if not isinstance(result, dict):
             result = {"success": False, "error": "Invalid parent result"}

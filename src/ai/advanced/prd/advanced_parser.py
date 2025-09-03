@@ -678,10 +678,10 @@ class AdvancedPRDParser:
         risk_assessment["timeline_risks"] = constraint_risks  # type: ignore[assignment]
 
         # Generate mitigation strategies (cast to expected type)
-        risk_assessment["mitigation_strategies"] = (
-            await self._generate_mitigation_strategies(
-                risk_factors_list, tasks, analysis  # type: ignore[arg-type]
-            )
+        risk_assessment[
+            "mitigation_strategies"
+        ] = await self._generate_mitigation_strategies(
+            risk_factors_list, tasks, analysis  # type: ignore[arg-type]
         )
 
         # Calculate overall risk level
