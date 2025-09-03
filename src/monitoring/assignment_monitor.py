@@ -8,7 +8,7 @@ to prevent workers from being stuck with reverted tasks.
 import asyncio
 import logging
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from src.core.assignment_persistence import AssignmentPersistence
 from src.core.assignment_reconciliation import AssignmentReconciler
@@ -40,7 +40,7 @@ class AssignmentMonitor:
         self.reconciler = AssignmentReconciler(persistence, kanban_client)
         self.check_interval = check_interval
         self._running = False
-        self._monitor_task: Optional[asyncio.Task] = None
+        self._monitor_task: Optional[asyncio.Task[None]] = None
 
         # Track task states to detect changes
         self._last_known_states: Dict[str, TaskStatus] = {}
@@ -48,7 +48,7 @@ class AssignmentMonitor:
             {}
         )  # Track how many times a task reverted
 
-    async def start(self):
+    async def start(self) -> None:
         """Start monitoring for assignment reversions."""
         if self._running:
             logger.warning("Assignment monitor already running")
@@ -58,7 +58,7 @@ class AssignmentMonitor:
         self._monitor_task = asyncio.create_task(self._monitor_loop())
         logger.info(f"Assignment monitor started (interval: {self.check_interval}s)")
 
-    async def stop(self):
+    async def stop(self) -> None:
         """Stop the assignment monitor."""
         self._running = False
         if self._monitor_task:
@@ -69,7 +69,7 @@ class AssignmentMonitor:
                 pass
         logger.info("Assignment monitor stopped")
 
-    async def _monitor_loop(self):
+    async def _monitor_loop(self) -> None:
         """Main monitoring loop."""
         while self._running:
             try:
@@ -79,7 +79,7 @@ class AssignmentMonitor:
                 logger.error(f"Error in assignment monitor: {e}")
                 await asyncio.sleep(self.check_interval)
 
-    async def _check_for_reversions(self):
+    async def _check_for_reversions(self) -> None:
         """Check for task state reversions."""
         try:
             # Get current assignments from persistence
@@ -171,7 +171,7 @@ class AssignmentMonitor:
 
         return False
 
-    async def _handle_reversion(self, reversion: Dict):
+    async def _handle_reversion(self, reversion: Dict[str, Any]) -> None:
         """Handle a detected task reversion."""
         task_id = reversion["task_id"]
         worker_id = reversion["worker_id"]
@@ -197,7 +197,7 @@ class AssignmentMonitor:
                 "This task may have issues."
             )
 
-    async def _handle_missing_task(self, worker_id: str, task_id: str):
+    async def _handle_missing_task(self, worker_id: str, task_id: str) -> None:
         """Handle a task that no longer exists."""
         # Remove assignment
         await self.persistence.remove_assignment(worker_id)
@@ -206,14 +206,21 @@ class AssignmentMonitor:
             f"Removed assignment for missing task {task_id} from worker {worker_id}"
         )
 
-    async def force_reconciliation(self):
+    async def force_reconciliation(self) -> Dict[str, Any]:
         """Force a full reconciliation check."""
         logger.info("Forcing assignment reconciliation")
         results = await self.reconciler.reconcile_assignments()
         logger.info(f"Reconciliation results: {results}")
-        return results
+        # Convert ReconciliationResults to dict format
+        return {
+            "status": "completed", 
+            "fixed_assignments": getattr(results, 'fixed_assignments', 0),
+            "removed_assignments": getattr(results, 'removed_assignments', 0),
+            "errors": getattr(results, 'errors', []),
+            "details": str(results)
+        }
 
-    def get_monitoring_stats(self) -> Dict:
+    def get_monitoring_stats(self) -> Dict[str, Any]:
         """Get current monitoring statistics."""
         return {
             "monitoring": self._running,
@@ -238,14 +245,14 @@ class AssignmentHealthChecker:
         self.monitor = monitor
         self.reconciler = AssignmentReconciler(persistence, kanban_client)
 
-    async def check_assignment_health(self) -> Dict:
+    async def check_assignment_health(self) -> Dict[str, Any]:
         """
         Comprehensive health check of assignment system.
 
         Returns:
             Dictionary with health status and any issues found
         """
-        health = {
+        health: Dict[str, Any] = {
             "healthy": True,
             "issues": [],
             "metrics": {},

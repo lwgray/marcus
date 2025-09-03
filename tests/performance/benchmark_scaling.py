@@ -16,13 +16,12 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import aiohttp
 import websockets
-import websockets.client
 from aiohttp import ClientSession
-from websockets.legacy.client import WebSocketClientProtocol
+from websockets import ClientConnection
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -75,28 +74,29 @@ class AgentSimulator:
         self.server_url = server_url
         self.ws_url = server_url.replace("http", "ws")
         self.session: Optional[ClientSession] = None
-        self.websocket: Optional[WebSocketClientProtocol] = None
+        self.websocket: Optional[Any] = None
         self.connected = False
         self.response_times: List[float] = []
         self.errors: List[str] = []
 
-    async def connect_http(self):
+    async def connect_http(self) -> ClientSession:
         """Connect using HTTP session."""
         self.session = aiohttp.ClientSession()
         return self.session
 
-    async def connect_websocket(self):
+    async def connect_websocket(self) -> Optional[ClientConnection]:
         """Connect using WebSocket."""
         try:
-            self.websocket = await websockets.connect(
+            connection = await websockets.connect(
                 f"{self.ws_url}/ws/agent/{self.agent_id}",
                 ping_interval=20,
                 ping_timeout=10,
             )
+            self.websocket = connection
             self.connected = True
 
             # Send registration
-            await self.websocket.send(
+            await connection.send(
                 json.dumps(
                     {
                         "type": "register",
@@ -107,16 +107,18 @@ class AgentSimulator:
             )
 
             # Wait for registration confirmation
-            response = await self.websocket.recv()
+            response = await connection.recv()
             data = json.loads(response)
             if data.get("type") != "registered":
                 raise Exception(f"Registration failed: {data}")
+            
+            return connection
 
         except Exception as e:
             self.errors.append(f"WebSocket connection failed: {e}")
-            raise
+            return None
 
-    async def register_agent(self):
+    async def register_agent(self) -> None:
         """Register agent via HTTP."""
         if not self.session:
             raise Exception("HTTP session not initialized")
@@ -134,12 +136,12 @@ class AgentSimulator:
                     raise Exception(f"Registration failed: {await response.text()}")
 
                 self.response_times.append(time.time() - start_time)
-                return await response.json()
+                # Registration successful - no return value needed
         except Exception as e:
             self.errors.append(f"Registration error: {e}")
             raise
 
-    async def request_task(self):
+    async def request_task(self) -> Optional[Dict[str, Any]]:
         """Request a task."""
         start_time = time.time()
 
@@ -153,7 +155,8 @@ class AgentSimulator:
                 else:
                     raise Exception("WebSocket not connected")
                 self.response_times.append(time.time() - start_time)
-                return data.get("task")
+                task = data.get("task")
+                return cast(Optional[Dict[str, Any]], task)
             except Exception as e:
                 self.errors.append(f"Task request error (WS): {e}")
                 raise
@@ -165,13 +168,14 @@ class AgentSimulator:
                 async with self.session.post(
                     f"{self.server_url}/api/v1/tasks/request",
                     json={"agent_id": self.agent_id},
-                ) as response:
-                    if response.status != 200:
-                        raise Exception(f"Task request failed: {await response.text()}")
+                ) as resp:
+                    if resp.status != 200:
+                        raise Exception(f"Task request failed: {await resp.text()}")
 
                     self.response_times.append(time.time() - start_time)
-                    data = await response.json()
-                    return data.get("task")
+                    data = await resp.json()
+                    task = data.get("task")
+                    return cast(Optional[Dict[str, Any]], task)
             except Exception as e:
                 self.errors.append(f"Task request error (HTTP): {e}")
                 raise
@@ -216,10 +220,10 @@ class AgentSimulator:
                         "status": "in_progress",
                         "message": f"Progress: {progress}%",
                     },
-                ) as response:
-                    if response.status != 200:
+                ) as resp:
+                    if resp.status != 200:
                         raise Exception(
-                            f"Progress report failed: {await response.text()}"
+                            f"Progress report failed: {await resp.text()}"
                         )
 
                     self.response_times.append(time.time() - start_time)
@@ -254,7 +258,7 @@ class AgentSimulator:
 
         return cycles
 
-    async def cleanup(self):
+    async def cleanup(self) -> None:
         """Clean up connections."""
         if self.websocket:
             await self.websocket.close()
@@ -267,7 +271,7 @@ class LoadTester:
 
     def __init__(self, server_url: str = "http://localhost:8000"):
         self.server_url = server_url
-        self.results = []
+        self.results: List[BenchmarkResult] = []
 
     async def run_scenario(
         self,
@@ -284,10 +288,10 @@ class LoadTester:
         )
 
         start_time = time.time()
-        agents = []
+        agents: List[AgentSimulator] = []
         connection_times = []
         all_response_times = []
-        all_errors = {}
+        all_errors: Dict[str, int] = {}
 
         # Create agents with ramp-up
         ramp_up_delay = ramp_up_time / num_agents if num_agents > 0 else 0
@@ -318,7 +322,7 @@ class LoadTester:
         created_agents = await asyncio.gather(*agent_tasks, return_exceptions=True)
 
         # Filter out failed agents
-        agents = [a for a in created_agents if a and not isinstance(a, Exception)]
+        agents = cast(List[AgentSimulator], [a for a in created_agents if a and not isinstance(a, Exception)])
         failed_connections = num_agents - len(agents)
 
         logger.info(f"Successfully connected {len(agents)} out of {num_agents} agents")
@@ -442,7 +446,7 @@ class LoadTester:
 
     def generate_report(self, filename: str = "benchmark_results.json") -> None:
         """Generate detailed report."""
-        report = {
+        report: Dict[str, Any] = {
             "timestamp": datetime.utcnow().isoformat(),
             "server_url": self.server_url,
             "scenarios": [],
@@ -489,7 +493,7 @@ async def stress_test_connection_limit(
     """Test server connection limits."""
     logger.info(f"Testing connection limit up to {max_connections}")
 
-    connections = []
+    connections: List[ClientConnection] = []
     successful = 0
 
     async def create_connection(index: int):
@@ -511,7 +515,7 @@ async def stress_test_connection_limit(
 
         for ws in results:
             if ws and not isinstance(ws, Exception):
-                connections.append(ws)
+                connections.append(cast(ClientConnection, ws))
                 successful += 1
 
         logger.info(f"Connected: {successful}/{batch_end}")

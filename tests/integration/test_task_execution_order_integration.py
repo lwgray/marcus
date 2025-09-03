@@ -7,7 +7,7 @@ and integration with the natural language processing tools.
 
 import asyncio
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Any
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
@@ -22,10 +22,10 @@ from src.integrations.nlp_task_utils import SafetyChecker, TaskBuilder
 class MockKanbanClient:
     """Mock kanban client for testing."""
 
-    def __init__(self):
-        self.created_tasks = []
+    def __init__(self) -> None:
+        self.created_tasks: List[Any] = []
 
-    async def create_task(self, task_data):
+    async def create_task(self, task_data: Any) -> Any:
         """Mock task creation."""
         self.created_tasks.append(task_data)
         return {"id": f"kb-{len(self.created_tasks)}", "status": "success"}
@@ -34,7 +34,7 @@ class MockKanbanClient:
 class MockNLPTaskCreator(NaturalLanguageTaskCreator):
     """Test implementation of NaturalLanguageTaskCreator."""
 
-    async def process_natural_language(self, description: str) -> List[Task]:
+    async def process_natural_language(self, description: str, **kwargs: Any) -> List[Task]:
         """Simple test implementation."""
         # Return predefined tasks based on description
         if "authentication" in description.lower():
@@ -70,12 +70,12 @@ class TestTaskExecutionOrderIntegration:
     """Integration tests for task execution order system."""
 
     @pytest.fixture
-    def kanban_client(self):
+    def kanban_client(self) -> MockKanbanClient:
         """Create mock kanban client."""
         return MockKanbanClient()
 
     @pytest.fixture
-    def task_creator(self, kanban_client):
+    def task_creator(self, kanban_client: MockKanbanClient) -> MockNLPTaskCreator:
         """Create test task creator."""
         return MockNLPTaskCreator(kanban_client)
 
@@ -147,7 +147,7 @@ class TestTaskExecutionOrderIntegration:
             assert classified[task_id]["confidence"] > 0.5
 
     @pytest.mark.asyncio
-    async def test_multi_feature_project(self, kanban_client):
+    async def test_multi_feature_project(self, kanban_client: MockKanbanClient) -> None:
         """Test handling of multiple features with isolated dependencies."""
         # Create a more complex task creator
         creator = MockNLPTaskCreator(kanban_client)
@@ -167,7 +167,8 @@ class TestTaskExecutionOrderIntegration:
                 creator._create_task("pay-3", "Test payment flow", ["payment"]),
             ]
 
-        creator.process_natural_language = multi_feature_process
+        # Replace the method using monkey patching
+        setattr(creator, 'process_natural_language', multi_feature_process)
 
         tasks = await creator.process_natural_language("Build complete system")
         tasks = await creator.apply_safety_checks(tasks)

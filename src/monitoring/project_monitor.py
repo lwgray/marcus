@@ -59,7 +59,7 @@ Risk and blocker management:
 
 import asyncio
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from src.config.settings import Settings
 from src.core.models import (
@@ -166,13 +166,14 @@ class ProjectMonitor:
         self.current_state: Optional[ProjectState] = None
         self.blockers: List[BlockerReport] = []
         self.risks: List[ProjectRisk] = []
-        self.historical_data: List[Dict] = []
+        self.historical_data: List[Dict[str, Any]] = []
 
         # Monitoring configuration
         self.check_interval = self.settings.get(
             "monitoring_interval", 900
         )  # 15 minutes
         self.is_monitoring = False
+        self._last_completion_check: Optional[datetime] = None
 
     async def start_monitoring(self) -> None:
         """Start the continuous monitoring loop.
@@ -310,6 +311,7 @@ class ProjectMonitor:
         """
         if not self.current_state:
             await self._collect_project_data()
+        assert self.current_state is not None  # Help mypy understand this is not None after _collect_project_data
         return self.current_state
 
     async def _collect_project_data(self) -> None:
@@ -368,23 +370,21 @@ class ProjectMonitor:
         # Calculate velocity (tasks completed per week)
         velocity = await self._calculate_velocity(all_tasks)
 
-        # Determine velocity trend
-        velocity_trend = self._calculate_velocity_trend(velocity)
-
-        # Determine risk level and score
+        # Determine risk level and score for internal use
         risk_level = self._assess_risk_level(
             progress_percent, len(overdue_tasks), blocked_tasks, velocity
         )
+        
+        # Store additional calculated metrics as attributes for access by other methods
+        velocity_trend = self._calculate_velocity_trend(velocity)
         risk_score = self._calculate_risk_score(
             progress_percent, len(overdue_tasks), blocked_tasks, velocity
         )
-
-        # Calculate projected completion date
         projected_completion = self._calculate_projected_completion(
             completed_tasks, total_tasks, velocity
         )
 
-        # Update current state
+        # Update current state with only the fields defined in ProjectState
         self.current_state = ProjectState(
             board_id=self.kanban_client.board_id or "unknown",
             project_name=summary.get("name", "Unknown Project"),
@@ -395,12 +395,14 @@ class ProjectMonitor:
             progress_percent=progress_percent,
             overdue_tasks=overdue_tasks,
             team_velocity=velocity,
-            velocity_trend=velocity_trend,
             risk_level=risk_level,
-            risk_score=risk_score,
-            projected_completion_date=projected_completion,
             last_updated=datetime.now(),
         )
+        
+        # Store additional metrics as instance attributes for later use
+        self._velocity_trend = velocity_trend
+        self._risk_score = risk_score
+        self._projected_completion = projected_completion
 
     async def _get_all_tasks(self) -> List[Task]:
         """Get all tasks from all kanban board columns.
@@ -426,24 +428,8 @@ class ProjectMonitor:
         the mcp_kanban_card_manager tool to retrieve card data from each
         column, then converts the cards to standardized Task objects.
         """
-        all_tasks = []
-
-        columns = ["TODO", "IN PROGRESS", "BLOCKED", "DONE"]
-        for column in columns:
-            cards = await self.kanban_client._call_tool(
-                "mcp_kanban_card_manager",
-                {
-                    "action": "get_all",
-                    "boardId": self.kanban_client.board_id,
-                    "columnName": column,
-                },
-            )
-
-            for card in cards:
-                task = self.kanban_client._card_to_task(card)
-                all_tasks.append(task)
-
-        return all_tasks
+        # Use the existing get_all_tasks method from KanbanClient
+        return await self.kanban_client.get_all_tasks()
 
     async def _calculate_velocity(self, tasks: List[Task]) -> float:
         """Calculate team velocity as tasks completed per week.
@@ -618,7 +604,7 @@ class ProjectMonitor:
         recent_activities = self.historical_data[-10:] if self.historical_data else []
 
         # Get team status (simplified for now)
-        team_status = []  # Would be populated from agent status tracking
+        team_status: Dict[str, Any] = {}  # Would be populated from agent status tracking
 
         # Get AI analysis
         analysis = await self.ai_engine.analyze_project_health(
@@ -787,7 +773,9 @@ class ProjectMonitor:
         # Find blocked tasks with many dependents
         for task in tasks:
             if task.status == TaskStatus.BLOCKED:
-                dependents = await self.kanban_client.get_dependent_tasks(task.id)
+                # For now, skip dependency analysis since get_dependent_tasks is not implemented
+                # TODO: Implement dependency analysis when the method is available
+                dependents: List[Task] = []  # Would call self.kanban_client.get_dependent_tasks(task.id)
                 if len(dependents) > 2:
                     risk = ProjectRisk(
                         risk_type="dependency",
@@ -1165,7 +1153,7 @@ class ProjectMonitor:
             )
         ):
             # Check if we've already processed this completion
-            if hasattr(self, "_last_completion_check"):
+            if self._last_completion_check is not None:
                 if (datetime.now() - self._last_completion_check).days < 1:
                     return
 
@@ -1178,6 +1166,10 @@ class ProjectMonitor:
         """Handle project completion by triggering learning and assessment."""
         import sys
 
+        # Ensure current_state is not None
+        if self.current_state is None:
+            return
+            
         print(
             f"🎉 Project '{self.current_state.project_name}' appears to be complete!",
             file=sys.stderr,
@@ -1202,7 +1194,7 @@ class ProjectMonitor:
         all_tasks = await self._get_all_tasks()
 
         # Get team members (would need to be tracked or passed in)
-        team_members = []  # This would come from agent tracking
+        team_members: List[Any] = []  # This would come from agent tracking
 
         github_config = (
             {
@@ -1285,10 +1277,11 @@ class ProjectMonitor:
         """Estimate project cost based on duration and team size."""
         # Simple cost model: $1000/day per team member
         daily_rate = self.settings.get("cost_estimation.daily_rate", 1000)
+        daily_rate_value = float(daily_rate)
         return (
-            duration_days * team_size * daily_rate
+            float(duration_days * team_size * daily_rate_value)
             if team_size > 0
-            else duration_days * daily_rate * 3
+            else float(duration_days * daily_rate_value * 3)
         )
 
     async def trigger_project_completion_learning(
@@ -1342,6 +1335,9 @@ class ProjectMonitor:
         """
         if not self.current_state:
             await self._collect_project_data()
+
+        # Ensure current_state is not None after data collection
+        assert self.current_state is not None
 
         # Get all tasks for analysis
         all_tasks = await self._get_all_tasks()
@@ -1429,6 +1425,9 @@ class ProjectMonitor:
         """
         if not self.current_state:
             await self._collect_project_data()
+
+        # Ensure current_state is not None after data collection
+        assert self.current_state is not None
 
         # Build project context
         await self._get_all_tasks()

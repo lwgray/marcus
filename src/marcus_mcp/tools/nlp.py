@@ -10,11 +10,9 @@ from typing import Any, Dict, Optional
 
 from src.integrations.nlp_tools import add_feature_natural_language
 
-# Use type: ignore to suppress the export warning and avoid redefinition
+# Import PipelineStage with fallback for compatibility
 try:
-    from src.visualization.pipeline_flow import (
-        PipelineStage,  # type: ignore[attr-defined]
-    )
+    from src.visualization.pipeline_flow import PipelineStage
 except ImportError:
     # Fallback if PipelineStage is not available
     class PipelineStage:  # type: ignore[no-redef]

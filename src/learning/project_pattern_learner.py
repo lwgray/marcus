@@ -1,5 +1,5 @@
 """
-Project Pattern Learner
+Project Pattern Learner.
 
 This module extracts patterns from completed projects to improve future recommendations.
 It analyzes project outcomes, team performance, and quality metrics to identify
@@ -309,7 +309,7 @@ class ProjectPatternLearner:
         roles: Dict[str, int] = defaultdict(int)
         skill_coverage: Dict[str, int] = defaultdict(int)
         experience_distribution: Dict[str, int] = {"senior": 0, "mid": 0, "junior": 0}
-        
+
         composition = {
             "team_size": len(team_members),
             "roles": roles,
@@ -406,7 +406,7 @@ class ProjectPatternLearner:
 
         endpoints_created: List[str] = []
         models_created: List[str] = []
-        
+
         patterns: Dict[str, Any] = {
             "endpoints_created": endpoints_created,
             "models_created": models_created,
@@ -463,7 +463,8 @@ class ProjectPatternLearner:
                 quality_metrics, team_metrics, outcome
             )
 
-        prompt = f"""Analyze this completed project and identify key success factors and risk factors.
+        prompt = f"""Analyze this completed project and identify key success factors and \
+risk factors.
 
 Project Outcome:
 - Success: {outcome.successful}
@@ -1049,7 +1050,10 @@ Return JSON:
                 recommendations_list.append(
                     {
                         "category": "team",
-                        "suggestion": f"Consider team size of {pattern.team_composition['team_size']} with roles: {', '.join(pattern.team_composition['roles'].keys())}",
+                        "suggestion": (
+                            f"Consider team size of {pattern.team_composition['team_size']} "
+                            f"with roles: {', '.join(pattern.team_composition['roles'].keys())}"
+                        ),
                     }
                 )
 
@@ -1058,7 +1062,10 @@ Return JSON:
                 recommendations_list.append(
                     {
                         "category": "planning",
-                        "suggestion": f"Structure {pattern.task_patterns['parallel_work_ratio']:.0%} of tasks for parallel execution",
+                        "suggestion": (
+                            f"Structure {pattern.task_patterns['parallel_work_ratio']:.0%} "
+                            "of tasks for parallel execution"
+                        ),
                     }
                 )
 
@@ -1067,7 +1074,10 @@ Return JSON:
                 recommendations_list.append(
                     {
                         "category": "quality",
-                        "suggestion": "Maintain high task definition quality with detailed descriptions and clear acceptance criteria",
+                        "suggestion": (
+                            "Maintain high task definition quality with detailed descriptions "
+                            "and clear acceptance criteria"
+                        ),
                     }
                 )
 

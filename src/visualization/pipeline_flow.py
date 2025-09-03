@@ -7,6 +7,9 @@ from typing import Any, Dict, List
 
 from .shared_pipeline_events import PipelineStage
 
+# Explicitly export PipelineStage to avoid mypy attr-defined errors
+__all__ = ["PipelineFlow", "PipelineStage"]
+
 
 class PipelineFlow:
     """Minimal stub for pipeline flow tracking"""

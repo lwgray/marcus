@@ -258,7 +258,7 @@ class ProjectQualityAssessor:
         self, tasks: List[Task], team_members: List[WorkerStatus]
     ) -> Dict[str, Any]:
         """Analyze team performance quality."""
-        metrics = {
+        metrics: Dict[str, Any] = {
             "team_size": len(team_members),
             "avg_tasks_per_member": (
                 len(tasks) / len(team_members) if team_members else 0
@@ -273,7 +273,7 @@ class ProjectQualityAssessor:
         }
 
         # Per-member metrics
-        member_performance = {}
+        member_performance: Dict[str, Any] = {}
         for member in team_members:
             member_tasks = [t for t in tasks if t.assigned_to == member.worker_id]
             completed = [t for t in member_tasks if t.status == TaskStatus.DONE]
@@ -323,10 +323,10 @@ class ProjectQualityAssessor:
             "risk_score": getattr(project_state, "risk_score", 0.5),
             "projected_completion_days": (
                 (
-                    getattr(project_state, "projected_completion_date", None)
+                    projected_completion_date
                     - datetime.now()
                 ).days
-                if getattr(project_state, "projected_completion_date", None)
+                if (projected_completion_date := getattr(project_state, "projected_completion_date", None))
                 else 0
             ),
         }
@@ -342,7 +342,7 @@ class ProjectQualityAssessor:
         repo = config.get("github_repo", "")
         start_date = config.get("project_start_date", "")
 
-        data = {
+        data: Dict[str, Any] = {
             "commits": [],
             "pull_requests": [],
             "issues": [],
@@ -544,7 +544,7 @@ class ProjectQualityAssessor:
         else:
             scores.append(0.5)
 
-        return statistics.mean(scores)
+        return float(statistics.mean(scores))
 
     def _calculate_team_quality_score(self, metrics: Dict[str, Any]) -> float:
         """Calculate team quality score (0-1)."""
@@ -562,7 +562,7 @@ class ProjectQualityAssessor:
             )
             scores.append(avg_completion)
 
-        return statistics.mean(scores)
+        return float(statistics.mean(scores))
 
     async def _perform_ai_assessment(
         self,
@@ -618,7 +618,8 @@ Return JSON:
 
         try:
             response = await self.ai_engine._call_claude(prompt)
-            return json.loads(response)
+            result = json.loads(response)
+            return result if isinstance(result, dict) else {}
         except Exception:
             return {
                 "insights": ["Unable to perform AI assessment"],
@@ -786,7 +787,7 @@ Return JSON:
 
         # Simple heuristic: tasks with multiple assignees or handoffs
         # In reality, would track task reassignments and dependencies
-        collaborative_indicators = 0
+        collaborative_indicators = 0.0
 
         for task in tasks:
             # Check for collaboration labels

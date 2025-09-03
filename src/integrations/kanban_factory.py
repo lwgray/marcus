@@ -65,7 +65,7 @@ class KanbanFactory:
                     "repo": os.getenv("GITHUB_REPO"),
                     "project_number": int(os.getenv("GITHUB_PROJECT_NUMBER", "1")),
                 }
-            return GitHubKanban(config)
+            return GitHubKanban(config)  # type: ignore[abstract]
 
         else:
             raise ValueError(f"Unsupported kanban provider: {provider}")

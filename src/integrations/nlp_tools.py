@@ -39,7 +39,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
     Refactored to use base class and eliminate code duplication.
     """
 
-    def __init__(self, kanban_client, ai_engine):
+    def __init__(self, kanban_client: Any, ai_engine: Any) -> None:
         super().__init__(kanban_client, ai_engine)
         self.prd_parser = AdvancedPRDParser()
         self.board_analyzer = BoardAnalyzer()
@@ -48,14 +48,17 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
     async def process_natural_language(
         self,
         description: str,
-        project_name: str = None,
-        options: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
     ) -> List[Task]:
         """
         Process project description into tasks.
 
         Implementation of abstract method from base class.
         """
+        # Extract arguments from kwargs
+        project_name = kwargs.get("project_name")
+        options = kwargs.get("options")
+
         # Detect context (Phase 1)
         await self.board_analyzer.analyze_board("default", [])
         context = await self.context_detector.detect_optimal_mode(
@@ -141,13 +144,13 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 },
             ):
                 tasks = await self.process_natural_language(
-                    description, project_name, options
+                    description, project_name=project_name, options=options
                 )
                 logger.info(f"process_natural_language returned {len(tasks)} tasks")
 
                 # Log detailed task breakdown for debugging
                 if tasks:
-                    task_types = {}
+                    task_types: Dict[str, int] = {}
                     for task in tasks:
                         task_type = getattr(task, "task_type", "unknown")
                         task_types[task_type] = task_types.get(task_type, 0) + 1
@@ -297,7 +300,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                     },
                 )
 
-    async def _cleanup_background(self):
+    async def _cleanup_background(self) -> None:
         """Cleanup AI engine after response is sent"""
         try:
             # Only cleanup AI engine, skip task cancellation
@@ -428,7 +431,7 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
     Refactored to use base class and eliminate code duplication.
     """
 
-    def __init__(self, kanban_client, ai_engine, project_tasks):
+    def __init__(self, kanban_client: Any, ai_engine: Any, project_tasks: Any) -> None:
         super().__init__(kanban_client, ai_engine)
         self.project_tasks = project_tasks
         self.adaptive_mode = BasicAdaptiveMode()
@@ -437,7 +440,7 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
         self.enricher = BasicEnricher()
 
     async def process_natural_language(
-        self, description: str, integration_point: str = "auto_detect", **kwargs
+        self, description: str, integration_point: str = "auto_detect", **kwargs: Any
     ) -> List[Task]:
         """
         Process feature description into tasks.

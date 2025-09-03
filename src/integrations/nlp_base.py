@@ -30,7 +30,7 @@ class NaturalLanguageTaskCreator(ABC):
     - Error handling
     """
 
-    def __init__(self, kanban_client, ai_engine=None):
+    def __init__(self, kanban_client: Any, ai_engine: Any = None) -> None:
         """
         Initialize the base task creator.
 
@@ -205,7 +205,9 @@ class NaturalLanguageTaskCreator(ABC):
         Returns:
             Dictionary mapping task types to lists of tasks
         """
-        classified = {task_type: [] for task_type in list(TaskType)}
+        classified: Dict[TaskType, List[Task]] = {
+            task_type: [] for task_type in list(TaskType)
+        }
 
         for task in tasks:
             task_type = self.task_classifier.classify(task)
@@ -257,7 +259,9 @@ class NaturalLanguageTaskCreator(ABC):
         return self.task_classifier.is_type(task, TaskType.TESTING)
 
     @abstractmethod
-    async def process_natural_language(self, description: str, **kwargs) -> List[Task]:
+    async def process_natural_language(
+        self, description: str, **kwargs: Any
+    ) -> List[Task]:
         """
         Process natural language description into tasks.
 
@@ -273,7 +277,7 @@ class NaturalLanguageTaskCreator(ABC):
         pass
 
     async def create_from_description(
-        self, description: str, apply_safety: bool = True, **kwargs
+        self, description: str, apply_safety: bool = True, **kwargs: Any
     ) -> Dict[str, Any]:
         """
         Main entry point for natural language task creation.

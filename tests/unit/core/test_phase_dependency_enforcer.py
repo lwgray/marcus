@@ -5,7 +5,8 @@ Tests the phase-based dependency enforcement system that ensures tasks
 follow the correct development lifecycle order.
 """
 
-from typing import List
+from datetime import datetime
+from typing import Any, List
 from unittest.mock import Mock, patch
 
 import pytest
@@ -17,13 +18,14 @@ from src.core.phase_dependency_enforcer import (
     PhaseDependencyEnforcer,
     TaskPhase,
 )
+from src.core.models.task_execution_order import EnhancedTask
 from src.integrations.nlp_task_utils import TaskType
 
 
-def create_test_task(id, name, labels=None, **kwargs):
+def create_test_task(id: str, name: str, labels: List[str] | None = None, **kwargs: Any) -> Task:
     """Helper to create tasks with default values for testing"""
-    from datetime import datetime
-
+    from typing import cast
+    
     defaults = {
         "description": f"Description for {name}",
         "status": TaskStatus.TODO,
@@ -33,11 +35,26 @@ def create_test_task(id, name, labels=None, **kwargs):
         "updated_at": datetime.now(),
         "due_date": None,
         "estimated_hours": 4.0,
+        "actual_hours": 0.0,
         "dependencies": [],
         "labels": labels or [],
     }
     defaults.update(kwargs)
-    return Task(id=id, name=name, **defaults)
+    return Task(
+        id=id,
+        name=name,
+        description=cast(str, defaults["description"]),
+        status=cast(TaskStatus, defaults["status"]),
+        priority=cast(Priority, defaults["priority"]),
+        assigned_to=cast(str | None, defaults["assigned_to"]),
+        created_at=cast(datetime, defaults["created_at"]),
+        updated_at=cast(datetime, defaults["updated_at"]),
+        due_date=cast(datetime | None, defaults["due_date"]),
+        estimated_hours=cast(float, defaults["estimated_hours"]),
+        actual_hours=cast(float, defaults["actual_hours"]),
+        dependencies=cast(List[str], defaults["dependencies"]),
+        labels=cast(List[str], defaults["labels"]),
+    )
 
 
 class TestPhaseDependencyEnforcer:
@@ -363,7 +380,7 @@ class TestPhaseDependencyEnforcer:
     )
     def test_phase_classification_variations(self, enforcer, task_name, expected_phase):
         """Test phase classification with various task names"""
-        task = Task(id="1", name=task_name, labels=[])
+        task = create_test_task("1", task_name, labels=[])
         phase_tasks = enforcer._classify_tasks_by_phase([task])
 
         assert task in phase_tasks[expected_phase]

@@ -8,6 +8,7 @@ import asyncio
 import json
 import os
 import sys
+from typing import Optional
 
 # Add parent directories to path
 sys.path.insert(
@@ -15,7 +16,7 @@ sys.path.insert(
 )
 
 
-async def test_stdio_protocol():
+async def test_stdio_protocol() -> None:
     """Test with raw MCP stdio protocol"""
     print("🔍 Testing kanban-mcp stdio protocol (low-level)")
     print("=" * 60)
@@ -28,7 +29,7 @@ async def test_stdio_protocol():
         os.path.expanduser("~/.nvm/versions/node/v22.14.0/bin/node"),
     ]
 
-    node_cmd = None
+    node_cmd: Optional[str] = None
     for path in node_paths:
         if os.path.exists(path) or os.system(f"which {path} > /dev/null 2>&1") == 0:
             node_cmd = path
@@ -45,7 +46,7 @@ async def test_stdio_protocol():
         os.path.expanduser("~/dev/kanban-mcp/dist/index.js"),
     ]
 
-    kanban_path = None
+    kanban_path: Optional[str] = None
     for path in kanban_paths:
         if os.path.exists(path):
             kanban_path = path
@@ -91,13 +92,14 @@ async def test_stdio_protocol():
         # Send initialization
         print("\n2. Sending initialization...")
         message = json.dumps(init_message) + "\n"
-        process.stdin.write(message.encode())
-        await process.stdin.drain()
+        if process.stdin:
+            process.stdin.write(message.encode())
+            await process.stdin.drain()
 
         # Read response with timeout
         print("3. Waiting for response...")
         async with asyncio.timeout(5):
-            response = await process.stdout.readline()
+            response = await process.stdout.readline() if process.stdout else b""
             if response:
                 print(f"✅ Got response: {response.decode().strip()}")
                 try:
@@ -111,21 +113,23 @@ async def test_stdio_protocol():
                 print("❌ No response")
 
             # Check stderr for errors
-            stderr_task = asyncio.create_task(process.stderr.read())
-            try:
-                async with asyncio.timeout(1):
-                    stderr = await stderr_task
-                    if stderr:
-                        print(f"\nStderr output: {stderr.decode()}")
-            except asyncio.TimeoutError:
-                pass
+            stderr_task = asyncio.create_task(process.stderr.read()) if process.stderr else None
+            if stderr_task:
+                try:
+                    async with asyncio.timeout(1):
+                        stderr = await stderr_task
+                        if stderr:
+                            print(f"\nStderr output: {stderr.decode()}")
+                except asyncio.TimeoutError:
+                    pass
 
         # Send initialized notification
         print("\n4. Sending initialized notification...")
         initialized_msg = {"jsonrpc": "2.0", "method": "notifications/initialized"}
         message = json.dumps(initialized_msg) + "\n"
-        process.stdin.write(message.encode())
-        await process.stdin.drain()
+        if process.stdin:
+            process.stdin.write(message.encode())
+            await process.stdin.drain()
 
         # Try a tool call
         print("\n5. Testing tool call...")
@@ -139,11 +143,12 @@ async def test_stdio_protocol():
             "id": 2,
         }
         message = json.dumps(tool_call) + "\n"
-        process.stdin.write(message.encode())
-        await process.stdin.drain()
+        if process.stdin:
+            process.stdin.write(message.encode())
+            await process.stdin.drain()
 
         async with asyncio.timeout(5):
-            response = await process.stdout.readline()
+            response = await process.stdout.readline() if process.stdout else b""
             if response:
                 print(f"✅ Got tool response")
                 data = json.loads(response.decode())
@@ -160,9 +165,10 @@ async def test_stdio_protocol():
             print("   Process is still running")
             # Try to get any error output
             try:
-                stderr = await asyncio.wait_for(process.stderr.read(1000), timeout=1)
-                if stderr:
-                    print(f"   Stderr: {stderr.decode()}")
+                if process.stderr:
+                    stderr = await asyncio.wait_for(process.stderr.read(1000), timeout=1)
+                    if stderr:
+                        print(f"   Stderr: {stderr.decode()}")
             except:
                 pass
         else:

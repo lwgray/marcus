@@ -52,7 +52,7 @@ class LivePipelineMonitor:
         self.active_flows: Dict[str, Dict[str, Any]] = {}
         self.websocket_clients: Set[Any] = set()
         self.historical_data = self._load_historical_data()
-        self.monitoring_task = None
+        self.monitoring_task: Optional[asyncio.Task[None]] = None
 
     def _load_historical_data(self) -> Dict[str, Any]:
         """Load historical flow data for predictions."""
@@ -95,12 +95,16 @@ class LivePipelineMonitor:
 
         self.monitoring_task = asyncio.create_task(
             self._monitoring_loop()
-        )  # type: ignore
+        )
 
     async def stop_monitoring(self) -> None:
         """Stop the monitoring loop."""
         if self.monitoring_task:
             self.monitoring_task.cancel()
+            try:
+                await self.monitoring_task
+            except asyncio.CancelledError:
+                pass
             self.monitoring_task = None
 
     async def _monitoring_loop(self) -> None:

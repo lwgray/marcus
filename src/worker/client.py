@@ -68,14 +68,35 @@ import os
 import secrets
 import time
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, TypeVar
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional, TypeVar, Union
 
 from mcp.client.stdio import stdio_client
 
 from mcp import ClientSession, StdioServerParameters
+from mcp.types import TextContent, CallToolResult, ListToolsResult
 
 # Type variable for retry decorator
 T = TypeVar("T")
+
+
+def _extract_text_from_result(result: CallToolResult) -> str:
+    """Extract text content from MCP tool call result.
+    
+    Args:
+        result: The CallToolResult from MCP tool call
+        
+    Returns:
+        str: The text content if available, empty string otherwise
+    """
+    if not result.content:
+        return ""
+    
+    for content_item in result.content:
+        # Check if it's a TextContent object or has a text attribute (for testing)
+        if isinstance(content_item, TextContent) or hasattr(content_item, 'text'):
+            return content_item.text
+    
+    return ""
 
 
 def retry_with_backoff(
@@ -84,7 +105,7 @@ def retry_with_backoff(
     max_delay: float = 60.0,
     exponential_base: float = 2.0,
     jitter: bool = True,
-) -> Callable[[Callable[..., T]], Callable[..., T]]:
+) -> Callable[[Callable[..., Awaitable[T]]], Callable[..., Awaitable[T]]]:
     """
     Decorator for retrying operations with exponential backoff.
 
@@ -99,8 +120,8 @@ def retry_with_backoff(
         Decorated function that retries on failure
     """
 
-    def decorator(func: Callable[..., T]) -> Callable[..., T]:
-        async def wrapper(*args, **kwargs) -> T:
+    def decorator(func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
+        async def wrapper(*args: Any, **kwargs: Any) -> T:
             last_exception = None
 
             for attempt in range(max_attempts):
@@ -324,11 +345,12 @@ class WorkerMCPClient:
 
                 # List available tools to verify connection
                 tools_response = await session.list_tools()
-                tools = (
-                    tools_response.tools
-                    if hasattr(tools_response, "tools")
-                    else tools_response
-                )
+                # Handle both real ListToolsResult objects and mock lists
+                if hasattr(tools_response, 'tools'):
+                    tools = tools_response.tools
+                else:
+                    # For testing, tools_response might be a list directly
+                    tools = tools_response  # type: ignore
                 print(
                     f"Connected to Marcus. Available tools: {[t.name for t in tools]}"
                 )
@@ -469,7 +491,8 @@ class WorkerMCPClient:
             },
         )
 
-        return json.loads(result.content[0].text) if result.content else {}
+        text_content = _extract_text_from_result(result)
+        return json.loads(text_content) if text_content else {}
 
     @retry_with_backoff(max_attempts=3, initial_delay=2.0)
     async def request_next_task(self, agent_id: str) -> Dict[str, Any]:
@@ -577,7 +600,8 @@ class WorkerMCPClient:
             "request_next_task", arguments={"agent_id": agent_id}
         )
 
-        return json.loads(result.content[0].text) if result.content else {}
+        text_content = _extract_text_from_result(result)
+        return json.loads(text_content) if text_content else {}
 
     @retry_with_backoff(max_attempts=3, initial_delay=1.0, max_delay=30.0)
     async def report_task_progress(
@@ -723,7 +747,8 @@ class WorkerMCPClient:
             },
         )
 
-        return json.loads(result.content[0].text) if result.content else {}
+        text_content = _extract_text_from_result(result)
+        return json.loads(text_content) if text_content else {}
 
     @retry_with_backoff(max_attempts=3, initial_delay=1.0, max_delay=30.0)
     async def report_blocker(
@@ -886,7 +911,8 @@ class WorkerMCPClient:
             },
         )
 
-        return json.loads(result.content[0].text) if result.content else {}
+        text_content = _extract_text_from_result(result)
+        return json.loads(text_content) if text_content else {}
 
     async def get_project_status(self) -> Dict[str, Any]:
         """
@@ -1027,4 +1053,5 @@ class WorkerMCPClient:
 
         result = await self.session.call_tool("get_project_status", arguments={})
 
-        return json.loads(result.content[0].text) if result.content else {}
+        text_content = _extract_text_from_result(result)
+        return json.loads(text_content) if text_content else {}

@@ -18,7 +18,7 @@ class BasicAdaptiveMode:
     """Basic Adaptive Mode that coordinates within existing structure"""
 
     def __init__(self) -> None:
-        self.state = {"assignment_preferences": {}, "blocked_tasks": []}
+        self.state: Dict[str, Any] = {"assignment_preferences": {}, "blocked_tasks": []}
         self.assignment_persistence = AssignmentPersistence()
 
         # Common dependency patterns to prevent illogical assignments
@@ -55,7 +55,7 @@ class BasicAdaptiveMode:
             },
         ]
 
-    async def initialize(self, saved_state: Dict[str, Any]):
+    async def initialize(self, saved_state: Dict[str, Any]) -> None:
         """Initialize mode with saved state"""
         if saved_state:
             self.state.update(saved_state)
@@ -382,7 +382,11 @@ class BasicAdaptiveMode:
 
     def _get_agent_preference_score(self, agent_id: str, task: Task) -> float:
         """Get preference score based on agent's history"""
-        preferences = self.state.get("assignment_preferences", {}).get(agent_id, {})
+        assignment_prefs = self.state.get("assignment_preferences", {})
+        if isinstance(assignment_prefs, dict):
+            preferences = assignment_prefs.get(agent_id, {})
+        else:
+            preferences = {}
 
         # Simple preference based on task labels
         score = 0.0
@@ -394,7 +398,7 @@ class BasicAdaptiveMode:
 
     async def record_assignment_outcome(
         self, agent_id: str, task: Task, outcome: str, feedback: Optional[str] = None
-    ):
+    ) -> None:
         """
         Record the outcome of a task assignment for learning
 
@@ -405,10 +409,18 @@ class BasicAdaptiveMode:
             feedback: Optional feedback from agent
         """
         # Update agent preferences based on outcome
-        if agent_id not in self.state["assignment_preferences"]:
-            self.state["assignment_preferences"][agent_id] = {}
+        assignment_prefs = self.state.get("assignment_preferences", {})
+        if not isinstance(assignment_prefs, dict):
+            assignment_prefs = {}
+            self.state["assignment_preferences"] = assignment_prefs
+            
+        if agent_id not in assignment_prefs:
+            assignment_prefs[agent_id] = {}
 
-        preferences = self.state["assignment_preferences"][agent_id]
+        preferences = assignment_prefs[agent_id]
+        if not isinstance(preferences, dict):
+            preferences = {}
+            assignment_prefs[agent_id] = preferences
 
         # Adjust preferences based on outcome
         weight_change = {"completed": 0.1, "blocked": -0.05, "abandoned": -0.1}.get(
@@ -431,7 +443,7 @@ class BasicAdaptiveMode:
         Returns:
             Analysis of blocking relationships
         """
-        blocking_analysis = {
+        blocking_analysis: Dict[str, Any] = {
             "blocked_tasks": [],
             "blocking_tasks": [],
             "dependency_chains": [],
