@@ -150,7 +150,24 @@ class MarcusServiceRegistry:
                     services.append(service_info)
                 else:
                     # Clean up stale service file
-                    service_file.unlink()
+                    try:
+                        service_file.unlink()
+                    except (OSError, PermissionError) as e:
+                        # Log specific file system errors but continue discovery
+                        import logging
+
+                        logger = logging.getLogger(__name__)
+                        logger.debug(
+                            f"Could not remove stale service file {service_file}: {e}"
+                        )
+                    except Exception as e:
+                        # Log unexpected errors but continue discovery
+                        import logging
+
+                        logger = logging.getLogger(__name__)
+                        logger.warning(
+                            f"Unexpected error removing stale service file {service_file}: {e}"
+                        )
 
             except (json.JSONDecodeError, FileNotFoundError):
                 # Clean up invalid service files
