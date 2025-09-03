@@ -1534,7 +1534,8 @@ Return JSON with this format:
             # Handle different response block types
             content = response.content[0]
             if hasattr(content, "text"):
-                return content.text
+                # Explicit cast to str to satisfy mypy type checker
+                return str(content.text)
             else:
                 # Fallback for non-text blocks
                 return str(content)

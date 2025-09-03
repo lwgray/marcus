@@ -5,7 +5,7 @@ Provides MCP tools for mode switching, project creation, and intelligent coordin
 """
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, cast
 
 from src.detection.board_analyzer import BoardAnalyzer
 from src.detection.context_detector import ContextDetector, MarcusMode
@@ -18,14 +18,14 @@ logger = logging.getLogger(__name__)
 class HybridMarcusTools:
     """MCP tools for the hybrid Marcus approach"""
 
-    def __init__(self, kanban_client):
+    def __init__(self, kanban_client: Any) -> None:
         self.kanban_client = kanban_client
         self.board_analyzer = BoardAnalyzer()
         self.context_detector = ContextDetector(self.board_analyzer)
         self.mode_registry = ModeRegistry()
 
     async def switch_mode(
-        self, mode: str, reason: str = None, user_id: str = None
+        self, mode: str, reason: Optional[str] = None, user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Switch Marcus to a different operating mode
@@ -68,7 +68,7 @@ class HybridMarcusTools:
         return await self.mode_registry.get_current_mode()
 
     async def analyze_board_context(
-        self, board_id: str = None, user_id: str = None
+        self, board_id: Optional[str] = None, user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Analyze board context and recommend optimal mode
@@ -133,8 +133,8 @@ class HybridMarcusTools:
         template_name: str,
         project_name: str,
         size: str = "medium",
-        excluded_phases: List[str] = None,
-        additional_labels: List[str] = None,
+        excluded_phases: Optional[List[str]] = None,
+        additional_labels: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Create a new project from a template (Creator Mode)
@@ -179,11 +179,11 @@ class HybridMarcusTools:
         }
 
         # Generate project
-        result = await creator_mode.create_project_from_template(
+        result = cast(Dict[str, Any], await creator_mode.create_project_from_template(
             template_name=template_name,
             project_name=project_name,
             customizations=customizations,
-        )
+        ))
 
         # If successful, create tasks on the kanban board
         if result.get("success") and result.get("tasks"):
@@ -218,9 +218,9 @@ class HybridMarcusTools:
             return {"success": False, "error": "Creator mode is not available"}
 
         # Generate project
-        result = await creator_mode.create_from_description(
+        result = cast(Dict[str, Any], await creator_mode.create_from_description(
             description=description, project_name=project_name
-        )
+        ))
 
         # If successful, create tasks on the kanban board
         if result.get("success") and result.get("tasks"):
@@ -241,7 +241,7 @@ class HybridMarcusTools:
         if not creator_mode:
             return {"success": False, "error": "Creator mode is not available"}
 
-        return await creator_mode.get_available_templates()
+        return cast(Dict[str, Any], await creator_mode.get_available_templates())
 
     async def preview_template(
         self, template_name: str, size: str = "medium"
@@ -261,12 +261,12 @@ class HybridMarcusTools:
         if not creator_mode:
             return {"success": False, "error": "Creator mode is not available"}
 
-        return await creator_mode.preview_template(
+        return cast(Dict[str, Any], await creator_mode.preview_template(
             template_name=template_name, size=size
-        )
+        ))
 
     async def get_next_task_intelligent(
-        self, agent_id: str, agent_skills: List[str] = None
+        self, agent_id: str, agent_skills: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
         Get next task using intelligent assignment (Adaptive Mode)
@@ -296,7 +296,9 @@ class HybridMarcusTools:
             available_tasks = [t for t in all_tasks if t.status.value == "TODO"]
 
             # Get currently assigned tasks
-            assigned_tasks = {}  # This would come from assignment persistence
+            assigned_tasks: Dict[str, Any] = (
+                {}
+            )  # This would come from assignment persistence
 
             # Find optimal task
             optimal_task = await adaptive_mode.find_optimal_task_for_agent(
@@ -356,7 +358,7 @@ class HybridMarcusTools:
             logger.error(f"Error getting blocking analysis: {e}")
             return {"success": False, "error": str(e)}
 
-    async def _create_tasks_on_board(self, tasks: List[Dict[str, Any]]):
+    async def _create_tasks_on_board(self, tasks: List[Dict[str, Any]]) -> None:
         """Create tasks on the kanban board"""
         for task_data in tasks:
             try:
