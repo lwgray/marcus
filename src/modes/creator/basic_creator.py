@@ -15,7 +15,6 @@ from src.modes.creator.template_library import (
     APIServiceTemplate,
     MobileAppTemplate,
     ProjectSize,
-    ProjectTemplate,
     WebAppTemplate,
 )
 

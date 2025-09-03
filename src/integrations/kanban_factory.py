@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 
 from src.config.config_loader import get_config
 from src.integrations.kanban_interface import KanbanInterface, KanbanProvider
-from src.integrations.providers import GitHubKanban, LinearKanban, Planka, PlankaKanban
+from src.integrations.providers import GitHubKanban, LinearKanban, Planka
 
 
 class KanbanFactory:
@@ -34,7 +34,7 @@ class KanbanFactory:
             ValueError: If provider is not supported
         """
         # Config is already loaded - just use it
-        config_loader = get_config()
+        get_config()
 
         provider_lower = provider.lower()
 

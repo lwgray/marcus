@@ -5,14 +5,12 @@ This module generates detailed reports from pipeline executions for
 offline analysis, team reviews, and documentation.
 """
 
-import json
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from jinja2 import Environment, FileSystemLoader, Template
+from jinja2 import Environment, FileSystemLoader
 
 from src.analysis.pipeline_comparison import PipelineComparator
 from src.visualization.shared_pipeline_events import SharedPipelineEvents

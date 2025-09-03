@@ -9,7 +9,7 @@ import logging
 from enum import Enum
 from typing import Any, Dict, List
 
-from src.core.models import Priority, Task, TaskStatus
+from src.core.models import Task
 
 logger = logging.getLogger(__name__)
 
@@ -205,10 +205,11 @@ class TaskBuilder:
 
 class SafetyChecker:
     """Apply safety checks to ensure logical task ordering"""
-    
+
     def __init__(self) -> None:
         """Initialize SafetyChecker with enhanced task classifier."""
         from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
+
         self.task_classifier = EnhancedTaskClassifier()
 
     def apply_deployment_dependencies(self, tasks: List[Task]) -> List[Task]:
@@ -223,7 +224,9 @@ class SafetyChecker:
         Returns:
             List of tasks with updated dependencies
         """
-        deployment_tasks = self.task_classifier.filter_by_type(tasks, TaskType.DEPLOYMENT)
+        deployment_tasks = self.task_classifier.filter_by_type(
+            tasks, TaskType.DEPLOYMENT
+        )
         implementation_tasks = self.task_classifier.filter_by_type(
             tasks, TaskType.IMPLEMENTATION
         )
@@ -268,7 +271,7 @@ class SafetyChecker:
             related_impl_tasks = SafetyChecker._find_related_tasks(
                 test_task, implementation_tasks
             )
-            
+
             if not related_impl_tasks:
                 logger.warning(
                     f"No related implementation tasks found for test task '{test_task.name}' "
@@ -308,7 +311,7 @@ class SafetyChecker:
             related_design_tasks = SafetyChecker._find_related_tasks(
                 impl_task, design_tasks
             )
-            
+
             if not related_design_tasks:
                 logger.warning(
                     f"No related design tasks found for implementation task '{impl_task.name}' "
@@ -334,25 +337,37 @@ class SafetyChecker:
         related = []
 
         # Extract feature labels from task
-        task_feature_labels = {label for label in task.labels if label.startswith("feature:")}
-        
+        task_feature_labels = {
+            label for label in task.labels if label.startswith("feature:")
+        }
+
         for candidate in candidate_tasks:
             # First priority: Check feature label overlap (tasks in same feature)
-            candidate_feature_labels = {label for label in candidate.labels if label.startswith("feature:")}
+            candidate_feature_labels = {
+                label for label in candidate.labels if label.startswith("feature:")
+            }
             if task_feature_labels & candidate_feature_labels:
                 related.append(candidate)
                 continue
-            
+
             # Second priority: Check component label overlap
-            task_component_labels = {label for label in task.labels if label.startswith("component:")}
-            candidate_component_labels = {label for label in candidate.labels if label.startswith("component:")}
+            task_component_labels = {
+                label for label in task.labels if label.startswith("component:")
+            }
+            candidate_component_labels = {
+                label for label in candidate.labels if label.startswith("component:")
+            }
             if task_component_labels & candidate_component_labels:
                 related.append(candidate)
                 continue
 
             # Third priority: Check any label overlap (excluding type labels)
-            task_other_labels = set(task.labels) - {label for label in task.labels if label.startswith("type:")}
-            candidate_other_labels = set(candidate.labels) - {label for label in candidate.labels if label.startswith("type:")}
+            task_other_labels = set(task.labels) - {
+                label for label in task.labels if label.startswith("type:")
+            }
+            candidate_other_labels = set(candidate.labels) - {
+                label for label in candidate.labels if label.startswith("type:")
+            }
             if task_other_labels & candidate_other_labels:
                 related.append(candidate)
                 continue
@@ -361,7 +376,23 @@ class SafetyChecker:
             task_words = set(task.name.lower().split())
             candidate_words = set(candidate.name.lower().split())
             # Remove common words
-            common_words = {"the", "a", "an", "and", "or", "for", "to", "in", "of", "design", "implement", "test", "create", "build", "develop"}
+            common_words = {
+                "the",
+                "a",
+                "an",
+                "and",
+                "or",
+                "for",
+                "to",
+                "in",
+                "of",
+                "design",
+                "implement",
+                "test",
+                "create",
+                "build",
+                "develop",
+            }
             task_words -= common_words
             candidate_words -= common_words
 

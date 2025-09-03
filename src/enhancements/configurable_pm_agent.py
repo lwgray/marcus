@@ -20,7 +20,7 @@ Examples
 import json
 import os
 import sys
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 
 from src.legacy.marcus_mvp import MarcusMVP
 
@@ -187,7 +187,7 @@ class ConfigurablePMAgent(MarcusMVP):
         # If board_id not set but project_id is, try to find the board
         if self.kanban_client.project_id and not self.kanban_client.board_id:
             print("🔍 Finding board for project...", file=sys.stderr)
-            async with self.kanban_client.connect() as conn:
+            async with self.kanban_client.connect():
                 # The connect method will auto-find the board
                 if self.kanban_client.board_id:
                     print(

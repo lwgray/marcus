@@ -185,7 +185,9 @@ def clean_json_response(response: str) -> str:
     return cleaned
 
 
-def validate_json_structure(data: Any, required_fields: Optional[list[str]] = None) -> bool:
+def validate_json_structure(
+    data: Any, required_fields: Optional[list[str]] = None
+) -> bool:
     """
     Validate that parsed JSON has expected structure.
 

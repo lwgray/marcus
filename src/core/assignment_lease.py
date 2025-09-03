@@ -14,10 +14,10 @@ Key features:
 
 import asyncio
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional
 
 from src.core.assignment_persistence import AssignmentPersistence
 from src.core.event_loop_utils import EventLoopLockManager

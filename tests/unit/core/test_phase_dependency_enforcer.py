@@ -13,9 +13,9 @@ import pytest
 from src.core.models import Priority, Task, TaskStatus
 from src.core.phase_dependency_enforcer import (
     DependencyType,
-    TaskPhase,
     FeatureGroup,
     PhaseDependencyEnforcer,
+    TaskPhase,
 )
 from src.integrations.nlp_task_utils import TaskType
 
@@ -23,7 +23,7 @@ from src.integrations.nlp_task_utils import TaskType
 def create_test_task(id, name, labels=None, **kwargs):
     """Helper to create tasks with default values for testing"""
     from datetime import datetime
-    
+
     defaults = {
         "description": f"Description for {name}",
         "status": TaskStatus.TODO,
@@ -52,7 +52,7 @@ class TestPhaseDependencyEnforcer:
     def sample_tasks(self):
         """Create sample tasks for testing"""
         from datetime import datetime
-        
+
         return [
             Task(
                 id="design-001",
@@ -224,7 +224,9 @@ class TestPhaseDependencyEnforcer:
         """Test that existing manual dependencies are preserved"""
         tasks = [
             create_test_task("design-001", "Design API", dependencies=[]),
-            create_test_task("impl-001", "Implement API", dependencies=["external-001"]),
+            create_test_task(
+                "impl-001", "Implement API", dependencies=["external-001"]
+            ),
             create_test_task("test-001", "Test API", dependencies=["manual-001"]),
         ]
 
@@ -293,7 +295,9 @@ class TestPhaseDependencyEnforcer:
     def test_infrastructure_phase_ordering(self, enforcer):
         """Test that infrastructure phase is ordered correctly"""
         tasks = [
-            create_test_task("design-001", "Design system architecture", labels=["infra"]),
+            create_test_task(
+                "design-001", "Design system architecture", labels=["infra"]
+            ),
             create_test_task("infra-001", "Setup database", labels=["infra"]),
             create_test_task("impl-001", "Implement API", labels=["infra"]),
         ]

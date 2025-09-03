@@ -9,11 +9,11 @@ This module analyzes the overall health of the project board by detecting:
 """
 
 import logging
-from collections import defaultdict, deque
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Set
 
 from src.core.models import Task, TaskStatus, WorkerStatus
 from src.integrations.kanban_interface import KanbanInterface

@@ -78,7 +78,9 @@ class PatternDatabase:
         self.patterns["success_patterns"].append(pattern)
         self.save_patterns()
 
-    def add_failure_pattern(self, flow_data: Dict[str, Any], reasons: List[str]) -> None:
+    def add_failure_pattern(
+        self, flow_data: Dict[str, Any], reasons: List[str]
+    ) -> None:
         """Add a failure pattern with reasons."""
         pattern = self._extract_pattern(flow_data)
         pattern["failure_reasons"] = reasons

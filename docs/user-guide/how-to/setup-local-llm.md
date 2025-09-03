@@ -18,7 +18,7 @@ For Marcus's task analysis and code understanding, these models work best:
    - Sizes: 1.3B, 6.7B, 33B
    - Best balance: `deepseek-coder:6.7b`
 
-2. **CodeLlama** 
+2. **CodeLlama**
    - Meta's code-specialized model
    - Sizes: 7B, 13B, 34B
    - Best for Marcus: `codellama:13b`
@@ -183,7 +183,7 @@ This allows you to:
    ```bash
    # Increase context window
    export OLLAMA_NUM_CTX=8192
-   
+
    # Use GPU acceleration (if available)
    export OLLAMA_CUDA_VISIBLE_DEVICES=0
    ```

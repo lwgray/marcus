@@ -6,11 +6,10 @@ Phase 1-4 AI capabilities for intelligent task selection.
 """
 
 import logging
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
 
 from src.ai.core.ai_engine import MarcusAIEngine
-from src.ai.types import AnalysisContext, AssignmentContext
+from src.ai.types import AssignmentContext
 from src.core.models import Priority, Task, TaskStatus
 from src.integrations.ai_analysis_engine import AIAnalysisEngine
 from src.intelligence.dependency_inferer_hybrid import HybridDependencyInferer
@@ -103,7 +102,7 @@ class AITaskAssignmentEngine:
                     continue
 
                 # Additional safety check with AI (if method exists)
-                if hasattr(self.ai_engine, 'check_deployment_safety'):
+                if hasattr(self.ai_engine, "check_deployment_safety"):
                     safety_check = await self.ai_engine.check_deployment_safety(
                         task, self.project_tasks
                     )
@@ -181,7 +180,7 @@ class AITaskAssignmentEngine:
             )
 
             # Use hybrid AI decision framework (if method exists)
-            if hasattr(self.ai_engine, 'analyze_task_assignment'):
+            if hasattr(self.ai_engine, "analyze_task_assignment"):
                 ai_analysis = await self.ai_engine.analyze_task_assignment(context)
             else:
                 # Fallback to default scoring
@@ -206,7 +205,7 @@ class AITaskAssignmentEngine:
 
         for task in tasks:
             # Predict how completing this task affects project timeline (if method exists)
-            if hasattr(self.ai_engine, 'predict_task_impact'):
+            if hasattr(self.ai_engine, "predict_task_impact"):
                 impact_analysis = await self.ai_engine.predict_task_impact(
                     task,
                     self.project_tasks,

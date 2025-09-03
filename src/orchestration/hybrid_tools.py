@@ -5,7 +5,7 @@ Provides MCP tools for mode switching, project creation, and intelligent coordin
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from src.detection.board_analyzer import BoardAnalyzer
 from src.detection.context_detector import ContextDetector, MarcusMode

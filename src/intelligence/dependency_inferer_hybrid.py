@@ -8,20 +8,19 @@ dependency detection. Uses patterns for common cases and AI for complex scenario
 import json
 import logging
 import re
-from collections import defaultdict, deque
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from src.config.hybrid_inference_config import HybridInferenceConfig
-from src.core.models import Task, TaskStatus
-from src.core.resilience import RetryConfig, with_fallback, with_retry
+from src.core.models import Task
+from src.core.resilience import RetryConfig, with_retry
 from src.integrations.ai_analysis_engine import AIAnalysisEngine
 from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
 from src.intelligence.dependency_inferer import (
     DependencyGraph,
     DependencyInferer,
-    DependencyPattern,
     InferredDependency,
 )
 
@@ -63,7 +62,7 @@ class HybridDependencyInferer(DependencyInferer):
         self.ai_enabled = ai_engine is not None and self.config.enable_ai_inference
         self.inference_cache = {}  # Cache AI inferences
         self.cache_timestamps = {}  # Track cache age
-        
+
         # Use enhanced task classifier for better task type detection
         self.task_classifier = EnhancedTaskClassifier()
 
@@ -167,7 +166,7 @@ class HybridDependencyInferer(DependencyInferer):
         4. Complex multi-step workflows
         """
         ambiguous_pairs = []
-        task_map = {task.id: task for task in tasks}
+        {task.id: task for task in tasks}
 
         # Check all pairs
         for i, task1 in enumerate(tasks):
@@ -219,11 +218,11 @@ class HybridDependencyInferer(DependencyInferer):
 
         # Check for shared components/features
         shared = words1.intersection(words2)
-        
+
         # Also consider task phases - tasks in different phases of same feature are related
         if len(shared) >= self.config.min_shared_keywords:
             return True
-            
+
         # Check if tasks are in same feature by labels
         if task1.labels and task2.labels:
             shared_labels = set(task1.labels) & set(task2.labels)
@@ -233,7 +232,7 @@ class HybridDependencyInferer(DependencyInferer):
                 type2 = self.task_classifier.classify(task2)
                 if type1 != type2:
                     return True
-                    
+
         return False
 
     def _extract_keywords(self, task: Task) -> List[str]:

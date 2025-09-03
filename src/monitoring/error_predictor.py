@@ -5,13 +5,11 @@ This module analyzes pipeline patterns to predict potential failures
 and suggest preventive actions.
 """
 
-import json
 import statistics
 from collections import defaultdict
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Any, Dict, List
 
 from src.visualization.shared_pipeline_events import SharedPipelineEvents
 
@@ -396,11 +394,13 @@ class PipelineErrorPredictor:
         if actual_outcome == "failure" and predicted_risk < 0.5:
             # Under-predicted risk
             import sys
+
             print(f"Under-predicted risk for {flow_id}", file=sys.stderr)
             # In production, adjust thresholds
         elif actual_outcome == "success" and predicted_risk > 0.7:
             # Over-predicted risk
             import sys
+
             print(f"Over-predicted risk for {flow_id}", file=sys.stderr)
             # In production, adjust thresholds
 

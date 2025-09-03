@@ -6,7 +6,7 @@ accuracy and API call costs.
 """
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass

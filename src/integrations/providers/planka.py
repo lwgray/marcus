@@ -6,10 +6,9 @@ Direct integration without the mcp_function_caller abstraction
 
 import logging
 import os
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from src.core.models import Priority, Task, TaskStatus
+from src.core.models import Task, TaskStatus
 from src.integrations.kanban_client_with_create import KanbanClientWithCreate
 from src.integrations.kanban_interface import KanbanInterface, KanbanProvider
 
@@ -178,7 +177,7 @@ class Planka(KanbanInterface):
         """Get all tasks assigned to a specific agent"""
         try:
             # Get all tasks and filter by assignment
-            all_tasks = await self.client.get_board_summary()
+            await self.client.get_board_summary()
             # This would need to be implemented based on board structure
             return []
         except Exception as e:

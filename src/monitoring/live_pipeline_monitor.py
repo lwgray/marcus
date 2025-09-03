@@ -6,7 +6,6 @@ predictive capabilities to identify potential issues before they occur.
 """
 
 import asyncio
-import json
 import statistics
 from collections import defaultdict
 from dataclasses import asdict, dataclass
@@ -133,6 +132,7 @@ class LivePipelineMonitor:
 
             except Exception as e:
                 import sys
+
                 print(f"Monitoring error: {e}", file=sys.stderr)
                 await asyncio.sleep(5)
 
@@ -152,7 +152,7 @@ class LivePipelineMonitor:
         """
         # Get current events
         events = self.shared_events.get_flow_events(flow_id)
-        flow_data = self.active_flows.get(flow_id, {})
+        self.active_flows.get(flow_id, {})
 
         # Calculate progress
         progress = self.calculate_progress(flow_id, events)

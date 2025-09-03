@@ -11,16 +11,13 @@ Advanced error handling patterns for autonomous agent environments:
 import asyncio
 import logging
 import random
-import time
-from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
 
 from .error_framework import (
-    ErrorCategory,
     ErrorContext,
     ErrorSeverity,
     IntegrationError,
@@ -62,7 +59,9 @@ class RetryConfig:
     multiplier: float = 2.0
     jitter: bool = True
     retry_on: tuple[type[Exception], ...] = (TransientError, IntegrationError)
-    stop_on: tuple[type[Exception], ...] = ()  # Exceptions that stop retries (empty by default)
+    stop_on: tuple[
+        type[Exception], ...
+    ] = ()  # Exceptions that stop retries (empty by default)
 
 
 @dataclass
@@ -200,7 +199,6 @@ class CircuitBreaker:
             self.state.state == CircuitBreakerState.CLOSED
             and self.state.failure_count >= self.config.failure_threshold
         ):
-
             self.state.state = CircuitBreakerState.OPEN
             self.state.next_attempt_time = now + timedelta(seconds=self.config.timeout)
             logger.warning(
@@ -228,7 +226,11 @@ class RetryHandler:
         self.config = config or RetryConfig()
 
     async def execute(
-        self, func: Callable[..., Any], *args: Any, context: Optional[ErrorContext] = None, **kwargs: Any
+        self,
+        func: Callable[..., Any],
+        *args: Any,
+        context: Optional[ErrorContext] = None,
+        **kwargs: Any,
     ) -> Any:
         """Execute function with retry logic."""
         last_exception = None
@@ -458,7 +460,9 @@ class ErrorAggregator:
         self.successes += 1
         self.total_operations += 1
 
-    def add_error(self, error: Exception, item_context: Optional[Dict[str, Any]] = None) -> None:
+    def add_error(
+        self, error: Exception, item_context: Optional[Dict[str, Any]] = None
+    ) -> None:
         """Add an error to the aggregation."""
         self.total_operations += 1
 
@@ -500,9 +504,11 @@ class ErrorAggregator:
                 {
                     "message": error.message,
                     "correlation_id": error.context.correlation_id,
-                    "item_context": error.context.custom_context.get(
-                        "item_context", {}
-                    ) if error.context.custom_context else {},
+                    "item_context": (
+                        error.context.custom_context.get("item_context", {})
+                        if error.context.custom_context
+                        else {}
+                    ),
                 }
             )
 
@@ -551,7 +557,9 @@ class ErrorAggregator:
 # =============================================================================
 
 
-def with_retry(config: Optional[RetryConfig] = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+def with_retry(
+    config: Optional[RetryConfig] = None,
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorator for adding retry logic to functions."""
     retry_config = config or RetryConfig()
 
@@ -574,7 +582,9 @@ def with_retry(config: Optional[RetryConfig] = None) -> Callable[[Callable[..., 
     return decorator
 
 
-def with_circuit_breaker(name: str, config: Optional[CircuitBreakerConfig] = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+def with_circuit_breaker(
+    name: str, config: Optional[CircuitBreakerConfig] = None
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorator for adding circuit breaker protection to functions."""
     circuit_breaker = CircuitBreaker(name, config)
 
@@ -595,7 +605,9 @@ def with_circuit_breaker(name: str, config: Optional[CircuitBreakerConfig] = Non
     return decorator
 
 
-def with_fallback(*fallback_functions: Callable[..., Any]) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+def with_fallback(
+    *fallback_functions: Callable[..., Any]
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorator for adding fallback functions."""
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:

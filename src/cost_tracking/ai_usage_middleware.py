@@ -7,7 +7,7 @@ Intercepts all AI provider calls to track token usage per project.
 import asyncio
 import functools
 from datetime import datetime
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Optional
 
 from src.cost_tracking.token_tracker import token_tracker
 from src.logging.conversation_logger import conversation_logger

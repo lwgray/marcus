@@ -164,7 +164,7 @@ class ProjectContextManager:
             )
 
             # Load or create context
-            context = await self._get_or_create_context(project)
+            await self._get_or_create_context(project)
 
             # Update active project
             self.active_project_id = project_id
@@ -311,7 +311,6 @@ class ProjectContextManager:
         context.events = Events(store_history=True, persistence=self.persistence)
 
         # Create project-specific assignment persistence directory
-        from pathlib import Path
 
         assignments_dir = Path("data/assignments") / f"project_{project.id}"
         context.assignment_persistence = AssignmentPersistence(

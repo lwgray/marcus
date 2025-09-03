@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from src.core.events import Events, EventTypes
-from src.core.models import Task, TaskStatus
+from src.core.models import Task
 from src.core.persistence import Persistence
 
 logger = logging.getLogger(__name__)

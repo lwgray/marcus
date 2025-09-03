@@ -5,11 +5,9 @@ This module analyzes code changes, PRs, and repository state to provide
 context-aware information to workers about implemented features.
 """
 
-import json
 import re
 import sys
-from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional
 
 from src.core.models import Task, WorkerStatus
 
@@ -680,7 +678,7 @@ class CodeAnalyzer:
 
         try:
             return base64.b64decode(content).decode("utf-8")
-        except:
+        except Exception:
             return content
 
     def _summarize_config_changes(self, patch: str) -> str:

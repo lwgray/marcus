@@ -4,7 +4,6 @@ Linear implementation of KanbanInterface
 Uses Linear MCP Server to manage tasks and projects
 """
 
-import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -44,6 +43,7 @@ class LinearKanban(KanbanInterface):
             return result.get("success", False)
         except Exception as e:
             import sys
+
             print(f"Failed to connect to Linear MCP: {e}", file=sys.stderr)
             return False
 

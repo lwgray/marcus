@@ -2,7 +2,7 @@
 Minimal stubs for event integrated visualizer
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 
 class EventIntegratedVisualizer:

@@ -8,13 +8,12 @@ for creating new tasks on the kanban board.
 import json
 import logging
 import os
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from mcp.client.stdio import stdio_client
 
 from mcp import ClientSession, StdioServerParameters
-from src.core.models import Priority, Task, TaskStatus
+from src.core.models import Priority, Task
 from src.integrations.kanban_client import KanbanClient
 from src.integrations.label_helper import LabelManagerHelper
 
@@ -49,15 +48,15 @@ class KanbanClientWithCreate(KanbanClient):
     def _build_task_metadata(self, task_data: Dict[str, Any]) -> Optional[str]:
         """
         Build metadata comment for task description.
-        
+
         This includes priority, estimates, and dependencies formatted
         in a way that can be parsed back out when reading tasks.
-        
+
         Parameters
         ----------
         task_data : Dict[str, Any]
             Task data dictionary
-            
+
         Returns
         -------
         Optional[str]
@@ -207,7 +206,7 @@ class KanbanClientWithCreate(KanbanClient):
                 # Prepare card data
                 card_name = task_data.get("name", "Untitled Task")
                 card_description = task_data.get("description", "")
-                
+
                 # Add metadata (including dependencies) to description
                 metadata = self._build_task_metadata(task_data)
                 if metadata:

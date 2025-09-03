@@ -6,7 +6,7 @@ and handling project configurations.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from src.core.project_registry import ProjectConfig
 from src.logging.conversation_logger import conversation_logger

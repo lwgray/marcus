@@ -123,7 +123,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 pip install -r requirements-dev.txt
 
-# 5. Install pre-commit hooks
+# 5. Install pre-commit hooks (required for code quality)
 pre-commit install
 
 # 6. Set up environment variables
@@ -161,6 +161,87 @@ git commit -m "feat(worker): add task retry logic"
 # 5. Push and create PR
 git push origin feature/your-feature-name
 # Open PR on GitHub
+```
+
+## ✅ Code Quality and Pre-Commit
+
+We use pre-commit hooks to ensure consistent code quality. These run automatically before every commit to catch issues early.
+
+### Pre-Commit Hooks
+
+Our pre-commit configuration includes:
+
+- **MyPy**: Static type checking to catch type errors
+- **Ruff**: Fast Python linter (replaces flake8) for code quality
+- **Black**: Code formatter for consistent style
+- **isort**: Import statement organizer
+- **detect-secrets**: Prevents committing secrets and API keys
+- **YAML/JSON validation**: Ensures configuration files are valid
+- **Trailing whitespace removal**: Cleans up extra spaces
+- **End-of-file fixer**: Ensures files end with newlines
+
+### Running Quality Checks
+
+```bash
+# Run all pre-commit hooks on all files
+pre-commit run --all-files
+
+# Run pre-commit hooks on staged files only
+pre-commit run
+
+# Run specific hooks
+pre-commit run mypy
+pre-commit run ruff
+pre-commit run black
+
+# Bypass pre-commit hooks (not recommended)
+git commit --no-verify
+```
+
+### Quality Standards
+
+All code must pass these checks:
+
+1. **Type Safety**: MyPy must pass with no errors
+2. **Code Style**: Black formatting must be applied
+3. **Import Order**: isort must organize imports
+4. **Linting**: Ruff must pass with no violations
+5. **Security**: No secrets or API keys in code
+6. **Tests**: Minimum 80% test coverage for new code
+
+### Fixing Common Issues
+
+```bash
+# Fix code formatting
+black src/
+
+# Fix import order
+isort src/
+
+# Fix linting issues (some auto-fixable)
+ruff check --fix src/
+
+# Type checking (manual fixes needed)
+mypy src/
+
+# Update secrets baseline (if you have legitimate secrets)
+detect-secrets scan --baseline .secrets.baseline
+```
+
+### Pre-Commit Installation Troubleshooting
+
+If pre-commit hooks aren't working:
+
+```bash
+# Reinstall hooks
+pre-commit uninstall
+pre-commit install
+
+# Update hooks to latest versions
+pre-commit autoupdate
+
+# Test hooks manually
+pre-commit run --all-files
 ```
 
 ## 📋 Coding Standards
@@ -354,9 +435,13 @@ You need a token and project URL. Set them in the environment.
 
 ### Before Submitting
 
+- [ ] All pre-commit hooks pass (`pre-commit run --all-files`)
 - [ ] Tests pass locally (`pytest`)
-- [ ] Code is formatted (`black src/`)
-- [ ] Code passes linting (`flake8 src/`)
+- [ ] MyPy type checking passes (`mypy src/`)
+- [ ] Code is formatted with Black (`black src/`)
+- [ ] Imports are organized with isort (`isort src/`)
+- [ ] Ruff linting passes (`ruff check src/`)
+- [ ] No secrets detected (`detect-secrets scan`)
 - [ ] Documentation is updated
 - [ ] Commit messages follow convention
 - [ ] PR description explains the change

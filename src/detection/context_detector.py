@@ -8,9 +8,9 @@ user interactions, and explicit preferences.
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from src.core.models import Task
 from src.detection.board_analyzer import BoardAnalyzer, BoardState

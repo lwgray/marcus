@@ -26,24 +26,18 @@ Examples
 >>> print(f"Assignment allowed: {result.allow_assignment}")
 """
 
-import asyncio
 import logging
 import os
-from dataclasses import asdict, dataclass
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
-from src.ai.providers.base_provider import SemanticAnalysis
 from src.ai.providers.llm_abstraction import LLMAbstraction
 from src.ai.types import (
     AIInsights,
     AnalysisContext,
-    AssignmentContext,
-    AssignmentDecision,
     HybridAnalysis,
     RuleBasedResult,
 )
-from src.core.models import Priority, Task, TaskStatus
+from src.core.models import Task, TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -302,14 +296,15 @@ class MarcusAIEngine:
 
         # Configuration - get from config first, env var as override
         from src.config.config_loader import get_config
+
         config = get_config()
         ai_config = config.get("ai", {})
-        
+
         # Check config first, then env var, default to true
         self.ai_enabled = ai_config.get("enabled", True)
         if os.getenv("MARCUS_AI_ENABLED") is not None:
             self.ai_enabled = os.getenv("MARCUS_AI_ENABLED", "true").lower() == "true"
-            
+
         self.fallback_on_ai_failure = True
         self.rule_safety_override = False  # Never allow AI to override safety rules
 

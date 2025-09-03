@@ -4,15 +4,13 @@ Pattern Learner for Marcus Phase 2
 Learns patterns from completed projects to improve future recommendations.
 """
 
-import json
 import logging
-import math
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from src.core.models import Priority, Task, TaskStatus
+from src.core.models import Task, TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +129,7 @@ class PatternLearner:
         self, project: CompletedProject
     ) -> Dict[str, float]:
         """Analyze how accurate task estimates were"""
-        accuracy_by_type: Dict[str, float] = {}
+        accuracy_by_type: Dict[str, List[float]] = {}
 
         for task in project.tasks:
             if not task.estimated_hours or not hasattr(task, "actual_hours"):
@@ -291,7 +289,7 @@ class PatternLearner:
         self, project: CompletedProject
     ) -> Dict[str, Any]:
         """Analyze team performance metrics"""
-        performance = {}
+        performance: Dict[str, Any] = {}
 
         # Calculate velocity (tasks per day)
         if project.duration_days > 0:
@@ -313,7 +311,9 @@ class PatternLearner:
 
         return performance
 
-    async def _update_estimation_patterns(self, accuracy_data: Dict[str, float]) -> None:
+    async def _update_estimation_patterns(
+        self, accuracy_data: Dict[str, float]
+    ) -> None:
         """Update estimation accuracy patterns"""
         for task_type, accuracy in accuracy_data.items():
             pattern_id = f"estimation_{task_type}"
@@ -398,7 +398,7 @@ class PatternLearner:
 
     async def _update_outcome_patterns(
         self, success_factors: List[str], failure_points: List[str]
-    ):
+    ) -> None:
         """Update success and failure patterns"""
         # Update success patterns
         for factor in success_factors:

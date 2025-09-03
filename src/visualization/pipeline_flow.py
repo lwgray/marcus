@@ -3,7 +3,7 @@ Minimal stubs for pipeline flow management
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from .shared_pipeline_events import PipelineStage
 

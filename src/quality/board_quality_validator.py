@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, cast
 
-from src.core.models import Priority, Task, TaskStatus
+from src.core.models import Task
 
 
 class QualityLevel(Enum):
@@ -437,7 +437,9 @@ class BoardQualityValidator:
         """Get distribution of tasks by phase"""
         phases: Dict[str, int] = {}
         for task in tasks:
-            phase_labels = [l for l in task.labels if l.startswith("phase:")]
+            phase_labels = [
+                label for label in task.labels if label.startswith("phase:")
+            ]
             if phase_labels:
                 phase = phase_labels[0].replace("phase:", "")
                 phases[phase] = phases.get(phase, 0) + 1

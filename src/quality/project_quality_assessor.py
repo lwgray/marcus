@@ -5,13 +5,12 @@ Comprehensive quality assessment system that analyzes completed projects
 using multiple data sources including GitHub, task metrics, and AI analysis.
 """
 
-import asyncio
 import json
 import statistics
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from src.core.models import ProjectState, Task, TaskStatus, WorkerStatus
 from src.integrations.ai_analysis_engine import AIAnalysisEngine

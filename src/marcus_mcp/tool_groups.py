@@ -5,7 +5,7 @@ This module defines which tools are available on each endpoint
 to provide role-based access without dynamic tool switching.
 """
 
-from typing import Dict, List, Set
+from typing import Dict, Set
 
 # Define tool groups for each endpoint
 TOOL_GROUPS: Dict[str, Set[str]] = {

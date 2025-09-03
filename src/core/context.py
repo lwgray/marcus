@@ -10,7 +10,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.core.events import Events, EventTypes
 from src.core.models import Priority, Task
@@ -797,13 +797,12 @@ class Context:
         dep_labels = [label.lower() for label in (dependent_task.labels or [])]
 
         # Try to find the dependency task to get its information
-        dependency_task = None
         # Look in implementations first
         if dependency_task_id in self.implementations:
             # Get task info from implementation if available
             impl = self.implementations[dependency_task_id]
             dep_task_name = impl.get("task_name", "").lower()
-            dep_task_labels = [l.lower() for l in impl.get("labels", [])]
+            dep_task_labels = [label.lower() for label in impl.get("labels", [])]
         else:
             # For now, infer from the task ID and name patterns
             dep_task_name = dependency_task_id.lower()

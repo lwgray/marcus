@@ -18,7 +18,7 @@ class BaseTestCase:
     Provides common test setup, teardown, and utility methods
     that can be inherited by test classes.
     """
-    
+
     test_dir: str
 
     @classmethod
@@ -79,7 +79,7 @@ class BaseTestCase:
             estimated_hours=cast(float, defaults["estimated_hours"]),
             actual_hours=cast(float, defaults["actual_hours"]),
             dependencies=cast(List[str], defaults["dependencies"]),
-            labels=cast(List[str], defaults["labels"])
+            labels=cast(List[str], defaults["labels"]),
         )
 
     def create_task_batch(self, count: int, **kwargs: Any) -> List[Task]:
@@ -131,7 +131,7 @@ class BaseTestCase:
             capacity=cast(int, defaults["capacity"]),
             skills=cast(List[str], defaults["skills"]),
             availability=cast(Dict[str, bool], defaults["availability"]),
-            performance_score=cast(float, defaults["performance_score"])
+            performance_score=cast(float, defaults["performance_score"]),
         )
 
     # Assertion helpers

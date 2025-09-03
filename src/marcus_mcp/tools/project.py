@@ -5,7 +5,7 @@ This module contains tools for monitoring project progress and metrics:
 - get_project_status: Get comprehensive project metrics and status
 """
 
-from typing import Any, Dict, List
+from typing import Any
 
 from src.core.models import TaskStatus
 from src.logging.conversation_logger import conversation_logger

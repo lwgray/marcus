@@ -7,12 +7,11 @@ AI-powered task generation from PRD requirements.
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from src.core.models import Priority, Task, TaskStatus
 from src.intelligence.prd_parser import Feature, ParsedPRD, TechStack
-from src.modes.creator.template_library import ProjectSize
 
 logger = logging.getLogger(__name__)
 
@@ -575,7 +574,7 @@ class IntelligentTaskGenerator:
 
     def _generate_generic_feature_tasks(self, feature: Feature) -> List[Dict[str, Any]]:
         """Generate generic tasks for unknown feature types"""
-        base_name = feature.name.replace(" ", "_").lower()
+        feature.name.replace(" ", "_").lower()
 
         return [
             {

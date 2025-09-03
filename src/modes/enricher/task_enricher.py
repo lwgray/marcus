@@ -7,11 +7,9 @@ Enriches existing tasks with metadata and structure to organize chaotic boards.
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from src.core.models import Priority, Task
-from src.detection.board_analyzer import BoardAnalyzer
+from src.core.models import Task
 
 logger = logging.getLogger(__name__)
 
@@ -483,9 +481,7 @@ class TaskEnricher:
         suggestions = []
 
         # Get typical dependencies for task type
-        typical_deps = self.task_patterns.get(task_type, {}).get(
-            "typical_dependencies", []
-        )
+        self.task_patterns.get(task_type, {}).get("typical_dependencies", [])
 
         # Add logical dependencies based on common patterns
         task_text = f"{task.name} {task.description or ''}".lower()

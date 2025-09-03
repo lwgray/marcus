@@ -14,6 +14,8 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.core.models import Task
+from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
+from src.integrations.nlp_task_utils import TaskType
 
 
 class TaskPhase(Enum):
@@ -45,8 +47,6 @@ class DependencyType(Enum):
 
 # For now, use regular Task model instead of EnhancedTask to avoid circular imports
 EnhancedTask = Task
-from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
-from src.integrations.nlp_task_utils import TaskType
 
 logger = logging.getLogger(__name__)
 

@@ -87,14 +87,15 @@ class LocalLLMProvider(BaseLLMProvider):
         """
         # Get config for local LLM settings
         from src.config.config_loader import get_config
+
         config = get_config()
         ai_config = config.get("ai", {})
-        
+
         # Support different local LLM servers - config first, env var as override
         self.base_url = ai_config.get("local_url", "http://localhost:11434/v1")
         if os.getenv("MARCUS_LOCAL_LLM_URL"):
             self.base_url = os.getenv("MARCUS_LOCAL_LLM_URL")
-            
+
         self.model = model_name
         self.max_tokens = 4096  # Most local models support longer context
         self.timeout = 120.0  # Longer timeout for local inference
@@ -379,7 +380,9 @@ Solutions:"""
             if e.response.status_code == 404:
                 # Try Ollama's native API format
                 return await self._call_ollama_native(prompt, max_tokens, temperature)
-            raise Exception(f"Local LLM API error: {e.response.status_code} - {e.response.text}")
+            raise Exception(
+                f"Local LLM API error: {e.response.status_code} - {e.response.text}"
+            )
 
         except Exception as e:
             logger.error(f"Local LLM call failed: {e}")
@@ -395,7 +398,7 @@ Solutions:"""
         """
         # Ollama native endpoint
         native_url = self.base_url.replace("/v1", "")
-        
+
         request_data = {
             "model": self.model,
             "prompt": prompt,
@@ -418,9 +421,7 @@ Solutions:"""
             logger.error(f"Ollama native API call failed: {e}")
             raise Exception(f"Failed to connect to local LLM server: {str(e)}")
 
-    def _build_task_analysis_prompt(
-        self, task: Task, context: Dict[str, Any]
-    ) -> str:
+    def _build_task_analysis_prompt(self, task: Task, context: Dict[str, Any]) -> str:
         """Build prompt for task analysis."""
         return f"""Analyze this software development task:
 
@@ -479,7 +480,9 @@ Provide a JSON response with:
     def _build_dependency_inference_prompt(self, tasks: List[Task]) -> str:
         """Build prompt for dependency inference."""
         task_list = "\n".join(
-            [f"- {t.id}: {t.name} ({t.status})" for t in tasks[:20]]  # Limit for context
+            [
+                f"- {t.id}: {t.name} ({t.status})" for t in tasks[:20]
+            ]  # Limit for context
         )
 
         return f"""Analyze these tasks and identify logical dependencies:

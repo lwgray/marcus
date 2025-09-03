@@ -10,9 +10,9 @@ import json
 import logging
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional
 
-from src.core.resilience import resilient_persistence, with_fallback
+from src.core.resilience import with_fallback
 
 logger = logging.getLogger(__name__)
 

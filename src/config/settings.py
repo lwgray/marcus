@@ -7,8 +7,7 @@ JSON files, environment variables, and default values.
 
 import json
 import os
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional
 
 from .config_loader import get_config
 
@@ -551,7 +550,6 @@ class Settings:
         ... else:
         ...     fix_configuration()
         """
-        required_keys = []
 
         # Check for API key if AI is being used
         if not os.environ.get("ANTHROPIC_API_KEY"):

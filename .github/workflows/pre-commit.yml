@@ -1,0 +1,124 @@
+name: Pre-Commit Quality Checks
+
+on:
+  push:
+    branches: [ main, pre-commit, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Cache pre-commit environments
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pre-commit
+        key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+        restore-keys: |
+          pre-commit-${{ runner.os }}-
+          
+    - name: Install pre-commit
+      run: pip install pre-commit
+      
+    - name: Run pre-commit hooks
+      run: pre-commit run --all-files --show-diff-on-failure
+      
+    - name: Upload pre-commit cache
+      if: failure()
+      uses: actions/cache/save@v3
+      with:
+        path: ~/.cache/pre-commit
+        key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+
+  quality-checks:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: pip-${{ runner.os }}-${{ hashFiles('requirements-dev.txt') }}
+        restore-keys: |
+          pip-${{ runner.os }}-
+          
+    - name: Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+        
+    - name: Type check with MyPy
+      run: mypy src/ --ignore-missing-imports --check-untyped-defs
+      
+    - name: Lint with Ruff
+      run: ruff check src/ --output-format=github
+      
+    - name: Check code formatting with Black
+      run: black --check src/
+      
+    - name: Check import sorting with isort
+      run: isort --check-only src/
+      
+    - name: Security scan with detect-secrets
+      run: detect-secrets scan --baseline .secrets.baseline
+      
+    - name: Generate quality report
+      if: always()
+      run: |
+        echo "## Code Quality Report" >> $GITHUB_STEP_SUMMARY
+        echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+        
+        # MyPy check
+        if mypy src/ --ignore-missing-imports --check-untyped-defs > /dev/null 2>&1; then
+          echo "| MyPy Type Check | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| MyPy Type Check | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # Ruff check
+        if ruff check src/ > /dev/null 2>&1; then
+          echo "| Ruff Linting | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| Ruff Linting | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # Black check
+        if black --check src/ > /dev/null 2>&1; then
+          echo "| Black Formatting | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| Black Formatting | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # isort check
+        if isort --check-only src/ > /dev/null 2>&1; then
+          echo "| isort Import Order | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| isort Import Order | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # detect-secrets check
+        if detect-secrets scan --baseline .secrets.baseline > /dev/null 2>&1; then
+          echo "| Security Scan | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| Security Scan | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+        fi

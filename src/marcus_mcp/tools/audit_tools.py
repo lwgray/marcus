@@ -5,7 +5,7 @@ Provides tools for analyzing audit logs and generating usage reports.
 """
 
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from mcp.types import Tool
 

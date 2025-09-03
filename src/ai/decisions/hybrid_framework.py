@@ -6,9 +6,8 @@ optimal task assignment decisions while never compromising safety.
 """
 
 import logging
-from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
     from src.ai.core.ai_engine import RuleBasedEngine
@@ -20,7 +19,7 @@ from src.ai.types import (
     AssignmentDecision,
     RuleBasedResult,
 )
-from src.core.models import Task, TaskStatus
+from src.core.models import Task
 
 logger = logging.getLogger(__name__)
 

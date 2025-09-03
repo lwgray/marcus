@@ -310,8 +310,7 @@ class EnhancedTaskClassifier:
         TaskType.DESIGN: [
             r"(?:create|define|plan)\s+(?:the\s+)?"
             r"(?:system|application|software)\s+(?:architecture|design)",
-            r"design\s+(?:the\s+)?(?:data|database)\s+"
-            r"(?:model|schema|structure)",
+            r"design\s+(?:the\s+)?(?:data|database)\s+" r"(?:model|schema|structure)",
             r"(?:create|design)\s+(?:ui|ux|user\s+interface|user\s+experience)",
             r"(?:define|specify)\s+(?:api|interface)\s+"
             r"(?:contracts?|specifications?)",
@@ -421,7 +420,7 @@ class EnhancedTaskClassifier:
 
         # Calculate confidence based on score and uniqueness
         total_score = sum(scores.values())
-        
+
         # If score is too low, treat as OTHER with 0 confidence
         if best_score < 1.0:
             return ClassificationResult(
@@ -431,7 +430,7 @@ class EnhancedTaskClassifier:
                 matched_patterns=[],
                 reasoning="Insufficient evidence for classification",
             )
-            
+
         # Ensure minimum confidence if we have matches
         if best_score > 0:
             confidence = max(0.5, best_score / total_score) if total_score > 0 else 0.8
@@ -479,7 +478,7 @@ class EnhancedTaskClassifier:
             if match:
                 # Give extra weight if keyword appears at the beginning
                 position_weight = 1.5 if match.start() < 10 else 1.0
-                
+
                 # Give testing keywords extra weight to avoid misclassification
                 if task_type == TaskType.TESTING and keyword in ["test", "testing"]:
                     score += 3.0 * position_weight  # Higher weight for testing keywords
@@ -500,7 +499,10 @@ class EnhancedTaskClassifier:
         for verb in keywords_dict.get("verbs", []):
             if re.search(rf"\b{verb}\b", text):
                 # Special case: generic verbs need more context
-                if verb in ["update", "create", "write", "add", "build"] and len(text.split()) <= 3:
+                if (
+                    verb in ["update", "create", "write", "add", "build"]
+                    and len(text.split()) <= 3
+                ):
                     # Very short task names with generic verbs get lower scores
                     score += 0.5
                     # Skip if the verb is the entire classification basis for testing
@@ -512,11 +514,11 @@ class EnhancedTaskClassifier:
                     matched_keywords.append(verb)
 
         # Check patterns (highest weight)
-        for pattern in self._compiled_patterns.get(task_type, []):
-            match = pattern.search(text)
+        for regex_pattern in self._compiled_patterns.get(task_type, []):
+            match = regex_pattern.search(text)
             if match:
                 score += 3.0
-                matched_patterns.append(pattern.pattern)
+                matched_patterns.append(regex_pattern.pattern)
 
         # Penalty for conflicting keywords
         for other_type in TaskType:
@@ -573,7 +575,7 @@ class EnhancedTaskClassifier:
 
             suggestions["improve_clarity"] = [
                 f"Consider starting with: {', '.join(primary[:3])}",
-                f"Be more specific about the task type",
+                "Be more specific about the task type",
                 "Avoid ambiguous terms that could match multiple types",
             ]
 

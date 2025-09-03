@@ -9,7 +9,7 @@ import logging
 import re
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 
 from src.core.models import Task, TaskStatus
 
@@ -106,21 +106,21 @@ class DependencyGraph:
                     queue.append(neighbor)
 
         # Find path to node with maximum distance
-        max_distance = max(distances.values())
+        max(distances.values())
         end_node = max(distances.items(), key=lambda x: x[1])[0]
 
         # Reconstruct path
         path = []
-        current: Optional[str] = end_node
+        current_node: Optional[str] = end_node
 
-        while current:
-            path.append(current)
+        while current_node:
+            path.append(current_node)
             # Find predecessor with maximum distance
-            predecessors = self.reverse_adjacency.get(current, [])
+            predecessors = self.reverse_adjacency.get(current_node, [])
             if predecessors:
-                current = max(predecessors, key=lambda p: distances[p])
+                current_node = max(predecessors, key=lambda p: distances[p])
             else:
-                current = None
+                current_node = None
 
         path.reverse()
         return path
@@ -504,10 +504,10 @@ class DependencyInferer:
                 cycle_start = path.index(node)
                 cycle = path[cycle_start:] + [node]
                 cycles_found.append(cycle)
-                return True
+                return cycle
 
             if node in visited:
-                return False
+                return None
 
             visited.add(node)
             rec_stack.add(node)
@@ -517,7 +517,7 @@ class DependencyInferer:
                     break  # Only need to find one cycle per path
 
             rec_stack.remove(node)
-            return False
+            return None
 
         # Find cycles
         for node in list(
@@ -602,7 +602,6 @@ class DependencyInferer:
                     intermediate != dep.dependency_task_id
                     and intermediate != dep.dependent_task_id
                 ):
-
                     path_to_intermediate = find_transitive_paths(
                         dep.dependency_task_id, intermediate, set()
                     )

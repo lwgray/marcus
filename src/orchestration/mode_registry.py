@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from src.detection.board_analyzer import BoardState
 from src.detection.context_detector import MarcusMode
 
 logger = logging.getLogger(__name__)

@@ -4,7 +4,6 @@ Basic Enricher for Marcus Phase 2
 Simple task enrichment without requiring board context.
 """
 
-import re
 from datetime import datetime
 from typing import Any, Dict, List
 

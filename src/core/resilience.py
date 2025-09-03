@@ -8,10 +8,10 @@ and retry logic to ensure Marcus continues working even when components fail.
 import asyncio
 import logging
 import time
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from dataclasses import dataclass
+from datetime import datetime
 from functools import wraps
-from typing import Any, Callable, Dict, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,9 @@ class CircuitBreaker:
 _circuit_breakers: Dict[str, CircuitBreaker] = {}
 
 
-def with_fallback(fallback_func: Callable[..., Any], log_errors: bool = True) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+def with_fallback(
+    fallback_func: Callable[..., Any], log_errors: bool = True
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     Decorator for graceful degradation with fallback function.
 
@@ -117,7 +119,9 @@ def with_fallback(fallback_func: Callable[..., Any], log_errors: bool = True) ->
     return decorator
 
 
-def with_retry(config: Optional[RetryConfig] = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+def with_retry(
+    config: Optional[RetryConfig] = None,
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     Decorator for retry logic with exponential backoff.
 
@@ -206,7 +210,9 @@ def with_retry(config: Optional[RetryConfig] = None) -> Callable[[Callable[..., 
     return decorator
 
 
-def with_circuit_breaker(name: str, config: Optional[CircuitBreakerConfig] = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+def with_circuit_breaker(
+    name: str, config: Optional[CircuitBreakerConfig] = None
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     Decorator for circuit breaker pattern.
 
@@ -282,13 +288,15 @@ class GracefulDegradation:
         self._primary_failed = False
         self._primary_exception: Optional[Exception] = None
 
-    async def __aenter__(self) -> 'GracefulDegradation':
+    async def __aenter__(self) -> "GracefulDegradation":
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
         return False
 
-    async def try_primary(self, func: Optional[Callable[..., Any]] = None, *args: Any, **kwargs: Any) -> Any:
+    async def try_primary(
+        self, func: Optional[Callable[..., Any]] = None, *args: Any, **kwargs: Any
+    ) -> Any:
         """Try the primary function"""
         if func is None:
             func = self.primary

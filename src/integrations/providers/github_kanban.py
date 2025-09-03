@@ -4,7 +4,6 @@ GitHub Projects implementation of KanbanInterface
 Uses GitHub MCP Server to manage tasks
 """
 
-import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -46,6 +45,7 @@ class GitHubKanban(KanbanInterface):
             return "user" in result
         except Exception as e:
             import sys
+
             print(f"Failed to connect to GitHub MCP: {e}", file=sys.stderr)
             return False
 
@@ -162,7 +162,7 @@ class GitHubKanban(KanbanInterface):
             if result.get("issue"):
                 return self._github_issue_to_task(result["issue"])
             return None
-        except:
+        except Exception:
             return None
 
     async def create_task(self, task_data: Dict[str, Any]) -> Task:

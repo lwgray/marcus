@@ -6,7 +6,6 @@ task assignments like "Deploy to production" before development is complete.
 """
 
 import logging
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from src.core.assignment_persistence import AssignmentPersistence
@@ -188,7 +187,6 @@ class BasicAdaptiveMode:
                         and other_task.status != TaskStatus.DONE
                         and other_task.id != task.id
                     ):
-
                         logger.info(
                             f"Task '{task.name}' blocked by logical dependency: "
                             f"'{other_task.name}' must complete first"
@@ -224,7 +222,6 @@ class BasicAdaptiveMode:
                     and other_task.status != TaskStatus.DONE
                     and other_task.id != task.id
                 ):
-
                     logger.warning(
                         f"Blocking deployment task '{task.name}' - implementation task "
                         f"'{other_task.name}' is not complete"
@@ -243,7 +240,6 @@ class BasicAdaptiveMode:
                     and other_task.status != TaskStatus.DONE
                     and self._tasks_related(task, other_task)
                 ):
-
                     logger.info(
                         f"Blocking test task '{task.name}' - related implementation "
                         f"'{other_task.name}' is not complete"
@@ -444,7 +440,7 @@ class BasicAdaptiveMode:
 
         # Group tasks by status
         todo_tasks = [t for t in tasks if t.status == TaskStatus.TODO]
-        done_tasks = [t for t in tasks if t.status == TaskStatus.DONE]
+        [t for t in tasks if t.status == TaskStatus.DONE]
 
         for task in todo_tasks:
             if not await self._is_task_unblocked(task, tasks, {}):

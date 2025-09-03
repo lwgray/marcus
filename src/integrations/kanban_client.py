@@ -16,12 +16,10 @@ This implementation avoids persistent connections and creates a new MCP session
 for each operation to ensure reliability.
 """
 
-import asyncio
 import json
 import logging
 import os
 import sys
-from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -127,7 +125,7 @@ class KanbanClient:
                 # Config loaded successfully - don't print as it interferes with MCP stdio
         else:
             print(
-                f"❌ config_marcus.json not found in any of the following locations:",
+                "❌ config_marcus.json not found in any of the following locations:",
                 file=sys.stderr,
             )
             for path in config_paths:
@@ -220,8 +218,6 @@ class KanbanClient:
                                     for card in cards_list:
                                         card["listName"] = lst.get("name", "")
                                         all_cards.append(card)
-
-                result = None  # We'll use all_cards instead
 
                 tasks = []
 

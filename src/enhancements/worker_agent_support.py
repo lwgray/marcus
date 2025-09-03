@@ -2,13 +2,12 @@
 Enhancements for autonomous worker agent support
 """
 
-import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from src.core.models import Priority, Task, WorkerStatus
+from src.core.models import Priority, Task
 
 
 class AgentState(Enum):

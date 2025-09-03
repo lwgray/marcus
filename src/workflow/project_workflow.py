@@ -7,7 +7,7 @@ Orchestrates the workflow from project creation to task assignment and execution
 import asyncio
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from src.marcus_mcp.client import SimpleMarcusClient
 from src.visualization.pipeline_manager import PipelineFlowManager
@@ -136,6 +136,7 @@ class ProjectWorkflowManager:
 
             except Exception as e:
                 import sys
+
                 print(f"Error in auto-assign loop: {e}", file=sys.stderr)
                 await asyncio.sleep(30)
 
@@ -190,6 +191,7 @@ class ProjectWorkflowManager:
 
             except Exception as e:
                 import sys
+
                 print(f"Error in workflow monitoring: {e}", file=sys.stderr)
                 await asyncio.sleep(60)
 

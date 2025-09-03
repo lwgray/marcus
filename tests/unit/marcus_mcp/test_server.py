@@ -38,7 +38,9 @@ from src.core.models import (
 from src.marcus_mcp.server import MarcusServer
 
 
-def get_text_content(content: types.TextContent | types.ImageContent | types.EmbeddedResource) -> str:
+def get_text_content(
+    content: types.TextContent | types.ImageContent | types.EmbeddedResource,
+) -> str:
     """Helper to extract text from MCP content types."""
     if isinstance(content, types.TextContent):
         return content.text
@@ -297,7 +299,8 @@ class TestKanbanInitialization:
         error = exc_info.value
         assert "client_initialization failed for board planka" in str(error)
         assert (
-            error.context.custom_context and error.context.custom_context.get("details")
+            error.context.custom_context
+            and error.context.custom_context.get("details")
             and "does not support task creation"
             in error.context.custom_context["details"]
         )
@@ -321,7 +324,8 @@ class TestKanbanInitialization:
         error = exc_info.value
         assert "client_initialization failed for board planka" in str(error)
         assert (
-            error.context.custom_context and error.context.custom_context.get("details")
+            error.context.custom_context
+            and error.context.custom_context.get("details")
             and "Failed to initialize kanban client"
             in error.context.custom_context["details"]
         )

@@ -5,16 +5,12 @@ Learns patterns specific to teams, technologies, and project types
 to provide intelligent, context-aware recommendations.
 """
 
-import json
 import logging
 import statistics
 from collections import Counter, defaultdict
-from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
-
-from src.ai.providers.base_provider import SemanticAnalysis
-from src.core.models import Priority, Task, TaskStatus
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -224,7 +220,9 @@ class ContextualLearningSystem:
 
         # Get relevant learnings
         team_learning = self.team_learnings.get(team_id) if team_id else None
-        tech_learning = self.technology_learnings.get(tech_stack) if tech_stack else None
+        tech_learning = (
+            self.technology_learnings.get(tech_stack) if tech_stack else None
+        )
         project_learning = self.project_type_learnings.get(project_type)
 
         adapted_templates = {}

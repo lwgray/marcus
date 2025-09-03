@@ -22,8 +22,8 @@ Examples
 import json
 import os
 import sys
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Union
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 import anthropic
 
@@ -38,7 +38,6 @@ from src.core.models import (
 )
 from src.cost_tracking.ai_usage_middleware import (
     ai_usage_middleware,
-    track_project_tokens,
 )
 
 
@@ -111,7 +110,7 @@ class AIAnalysisEngine:
                     else:
                         raise te
 
-        except Exception as e:
+        except Exception:
             # Failed to initialize Anthropic client - AI features will use fallback responses
             # Don't print to stderr as it interferes with MCP stdio protocol
             self.client = None
@@ -242,14 +241,14 @@ Identify risks and provide JSON:
 
         # Test connection
         try:
-            response = self.client.messages.create(
+            self.client.messages.create(
                 model=self.model,
                 max_tokens=10,
                 messages=[{"role": "user", "content": "test"}],
             )
             # Connection verified - wrap client for token tracking
             self.client = ai_usage_middleware.wrap_ai_provider(self.client)
-        except Exception as e:
+        except Exception:
             # AI Engine test failed - will use fallback responses
             # Don't print to stderr as it interferes with MCP stdio protocol
             self.client = None  # Disable client if test fails
@@ -1250,7 +1249,7 @@ Be specific and actionable. Each task should be self-contained and assignable to
             except json.JSONDecodeError:
                 # If JSON parsing fails, try to extract structured data
                 print(
-                    f"Failed to parse AI response as JSON, using fallback",
+                    "Failed to parse AI response as JSON, using fallback",
                     file=sys.stderr,
                 )
                 return self._analyze_feature_request_fallback(feature_description)
@@ -1283,7 +1282,7 @@ Be specific and actionable. Each task should be self-contained and assignable to
             tasks.append(
                 {
                     "name": f"Implement API for {feature_description}",
-                    "description": f"Build backend API endpoints and business logic",
+                    "description": "Build backend API endpoints and business logic",
                     "estimated_hours": 12,
                     "labels": ["backend", "api"],
                     "critical": True,
@@ -1295,7 +1294,7 @@ Be specific and actionable. Each task should be self-contained and assignable to
             tasks.append(
                 {
                     "name": f"Build UI for {feature_description}",
-                    "description": f"Create user interface components and interactions",
+                    "description": "Create user interface components and interactions",
                     "estimated_hours": 10,
                     "labels": ["frontend", "ui"],
                     "critical": True,
@@ -1423,7 +1422,7 @@ Return JSON with this format:
                 return result
             except json.JSONDecodeError:
                 print(
-                    f"Failed to parse AI response as JSON, using fallback",
+                    "Failed to parse AI response as JSON, using fallback",
                     file=sys.stderr,
                 )
                 return self._analyze_integration_fallback(feature_tasks, existing_tasks)

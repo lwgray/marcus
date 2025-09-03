@@ -6,15 +6,12 @@ would affect the outcome, learning optimal approaches through experimentation.
 """
 
 import copy
-import json
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
-from src.visualization.pipeline_conversation_bridge import PipelineConversationBridge
 from src.visualization.shared_pipeline_events import (
-    PipelineStage,
     SharedPipelineVisualizer,
 )
 
@@ -62,11 +59,11 @@ class WhatIfAnalysisEngine:
         self.original_flow_id = original_flow_id
         self.shared_events = SharedPipelineVisualizer()
         self.original_flow = self._load_flow(original_flow_id)
-        self.variations = []
+        self.variations: List[Dict[str, Any]] = []
 
     def _load_flow(self, flow_id: str) -> Dict[str, Any]:
         """Load complete flow data including all events."""
-        events = self.shared_events.shared_events.get_flow_events(flow_id)
+        events = self.shared_events.pipeline_events.get_events()
 
         # Extract flow metadata
         flow_data = {
@@ -208,7 +205,7 @@ class WhatIfAnalysisEngine:
         # This is a simplified simulation - in production, you'd re-run
         # the actual pipeline with modified parameters
 
-        simulated_events = []
+        simulated_events: List[Any] = []
         simulated_metrics = copy.deepcopy(self.original_flow["metrics"])
 
         # Simulate impact of modifications
@@ -391,7 +388,7 @@ class WhatIfAnalysisEngine:
         # Analyze all variations to find best performing
         best_quality = self.original_flow["metrics"]["quality_score"]
         best_cost = self.original_flow["metrics"]["total_cost"]
-        best_speed = self.original_flow["metrics"]["total_duration_ms"]
+        self.original_flow["metrics"]["total_duration_ms"]
 
         for variation in self.variations:
             metrics = variation["simulated_flow"]["metrics"]

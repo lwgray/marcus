@@ -6,11 +6,11 @@ Organizes chaotic boards into logical structures with multiple strategies.
 
 import logging
 import re
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from src.core.models import Priority, Task, TaskStatus
+from src.core.models import Priority, Task
 
 logger = logging.getLogger(__name__)
 

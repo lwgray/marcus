@@ -8,7 +8,7 @@ import logging
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -331,7 +331,6 @@ class PRDParser:
     def _split_features(self, features_text: str) -> List[str]:
         """Split features section into individual feature blocks"""
         # Split by markdown headers or bullet points
-        feature_blocks: List[str] = []
 
         # Try splitting by headers first
         header_splits = re.split(r"\n#+\s+", features_text)

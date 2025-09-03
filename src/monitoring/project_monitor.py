@@ -58,7 +58,6 @@ Risk and blocker management:
 """
 
 import asyncio
-import json
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -245,6 +244,7 @@ class ProjectMonitor:
 
             except Exception as e:
                 import sys
+
                 print(f"Error in monitoring loop: {e}", file=sys.stderr)
 
             # Wait before next check
@@ -1177,11 +1177,17 @@ class ProjectMonitor:
     async def _handle_project_completion(self) -> None:
         """Handle project completion by triggering learning and assessment."""
         import sys
-        print(f"🎉 Project '{self.current_state.project_name}' appears to be complete!", file=sys.stderr)
-        print(f"   Progress: {self.current_state.progress_percent:.1f}%", file=sys.stderr)
+
+        print(
+            f"🎉 Project '{self.current_state.project_name}' appears to be complete!",
+            file=sys.stderr,
+        )
+        print(
+            f"   Progress: {self.current_state.progress_percent:.1f}%", file=sys.stderr
+        )
         print(
             f"   Completed Tasks: {self.current_state.completed_tasks}/{self.current_state.total_tasks}",
-            file=sys.stderr
+            file=sys.stderr,
         )
 
         # Get configuration
@@ -1243,19 +1249,26 @@ class ProjectMonitor:
 
         # Log results
         import sys
-        print(f"\n📊 Quality Assessment Complete:", file=sys.stderr)
+
+        print("\n📊 Quality Assessment Complete:", file=sys.stderr)
         print(f"   Overall Score: {assessment.overall_score:.1%}", file=sys.stderr)
-        print(f"   Success: {'✅ Yes' if assessment.is_successful else '❌ No'}", file=sys.stderr)
+        print(
+            f"   Success: {'✅ Yes' if assessment.is_successful else '❌ No'}",
+            file=sys.stderr,
+        )
         print(f"   Confidence: {assessment.success_confidence:.1%}", file=sys.stderr)
-        print(f"\n📈 Key Insights:", file=sys.stderr)
+        print("\n📈 Key Insights:", file=sys.stderr)
         for insight in assessment.quality_insights[:3]:
             print(f"   • {insight}", file=sys.stderr)
-        print(f"\n🎯 Improvement Areas:", file=sys.stderr)
+        print("\n🎯 Improvement Areas:", file=sys.stderr)
         for area in assessment.improvement_areas[:3]:
             print(f"   • {area}", file=sys.stderr)
-        print(f"\n🧠 Pattern Learning Complete:", file=sys.stderr)
+        print("\n🧠 Pattern Learning Complete:", file=sys.stderr)
         print(f"   Confidence Score: {pattern.confidence_score:.1%}", file=sys.stderr)
-        print(f"   Patterns in Database: {len(self.pattern_learner.learned_patterns)}", file=sys.stderr)
+        print(
+            f"   Patterns in Database: {len(self.pattern_learner.learned_patterns)}",
+            file=sys.stderr,
+        )
 
     def _calculate_project_duration(self) -> int:
         """Calculate project duration in days from historical data."""
@@ -1365,10 +1378,19 @@ class ProjectMonitor:
 
         # Log completion event with insights
         import sys
-        print(f"✅ Project '{self.current_state.project_name}' completed:", file=sys.stderr)
+
+        print(
+            f"✅ Project '{self.current_state.project_name}' completed:",
+            file=sys.stderr,
+        )
         print(f"   - Quality Score: {assessment.overall_score:.1%}", file=sys.stderr)
-        print(f"   - Pattern Confidence: {pattern.confidence_score:.1%}", file=sys.stderr)
-        print(f"   - Key Success Factors: {', '.join(pattern.success_factors[:3])}", file=sys.stderr)
+        print(
+            f"   - Pattern Confidence: {pattern.confidence_score:.1%}", file=sys.stderr
+        )
+        print(
+            f"   - Key Success Factors: {', '.join(pattern.success_factors[:3])}",
+            file=sys.stderr,
+        )
 
         return {
             "pattern_learning": {
@@ -1409,7 +1431,7 @@ class ProjectMonitor:
             await self._collect_project_data()
 
         # Build project context
-        all_tasks = await self._get_all_tasks()
+        await self._get_all_tasks()
 
         project_context = {
             "total_tasks": self.current_state.total_tasks,

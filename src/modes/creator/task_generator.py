@@ -7,7 +7,7 @@ Generates properly ordered tasks from templates to prevent illogical assignments
 import logging
 import uuid
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from src.core.models import Priority, Task, TaskStatus
 from src.modes.creator.template_library import (
@@ -260,7 +260,7 @@ class TaskGenerator:
                 updated_at=datetime.now(),
                 due_date=None,
                 assigned_to=None,
-                )
+            )
 
             created_tasks.append(task)
             task_id_map[task.name] = task_id

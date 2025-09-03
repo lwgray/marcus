@@ -40,7 +40,9 @@ class TestPatternDatabase:
 
     @patch("src.recommendations.recommendation_engine.Path.exists")
     @patch("src.recommendations.recommendation_engine.Path.mkdir")
-    def test_initialization_no_existing_db(self, mock_mkdir: Mock, mock_exists: Mock) -> None:
+    def test_initialization_no_existing_db(
+        self, mock_mkdir: Mock, mock_exists: Mock
+    ) -> None:
         """Test pattern database initialization without existing file"""
         mock_exists.return_value = False
 
@@ -54,7 +56,9 @@ class TestPatternDatabase:
     @patch(
         "builtins.open", new_callable=mock_open, read_data='{"success_patterns": []}'
     )
-    def test_initialization_with_existing_db(self, mock_file: Mock, mock_exists: Mock) -> None:
+    def test_initialization_with_existing_db(
+        self, mock_file: Mock, mock_exists: Mock
+    ) -> None:
         """Test pattern database initialization with existing file"""
         mock_exists.return_value = True
 

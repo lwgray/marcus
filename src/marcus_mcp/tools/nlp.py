@@ -6,14 +6,15 @@ This module contains tools for natural language project/task creation:
 - add_feature: Add feature to existing project using natural language
 """
 
-import asyncio
 from typing import Any, Dict, Optional
 
 from src.integrations.nlp_tools import add_feature_natural_language
 
 # Use type: ignore to suppress the export warning and avoid redefinition
 try:
-    from src.visualization.pipeline_flow import PipelineStage  # type: ignore[attr-defined]
+    from src.visualization.pipeline_flow import (
+        PipelineStage,  # type: ignore[attr-defined]
+    )
 except ImportError:
     # Fallback if PipelineStage is not available
     class PipelineStage:  # type: ignore[no-redef]

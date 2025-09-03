@@ -77,10 +77,14 @@ class DocumentationTaskGenerator:
         # PROJECT_SUCCESS depends on ALL non-documentation tasks
         # This ensures it's only available when the entire project is complete
         dependencies = [
-            t.id for t in existing_tasks
-            if not any(label in t.labels for label in ["documentation", "final", "verification"])
+            t.id
+            for t in existing_tasks
+            if not any(
+                label in t.labels
+                for label in ["documentation", "final", "verification"]
+            )
         ]
-        
+
         # Log dependency count for debugging
         logger.info(f"PROJECT_SUCCESS task will depend on {len(dependencies)} tasks")
 
@@ -115,7 +119,7 @@ class DocumentationTaskGenerator:
 
         base_description = """Create comprehensive PROJECT_SUCCESS.md documentation by:
 
-⚠️ **IMPORTANT**: Work in the current directory (./) where Claude is running. 
+⚠️ **IMPORTANT**: Work in the current directory (./) where Claude is running.
 Create all files in the current working directory, NOT in the Marcus installation directory.
 
 1. **Gather Information**:
@@ -204,50 +208,52 @@ def enhance_project_with_documentation(
         AdaptiveDocumentationGenerator,
         create_documentation_context,
     )
-    
+
     # Use adaptive generator for more intelligent documentation
     adaptive_generator = AdaptiveDocumentationGenerator()
-    
+
     # Create context for documentation decisions
     context = create_documentation_context(
         tasks=tasks,
         project_name=project_name,
         source_type="nlp_project",  # Default for now
-        metadata={"description": project_description}
+        metadata={"description": project_description},
     )
-    
+
     # Check if we should add documentation
     if not adaptive_generator.should_add_documentation(context):
         logger.info("Skipping documentation task for this project")
         return tasks
-    
+
     # Generate appropriate documentation tasks
     doc_tasks = adaptive_generator.create_documentation_tasks(context)
-    
+
     if doc_tasks:
         for task in doc_tasks:
             logger.info(f"Added documentation task: {task.name}")
         return tasks + doc_tasks
-    
+
     # Fallback to legacy behavior if no tasks generated
     generator = DocumentationTaskGenerator()
     doc_task = generator.create_documentation_task(tasks, project_name)
-    
+
     if doc_task:
         # Extract feature labels from tasks to add to doc task
         feature_labels = set()
         for task in tasks:
             if task.labels:
                 for label in task.labels:
-                    if (label.startswith("feature:") or 
-                        label.startswith("component:") or
-                        label in ["backend", "frontend", "api", "database"]):
+                    if (
+                        label.startswith("feature:")
+                        or label.startswith("component:")
+                        or label in ["backend", "frontend", "api", "database"]
+                    ):
                         feature_labels.add(label)
-        
+
         # Add feature labels to documentation task for phase enforcement
         if feature_labels:
             doc_task.labels = list(set(doc_task.labels) | feature_labels)
-            
+
         logger.info(f"Added documentation task: {doc_task.name}")
         return tasks + [doc_task]
 

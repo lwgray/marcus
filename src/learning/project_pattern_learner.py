@@ -10,7 +10,7 @@ import json
 import statistics
 from collections import defaultdict
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -828,7 +828,6 @@ Return JSON:
             return {}
 
         # Divide project into quartiles
-        project_duration = 100  # Percentage
         quartiles = {"q1": 0, "q2": 0, "q3": 0, "q4": 0}
 
         # This would need actual timeline data

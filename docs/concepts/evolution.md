@@ -102,7 +102,7 @@ class GitHubIssueAdapter(TaskSourceAdapter):
         # Parse checklists into subtasks
         # Analyze linked issues for dependencies
         # Extract acceptance criteria from comments
-        
+
 class PreDefinedTaskAdapter(TaskSourceAdapter):
     async def parse_input(self, task_list: List[Dict]) -> TaskCollection:
         # Validate task format
@@ -131,7 +131,7 @@ class CodebaseContextBuilder:
     def __init__(self, vector_db: VectorDatabase):
         self.vector_db = vector_db
         self.code_analyzer = CodeSemanticAnalyzer()
-    
+
     async def build_issue_context(self, issue: GitHubIssue) -> IssueContext:
         # Extract mentioned files from issue
         # Analyze code in mentioned files
@@ -168,14 +168,14 @@ class CodeComprehensionEngine:
     def __init__(self, vector_db: VectorDatabase):
         self.embeddings = CodeEmbeddingModel()
         self.understanding = CodeUnderstandingLLM()
-    
+
     async def analyze_codebase(self, repo: Repository) -> CodebaseUnderstanding:
         # Generate embeddings for all code
         # Build semantic code map
         # Identify architectural patterns
         # Extract API contracts
         # Map test coverage
-    
+
     async def suggest_fix_location(self, issue: Issue) -> List[FileLocation]:
         # Use vector similarity to find relevant code
         # Analyze call graphs
@@ -215,13 +215,13 @@ class EnhancedProjectPatternLearner(ProjectPatternLearner):
         super().__init__()
         self.vector_db = vector_db
         self.pattern_extractor = PatternExtractor()
-    
+
     async def learn_from_github_issue(self, issue: Issue, resolution: Resolution):
         # Extend existing learn_from_project to handle issues
         # Extract fix patterns from code changes
         # Store issue-specific patterns
         # Link to existing project patterns
-    
+
     async def find_similar_issues(self, issue: Issue) -> List[SimilarIssue]:
         # Use vector DB to find similar issues
         # Leverage existing similarity algorithms
@@ -234,7 +234,7 @@ class IssuePatternExtension:
         # Record fix approach
         # Track success metrics
         # Update pattern library
-    
+
     async def suggest_fix_approach(self, issue: Issue) -> List[FixApproach]:
         # Find similar issues in vector DB
         # Rank previous fixes by success
@@ -266,7 +266,7 @@ class UniversalTask(Task):
     source_ref: str  # Original source reference
     validation_spec: ValidationSpec  # How to verify completion
     success_criteria: List[Criterion]  # Measurable outcomes
-    
+
 # GitHub-aware task types
 class GitHubTaskType(Enum):
     ISSUE_TRIAGE = "issue_triage"
@@ -314,7 +314,7 @@ class GitHubRecommendationEngine(PipelineRecommendationEngine):
         # Suggest fix locations using vector similarity
         # Recommend testing strategies
         # Estimate fix complexity and time
-    
+
     async def recommend_reviewers(self, pr: PullRequest) -> List[Recommendation]:
         # Analyze code changes
         # Find developers with expertise in affected areas
@@ -354,7 +354,7 @@ class IssuePipelineTracker(PipelineTracker):
         # Record fix implementation progress
         # Capture test creation/updates
         # Log PR creation and review cycles
-    
+
     async def predict_issue_complexity(self, issue: Issue) -> ComplexityPrediction:
         # Analyze similar issues in pipeline history
         # Consider code area complexity
@@ -395,7 +395,7 @@ class RepositoryAnalyzer(BoardAnalyzer):
         # Identify hotspots needing refactoring
         # Monitor test coverage trends
         # Flag security vulnerabilities
-    
+
     async def detect_intervention_needs(self, repo: Repository) -> List[Intervention]:
         # Identify stale PRs needing review
         # Detect recurring issue patterns
@@ -435,7 +435,7 @@ class GitHubTaskRecovery(OrphanTaskRecovery):
         # Identify abandoned fix attempts
         # Reassign to available agents
         # Preserve PR context and history
-    
+
     async def handle_merge_conflicts(self, task: Task):
         # Detect tasks blocked by conflicts
         # Attempt automatic resolution
@@ -473,13 +473,13 @@ class GitHubEnhancedProvider(KanbanProvider):
         # Issue state mapping
         # Label synchronization
         # Milestone tracking
-    
+
     async def create_pr_from_task(self, task: Task) -> PullRequest:
         # Generate PR from task completion
         # Link to original issue
         # Include task context
         # Add implementation notes
-    
+
     async def monitor_pr_status(self, pr: PullRequest):
         # Track review status
         # Monitor CI/CD results
@@ -511,7 +511,7 @@ class GitHubQualityValidator(QualityValidator):
         # Validate no regressions introduced
         # Ensure code style compliance
         # Verify documentation updates
-    
+
     async def validate_pr_quality(self, pr: PullRequest) -> PRQualityReport:
         # Check PR description completeness
         # Verify linked issues
@@ -551,7 +551,7 @@ class GitHubCommunicationHub(CommunicationHub):
         # Convert PR events to Marcus tasks
         # Notify agents of review requests
         # Broadcast merge notifications
-    
+
     async def create_github_notifications(self, action: Action):
         # Generate issue comments
         # Create PR review comments
@@ -591,7 +591,7 @@ class GitHubMonitor(Monitor):
         # Measure code quality trends
         # Alert on degradation
         # Generate insights
-    
+
     async def monitor_agent_github_performance(self, agent: Agent):
         # Track PR success rate
         # Measure fix quality
@@ -631,7 +631,7 @@ class GitHubErrorHandler(ErrorHandler):
         # Permission error resolution
         # Network retry strategies
         # Webhook delivery failures
-    
+
     async def handle_merge_errors(self, error: MergeError):
         # Conflict resolution strategies
         # Build failure handling
@@ -672,25 +672,25 @@ class MarcusVectorDB:
     def __init__(self, provider: VectorDBProvider):
         self.provider = provider  # Pinecone, Weaviate, Qdrant
         self.embedding_model = CodeEmbeddingModel()
-    
+
     async def index_codebase(self, repo: Repository):
         # Parse all code files
         # Generate embeddings for functions/classes
         # Store with metadata
         # Build relationship graph
-    
+
     async def index_issue(self, issue: Issue):
         # Embed issue description
         # Include code context
         # Store resolution if available
         # Link to related issues
-    
+
     async def find_similar_code(self, code_snippet: str) -> List[CodeMatch]:
         # Generate embedding
         # Query vector database
         # Rank by similarity
         # Include context
-    
+
     async def find_fix_patterns(self, issue: Issue) -> List[FixPattern]:
         # Embed issue
         # Search for similar resolved issues
@@ -763,7 +763,7 @@ graph TB
         NL[Natural Language] --> NLP[NLP System]
         NLP --> Tasks[Tasks]
     end
-    
+
     subgraph "Evolved"
         NL2[Natural Language] --> TA[Task Adapter]
         GH[GitHub Issues] --> TA
@@ -782,7 +782,7 @@ graph TB
     subgraph "Current"
         TD[Task Description] --> Context
     end
-    
+
     subgraph "Evolved"
         TD2[Task Description] --> EC[Enhanced Context]
         Code[Codebase] --> EC
@@ -803,11 +803,11 @@ graph TB
         TV --> NLV[NL Project Validator]
         TV --> GHV[GitHub Issue Validator]
         TV --> PDV[Predefined Task Validator]
-        
+
         GHV --> TestRun[Run Tests]
         GHV --> ACCheck[Check Acceptance Criteria]
         GHV --> RegCheck[Regression Check]
-        
+
         TestRun --> Result
         ACCheck --> Result
         RegCheck --> Result

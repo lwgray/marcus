@@ -156,7 +156,7 @@ class MarcusServiceRegistry:
                 # Clean up invalid service files
                 try:
                     service_file.unlink()
-                except:
+                except Exception:
                     pass
 
         return sorted(services, key=lambda x: x.get("started_at", ""))
@@ -184,7 +184,7 @@ class MarcusServiceRegistry:
 
         try:
             return psutil.pid_exists(pid)  # type: ignore[no-any-return]
-        except:
+        except Exception:
             return False
 
 
