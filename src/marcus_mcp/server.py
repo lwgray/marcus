@@ -259,7 +259,7 @@ class MarcusServer:
     def _register_handlers(self) -> None:
         """Register MCP tool handlers"""
 
-        @self.server.list_tools()
+        @self.server.list_tools()  # type: ignore[no-untyped-call,misc]
         async def handle_list_tools() -> List[types.Tool]:
             """Return list of available tools based on client role"""
             # Import here to avoid circular dependency
@@ -273,7 +273,7 @@ class MarcusServer:
             # Get tools based on client access
             return get_tool_definitions_for_client(client_id, self)
 
-        @self.server.call_tool()  # type: ignore[no-untyped-call,misc]
+        @self.server.call_tool()  # type: ignore[misc]
         async def handle_call_tool(
             name: str, arguments: Optional[Dict[str, Any]]
         ) -> List[types.TextContent | types.ImageContent | types.EmbeddedResource]:
@@ -526,7 +526,7 @@ class MarcusServer:
             self.assignment_monitor = AssignmentMonitor(
                 self.assignment_persistence, self.kanban_client
             )
-            await self.assignment_monitor.start()  # type: ignore[no-untyped-call]
+            await self.assignment_monitor.start()
 
         # Initialize lease management
         if self.lease_manager is None:
@@ -897,7 +897,8 @@ class MarcusServer:
             """Request the next optimal task assignment for an agent."""
             from .tools.task import request_next_task as impl
 
-            return await impl(agent_id=agent_id, state=server)
+            result = await impl(agent_id=agent_id, state=server)
+            return result  # type: ignore[no-any-return]
 
         @self._fastmcp.tool()
         async def report_task_progress(
@@ -942,7 +943,12 @@ class MarcusServer:
             """Get current project status and metrics."""
             from .tools.project import get_project_status as impl
 
-            return await impl(state=server)
+            result = await impl(state=server)
+            return (
+                dict(result)
+                if isinstance(result, dict)
+                else {"error": "Invalid response format"}
+            )
 
         @self._fastmcp.tool()
         async def create_project(
@@ -1027,7 +1033,12 @@ class MarcusServer:
                 """Request the next optimal task assignment for an agent."""
                 from .tools.task import request_next_task as impl
 
-                return await impl(agent_id=agent_id, state=server)
+                result = await impl(agent_id=agent_id, state=server)
+                return (
+                    dict(result)
+                    if isinstance(result, dict)
+                    else {"error": "Invalid response format"}
+                )
 
         if "report_task_progress" in allowed_tools:
 
@@ -1078,7 +1089,7 @@ class MarcusServer:
                 """Get current project status and metrics."""
                 from .tools.project import get_project_status as impl
 
-                return await impl(state=server)
+                return await impl(state=server)  # type: ignore[no-any-return]
 
         if "create_project" in allowed_tools:
 
@@ -1101,7 +1112,7 @@ class MarcusServer:
         if "list_projects" in allowed_tools:
 
             @app.tool()
-            async def list_projects() -> Dict[str, Any]:
+            async def list_projects() -> List[Dict[str, Any]]:
                 """List all available projects."""
                 from .tools.project_management import list_projects as impl
 
@@ -1483,9 +1494,7 @@ class MarcusServer:
                 """Simulate pipeline with modifications."""
                 from .tools.pipeline import simulate_modification as impl
 
-                return await impl(
-                    server, {"modifications": modifications}
-                )
+                return await impl(server, {"modifications": modifications})
 
         if "what_if_compare" in allowed_tools:
 
@@ -1514,9 +1523,7 @@ class MarcusServer:
                 """Generate pipeline report."""
                 from .tools.pipeline import generate_report as impl
 
-                return await impl(
-                    server, {"flow_id": flow_id, "format": format}
-                )
+                return await impl(server, {"flow_id": flow_id, "format": format})
 
         if "pipeline_monitor_dashboard" in allowed_tools:
 
@@ -1563,9 +1570,7 @@ class MarcusServer:
                 """Find similar pipeline flows."""
                 from .tools.pipeline import find_similar_flows as impl
 
-                return await impl(
-                    server, {"flow_id": flow_id, "limit": limit}
-                )
+                return await impl(server, {"flow_id": flow_id, "limit": limit})
 
         # Project management tools
         if "add_project" in allowed_tools:
@@ -1582,8 +1587,8 @@ class MarcusServer:
                 from .tools.project_management import add_project as impl
 
                 return await impl(
-                    state=server,
-                    arguments={
+                    server,
+                    {
                         "name": name,
                         "provider": provider,
                         "config": config,
@@ -1602,8 +1607,8 @@ class MarcusServer:
                 from .tools.project_management import remove_project as impl
 
                 return await impl(
-                    state=server,
-                    arguments={"project_id": project_id, "confirm": confirm},
+                    server,
+                    {"project_id": project_id, "confirm": confirm},
                 )
 
         if "update_project" in allowed_tools:
@@ -1619,8 +1624,8 @@ class MarcusServer:
                 from .tools.project_management import update_project as impl
 
                 return await impl(
-                    state=server,
-                    arguments={
+                    server,
+                    {
                         "project_id": project_id,
                         "name": name,
                         "tags": tags,
@@ -1643,7 +1648,7 @@ class MarcusServer:
             @app.tool()
             async def check_assignment_health() -> Dict[str, Any]:
                 """Check the health of the assignment tracking system."""
-                from .tools.agent import check_assignment_health as impl
+                from .tools.system import check_assignment_health as impl
 
                 return await impl(state=server)
 
@@ -1917,7 +1922,7 @@ if __name__ == "__main__":
         asyncio.run(main())
     elif transport == "http":
         # For HTTP mode, run the async initialization first
-        async def setup_http_server() -> None:
+        async def setup_http_server() -> MarcusServer:
             """Setup HTTP server with async initialization."""
             server = MarcusServer()
             await server.initialize()
@@ -1990,7 +1995,7 @@ if __name__ == "__main__":
         app = fastmcp.streamable_http_app()
 
         # Configure uvicorn with graceful shutdown
-        config = uvicorn.Config(
+        uvicorn_config = uvicorn.Config(
             app=app,
             host=host,
             port=port,
@@ -1999,7 +2004,7 @@ if __name__ == "__main__":
             access_log=False,  # Reduce noise
         )
 
-        server_instance = uvicorn.Server(config)
+        server_instance = uvicorn.Server(uvicorn_config)
 
         # Run the server (this will handle shutdown gracefully)
         try:
