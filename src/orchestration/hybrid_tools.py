@@ -179,11 +179,14 @@ class HybridMarcusTools:
         }
 
         # Generate project
-        result = cast(Dict[str, Any], await creator_mode.create_project_from_template(
-            template_name=template_name,
-            project_name=project_name,
-            customizations=customizations,
-        ))
+        result = cast(
+            Dict[str, Any],
+            await creator_mode.create_project_from_template(
+                template_name=template_name,
+                project_name=project_name,
+                customizations=customizations,
+            ),
+        )
 
         # If successful, create tasks on the kanban board
         if result.get("success") and result.get("tasks"):
@@ -218,9 +221,12 @@ class HybridMarcusTools:
             return {"success": False, "error": "Creator mode is not available"}
 
         # Generate project
-        result = cast(Dict[str, Any], await creator_mode.create_from_description(
-            description=description, project_name=project_name
-        ))
+        result = cast(
+            Dict[str, Any],
+            await creator_mode.create_from_description(
+                description=description, project_name=project_name
+            ),
+        )
 
         # If successful, create tasks on the kanban board
         if result.get("success") and result.get("tasks"):
@@ -261,9 +267,10 @@ class HybridMarcusTools:
         if not creator_mode:
             return {"success": False, "error": "Creator mode is not available"}
 
-        return cast(Dict[str, Any], await creator_mode.preview_template(
-            template_name=template_name, size=size
-        ))
+        return cast(
+            Dict[str, Any],
+            await creator_mode.preview_template(template_name=template_name, size=size),
+        )
 
     async def get_next_task_intelligent(
         self, agent_id: str, agent_skills: Optional[List[str]] = None
