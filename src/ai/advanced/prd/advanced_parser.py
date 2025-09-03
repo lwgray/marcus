@@ -666,19 +666,21 @@ class AdvancedPRDParser:
 
         # Analyze complexity risks
         complexity_risks = await self._analyze_complexity_risks(tasks, analysis)
-        if isinstance(risk_assessment["risk_factors"], list):
-            risk_assessment["risk_factors"].extend(complexity_risks)
+        risk_factors_list = risk_assessment["risk_factors"]
+        if isinstance(risk_factors_list, list):
+            risk_factors_list.extend(complexity_risks)
         else:
-            risk_assessment["risk_factors"] = list(complexity_risks)
+            risk_assessment["risk_factors"] = complexity_risks  # type: ignore[assignment]
+            risk_factors_list = complexity_risks  # type: ignore[assignment]
 
         # Analyze constraint risks
         constraint_risks = await self._analyze_constraint_risks(tasks, constraints)
-        risk_assessment["timeline_risks"] = constraint_risks
+        risk_assessment["timeline_risks"] = constraint_risks  # type: ignore[assignment]
 
-        # Generate mitigation strategies
+        # Generate mitigation strategies (cast to expected type)
         risk_assessment["mitigation_strategies"] = (
             await self._generate_mitigation_strategies(
-                risk_assessment["risk_factors"], tasks, analysis
+                risk_factors_list, tasks, analysis  # type: ignore[arg-type]
             )
         )
 

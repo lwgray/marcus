@@ -25,7 +25,7 @@ from typing import Any, Dict, Optional
 from src.legacy.marcus_mvp import MarcusMVP
 
 
-class ConfigurablePMAgent(MarcusMVP):
+class ConfigurablePMAgent(MarcusMVP):  # type: ignore[misc]
     """Marcus with configuration file and environment variable support.
 
     This class extends MarcusMVP to provide flexible configuration management
@@ -234,6 +234,10 @@ class ConfigurablePMAgent(MarcusMVP):
         'project-123'
         """
         result = await super()._get_project_status()
+        
+        # Ensure result is dict type
+        if not isinstance(result, dict):
+            result = {"success": False, "error": "Invalid parent result"}
 
         # Add configuration info
         if result.get("success"):
