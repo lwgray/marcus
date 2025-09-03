@@ -78,6 +78,7 @@ from typing import (
     Optional,
     TypeVar,
     Union,
+    cast,
 )
 
 from mcp.client.stdio import stdio_client
@@ -359,8 +360,8 @@ class WorkerMCPClient:
                 if hasattr(tools_response, "tools"):
                     tools = tools_response.tools
                 else:
-                    # For testing, tools_response might be a list directly
-                    tools = list(tools_response)
+                    # For testing, tools_response might be a list directly  
+                    tools = cast(List[Any], tools_response)
                 print(
                     f"Connected to Marcus. Available tools: {[t.name for t in tools]}"
                 )
