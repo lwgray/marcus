@@ -40,14 +40,14 @@ from tests.utils.base import BaseTestCase
 class TestAgentRegistrationAndTaskAssignment(BaseTestCase):
     """Test the core workflow of agent registration and task assignment."""
 
-    def setup_method(self):
+    def setup_method(self) -> None:
         """Reset factory counters before each test."""
         super().setup_method()
         reset_all_counters()
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("anyio_backend", ["asyncio"])
-    async def test_agent_registration_workflow(self):
+    async def test_agent_registration_workflow(self) -> None:
         """
         Test complete agent registration flow:
         1. Register multiple agents with different skills
@@ -107,7 +107,7 @@ class TestAgentRegistrationAndTaskAssignment(BaseTestCase):
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("anyio_backend", ["asyncio"])
-    async def test_skill_based_task_assignment(self):
+    async def test_skill_based_task_assignment(self) -> None:
         """
         Test that tasks are assigned based on agent skills:
         1. Create tasks with specific skill requirements
@@ -197,7 +197,7 @@ class TestAgentRegistrationAndTaskAssignment(BaseTestCase):
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("anyio_backend", ["asyncio"])
-    async def test_concurrent_task_assignment_no_duplicates(self):
+    async def test_concurrent_task_assignment_no_duplicates(self) -> None:
         """
         Test that concurrent task requests don't result in duplicate assignments:
         1. Multiple agents request tasks simultaneously
@@ -252,7 +252,9 @@ class TestAgentRegistrationAndTaskAssignment(BaseTestCase):
         assert len(assigned_task_ids) <= 5
 
         # Verify assignment persistence
-        persisted_assignments = await server.assignment_persistence.get_all_assigned_task_ids()
+        persisted_assignments = (
+            await server.assignment_persistence.get_all_assigned_task_ids()
+        )
         assert len(persisted_assignments) == len(assigned_task_ids)
 
     async def _create_test_server(self) -> MarcusServer:
@@ -297,14 +299,14 @@ class TestAgentRegistrationAndTaskAssignment(BaseTestCase):
 class TestProjectCreationAndTaskGeneration(BaseTestCase):
     """Test project creation and automatic task generation workflows."""
 
-    def setup_method(self):
+    def setup_method(self) -> None:
         """Reset factory counters before each test."""
         super().setup_method()
         reset_all_counters()
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("anyio_backend", ["asyncio"])
-    async def test_create_project_from_description(self):
+    async def test_create_project_from_description(self) -> None:
         """
         Test creating a project from natural language description:
         1. Provide high-level project description
@@ -348,7 +350,7 @@ class TestProjectCreationAndTaskGeneration(BaseTestCase):
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("anyio_backend", ["asyncio"])
-    async def test_add_feature_workflow(self):
+    async def test_add_feature_workflow(self) -> None:
         """
         Test adding features to existing project:
         1. Have an existing project with tasks
@@ -445,14 +447,14 @@ class TestProjectCreationAndTaskGeneration(BaseTestCase):
 class TestBlockerReportingAndResolution(BaseTestCase):
     """Test blocker reporting and AI-powered resolution workflows."""
 
-    def setup_method(self):
+    def setup_method(self) -> None:
         """Reset factory counters before each test."""
         super().setup_method()
         reset_all_counters()
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("anyio_backend", ["asyncio"])
-    async def test_blocker_reporting_with_ai_suggestions(self):
+    async def test_blocker_reporting_with_ai_suggestions(self) -> None:
         """
         Test blocker reporting and AI resolution:
         1. Agent reports blocker
@@ -554,7 +556,7 @@ class TestBlockerReportingAndResolution(BaseTestCase):
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("anyio_backend", ["asyncio"])
-    async def test_blocker_escalation_workflow(self):
+    async def test_blocker_escalation_workflow(self) -> None:
         """
         Test blocker escalation for critical issues:
         1. Report critical blocker
@@ -673,14 +675,14 @@ class TestBlockerReportingAndResolution(BaseTestCase):
 class TestProgressTrackingAndCompletion(BaseTestCase):
     """Test task progress tracking and completion workflows."""
 
-    def setup_method(self):
+    def setup_method(self) -> None:
         """Reset factory counters before each test."""
         super().setup_method()
         reset_all_counters()
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("anyio_backend", ["asyncio"])
-    async def test_task_progress_reporting_workflow(self):
+    async def test_task_progress_reporting_workflow(self) -> None:
         """
         Test complete task progress workflow:
         1. Agent reports progress at milestones
@@ -769,7 +771,7 @@ class TestProgressTrackingAndCompletion(BaseTestCase):
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("anyio_backend", ["asyncio"])
-    async def test_multi_agent_project_completion(self):
+    async def test_multi_agent_project_completion(self) -> None:
         """
         Test project completion with multiple agents:
         1. Multiple agents work on different tasks
@@ -894,14 +896,14 @@ class TestProgressTrackingAndCompletion(BaseTestCase):
 class TestErrorRecoveryAndResilience(BaseTestCase):
     """Test error recovery and system resilience workflows."""
 
-    def setup_method(self):
+    def setup_method(self) -> None:
         """Reset factory counters before each test."""
         super().setup_method()
         reset_all_counters()
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("anyio_backend", ["asyncio"])
-    async def test_kanban_connection_failure_recovery(self):
+    async def test_kanban_connection_failure_recovery(self) -> None:
         """
         Test recovery from kanban connection failures:
         1. Simulate kanban connection failure
@@ -961,7 +963,7 @@ class TestErrorRecoveryAndResilience(BaseTestCase):
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("anyio_backend", ["asyncio"])
-    async def test_configuration_error_handling(self):
+    async def test_configuration_error_handling(self) -> None:
         """
         Test handling of configuration errors:
         1. Missing required configuration
@@ -984,7 +986,7 @@ class TestErrorRecoveryAndResilience(BaseTestCase):
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("anyio_backend", ["asyncio"])
-    async def test_assignment_persistence_recovery(self):
+    async def test_assignment_persistence_recovery(self) -> None:
         """
         Test recovery of assignments from persistent storage:
         1. Create assignments
@@ -1021,7 +1023,9 @@ class TestErrorRecoveryAndResilience(BaseTestCase):
         assert data["success"] is True
 
         # Verify assignment was persisted
-        assigned_task_ids = await server1.assignment_persistence.get_all_assigned_task_ids()
+        assigned_task_ids = (
+            await server1.assignment_persistence.get_all_assigned_task_ids()
+        )
         assert "TASK-PERSIST-001" in assigned_task_ids
 
         # Simulate server restart - create new server instance
@@ -1036,7 +1040,7 @@ class TestErrorRecoveryAndResilience(BaseTestCase):
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("anyio_backend", ["asyncio"])
-    async def test_concurrent_modification_handling(self):
+    async def test_concurrent_modification_handling(self) -> None:
         """
         Test handling of concurrent modifications:
         1. Multiple agents modifying same task
@@ -1124,14 +1128,14 @@ class TestErrorRecoveryAndResilience(BaseTestCase):
 class TestSystemHealthAndMonitoring(BaseTestCase):
     """Test system health monitoring and diagnostics workflows."""
 
-    def setup_method(self):
+    def setup_method(self) -> None:
         """Reset factory counters before each test."""
         super().setup_method()
         reset_all_counters()
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("anyio_backend", ["asyncio"])
-    async def test_system_health_check(self):
+    async def test_system_health_check(self) -> None:
         """
         Test comprehensive system health checks:
         1. Check all system components
@@ -1187,7 +1191,7 @@ class TestSystemHealthAndMonitoring(BaseTestCase):
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("anyio_backend", ["asyncio"])
-    async def test_performance_monitoring(self):
+    async def test_performance_monitoring(self) -> None:
         """
         Test performance monitoring capabilities:
         1. Track operation latencies

@@ -10,12 +10,71 @@ import statistics
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypedDict
 
 from src.core.models import ProjectState, Task, TaskStatus, WorkerStatus
 from src.integrations.ai_analysis_engine import AIAnalysisEngine
 from src.integrations.github_mcp_interface import GitHubMCPInterface
 from src.quality.board_quality_validator import BoardQualityValidator
+
+
+class TaskQualityMetrics(TypedDict):
+    """Typed dictionary for task quality metrics."""
+    total_tasks: int
+    completed_tasks: int
+    completion_rate: float
+    board_quality_score: float
+    description_quality: float
+    acceptance_criteria_quality: float
+    blocked_task_rate: float
+    avg_task_size: float
+    task_size_variance: float
+
+
+class TeamQualityMetrics(TypedDict):
+    """Typed dictionary for team quality metrics."""
+    team_size: int
+    avg_tasks_per_member: float
+    skill_diversity: int
+    workload_balance: float
+    collaboration_index: float
+    member_performance: Dict[str, Dict[str, Any]]
+
+
+class DeliveryQualityMetrics(TypedDict):
+    """Typed dictionary for delivery quality metrics."""
+    progress_percent: float
+    velocity_trend: str
+    on_time_delivery_rate: float
+    late_task_rate: float
+    risk_score: float
+    projected_completion_days: int
+
+
+class GitHubDataCollection(TypedDict):
+    """Typed dictionary for GitHub data collection."""
+    commits: List[Dict[str, Any]]
+    pull_requests: List[Dict[str, Any]]
+    issues: List[Dict[str, Any]]
+    reviews: List[Dict[str, Any]]
+
+
+class AIAssessmentResult(TypedDict):
+    """Typed dictionary for AI assessment results."""
+    insights: List[str]
+    recommendations: List[str]
+    overall_assessment: str
+    strengths: List[str]
+    weaknesses: List[str]
+
+
+class SuccessDetermination(TypedDict):
+    """Typed dictionary for success determination results."""
+    is_successful: bool
+    confidence: float
+    reasoning: str
+    criteria_met: int
+    total_criteria: int
 
 
 @dataclass
@@ -146,11 +205,12 @@ class ProjectQualityAssessor:
         # GitHub analysis if available
         code_metrics = CodeQualityMetrics()
         process_metrics = ProcessQualityMetrics()
-        github_data = {}
+        github_data: Dict[str, Any] = {}
 
         if self.github_mcp and github_config:
             try:
-                github_data = await self._collect_github_data(github_config)
+                github_data_collection = await self._collect_github_data(github_config)
+                github_data = dict(github_data_collection)
                 code_metrics = await self._analyze_code_quality(github_data)
                 process_metrics = await self._analyze_process_quality(github_data)
             except Exception as e:
@@ -201,7 +261,7 @@ class ProjectQualityAssessor:
             team_quality_score=team_score,
             code_metrics=code_metrics,
             process_metrics=process_metrics,
-            ai_assessment=ai_assessment,
+            ai_assessment=dict(ai_assessment),
             quality_insights=quality_insights,
             improvement_areas=improvement_areas,
             is_successful=success_determination["is_successful"],
@@ -215,7 +275,7 @@ class ProjectQualityAssessor:
             },
         )
 
-    def _analyze_task_quality(self, tasks: List[Task]) -> Dict[str, Any]:
+    def _analyze_task_quality(self, tasks: List[Task]) -> TaskQualityMetrics:
         """Analyze quality metrics from tasks."""
         completed_tasks = [t for t in tasks if t.status == TaskStatus.DONE]
 
@@ -252,11 +312,21 @@ class ProjectQualityAssessor:
             ),
         }
 
-        return metrics
+        return TaskQualityMetrics(
+            total_tasks=metrics["total_tasks"],
+            completed_tasks=metrics["completed_tasks"],
+            completion_rate=metrics["completion_rate"],
+            board_quality_score=metrics["board_quality_score"],
+            description_quality=metrics["description_quality"],
+            acceptance_criteria_quality=metrics["acceptance_criteria_quality"],
+            blocked_task_rate=metrics["blocked_task_rate"],
+            avg_task_size=metrics["avg_task_size"],
+            task_size_variance=metrics["task_size_variance"]
+        )
 
     def _analyze_team_quality(
         self, tasks: List[Task], team_members: List[WorkerStatus]
-    ) -> Dict[str, Any]:
+    ) -> TeamQualityMetrics:
         """Analyze team performance quality."""
         metrics: Dict[str, Any] = {
             "team_size": len(team_members),
@@ -288,11 +358,18 @@ class ProjectQualityAssessor:
 
         metrics["member_performance"] = member_performance
 
-        return metrics
+        return TeamQualityMetrics(
+            team_size=metrics["team_size"],
+            avg_tasks_per_member=metrics["avg_tasks_per_member"],
+            skill_diversity=metrics["skill_diversity"],
+            workload_balance=metrics["workload_balance"],
+            collaboration_index=metrics["collaboration_index"],
+            member_performance=metrics["member_performance"]
+        )
 
     def _analyze_delivery_quality(
         self, project_state: ProjectState, tasks: List[Task]
-    ) -> Dict[str, Any]:
+    ) -> DeliveryQualityMetrics:
         """Analyze delivery and timeline quality."""
         completed_tasks = [t for t in tasks if t.status == TaskStatus.DONE]
 
@@ -322,27 +399,40 @@ class ProjectQualityAssessor:
             ),
             "risk_score": getattr(project_state, "risk_score", 0.5),
             "projected_completion_days": (
-                (
-                    projected_completion_date
-                    - datetime.now()
-                ).days
-                if (projected_completion_date := getattr(project_state, "projected_completion_date", None))
+                (projected_completion_date - datetime.now()).days
+                if (
+                    projected_completion_date := getattr(
+                        project_state, "projected_completion_date", None
+                    )
+                )
                 else 0
             ),
         }
 
-        return metrics
+        return DeliveryQualityMetrics(
+            progress_percent=float(metrics["progress_percent"]),
+            velocity_trend=str(metrics["velocity_trend"]),
+            on_time_delivery_rate=float(metrics["on_time_delivery_rate"]),
+            late_task_rate=float(metrics["late_task_rate"]),
+            risk_score=float(metrics["risk_score"]),
+            projected_completion_days=int(metrics["projected_completion_days"])
+        )
 
-    async def _collect_github_data(self, config: Dict[str, str]) -> Dict[str, Any]:
+    async def _collect_github_data(self, config: Dict[str, str]) -> GitHubDataCollection:
         """Collect data from GitHub repository."""
         if not self.github_mcp:
-            return {}
+            return GitHubDataCollection(
+                commits=[],
+                pull_requests=[],
+                issues=[],
+                reviews=[]
+            )
 
         owner = config.get("github_owner", "")
         repo = config.get("github_repo", "")
         start_date = config.get("project_start_date", "")
 
-        data: Dict[str, Any] = {
+        data: GitHubDataCollection = {
             "commits": [],
             "pull_requests": [],
             "issues": [],
@@ -526,17 +616,17 @@ class ProjectQualityAssessor:
 
         return statistics.mean([s for s in scores if s > 0])
 
-    def _calculate_delivery_quality_score(self, metrics: Dict[str, Any]) -> float:
+    def _calculate_delivery_quality_score(self, metrics: DeliveryQualityMetrics) -> float:
         """Calculate delivery quality score (0-1)."""
         scores = [
-            metrics.get("progress_percent", 0) / 100,
-            metrics.get("on_time_delivery_rate", 0),
-            1.0 - metrics.get("late_task_rate", 0),
-            1.0 - min(metrics.get("risk_score", 0), 1.0),
+            metrics["progress_percent"] / 100,
+            metrics["on_time_delivery_rate"],
+            1.0 - metrics["late_task_rate"],
+            1.0 - min(metrics["risk_score"], 1.0),
         ]
 
         # Velocity trend contribution
-        velocity_trend = metrics.get("velocity_trend", "stable")
+        velocity_trend = metrics["velocity_trend"]
         if velocity_trend == "increasing":
             scores.append(1.0)
         elif velocity_trend == "stable":
@@ -546,16 +636,16 @@ class ProjectQualityAssessor:
 
         return float(statistics.mean(scores))
 
-    def _calculate_team_quality_score(self, metrics: Dict[str, Any]) -> float:
+    def _calculate_team_quality_score(self, metrics: TeamQualityMetrics) -> float:
         """Calculate team quality score (0-1)."""
         scores = [
-            metrics.get("workload_balance", 0),
-            min(metrics.get("skill_diversity", 0) / 10, 1.0),  # Normalize to 10 skills
-            metrics.get("collaboration_index", 0),
+            metrics["workload_balance"],
+            min(metrics["skill_diversity"] / 10, 1.0),  # Normalize to 10 skills
+            metrics["collaboration_index"],
         ]
 
         # Add member performance scores
-        member_perf = metrics.get("member_performance", {})
+        member_perf = metrics["member_performance"]
         if member_perf:
             avg_completion = statistics.mean(
                 [m["completion_rate"] for m in member_perf.values()]
@@ -569,12 +659,18 @@ class ProjectQualityAssessor:
         project_state: ProjectState,
         code_metrics: CodeQualityMetrics,
         process_metrics: ProcessQualityMetrics,
-        task_metrics: Dict[str, Any],
-        team_metrics: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        task_metrics: TaskQualityMetrics,
+        team_metrics: TeamQualityMetrics,
+    ) -> AIAssessmentResult:
         """Use AI to provide qualitative assessment."""
         if not self.ai_engine.client:
-            return {"insights": [], "recommendations": []}
+            return AIAssessmentResult(
+                insights=[],
+                recommendations=[],
+                overall_assessment="unknown",
+                strengths=[],
+                weaknesses=[]
+            )
 
         prompt = f"""Analyze this completed project and provide quality assessment:
 
@@ -619,22 +715,34 @@ Return JSON:
         try:
             response = await self.ai_engine._call_claude(prompt)
             result = json.loads(response)
-            return result if isinstance(result, dict) else {}
+            return AIAssessmentResult(
+                insights=result.get("insights", []),
+                recommendations=result.get("recommendations", []),
+                overall_assessment=result.get("overall_assessment", "unknown"),
+                strengths=result.get("strengths", []),
+                weaknesses=result.get("weaknesses", [])
+            ) if isinstance(result, dict) else AIAssessmentResult(
+                insights=[],
+                recommendations=[],
+                overall_assessment="unknown",
+                strengths=[],
+                weaknesses=[]
+            )
         except Exception:
-            return {
-                "insights": ["Unable to perform AI assessment"],
-                "recommendations": [],
-                "overall_assessment": "unknown",
-                "strengths": [],
-                "weaknesses": [],
-            }
+            return AIAssessmentResult(
+                insights=["Unable to perform AI assessment"],
+                recommendations=[],
+                overall_assessment="unknown",
+                strengths=[],
+                weaknesses=[]
+            )
 
     def _determine_project_success(
         self,
         overall_score: float,
-        delivery_metrics: Dict[str, Any],
-        ai_assessment: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        delivery_metrics: DeliveryQualityMetrics,
+        ai_assessment: AIAssessmentResult,
+    ) -> SuccessDetermination:
         """Determine if project was successful."""
         # Success criteria
         criteria = {
@@ -675,21 +783,21 @@ Return JSON:
             else "Based on overall metrics"
         )
 
-        return {
-            "is_successful": is_successful,
-            "confidence": confidence,
-            "reasoning": reasoning,
-            "criteria_met": met_criteria,
-            "total_criteria": total_criteria,
-        }
+        return SuccessDetermination(
+            is_successful=is_successful,
+            confidence=confidence,
+            reasoning=reasoning,
+            criteria_met=met_criteria,
+            total_criteria=total_criteria
+        )
 
     def _extract_quality_insights(
         self,
         code_metrics: CodeQualityMetrics,
         process_metrics: ProcessQualityMetrics,
-        delivery_metrics: Dict[str, Any],
-        team_metrics: Dict[str, Any],
-        ai_assessment: Dict[str, Any],
+        delivery_metrics: DeliveryQualityMetrics,
+        team_metrics: TeamQualityMetrics,
+        ai_assessment: AIAssessmentResult,
     ) -> List[str]:
         """Extract key quality insights."""
         insights = []
@@ -728,7 +836,7 @@ Return JSON:
         process_score: float,
         delivery_score: float,
         team_score: float,
-        ai_assessment: Dict[str, Any],
+        ai_assessment: AIAssessmentResult,
     ) -> List[str]:
         """Identify areas for improvement."""
         areas = []
