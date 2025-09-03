@@ -7,7 +7,7 @@ under different load conditions.
 
 import asyncio
 import time
-from typing import List, Any
+from typing import Any, List
 from unittest.mock import AsyncMock
 
 import pytest

@@ -7,7 +7,7 @@ and integration with the natural language processing tools.
 
 import asyncio
 from datetime import datetime, timedelta
-from typing import List, Any
+from typing import Any, List
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
@@ -34,7 +34,9 @@ class MockKanbanClient:
 class MockNLPTaskCreator(NaturalLanguageTaskCreator):
     """Test implementation of NaturalLanguageTaskCreator."""
 
-    async def process_natural_language(self, description: str, **kwargs: Any) -> List[Task]:
+    async def process_natural_language(
+        self, description: str, **kwargs: Any
+    ) -> List[Task]:
         """Simple test implementation."""
         # Return predefined tasks based on description
         if "authentication" in description.lower():
@@ -168,7 +170,7 @@ class TestTaskExecutionOrderIntegration:
             ]
 
         # Replace the method using monkey patching
-        setattr(creator, 'process_natural_language', multi_feature_process)
+        setattr(creator, "process_natural_language", multi_feature_process)
 
         tasks = await creator.process_natural_language("Build complete system")
         tasks = await creator.apply_safety_checks(tasks)

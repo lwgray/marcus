@@ -111,7 +111,7 @@ class AgentSimulator:
             data = json.loads(response)
             if data.get("type") != "registered":
                 raise Exception(f"Registration failed: {data}")
-            
+
             return connection
 
         except Exception as e:
@@ -222,9 +222,7 @@ class AgentSimulator:
                     },
                 ) as resp:
                     if resp.status != 200:
-                        raise Exception(
-                            f"Progress report failed: {await resp.text()}"
-                        )
+                        raise Exception(f"Progress report failed: {await resp.text()}")
 
                     self.response_times.append(time.time() - start_time)
             except Exception as e:
@@ -322,7 +320,10 @@ class LoadTester:
         created_agents = await asyncio.gather(*agent_tasks, return_exceptions=True)
 
         # Filter out failed agents
-        agents = cast(List[AgentSimulator], [a for a in created_agents if a and not isinstance(a, Exception)])
+        agents = cast(
+            List[AgentSimulator],
+            [a for a in created_agents if a and not isinstance(a, Exception)],
+        )
         failed_connections = num_agents - len(agents)
 
         logger.info(f"Successfully connected {len(agents)} out of {num_agents} agents")

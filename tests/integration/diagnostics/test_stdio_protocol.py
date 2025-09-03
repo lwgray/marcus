@@ -113,7 +113,9 @@ async def test_stdio_protocol() -> None:
                 print("❌ No response")
 
             # Check stderr for errors
-            stderr_task = asyncio.create_task(process.stderr.read()) if process.stderr else None
+            stderr_task = (
+                asyncio.create_task(process.stderr.read()) if process.stderr else None
+            )
             if stderr_task:
                 try:
                     async with asyncio.timeout(1):
@@ -166,7 +168,9 @@ async def test_stdio_protocol() -> None:
             # Try to get any error output
             try:
                 if process.stderr:
-                    stderr = await asyncio.wait_for(process.stderr.read(1000), timeout=1)
+                    stderr = await asyncio.wait_for(
+                        process.stderr.read(1000), timeout=1
+                    )
                     if stderr:
                         print(f"   Stderr: {stderr.decode()}")
             except:
