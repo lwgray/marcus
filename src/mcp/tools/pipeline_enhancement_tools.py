@@ -1,5 +1,5 @@
 """
-MCP Tools for Pipeline Enhancement Features
+MCP Tools for Pipeline Enhancement Features.
 
 Exposes pipeline replay, what-if analysis, comparison, monitoring,
 error prediction, and recommendation features through MCP interface.
