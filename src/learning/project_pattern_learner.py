@@ -50,7 +50,7 @@ class TeamPerformanceMetrics:
     blocker_resolution_time: float
     collaboration_score: float
     skill_utilization: Dict[str, float]
-    agent_performance: Dict[str, float]
+    agent_performance: Dict[str, Any]
 
 
 class ProjectPatternLearner:
@@ -306,32 +306,36 @@ class ProjectPatternLearner:
         self, team_members: List[WorkerStatus]
     ) -> Dict[str, Any]:
         """Analyze team composition and skills."""
+        roles: Dict[str, int] = defaultdict(int)
+        skill_coverage: Dict[str, int] = defaultdict(int)
+        experience_distribution: Dict[str, int] = {"senior": 0, "mid": 0, "junior": 0}
+        
         composition = {
             "team_size": len(team_members),
-            "roles": defaultdict(int),
-            "skill_coverage": defaultdict(int),
-            "experience_distribution": {"senior": 0, "mid": 0, "junior": 0},
+            "roles": roles,
+            "skill_coverage": skill_coverage,
+            "experience_distribution": experience_distribution,
         }
 
         for member in team_members:
             # Count roles
-            composition["roles"][member.role] += 1
+            roles[member.role] += 1
 
             # Count skills
             for skill in member.skills:
-                composition["skill_coverage"][skill] += 1
+                skill_coverage[skill] += 1
 
             # Estimate experience level based on completed tasks
             if member.completed_tasks_count > 50:
-                composition["experience_distribution"]["senior"] += 1
+                experience_distribution["senior"] += 1
             elif member.completed_tasks_count > 20:
-                composition["experience_distribution"]["mid"] += 1
+                experience_distribution["mid"] += 1
             else:
-                composition["experience_distribution"]["junior"] += 1
+                experience_distribution["junior"] += 1
 
         # Convert defaultdicts to regular dicts for JSON serialization
-        composition["roles"] = dict(composition["roles"])
-        composition["skill_coverage"] = dict(composition["skill_coverage"])
+        composition["roles"] = dict(roles)
+        composition["skill_coverage"] = dict(skill_coverage)
 
         return composition
 
@@ -400,9 +404,12 @@ class ProjectPatternLearner:
         if not self.code_analyzer:
             return {}
 
-        patterns = {
-            "endpoints_created": [],
-            "models_created": [],
+        endpoints_created: List[str] = []
+        models_created: List[str] = []
+        
+        patterns: Dict[str, Any] = {
+            "endpoints_created": endpoints_created,
+            "models_created": models_created,
             "test_coverage": 0,
             "code_review_metrics": {},
             "refactoring_rate": 0,
@@ -431,8 +438,8 @@ class ProjectPatternLearner:
                 # Extract patterns
                 if analysis.get("findings", {}).get("implementations"):
                     impl = analysis["findings"]["implementations"]
-                    patterns["endpoints_created"].extend(impl.get("endpoints", []))
-                    patterns["models_created"].extend(impl.get("models", []))
+                    endpoints_created.extend(impl.get("endpoints", []))
+                    models_created.extend(impl.get("models", []))
 
         return patterns
 
@@ -651,8 +658,8 @@ Return JSON:
         self, tasks: List[Task], team_members: List[WorkerStatus]
     ) -> Dict[str, float]:
         """Calculate how well team skills were utilized."""
-        skill_usage = defaultdict(int)
-        skill_availability = defaultdict(int)
+        skill_usage: Dict[str, int] = defaultdict(int)
+        skill_availability: Dict[str, int] = defaultdict(int)
 
         # Count available skills
         for member in team_members:
@@ -733,7 +740,7 @@ Return JSON:
 
     def _get_task_type_distribution(self, tasks: List[Task]) -> Dict[str, int]:
         """Get distribution of task types."""
-        distribution = defaultdict(int)
+        distribution: Dict[str, int] = defaultdict(int)
 
         for task in tasks:
             if task.labels:
@@ -751,13 +758,11 @@ Return JSON:
 
     def _get_priority_distribution(self, tasks: List[Task]) -> Dict[str, int]:
         """Get distribution of priorities."""
-        distribution = defaultdict(int)
+        distribution: Dict[str, int] = defaultdict(int)
 
         for task in tasks:
-            if task.priority:
-                distribution[task.priority.value] += 1
-            else:
-                distribution["none"] += 1
+            # Priority is always present in the Task model, so no need for None check
+            distribution[task.priority.value] += 1
 
         return dict(distribution)
 
@@ -801,7 +806,7 @@ Return JSON:
 
     def _categorize_blockers(self, blocked_tasks: List[Task]) -> Dict[str, int]:
         """Categorize blockers by type."""
-        categories = defaultdict(int)
+        categories: Dict[str, int] = defaultdict(int)
 
         # This would need actual blocker descriptions
         # Placeholder categorization
@@ -828,7 +833,7 @@ Return JSON:
             return {}
 
         # Divide project into quartiles
-        quartiles = {"q1": 0, "q2": 0, "q3": 0, "q4": 0}
+        quartiles: Dict[str, float] = {"q1": 0.0, "q2": 0.0, "q3": 0.0, "q4": 0.0}
 
         # This would need actual timeline data
         # Placeholder distribution
@@ -1030,17 +1035,18 @@ Return JSON:
 
         # Extract recommendations from successful patterns
         for pattern in successful_patterns[:max_recommendations]:
-            rec = {
+            recommendations_list: List[Dict[str, str]] = []
+            rec: Dict[str, Any] = {
                 "type": "pattern_based",
                 "source_project": pattern.project_name,
                 "confidence": pattern.confidence_score,
                 "success_factors": pattern.success_factors,
-                "recommendations": [],
+                "recommendations": recommendations_list,
             }
 
             # Team composition recommendations
             if pattern.team_composition["team_size"] > 0:
-                rec["recommendations"].append(
+                recommendations_list.append(
                     {
                         "category": "team",
                         "suggestion": f"Consider team size of {pattern.team_composition['team_size']} with roles: {', '.join(pattern.team_composition['roles'].keys())}",
@@ -1049,7 +1055,7 @@ Return JSON:
 
             # Task organization recommendations
             if pattern.task_patterns.get("parallel_work_ratio", 0) > 0.3:
-                rec["recommendations"].append(
+                recommendations_list.append(
                     {
                         "category": "planning",
                         "suggestion": f"Structure {pattern.task_patterns['parallel_work_ratio']:.0%} of tasks for parallel execution",
@@ -1058,7 +1064,7 @@ Return JSON:
 
             # Quality recommendations
             if pattern.quality_metrics["board_quality_score"] > 0.8:
-                rec["recommendations"].append(
+                recommendations_list.append(
                     {
                         "category": "quality",
                         "suggestion": "Maintain high task definition quality with detailed descriptions and clear acceptance criteria",
