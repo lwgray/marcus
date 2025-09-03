@@ -1017,10 +1017,23 @@ async def handle_tool_call(
 
         # Authentication tools (special handling)
         if name == "authenticate":
+            client_id_arg = arguments.get("client_id")
+            client_type_arg = arguments.get("client_type")
+            role_arg = arguments.get("role")
+            
+            # Validate required arguments
+            if not all([client_id_arg, client_type_arg, role_arg]):
+                return [
+                    types.TextContent(
+                        type="text",
+                        text='{"success": false, "error": "Missing required arguments: client_id, client_type, role"}',
+                    )
+                ]
+            
             result = await authenticate(
-                client_id=arguments.get("client_id"),
-                client_type=arguments.get("client_type"),
-                role=arguments.get("role"),
+                client_id=str(client_id_arg),
+                client_type=str(client_type_arg),
+                role=str(role_arg),
                 metadata=arguments.get("metadata"),
                 state=state,
             )
