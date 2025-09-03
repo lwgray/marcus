@@ -110,7 +110,7 @@ class ProjectContextManager:
         for context in self.contexts.values():
             if context.kanban_client and context.is_connected:
                 try:
-                    await context.kanban_client.disconnect()  # type: ignore[no-untyped-call]  # type: ignore[no-untyped-call]
+                    await context.kanban_client.disconnect()
                 except Exception as e:
                     logger.error(f"Error disconnecting client: {e}")
 
@@ -416,7 +416,7 @@ class ProjectContextManager:
         # Disconnect client
         if context.kanban_client and context.is_connected:
             try:
-                await context.kanban_client.disconnect()  # type: ignore[no-untyped-call]
+                await context.kanban_client.disconnect()
             except Exception as e:
                 logger.error(f"Error disconnecting client: {e}")
 

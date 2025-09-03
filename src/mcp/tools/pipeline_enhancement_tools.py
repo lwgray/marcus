@@ -28,7 +28,7 @@ class PipelineEnhancementTools:
         self.comparator: PipelineComparator = PipelineComparator()  # type: ignore[no-untyped-call]
         self.report_generator: PipelineReportGenerator = PipelineReportGenerator()
         self.live_monitor: LivePipelineMonitor = LivePipelineMonitor()  # type: ignore[no-untyped-call]
-        self.error_predictor: PipelineErrorPredictor = PipelineErrorPredictor()  # type: ignore[no-untyped-call]
+        self.error_predictor: PipelineErrorPredictor = PipelineErrorPredictor()
         self.recommendation_engine: PipelineRecommendationEngine = (
             PipelineRecommendationEngine()
         )

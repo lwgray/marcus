@@ -219,7 +219,9 @@ class WorkerAgentManager:
 
         average_performance = 0.0
         if capabilities and capabilities.performance_history:
-            average_performance = sum(capabilities.performance_history) / len(capabilities.performance_history)
+            average_performance = sum(capabilities.performance_history) / len(
+                capabilities.performance_history
+            )
 
         return {
             "agent_id": agent_id,

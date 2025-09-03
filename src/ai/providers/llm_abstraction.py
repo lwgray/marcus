@@ -538,7 +538,7 @@ class LLMAbstraction:
                 best_success_rate = success_rate
                 best_provider = provider
 
-        return best_provider
+        return str(best_provider)
 
     async def health_check(self) -> Dict[str, Any]:
         """

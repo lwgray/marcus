@@ -37,10 +37,13 @@ class LinearKanban(KanbanInterface):
 
     async def connect(self) -> bool:
         """Connect to Linear MCP Server"""
+        if not self.mcp_caller:
+            return False
+            
         try:
             # Test connection by getting teams
             result = await self.mcp_caller("linear.get_teams", {})
-            return result.get("success", False)
+            return bool(result.get("success", False))
         except Exception as e:
             import sys
 
@@ -54,6 +57,9 @@ class LinearKanban(KanbanInterface):
 
     async def get_available_tasks(self) -> List[Task]:
         """Get unassigned tasks from backlog"""
+        if not self.mcp_caller:
+            return []
+            
         # Build search filter
         filter_obj = {
             "assignee": {"null": True},
@@ -109,8 +115,8 @@ class LinearKanban(KanbanInterface):
             state.get("type", "backlog") if isinstance(state, dict) else "backlog"
         )
         status_map = {
-            "backlog": TaskStatus.BACKLOG,
-            "unstarted": TaskStatus.READY,
+            "backlog": TaskStatus.TODO,
+            "unstarted": TaskStatus.TODO,
             "started": TaskStatus.IN_PROGRESS,
             "completed": TaskStatus.DONE,
             "canceled": TaskStatus.DONE,
@@ -134,7 +140,7 @@ class LinearKanban(KanbanInterface):
             id=issue.get("id", ""),
             name=issue.get("title", "Untitled"),
             description=issue.get("description", ""),
-            status=status_map.get(state_type, TaskStatus.BACKLOG),
+            status=status_map.get(state_type, TaskStatus.TODO),
             priority=priority_map.get(linear_priority, Priority.MEDIUM),
             labels=labels,
             estimated_hours=issue.get("estimate", 0) or 8,
@@ -144,10 +150,14 @@ class LinearKanban(KanbanInterface):
             dependencies=[],
             created_at=created_at,
             updated_at=updated_at,
+            due_date=None,
         )
 
     async def get_task_by_id(self, task_id: str) -> Optional[Task]:
         """Get specific task by ID"""
+        if not self.mcp_caller:
+            return None
+            
         result = await self.mcp_caller(
             "linear.get_issue", {"issueId": task_id, "includeRelationships": True}
         )
@@ -190,6 +200,9 @@ class LinearKanban(KanbanInterface):
 
     async def update_task(self, task_id: str, updates: Dict[str, Any]) -> Task:
         """Update existing task"""
+        if not self.mcp_caller:
+            raise ValueError("MCP caller not available")
+            
         update_data = {"issueId": task_id}
 
         if "name" in updates:
@@ -198,12 +211,12 @@ class LinearKanban(KanbanInterface):
             update_data["description"] = updates["description"]
         if "priority" in updates:
             priority_map = {
-                Priority.URGENT: 1,
-                Priority.HIGH: 2,
-                Priority.MEDIUM: 3,
-                Priority.LOW: 4,
+                Priority.URGENT: "1",
+                Priority.HIGH: "2",
+                Priority.MEDIUM: "3",
+                Priority.LOW: "4",
             }
-            update_data["priority"] = priority_map.get(updates["priority"], 3)
+            update_data["priority"] = priority_map.get(updates["priority"], "3")
 
         result = await self.mcp_caller("linear.update_issue", update_data)
 

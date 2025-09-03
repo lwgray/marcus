@@ -569,13 +569,16 @@ class EnricherMode:
                 }
 
             elif strategy.name == "component_based":
-                component_structure = await self.board_organizer.organize_by_component(tasks)
+                component_structure = await self.board_organizer.organize_by_component(
+                    tasks
+                )
                 return {
                     "success": True,
                     "strategy": strategy.name,
                     "structure": {
                         "components": {
-                            k: len(v) for k, v in list(component_structure.components.items())
+                            k: len(v)
+                            for k, v in list(component_structure.components.items())
                         },
                         "integration_tasks": len(component_structure.integration_tasks),
                         "shared_tasks": len(component_structure.shared_tasks),

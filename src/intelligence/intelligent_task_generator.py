@@ -688,7 +688,11 @@ class IntelligentTaskGenerator:
         task_name_to_id = {task.name: task.id for task in tasks}
 
         for task in tasks:
-            dep_names = task.source_context.get("dependencies_names", []) if task.source_context else []
+            dep_names = (
+                task.source_context.get("dependencies_names", [])
+                if task.source_context
+                else []
+            )
             task_deps = []
 
             for dep_name in dep_names:
