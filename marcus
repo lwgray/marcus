@@ -326,8 +326,7 @@ class MarcusCLI:
                 process = psutil.Process(pid)
                 print(f"   CPU: {process.cpu_percent(interval=0.1):.1f}%")
                 print(f"   Memory: {process.memory_info().rss / 1024 / 1024:.1f} MB")
-                uptime = (datetime.now() - 
-                         datetime.fromtimestamp(process.create_time()))
+                uptime = datetime.now() - datetime.fromtimestamp(process.create_time())
                 print(f"   Uptime: {uptime}")
             except Exception:
                 pass
@@ -342,14 +341,13 @@ class MarcusCLI:
                 with open(multi_config_file) as f:
                     multi_config = json.load(f)
                 print("   Transport: Multi-endpoint HTTP")
-                human_port = multi_config['human']['port']
+                human_port = multi_config["human"]["port"]
                 print(f"   Human endpoint: http://localhost:{human_port}/mcp")
-                agent_port = multi_config['agent']['port']
+                agent_port = multi_config["agent"]["port"]
                 print(f"   Agent endpoint: http://localhost:{agent_port}/mcp")
-                analytics_port = multi_config['analytics']['port']
+                analytics_port = multi_config["analytics"]["port"]
                 print(
-                    f"   Analytics endpoint: "
-                    f"http://localhost:{analytics_port}/mcp"
+                    f"   Analytics endpoint: " f"http://localhost:{analytics_port}/mcp"
                 )
             elif transport == "http":
                 # Check for runtime config first
@@ -473,8 +471,9 @@ def main() -> int:
     cli = MarcusCLI()
 
     parser = argparse.ArgumentParser(
-        description=("Marcus - Multi-Agent Resource Coordination and "
-                     "Understanding System"),
+        description=(
+            "Marcus - Multi-Agent Resource Coordination and " "Understanding System"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

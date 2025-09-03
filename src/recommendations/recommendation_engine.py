@@ -212,14 +212,14 @@ class SuccessAnalyzer:
         for pattern in success_patterns:
             task_count_list: List[int] = factors["optimal_task_count"]
             task_count_list.append(pattern["task_count"])
-            
-            complexity_list: List[float] = factors["optimal_complexity"] 
+
+            complexity_list: List[float] = factors["optimal_complexity"]
             complexity_list.append(pattern["complexity"])
-            
+
             confidence_list: List[float] = factors["min_confidence"]
             confidence_list.append(pattern["confidence"])
 
-            # Task distribution  
+            # Task distribution
             total_tasks = sum(pattern["task_categories"].values())
             if total_tasks > 0:
                 task_dist: Dict[str, List[float]] = factors["task_distribution"]
@@ -352,7 +352,12 @@ class PipelineRecommendationEngine:
                 similar_flows.append({"flow": flow_data, "similarity": similarity})
 
         # Sort by similarity
-        similar_flows.sort(key=lambda x: x["similarity"] if isinstance(x["similarity"], (int, float)) else 0.0, reverse=True)
+        similar_flows.sort(
+            key=lambda x: (
+                x["similarity"] if isinstance(x["similarity"], (int, float)) else 0.0
+            ),
+            reverse=True,
+        )
 
         return similar_flows[:5]  # Top 5 similar flows
 
@@ -425,7 +430,7 @@ class PipelineRecommendationEngine:
 
         complexity_score = metrics.get("complexity_score", 0)
         task_count = metrics.get("task_count", 0)
-        
+
         return bool(
             complexity_score > 0.8
             or task_count > 40

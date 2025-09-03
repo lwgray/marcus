@@ -20,10 +20,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import aiohttp
 import websockets
+import websockets.client
 from aiohttp import ClientSession
 from websockets.legacy.client import WebSocketClientProtocol
-import websockets.client
-import websockets
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -38,6 +37,7 @@ class BenchmarkResult:
     a benchmark scenario including connection statistics, response times,
     and error tracking.
     """
+
     scenario: str
     total_connections: int
     successful_connections: int
@@ -483,7 +483,9 @@ class LoadTester:
         logger.info(f"Report saved to {filename}")
 
 
-async def stress_test_connection_limit(server_url: str, max_connections: int = 200) -> int:
+async def stress_test_connection_limit(
+    server_url: str, max_connections: int = 200
+) -> int:
     """Test server connection limits."""
     logger.info(f"Testing connection limit up to {max_connections}")
 

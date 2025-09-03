@@ -134,19 +134,28 @@ class BasicCreatorMode:
 
         try:
             active_project = self.state["active_project"]
+            if not isinstance(active_project, dict):
+                return {"success": False, "error": "Invalid active project state"}
 
             # Apply adjustments
-            customizations = active_project["customizations"].copy()
+            project_customizations = active_project.get("customizations", {})
+            if not isinstance(project_customizations, dict):
+                project_customizations = {}
+            customizations = project_customizations.copy()
             customizations.update(adjustments)
 
             # Regenerate with new customizations
-            template = self.templates[active_project["template"]]
+            template_name = active_project.get("template")
+            if not template_name or template_name not in self.templates:
+                return {"success": False, "error": "Invalid template in active project"}
+            template = self.templates[template_name]
             generated_tasks = await self.task_generator.generate_from_template(
                 template=template, customizations=customizations
             )
 
             # Update state
-            self.state["active_project"]["customizations"] = customizations
+            if isinstance(self.state.get("active_project"), dict):
+                self.state["active_project"]["customizations"] = customizations
             self.state["generated_tasks"] = [
                 self._task_to_dict(task) for task in generated_tasks
             ]
@@ -215,13 +224,15 @@ class BasicCreatorMode:
         # Get tasks without generating IDs
         preview_tasks = template.get_all_tasks(project_size)
 
-        phases_preview = {}
+        phases_preview: Dict[str, Dict[str, Any]] = {}
         for task in preview_tasks:
-            phase = task.phase
+            phase = getattr(task, 'phase', 'Unknown')
             if phase not in phases_preview:
                 phases_preview[phase] = {"tasks": [], "estimated_hours": 0}
 
-            phases_preview[phase]["tasks"].append(
+            task_list = phases_preview[phase]["tasks"]
+            if isinstance(task_list, list):
+                task_list.append(
                 {
                     "name": task.name,
                     "description": task.description,
