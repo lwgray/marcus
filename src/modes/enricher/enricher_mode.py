@@ -18,16 +18,16 @@ logger = logging.getLogger(__name__)
 class EnricherMode:
     """Complete Enricher Mode for organizing and enriching existing boards"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.task_enricher = TaskEnricher()
         self.board_organizer = BoardOrganizer()
-        self.state = {
+        self.state: Dict[str, Any] = {
             "current_enrichment": None,
             "organization_strategies": [],
             "applied_changes": [],
         }
 
-    async def initialize(self, saved_state: Dict[str, Any]):
+    async def initialize(self, saved_state: Dict[str, Any]) -> None:
         """Initialize mode with saved state"""
         if saved_state:
             self.state.update(saved_state)
@@ -374,7 +374,7 @@ class EnricherMode:
 
     def _detect_workflow_pattern(self, tasks: List[Task]) -> str:
         """Detect workflow pattern from task statuses"""
-        status_counts = {}
+        status_counts: Dict[str, int] = {}
         for task in tasks:
             status = task.status.value
             status_counts[status] = status_counts.get(status, 0) + 1
@@ -490,7 +490,7 @@ class EnricherMode:
         self, enriched_task: EnrichedTask, options: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         """Apply enrichments to a task"""
-        changes = {
+        changes: Dict[str, Any] = {
             "task_id": enriched_task.original_task.id,
             "task_name": enriched_task.original_task.name,
             "changes": [],
@@ -552,33 +552,33 @@ class EnricherMode:
         """Apply organization strategy to tasks"""
         try:
             if strategy.name == "phase_based":
-                structure = await self.board_organizer.organize_by_phase(tasks)
+                phase_structure = await self.board_organizer.organize_by_phase(tasks)
                 return {
                     "success": True,
                     "strategy": strategy.name,
                     "structure": {
                         "phases": {
-                            k: len(v) for k, v in list(structure.phases.items())
+                            k: len(v) for k, v in list(phase_structure.phases.items())
                         },
-                        "phase_order": structure.phase_order,
+                        "phase_order": phase_structure.phase_order,
                         "cross_phase_dependencies": len(
-                            structure.cross_phase_dependencies
+                            phase_structure.cross_phase_dependencies
                         ),
                     },
-                    "message": f"Organized {len(tasks)} tasks into {len(structure.phases)} phases",
+                    "message": f"Organized {len(tasks)} tasks into {len(phase_structure.phases)} phases",
                 }
 
             elif strategy.name == "component_based":
-                structure = await self.board_organizer.organize_by_component(tasks)
+                component_structure = await self.board_organizer.organize_by_component(tasks)
                 return {
                     "success": True,
                     "strategy": strategy.name,
                     "structure": {
                         "components": {
-                            k: len(v) for k, v in list(structure.components.items())
+                            k: len(v) for k, v in list(component_structure.components.items())
                         },
-                        "integration_tasks": len(structure.integration_tasks),
-                        "shared_tasks": len(structure.shared_tasks),
+                        "integration_tasks": len(component_structure.integration_tasks),
+                        "shared_tasks": len(component_structure.shared_tasks),
                     },
                     "message": f"Organized {len(tasks)} tasks by components",
                 }

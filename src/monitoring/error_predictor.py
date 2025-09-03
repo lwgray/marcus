@@ -39,13 +39,13 @@ class RiskAssessment:
 class PatternAnalyzer:
     """Analyze patterns in pipeline executions."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.shared_events = SharedPipelineEvents()
-        self.patterns = self._load_patterns()
+        self.patterns: Dict[str, Any] = self._load_patterns()
 
     def _load_patterns(self) -> Dict[str, Any]:
         """Load known failure patterns from historical data."""
-        patterns = {
+        patterns: Dict[str, Any] = {
             "failure_indicators": [],
             "success_indicators": [],
             "risk_thresholds": {},
@@ -68,9 +68,13 @@ class PatternAnalyzer:
             flow_patterns = self._extract_flow_patterns(events)
 
             if success:
-                patterns["success_indicators"].append(flow_patterns)
+                success_indicators = patterns["success_indicators"]
+                if isinstance(success_indicators, list):
+                    success_indicators.append(flow_patterns)
             else:
-                patterns["failure_indicators"].append(flow_patterns)
+                failure_indicators = patterns["failure_indicators"]
+                if isinstance(failure_indicators, list):
+                    failure_indicators.append(flow_patterns)
 
         # Calculate risk thresholds
         patterns["risk_thresholds"] = self._calculate_thresholds(patterns)
@@ -152,10 +156,10 @@ class PipelineErrorPredictor:
     Predict likelihood of pipeline failures based on patterns.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the error predictor."""
         self.pattern_analyzer = PatternAnalyzer()
-        self.prediction_history = []
+        self.prediction_history: List[Dict[str, Any]] = []
 
     def predict_failure_risk(self, flow_id: str) -> RiskAssessment:
         """
@@ -172,7 +176,8 @@ class PipelineErrorPredictor:
             Complete risk assessment with factors and recommendations
         """
         # Get flow events
-        events = self.pattern_analyzer.shared_events.get_flow_events(flow_id)
+        all_events = self.pattern_analyzer.shared_events.get_events()
+        events = [e for e in all_events if e.get("flow_id") == flow_id]
 
         # Extract current patterns
         current_patterns = self.pattern_analyzer._extract_flow_patterns(events)
@@ -366,7 +371,7 @@ class PipelineErrorPredictor:
         else:
             return 0.9
 
-    def learn_from_outcome(self, flow_id: str, actual_outcome: str):
+    def learn_from_outcome(self, flow_id: str, actual_outcome: str) -> None:
         """
         Update patterns based on actual outcome.
 

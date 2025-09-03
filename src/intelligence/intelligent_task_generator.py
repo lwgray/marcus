@@ -410,7 +410,7 @@ class IntelligentTaskGenerator:
                 template, feature, context
             )
             task = self._create_task_from_template(
-                customized_template, template["phase"], context
+                customized_template, str(template["phase"]), context
             )
             tasks.append(task)
 
@@ -673,8 +673,8 @@ class IntelligentTaskGenerator:
             labels=labels,
         )
 
-        # Add metadata as dynamic attribute for task tracking
-        task.metadata = {
+        # Add metadata to source_context for task tracking
+        task.source_context = {
             "phase": phase,
             "generated": True,
             "dependencies_names": template.get("dependencies", []),
@@ -688,7 +688,7 @@ class IntelligentTaskGenerator:
         task_name_to_id = {task.name: task.id for task in tasks}
 
         for task in tasks:
-            dep_names = task.metadata.get("dependencies_names", [])
+            dep_names = task.source_context.get("dependencies_names", []) if task.source_context else []
             task_deps = []
 
             for dep_name in dep_names:

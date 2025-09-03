@@ -39,7 +39,7 @@ class KanbanInterface(ABC):
                 - For GitHub: token, owner, repo, project_number
         """
         self.config = config
-        self.provider = None
+        self.provider: Optional[KanbanProvider] = None
 
     @abstractmethod
     async def connect(self) -> bool:

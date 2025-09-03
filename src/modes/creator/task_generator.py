@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 class TaskGenerator:
     """Generates task structures from templates or requirements"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.generated_tasks: List[Task] = []
         self.task_map: Dict[str, Task] = {}  # name -> Task mapping for dependencies
 
@@ -174,11 +174,11 @@ class TaskGenerator:
 
         return task
 
-    async def _resolve_dependencies(self):
+    async def _resolve_dependencies(self) -> None:
         """Resolve task dependencies by name"""
         for task in self.generated_tasks:
-            # Get template dependencies from metadata
-            task_name = task.metadata.get("template_name", task.name)
+            # Get template dependencies from source_context
+            task_name = task.source_context.get("template_name", task.name) if task.source_context else task.name
 
             # Find the original template
             for template_task in self._find_template_dependencies(task_name):
@@ -195,25 +195,25 @@ class TaskGenerator:
         # This is a simplified version - in practice, we'd look up the template
         # For now, we'll parse from the task description
         for task in self.generated_tasks:
-            if task.metadata.get("template_name") == task_name:
+            if task.source_context and task.source_context.get("template_name") == task_name:
                 if "Depends on:" in task.description:
                     deps_line = task.description.split("Depends on:")[1].split("\n")[0]
                     return [d.strip() for d in deps_line.split(",")]
         return []
 
-    async def _validate_task_order(self):
+    async def _validate_task_order(self) -> None:
         """Validate that task dependencies make sense"""
         errors = []
 
         for task in self.generated_tasks:
-            task_phase = task.metadata.get("phase_order", 0)
+            task_phase = task.source_context.get("phase_order", 0) if task.source_context else 0
 
             for dep_id in task.dependencies:
                 dep_task = next(
                     (t for t in self.generated_tasks if t.id == dep_id), None
                 )
                 if dep_task:
-                    dep_phase = dep_task.metadata.get("phase_order", 0)
+                    dep_phase = dep_task.source_context.get("phase_order", 0) if dep_task.source_context else 0
 
                     # Dependency should be in same or earlier phase
                     if dep_phase > task_phase:
@@ -228,7 +228,7 @@ class TaskGenerator:
             raise ValueError("Invalid task dependencies detected")
 
     async def create_task_hierarchy(
-        self, tasks: List[Dict], project_name: str = "unnamed_project"
+        self, tasks: List[Dict[str, Any]], project_name: str = "unnamed_project"
     ) -> List[Task]:
         """
         Create proper task objects from raw task data

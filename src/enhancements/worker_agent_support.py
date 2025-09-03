@@ -46,7 +46,7 @@ class AgentCapabilities:
 class WorkerAgentManager:
     """Enhanced manager for autonomous worker agents"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.agent_sessions: Dict[str, AgentWorkSession] = {}
         self.agent_capabilities: Dict[str, AgentCapabilities] = {}
         self.agent_prompts = self._load_agent_prompts()
@@ -137,7 +137,7 @@ class WorkerAgentManager:
         }
 
     async def get_next_task_for_agent(
-        self, agent_id: str, kanban_client, ai_engine
+        self, agent_id: str, kanban_client: Any, ai_engine: Any
     ) -> Optional[Task]:
         """Get next optimal task for agent based on skills and current workload"""
 
@@ -161,12 +161,13 @@ class WorkerAgentManager:
         scored_tasks.sort(key=lambda x: x[0], reverse=True)
 
         if scored_tasks and scored_tasks[0][0] > 0:
-            return scored_tasks[0][1]
+            best_task: Task = scored_tasks[0][1]
+            return best_task
 
         return None
 
     async def _score_task_for_agent(
-        self, task: Task, capabilities: AgentCapabilities, ai_engine
+        self, task: Task, capabilities: AgentCapabilities, ai_engine: Any
     ) -> float:
         """Score a task based on agent capabilities"""
 
@@ -196,12 +197,12 @@ class WorkerAgentManager:
 
         return score
 
-    def update_agent_activity(self, agent_id: str):
+    def update_agent_activity(self, agent_id: str) -> None:
         """Update agent's last activity timestamp"""
         if agent_id in self.agent_sessions:
             self.agent_sessions[agent_id].last_activity = datetime.now()
 
-    def set_agent_state(self, agent_id: str, state: AgentState):
+    def set_agent_state(self, agent_id: str, state: AgentState) -> None:
         """Update agent's operational state"""
         if agent_id in self.agent_sessions:
             self.agent_sessions[agent_id].state = state
@@ -216,18 +217,17 @@ class WorkerAgentManager:
 
         uptime = datetime.now() - session.started_at
 
+        average_performance = 0.0
+        if capabilities and capabilities.performance_history:
+            average_performance = sum(capabilities.performance_history) / len(capabilities.performance_history)
+
         return {
             "agent_id": agent_id,
             "uptime_hours": uptime.total_seconds() / 3600,
             "tasks_completed": session.tasks_completed,
             "current_state": session.state.value,
             "last_activity": session.last_activity.isoformat(),
-            "average_performance": (
-                sum(capabilities.performance_history)
-                / len(capabilities.performance_history)
-                if capabilities.performance_history
-                else 0
-            ),
+            "average_performance": average_performance,
         }
 
     def get_all_active_agents(self) -> List[Dict[str, Any]]:
@@ -299,7 +299,7 @@ class EnhancedPMAgentMethods:
 
     async def broadcast_to_agents(
         self, message: str, agent_ids: Optional[List[str]] = None
-    ):
+    ) -> Dict[str, Any]:
         """Broadcast message to all or specific agents"""
         target_agents = agent_ids or list(self.worker_manager.agent_sessions.keys())
 

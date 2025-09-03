@@ -47,7 +47,7 @@ class LinearKanban(KanbanInterface):
             print(f"Failed to connect to Linear MCP: {e}", file=sys.stderr)
             return False
 
-    async def disconnect(self):
+    async def disconnect(self) -> None:
         """Disconnect from Linear MCP"""
         # No persistent connection to close for MCP
         pass
