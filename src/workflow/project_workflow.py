@@ -1,7 +1,8 @@
 """
-Project Workflow Manager
+Project Workflow Manager.
 
-Orchestrates the workflow from project creation to task assignment and execution using Marcus MCP.
+Orchestrates the workflow from project creation to task assignment and execution
+using Marcus MCP.
 """
 
 import asyncio
@@ -21,8 +22,8 @@ class ProjectWorkflowManager:
     ):
         self.marcus_client = marcus_client
         self.flow_manager = flow_manager
-        self.active_workflows = {}
-        self.agent_assignments = {}
+        self.active_workflows: Dict[str, Dict[str, Any]] = {}
+        self.agent_assignments: Dict[str, Dict[str, Any]] = {}
 
     async def start_project_workflow(
         self, project_id: str, flow_id: str, options: Dict[str, Any]
@@ -51,9 +52,10 @@ class ProjectWorkflowManager:
             asyncio.create_task(self._monitor_workflow(workflow_id))
 
         # Add workflow event
-        self.flow_manager.add_event(
+        self.flow_manager.visualizer.add_event(
             flow_id,
-            {
+            "workflow_initialized",
+            data={
                 "type": "workflow_initialized",
                 "workflow_id": workflow_id,
                 "options": options,
@@ -63,7 +65,7 @@ class ProjectWorkflowManager:
 
         return {"workflow_id": workflow_id, "status": "started"}
 
-    async def _auto_assign_loop(self, workflow_id: str):
+    async def _auto_assign_loop(self, workflow_id: str) -> None:
         """Auto-assign tasks to available agents using Marcus MCP."""
         workflow = self.active_workflows.get(workflow_id)
         if not workflow:
@@ -119,9 +121,10 @@ class ProjectWorkflowManager:
                                     workflow["task_queue"].append(assignment)
 
                                     # Add assignment event
-                                    self.flow_manager.add_event(
+                                    self.flow_manager.visualizer.add_event(
                                         workflow["flow_id"],
-                                        {
+                                        "task_assigned",
+                                        data={
                                             "type": "task_assigned",
                                             "task_id": task["id"],
                                             "task_name": task["name"],
@@ -140,7 +143,7 @@ class ProjectWorkflowManager:
                 print(f"Error in auto-assign loop: {e}", file=sys.stderr)
                 await asyncio.sleep(30)
 
-    async def _monitor_workflow(self, workflow_id: str):
+    async def _monitor_workflow(self, workflow_id: str) -> None:
         """Monitor workflow progress using Marcus MCP."""
         workflow = self.active_workflows.get(workflow_id)
         if not workflow:
@@ -166,9 +169,10 @@ class ProjectWorkflowManager:
                     }
 
                     # Add monitoring event
-                    self.flow_manager.add_event(
+                    self.flow_manager.visualizer.add_event(
                         workflow["flow_id"],
-                        {
+                        "workflow_metrics",
+                        data={
                             "type": "workflow_metrics",
                             "metrics": metrics,
                             "timestamp": datetime.now().isoformat(),
@@ -178,9 +182,10 @@ class ProjectWorkflowManager:
                     # Check if workflow is complete
                     if metrics["progress_percent"] >= 100:
                         workflow["status"] = "completed"
-                        self.flow_manager.add_event(
+                        self.flow_manager.visualizer.add_event(
                             workflow["flow_id"],
-                            {
+                            "workflow_completed",
+                            data={
                                 "type": "workflow_completed",
                                 "timestamp": datetime.now().isoformat(),
                             },
@@ -195,14 +200,14 @@ class ProjectWorkflowManager:
                 print(f"Error in workflow monitoring: {e}", file=sys.stderr)
                 await asyncio.sleep(60)
 
-    def pause_workflow(self, workflow_id: str):
+    def pause_workflow(self, workflow_id: str) -> bool:
         """Pause a workflow."""
         if workflow_id in self.active_workflows:
             self.active_workflows[workflow_id]["status"] = "paused"
             return True
         return False
 
-    def stop_workflow(self, workflow_id: str):
+    def stop_workflow(self, workflow_id: str) -> bool:
         """Stop a workflow."""
         if workflow_id in self.active_workflows:
             self.active_workflows[workflow_id]["status"] = "stopped"
