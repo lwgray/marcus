@@ -12,7 +12,7 @@ Tests end-to-end workflows including:
 import asyncio
 import json
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -115,6 +115,7 @@ class TestAgentRegistrationAndTaskAssignment(BaseTestCase):
         3. Verify optimal task assignment
         """
         server = await self._create_test_server()
+        mock_kanban = cast(AsyncMock, server.kanban_client)
 
         # Create tasks with specific skill requirements
         backend_task = TaskFactory.create(
@@ -134,12 +135,12 @@ class TestAgentRegistrationAndTaskAssignment(BaseTestCase):
         )
 
         # Mock kanban to return these tasks
-        server.kanban_client.get_all_tasks.return_value = [
+        mock_kanban.get_all_tasks.return_value = [
             backend_task,
             frontend_task,
             devops_task,
         ]
-        server.kanban_client.get_available_tasks.return_value = [
+        mock_kanban.get_available_tasks.return_value = [
             backend_task,
             frontend_task,
             devops_task,
@@ -269,7 +270,8 @@ class TestAgentRegistrationAndTaskAssignment(BaseTestCase):
 
         # Setup mocked kanban client
         server.kanban_client = self.create_mock_kanban_client()
-        server.kanban_client.board_id = "test-board-123"
+        mock_kanban = cast(AsyncMock, server.kanban_client)
+        mock_kanban.board_id = "test-board-123"
 
         # Mock AI engine with realistic responses
         server.ai_engine = self.create_mock_ai_engine()

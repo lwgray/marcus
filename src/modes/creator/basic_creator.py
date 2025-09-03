@@ -226,21 +226,21 @@ class BasicCreatorMode:
 
         phases_preview: Dict[str, Dict[str, Any]] = {}
         for task in preview_tasks:
-            phase = getattr(task, 'phase', 'Unknown')
+            phase = getattr(task, "phase", "Unknown")
             if phase not in phases_preview:
                 phases_preview[phase] = {"tasks": [], "estimated_hours": 0}
 
             task_list = phases_preview[phase]["tasks"]
             if isinstance(task_list, list):
                 task_list.append(
-                {
-                    "name": task.name,
-                    "description": task.description,
-                    "estimated_hours": task.estimated_hours,
-                    "priority": task.priority.value,
-                    "optional": task.optional,
-                }
-            )
+                    {
+                        "name": task.name,
+                        "description": task.description,
+                        "estimated_hours": task.estimated_hours,
+                        "priority": task.priority.value,
+                        "optional": task.optional,
+                    }
+                )
             phases_preview[phase]["estimated_hours"] += task.estimated_hours
 
         return {
@@ -328,18 +328,30 @@ class BasicCreatorMode:
             "labels": task.labels,
             "estimated_hours": task.estimated_hours,
             "dependencies": task.dependencies,
-            "phase": task.metadata.get("phase"),
-            "phase_order": task.metadata.get("phase_order"),
-            "generated": task.metadata.get("generated", False),
+            "phase": task.source_context.get("phase") if task.source_context else None,
+            "phase_order": (
+                task.source_context.get("phase_order") if task.source_context else None
+            ),
+            "generated": (
+                task.source_context.get("generated", False)
+                if task.source_context
+                else False
+            ),
         }
 
     def _get_phases_summary(self, tasks: List[Task]) -> Dict[str, Any]:
         """Get summary of phases in the generated tasks"""
-        phases = {}
+        phases: Dict[str, Dict[str, Any]] = {}
 
         for task in tasks:
-            phase = task.metadata.get("phase", "Unknown")
-            phase_order = task.metadata.get("phase_order", 0)
+            phase = (
+                task.source_context.get("phase", "Unknown")
+                if task.source_context
+                else "Unknown"
+            )
+            phase_order = (
+                task.source_context.get("phase_order", 0) if task.source_context else 0
+            )
 
             if phase not in phases:
                 phases[phase] = {

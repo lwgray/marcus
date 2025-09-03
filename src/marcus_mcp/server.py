@@ -238,7 +238,8 @@ class MarcusServer:
         )
 
         # Create MCP server instance
-        self.server = Server("marcus")
+        server: Server = Server("marcus")
+        self.server = server
 
         # Register handlers
         self._register_handlers()
@@ -859,6 +860,9 @@ class MarcusServer:
         # Import only what we need for avoiding duplicates
         # Actual imports happen inside each function to avoid conflicts
 
+        if self._fastmcp is None:
+            raise RuntimeError("FastMCP instance not initialized")
+
         # Store reference to self for closures
         server = self
 
@@ -936,7 +940,7 @@ class MarcusServer:
         @self._fastmcp.tool()
         async def get_project_status() -> Dict[str, Any]:
             """Get current project status and metrics."""
-            from .tools.agent import get_project_status as impl
+            from .tools.project import get_project_status as impl
 
             return await impl(state=server)
 
@@ -1072,7 +1076,7 @@ class MarcusServer:
             @app.tool()
             async def get_project_status() -> Dict[str, Any]:
                 """Get current project status and metrics."""
-                from .tools.agent import get_project_status as impl
+                from .tools.project import get_project_status as impl
 
                 return await impl(state=server)
 
