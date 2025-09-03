@@ -25,9 +25,9 @@ class PipelineEnhancementTools:
         """Initialize all enhancement components."""
         self.replay_controller: Optional[PipelineReplayController] = None
         self.what_if_engine: Optional[WhatIfAnalysisEngine] = None
-        self.comparator: PipelineComparator = PipelineComparator()  # type: ignore[no-untyped-call]
+        self.comparator: PipelineComparator = PipelineComparator()
         self.report_generator: PipelineReportGenerator = PipelineReportGenerator()
-        self.live_monitor: LivePipelineMonitor = LivePipelineMonitor()  # type: ignore[no-untyped-call]
+        self.live_monitor: LivePipelineMonitor = LivePipelineMonitor()
         self.error_predictor: PipelineErrorPredictor = PipelineErrorPredictor()
         self.recommendation_engine: PipelineRecommendationEngine = (
             PipelineRecommendationEngine()
