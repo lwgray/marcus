@@ -154,10 +154,10 @@ async def get_agent_metrics(
                 agent_context = context
                 break
 
-    if not agent:
+    if not agent or not agent_context:
         return {
             "success": False,
-            "error": f"Agent {agent_id} not found",
+            "error": f"Agent {agent_id} not found or not accessible",
         }
 
     # Parse time window
@@ -171,6 +171,11 @@ async def get_agent_metrics(
     cutoff_time = datetime.now() - delta
 
     # Get agent's task history
+    if not agent_context.kanban_provider:
+        return {
+            "success": False,
+            "error": f"No Kanban provider available for agent {agent_id}",
+        }
     all_tasks = await agent_context.kanban_provider.get_tasks()
     agent_tasks = [t for t in all_tasks if t.assigned_to == agent_id]
 

@@ -8,9 +8,7 @@ Works alongside existing templates to:
 3. Enable better agent communication through the kanban board
 """
 
-import json
 import logging
-from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple

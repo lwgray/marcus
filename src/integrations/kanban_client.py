@@ -16,16 +16,15 @@ This implementation avoids persistent connections and creates a new MCP session
 for each operation to ensure reliability.
 """
 
-import asyncio
 import json
 import logging
 import os
 import sys
-from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from mcp.client.stdio import stdio_client
+from mcp.types import TextContent
 
 from mcp import ClientSession, StdioServerParameters
 from src.core.models import Priority, Task, TaskStatus
@@ -80,7 +79,7 @@ class KanbanClient:
         if "PLANKA_AGENT_EMAIL" not in os.environ:
             os.environ["PLANKA_AGENT_EMAIL"] = "demo@demo.demo"
         if "PLANKA_AGENT_PASSWORD" not in os.environ:
-            os.environ["PLANKA_AGENT_PASSWORD"] = "demo"
+            os.environ["PLANKA_AGENT_PASSWORD"] = "demo"  # nosec B105
 
     def _load_config(self) -> None:
         """
@@ -127,7 +126,7 @@ class KanbanClient:
                 # Config loaded successfully - don't print as it interferes with MCP stdio
         else:
             print(
-                f"❌ config_marcus.json not found in any of the following locations:",
+                "❌ config_marcus.json not found in any of the following locations:",
                 file=sys.stderr,
             )
             for path in config_paths:
@@ -186,7 +185,8 @@ class KanbanClient:
                     and hasattr(lists_result, "content")
                     and lists_result.content
                 ):
-                    lists_data = json.loads(lists_result.content[0].text)
+                    first_content = cast(TextContent, lists_result.content[0])
+                    lists_data = json.loads(first_content.text)
                     lists = (
                         lists_data
                         if isinstance(lists_data, list)
@@ -208,7 +208,10 @@ class KanbanClient:
                                 and hasattr(cards_result, "content")
                                 and cards_result.content
                             ):
-                                cards_text = cards_result.content[0].text
+                                first_content = cast(
+                                    TextContent, cards_result.content[0]
+                                )
+                                cards_text = first_content.text
                                 if cards_text and cards_text.strip():
                                     cards_data = json.loads(cards_text)
                                     cards_list = (
@@ -220,8 +223,6 @@ class KanbanClient:
                                     for card in cards_list:
                                         card["listName"] = lst.get("name", "")
                                         all_cards.append(card)
-
-                result = None  # We'll use all_cards instead
 
                 tasks = []
 
@@ -321,7 +322,8 @@ class KanbanClient:
                     and hasattr(lists_result, "content")
                     and lists_result.content
                 ):
-                    lists_data = json.loads(lists_result.content[0].text)
+                    first_content = cast(TextContent, lists_result.content[0])
+                    lists_data = json.loads(first_content.text)
                     lists = (
                         lists_data
                         if isinstance(lists_data, list)
@@ -343,7 +345,10 @@ class KanbanClient:
                                 and hasattr(cards_result, "content")
                                 and cards_result.content
                             ):
-                                cards_text = cards_result.content[0].text
+                                first_content = cast(
+                                    TextContent, cards_result.content[0]
+                                )
+                                cards_text = first_content.text
                                 if cards_text and cards_text.strip():
                                     cards_data = json.loads(cards_text)
                                     cards_list = (
@@ -400,7 +405,6 @@ class KanbanClient:
                 return tasks
 
         # If no lists were found or lists_result was empty, return empty list
-        return []
 
     async def assign_task(self, task_id: str, agent_id: str) -> None:
         """
@@ -452,7 +456,8 @@ class KanbanClient:
                 )
 
                 if lists_result and hasattr(lists_result, "content"):
-                    lists_data = json.loads(lists_result.content[0].text)
+                    first_content = cast(TextContent, lists_result.content[0])
+                    lists_data = json.loads(first_content.text)
                     lists = (
                         lists_data
                         if isinstance(lists_data, list)
@@ -524,7 +529,12 @@ class KanbanClient:
                 )
 
                 if result and hasattr(result, "content"):
-                    return json.loads(result.content[0].text)
+                    first_content = cast(TextContent, result.content[0])
+                    parsed_result = json.loads(first_content.text)
+                    if isinstance(parsed_result, dict):
+                        return parsed_result
+                    else:
+                        return {"data": parsed_result}
 
                 return {}
 
@@ -647,7 +657,7 @@ class KanbanClient:
 
         # Store original ID as a custom attribute
         if original_id:
-            task._original_id = original_id
+            setattr(task, "_original_id", original_id)
 
         return task
 
@@ -833,7 +843,8 @@ class KanbanClient:
                 )
 
                 if lists_result and hasattr(lists_result, "content"):
-                    lists_data = json.loads(lists_result.content[0].text)
+                    first_content = cast(TextContent, lists_result.content[0])
+                    lists_data = json.loads(first_content.text)
                     lists = (
                         lists_data
                         if isinstance(lists_data, list)

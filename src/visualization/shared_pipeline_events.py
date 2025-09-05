@@ -6,7 +6,6 @@ without the full visualization system. The actual visualization
 is now handled by Seneca.
 """
 
-import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 

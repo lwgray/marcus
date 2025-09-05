@@ -167,9 +167,12 @@ async def _collect_task_artifacts(
                                 "description": f"Attachment from task {task_id}",
                             }
                         )
-            except Exception:
+            except Exception as e:
                 # Don't fail the whole operation if kanban is unavailable
-                pass
+                # Log the error for debugging but continue with artifact collection
+                print(
+                    f"Warning: Failed to get kanban attachments for task {task_id}: {e}"
+                )
 
         # 3. Collect artifacts from dependency tasks
         if task.dependencies:
@@ -218,13 +221,17 @@ async def _collect_task_artifacts(
                                             ),
                                         }
                                     )
-                        except Exception:
+                        except Exception as e:
                             # Don't fail if kanban is unavailable
-                            pass
+                            # Log the error for debugging but continue with artifact collection
+                            print(
+                                f"Warning: Failed to get kanban attachments for dependency {dep_id}: {e}"
+                            )
 
-    except Exception:
+    except Exception as e:
         # Don't fail the whole context operation if artifact collection fails
-        pass
+        # Log the error for debugging but return partial results
+        print(f"Warning: Artifact collection encountered an error: {e}")
 
     return artifacts
 

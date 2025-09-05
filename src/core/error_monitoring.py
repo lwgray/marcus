@@ -10,17 +10,15 @@ import json
 import logging
 import threading
 import time
+from asyncio import Task
 from collections import defaultdict, deque
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Union
-import asyncio
-from asyncio import Task
+from typing import Any, Callable, Dict, List, Optional, Set
 
-from .error_framework import ErrorCategory, ErrorSeverity, MarcusBaseError
-from .error_responses import ErrorResponseFormatter, ResponseFormat
+from .error_framework import ErrorSeverity, MarcusBaseError
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +98,9 @@ class ErrorMonitor:
         self.correlation_timeout_minutes = correlation_timeout_minutes
 
         # Error storage
-        self.error_history: deque[Dict[str, Any]] = deque(maxlen=10000)  # Keep last 10k errors
+        self.error_history: deque[Dict[str, Any]] = deque(
+            maxlen=10000
+        )  # Keep last 10k errors
         self.error_index: Dict[str, Dict[str, Any]] = {}  # correlation_id -> error data
 
         # Metrics
@@ -338,7 +338,9 @@ class ErrorMonitor:
         # Pattern 4: Cascade pattern (related errors in sequence)
         self._detect_cascade_pattern(error_record, now)
 
-    def _detect_frequency_pattern(self, error_record: Dict[str, Any], now: datetime) -> None:
+    def _detect_frequency_pattern(
+        self, error_record: Dict[str, Any], now: datetime
+    ) -> None:
         """Detect frequency-based error patterns."""
         error_type = error_record["error_type"]
 
@@ -378,7 +380,9 @@ class ErrorMonitor:
                 pattern.frequency = recent_count
                 pattern.last_seen = now
 
-    def _detect_burst_pattern(self, error_record: Dict[str, Any], now: datetime) -> None:
+    def _detect_burst_pattern(
+        self, error_record: Dict[str, Any], now: datetime
+    ) -> None:
         """Detect burst error patterns."""
         # Count all errors in last 5 minutes
         burst_count = sum(
@@ -408,7 +412,9 @@ class ErrorMonitor:
                 self.detected_patterns[pattern_id] = pattern
                 self._notify_pattern_detected(pattern)
 
-    def _detect_agent_pattern(self, error_record: Dict[str, Any], now: datetime) -> None:
+    def _detect_agent_pattern(
+        self, error_record: Dict[str, Any], now: datetime
+    ) -> None:
         """Detect agent-specific error patterns."""
         agent_id = error_record.get("agent_id")
         if not agent_id:
@@ -442,7 +448,9 @@ class ErrorMonitor:
                 self.detected_patterns[pattern_id] = pattern
                 self._notify_pattern_detected(pattern)
 
-    def _detect_cascade_pattern(self, error_record: Dict[str, Any], now: datetime) -> None:
+    def _detect_cascade_pattern(
+        self, error_record: Dict[str, Any], now: datetime
+    ) -> None:
         """Detect cascade error patterns (related errors in sequence)."""
         # Look for errors with similar context that occurred recently
         similar_errors = []
@@ -451,7 +459,6 @@ class ErrorMonitor:
                 now - error["timestamp"] < timedelta(minutes=5)
                 and error["correlation_id"] != error_record["correlation_id"]
             ):
-
                 # Check for similarity
                 similarity_score = self._calculate_error_similarity(error, error_record)
                 if similarity_score > 0.7:  # 70% similarity threshold

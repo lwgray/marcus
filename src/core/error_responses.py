@@ -9,15 +9,13 @@ Standardized error response formatting for different contexts:
 - Monitoring/alerting formats
 """
 
-import json
 import logging
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from .error_framework import (
-    ErrorCategory,
     ErrorContext,
     ErrorSeverity,
     IntegrationError,
@@ -435,8 +433,11 @@ class ErrorResponseFormatter:
                 return obj
 
         result = sanitize_dict(response)
-        # Type assertion to help mypy understand the return type
-        assert isinstance(result, dict)
+        # Type guard to help mypy understand the return type
+        if not isinstance(result, dict):
+            raise TypeError(
+                f"Sanitization failed: expected dict, got {type(result).__name__}"
+            )
         return result
 
 

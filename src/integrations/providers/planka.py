@@ -6,10 +6,9 @@ Direct integration without the mcp_function_caller abstraction
 
 import logging
 import os
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from src.core.models import Priority, Task, TaskStatus
+from src.core.models import Task, TaskStatus
 from src.integrations.kanban_client_with_create import KanbanClientWithCreate
 from src.integrations.kanban_interface import KanbanInterface, KanbanProvider
 
@@ -47,16 +46,17 @@ class Planka(KanbanInterface):
         # Don't print to stdout - it corrupts MCP protocol
         # Use logging instead if needed
         logger.info(
-            f"[Planka] Initialized with board_id={self.client.board_id}, project_id={self.client.project_id}"
+            f"[Planka] Initialized with board_id={self.client.board_id}, "
+            f"project_id={self.client.project_id}"
         )
 
     @property
-    def board_id(self):
+    def board_id(self) -> Optional[str]:
         """Get board ID from the client"""
         return self.client.board_id if self.client else None
 
     @property
-    def project_id(self):
+    def project_id(self) -> Optional[str]:
         """Get project ID from the client"""
         return self.client.project_id if self.client else None
 
@@ -70,7 +70,7 @@ class Planka(KanbanInterface):
             logger.error(f"Failed to connect to Planka: {e}")
             return False
 
-    async def disconnect(self):
+    async def disconnect(self) -> None:
         """Disconnect from Planka"""
         self.connected = False
 
@@ -118,7 +118,9 @@ class Planka(KanbanInterface):
             logger.error(f"Error creating task: {e}")
             raise
 
-    async def update_task(self, task_id: str, updates: Dict[str, Any]) -> Task:
+    async def update_task(
+        self, task_id: str, updates: Dict[str, Any]
+    ) -> Optional[Task]:
         """Update task status or properties"""
         try:
             logger.info(
@@ -152,13 +154,15 @@ class Planka(KanbanInterface):
                     column = status_to_column[status]
                     logger.info(f"[Planka] Moving task {task_id} to column: {column}")
                     await self.move_task_to_column(task_id, column)
-                elif status == TaskStatus.COMPLETED:
+                elif status == TaskStatus.DONE:
                     # Handle COMPLETED as alias for DONE
                     logger.info(f"[Planka] Completing task {task_id}")
                     await self.client.complete_task(task_id)
 
             # Get and return the updated task
             task = await self.get_task_by_id(task_id)
+            if task is None:
+                raise RuntimeError(f"Task {task_id} not found after update")
             return task
         except Exception as e:
             logger.error(f"Error updating task {task_id}: {e}")
@@ -178,7 +182,7 @@ class Planka(KanbanInterface):
         """Get all tasks assigned to a specific agent"""
         try:
             # Get all tasks and filter by assignment
-            all_tasks = await self.client.get_board_summary()
+            await self.client.get_board_summary()
             # This would need to be implemented based on board structure
             return []
         except Exception as e:

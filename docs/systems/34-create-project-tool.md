@@ -57,7 +57,7 @@ async def create_project(
 
 **Key Responsibilities**:
 
-1. **Parameter Validation**: 
+1. **Parameter Validation**:
    - Ensures description is meaningful (not empty, not just punctuation)
    - Validates project name format and uniqueness
    - Provides helpful usage examples on validation failure
@@ -264,7 +264,7 @@ options = {
 2. **Context Detection**: ~100ms
 3. **AI PRD Parsing**: 2-5 seconds (primary bottleneck)
 4. **Task Generation**: ~200ms
-5. **Dependency Inference**: 
+5. **Dependency Inference**:
    - Pattern-based: ~100ms
    - AI-enhanced: 1-3 seconds
 6. **Kanban Creation**: ~500ms per task
@@ -441,7 +441,7 @@ logger.info("project_creation_started", extra={
 # Performance tracking
 with timer("prd_parsing"):
     prd_result = await parser.parse(description)
-    
+
 logger.info("prd_parsing_complete", extra={
     "duration_ms": timer.elapsed_ms,
     "task_count": len(prd_result.tasks)

@@ -6,7 +6,7 @@ detecting deadlocks, bottlenecks, and other issues that might prevent progress.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, List, Tuple
 
 from src.core.board_health_analyzer import BoardHealthAnalyzer
 from src.logging.conversation_logger import log_thinking
@@ -108,7 +108,8 @@ async def check_board_health(state: Any) -> Dict[str, Any]:
         # Add summary
         response["summary"] = _generate_health_summary(health)
 
-        return serialize_for_mcp(response)
+        serialized = serialize_for_mcp(response)
+        return dict(serialized) if isinstance(serialized, dict) else serialized
 
     except Exception as e:
         logger.error(f"Error analyzing board health: {e}")
@@ -200,7 +201,8 @@ async def check_task_dependencies(task_id: str, state: Any) -> Dict[str, Any]:
             },
         }
 
-        return serialize_for_mcp(response)
+        serialized = serialize_for_mcp(response)
+        return dict(serialized) if isinstance(serialized, dict) else serialized
 
     except Exception as e:
         logger.error(f"Error checking task dependencies: {e}")
@@ -221,7 +223,7 @@ def _get_health_status(score: float) -> str:
         return "critical"
 
 
-def _generate_health_summary(health) -> str:
+def _generate_health_summary(health: Any) -> str:
     """Generate a human-readable health summary."""
     status = _get_health_status(health.health_score)
 
@@ -230,7 +232,7 @@ def _generate_health_summary(health) -> str:
     ]
 
     if health.issues:
-        issue_counts = {}
+        issue_counts: Dict[str, int] = {}
         for issue in health.issues:
             issue_type = issue.type.value
             issue_counts[issue_type] = issue_counts.get(issue_type, 0) + 1
@@ -251,12 +253,14 @@ def _generate_health_summary(health) -> str:
     return " ".join(summary_parts)
 
 
-def _check_for_cycle(start_task_id: str, task_map: Dict[str, Any]) -> tuple[bool, list]:
+def _check_for_cycle(
+    start_task_id: str, task_map: Dict[str, Any]
+) -> Tuple[bool, List[str]]:
     """Check if task is part of a dependency cycle."""
     visited = set()
     rec_stack = set()
 
-    def dfs(task_id: str, path: list) -> tuple[bool, list]:
+    def dfs(task_id: str, path: List[str]) -> Tuple[bool, List[str]]:
         if task_id in rec_stack:
             # Found cycle
             cycle_start = path.index(task_id)
@@ -282,12 +286,14 @@ def _check_for_cycle(start_task_id: str, task_map: Dict[str, Any]) -> tuple[bool
     return dfs(start_task_id, [])
 
 
-def _calculate_completion_order(task_id: str, task_map: Dict[str, Any]) -> list:
+def _calculate_completion_order(
+    task_id: str, task_map: Dict[str, Any]
+) -> List[Dict[str, Any]]:
     """Calculate the order in which dependencies should be completed."""
     order = []
     visited = set()
 
-    def visit(tid: str):
+    def visit(tid: str) -> None:
         if tid in visited:
             return
         visited.add(tid)

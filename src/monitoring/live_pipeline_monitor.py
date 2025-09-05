@@ -6,7 +6,6 @@ predictive capabilities to identify potential issues before they occur.
 """
 
 import asyncio
-import json
 import statistics
 from collections import defaultdict
 from dataclasses import asdict, dataclass
@@ -47,13 +46,13 @@ class LivePipelineMonitor:
     with predictive issue detection.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the live monitor."""
         self.shared_events = SharedPipelineEvents()
         self.active_flows: Dict[str, Dict[str, Any]] = {}
         self.websocket_clients: Set[Any] = set()
         self.historical_data = self._load_historical_data()
-        self.monitoring_task = None
+        self.monitoring_task: Optional[asyncio.Task[None]] = None
 
     def _load_historical_data(self) -> Dict[str, Any]:
         """Load historical flow data for predictions."""
@@ -61,7 +60,7 @@ class LivePipelineMonitor:
         # For now, analyze existing flows
         all_data = self.shared_events._read_events()
 
-        historical = {
+        historical: Dict[str, Any] = {
             "avg_durations_by_stage": defaultdict(list),
             "failure_patterns": [],
             "avg_events_per_flow": [],
@@ -78,34 +77,46 @@ class LivePipelineMonitor:
                 for event in flow_events:
                     if "duration_ms" in event:
                         stage = event.get("stage", "unknown")
-                        historical["avg_durations_by_stage"][stage].append(
-                            event["duration_ms"]
-                        )
+                        duration_list = historical["avg_durations_by_stage"][stage]
+                        if isinstance(duration_list, list):
+                            duration_list.append(event["duration_ms"])
 
                 # Track event counts
-                historical["avg_events_per_flow"].append(len(flow_events))
+                events_list = historical["avg_events_per_flow"]
+                if isinstance(events_list, list):
+                    events_list.append(len(flow_events))
 
         return historical
 
-    async def start_monitoring(self):
+    async def start_monitoring(self) -> None:
         """Start the monitoring loop."""
         if self.monitoring_task:
             return
 
         self.monitoring_task = asyncio.create_task(self._monitoring_loop())
 
-    async def stop_monitoring(self):
+    async def stop_monitoring(self) -> None:
         """Stop the monitoring loop."""
         if self.monitoring_task:
             self.monitoring_task.cancel()
+            try:
+                await self.monitoring_task
+            except asyncio.CancelledError:
+                pass
             self.monitoring_task = None
 
-    async def _monitoring_loop(self):
+    async def _monitoring_loop(self) -> None:
         """Main monitoring loop."""
         while True:
             try:
                 # Update all active flows
-                active_flows = self.shared_events.get_active_flows()
+                # Get active flows from events data
+                all_data = self.shared_events._read_events()
+                active_flows = [
+                    {"id": flow_id, **flow_info}
+                    for flow_id, flow_info in all_data["flows"].items()
+                    if not flow_info.get("completed_at")
+                ]
 
                 for flow_info in active_flows:
                     flow_id = flow_info["id"]
@@ -133,6 +144,7 @@ class LivePipelineMonitor:
 
             except Exception as e:
                 import sys
+
                 print(f"Monitoring error: {e}", file=sys.stderr)
                 await asyncio.sleep(5)
 
@@ -151,8 +163,9 @@ class LivePipelineMonitor:
             Current progress and health status
         """
         # Get current events
-        events = self.shared_events.get_flow_events(flow_id)
-        flow_data = self.active_flows.get(flow_id, {})
+        all_data = self.shared_events._read_events()
+        events = [e for e in all_data["events"] if e.get("flow_id") == flow_id]
+        self.active_flows.get(flow_id, {})
 
         # Calculate progress
         progress = self.calculate_progress(flow_id, events)
@@ -317,7 +330,7 @@ class LivePipelineMonitor:
                         slow_stages.append(stage)
                         issues.append(f"Stage '{stage}' is running slowly")
 
-        metrics["slow_stages"] = slow_stages
+        metrics["slow_stages"] = len(slow_stages)
 
         # Check for stalls
         if events:
@@ -326,7 +339,7 @@ class LivePipelineMonitor:
 
             if stall_duration > 60:  # No events for 60 seconds
                 issues.append(f"Flow stalled for {int(stall_duration)}s")
-                metrics["stall_duration"] = stall_duration
+                metrics["stall_duration"] = int(stall_duration)
 
         # Determine overall status
         if error_count > 0 or len(slow_stages) > 2:
@@ -346,13 +359,14 @@ class LivePipelineMonitor:
             return int(statistics.mean(self.historical_data["avg_events_per_flow"]))
         return 20  # Default estimate
 
-    def _cleanup_completed_flows(self):
+    def _cleanup_completed_flows(self) -> None:
         """Remove completed flows from active tracking."""
         completed_flows = []
 
         for flow_id, flow_data in self.active_flows.items():
             # Check if flow is completed
-            events = self.shared_events.get_flow_events(flow_id)
+            all_data = self.shared_events._read_events()
+            events = [e for e in all_data["events"] if e.get("flow_id") == flow_id]
             for event in events:
                 if event.get("event_type") == "pipeline_completed":
                     completed_flows.append(flow_id)
@@ -362,7 +376,7 @@ class LivePipelineMonitor:
         for flow_id in completed_flows:
             del self.active_flows[flow_id]
 
-    async def broadcast_update(self, update: ProgressUpdate):
+    async def broadcast_update(self, update: ProgressUpdate) -> None:
         """
         Broadcast update to all connected clients.
 

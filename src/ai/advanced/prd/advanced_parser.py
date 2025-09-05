@@ -7,17 +7,16 @@ deep understanding, intelligent task breakdown, and risk assessment.
 
 import json
 import logging
-import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.ai.providers.llm_abstraction import LLMAbstraction
-from src.ai.types import AnalysisContext
 from src.config.hybrid_inference_config import HybridInferenceConfig
 from src.core.models import Priority, Task, TaskStatus
 from src.integrations.ai_analysis_engine import AIAnalysisEngine
 from src.intelligence.dependency_inferer_hybrid import HybridDependencyInferer
+from src.visualization.shared_pipeline_events import PipelineStage
 
 logger = logging.getLogger(__name__)
 
@@ -258,7 +257,6 @@ class AdvancedPRDParser:
             logger.info("Attempting to use LLM for PRD analysis...")
 
             # Track AI analysis start
-            ai_start_time = datetime.now()
             flow_id = getattr(self, "_current_flow_id", None)
             if flow_id and hasattr(self, "_pipeline_visualizer"):
                 self._pipeline_visualizer.add_event(
@@ -310,13 +308,15 @@ class AdvancedPRDParser:
                             "response_preview": (
                                 analysis_result[:200] if analysis_result else "None"
                             ),
-                            "details": f"AI returned malformed JSON response. This indicates an issue with the AI provider configuration or the response format. Please check your AI provider settings and try again with a clearer project description.",
+                            "details": "AI returned malformed JSON response. This indicates an issue with the AI provider configuration or the response format. Please check your AI provider settings and try again with a clearer project description.",
                         },
                     ),
                 )
 
             # Handle both snake_case and camelCase keys from AI response
-            def get_key(data: Dict[str, Any], snake_key: str, camel_key: Optional[str] = None) -> Any:
+            def get_key(
+                data: Dict[str, Any], snake_key: str, camel_key: Optional[str] = None
+            ) -> Any:
                 """Get value from dict using either snake_case or camelCase key"""
                 if camel_key is None:
                     # Convert snake_case to camelCase
@@ -421,7 +421,9 @@ class AdvancedPRDParser:
         self._task_metadata = {}
 
         # Filter requirements based on project size
-        project_size = (constraints.quality_requirements or {}).get("project_size", "medium")
+        project_size = (constraints.quality_requirements or {}).get(
+            "project_size", "medium"
+        )
         functional_requirements = self._filter_requirements_by_size(
             analysis.functional_requirements, project_size, constraints.team_size
         )
@@ -599,9 +601,13 @@ class AdvancedPRDParser:
             # New generalization fields
             source_type="nlp_project",
             source_context={
-                "prd_analysis": analysis.__dict__ if hasattr(analysis, "__dict__") else {},
+                "prd_analysis": (
+                    analysis.__dict__ if hasattr(analysis, "__dict__") else {}
+                ),
                 "task_info": task_info,
-                "constraints": constraints.__dict__ if hasattr(constraints, "__dict__") else {},
+                "constraints": (
+                    constraints.__dict__ if hasattr(constraints, "__dict__") else {}
+                ),
             },
         )
 
@@ -660,20 +666,22 @@ class AdvancedPRDParser:
 
         # Analyze complexity risks
         complexity_risks = await self._analyze_complexity_risks(tasks, analysis)
-        if isinstance(risk_assessment["risk_factors"], list):
-            risk_assessment["risk_factors"].extend(complexity_risks)
+        risk_factors_list = risk_assessment["risk_factors"]
+        if isinstance(risk_factors_list, list):
+            risk_factors_list.extend(complexity_risks)
         else:
-            risk_assessment["risk_factors"] = list(complexity_risks)
+            risk_assessment["risk_factors"] = complexity_risks  # type: ignore[assignment]
+            risk_factors_list = complexity_risks  # type: ignore[assignment]
 
         # Analyze constraint risks
         constraint_risks = await self._analyze_constraint_risks(tasks, constraints)
-        risk_assessment["timeline_risks"] = constraint_risks
+        risk_assessment["timeline_risks"] = constraint_risks  # type: ignore[assignment]
 
-        # Generate mitigation strategies
-        risk_assessment["mitigation_strategies"] = (
-            await self._generate_mitigation_strategies(
-                risk_assessment["risk_factors"], tasks, analysis
-            )
+        # Generate mitigation strategies (cast to expected type)
+        risk_assessment[
+            "mitigation_strategies"
+        ] = await self._generate_mitigation_strategies(
+            risk_factors_list, tasks, analysis  # type: ignore[arg-type]
         )
 
         # Calculate overall risk level
@@ -911,7 +919,7 @@ class AdvancedPRDParser:
 
             # Get the description from the NFR data
             nfr_description = nfr.get("description", "")
-            
+
             tasks.append(
                 {
                     "id": f"nfr_task_{nfr_id}",
@@ -1025,7 +1033,7 @@ class AdvancedPRDParser:
 
         # Generate appropriate labels based on context and requirements
         labels = self._generate_labels(task_type, project_context, constraints)
-        
+
         # Add feature label based on epic_id to group related tasks
         # This ensures tasks from the same feature share a common label for phase enforcement
         if epic_id and epic_id.startswith("epic_"):
@@ -1920,7 +1928,9 @@ class AdvancedPRDParser:
             # Enterprise/Large: include all requirements
             return requirements
 
-    def _filter_nfrs_by_size(self, nfrs: List[Dict[str, Any]], project_size: str) -> List[Dict[str, Any]]:
+    def _filter_nfrs_by_size(
+        self, nfrs: List[Dict[str, Any]], project_size: str
+    ) -> List[Dict[str, Any]]:
         """Filter non-functional requirements based on project size"""
         if project_size in ["prototype", "mvp", "small"]:
             # Prototype: Skip NFRs entirely or just basic auth

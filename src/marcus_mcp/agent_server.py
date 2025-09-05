@@ -33,7 +33,7 @@ class AgentMarcusServer(MarcusServer):
             return get_tool_definitions(role="agent")
 
         # Use parent class tool handler
-        @self.server.call_tool()  # type: ignore[no-untyped-call,misc]
+        @self.server.call_tool()  # type: ignore[misc]
         async def handle_call_tool(
             name: str, arguments: Optional[Dict[str, Any]]
         ) -> List[types.TextContent | types.ImageContent | types.EmbeddedResource]:

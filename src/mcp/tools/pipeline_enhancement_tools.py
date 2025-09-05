@@ -1,5 +1,5 @@
 """
-MCP Tools for Pipeline Enhancement Features
+MCP Tools for Pipeline Enhancement Features.
 
 Exposes pipeline replay, what-if analysis, comparison, monitoring,
 error prediction, and recommendation features through MCP interface.
@@ -25,11 +25,13 @@ class PipelineEnhancementTools:
         """Initialize all enhancement components."""
         self.replay_controller: Optional[PipelineReplayController] = None
         self.what_if_engine: Optional[WhatIfAnalysisEngine] = None
-        self.comparator: PipelineComparator = PipelineComparator()  # type: ignore[no-untyped-call]
+        self.comparator: PipelineComparator = PipelineComparator()
         self.report_generator: PipelineReportGenerator = PipelineReportGenerator()
-        self.live_monitor: LivePipelineMonitor = LivePipelineMonitor()  # type: ignore[no-untyped-call]
-        self.error_predictor: PipelineErrorPredictor = PipelineErrorPredictor()  # type: ignore[no-untyped-call]
-        self.recommendation_engine: PipelineRecommendationEngine = PipelineRecommendationEngine()
+        self.live_monitor: LivePipelineMonitor = LivePipelineMonitor()
+        self.error_predictor: PipelineErrorPredictor = PipelineErrorPredictor()
+        self.recommendation_engine: PipelineRecommendationEngine = (
+            PipelineRecommendationEngine()
+        )
 
     # ==================== Phase 3.1: Pipeline Replay ====================
 
@@ -62,11 +64,16 @@ class PipelineEnhancementTools:
         if not self.replay_controller:
             return {"success": False, "error": "No active replay session"}
 
-        state = self.replay_controller.step_forward(self.replay_controller.replay_sessions.get(list(self.replay_controller.replay_sessions.keys())[0], {}).get("flow_id", ""))
+        state = self.replay_controller.step_forward(
+            self.replay_controller.replay_sessions.get(
+                list(self.replay_controller.replay_sessions.keys())[0], {}
+            ).get("flow_id", "")
+        )
         return {
             "success": True,
             "state": state,
-            "has_more": state.get("current_position", 0) < state.get("total_events", 0) - 1,
+            "has_more": state.get("current_position", 0)
+            < state.get("total_events", 0) - 1,
         }
 
     async def replay_step_backward(self) -> Dict[str, Any]:
@@ -78,7 +85,11 @@ class PipelineEnhancementTools:
         if not self.replay_controller:
             return {"success": False, "error": "No active replay session"}
 
-        state = self.replay_controller.step_backward(self.replay_controller.replay_sessions.get(list(self.replay_controller.replay_sessions.keys())[0], {}).get("flow_id", ""))
+        state = self.replay_controller.step_backward(
+            self.replay_controller.replay_sessions.get(
+                list(self.replay_controller.replay_sessions.keys())[0], {}
+            ).get("flow_id", "")
+        )
         return {
             "success": True,
             "state": state,
@@ -94,7 +105,12 @@ class PipelineEnhancementTools:
         if not self.replay_controller:
             return {"success": False, "error": "No active replay session"}
 
-        state = self.replay_controller.jump_to_position(self.replay_controller.replay_sessions.get(list(self.replay_controller.replay_sessions.keys())[0], {}).get("flow_id", ""), position)
+        state = self.replay_controller.jump_to_position(
+            self.replay_controller.replay_sessions.get(
+                list(self.replay_controller.replay_sessions.keys())[0], {}
+            ).get("flow_id", ""),
+            position,
+        )
         return {"success": True, "state": state}
 
     # ==================== Phase 3.2: What-If Analysis ====================
@@ -123,7 +139,9 @@ class PipelineEnhancementTools:
                         "quality_score"
                     ],
                 },
-                "modifiable_parameters": list(self.what_if_engine.original_flow["parameters"].keys()),
+                "modifiable_parameters": list(
+                    self.what_if_engine.original_flow["parameters"].keys()
+                ),
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -167,17 +185,24 @@ class PipelineEnhancementTools:
             return {"success": False, "error": "No active what-if session"}
 
         # Get all variations and create comparison summary
-        variations = getattr(self.what_if_engine, 'variations', [])
+        variations = getattr(self.what_if_engine, "variations", [])
         comparison = {
             "total_variations": len(variations),
             "variations": [
                 {
                     "variation_id": v.get("variation_id"),
-                    "modifications": [mod.__dict__ if hasattr(mod, '__dict__') else str(mod) for mod in v.get("modifications", [])],
-                    "comparison": v.get("comparison").__dict__ if hasattr(v.get("comparison"), '__dict__') else str(v.get("comparison"))
+                    "modifications": [
+                        mod.__dict__ if hasattr(mod, "__dict__") else str(mod)
+                        for mod in v.get("modifications", [])
+                    ],
+                    "comparison": (
+                        v.get("comparison").__dict__
+                        if hasattr(v.get("comparison"), "__dict__")
+                        else str(v.get("comparison"))
+                    ),
                 }
                 for v in variations
-            ]
+            ],
         }
         return {"success": True, "comparison": comparison}
 

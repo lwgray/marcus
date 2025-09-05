@@ -2,13 +2,14 @@
 Enhancements for autonomous worker agent support
 """
 
-import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union, cast
 
-from src.core.models import Priority, Task, WorkerStatus
+from src.core.models import Priority, Task
+from src.integrations.ai_analysis_engine import AIAnalysisEngine
+from src.integrations.kanban_interface import KanbanInterface
 
 
 class AgentState(Enum):
@@ -39,7 +40,7 @@ class AgentCapabilities:
 
     agent_id: str
     primary_skills: List[str]
-    work_standards: Dict[str, Any]
+    work_standards: Dict[str, Union[str, bool, float, List[str]]]
     performance_history: List[float] = field(default_factory=list)
     specialization_prompt: str = ""
 
@@ -47,12 +48,12 @@ class AgentCapabilities:
 class WorkerAgentManager:
     """Enhanced manager for autonomous worker agents"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.agent_sessions: Dict[str, AgentWorkSession] = {}
         self.agent_capabilities: Dict[str, AgentCapabilities] = {}
         self.agent_prompts = self._load_agent_prompts()
 
-    def _load_agent_prompts(self) -> Dict[str, Dict[str, Any]]:
+    def _load_agent_prompts(self) -> Dict[str, Any]:
         """Load specialized prompts for each agent type"""
         return {
             "backend_agent": {
@@ -106,7 +107,7 @@ class WorkerAgentManager:
 
     async def register_autonomous_agent(
         self, agent_id: str, agent_type: str, custom_prompt: Optional[str] = None
-    ) -> Dict[str, Any]:
+    ) -> Dict[str, Union[str, bool, List[str]]]:
         """Register an autonomous agent with specialized capabilities"""
 
         # Get agent configuration
@@ -115,10 +116,13 @@ class WorkerAgentManager:
         # Create capability profile
         capabilities = AgentCapabilities(
             agent_id=agent_id,
-            primary_skills=agent_config.get("capabilities", []),
-            work_standards=agent_config.get("work_standards", {}),
+            primary_skills=cast(List[str], agent_config.get("capabilities", [])),
+            work_standards=cast(
+                Dict[str, Union[str, bool, float, List[str]]],
+                agent_config.get("work_standards", {}),
+            ),
             specialization_prompt=custom_prompt
-            or agent_config.get("system_prompt", ""),
+            or cast(str, agent_config.get("system_prompt", "")),
         )
 
         # Create work session
@@ -138,7 +142,7 @@ class WorkerAgentManager:
         }
 
     async def get_next_task_for_agent(
-        self, agent_id: str, kanban_client, ai_engine
+        self, agent_id: str, kanban_client: KanbanInterface, ai_engine: AIAnalysisEngine
     ) -> Optional[Task]:
         """Get next optimal task for agent based on skills and current workload"""
 
@@ -162,12 +166,13 @@ class WorkerAgentManager:
         scored_tasks.sort(key=lambda x: x[0], reverse=True)
 
         if scored_tasks and scored_tasks[0][0] > 0:
-            return scored_tasks[0][1]
+            best_task: Task = scored_tasks[0][1]
+            return best_task
 
         return None
 
     async def _score_task_for_agent(
-        self, task: Task, capabilities: AgentCapabilities, ai_engine
+        self, task: Task, capabilities: AgentCapabilities, ai_engine: AIAnalysisEngine
     ) -> float:
         """Score a task based on agent capabilities"""
 
@@ -197,17 +202,17 @@ class WorkerAgentManager:
 
         return score
 
-    def update_agent_activity(self, agent_id: str):
+    def update_agent_activity(self, agent_id: str) -> None:
         """Update agent's last activity timestamp"""
         if agent_id in self.agent_sessions:
             self.agent_sessions[agent_id].last_activity = datetime.now()
 
-    def set_agent_state(self, agent_id: str, state: AgentState):
+    def set_agent_state(self, agent_id: str, state: AgentState) -> None:
         """Update agent's operational state"""
         if agent_id in self.agent_sessions:
             self.agent_sessions[agent_id].state = state
 
-    def get_agent_metrics(self, agent_id: str) -> Dict[str, Any]:
+    def get_agent_metrics(self, agent_id: str) -> Dict[str, Union[str, float, int]]:
         """Get performance metrics for an agent"""
         session = self.agent_sessions.get(agent_id)
         capabilities = self.agent_capabilities.get(agent_id)
@@ -217,21 +222,22 @@ class WorkerAgentManager:
 
         uptime = datetime.now() - session.started_at
 
+        average_performance = 0.0
+        if capabilities and capabilities.performance_history:
+            average_performance = sum(capabilities.performance_history) / len(
+                capabilities.performance_history
+            )
+
         return {
             "agent_id": agent_id,
             "uptime_hours": uptime.total_seconds() / 3600,
             "tasks_completed": session.tasks_completed,
             "current_state": session.state.value,
             "last_activity": session.last_activity.isoformat(),
-            "average_performance": (
-                sum(capabilities.performance_history)
-                / len(capabilities.performance_history)
-                if capabilities.performance_history
-                else 0
-            ),
+            "average_performance": average_performance,
         }
 
-    def get_all_active_agents(self) -> List[Dict[str, Any]]:
+    def get_all_active_agents(self) -> List[Dict[str, Union[str, int, Optional[str]]]]:
         """Get all active agents and their states"""
         active_agents = []
 
@@ -259,7 +265,7 @@ class EnhancedPMAgentMethods:
 
     async def handle_autonomous_agent_registration(
         self, agent_id: str, agent_type: str, custom_prompt: Optional[str] = None
-    ) -> Dict[str, Any]:
+    ) -> Dict[str, Union[str, bool, List[str]]]:
         """Enhanced registration for autonomous agents"""
 
         # Register with worker manager
@@ -287,20 +293,22 @@ class EnhancedPMAgentMethods:
         agent_metrics = {}
 
         for agent in active_agents:
-            agent_id = agent["agent_id"]
+            agent_id = cast(str, agent["agent_id"])
             metrics = self.worker_manager.get_agent_metrics(agent_id)
             agent_metrics[agent_id] = metrics
 
         return {
             "active_agents": len(active_agents),
-            "total_tasks_completed": sum(a["tasks_completed"] for a in active_agents),
+            "total_tasks_completed": sum(
+                cast(int, a["tasks_completed"]) for a in active_agents
+            ),
             "agent_details": agent_metrics,
             "timestamp": datetime.now().isoformat(),
         }
 
     async def broadcast_to_agents(
         self, message: str, agent_ids: Optional[List[str]] = None
-    ):
+    ) -> Dict[str, Union[str, bool, List[str]]]:
         """Broadcast message to all or specific agents"""
         target_agents = agent_ids or list(self.worker_manager.agent_sessions.keys())
 

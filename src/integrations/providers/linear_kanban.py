@@ -1,59 +1,61 @@
 """
-Linear implementation of KanbanInterface
+Linear implementation of KanbanInterface.
 
 Uses Linear MCP Server to manage tasks and projects
 """
 
-import json
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from src.core.models import Priority, Task, TaskStatus
 from src.integrations.kanban_interface import KanbanInterface, KanbanProvider
 
 
 class LinearKanban(KanbanInterface):
-    """Linear kanban board implementation using MCP Server"""
+    """Linear kanban board implementation using MCP Server."""
 
     def __init__(self, config: Dict[str, Any]):
         """
-        Initialize Linear MCP connection
+        Initialize Linear MCP connection.
 
-        Args:
-            config: Dictionary containing:
+        Args
+        ----
+        config : Dict[str, Any]
+            Dictionary containing:
                 - mcp_function_caller: Function to call MCP tools
                 - team_id: Linear team ID
                 - project_id: Optional Linear project ID
         """
         super().__init__(config)
         self.provider = KanbanProvider.LINEAR
-        self.mcp_caller = config.get("mcp_function_caller")
-        self.team_id = config.get("team_id")
-        self.project_id = config.get("project_id")
-
-        if not self.mcp_caller:
+        mcp_func = config.get("mcp_function_caller")
+        if not callable(mcp_func):
             raise ValueError(
                 "mcp_function_caller is required for Linear MCP integration"
             )
+        self.mcp_caller: Callable[..., Any] = mcp_func
+        self.team_id: Optional[str] = config.get("team_id")
+        self.project_id: Optional[str] = config.get("project_id")
 
     async def connect(self) -> bool:
-        """Connect to Linear MCP Server"""
+        """Connect to Linear MCP Server."""
         try:
             # Test connection by getting teams
             result = await self.mcp_caller("linear.get_teams", {})
-            return result.get("success", False)
+            return bool(result.get("success", False))
         except Exception as e:
             import sys
+
             print(f"Failed to connect to Linear MCP: {e}", file=sys.stderr)
             return False
 
-    async def disconnect(self):
-        """Disconnect from Linear MCP"""
+    async def disconnect(self) -> None:
+        """Disconnect from Linear MCP."""
         # No persistent connection to close for MCP
         pass
 
     async def get_available_tasks(self) -> List[Task]:
-        """Get unassigned tasks from backlog"""
+        """Get unassigned tasks from backlog."""
         # Build search filter
         filter_obj = {
             "assignee": {"null": True},
@@ -61,9 +63,35 @@ class LinearKanban(KanbanInterface):
         }
 
         if self.team_id:
-            filter_obj["team"] = {"id": {"eq": self.team_id}}
+            filter_obj["team"] = {"id": {"eq": [self.team_id]}}
         if self.project_id:
-            filter_obj["project"] = {"id": {"eq": self.project_id}}
+            filter_obj["project"] = {"id": {"eq": [self.project_id]}}
+
+        result = await self.mcp_caller(
+            "linear.search_issues",
+            {
+                "query": "",  # Empty query to get all matching filter
+                "filter": filter_obj,
+                "includeRelationships": True,
+            },
+        )
+
+        tasks = []
+        if result.get("issues"):
+            for issue in result["issues"]:
+                tasks.append(self._linear_issue_to_task(issue))
+
+        return tasks
+
+    async def get_all_tasks(self) -> List[Task]:
+        """Get all tasks from the board regardless of status or assignment."""
+        # Build search filter for all tasks
+        filter_obj = {}
+
+        if self.team_id:
+            filter_obj["team"] = {"id": {"eq": [self.team_id]}}
+        if self.project_id:
+            filter_obj["project"] = {"id": {"eq": [self.project_id]}}
 
         result = await self.mcp_caller(
             "linear.search_issues",
@@ -82,7 +110,7 @@ class LinearKanban(KanbanInterface):
         return tasks
 
     def _linear_issue_to_task(self, issue: Dict[str, Any]) -> Task:
-        """Convert Linear issue to Task model"""
+        """Convert Linear issue to Task model."""
         # Map Linear priority (0-4) to our Priority enum
         linear_priority = issue.get("priority", 3)
         priority_map = {
@@ -109,8 +137,8 @@ class LinearKanban(KanbanInterface):
             state.get("type", "backlog") if isinstance(state, dict) else "backlog"
         )
         status_map = {
-            "backlog": TaskStatus.BACKLOG,
-            "unstarted": TaskStatus.READY,
+            "backlog": TaskStatus.TODO,
+            "unstarted": TaskStatus.TODO,
             "started": TaskStatus.IN_PROGRESS,
             "completed": TaskStatus.DONE,
             "canceled": TaskStatus.DONE,
@@ -134,7 +162,7 @@ class LinearKanban(KanbanInterface):
             id=issue.get("id", ""),
             name=issue.get("title", "Untitled"),
             description=issue.get("description", ""),
-            status=status_map.get(state_type, TaskStatus.BACKLOG),
+            status=status_map.get(state_type, TaskStatus.TODO),
             priority=priority_map.get(linear_priority, Priority.MEDIUM),
             labels=labels,
             estimated_hours=issue.get("estimate", 0) or 8,
@@ -144,10 +172,11 @@ class LinearKanban(KanbanInterface):
             dependencies=[],
             created_at=created_at,
             updated_at=updated_at,
+            due_date=None,
         )
 
     async def get_task_by_id(self, task_id: str) -> Optional[Task]:
-        """Get specific task by ID"""
+        """Get specific task by ID."""
         result = await self.mcp_caller(
             "linear.get_issue", {"issueId": task_id, "includeRelationships": True}
         )
@@ -158,7 +187,7 @@ class LinearKanban(KanbanInterface):
         return self._linear_issue_to_task(result["issue"])
 
     async def create_task(self, task_data: Dict[str, Any]) -> Task:
-        """Create new task in Linear"""
+        """Create new task in Linear."""
         # Map priority to Linear's scale
         priority = task_data.get("priority", Priority.MEDIUM)
         priority_map = {
@@ -188,8 +217,10 @@ class LinearKanban(KanbanInterface):
 
         return self._linear_issue_to_task(result["issue"])
 
-    async def update_task(self, task_id: str, updates: Dict[str, Any]) -> Task:
-        """Update existing task"""
+    async def update_task(
+        self, task_id: str, updates: Dict[str, Any]
+    ) -> Optional[Task]:
+        """Update existing task."""
         update_data = {"issueId": task_id}
 
         if "name" in updates:
@@ -198,12 +229,12 @@ class LinearKanban(KanbanInterface):
             update_data["description"] = updates["description"]
         if "priority" in updates:
             priority_map = {
-                Priority.URGENT: 1,
-                Priority.HIGH: 2,
-                Priority.MEDIUM: 3,
-                Priority.LOW: 4,
+                Priority.URGENT: "1",
+                Priority.HIGH: "2",
+                Priority.MEDIUM: "3",
+                Priority.LOW: "4",
             }
-            update_data["priority"] = priority_map.get(updates["priority"], 3)
+            update_data["priority"] = priority_map.get(updates["priority"], "3")
 
         result = await self.mcp_caller("linear.update_issue", update_data)
 
@@ -215,15 +246,15 @@ class LinearKanban(KanbanInterface):
         return self._linear_issue_to_task(result["issue"])
 
     async def assign_task(self, task_id: str, assignee_id: str) -> bool:
-        """Assign task to user"""
+        """Assign task to user."""
         result = await self.mcp_caller(
             "linear.update_issue", {"issueId": task_id, "assigneeId": assignee_id}
         )
 
-        return result.get("success", False)
+        return bool(result.get("success", False))
 
     async def move_task_to_column(self, task_id: str, column_name: str) -> bool:
-        """Move task to specific state"""
+        """Move task to specific state."""
         # Map column names to Linear state names
         state_map = {
             "backlog": "Backlog",
@@ -242,18 +273,18 @@ class LinearKanban(KanbanInterface):
             "linear.update_issue", {"issueId": task_id, "status": status_name}
         )
 
-        return result.get("success", False)
+        return bool(result.get("success", False))
 
     async def add_comment(self, task_id: str, comment: str) -> bool:
-        """Add comment to task"""
+        """Add comment to task."""
         result = await self.mcp_caller(
             "linear.create_comment", {"issueId": task_id, "body": comment}
         )
 
-        return result.get("success", False)
+        return bool(result.get("success", False))
 
     async def get_project_metrics(self) -> Dict[str, Any]:
-        """Get project metrics"""
+        """Get project metrics."""
         # Get counts for different states
         metrics = {
             "total_tasks": 0,
@@ -271,11 +302,11 @@ class LinearKanban(KanbanInterface):
         ]
 
         for states, metric_key in state_queries:
-            filter_obj = {"state": {"type": {"in": states}}}
+            filter_obj: Dict[str, Any] = {"state": {"type": {"in": states}}}
             if self.team_id:
-                filter_obj["team"] = {"id": {"eq": self.team_id}}
+                filter_obj["team"] = {"id": {"eq": [self.team_id]}}
             if self.project_id:
-                filter_obj["project"] = {"id": {"eq": self.project_id}}
+                filter_obj["project"] = {"id": {"eq": [self.project_id]}}
 
             result = await self.mcp_caller(
                 "linear.search_issues",
@@ -291,30 +322,24 @@ class LinearKanban(KanbanInterface):
     async def report_blocker(
         self, task_id: str, blocker_description: str, severity: str = "medium"
     ) -> bool:
-        """Report blocker on task"""
+        """Report blocker on task."""
         # Add blocker comment
         comment = f"🚫 BLOCKER ({severity.upper()}): {blocker_description}"
         await self.add_comment(task_id, comment)
 
-        # Add blocker label if possible
-        mutation = """
-            mutation AddLabel($issueId: String!, $labelName: String!) {
-                issueLabelCreate(input: { issueId: $issueId, name: $labelName }) {
-                    success
-                }
-            }
-        """
-
-        await self._graphql_request(
-            mutation, {"issueId": task_id, "labelName": f"blocked-{severity}"}
-        )
+        # Try to move task to blocked state if available
+        try:
+            await self.move_task_to_column(task_id, "blocked")
+        except Exception:  # nosec B110
+            # If blocked state doesn't exist, continue without error
+            pass
 
         return True
 
     async def update_task_progress(
         self, task_id: str, progress_data: Dict[str, Any]
     ) -> bool:
-        """Update task progress"""
+        """Update task progress."""
         progress = progress_data.get("progress", 0)
         status = progress_data.get("status", "")
         message = progress_data.get("message", "")
@@ -333,3 +358,76 @@ class LinearKanban(KanbanInterface):
             await self.move_task_to_column(task_id, "In Progress")
 
         return True
+
+    async def upload_attachment(
+        self,
+        task_id: str,
+        filename: str,
+        content: Union[str, bytes],
+        content_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Upload an attachment to a task.
+
+        Linear MCP doesn't currently support direct file uploads,
+        so we'll add the attachment content as a comment with metadata.
+        """
+        # Create a comment with the attachment info
+        attachment_comment = f"📎 Attachment: {filename}"
+        if content_type:
+            attachment_comment += f" (type: {content_type})"
+
+        # If content is small enough, include it inline
+        if isinstance(content, str) and len(content) < 1000:
+            attachment_comment += f"\n\n```\n{content}\n```"
+        elif isinstance(content, bytes) and len(content) < 1000:
+            try:
+                decoded = content.decode("utf-8")
+                attachment_comment += f"\n\n```\n{decoded}\n```"
+            except UnicodeDecodeError:
+                attachment_comment += f"\n\nBinary file ({len(content)} bytes)"
+        else:
+            attachment_comment += (
+                f"\n\nLarge file ({len(content)} bytes) - content not shown"
+            )
+
+        success = await self.add_comment(task_id, attachment_comment)
+
+        if success:
+            return {
+                "success": True,
+                "data": {
+                    "id": f"{task_id}_{filename}",
+                    "filename": filename,
+                    "url": None,  # Linear MCP doesn't provide direct URLs
+                    "size": len(content) if isinstance(content, (str, bytes)) else 0,
+                },
+            }
+        else:
+            return {"success": False, "error": "Failed to add attachment comment"}
+
+    async def get_attachments(self, task_id: str) -> Dict[str, Any]:
+        """
+        Get all attachments for a task.
+
+        Since Linear MCP doesn't have direct attachment support,
+        this returns an empty list but maintains the interface.
+        """
+        return {
+            "success": True,
+            "data": [],  # No direct attachment support in Linear MCP
+        }
+
+    async def download_attachment(
+        self, attachment_id: str, filename: str, task_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Download an attachment.
+
+        Linear MCP doesn't support direct file attachments,
+        so this returns an error message.
+        """
+        return {
+            "success": False,
+            "error": "Linear MCP doesn't support direct file attachments",
+        }

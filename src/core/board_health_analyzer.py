@@ -9,11 +9,11 @@ This module analyzes the overall health of the project board by detecting:
 """
 
 import logging
-from collections import defaultdict, deque
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Set
 
 from src.core.models import Task, TaskStatus, WorkerStatus
 from src.integrations.kanban_interface import KanbanInterface
@@ -278,7 +278,7 @@ class BoardHealthAnalyzer:
         issues = []
 
         # Count how many tasks depend on each task
-        blocking_count = defaultdict(int)
+        blocking_count: defaultdict[str, int] = defaultdict(int)
         blocked_by = defaultdict(list)
 
         for task in tasks:
@@ -289,11 +289,11 @@ class BoardHealthAnalyzer:
 
         # Find tasks blocking more than threshold
         bottleneck_threshold = 3
-        bottlenecks = []
+        bottlenecks: List[Dict[str, Any]] = []
 
         for task_id, count in blocking_count.items():
             if count >= bottleneck_threshold:
-                task = next((t for t in tasks if t.id == task_id), None)
+                task = next((t for t in tasks if t.id == task_id), None)  # type: ignore
                 if task and task.status != TaskStatus.DONE:
                     bottlenecks.append(
                         {
@@ -307,12 +307,12 @@ class BoardHealthAnalyzer:
 
         if bottlenecks:
             # Sort by blocking count
-            bottlenecks.sort(key=lambda x: x["blocking_count"], reverse=True)
+            bottlenecks.sort(key=lambda x: int(x["blocking_count"]), reverse=True)
 
             for bottleneck in bottlenecks:
                 severity = (
                     IssueSeverity.CRITICAL
-                    if bottleneck["blocking_count"] > 5
+                    if int(bottleneck["blocking_count"]) > 5
                     else IssueSeverity.HIGH
                 )
 
@@ -323,8 +323,8 @@ class BoardHealthAnalyzer:
                         f"Task '{bottleneck['task_name']}' blocks "
                         f"{bottleneck['blocking_count']} other tasks"
                     ),
-                    affected_tasks=[bottleneck["task_id"]]
-                    + bottleneck["blocked_tasks"],
+                    affected_tasks=[str(bottleneck["task_id"])]
+                    + [str(task_id) for task_id in bottleneck["blocked_tasks"]],
                     affected_agents=[],
                     recommendations=[
                         f"Prioritize completion of task {bottleneck['task_id']}",
@@ -363,7 +363,7 @@ class BoardHealthAnalyzer:
             return max_length + 1
 
         # Check each task
-        long_chains = []
+        long_chains: List[Dict[str, Any]] = []
         for task in tasks:
             if task.status == TaskStatus.TODO:
                 chain_length = find_chain_length(task.id, set())
@@ -387,7 +387,7 @@ class BoardHealthAnalyzer:
                         f"Task '{chain['task_name']}' has a dependency chain "
                         f"of length {chain['chain_length']}"
                     ),
-                    affected_tasks=[chain["task_id"]],
+                    affected_tasks=[str(chain["task_id"])],
                     affected_agents=[],
                     recommendations=[
                         "Consider parallelizing some dependencies",
@@ -405,7 +405,7 @@ class BoardHealthAnalyzer:
         issues = []
 
         stale_threshold = datetime.now() - timedelta(days=self.stale_task_days)
-        stale_tasks = []
+        stale_tasks: List[Dict[str, Any]] = []
 
         for task in tasks:
             if task.status == TaskStatus.IN_PROGRESS:
@@ -421,7 +421,12 @@ class BoardHealthAnalyzer:
                     )
 
         if stale_tasks:
-            stale_tasks.sort(key=lambda x: x["days_stale"], reverse=True)
+            stale_tasks.sort(
+                key=lambda x: (
+                    int(x["days_stale"]) if isinstance(x["days_stale"], int) else 0
+                ),
+                reverse=True,
+            )
 
             issue = HealthIssue(
                 type=HealthIssueType.STALE_TASKS,
@@ -429,9 +434,9 @@ class BoardHealthAnalyzer:
                     IssueSeverity.HIGH if len(stale_tasks) > 5 else IssueSeverity.MEDIUM
                 ),
                 description=f"{len(stale_tasks)} tasks haven't progressed in over {self.stale_task_days} days",
-                affected_tasks=[t["task_id"] for t in stale_tasks],
+                affected_tasks=[str(t["task_id"]) for t in stale_tasks],
                 affected_agents=list(
-                    set(t["assigned_to"] for t in stale_tasks if t["assigned_to"])
+                    set(str(t["assigned_to"]) for t in stale_tasks if t["assigned_to"])
                 ),
                 recommendations=[
                     "Check in with agents on stale tasks",
@@ -451,13 +456,13 @@ class BoardHealthAnalyzer:
         issues = []
 
         # Count assignments per agent
-        assignment_count = defaultdict(int)
+        assignment_count: defaultdict[str, int] = defaultdict(int)
         for agent_id, task_id in active_assignments.items():
             assignment_count[agent_id] += 1
 
         # Find overloaded agents
-        overloaded = []
-        idle = []
+        overloaded: List[Dict[str, Any]] = []
+        idle: List[Dict[str, Any]] = []
 
         for agent_id, agent in agents.items():
             count = assignment_count.get(agent_id, 0)
@@ -485,7 +490,7 @@ class BoardHealthAnalyzer:
                 severity=IssueSeverity.MEDIUM,
                 description=f"{len(overloaded)} agents are overloaded with tasks",
                 affected_tasks=[],
-                affected_agents=[a["agent_id"] for a in overloaded],
+                affected_agents=[str(a["agent_id"]) for a in overloaded],
                 recommendations=[
                     "Redistribute tasks from overloaded agents",
                     "Add more agents to handle workload",
@@ -501,7 +506,7 @@ class BoardHealthAnalyzer:
                 severity=IssueSeverity.LOW,
                 description=f"{len(idle)} agents are idle",
                 affected_tasks=[],
-                affected_agents=[a["agent_id"] for a in idle],
+                affected_agents=[str(a["agent_id"]) for a in idle],
                 recommendations=[
                     "Review if idle agents have skills for available tasks",
                     "Consider cross-training agents",
@@ -563,7 +568,7 @@ class BoardHealthAnalyzer:
         """Calculate various health metrics."""
         total_tasks = len(tasks)
 
-        status_counts = defaultdict(int)
+        status_counts: defaultdict[str, int] = defaultdict(int)
         for task in tasks:
             status_counts[task.status.value] += 1
 

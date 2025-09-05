@@ -8,9 +8,9 @@ user interactions, and explicit preferences.
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from src.core.models import Task
 from src.detection.board_analyzer import BoardAnalyzer, BoardState
@@ -279,7 +279,7 @@ class ContextDetector:
 
         return self.user_contexts[user_id]
 
-    def record_mode_switch(self, user_id: str, new_mode: MarcusMode):
+    def record_mode_switch(self, user_id: str, new_mode: MarcusMode) -> None:
         """Record when a user switches modes"""
         context = self._get_user_context(user_id)
         context.last_mode_switch = datetime.now()

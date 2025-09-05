@@ -22,8 +22,8 @@ Examples
 import json
 import os
 import sys
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Union
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 import anthropic
 
@@ -38,7 +38,6 @@ from src.core.models import (
 )
 from src.cost_tracking.ai_usage_middleware import (
     ai_usage_middleware,
-    track_project_tokens,
 )
 
 
@@ -103,15 +102,15 @@ class AIAnalysisEngine:
                     self.client = anthropic.Anthropic(api_key=api_key)
                     # Don't print during initialization - it interferes with MCP stdio
                 except TypeError as te:
-                    # If we get a TypeError about proxies, try with explicit None
+                    # If we get a TypeError about proxies, just use basic initialization
                     if "proxies" in str(te):
-                        # Retry with proxies=None
-                        self.client = anthropic.Anthropic(api_key=api_key, proxies=None)
-                        # Successfully initialized with proxies=None
+                        # Retry without any extra parameters
+                        self.client = anthropic.Anthropic(api_key=api_key)
+                        # Successfully initialized
                     else:
                         raise te
 
-        except Exception as e:
+        except Exception:
             # Failed to initialize Anthropic client - AI features will use fallback responses
             # Don't print to stderr as it interferes with MCP stdio protocol
             self.client = None
@@ -242,14 +241,14 @@ Identify risks and provide JSON:
 
         # Test connection
         try:
-            response = self.client.messages.create(
+            self.client.messages.create(
                 model=self.model,
                 max_tokens=10,
                 messages=[{"role": "user", "content": "test"}],
             )
             # Connection verified - wrap client for token tracking
             self.client = ai_usage_middleware.wrap_ai_provider(self.client)
-        except Exception as e:
+        except Exception:
             # AI Engine test failed - will use fallback responses
             # Don't print to stderr as it interferes with MCP stdio protocol
             self.client = None  # Disable client if test fails
@@ -679,7 +678,8 @@ Task Details:
 
         try:
             response = await self._call_claude(prompt)
-            return json.loads(response)
+            result: Dict[str, Any] = json.loads(response)
+            return result
         except Exception as e:
             print(f"AI blocker analysis failed: {e}", file=sys.stderr)
             return self._generate_fallback_blocker_analysis(
@@ -966,7 +966,7 @@ Provide a helpful clarification that guides the developer."""
         self,
         project_state: ProjectState,
         recent_activities: List[Dict[str, Any]],
-        team_status: Dict[str, Any],
+        team_status: Any,
     ) -> Dict[str, Any]:
         """
         Analyze overall project health using AI.
@@ -977,8 +977,8 @@ Provide a helpful clarification that guides the developer."""
             Current project state
         recent_activities : List[Dict[str, Any]]
             Recent project activities/events
-        team_status : Dict[str, Any]
-            Current team status information
+        team_status : Any
+            Current team status information (can be dict or list)
 
         Returns
         -------
@@ -1079,7 +1079,7 @@ Return JSON in this format:
 
         try:
             response = await self._call_claude(prompt)
-            result = json.loads(response)
+            result: Dict[str, Any] = json.loads(response)
             return result
 
         except Exception as e:
@@ -1096,8 +1096,8 @@ Return JSON in this format:
         ----------
         project_state : ProjectState
             Current project state
-        team_status : Dict[str, Any]
-            Team status information
+        team_status : Any
+            Team status information (can be dict or list)
 
         Returns
         -------
@@ -1245,12 +1245,12 @@ Be specific and actionable. Each task should be self-contained and assignable to
 
             # Parse JSON response
             try:
-                result = json.loads(response)
+                result: Dict[str, Any] = json.loads(response)
                 return result
             except json.JSONDecodeError:
                 # If JSON parsing fails, try to extract structured data
                 print(
-                    f"Failed to parse AI response as JSON, using fallback",
+                    "Failed to parse AI response as JSON, using fallback",
                     file=sys.stderr,
                 )
                 return self._analyze_feature_request_fallback(feature_description)
@@ -1283,7 +1283,7 @@ Be specific and actionable. Each task should be self-contained and assignable to
             tasks.append(
                 {
                     "name": f"Implement API for {feature_description}",
-                    "description": f"Build backend API endpoints and business logic",
+                    "description": "Build backend API endpoints and business logic",
                     "estimated_hours": 12,
                     "labels": ["backend", "api"],
                     "critical": True,
@@ -1295,7 +1295,7 @@ Be specific and actionable. Each task should be self-contained and assignable to
             tasks.append(
                 {
                     "name": f"Build UI for {feature_description}",
-                    "description": f"Create user interface components and interactions",
+                    "description": "Create user interface components and interactions",
                     "estimated_hours": 10,
                     "labels": ["frontend", "ui"],
                     "critical": True,
@@ -1419,11 +1419,11 @@ Return JSON with this format:
 
             # Parse JSON response
             try:
-                result = json.loads(response)
+                result: Dict[str, Any] = json.loads(response)
                 return result
             except json.JSONDecodeError:
                 print(
-                    f"Failed to parse AI response as JSON, using fallback",
+                    "Failed to parse AI response as JSON, using fallback",
                     file=sys.stderr,
                 )
                 return self._analyze_integration_fallback(feature_tasks, existing_tasks)
@@ -1531,7 +1531,14 @@ Return JSON with this format:
                         )
                     )
 
-            return response.content[0].text
+            # Handle different response block types
+            content = response.content[0]
+            if hasattr(content, "text"):
+                # Explicit cast to str to satisfy mypy type checker
+                return str(content.text)
+            else:
+                # Fallback for non-text blocks
+                return str(content)
 
         except Exception as e:
             print(f"Error calling Claude: {e}", file=sys.stderr)

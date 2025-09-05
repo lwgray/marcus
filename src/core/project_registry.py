@@ -5,11 +5,9 @@ Manages multiple project configurations across different providers (Planka, Line
 Provides CRUD operations and persistence for project definitions.
 """
 
-import json
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.core.persistence import Persistence

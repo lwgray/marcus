@@ -13,13 +13,14 @@ import asyncio
 import json
 import time
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 import requests
 
 API_BASE_URL = "http://localhost:5000/api"
 
 
-def create_test_project():
+def create_test_project() -> Optional[Dict[str, Any]]:
     """Create a test project."""
     print("\n=== Creating Test Project ===")
 
@@ -37,13 +38,13 @@ def create_test_project():
         if data["success"]:
             project = data["project"]
             print(f"✓ Project created: {project['name']} (ID: {project['id']})")
-            return project
+            return project  # type: ignore[no-any-return]
 
     print(f"✗ Failed to create project: {response.text}")
     return None
 
 
-def add_features(project_id):
+def add_features(project_id: str) -> List[Dict[str, Any]]:
     """Add features to the project."""
     print("\n=== Adding Features ===")
 
@@ -86,7 +87,7 @@ def add_features(project_id):
     return added_features
 
 
-def start_workflow(project_id):
+def start_workflow(project_id: str) -> Optional[Dict[str, Any]]:
     """Start the workflow for the project."""
     print("\n=== Starting Workflow ===")
 
@@ -110,13 +111,13 @@ def start_workflow(project_id):
             print(f"  Flow ID: {data['flow_id']}")
             print(f"  PM Project ID: {data.get('pm_project_id')}")
             print(f"  Workflow ID: {data.get('workflow_id')}")
-            return data
+            return data  # type: ignore[no-any-return]
 
     print(f"✗ Failed to start workflow: {response.text}")
     return None
 
 
-def monitor_pipeline(flow_id, duration=30):
+def monitor_pipeline(flow_id: str, duration: int = 30) -> None:
     """Monitor pipeline events for a duration."""
     print(f"\n=== Monitoring Pipeline (Flow: {flow_id}) ===")
     print(f"Monitoring for {duration} seconds...\n")
@@ -151,14 +152,14 @@ def monitor_pipeline(flow_id, duration=30):
                         )
                         print()
 
-            last_check = current_time
+            last_check = int(current_time)
 
         time.sleep(1)
 
     print("\nMonitoring complete!")
 
 
-def main():
+def main() -> None:
     """Run the complete test workflow."""
     print("=== Marcus Project Workflow Test ===")
     print("This test will create a project, add features, and start the workflow.")

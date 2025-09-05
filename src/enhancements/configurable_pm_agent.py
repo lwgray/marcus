@@ -20,12 +20,12 @@ Examples
 import json
 import os
 import sys
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 
 from src.legacy.marcus_mvp import MarcusMVP
 
 
-class ConfigurablePMAgent(MarcusMVP):
+class ConfigurablePMAgent(MarcusMVP):  # type: ignore[misc]
     """Marcus with configuration file and environment variable support.
 
     This class extends MarcusMVP to provide flexible configuration management
@@ -187,7 +187,7 @@ class ConfigurablePMAgent(MarcusMVP):
         # If board_id not set but project_id is, try to find the board
         if self.kanban_client.project_id and not self.kanban_client.board_id:
             print("🔍 Finding board for project...", file=sys.stderr)
-            async with self.kanban_client.connect() as conn:
+            async with self.kanban_client.connect():
                 # The connect method will auto-find the board
                 if self.kanban_client.board_id:
                     print(
@@ -234,6 +234,10 @@ class ConfigurablePMAgent(MarcusMVP):
         'project-123'
         """
         result = await super()._get_project_status()
+
+        # Ensure result is dict type
+        if not isinstance(result, dict):
+            result = {"success": False, "error": "Invalid parent result"}
 
         # Add configuration info
         if result.get("success"):

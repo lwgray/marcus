@@ -1,26 +1,27 @@
 """
-GitHub Projects implementation of KanbanInterface
+GitHub Projects implementation of KanbanInterface.
 
-Uses GitHub MCP Server to manage tasks
+Uses GitHub MCP Server to manage tasks.
 """
 
-import json
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from src.core.models import Priority, Task, TaskStatus
 from src.integrations.kanban_interface import KanbanInterface, KanbanProvider
 
 
 class GitHubKanban(KanbanInterface):
-    """GitHub Projects kanban board implementation using MCP Server"""
+    """GitHub Projects kanban board implementation using MCP Server."""
 
     def __init__(self, config: Dict[str, Any]):
         """
-        Initialize GitHub MCP connection
+        Initialize GitHub MCP connection.
 
-        Args:
-            config: Dictionary containing:
+        Args
+        ----
+        config : Dict[str, Any]
+            Dictionary containing:
                 - mcp_function_caller: Function to call MCP tools
                 - owner: Repository owner (user or org)
                 - repo: Repository name
@@ -28,7 +29,9 @@ class GitHubKanban(KanbanInterface):
         """
         super().__init__(config)
         self.provider = KanbanProvider.GITHUB
-        self.mcp_caller = config.get("mcp_function_caller")
+        self.mcp_caller: Optional[Callable[[str, Dict[str, Any]], Awaitable[Any]]] = (
+            config.get("mcp_function_caller")
+        )
         self.owner = config.get("owner")
         self.repo = config.get("repo")
         self.project_number = config.get("project_number")
@@ -39,25 +42,31 @@ class GitHubKanban(KanbanInterface):
             )
 
     async def connect(self) -> bool:
-        """Connect to GitHub MCP Server"""
+        """Connect to GitHub MCP Server."""
+        if not self.mcp_caller:
+            return False
         try:
             # Test connection by getting authenticated user
             result = await self.mcp_caller("github.get_me", {})
             return "user" in result
         except Exception as e:
             import sys
+
             print(f"Failed to connect to GitHub MCP: {e}", file=sys.stderr)
             return False
 
-    async def disconnect(self):
-        """Disconnect from GitHub MCP"""
+    async def disconnect(self) -> None:
+        """Disconnect from GitHub MCP."""
         # No persistent connection to close for MCP
         pass
 
     async def get_available_tasks(self) -> List[Task]:
-        """Get unassigned tasks from backlog"""
+        """Get unassigned tasks from backlog."""
         # Search for unassigned issues in the repository
         query = f"repo:{self.owner}/{self.repo} is:issue is:open no:assignee"
+
+        if not self.mcp_caller:
+            return []
 
         result = await self.mcp_caller(
             "github.search_issues",
@@ -72,7 +81,7 @@ class GitHubKanban(KanbanInterface):
         return tasks
 
     def _github_issue_to_task(self, issue: Dict[str, Any]) -> Task:
-        """Convert GitHub issue to Task model"""
+        """Convert GitHub issue to Task model."""
         # Extract labels
         labels = []
         if issue.get("labels"):
@@ -97,7 +106,7 @@ class GitHubKanban(KanbanInterface):
                 break
 
         # Determine status
-        status = TaskStatus.BACKLOG
+        status = TaskStatus.TODO
         state = issue.get("state", "open")
         if state == "closed":
             status = TaskStatus.DONE
@@ -112,7 +121,7 @@ class GitHubKanban(KanbanInterface):
                     status = TaskStatus.BLOCKED
                     break
                 elif "ready" in label_lower:
-                    status = TaskStatus.READY
+                    status = TaskStatus.TODO
                     break
 
         # Parse dates
@@ -142,16 +151,20 @@ class GitHubKanban(KanbanInterface):
             description=issue.get("body", ""),
             status=status,
             priority=priority,
-            labels=labels,
-            estimated_hours=8,  # Default, could parse from body
             assigned_to=assignee,
-            dependencies=[],
             created_at=created_at,
             updated_at=updated_at,
+            due_date=None,  # GitHub issues don't have built-in due dates
+            estimated_hours=8.0,  # Default, could parse from body
+            actual_hours=0.0,
+            dependencies=[],
+            labels=labels,
         )
 
     async def get_task_by_id(self, task_id: str) -> Optional[Task]:
-        """Get specific task by ID"""
+        """Get specific task by ID."""
+        if not self.mcp_caller:
+            return None
         try:
             # task_id should be the issue number
             result = await self.mcp_caller(
@@ -162,11 +175,14 @@ class GitHubKanban(KanbanInterface):
             if result.get("issue"):
                 return self._github_issue_to_task(result["issue"])
             return None
-        except:
+        except Exception:
             return None
 
     async def create_task(self, task_data: Dict[str, Any]) -> Task:
-        """Create new issue in repository"""
+        """Create new issue in repository."""
+        if not self.mcp_caller:
+            raise ValueError("MCP caller not available")
+
         # Map priority to labels
         priority_labels = {
             Priority.URGENT: "priority/urgent",
@@ -198,8 +214,13 @@ class GitHubKanban(KanbanInterface):
 
         return self._github_issue_to_task(result["issue"])
 
-    async def update_task(self, task_id: str, updates: Dict[str, Any]) -> Task:
-        """Update existing issue"""
+    async def update_task(
+        self, task_id: str, updates: Dict[str, Any]
+    ) -> Optional[Task]:
+        """Update existing issue."""
+        if not self.mcp_caller:
+            raise ValueError("MCP caller not available")
+
         update_data = {
             "owner": self.owner,
             "repo": self.repo,
@@ -225,7 +246,10 @@ class GitHubKanban(KanbanInterface):
         return self._github_issue_to_task(result["issue"])
 
     async def assign_task(self, task_id: str, assignee_id: str) -> bool:
-        """Assign issue to user"""
+        """Assign issue to user."""
+        if not self.mcp_caller:
+            return False
+
         result = await self.mcp_caller(
             "github.update_issue",
             {
@@ -236,10 +260,13 @@ class GitHubKanban(KanbanInterface):
             },
         )
 
-        return result.get("success", False)
+        return bool(result.get("success", False))
 
     async def move_task_to_column(self, task_id: str, column_name: str) -> bool:
-        """Move task to specific status column"""
+        """Move task to specific status column."""
+        if not self.mcp_caller:
+            return False
+
         # Map column names to GitHub states/labels
         column_lower = column_name.lower()
 
@@ -256,7 +283,7 @@ class GitHubKanban(KanbanInterface):
             )
         elif column_lower in ["in progress", "in-progress"]:
             # Add in-progress label
-            await self.mcp_caller(
+            result = await self.mcp_caller(
                 "github.update_issue",
                 {
                     "owner": self.owner,
@@ -265,9 +292,10 @@ class GitHubKanban(KanbanInterface):
                     "labels": ["in-progress"],
                 },
             )
+            return bool(result.get("success", True))
         elif column_lower == "blocked":
             # Add blocked label
-            await self.mcp_caller(
+            result = await self.mcp_caller(
                 "github.update_issue",
                 {
                     "owner": self.owner,
@@ -276,11 +304,15 @@ class GitHubKanban(KanbanInterface):
                     "labels": ["blocked"],
                 },
             )
+            return bool(result.get("success", True))
 
         return True
 
     async def add_comment(self, task_id: str, comment: str) -> bool:
-        """Add comment to issue"""
+        """Add comment to issue."""
+        if not self.mcp_caller:
+            return False
+
         result = await self.mcp_caller(
             "github.add_issue_comment",
             {
@@ -291,10 +323,19 @@ class GitHubKanban(KanbanInterface):
             },
         )
 
-        return result.get("success", False)
+        return bool(result.get("success", False))
 
     async def get_project_metrics(self) -> Dict[str, Any]:
-        """Get project metrics"""
+        """Get project metrics."""
+        if not self.mcp_caller:
+            return {
+                "total_tasks": 0,
+                "backlog_tasks": 0,
+                "in_progress_tasks": 0,
+                "completed_tasks": 0,
+                "blocked_tasks": 0,
+            }
+
         metrics = {
             "total_tasks": 0,
             "backlog_tasks": 0,
@@ -345,22 +386,36 @@ class GitHubKanban(KanbanInterface):
     async def report_blocker(
         self, task_id: str, blocker_description: str, severity: str = "medium"
     ) -> bool:
-        """Report blocker on task"""
+        """Report blocker on task."""
+        if not self.mcp_caller:
+            return False
+
         # Add blocker comment
         comment = f"🚫 **BLOCKER** ({severity.upper()}): {blocker_description}"
         await self.add_comment(task_id, comment)
 
-        # Add blocker label
-        rest_url = f"https://api.github.com/repos/{self.owner}/{self.repo}/issues/{task_id}/labels"
-
-        await self.client.post(
-            rest_url,
-            json={"labels": [f"blocked/{severity}"]},
-            headers={
-                "Authorization": f"Bearer {self.token}",
-                "Accept": "application/vnd.github.v3+json",
-            },
-        )
+        # Add blocker label using MCP
+        try:
+            await self.mcp_caller(
+                "github.add_issue_labels",
+                {
+                    "owner": self.owner,
+                    "repo": self.repo,
+                    "issue_number": int(task_id),
+                    "labels": [f"blocked/{severity}"],
+                },
+            )
+        except Exception:
+            # Fallback - just add blocked label
+            await self.mcp_caller(
+                "github.add_issue_labels",
+                {
+                    "owner": self.owner,
+                    "repo": self.repo,
+                    "issue_number": int(task_id),
+                    "labels": ["blocked"],
+                },
+            )
 
         # Try to move to blocked column
         await self.move_task_to_column(task_id, "Blocked")
@@ -370,7 +425,10 @@ class GitHubKanban(KanbanInterface):
     async def update_task_progress(
         self, task_id: str, progress_data: Dict[str, Any]
     ) -> bool:
-        """Update task progress"""
+        """Update task progress."""
+        if not self.mcp_caller:
+            return False
+
         progress = progress_data.get("progress", 0)
         status = progress_data.get("status", "")
         message = progress_data.get("message", "")

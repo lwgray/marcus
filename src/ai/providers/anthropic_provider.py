@@ -5,15 +5,14 @@ Implements semantic task analysis, dependency inference, and intelligent
 enhancement using Anthropic's Claude models.
 """
 
-import asyncio
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import httpx
 
-from src.core.models import Priority, Task
+from src.core.models import Task
 from src.utils.json_parser import parse_ai_json_response, parse_json_response
 
 from .base_provider import (
@@ -539,7 +538,11 @@ Respond only with valid JSON array."""
             for line in lines:
                 if line.strip() and not line.startswith("#"):
                     suggestions_list.append(line.strip("- ").strip())
-            return suggestions_list[:5] if suggestions_list else ["Review and retry the task"]
+            return (
+                suggestions_list[:5]
+                if suggestions_list
+                else ["Review and retry the task"]
+            )
 
     def _classify_task_type(self, task: Task) -> str:
         """Classify task type for historical comparison"""

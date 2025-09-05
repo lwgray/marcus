@@ -238,7 +238,8 @@ class MarcusServer:
         )
 
         # Create MCP server instance
-        self.server = Server("marcus")
+        server: Server[Any] = Server("marcus")
+        self.server = server
 
         # Register handlers
         self._register_handlers()
@@ -272,7 +273,7 @@ class MarcusServer:
             # Get tools based on client access
             return get_tool_definitions_for_client(client_id, self)
 
-        @self.server.call_tool()  # type: ignore[no-untyped-call,misc]
+        @self.server.call_tool()  # type: ignore[misc]
         async def handle_call_tool(
             name: str, arguments: Optional[Dict[str, Any]]
         ) -> List[types.TextContent | types.ImageContent | types.EmbeddedResource]:
@@ -525,7 +526,7 @@ class MarcusServer:
             self.assignment_monitor = AssignmentMonitor(
                 self.assignment_persistence, self.kanban_client
             )
-            await self.assignment_monitor.start()  # type: ignore[no-untyped-call]
+            await self.assignment_monitor.start()
 
         # Initialize lease management
         if self.lease_manager is None:
@@ -859,6 +860,9 @@ class MarcusServer:
         # Import only what we need for avoiding duplicates
         # Actual imports happen inside each function to avoid conflicts
 
+        if self._fastmcp is None:
+            raise RuntimeError("FastMCP instance not initialized")
+
         # Store reference to self for closures
         server = self
 
@@ -893,7 +897,8 @@ class MarcusServer:
             """Request the next optimal task assignment for an agent."""
             from .tools.task import request_next_task as impl
 
-            return await impl(agent_id=agent_id, state=server)
+            result = await impl(agent_id=agent_id, state=server)
+            return result  # type: ignore[no-any-return]
 
         @self._fastmcp.tool()
         async def report_task_progress(
@@ -936,9 +941,14 @@ class MarcusServer:
         @self._fastmcp.tool()
         async def get_project_status() -> Dict[str, Any]:
             """Get current project status and metrics."""
-            from .tools.agent import get_project_status as impl
+            from .tools.project import get_project_status as impl
 
-            return await impl(state=server)
+            result = await impl(state=server)
+            return (
+                dict(result)
+                if isinstance(result, dict)
+                else {"error": "Invalid response format"}
+            )
 
         @self._fastmcp.tool()
         async def create_project(
@@ -1023,7 +1033,12 @@ class MarcusServer:
                 """Request the next optimal task assignment for an agent."""
                 from .tools.task import request_next_task as impl
 
-                return await impl(agent_id=agent_id, state=server)
+                result = await impl(agent_id=agent_id, state=server)
+                return (
+                    dict(result)
+                    if isinstance(result, dict)
+                    else {"error": "Invalid response format"}
+                )
 
         if "report_task_progress" in allowed_tools:
 
@@ -1072,9 +1087,9 @@ class MarcusServer:
             @app.tool()
             async def get_project_status() -> Dict[str, Any]:
                 """Get current project status and metrics."""
-                from .tools.agent import get_project_status as impl
+                from .tools.project import get_project_status as impl
 
-                return await impl(state=server)
+                return await impl(state=server)  # type: ignore[no-any-return]
 
         if "create_project" in allowed_tools:
 
@@ -1097,11 +1112,11 @@ class MarcusServer:
         if "list_projects" in allowed_tools:
 
             @app.tool()
-            async def list_projects() -> Dict[str, Any]:
+            async def list_projects() -> List[Dict[str, Any]]:
                 """List all available projects."""
                 from .tools.project_management import list_projects as impl
 
-                return await impl(state=server)
+                return await impl(server, {})
 
         if "switch_project" in allowed_tools:
 
@@ -1110,7 +1125,7 @@ class MarcusServer:
                 """Switch to a different project."""
                 from .tools.project_management import switch_project as impl
 
-                return await impl(project_name=project_name, state=server)
+                return await impl(server, {"project_name": project_name})
 
         if "get_current_project" in allowed_tools:
 
@@ -1119,7 +1134,7 @@ class MarcusServer:
                 """Get the currently active project."""
                 from .tools.project_management import get_current_project as impl
 
-                return await impl(state=server)
+                return await impl(server, {})
 
         if "add_feature" in allowed_tools:
 
@@ -1132,8 +1147,8 @@ class MarcusServer:
                 from .tools.nlp import add_feature as impl
 
                 return await impl(
-                    description=description,
-                    context=context or {},
+                    feature_description=description,
+                    integration_point="current",
                     state=server,
                 )
 
@@ -1149,9 +1164,7 @@ class MarcusServer:
                 from .tools.audit_tools import get_usage_report as impl
 
                 return await impl(
-                    start_date=start_date,
-                    end_date=end_date,
-                    group_by=group_by,
+                    days=7,
                     state=server,
                 )
 
@@ -1434,7 +1447,7 @@ class MarcusServer:
                 """Start replay session for a pipeline flow."""
                 from .tools.pipeline import start_replay as impl
 
-                return await impl(state=server, arguments={"flow_id": flow_id})
+                return await impl(server, {"flow_id": flow_id})
 
         if "pipeline_replay_forward" in allowed_tools:
 
@@ -1443,7 +1456,7 @@ class MarcusServer:
                 """Step forward in pipeline replay."""
                 from .tools.pipeline import replay_step_forward as impl
 
-                return await impl(state=server, arguments={})
+                return await impl(server, {})
 
         if "pipeline_replay_backward" in allowed_tools:
 
@@ -1452,7 +1465,7 @@ class MarcusServer:
                 """Step backward in pipeline replay."""
                 from .tools.pipeline import replay_step_backward as impl
 
-                return await impl(state=server, arguments={})
+                return await impl(server, {})
 
         if "pipeline_replay_jump" in allowed_tools:
 
@@ -1461,7 +1474,7 @@ class MarcusServer:
                 """Jump to specific position in replay."""
                 from .tools.pipeline import replay_jump_to as impl
 
-                return await impl(state=server, arguments={"position": position})
+                return await impl(server, {"position": position})
 
         if "what_if_start" in allowed_tools:
 
@@ -1470,7 +1483,7 @@ class MarcusServer:
                 """Start what-if analysis session."""
                 from .tools.pipeline import start_what_if_analysis as impl
 
-                return await impl(state=server, arguments={"flow_id": flow_id})
+                return await impl(server, {"flow_id": flow_id})
 
         if "what_if_simulate" in allowed_tools:
 
@@ -1481,9 +1494,7 @@ class MarcusServer:
                 """Simulate pipeline with modifications."""
                 from .tools.pipeline import simulate_modification as impl
 
-                return await impl(
-                    state=server, arguments={"modifications": modifications}
-                )
+                return await impl(server, {"modifications": modifications})
 
         if "what_if_compare" in allowed_tools:
 
@@ -1492,7 +1503,7 @@ class MarcusServer:
                 """Compare all what-if scenarios."""
                 from .tools.pipeline import compare_what_if_scenarios as impl
 
-                return await impl(state=server, arguments={})
+                return await impl(server, {})
 
         if "pipeline_compare" in allowed_tools:
 
@@ -1501,7 +1512,7 @@ class MarcusServer:
                 """Compare multiple pipeline flows."""
                 from .tools.pipeline import compare_pipelines as impl
 
-                return await impl(state=server, arguments={"flow_ids": flow_ids})
+                return await impl(server, {"flow_ids": flow_ids})
 
         if "pipeline_report" in allowed_tools:
 
@@ -1512,9 +1523,7 @@ class MarcusServer:
                 """Generate pipeline report."""
                 from .tools.pipeline import generate_report as impl
 
-                return await impl(
-                    state=server, arguments={"flow_id": flow_id, "format": format}
-                )
+                return await impl(server, {"flow_id": flow_id, "format": format})
 
         if "pipeline_monitor_dashboard" in allowed_tools:
 
@@ -1523,7 +1532,7 @@ class MarcusServer:
                 """Get live monitoring dashboard data."""
                 from .tools.pipeline import get_live_dashboard as impl
 
-                return await impl(state=server, arguments={})
+                return await impl(server, {})
 
         if "pipeline_monitor_flow" in allowed_tools:
 
@@ -1532,7 +1541,7 @@ class MarcusServer:
                 """Track specific flow progress."""
                 from .tools.pipeline import track_flow_progress as impl
 
-                return await impl(state=server, arguments={"flow_id": flow_id})
+                return await impl(server, {"flow_id": flow_id})
 
         if "pipeline_predict_risk" in allowed_tools:
 
@@ -1541,7 +1550,7 @@ class MarcusServer:
                 """Predict failure risk for a flow."""
                 from .tools.pipeline import predict_failure_risk as impl
 
-                return await impl(state=server, arguments={"flow_id": flow_id})
+                return await impl(server, {"flow_id": flow_id})
 
         if "pipeline_recommendations" in allowed_tools:
 
@@ -1550,7 +1559,7 @@ class MarcusServer:
                 """Get recommendations for a pipeline flow."""
                 from .tools.pipeline import get_recommendations as impl
 
-                return await impl(state=server, arguments={"flow_id": flow_id})
+                return await impl(server, {"flow_id": flow_id})
 
         if "pipeline_find_similar" in allowed_tools:
 
@@ -1561,9 +1570,7 @@ class MarcusServer:
                 """Find similar pipeline flows."""
                 from .tools.pipeline import find_similar_flows as impl
 
-                return await impl(
-                    state=server, arguments={"flow_id": flow_id, "limit": limit}
-                )
+                return await impl(server, {"flow_id": flow_id, "limit": limit})
 
         # Project management tools
         if "add_project" in allowed_tools:
@@ -1580,8 +1587,8 @@ class MarcusServer:
                 from .tools.project_management import add_project as impl
 
                 return await impl(
-                    state=server,
-                    arguments={
+                    server,
+                    {
                         "name": name,
                         "provider": provider,
                         "config": config,
@@ -1600,8 +1607,8 @@ class MarcusServer:
                 from .tools.project_management import remove_project as impl
 
                 return await impl(
-                    state=server,
-                    arguments={"project_id": project_id, "confirm": confirm},
+                    server,
+                    {"project_id": project_id, "confirm": confirm},
                 )
 
         if "update_project" in allowed_tools:
@@ -1617,8 +1624,8 @@ class MarcusServer:
                 from .tools.project_management import update_project as impl
 
                 return await impl(
-                    state=server,
-                    arguments={
+                    server,
+                    {
                         "project_id": project_id,
                         "name": name,
                         "tags": tags,
@@ -1641,7 +1648,7 @@ class MarcusServer:
             @app.tool()
             async def check_assignment_health() -> Dict[str, Any]:
                 """Check the health of the assignment tracking system."""
-                from .tools.agent import check_assignment_health as impl
+                from .tools.system import check_assignment_health as impl
 
                 return await impl(state=server)
 
@@ -1915,7 +1922,7 @@ if __name__ == "__main__":
         asyncio.run(main())
     elif transport == "http":
         # For HTTP mode, run the async initialization first
-        async def setup_http_server() -> None:
+        async def setup_http_server() -> MarcusServer:
             """Setup HTTP server with async initialization."""
             server = MarcusServer()
             await server.initialize()
@@ -1988,7 +1995,7 @@ if __name__ == "__main__":
         app = fastmcp.streamable_http_app()
 
         # Configure uvicorn with graceful shutdown
-        config = uvicorn.Config(
+        uvicorn_config = uvicorn.Config(
             app=app,
             host=host,
             port=port,
@@ -1997,7 +2004,7 @@ if __name__ == "__main__":
             access_log=False,  # Reduce noise
         )
 
-        server_instance = uvicorn.Server(config)
+        server_instance = uvicorn.Server(uvicorn_config)
 
         # Run the server (this will handle shutdown gracefully)
         try:

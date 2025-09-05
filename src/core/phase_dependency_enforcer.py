@@ -2,7 +2,8 @@
 Phase Dependency Enforcer.
 
 Enforces strict development lifecycle phase dependencies within features,
-ensuring tasks follow the correct order: Design → Implementation → Testing → Documentation
+ensuring tasks follow the correct order:
+Design → Implementation → Testing → Documentation
 """
 
 import logging
@@ -14,6 +15,8 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.core.models import Task
+from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
+from src.integrations.nlp_task_utils import TaskType
 
 
 class TaskPhase(Enum):
@@ -45,8 +48,6 @@ class DependencyType(Enum):
 
 # For now, use regular Task model instead of EnhancedTask to avoid circular imports
 EnhancedTask = Task
-from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
-from src.integrations.nlp_task_utils import TaskType
 
 logger = logging.getLogger(__name__)
 
@@ -258,7 +259,7 @@ class PhaseDependencyEnforcer:
             # Store phase info on task for later use if it supports it
             if hasattr(task, "phase"):
                 task.phase = phase
-                task.phase_confidence = 0.9  # High confidence from rule-based mapping
+                # Note: phase_confidence not available in base Task model
 
             phase_tasks[phase].append(task)
 
@@ -348,8 +349,8 @@ class PhaseDependencyEnforcer:
                     f"{dep_task.name} ({self._get_task_phase_name(dep_task)})"
                 )
 
-        # Mark task as having phase dependencies added
-        dependent_task._phase_dependencies_added = added_count > 0
+        # Note: _phase_dependencies_added not available in base Task model
+        # Dependencies are tracked in task.dependencies list instead
 
         if added_count > 0:
             logger.debug(
@@ -361,12 +362,15 @@ class PhaseDependencyEnforcer:
     def _get_task_phase_name(self, task: Task) -> str:
         """Get the phase name for a task."""
         if hasattr(task, "phase") and task.phase:
-            return task.phase.name
+            if hasattr(task.phase, "name"):
+                return str(task.phase.name)
+            else:
+                return str(task.phase)
 
         # Fallback to type classification
         task_type = self.task_classifier.classify(task)
         phase = self.TYPE_TO_PHASE_MAP.get(task_type, TaskPhase.IMPLEMENTATION)
-        return phase.name
+        return str(phase.name)
 
     def validate_phase_ordering(self, tasks: List[Task]) -> Tuple[bool, List[str]]:
         """
@@ -408,11 +412,16 @@ class PhaseDependencyEnforcer:
     def _get_task_phase_enum(self, task: Task) -> Optional[TaskPhase]:
         """Get the TaskPhase enum for a task."""
         if hasattr(task, "phase") and task.phase:
-            return task.phase
+            from typing import cast
+
+            # Cast to avoid mypy error - we check isinstance below
+            phase = cast(TaskPhase, task.phase)
+            if isinstance(phase, TaskPhase):
+                return phase
 
         # Fallback to type classification
         task_type = self.task_classifier.classify(task)
-        return self.TYPE_TO_PHASE_MAP.get(task_type)
+        return self.TYPE_TO_PHASE_MAP.get(task_type, TaskPhase.IMPLEMENTATION)
 
     def _get_task_phase(self, task_type: TaskType) -> TaskPhase:
         """Convert TaskType to TaskPhase."""
@@ -431,7 +440,7 @@ class PhaseDependencyEnforcer:
         Returns:
             Dictionary with phase statistics
         """
-        stats = {
+        stats: Dict[str, Any] = {
             "total_tasks": len(tasks),
             "phase_distribution": {},
             "dependency_count": 0,
@@ -440,7 +449,7 @@ class PhaseDependencyEnforcer:
         }
 
         # Count tasks by phase
-        phase_counts: Dict[str, int] = defaultdict(int)
+        phase_counts: defaultdict[str, int] = defaultdict(int)
         for task in tasks:
             phase = self._get_task_phase_name(task)
             phase_counts[phase] += 1
@@ -451,8 +460,16 @@ class PhaseDependencyEnforcer:
 
                 # Count phase dependencies if enhanced task
                 if hasattr(task, "get_dependencies_by_type"):
-                    phase_deps = task.get_dependencies_by_type(DependencyType.PHASE)
-                    stats["phase_dependency_count"] += len(phase_deps)
+                    try:
+                        phase_deps = task.get_dependencies_by_type(DependencyType.PHASE)
+                        stats["phase_dependency_count"] += len(phase_deps)
+                    except Exception as e:
+                        # Skip if method not available or fails, but log the issue
+                        logger.debug(
+                            "Failed to get phase dependencies for task %s: %s",
+                            getattr(task, "name", "unknown"),
+                            str(e),
+                        )
 
         stats["phase_distribution"] = dict(phase_counts)
 

@@ -18,8 +18,6 @@ from typing import Any, Dict, List, Optional
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 from src.ai.advanced.prd.advanced_parser import AdvancedPRDParser, ProjectConstraints
-from src.ai.core.ai_engine import MarcusAIEngine
-from src.ai.types import AnalysisContext
 from src.core.models import Priority, Task, TaskStatus
 from src.detection.board_analyzer import BoardAnalyzer
 from src.detection.context_detector import ContextDetector, MarcusMode
@@ -27,13 +25,9 @@ from src.detection.context_detector import ContextDetector, MarcusMode
 # Import refactored base classes and utilities
 from src.integrations.nlp_base import NaturalLanguageTaskCreator
 from src.integrations.nlp_task_utils import (
-    SafetyChecker,
-    TaskBuilder,
-    TaskClassifier,
     TaskType,
 )
 from src.modes.adaptive.basic_adaptive import BasicAdaptiveMode
-from src.modes.enricher.enricher_mode import EnricherMode
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +39,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
     Refactored to use base class and eliminate code duplication.
     """
 
-    def __init__(self, kanban_client, ai_engine):
+    def __init__(self, kanban_client: Any, ai_engine: Any) -> None:
         super().__init__(kanban_client, ai_engine)
         self.prd_parser = AdvancedPRDParser()
         self.board_analyzer = BoardAnalyzer()
@@ -54,16 +48,19 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
     async def process_natural_language(
         self,
         description: str,
-        project_name: str = None,
-        options: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
     ) -> List[Task]:
         """
         Process project description into tasks.
 
         Implementation of abstract method from base class.
         """
+        # Extract arguments from kwargs
+        project_name = kwargs.get("project_name")
+        options = kwargs.get("options")
+
         # Detect context (Phase 1)
-        board_state = await self.board_analyzer.analyze_board("default", [])
+        await self.board_analyzer.analyze_board("default", [])
         context = await self.context_detector.detect_optimal_mode(
             user_id="system", board_id="default", tasks=[]
         )
@@ -147,13 +144,13 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 },
             ):
                 tasks = await self.process_natural_language(
-                    description, project_name, options
+                    description, project_name=project_name, options=options
                 )
                 logger.info(f"process_natural_language returned {len(tasks)} tasks")
 
                 # Log detailed task breakdown for debugging
                 if tasks:
-                    task_types = {}
+                    task_types: Dict[str, int] = {}
                     for task in tasks:
                         task_type = getattr(task, "task_type", "unknown")
                         task_types[task_type] = task_types.get(task_type, 0) + 1
@@ -303,7 +300,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                     },
                 )
 
-    async def _cleanup_background(self):
+    async def _cleanup_background(self) -> None:
         """Cleanup AI engine after response is sent"""
         try:
             # Only cleanup AI engine, skip task cancellation
@@ -337,7 +334,6 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             "small": {"team_size": 2, "deployment_target": "local"},
             "medium": {"team_size": 3, "deployment_target": "dev"},
             "large": {"team_size": 5, "deployment_target": "prod"},
-            "enterprise": {"team_size": 5, "deployment_target": "prod"},
         }
 
         # Map new deployment options to legacy deployment_target values
@@ -435,7 +431,7 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
     Refactored to use base class and eliminate code duplication.
     """
 
-    def __init__(self, kanban_client, ai_engine, project_tasks):
+    def __init__(self, kanban_client: Any, ai_engine: Any, project_tasks: Any) -> None:
         super().__init__(kanban_client, ai_engine)
         self.project_tasks = project_tasks
         self.adaptive_mode = BasicAdaptiveMode()
@@ -444,7 +440,7 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
         self.enricher = BasicEnricher()
 
     async def process_natural_language(
-        self, description: str, integration_point: str = "auto_detect", **kwargs
+        self, description: str, integration_point: str = "auto_detect", **kwargs: Any
     ) -> List[Task]:
         """
         Process feature description into tasks.
@@ -620,9 +616,7 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
         """Analyze integration points without AI"""
         # Determine project phase based on existing tasks
         completed_tasks = [t for t in existing_tasks if t.status == TaskStatus.DONE]
-        in_progress_tasks = [
-            t for t in existing_tasks if t.status == TaskStatus.IN_PROGRESS
-        ]
+        [t for t in existing_tasks if t.status == TaskStatus.IN_PROGRESS]
 
         # Classify existing tasks
         classified_existing = self.classify_tasks(existing_tasks)
@@ -683,35 +677,35 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
         task_templates = {
             "data": {
                 "name": f"Create database schema for {feature_description}",
-                "description": f"Design and implement database models and migrations",
+                "description": "Design and implement database models and migrations",
                 "estimated_hours": 6,
                 "labels": ["feature", "database", "backend"],
                 "critical": True,
             },
             "api": {
                 "name": f"Implement backend for {feature_description}",
-                "description": f"Create backend services, APIs, and business logic",
+                "description": "Create backend services, APIs, and business logic",
                 "estimated_hours": 12,
                 "labels": ["feature", "backend", "api"],
                 "critical": True,
             },
             "ui": {
                 "name": f"Build UI components for {feature_description}",
-                "description": f"Create frontend components and user interface",
+                "description": "Create frontend components and user interface",
                 "estimated_hours": 10,
                 "labels": ["feature", "frontend", "ui"],
                 "critical": True,
             },
             "auth": {
                 "name": f"Implement security for {feature_description}",
-                "description": f"Add authentication, authorization, and security measures",
+                "description": "Add authentication, authorization, and security measures",
                 "estimated_hours": 8,
                 "labels": ["feature", "security", "auth"],
                 "critical": True,
             },
             "integration": {
                 "name": f"Build integration layer for {feature_description}",
-                "description": f"Implement integration points and data synchronization",
+                "description": "Implement integration points and data synchronization",
                 "estimated_hours": 8,
                 "labels": ["feature", "integration", "backend"],
                 "critical": True,
@@ -732,14 +726,14 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
             [
                 {
                     "name": f"Test {feature_description}",
-                    "description": f"Write unit tests, integration tests, and perform QA",
+                    "description": "Write unit tests, integration tests, and perform QA",
                     "estimated_hours": 6,
                     "labels": ["feature", "testing", "qa"],
                     "critical": False,
                 },
                 {
                     "name": f"Document {feature_description}",
-                    "description": f"Create user documentation and API documentation",
+                    "description": "Create user documentation and API documentation",
                     "estimated_hours": 3,
                     "labels": ["feature", "documentation"],
                     "critical": False,

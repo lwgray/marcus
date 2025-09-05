@@ -9,7 +9,7 @@ No mocking - uses real file system operations.
 import asyncio
 import tempfile
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 import pytest
 
@@ -23,12 +23,12 @@ from src.marcus_mcp.tools.attachment import (
 class MockState:
     """Minimal state object for testing."""
 
-    def __init__(self):
-        self.task_artifacts = {}
-        self.task_decisions = {}
-        self.task_blockers = {}
-        self.project_tasks = []
-        self.kanban_client = None
+    def __init__(self) -> None:
+        self.task_artifacts: Dict[str, Any] = {}
+        self.task_decisions: Dict[str, Any] = {}
+        self.task_blockers: Dict[str, Any] = {}
+        self.project_tasks: List[Any] = []
+        self.kanban_client: Optional[Any] = None
 
 
 class TestArtifactProjectRoot:

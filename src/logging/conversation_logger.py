@@ -61,7 +61,6 @@ The system supports both real-time monitoring and historical analysis.
 JSON format enables easy integration with visualization and analysis tools.
 """
 
-import json
 import logging
 from datetime import datetime
 from enum import Enum
@@ -1705,13 +1704,13 @@ def log_conversation(
         conversation_logger.log_worker_message(receiver, "from_pm", message, metadata)
     elif sender == "marcus" and receiver == "kanban":
         conversation_logger.log_kanban_interaction(
-            action=metadata.get("action", "unknown"),
+            action=metadata.get("action", "unknown") if metadata else "unknown",
             direction="to_kanban",
             data={"message": message, **(metadata or {})},
         )
     elif sender == "kanban" and receiver == "marcus":
         conversation_logger.log_kanban_interaction(
-            action=metadata.get("action", "unknown"),
+            action=metadata.get("action", "unknown") if metadata else "unknown",
             direction="from_kanban",
             data={"message": message, **(metadata or {})},
         )

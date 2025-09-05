@@ -8,13 +8,10 @@ based on actual usage rather than naive hourly estimates.
 import asyncio
 import json
 import sys
-import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-
-from src.core.error_framework import ErrorContext, MarcusBaseError
+from typing import Any, Deque, Dict, List, Optional
 
 
 class TokenTracker:
@@ -42,7 +39,7 @@ class TokenTracker:
         self.project_costs: Dict[str, float] = defaultdict(float)
 
         # Real-time tracking with sliding windows
-        self.token_history: Dict[str, deque] = defaultdict(
+        self.token_history: Dict[str, Deque[Dict[str, Any]]] = defaultdict(
             lambda: deque(maxlen=1000)  # Keep last 1000 token events
         )
 
@@ -58,9 +55,9 @@ class TokenTracker:
         self.load_historical_data()
 
         # Start background rate calculator
-        self._rate_task = None
+        self._rate_task: Optional[asyncio.Task[None]] = None
 
-    def load_historical_data(self):
+    def load_historical_data(self) -> None:
         """Load historical token usage data."""
         if self.data_file.exists():
             try:
@@ -75,7 +72,7 @@ class TokenTracker:
             except Exception as e:
                 print(f"Failed to load token history: {e}", file=sys.stderr)
 
-    def save_data(self):
+    def save_data(self) -> None:
         """Persist token usage data."""
         self.data_file.parent.mkdir(parents=True, exist_ok=True)
         data = {
@@ -92,8 +89,8 @@ class TokenTracker:
         input_tokens: int,
         output_tokens: int,
         model: str = "claude-3-sonnet",
-        metadata: Optional[Dict] = None,
-    ) -> Dict[str, any]:
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """
         Track token usage for a project.
 
@@ -139,7 +136,7 @@ class TokenTracker:
 
         return stats
 
-    def get_project_stats(self, project_id: str) -> Dict[str, any]:
+    def get_project_stats(self, project_id: str) -> Dict[str, Any]:
         """
         Get comprehensive stats for a project.
 
@@ -222,7 +219,7 @@ class TokenTracker:
         tokens_per_second = total_tokens / time_span
         tokens_per_hour = tokens_per_second * 3600
 
-        return tokens_per_hour
+        return float(tokens_per_hour)
 
     def _calculate_average_spend_rate(self, project_id: str) -> float:
         """Calculate average spend rate over entire session."""
@@ -257,7 +254,7 @@ class TokenTracker:
 
         return 0.0
 
-    def get_all_projects_summary(self) -> Dict[str, any]:
+    def get_all_projects_summary(self) -> Dict[str, Any]:
         """Get summary of all tracked projects."""
         summary = {}
         total_tokens = 0
@@ -278,18 +275,18 @@ class TokenTracker:
             ),
         }
 
-    async def start_monitoring(self):
+    async def start_monitoring(self) -> None:
         """Start background monitoring task."""
         if self._rate_task is None:
             self._rate_task = asyncio.create_task(self._monitor_rates())
 
-    async def stop_monitoring(self):
+    async def stop_monitoring(self) -> None:
         """Stop background monitoring."""
         if self._rate_task:
             self._rate_task.cancel()
             self._rate_task = None
 
-    async def _monitor_rates(self):
+    async def _monitor_rates(self) -> None:
         """Background task to monitor spend rates and alert on anomalies."""
         while True:
             try:

@@ -77,10 +77,10 @@
         "blocker_frequency": 0.0,
         "blocker_categories": {},
         "blocker_timing": {
-          "q1": 0,
-          "q2": 0,
-          "q3": 0,
-          "q4": 0
+          "q1": 0.0,
+          "q2": 0.0,
+          "q3": 0.0,
+          "q4": 0.0
         },
         "recurring_blockers": [
           "Waiting for API documentation",
@@ -98,7 +98,7 @@
         "Technical debt",
         "Scope creep"
       ],
-      "extracted_at": "2025-07-31T14:50:45.184229",
+      "extracted_at": "2025-09-05T06:59:29.837202",
       "confidence_score": 0.5549999999999999
     }
   ]

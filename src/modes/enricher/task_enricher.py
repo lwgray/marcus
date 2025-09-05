@@ -7,11 +7,9 @@ Enriches existing tasks with metadata and structure to organize chaotic boards.
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from src.core.models import Priority, Task
-from src.detection.board_analyzer import BoardAnalyzer
+from src.core.models import Task
 
 logger = logging.getLogger(__name__)
 
@@ -57,9 +55,9 @@ class EnrichedTask:
 class TaskEnricher:
     """Enriches existing tasks with metadata and structure"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Common task patterns and their typical estimates
-        self.task_patterns = {
+        self.task_patterns: Dict[str, Dict[str, Any]] = {
             "setup": {
                 "patterns": [r"setup", r"init", r"configure", r"install"],
                 "base_hours": 3,
@@ -253,7 +251,7 @@ class TaskEnricher:
         Returns:
             Dictionary with enrichment suggestions
         """
-        enrichments = {}
+        enrichments: Dict[str, Any] = {}
 
         # Classify task type
         task_type = self._classify_task_type(task)
@@ -442,7 +440,7 @@ class TaskEnricher:
     def _estimate_hours(self, task: Task, task_type: str) -> int:
         """Estimate hours for a task"""
         if task.estimated_hours and task.estimated_hours > 0:
-            return task.estimated_hours
+            return int(task.estimated_hours)
 
         # Get base estimate from pattern
         base_hours = self.task_patterns.get(task_type, {}).get("base_hours", 4)
@@ -483,9 +481,7 @@ class TaskEnricher:
         suggestions = []
 
         # Get typical dependencies for task type
-        typical_deps = self.task_patterns.get(task_type, {}).get(
-            "typical_dependencies", []
-        )
+        self.task_patterns.get(task_type, {}).get("typical_dependencies", [])
 
         # Add logical dependencies based on common patterns
         task_text = f"{task.name} {task.description or ''}".lower()

@@ -1,5 +1,5 @@
 """
-Extended Kanban Client with Create Task Functionality
+Extended Kanban Client with Create Task Functionality.
 
 This module extends the KanbanClient to add create_task functionality
 for creating new tasks on the kanban board.
@@ -8,13 +8,12 @@ for creating new tasks on the kanban board.
 import json
 import logging
 import os
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from mcp.client.stdio import stdio_client
 
 from mcp import ClientSession, StdioServerParameters
-from src.core.models import Priority, Task, TaskStatus
+from src.core.models import Priority, Task
 from src.integrations.kanban_client import KanbanClient
 from src.integrations.label_helper import LabelManagerHelper
 
@@ -30,13 +29,13 @@ class KanbanClientWithCreate(KanbanClient):
     project creation features.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the extended kanban client."""
         super().__init__()
         # Ensure Planka credentials are set for label operations
         self._ensure_planka_credentials()
 
-    def _ensure_planka_credentials(self):
+    def _ensure_planka_credentials(self) -> None:
         """Ensure Planka credentials are set in environment."""
         # These should already be set by parent class, but ensure they're available
         if "PLANKA_BASE_URL" not in os.environ:
@@ -44,20 +43,20 @@ class KanbanClientWithCreate(KanbanClient):
         if "PLANKA_AGENT_EMAIL" not in os.environ:
             os.environ["PLANKA_AGENT_EMAIL"] = "demo@demo.demo"
         if "PLANKA_AGENT_PASSWORD" not in os.environ:
-            os.environ["PLANKA_AGENT_PASSWORD"] = "demo"
+            os.environ["PLANKA_AGENT_PASSWORD"] = "demo"  # nosec B105
 
     def _build_task_metadata(self, task_data: Dict[str, Any]) -> Optional[str]:
         """
         Build metadata comment for task description.
-        
+
         This includes priority, estimates, and dependencies formatted
         in a way that can be parsed back out when reading tasks.
-        
+
         Parameters
         ----------
         task_data : Dict[str, Any]
             Task data dictionary
-            
+
         Returns
         -------
         Optional[str]
@@ -164,12 +163,16 @@ class KanbanClientWithCreate(KanbanClient):
                     and hasattr(lists_result, "content")
                     and lists_result.content
                 ):
-                    lists_data = json.loads(lists_result.content[0].text)
-                    lists = (
-                        lists_data
-                        if isinstance(lists_data, list)
-                        else lists_data.get("items", [])
-                    )
+                    content_item = lists_result.content[0]
+                    if hasattr(content_item, "text"):
+                        lists_data = json.loads(content_item.text)
+                        lists = (
+                            lists_data
+                            if isinstance(lists_data, list)
+                            else lists_data.get("items", [])
+                        )
+                    else:
+                        lists = []
 
                     # Look for Backlog or TODO list
                     for lst in lists:
@@ -197,9 +200,13 @@ class KanbanClientWithCreate(KanbanClient):
                             custom_context={
                                 "board_id": str(self.board_id),
                                 "task_name": task_data.get("name", "unknown"),
-                                "details": f"No suitable list found for new tasks on board {self.board_id}. "
-                                f"Expected a list named 'Backlog' or 'TODO', or at least one list to exist. "
-                                f"Please check that your kanban board is properly configured with lists.",
+                                "details": (
+                                    f"No suitable list found for new tasks on board "
+                                    f"{self.board_id}. Expected a list named 'Backlog' "
+                                    f"or 'TODO', or at least one list to exist. Please "
+                                    f"check that your kanban "
+                                    f"board is properly configured with lists."
+                                ),
                             },
                         ),
                     )
@@ -207,7 +214,7 @@ class KanbanClientWithCreate(KanbanClient):
                 # Prepare card data
                 card_name = task_data.get("name", "Untitled Task")
                 card_description = task_data.get("description", "")
-                
+
                 # Add metadata (including dependencies) to description
                 metadata = self._build_task_metadata(task_data)
                 if metadata:
@@ -244,15 +251,22 @@ class KanbanClientWithCreate(KanbanClient):
                                 "board_id": str(self.board_id),
                                 "task_name": card_name,
                                 "list_id": target_list["id"] if target_list else None,
-                                "details": f"Failed to create card '{card_name}' on board {self.board_id}. "
-                                f"The kanban-mcp server may be down, the board may not exist, "
-                                f"or there may be permission issues. Check kanban-mcp server logs.",
+                                "details": (
+                                    f"Failed to create card '{card_name}' on board "
+                                    f"{self.board_id}. The kanban-mcp server may be "
+                                    f"down, the board may not exist, or there may be "
+                                    f"issues. Check kanban-mcp server logs."
+                                ),
                             },
                         ),
                     )
 
                 # Parse the created card
-                created_card_data = json.loads(create_result.content[0].text)
+                content_item = create_result.content[0]
+                if hasattr(content_item, "text"):
+                    created_card_data = json.loads(content_item.text)
+                else:
+                    created_card_data = {}
                 created_card = (
                     created_card_data
                     if isinstance(created_card_data, dict)
@@ -272,7 +286,8 @@ class KanbanClientWithCreate(KanbanClient):
                     # Add acceptance criteria as checklist items
                     if task_data.get("acceptance_criteria"):
                         logger.debug(
-                            f"Found {len(task_data['acceptance_criteria'])} acceptance criteria for task '{card_name}'"
+                            f"Found {len(task_data['acceptance_criteria'])} acceptance "
+                            f"criteria for task '{card_name}'"
                         )
                         for criteria in task_data["acceptance_criteria"]:
                             checklist_items.append(f"✓ {criteria}")
@@ -280,7 +295,8 @@ class KanbanClientWithCreate(KanbanClient):
                     # Add subtasks as checklist items
                     if task_data.get("subtasks"):
                         logger.debug(
-                            f"Found {len(task_data['subtasks'])} subtasks for task '{card_name}'"
+                            f"Found {len(task_data['subtasks'])} subtasks for task "
+                            f"'{card_name}'"
                         )
                         for subtask in task_data["subtasks"]:
                             checklist_items.append(f"• {subtask}")
@@ -393,6 +409,11 @@ class KanbanClientWithCreate(KanbanClient):
             List of label names to add
         """
         try:
+            # Ensure board_id is not None for label operations
+            if not self.board_id:
+                logger.error("board_id is required for label operations")
+                return
+
             # Use the label manager helper for simplified label management
             label_helper = LabelManagerHelper(session, self.board_id)
 
@@ -438,11 +459,13 @@ class KanbanClientWithCreate(KanbanClient):
                     )
                     if result and hasattr(result, "content"):
                         logger.debug(
-                            f"Created checklist item '{item[:30]}...' - response has content"
+                            f"Created checklist item '{item[:30]}...' - "
+                            f"response has content"
                         )
                     else:
                         logger.debug(
-                            f"Created checklist item '{item[:30]}...' - no response content"
+                            f"Created checklist item '{item[:30]}...' - "
+                            f"no response content"
                         )
                     position += 65536
                 except Exception as e:
@@ -479,7 +502,8 @@ class KanbanClientWithCreate(KanbanClient):
                 created_tasks.append(task)
             except Exception as e:
                 logger.error(
-                    f"Failed to create task '{task_data.get('name', 'Unknown')}': {str(e)}"
+                    f"Failed to create task '{task_data.get('name', 'Unknown')}': "
+                    f"{str(e)}"
                 )
                 # Continue with other tasks even if one fails
                 continue

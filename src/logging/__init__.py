@@ -58,8 +58,7 @@ from .conversation_logger import (
 )
 
 if TYPE_CHECKING:
-    from datetime import datetime
-    from typing import Any, Dict, List, Optional
+    pass
 
 __all__ = [
     "ConversationLogger",

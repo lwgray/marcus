@@ -7,7 +7,7 @@ under different load conditions.
 
 import asyncio
 import time
-from typing import List
+from typing import Any, List
 from unittest.mock import AsyncMock
 
 import pytest
@@ -86,7 +86,7 @@ class TestTaskAssignmentPerformance(BaseTestCase):
         # Measure concurrent update performance
         start_time = time.time()
 
-        async def update_task_batch(batch_tasks: List):
+        async def update_task_batch(batch_tasks: List[Any]) -> None:
             for task in batch_tasks:
                 await mock_client.update_task_progress(
                     task.id, {"status": "in_progress", "progress": 50}
@@ -140,7 +140,7 @@ class TestTaskAssignmentPerformance(BaseTestCase):
             ("High priority", lambda t: t.priority.value == "high"),
             ("Unassigned", lambda t: t.assigned_to is None),
             ("Backend tasks", lambda t: "backend" in t.labels),
-            ("TODO status", lambda t: t.status == TaskStatus.TODO),
+            ("TODO status", lambda t: t.status.value == "todo"),
             (
                 "Complex filter",
                 lambda t: t.priority.value == "high"

@@ -8,9 +8,7 @@ allowing dynamic tool access based on client roles.
 import asyncio
 import asyncio.tasks as asyncio_tasks
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set
-
-from mcp.types import Tool
+from typing import Any, Dict, Optional, Set
 
 from .tools.auth import DEFAULT_TOOLS, ROLE_TOOLS
 

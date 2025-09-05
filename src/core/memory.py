@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from src.core.events import Events, EventTypes
-from src.core.models import Task, TaskStatus
+from src.core.models import Task
 from src.core.persistence import Persistence
 
 logger = logging.getLogger(__name__)
@@ -626,8 +626,12 @@ class Memory:
             try:
                 task_data = await self.persistence.query("project_tasks", limit=1000)
                 all_tasks = task_data
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(
+                    "Failed to retrieve tasks from persistence for dependency analysis: %s",
+                    str(e),
+                )
+                all_tasks = []
 
         # Build dependency map
         dependency_map = defaultdict(list)

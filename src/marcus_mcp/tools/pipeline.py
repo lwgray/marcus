@@ -5,8 +5,7 @@ Provides tools for pipeline replay, what-if analysis, comparison,
 monitoring, error prediction, and recommendations.
 """
 
-from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from src.mcp.tools.pipeline_enhancement_tools import pipeline_tools
 
@@ -25,7 +24,9 @@ async def replay_step_forward(server: Any, arguments: Dict[str, Any]) -> Dict[st
     return await pipeline_tools.replay_step_forward()
 
 
-async def replay_step_backward(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
+async def replay_step_backward(
+    server: Any, arguments: Dict[str, Any]
+) -> Dict[str, Any]:
     """Step backward in pipeline replay."""
     return await pipeline_tools.replay_step_backward()
 
@@ -39,7 +40,9 @@ async def replay_jump_to(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
     return await pipeline_tools.replay_jump_to(position)
 
 
-async def start_what_if_analysis(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
+async def start_what_if_analysis(
+    server: Any, arguments: Dict[str, Any]
+) -> Dict[str, Any]:
     """Start what-if analysis session."""
     flow_id = arguments.get("flow_id")
     if not flow_id:
@@ -48,7 +51,9 @@ async def start_what_if_analysis(server: Any, arguments: Dict[str, Any]) -> Dict
     return await pipeline_tools.start_what_if_analysis(flow_id)
 
 
-async def simulate_modification(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
+async def simulate_modification(
+    server: Any, arguments: Dict[str, Any]
+) -> Dict[str, Any]:
     """Simulate pipeline with modifications."""
     modifications = arguments.get("modifications", [])
     if not modifications:
@@ -97,7 +102,9 @@ async def track_flow_progress(server: Any, arguments: Dict[str, Any]) -> Dict[st
     return await pipeline_tools.track_flow_progress(flow_id)
 
 
-async def predict_failure_risk(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
+async def predict_failure_risk(
+    server: Any, arguments: Dict[str, Any]
+) -> Dict[str, Any]:
     """Predict failure risk for a flow."""
     flow_id = arguments.get("flow_id")
     if not flow_id:

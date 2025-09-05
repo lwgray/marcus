@@ -15,7 +15,6 @@ from src.modes.creator.template_library import (
     APIServiceTemplate,
     MobileAppTemplate,
     ProjectSize,
-    ProjectTemplate,
     WebAppTemplate,
 )
 
@@ -32,9 +31,9 @@ class BasicCreatorMode:
             "mobile": MobileAppTemplate(),
         }
         self.task_generator = TaskGenerator()
-        self.state = {"active_project": None, "generated_tasks": []}
+        self.state: Dict[str, Any] = {"active_project": None, "generated_tasks": []}
 
-    async def initialize(self, saved_state: Dict[str, Any]):
+    async def initialize(self, saved_state: Dict[str, Any]) -> None:
         """Initialize mode with saved state"""
         if saved_state:
             self.state.update(saved_state)
@@ -51,7 +50,7 @@ class BasicCreatorMode:
         return {
             "mode": "creator",
             "active_project": self.state.get("active_project"),
-            "generated_tasks_count": len(self.state.get("generated_tasks", [])),
+            "generated_tasks_count": len(self.state.get("generated_tasks") or []),
             "available_templates": list(self.templates.keys()),
         }
 
@@ -135,19 +134,28 @@ class BasicCreatorMode:
 
         try:
             active_project = self.state["active_project"]
+            if not isinstance(active_project, dict):
+                return {"success": False, "error": "Invalid active project state"}
 
             # Apply adjustments
-            customizations = active_project["customizations"].copy()
+            project_customizations = active_project.get("customizations", {})
+            if not isinstance(project_customizations, dict):
+                project_customizations = {}
+            customizations = project_customizations.copy()
             customizations.update(adjustments)
 
             # Regenerate with new customizations
-            template = self.templates[active_project["template"]]
+            template_name = active_project.get("template")
+            if not template_name or template_name not in self.templates:
+                return {"success": False, "error": "Invalid template in active project"}
+            template = self.templates[template_name]
             generated_tasks = await self.task_generator.generate_from_template(
                 template=template, customizations=customizations
             )
 
             # Update state
-            self.state["active_project"]["customizations"] = customizations
+            if isinstance(self.state.get("active_project"), dict):
+                self.state["active_project"]["customizations"] = customizations
             self.state["generated_tasks"] = [
                 self._task_to_dict(task) for task in generated_tasks
             ]
@@ -216,21 +224,23 @@ class BasicCreatorMode:
         # Get tasks without generating IDs
         preview_tasks = template.get_all_tasks(project_size)
 
-        phases_preview = {}
+        phases_preview: Dict[str, Dict[str, Any]] = {}
         for task in preview_tasks:
-            phase = task.phase
+            phase = getattr(task, "phase", "Unknown")
             if phase not in phases_preview:
                 phases_preview[phase] = {"tasks": [], "estimated_hours": 0}
 
-            phases_preview[phase]["tasks"].append(
-                {
-                    "name": task.name,
-                    "description": task.description,
-                    "estimated_hours": task.estimated_hours,
-                    "priority": task.priority.value,
-                    "optional": task.optional,
-                }
-            )
+            task_list = phases_preview[phase]["tasks"]
+            if isinstance(task_list, list):
+                task_list.append(
+                    {
+                        "name": task.name,
+                        "description": task.description,
+                        "estimated_hours": task.estimated_hours,
+                        "priority": task.priority.value,
+                        "optional": task.optional,
+                    }
+                )
             phases_preview[phase]["estimated_hours"] += task.estimated_hours
 
         return {
@@ -318,18 +328,30 @@ class BasicCreatorMode:
             "labels": task.labels,
             "estimated_hours": task.estimated_hours,
             "dependencies": task.dependencies,
-            "phase": task.metadata.get("phase"),
-            "phase_order": task.metadata.get("phase_order"),
-            "generated": task.metadata.get("generated", False),
+            "phase": task.source_context.get("phase") if task.source_context else None,
+            "phase_order": (
+                task.source_context.get("phase_order") if task.source_context else None
+            ),
+            "generated": (
+                task.source_context.get("generated", False)
+                if task.source_context
+                else False
+            ),
         }
 
     def _get_phases_summary(self, tasks: List[Task]) -> Dict[str, Any]:
         """Get summary of phases in the generated tasks"""
-        phases = {}
+        phases: Dict[str, Dict[str, Any]] = {}
 
         for task in tasks:
-            phase = task.metadata.get("phase", "Unknown")
-            phase_order = task.metadata.get("phase_order", 0)
+            phase = (
+                task.source_context.get("phase", "Unknown")
+                if task.source_context
+                else "Unknown"
+            )
+            phase_order = (
+                task.source_context.get("phase_order", 0) if task.source_context else 0
+            )
 
             if phase not in phases:
                 phases[phase] = {

@@ -11,7 +11,7 @@ from .shared_pipeline_events import SharedPipelineVisualizer
 class PipelineFlowManager:
     """Minimal stub for pipeline flow management"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.flows: Dict[str, PipelineFlow] = {}
         self.visualizer = SharedPipelineVisualizer()
 
@@ -26,13 +26,15 @@ class PipelineFlowManager:
         """Get a flow by ID"""
         return self.flows.get(flow_id)
 
-    def complete_flow(self, flow_id: str, result: Dict[str, Any] = None):
+    def complete_flow(
+        self, flow_id: str, result: Optional[Dict[str, Any]] = None
+    ) -> None:
         """Complete a flow"""
         if flow_id in self.flows:
             self.flows[flow_id].complete()
             self.visualizer.end_flow(flow_id, result)
 
-    def fail_flow(self, flow_id: str, error: str):
+    def fail_flow(self, flow_id: str, error: str) -> None:
         """Fail a flow"""
         if flow_id in self.flows:
             self.flows[flow_id].fail(error)

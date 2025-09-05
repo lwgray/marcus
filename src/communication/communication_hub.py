@@ -9,10 +9,9 @@ including Slack, email, and kanban board comments.
 """
 
 import asyncio
-import json
 import sys
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List
 
 from src.config.settings import Settings
 from src.core.models import BlockerReport, Task, TaskAssignment
@@ -166,7 +165,7 @@ class CommunicationHub:
         clarification : str
             The clarification message content
         """
-        message = {
+        {
             "type": "clarification",
             "content": clarification,
             "timestamp": datetime.now().isoformat(),

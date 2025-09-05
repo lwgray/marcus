@@ -150,14 +150,45 @@ class MarcusServiceRegistry:
                     services.append(service_info)
                 else:
                     # Clean up stale service file
-                    service_file.unlink()
+                    try:
+                        service_file.unlink()
+                    except (OSError, PermissionError) as e:
+                        # Log specific file system errors but continue discovery
+                        import logging
+
+                        logger = logging.getLogger(__name__)
+                        logger.debug(
+                            f"Could not remove stale service file {service_file}: {e}"
+                        )
+                    except Exception as e:
+                        # Log unexpected errors but continue discovery
+                        import logging
+
+                        logger = logging.getLogger(__name__)
+                        logger.warning(
+                            f"Unexpected error removing stale service file {service_file}: {e}"
+                        )
 
             except (json.JSONDecodeError, FileNotFoundError):
                 # Clean up invalid service files
                 try:
                     service_file.unlink()
-                except:
-                    pass
+                except (OSError, PermissionError) as e:
+                    # Log specific file system errors but continue discovery
+                    import logging
+
+                    logger = logging.getLogger(__name__)
+                    logger.debug(
+                        f"Could not remove invalid service file {service_file}: {e}"
+                    )
+                except Exception as e:
+                    # Log unexpected errors but continue discovery
+                    import logging
+
+                    logger = logging.getLogger(__name__)
+                    logger.warning(
+                        f"Unexpected error removing service file {service_file}: {e}"
+                    )
 
         return sorted(services, key=lambda x: x.get("started_at", ""))
 
@@ -184,7 +215,7 @@ class MarcusServiceRegistry:
 
         try:
             return psutil.pid_exists(pid)  # type: ignore[no-any-return]
-        except:
+        except Exception:
             return False
 
 

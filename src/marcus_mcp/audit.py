@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-import aiofiles  # type: ignore[import-untyped]
+import aiofiles
 
 
 class AuditLogger:

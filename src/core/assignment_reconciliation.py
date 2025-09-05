@@ -7,10 +7,10 @@ kanban board state on startup or after connectivity issues.
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Set, TypedDict
+from typing import Any, Dict, List, TypedDict
 
 from src.core.assignment_persistence import AssignmentPersistence
-from src.core.models import Task, TaskStatus
+from src.core.models import TaskStatus
 from src.integrations.kanban_interface import KanbanInterface
 
 logger = logging.getLogger(__name__)
@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 class ReconciliationResults(TypedDict):
     """Type definition for reconciliation results."""
+
     assignments_verified: int
     assignments_restored: int
     assignments_removed: int
@@ -27,6 +28,7 @@ class ReconciliationResults(TypedDict):
 
 class AssignmentHealth(TypedDict, total=False):
     """Type definition for assignment health status."""
+
     persisted_count: int
     kanban_assigned_count: int
     mismatches: List[Dict[str, Any]]
@@ -125,7 +127,6 @@ class AssignmentReconciler:
                     and task.assigned_to
                     and task.id not in persisted_task_ids
                 ):
-
                     # This task is assigned in kanban but not persisted
                     logger.info(
                         f"Found orphaned task {task.id} assigned to {task.assigned_to}"

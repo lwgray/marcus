@@ -6,13 +6,21 @@ for visualization of the entire processing pipeline.
 """
 
 import logging
-import uuid
 from datetime import datetime
 from typing import Any, Dict, Optional
 
 from src.integrations.nlp_tools import NaturalLanguageProjectCreator
 from src.visualization.pipeline_conversation_bridge import PipelineConversationBridge
-from src.visualization.pipeline_flow import PipelineStage
+
+try:
+    from src.visualization.pipeline_flow import PipelineStage
+except ImportError:
+    # Fallback if PipelineStage is not available
+    class PipelineStage:  # type: ignore[no-redef]
+        MCP_REQUEST = "mcp_request"
+        TASK_COMPLETION = "task_completion"
+
+
 from src.visualization.shared_pipeline_events import SharedPipelineVisualizer
 
 logger = logging.getLogger(__name__)
@@ -25,11 +33,11 @@ class PipelineTrackedProjectCreator:
 
     def __init__(
         self,
-        kanban_client,
-        ai_engine,
+        kanban_client: Any,
+        ai_engine: Any,
         pipeline_visualizer: SharedPipelineVisualizer,
-        conversation_logger=None,
-    ):
+        conversation_logger: Any = None,
+    ) -> None:
         self.creator = NaturalLanguageProjectCreator(kanban_client, ai_engine)
         self.pipeline_visualizer = pipeline_visualizer
         self.prd_parser = self.creator.prd_parser
@@ -43,7 +51,7 @@ class PipelineTrackedProjectCreator:
         # Monkey-patch the PRD parser to track events
         self._wrap_prd_parser()
 
-    def _wrap_prd_parser(self):
+    def _wrap_prd_parser(self) -> None:
         """Wrap PRD parser methods to track pipeline events"""
         # Store original methods only if they exist
         original_analyze = getattr(self.prd_parser, "analyze_prd_deeply", None)
@@ -53,7 +61,7 @@ class PipelineTrackedProjectCreator:
             # PRD parser methods not available, skip wrapping
             return
 
-        async def tracked_analyze_prd(prd_content: str):
+        async def tracked_analyze_prd(prd_content: str) -> Any:
             flow_id = getattr(self, "current_flow_id", None)
             if not flow_id or not original_analyze:
                 # Fallback to original method if available
@@ -134,7 +142,7 @@ class PipelineTrackedProjectCreator:
                 )
                 raise
 
-        async def tracked_parse_prd(prd_content: str, constraints=None):
+        async def tracked_parse_prd(prd_content: str, constraints: Any = None) -> Any:
             flow_id = getattr(self, "current_flow_id", None)
             if not flow_id:
                 return await original_parse(prd_content, constraints)
@@ -221,9 +229,9 @@ class PipelineTrackedProjectCreator:
                 raise
 
         if original_analyze:
-            self.prd_parser.analyze_prd_deeply = tracked_analyze_prd
+            setattr(self.prd_parser, "analyze_prd_deeply", tracked_analyze_prd)
         if original_parse:
-            self.prd_parser.parse_prd_to_tasks = tracked_parse_prd
+            setattr(self.prd_parser, "parse_prd_to_tasks", tracked_parse_prd)
 
     async def create_project_from_description(
         self,
@@ -255,12 +263,13 @@ class PipelineTrackedProjectCreator:
             # Track individual task creation
             if flow_id and result.get("success") and "tasks" in result:
                 for task in result["tasks"]:
-                    self.pipeline_visualizer.track_task_creation(
-                        flow_id=flow_id,
-                        task_id=task.get("id", "unknown"),
-                        task_name=task.get("name", "Unnamed"),
-                        success=True,
-                    )
+                    if hasattr(self.pipeline_visualizer, "track_task_creation"):
+                        self.pipeline_visualizer.track_task_creation(
+                            flow_id=flow_id,
+                            task_id=task.get("id", "unknown"),
+                            task_name=task.get("name", "Unnamed"),
+                            success=True,
+                        )
 
             return result
 

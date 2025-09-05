@@ -72,7 +72,7 @@ class TaskFactory:
             estimated_hours=cast(float, defaults["estimated_hours"]),
             actual_hours=cast(float, defaults["actual_hours"]),
             dependencies=cast(List[str], defaults["dependencies"]),
-            labels=cast(List[str], defaults["labels"])
+            labels=cast(List[str], defaults["labels"]),
         )
 
     @classmethod
@@ -159,7 +159,7 @@ class AgentFactory:
             capacity=cast(int, defaults["capacity"]),
             skills=cast(List[str], defaults["skills"]),
             availability=cast(Dict[str, bool], defaults["availability"]),
-            performance_score=cast(float, defaults["performance_score"])
+            performance_score=cast(float, defaults["performance_score"]),
         )
 
     @classmethod
@@ -230,7 +230,7 @@ class ProjectStateFactory:
             overdue_tasks=cast(List[Task], defaults["overdue_tasks"]),
             team_velocity=cast(float, defaults["team_velocity"]),
             risk_level=cast(RiskLevel, defaults["risk_level"]),
-            last_updated=cast(datetime, defaults["last_updated"])
+            last_updated=cast(datetime, defaults["last_updated"]),
         )
 
     @classmethod
@@ -299,7 +299,7 @@ class BlockerFactory:
             reported_at=cast(datetime, defaults["reported_at"]),
             resolved=cast(bool, defaults["resolved"]),
             resolution=cast(Optional[str], defaults["resolution"]),
-            resolved_at=cast(Optional[datetime], defaults["resolved_at"])
+            resolved_at=cast(Optional[datetime], defaults["resolved_at"]),
         )
 
     @classmethod

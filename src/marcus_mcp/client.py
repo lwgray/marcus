@@ -4,12 +4,12 @@ Simple Marcus MCP Client
 A wrapper around the MCP protocol for calling Marcus tools.
 """
 
-import asyncio
 import json
 import sys
 from typing import Any, Dict, Optional
 
 from mcp.client.stdio import stdio_client
+
 from mcp import ClientSession, StdioServerParameters
 
 
@@ -80,6 +80,7 @@ class SimpleMarcusClient:
 
         except Exception as e:
             import sys
+
             print(f"Error calling tool {tool_name}: {e}", file=sys.stderr)
             return None
 

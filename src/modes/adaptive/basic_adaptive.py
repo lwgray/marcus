@@ -6,8 +6,7 @@ task assignments like "Deploy to production" before development is complete.
 """
 
 import logging
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.core.assignment_persistence import AssignmentPersistence
 from src.core.models import Priority, Task, TaskStatus
@@ -19,7 +18,7 @@ class BasicAdaptiveMode:
     """Basic Adaptive Mode that coordinates within existing structure"""
 
     def __init__(self) -> None:
-        self.state = {"assignment_preferences": {}, "blocked_tasks": []}
+        self.state: Dict[str, Any] = {"assignment_preferences": {}, "blocked_tasks": []}
         self.assignment_persistence = AssignmentPersistence()
 
         # Common dependency patterns to prevent illogical assignments
@@ -27,7 +26,9 @@ class BasicAdaptiveMode:
             # Setup must come before everything
             {
                 "pattern": r"(setup|init|configure|install)",
-                "blocks_until_complete": r"(implement|build|create|develop|test|deploy)",
+                "blocks_until_complete": (
+                    r"(implement|build|create|develop|test|deploy)"
+                ),
             },
             # Design comes before implementation
             {
@@ -56,7 +57,7 @@ class BasicAdaptiveMode:
             },
         ]
 
-    async def initialize(self, saved_state: Dict[str, Any]):
+    async def initialize(self, saved_state: Dict[str, Any]) -> None:
         """Initialize mode with saved state"""
         if saved_state:
             self.state.update(saved_state)
@@ -96,7 +97,8 @@ class BasicAdaptiveMode:
             Best task for the agent or None
         """
         logger.info(
-            f"Finding optimal task for agent {agent_id} with {len(available_tasks)} available tasks"
+            f"Finding optimal task for agent {agent_id} with "
+            f"{len(available_tasks)} available tasks"
         )
 
         # Filter out tasks that are blocked by dependencies
@@ -109,7 +111,7 @@ class BasicAdaptiveMode:
             return None
 
         # Score tasks based on multiple factors
-        scored_tasks = []
+        scored_tasks: List[Tuple[Task, float]] = []
         for task in unblocked_tasks:
             score = await self._calculate_task_score(
                 task=task,
@@ -138,7 +140,7 @@ class BasicAdaptiveMode:
         This is the core logic that prevents "Deploy to production" from being
         assigned before development is complete.
         """
-        unblocked_tasks = []
+        unblocked_tasks: List[Task] = []
 
         for task in tasks:
             if await self._is_task_unblocked(task, tasks, assigned_tasks):
@@ -162,7 +164,8 @@ class BasicAdaptiveMode:
                 dep_task = next((t for t in all_tasks if t.id == dep_id), None)
                 if dep_task and dep_task.status != TaskStatus.DONE:
                     logger.debug(
-                        f"Task '{task.name}' blocked by incomplete dependency '{dep_task.name}'"
+                        f"Task '{task.name}' blocked by incomplete "
+                        f"dependency '{dep_task.name}'"
                     )
                     return False
 
@@ -188,7 +191,6 @@ class BasicAdaptiveMode:
                         and other_task.status != TaskStatus.DONE
                         and other_task.id != task.id
                     ):
-
                         logger.info(
                             f"Task '{task.name}' blocked by logical dependency: "
                             f"'{other_task.name}' must complete first"
@@ -224,10 +226,9 @@ class BasicAdaptiveMode:
                     and other_task.status != TaskStatus.DONE
                     and other_task.id != task.id
                 ):
-
                     logger.warning(
-                        f"Blocking deployment task '{task.name}' - implementation task "
-                        f"'{other_task.name}' is not complete"
+                        f"Blocking deployment task '{task.name}' - "
+                        f"implementation task '{other_task.name}' is not complete"
                     )
                     return True
 
@@ -243,10 +244,9 @@ class BasicAdaptiveMode:
                     and other_task.status != TaskStatus.DONE
                     and self._tasks_related(task, other_task)
                 ):
-
                     logger.info(
-                        f"Blocking test task '{task.name}' - related implementation "
-                        f"'{other_task.name}' is not complete"
+                        f"Blocking test task '{task.name}' - related "
+                        f"implementation '{other_task.name}' is not complete"
                     )
                     return True
 
@@ -386,7 +386,11 @@ class BasicAdaptiveMode:
 
     def _get_agent_preference_score(self, agent_id: str, task: Task) -> float:
         """Get preference score based on agent's history"""
-        preferences = self.state.get("assignment_preferences", {}).get(agent_id, {})
+        assignment_prefs = self.state.get("assignment_preferences", {})
+        if isinstance(assignment_prefs, dict):
+            preferences = assignment_prefs.get(agent_id, {})
+        else:
+            preferences = {}
 
         # Simple preference based on task labels
         score = 0.0
@@ -398,7 +402,7 @@ class BasicAdaptiveMode:
 
     async def record_assignment_outcome(
         self, agent_id: str, task: Task, outcome: str, feedback: Optional[str] = None
-    ):
+    ) -> None:
         """
         Record the outcome of a task assignment for learning
 
@@ -409,10 +413,18 @@ class BasicAdaptiveMode:
             feedback: Optional feedback from agent
         """
         # Update agent preferences based on outcome
-        if agent_id not in self.state["assignment_preferences"]:
-            self.state["assignment_preferences"][agent_id] = {}
+        assignment_prefs = self.state.get("assignment_preferences", {})
+        if not isinstance(assignment_prefs, dict):
+            assignment_prefs = {}
+            self.state["assignment_preferences"] = assignment_prefs
 
-        preferences = self.state["assignment_preferences"][agent_id]
+        if agent_id not in assignment_prefs:
+            assignment_prefs[agent_id] = {}
+
+        preferences = assignment_prefs[agent_id]
+        if not isinstance(preferences, dict):
+            preferences = {}
+            assignment_prefs[agent_id] = preferences
 
         # Adjust preferences based on outcome
         weight_change = {"completed": 0.1, "blocked": -0.05, "abandoned": -0.1}.get(
@@ -435,7 +447,7 @@ class BasicAdaptiveMode:
         Returns:
             Analysis of blocking relationships
         """
-        blocking_analysis = {
+        blocking_analysis: Dict[str, Any] = {
             "blocked_tasks": [],
             "blocking_tasks": [],
             "dependency_chains": [],
@@ -444,12 +456,14 @@ class BasicAdaptiveMode:
 
         # Group tasks by status
         todo_tasks = [t for t in tasks if t.status == TaskStatus.TODO]
-        done_tasks = [t for t in tasks if t.status == TaskStatus.DONE]
+        _done_tasks = [  # noqa: F841 # Reserved for future analysis
+            t for t in tasks if t.status == TaskStatus.DONE
+        ]
 
         for task in todo_tasks:
             if not await self._is_task_unblocked(task, tasks, {}):
                 # Find what's blocking it
-                blockers = []
+                blockers: List[Dict[str, Any]] = []
 
                 # Check explicit dependencies
                 for dep_id in task.dependencies:
@@ -470,7 +484,10 @@ class BasicAdaptiveMode:
                 for pattern in self.LOGICAL_DEPENDENCY_PATTERNS:
                     if re.search(pattern["blocks_until_complete"], task_text):
                         for other_task in tasks:
-                            other_text = f"{other_task.name} {other_task.description or ''}".lower()
+                            other_text = (
+                                f"{other_task.name} "
+                                f"{other_task.description or ''}".lower()
+                            )
                             if (
                                 re.search(pattern["pattern"], other_text)
                                 and other_task.status != TaskStatus.DONE
@@ -480,7 +497,10 @@ class BasicAdaptiveMode:
                                         "type": "logical_dependency",
                                         "blocking_task": other_task.name,
                                         "blocking_task_id": other_task.id,
-                                        "reason": f"Must complete {pattern['pattern']} before {pattern['blocks_until_complete']}",
+                                        "reason": (
+                                            f"Must complete {pattern['pattern']} "
+                                            f"before {pattern['blocks_until_complete']}"
+                                        ),
                                     }
                                 )
 

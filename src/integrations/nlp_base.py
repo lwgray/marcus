@@ -30,7 +30,7 @@ class NaturalLanguageTaskCreator(ABC):
     - Error handling
     """
 
-    def __init__(self, kanban_client, ai_engine=None):
+    def __init__(self, kanban_client: Any, ai_engine: Any = None) -> None:
         """
         Initialize the base task creator.
 
@@ -45,7 +45,10 @@ class NaturalLanguageTaskCreator(ABC):
         self.safety_checker = SafetyChecker()
 
     async def create_tasks_on_board(
-        self, tasks: List[Task], skip_validation: bool = False, update_dependencies: bool = True
+        self,
+        tasks: List[Task],
+        skip_validation: bool = False,
+        update_dependencies: bool = True,
     ) -> List[Task]:
         """
         Create tasks on the kanban board.
@@ -202,37 +205,41 @@ class NaturalLanguageTaskCreator(ABC):
         Returns:
             Dictionary mapping task types to lists of tasks
         """
-        classified = {task_type: [] for task_type in list(TaskType)}
+        classified: Dict[TaskType, List[Task]] = {
+            task_type: [] for task_type in list(TaskType)
+        }
 
         for task in tasks:
             task_type = self.task_classifier.classify(task)
             classified[task_type].append(task)
 
         return classified
-    
-    def classify_tasks_with_details(self, tasks: List[Task]) -> Dict[str, Dict[str, Any]]:
+
+    def classify_tasks_with_details(
+        self, tasks: List[Task]
+    ) -> Dict[str, Dict[str, Any]]:
         """
         Classify tasks and return detailed classification info per task.
-        
+
         Args:
             tasks: List of tasks to classify
-            
+
         Returns:
             Dictionary mapping task IDs to classification details
         """
         from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
-        
+
         classifier = EnhancedTaskClassifier()
         results = {}
-        
+
         for task in tasks:
             result = classifier.classify_with_confidence(task)
             results[task.id] = {
                 "type": result.task_type.value,
                 "confidence": result.confidence,
-                "reasoning": result.reasoning
+                "reasoning": result.reasoning,
             }
-            
+
         return results
 
     def get_tasks_by_type(self, tasks: List[Task], task_type: TaskType) -> List[Task]:
@@ -252,7 +259,9 @@ class NaturalLanguageTaskCreator(ABC):
         return self.task_classifier.is_type(task, TaskType.TESTING)
 
     @abstractmethod
-    async def process_natural_language(self, description: str, **kwargs) -> List[Task]:
+    async def process_natural_language(
+        self, description: str, **kwargs: Any
+    ) -> List[Task]:
         """
         Process natural language description into tasks.
 
@@ -268,7 +277,7 @@ class NaturalLanguageTaskCreator(ABC):
         pass
 
     async def create_from_description(
-        self, description: str, apply_safety: bool = True, **kwargs
+        self, description: str, apply_safety: bool = True, **kwargs: Any
     ) -> Dict[str, Any]:
         """
         Main entry point for natural language task creation.

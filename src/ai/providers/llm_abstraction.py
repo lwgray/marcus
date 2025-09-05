@@ -83,12 +83,13 @@ class LLMAbstraction:
 
     def __init__(self) -> None:
         self.providers: Dict[str, BaseLLMProvider] = {}
-        
+
         # Get provider from config first, then env var as override
         from src.config.config_loader import get_config
+
         config = get_config()
         self.current_provider = config.get("ai.provider", "anthropic")
-        
+
         # Build fallback list based on available providers
         self.fallback_providers: List[str] = []
 
@@ -187,14 +188,16 @@ class LLMAbstraction:
         local_model_path = ai_config.get("local_model", "").strip()
         if not local_model_path:  # Fallback to env var if not in config
             local_model_path = os.getenv("MARCUS_LOCAL_LLM_PATH", "").strip()
-            
+
         if local_model_path:
             try:
                 from .local_provider import LocalLLMProvider
 
                 self.providers["local"] = LocalLLMProvider(local_model_path)
                 self.fallback_providers.append("local")
-                logger.info(f"Successfully initialized local LLM provider with model: {local_model_path}")
+                logger.info(
+                    f"Successfully initialized local LLM provider with model: {local_model_path}"
+                )
             except Exception as e:
                 logger.warning(f"Failed to initialize local LLM provider: {e}")
 
@@ -535,7 +538,7 @@ class LLMAbstraction:
                 best_success_rate = success_rate
                 best_provider = provider
 
-        return best_provider
+        return str(best_provider)
 
     async def health_check(self) -> Dict[str, Any]:
         """

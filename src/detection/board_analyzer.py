@@ -10,7 +10,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import List
 
 from src.core.models import Priority, Task, TaskStatus
 

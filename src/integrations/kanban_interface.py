@@ -6,7 +6,6 @@ integrations (Planka, Linear, GitHub Projects) must implement.
 """
 
 from abc import ABC, abstractmethod
-from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
@@ -40,7 +39,7 @@ class KanbanInterface(ABC):
                 - For GitHub: token, owner, repo, project_number
         """
         self.config = config
-        self.provider = None
+        self.provider: Optional[KanbanProvider] = None
 
     @abstractmethod
     async def connect(self) -> bool:
@@ -109,7 +108,9 @@ class KanbanInterface(ABC):
         pass
 
     @abstractmethod
-    async def update_task(self, task_id: str, updates: Dict[str, Any]) -> Task:
+    async def update_task(
+        self, task_id: str, updates: Dict[str, Any]
+    ) -> Optional[Task]:
         """
         Update an existing task
 

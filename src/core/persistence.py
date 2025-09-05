@@ -10,10 +10,9 @@ import asyncio
 import json
 import logging
 import sqlite3
-from dataclasses import asdict
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 import aiofiles
 

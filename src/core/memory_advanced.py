@@ -7,10 +7,10 @@ confidence intervals, complexity adjustments, and time-based relevance weighting
 
 import logging
 import math
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Any, Dict, List
 
-from src.core.memory import AgentProfile, Memory, TaskOutcome
+from src.core.memory import Memory, TaskOutcome
 from src.core.models import Task
 from src.core.resilience import with_fallback
 
@@ -268,7 +268,7 @@ class MemoryAdvanced(Memory):
         """Find tasks similar to the given task in the history"""
         similar = []
 
-        task_labels = set(task.labels) if task.labels else set()
+        set(task.labels) if task.labels else set()
         task_words = set(task.name.lower().split())
 
         for outcome in history:

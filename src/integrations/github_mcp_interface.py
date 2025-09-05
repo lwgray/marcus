@@ -5,7 +5,7 @@ Wrapper for GitHub MCP tools to provide a clean interface for the quality assess
 and other components that need GitHub data.
 """
 
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Optional
 
 
 class GitHubMCPInterface:
