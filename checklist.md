@@ -139,6 +139,7 @@
 - [ ] Create searchable docs site (MkDocs/Sphinx)
 - [ ] Add code examples
 - [ ] Review and update existing system docs
+- [ ] 🔴 [Create Comprehensive Internal Systems Documentation](https://github.com/lwgray/marcus/issues/52) - Document internal orchestration behind all agent tools
 - **Estimate:** 5 days
 
 ### 8. Contribution Guidelines 🤝
