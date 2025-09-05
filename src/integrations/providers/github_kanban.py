@@ -214,7 +214,7 @@ class GitHubKanban(KanbanInterface):
 
         return self._github_issue_to_task(result["issue"])
 
-    async def update_task(self, task_id: str, updates: Dict[str, Any]) -> Task:
+    async def update_task(self, task_id: str, updates: Dict[str, Any]) -> Optional[Task]:
         """Update existing issue."""
         if not self.mcp_caller:
             raise ValueError("MCP caller not available")

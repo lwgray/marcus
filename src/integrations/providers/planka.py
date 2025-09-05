@@ -117,7 +117,7 @@ class Planka(KanbanInterface):
             logger.error(f"Error creating task: {e}")
             raise
 
-    async def update_task(self, task_id: str, updates: Dict[str, Any]) -> Task:
+    async def update_task(self, task_id: str, updates: Dict[str, Any]) -> Optional[Task]:
         """Update task status or properties"""
         try:
             logger.info(
@@ -164,12 +164,7 @@ class Planka(KanbanInterface):
         except Exception as e:
             logger.error(f"Error updating task {task_id}: {e}")
             # Return the current task state on error
-            task = await self.get_task_by_id(task_id)
-            if task is None:
-                raise RuntimeError(
-                    f"Task {task_id} not found after error during update: {e}"
-                )
-            return task
+            return await self.get_task_by_id(task_id)
 
     async def add_comment(self, task_id: str, comment: str) -> bool:
         """Add comment to task"""

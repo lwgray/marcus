@@ -54,6 +54,11 @@
   - Balance between relevant context and token limits
   - **Impact:** Medium - improves performance and usability
 
+- [ ] **[#50](https://github.com/lwgray/marcus/issues/50):** 🔴 KanbanInterface.update_task() None returns not handled
+  - Fix silent failures in task update operations
+  - Prevent state divergence between Marcus and Kanban boards
+  - **Impact:** High - affects core functionality and data consistency
+
 ## 🟡 **PRIORITY 2: Developer Experience** (Weeks 2-3: Sep 8-21, 2025)
 *Enable contributors to work effectively*
 
