@@ -7,9 +7,11 @@ import asyncio
 import json
 import os
 import sys
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import httpx
 from mcp.client.stdio import stdio_client
+from mcp.types import TextContent
 
 from mcp import ClientSession, StdioServerParameters
 
@@ -31,7 +33,16 @@ os.environ["PLANKA_AGENT_EMAIL"] = "demo@demo.demo"
 os.environ["PLANKA_AGENT_PASSWORD"] = "demo"
 
 
-async def check_board_availability():
+def _extract_text_from_result(result: Any) -> str:
+    """Safely extract text from MCP result content."""
+    if hasattr(result, "content") and result.content:
+        first_content = result.content[0]
+        if hasattr(first_content, "text"):
+            return str(first_content.text)
+    return ""
+
+
+async def check_board_availability() -> bool:
     """Check if the Kanban board service is running"""
     base_url = os.environ.get("PLANKA_BASE_URL", "http://localhost:3333")
 
@@ -45,7 +56,7 @@ async def check_board_availability():
         return False
 
 
-async def clear_board(board):
+async def clear_board(board: str) -> None:
     """Clear all cards from the board"""
 
     server_params = StdioServerParameters(
@@ -93,7 +104,7 @@ async def clear_board(board):
                 )
 
                 # Check if result has content before parsing
-                if not result or not result.content or not result.content[0].text:
+                if not result or not _extract_text_from_result(result):
                     raise KanbanIntegrationError(
                         board_name=board,
                         operation="get_projects",
@@ -107,7 +118,7 @@ async def clear_board(board):
                         ),
                     )
 
-                projects_data = json.loads(result.content[0].text)
+                projects_data = json.loads(_extract_text_from_result(result))
                 project_id = None
                 board_id = None
 
@@ -123,14 +134,16 @@ async def clear_board(board):
 
                 # Find the board
                 if "boards" in projects_data.get("included", {}):
-                    for board in projects_data["included"]["boards"]:
-                        if board["projectId"] == project_id:
-                            board_id = board["id"]
-                            print(f"✅ Found board: {board['name']} (ID: {board_id})")
+                    for board_data in projects_data["included"]["boards"]:
+                        if board_data["projectId"] == project_id:
+                            board_id = board_data["id"]
+                            print(
+                                f"✅ Found board: {board_data['name']} (ID: {board_id})"
+                            )
                             break
 
                 if not board_id:
-                    print("❌ No board found for {board}!")
+                    print(f"❌ No board found for {board}!")
                     return
 
                 # Get board summary
@@ -142,7 +155,7 @@ async def clear_board(board):
                         "includeTaskDetails": False,
                     },
                 )
-                summary = json.loads(summary_result.content[0].text)
+                summary = json.loads(_extract_text_from_result(summary_result))
 
                 total_cards = 0
                 cards_to_delete = []
@@ -203,7 +216,7 @@ async def clear_board(board):
                 custom_context={
                     "error": str(e),
                     "response": str(
-                        result.content[0].text
+                        _extract_text_from_result(result)
                         if result and result.content
                         else "No content"
                     ),
@@ -239,7 +252,7 @@ async def clear_board(board):
         )
 
 
-async def clear_board_silent():
+async def clear_board_silent(board: str) -> Tuple[bool, str]:
     """Clear board without prompts (for use by menu)"""
 
     server_params = StdioServerParameters(
@@ -258,7 +271,7 @@ async def clear_board_silent():
                 {"action": "get_projects", "page": 1, "perPage": 25},
             )
 
-            projects_data = json.loads(result.content[0].text)
+            projects_data = json.loads(_extract_text_from_result(result))
             project_id = None
             board_id = None
 
@@ -272,9 +285,9 @@ async def clear_board_silent():
 
             # Find the board
             if "boards" in projects_data.get("included", {}):
-                for board in projects_data["included"]["boards"]:
-                    if board["projectId"] == project_id:
-                        board_id = board["id"]
+                for board_data in projects_data["included"]["boards"]:
+                    if board_data["projectId"] == project_id:
+                        board_id = board_data["id"]
                         break
 
             if not board_id:
@@ -289,7 +302,7 @@ async def clear_board_silent():
                     "includeTaskDetails": False,
                 },
             )
-            summary = json.loads(summary_result.content[0].text)
+            summary = json.loads(_extract_text_from_result(summary_result))
 
             total_cards = 0
             deleted = 0
@@ -309,7 +322,9 @@ async def clear_board_silent():
             return True, f"Deleted {deleted} of {total_cards} cards"
 
 
-def display_marcus_error(error):
+def display_marcus_error(
+    error: Union[ServiceUnavailableError, KanbanIntegrationError],
+) -> None:
     """Display Marcus error in a user-friendly format"""
     print("\n❌ ERROR DETECTED")
     print("=" * 50)

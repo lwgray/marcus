@@ -58,6 +58,7 @@ Risk and blocker management:
 """
 
 import asyncio
+import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Union
 
@@ -76,6 +77,8 @@ from src.integrations.kanban_client import KanbanClient
 from src.learning.project_pattern_learner import ProjectPatternLearner
 from src.quality.project_quality_assessor import ProjectQualityAssessor
 from src.recommendations.recommendation_engine import ProjectOutcome
+
+logger = logging.getLogger(__name__)
 
 
 class ProjectMonitor:
@@ -311,7 +314,9 @@ class ProjectMonitor:
         """
         if not self.current_state:
             await self._collect_project_data()
-        assert self.current_state is not None  # Help mypy understand this is not None after _collect_project_data
+        if self.current_state is None:
+            logger.error("Failed to collect project data: current_state is still None")
+            raise RuntimeError("Unable to retrieve project state from data collection")
         return self.current_state
 
     async def _collect_project_data(self) -> None:
@@ -374,7 +379,7 @@ class ProjectMonitor:
         risk_level = self._assess_risk_level(
             progress_percent, len(overdue_tasks), blocked_tasks, velocity
         )
-        
+
         # Store additional calculated metrics as attributes for access by other methods
         velocity_trend = self._calculate_velocity_trend(velocity)
         risk_score = self._calculate_risk_score(
@@ -398,7 +403,7 @@ class ProjectMonitor:
             risk_level=risk_level,
             last_updated=datetime.now(),
         )
-        
+
         # Store additional metrics as instance attributes for later use
         self._velocity_trend = velocity_trend
         self._risk_score = risk_score
@@ -604,7 +609,9 @@ class ProjectMonitor:
         recent_activities = self.historical_data[-10:] if self.historical_data else []
 
         # Get team status (simplified for now)
-        team_status: Dict[str, Any] = {}  # Would be populated from agent status tracking
+        team_status: Dict[str, Any] = (
+            {}
+        )  # Would be populated from agent status tracking
 
         # Get AI analysis
         analysis = await self.ai_engine.analyze_project_health(
@@ -775,7 +782,9 @@ class ProjectMonitor:
             if task.status == TaskStatus.BLOCKED:
                 # For now, skip dependency analysis since get_dependent_tasks is not implemented
                 # TODO: Implement dependency analysis when the method is available
-                dependents: List[Task] = []  # Would call self.kanban_client.get_dependent_tasks(task.id)
+                dependents: List[Task] = (
+                    []
+                )  # Would call self.kanban_client.get_dependent_tasks(task.id)
                 if len(dependents) > 2:
                     risk = ProjectRisk(
                         risk_type="dependency",
@@ -1169,7 +1178,7 @@ class ProjectMonitor:
         # Ensure current_state is not None
         if self.current_state is None:
             return
-            
+
         print(
             f"🎉 Project '{self.current_state.project_name}' appears to be complete!",
             file=sys.stderr,
@@ -1337,7 +1346,11 @@ class ProjectMonitor:
             await self._collect_project_data()
 
         # Ensure current_state is not None after data collection
-        assert self.current_state is not None
+        if self.current_state is None:
+            logger.error("Failed to collect project data for completion learning")
+            raise RuntimeError(
+                "Unable to retrieve project state for completion learning"
+            )
 
         # Get all tasks for analysis
         all_tasks = await self._get_all_tasks()
@@ -1427,7 +1440,11 @@ class ProjectMonitor:
             await self._collect_project_data()
 
         # Ensure current_state is not None after data collection
-        assert self.current_state is not None
+        if self.current_state is None:
+            logger.error("Failed to collect project data for pattern recommendations")
+            raise RuntimeError(
+                "Unable to retrieve project state for pattern recommendations"
+            )
 
         # Build project context
         await self._get_all_tasks()

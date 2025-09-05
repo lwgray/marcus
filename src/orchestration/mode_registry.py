@@ -255,8 +255,7 @@ class ModeRegistry:
                 )
 
         elif (
-            board_state.is_well_structured 
-            and self.current_mode != MarcusMode.ADAPTIVE
+            board_state.is_well_structured and self.current_mode != MarcusMode.ADAPTIVE
         ):
             suggested_mode = MarcusMode.ADAPTIVE
             reason = (

@@ -10,7 +10,7 @@ Advanced error handling patterns for autonomous agent environments:
 
 import asyncio
 import logging
-import random
+import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
@@ -334,7 +334,8 @@ class RetryHandler:
 
         # Add jitter to prevent thundering herd
         if self.config.jitter:
-            jitter = random.uniform(0, delay * 0.1)  # 10% jitter
+            secure_random = secrets.SystemRandom()
+            jitter = secure_random.uniform(0, delay * 0.1)  # 10% jitter
             delay += jitter
 
         return delay

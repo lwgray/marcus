@@ -14,6 +14,7 @@ import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any, Dict, List
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -21,7 +22,7 @@ from src.core.models import Priority, Task, TaskStatus
 from src.integrations.kanban_client_with_create import KanbanClientWithCreate
 
 
-async def get_board_lists(client):
+async def get_board_lists(client: KanbanClientWithCreate) -> List[Dict[str, Any]]:
     """Get all lists on the board to show where tasks will be created."""
     from mcp.client.stdio import stdio_client
 
@@ -46,7 +47,12 @@ async def get_board_lists(client):
                 and hasattr(lists_result, "content")
                 and lists_result.content
             ):
-                lists_data = json.loads(lists_result.content[0].text)
+                # Handle TextContent type properly
+                first_content = lists_result.content[0]
+                if hasattr(first_content, "text"):
+                    lists_data = json.loads(first_content.text)
+                else:
+                    return []
                 lists = (
                     lists_data
                     if isinstance(lists_data, list)
@@ -56,7 +62,7 @@ async def get_board_lists(client):
     return []
 
 
-async def create_test_tasks():
+async def create_test_tasks() -> None:
     """Create three tasks for testing Design-Implement-Test flow."""
     # Initialize the kanban client
     client = KanbanClientWithCreate()

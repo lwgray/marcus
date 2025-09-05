@@ -13,7 +13,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Dict, List, Optional, Set, Tuple, Any
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from src.core.assignment_persistence import AssignmentPersistence
 from src.core.models import Task, TaskStatus
@@ -154,15 +154,22 @@ class TaskRecoveryManager:
                         if t.id == task_id:
                             task_found = t
                             break
-                    
-                    if task_found is not None and task_found.id not in self.tasks_being_recovered:
+
+                    if (
+                        task_found is not None
+                        and task_found.id not in self.tasks_being_recovered
+                    ):
                         if (
                             task_found,
                             agent_id,
                             RecoveryReason.AGENT_DISCONNECTED,
                         ) not in abandoned_tasks:
                             abandoned_tasks.append(
-                                (task_found, agent_id, RecoveryReason.AGENT_DISCONNECTED)
+                                (
+                                    task_found,
+                                    agent_id,
+                                    RecoveryReason.AGENT_DISCONNECTED,
+                                )
                             )
 
         except Exception as e:

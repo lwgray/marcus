@@ -360,7 +360,7 @@ class WorkerMCPClient:
                 if hasattr(tools_response, "tools"):
                     tools = tools_response.tools
                 else:
-                    # For testing, tools_response might be a list directly  
+                    # For testing, tools_response might be a list directly
                     tools = cast(List[Any], tools_response)
                 print(
                     f"Connected to Marcus. Available tools: {[t.name for t in tools]}"

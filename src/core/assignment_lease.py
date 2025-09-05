@@ -17,7 +17,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 from src.core.assignment_persistence import AssignmentPersistence
 from src.core.event_loop_utils import EventLoopLockManager
@@ -75,7 +75,9 @@ class AssignmentLease:
         else:
             return LeaseStatus.ACTIVE
 
-    def calculate_renewal_duration(self, lease_manager: Optional["AssignmentLeaseManager"] = None) -> timedelta:
+    def calculate_renewal_duration(
+        self, lease_manager: Optional["AssignmentLeaseManager"] = None
+    ) -> timedelta:
         """
         Calculate renewal duration based on progress and history.
 

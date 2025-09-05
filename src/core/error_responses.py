@@ -433,8 +433,11 @@ class ErrorResponseFormatter:
                 return obj
 
         result = sanitize_dict(response)
-        # Type assertion to help mypy understand the return type
-        assert isinstance(result, dict)
+        # Type guard to help mypy understand the return type
+        if not isinstance(result, dict):
+            raise TypeError(
+                f"Sanitization failed: expected dict, got {type(result).__name__}"
+            )
         return result
 
 

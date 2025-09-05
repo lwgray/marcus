@@ -130,7 +130,9 @@ class TestPhaseDependencyEnforcer:
             ),
         ]
 
-    def test_single_feature_phase_ordering(self, enforcer: PhaseDependencyEnforcer, sample_tasks: List[Task]) -> None:
+    def test_single_feature_phase_ordering(
+        self, enforcer: PhaseDependencyEnforcer, sample_tasks: List[Task]
+    ) -> None:
         """Test that tasks within a single feature follow phase ordering"""
         # Apply phase dependencies
         result_tasks = enforcer.enforce_phase_dependencies(sample_tasks)
@@ -153,7 +155,9 @@ class TestPhaseDependencyEnforcer:
         assert "impl-001" in task_dict["doc-001"].dependencies
         assert "test-001" in task_dict["doc-001"].dependencies
 
-    def test_multiple_features_isolation(self, enforcer: PhaseDependencyEnforcer) -> None:
+    def test_multiple_features_isolation(
+        self, enforcer: PhaseDependencyEnforcer
+    ) -> None:
         """Test that dependencies are isolated within features"""
         tasks = [
             # Auth feature
@@ -177,7 +181,9 @@ class TestPhaseDependencyEnforcer:
         assert "pay-impl" in task_dict["pay-test"].dependencies
         assert "auth-impl" not in task_dict["pay-test"].dependencies
 
-    def test_feature_identification_from_name(self, enforcer: PhaseDependencyEnforcer) -> None:
+    def test_feature_identification_from_name(
+        self, enforcer: PhaseDependencyEnforcer
+    ) -> None:
         """Test feature identification from task names"""
         task1 = create_test_task("1", "Design authentication flow", labels=[])
         task2 = create_test_task("2", "Build payment processing", labels=[])
@@ -187,7 +193,9 @@ class TestPhaseDependencyEnforcer:
         assert enforcer._identify_task_feature(task2) == "payment"
         assert enforcer._identify_task_feature(task3) == "dashboard"
 
-    def test_feature_identification_from_labels(self, enforcer: PhaseDependencyEnforcer) -> None:
+    def test_feature_identification_from_labels(
+        self, enforcer: PhaseDependencyEnforcer
+    ) -> None:
         """Test feature identification prioritizes explicit labels"""
         task1 = create_test_task("1", "Generic task", labels=["feature:checkout"])
         task2 = create_test_task("2", "Another task", labels=["authentication"])
@@ -225,7 +233,9 @@ class TestPhaseDependencyEnforcer:
         task_dict = {task.id: task for task in result_tasks}
         assert "design-001" in task_dict["impl-001"].dependencies
 
-    def test_preserve_existing_dependencies(self, enforcer: PhaseDependencyEnforcer) -> None:
+    def test_preserve_existing_dependencies(
+        self, enforcer: PhaseDependencyEnforcer
+    ) -> None:
         """Test that existing manual dependencies are preserved"""
         tasks = [
             create_test_task("design-001", "Design API", dependencies=[]),
@@ -297,7 +307,9 @@ class TestPhaseDependencyEnforcer:
         for task in result:
             assert task.dependencies == []
 
-    def test_infrastructure_phase_ordering(self, enforcer: PhaseDependencyEnforcer) -> None:
+    def test_infrastructure_phase_ordering(
+        self, enforcer: PhaseDependencyEnforcer
+    ) -> None:
         """Test that infrastructure phase is ordered correctly"""
         tasks = [
             create_test_task(
@@ -317,7 +329,9 @@ class TestPhaseDependencyEnforcer:
         assert "design-001" in task_dict["impl-001"].dependencies
         assert "infra-001" in task_dict["impl-001"].dependencies
 
-    def test_get_phase_statistics(self, enforcer: PhaseDependencyEnforcer, sample_tasks: List[Task]) -> None:
+    def test_get_phase_statistics(
+        self, enforcer: PhaseDependencyEnforcer, sample_tasks: List[Task]
+    ) -> None:
         """Test phase statistics generation"""
         # Apply dependencies first
         result_tasks = enforcer.enforce_phase_dependencies(sample_tasks)
@@ -333,7 +347,9 @@ class TestPhaseDependencyEnforcer:
         assert stats["phase_distribution"]["TESTING"] == 1
         assert stats["phase_distribution"]["DOCUMENTATION"] == 1
 
-    def test_complex_feature_extraction(self, enforcer: PhaseDependencyEnforcer) -> None:
+    def test_complex_feature_extraction(
+        self, enforcer: PhaseDependencyEnforcer
+    ) -> None:
         """Test complex feature name extraction patterns"""
         test_cases = [
             ("Design user authentication system", "auth"),
@@ -366,7 +382,12 @@ class TestPhaseDependencyEnforcer:
             ("Release version 1.0", TaskPhase.DEPLOYMENT),
         ],
     )
-    def test_phase_classification_variations(self, enforcer: PhaseDependencyEnforcer, task_name: str, expected_phase: TaskPhase) -> None:
+    def test_phase_classification_variations(
+        self,
+        enforcer: PhaseDependencyEnforcer,
+        task_name: str,
+        expected_phase: TaskPhase,
+    ) -> None:
         """Test phase classification with various task names"""
         task = create_test_task("1", task_name, labels=[])
         phase_tasks = enforcer._classify_tasks_by_phase([task])

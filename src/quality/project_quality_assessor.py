@@ -20,6 +20,7 @@ from src.quality.board_quality_validator import BoardQualityValidator
 
 class TaskQualityMetrics(TypedDict):
     """Typed dictionary for task quality metrics."""
+
     total_tasks: int
     completed_tasks: int
     completion_rate: float
@@ -33,6 +34,7 @@ class TaskQualityMetrics(TypedDict):
 
 class TeamQualityMetrics(TypedDict):
     """Typed dictionary for team quality metrics."""
+
     team_size: int
     avg_tasks_per_member: float
     skill_diversity: int
@@ -43,6 +45,7 @@ class TeamQualityMetrics(TypedDict):
 
 class DeliveryQualityMetrics(TypedDict):
     """Typed dictionary for delivery quality metrics."""
+
     progress_percent: float
     velocity_trend: str
     on_time_delivery_rate: float
@@ -53,6 +56,7 @@ class DeliveryQualityMetrics(TypedDict):
 
 class GitHubDataCollection(TypedDict):
     """Typed dictionary for GitHub data collection."""
+
     commits: List[Dict[str, Any]]
     pull_requests: List[Dict[str, Any]]
     issues: List[Dict[str, Any]]
@@ -61,6 +65,7 @@ class GitHubDataCollection(TypedDict):
 
 class AIAssessmentResult(TypedDict):
     """Typed dictionary for AI assessment results."""
+
     insights: List[str]
     recommendations: List[str]
     overall_assessment: str
@@ -70,6 +75,7 @@ class AIAssessmentResult(TypedDict):
 
 class SuccessDetermination(TypedDict):
     """Typed dictionary for success determination results."""
+
     is_successful: bool
     confidence: float
     reasoning: str
@@ -321,7 +327,7 @@ class ProjectQualityAssessor:
             acceptance_criteria_quality=metrics["acceptance_criteria_quality"],
             blocked_task_rate=metrics["blocked_task_rate"],
             avg_task_size=metrics["avg_task_size"],
-            task_size_variance=metrics["task_size_variance"]
+            task_size_variance=metrics["task_size_variance"],
         )
 
     def _analyze_team_quality(
@@ -364,7 +370,7 @@ class ProjectQualityAssessor:
             skill_diversity=metrics["skill_diversity"],
             workload_balance=metrics["workload_balance"],
             collaboration_index=metrics["collaboration_index"],
-            member_performance=metrics["member_performance"]
+            member_performance=metrics["member_performance"],
         )
 
     def _analyze_delivery_quality(
@@ -415,17 +421,16 @@ class ProjectQualityAssessor:
             on_time_delivery_rate=float(metrics["on_time_delivery_rate"]),
             late_task_rate=float(metrics["late_task_rate"]),
             risk_score=float(metrics["risk_score"]),
-            projected_completion_days=int(metrics["projected_completion_days"])
+            projected_completion_days=int(metrics["projected_completion_days"]),
         )
 
-    async def _collect_github_data(self, config: Dict[str, str]) -> GitHubDataCollection:
+    async def _collect_github_data(
+        self, config: Dict[str, str]
+    ) -> GitHubDataCollection:
         """Collect data from GitHub repository."""
         if not self.github_mcp:
             return GitHubDataCollection(
-                commits=[],
-                pull_requests=[],
-                issues=[],
-                reviews=[]
+                commits=[], pull_requests=[], issues=[], reviews=[]
             )
 
         owner = config.get("github_owner", "")
@@ -616,7 +621,9 @@ class ProjectQualityAssessor:
 
         return statistics.mean([s for s in scores if s > 0])
 
-    def _calculate_delivery_quality_score(self, metrics: DeliveryQualityMetrics) -> float:
+    def _calculate_delivery_quality_score(
+        self, metrics: DeliveryQualityMetrics
+    ) -> float:
         """Calculate delivery quality score (0-1)."""
         scores = [
             metrics["progress_percent"] / 100,
@@ -669,7 +676,7 @@ class ProjectQualityAssessor:
                 recommendations=[],
                 overall_assessment="unknown",
                 strengths=[],
-                weaknesses=[]
+                weaknesses=[],
             )
 
         prompt = f"""Analyze this completed project and provide quality assessment:
@@ -715,18 +722,22 @@ Return JSON:
         try:
             response = await self.ai_engine._call_claude(prompt)
             result = json.loads(response)
-            return AIAssessmentResult(
-                insights=result.get("insights", []),
-                recommendations=result.get("recommendations", []),
-                overall_assessment=result.get("overall_assessment", "unknown"),
-                strengths=result.get("strengths", []),
-                weaknesses=result.get("weaknesses", [])
-            ) if isinstance(result, dict) else AIAssessmentResult(
-                insights=[],
-                recommendations=[],
-                overall_assessment="unknown",
-                strengths=[],
-                weaknesses=[]
+            return (
+                AIAssessmentResult(
+                    insights=result.get("insights", []),
+                    recommendations=result.get("recommendations", []),
+                    overall_assessment=result.get("overall_assessment", "unknown"),
+                    strengths=result.get("strengths", []),
+                    weaknesses=result.get("weaknesses", []),
+                )
+                if isinstance(result, dict)
+                else AIAssessmentResult(
+                    insights=[],
+                    recommendations=[],
+                    overall_assessment="unknown",
+                    strengths=[],
+                    weaknesses=[],
+                )
             )
         except Exception:
             return AIAssessmentResult(
@@ -734,7 +745,7 @@ Return JSON:
                 recommendations=[],
                 overall_assessment="unknown",
                 strengths=[],
-                weaknesses=[]
+                weaknesses=[],
             )
 
     def _determine_project_success(
@@ -788,7 +799,7 @@ Return JSON:
             confidence=confidence,
             reasoning=reasoning,
             criteria_met=met_criteria,
-            total_criteria=total_criteria
+            total_criteria=total_criteria,
         )
 
     def _extract_quality_insights(

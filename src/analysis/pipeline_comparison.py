@@ -225,8 +225,8 @@ class PipelineComparator:
             # Decision patterns
             for decision in flow["decisions"]:
                 decision_dict = decision if isinstance(decision, dict) else {}
-                stage = decision_dict.get('stage', '')
-                decision_text = str(decision_dict.get('decision', ''))[:30]
+                stage = decision_dict.get("stage", "")
+                decision_text = str(decision_dict.get("decision", ""))[:30]
                 key = f"{stage}:{decision_text}"
                 confidence = decision_dict.get("confidence", 0)
                 if isinstance(confidence, (int, float)):

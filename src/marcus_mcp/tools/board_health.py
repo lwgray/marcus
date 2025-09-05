@@ -286,7 +286,9 @@ def _check_for_cycle(
     return dfs(start_task_id, [])
 
 
-def _calculate_completion_order(task_id: str, task_map: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _calculate_completion_order(
+    task_id: str, task_map: Dict[str, Any]
+) -> List[Dict[str, Any]]:
     """Calculate the order in which dependencies should be completed."""
     order = []
     visited = set()

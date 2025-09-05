@@ -1020,7 +1020,7 @@ async def handle_tool_call(
             client_id_arg = arguments.get("client_id")
             client_type_arg = arguments.get("client_type")
             role_arg = arguments.get("role")
-            
+
             # Validate required arguments
             if not all([client_id_arg, client_type_arg, role_arg]):
                 return [
@@ -1029,7 +1029,7 @@ async def handle_tool_call(
                         text='{"success": false, "error": "Missing required arguments: client_id, client_type, role"}',
                     )
                 ]
-            
+
             result = await authenticate(
                 client_id=str(client_id_arg),
                 client_type=str(client_type_arg),

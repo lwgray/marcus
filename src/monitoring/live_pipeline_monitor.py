@@ -93,9 +93,7 @@ class LivePipelineMonitor:
         if self.monitoring_task:
             return
 
-        self.monitoring_task = asyncio.create_task(
-            self._monitoring_loop()
-        )
+        self.monitoring_task = asyncio.create_task(self._monitoring_loop())
 
     async def stop_monitoring(self) -> None:
         """Stop the monitoring loop."""

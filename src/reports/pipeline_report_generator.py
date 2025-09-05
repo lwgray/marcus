@@ -384,11 +384,13 @@ class PipelineReportGenerator:
         recommendations = self._generate_recommendations(flow)
 
         template = self.env.get_template("full_report.html")
-        return template.render(
-            flow=flow,
-            insights=insights,
-            recommendations=recommendations,
-            generation_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        return str(
+            template.render(
+                flow=flow,
+                insights=insights,
+                recommendations=recommendations,
+                generation_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            )
         )
 
     def generate_pdf_report(
@@ -465,7 +467,7 @@ class PipelineReportGenerator:
         """Generate markdown executive summary."""
         summary_data = self.generate_executive_summary(flow_id)
         template = self.env.get_template("executive_summary.md")
-        return template.render(**summary_data)
+        return str(template.render(**summary_data))
 
     def _load_complete_flow(self, flow_id: str) -> Dict[str, Any]:
         """Load complete flow data with all metadata."""
@@ -624,11 +626,11 @@ class PipelineReportGenerator:
     def _analyze_requirements(self, flow: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Analyze requirement coverage."""
         requirements = flow["requirements"]
-        
+
         # Ensure requirements is a list of dictionaries for type safety
         if not isinstance(requirements, list):
             return []
-        
+
         # Convert to proper type to satisfy mypy
         typed_requirements: List[Dict[str, Any]] = [
             req for req in requirements if isinstance(req, dict)
@@ -640,14 +642,16 @@ class PipelineReportGenerator:
             if event.get("event_type") == "tasks_generated":
                 # This is simplified - in production, track actual mapping
                 for req in typed_requirements:
-                    req_coverage[req.get("requirement", "")] = flow["metrics"][
-                        "task_count"
-                    ] // len(typed_requirements) if typed_requirements else 0
+                    req_coverage[req.get("requirement", "")] = (
+                        flow["metrics"]["task_count"] // len(typed_requirements)
+                        if typed_requirements
+                        else 0
+                    )
 
         # Enhance requirements with coverage
         for req in typed_requirements:
             req["task_count"] = req_coverage.get(req.get("requirement", ""), 0)
-        
+
         return typed_requirements
 
     def _analyze_stage_performance(

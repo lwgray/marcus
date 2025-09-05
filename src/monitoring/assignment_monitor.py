@@ -213,11 +213,11 @@ class AssignmentMonitor:
         logger.info(f"Reconciliation results: {results}")
         # Convert ReconciliationResults to dict format
         return {
-            "status": "completed", 
-            "fixed_assignments": getattr(results, 'fixed_assignments', 0),
-            "removed_assignments": getattr(results, 'removed_assignments', 0),
-            "errors": getattr(results, 'errors', []),
-            "details": str(results)
+            "status": "completed",
+            "fixed_assignments": getattr(results, "fixed_assignments", 0),
+            "removed_assignments": getattr(results, "removed_assignments", 0),
+            "errors": getattr(results, "errors", []),
+            "details": str(results),
         }
 
     def get_monitoring_stats(self) -> Dict[str, Any]:

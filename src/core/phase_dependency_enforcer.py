@@ -463,9 +463,13 @@ class PhaseDependencyEnforcer:
                     try:
                         phase_deps = task.get_dependencies_by_type(DependencyType.PHASE)
                         stats["phase_dependency_count"] += len(phase_deps)
-                    except Exception:
-                        # Skip if method not available or fails
-                        pass
+                    except Exception as e:
+                        # Skip if method not available or fails, but log the issue
+                        logger.debug(
+                            "Failed to get phase dependencies for task %s: %s",
+                            getattr(task, "name", "unknown"),
+                            str(e),
+                        )
 
         stats["phase_distribution"] = dict(phase_counts)
 
