@@ -26,10 +26,10 @@ from src.modes.creator.template_library import (
 
 class MockTask:
     """
-    Mock Task class that includes metadata field for testing.
+    Mock Task class that matches the real Task model structure.
 
-    The actual Task model doesn't have metadata, but the creator code uses it.
-    This mock allows us to test the actual behavior.
+    This mock allows us to test the actual behavior using the same fields
+    as the real Task model, including source_context.
     """
 
     def __init__(self, **kwargs: Any) -> None:
@@ -41,12 +41,19 @@ class MockTask:
         self.labels = kwargs.get("labels", [])
         self.estimated_hours = kwargs.get("estimated_hours", 1.0)
         self.dependencies = kwargs.get("dependencies", [])
-        self.metadata = kwargs.get("metadata", {})
         self.assigned_to = kwargs.get("assigned_to", None)
         self.created_at = kwargs.get("created_at", datetime.now())
         self.updated_at = kwargs.get("updated_at", datetime.now())
         self.due_date = kwargs.get("due_date", None)
         self.actual_hours = kwargs.get("actual_hours", 0.0)
+        self.project_id = kwargs.get("project_id", None)
+        self.project_name = kwargs.get("project_name", None)
+        
+        # Fields matching the real Task model
+        self.source_type = kwargs.get("source_type", None)
+        self.source_context = kwargs.get("source_context", kwargs.get("metadata", {}))  # Support both for backward compatibility
+        self.completion_criteria = kwargs.get("completion_criteria", None)
+        self.validation_spec = kwargs.get("validation_spec", None)
 
 
 @pytest.fixture
@@ -185,14 +192,14 @@ class TestProjectCreationFromTemplate:
                 name="Setup project",
                 phase="Planning",
                 estimated_hours=2,
-                metadata={"phase": "Planning", "phase_order": 1},
+                source_context={"phase": "Planning", "phase_order": 1},
             ),
             MockTask(
                 id="task-2",
                 name="Create database schema",
                 phase="Development",
                 estimated_hours=4,
-                metadata={"phase": "Development", "phase_order": 2},
+                source_context={"phase": "Development", "phase_order": 2},
             ),
         ]
         basic_creator_mode.task_generator.generate_from_template.return_value = (
@@ -541,7 +548,7 @@ class TestInternalMethods:
             labels=["backend", "api"],
             estimated_hours=5.0,
             dependencies=["task-100"],
-            metadata={"phase": "Development", "phase_order": 2, "generated": True},
+            source_context={"phase": "Development", "phase_order": 2, "generated": True},
         )
 
         result = basic_creator_mode._task_to_dict(task)
@@ -559,8 +566,8 @@ class TestInternalMethods:
         assert result["generated"] is True
 
     def test_task_to_dict_missing_metadata(self, basic_creator_mode):
-        """Test task_to_dict handles missing metadata gracefully."""
-        task = MockTask(metadata={})
+        """Test task_to_dict handles missing source_context gracefully."""
+        task = MockTask(source_context={})
 
         result = basic_creator_mode._task_to_dict(task)
 
@@ -574,22 +581,22 @@ class TestInternalMethods:
             MockTask(
                 name="Task 1",
                 estimated_hours=2,
-                metadata={"phase": "Planning", "phase_order": 1},
+                source_context={"phase": "Planning", "phase_order": 1},
             ),
             MockTask(
                 name="Task 2",
                 estimated_hours=3,
-                metadata={"phase": "Planning", "phase_order": 1},
+                source_context={"phase": "Planning", "phase_order": 1},
             ),
             MockTask(
                 name="Task 3",
                 estimated_hours=5,
-                metadata={"phase": "Development", "phase_order": 2},
+                source_context={"phase": "Development", "phase_order": 2},
             ),
             MockTask(
                 name="Task 4",
                 estimated_hours=1,
-                metadata={"phase": "Testing", "phase_order": 3},
+                source_context={"phase": "Testing", "phase_order": 3},
             ),
         ]
 
@@ -616,10 +623,10 @@ class TestInternalMethods:
         assert result["Testing"]["estimated_hours"] == 1
 
     def test_get_phases_summary_no_metadata(self, basic_creator_mode):
-        """Test phase summary handles tasks without metadata."""
+        """Test phase summary handles tasks without source_context."""
         tasks = [
-            MockTask(name="Task 1", estimated_hours=2, metadata={}),
-            MockTask(name="Task 2", estimated_hours=3, metadata={"phase": "Planning"}),
+            MockTask(name="Task 1", estimated_hours=2, source_context={}),
+            MockTask(name="Task 2", estimated_hours=3, source_context={"phase": "Planning"}),
         ]
 
         result = basic_creator_mode._get_phases_summary(tasks)
@@ -627,6 +634,52 @@ class TestInternalMethods:
         assert "Unknown" in result
         assert result["Unknown"]["task_count"] == 1
         assert result["Unknown"]["order"] == 0
+
+
+class TestRealTaskCompatibility:
+    """Test suite to verify compatibility with real Task objects."""
+
+    def test_mock_task_compatible_with_real_task(self, basic_creator_mode):
+        """Test that MockTask behaves the same as real Task for _task_to_dict."""
+        # Create a real Task object
+        real_task = Task(
+            id="real-task-001",
+            name="Real Task",
+            description="A real task for testing",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=5.0,
+            labels=["test", "real"],
+            dependencies=["dep-1"],
+            source_context={"phase": "Development", "phase_order": 1, "generated": True}
+        )
+        
+        # Create equivalent MockTask
+        mock_task = MockTask(
+            id="mock-task-001",
+            name="Mock Task", 
+            description="A mock task for testing",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            estimated_hours=5.0,
+            labels=["test", "mock"],
+            dependencies=["dep-1"],
+            source_context={"phase": "Development", "phase_order": 1, "generated": True}
+        )
+        
+        # Convert both to dict
+        real_dict = basic_creator_mode._task_to_dict(real_task)
+        mock_dict = basic_creator_mode._task_to_dict(mock_task)
+        
+        # Check that both have the same structure
+        assert set(real_dict.keys()) == set(mock_dict.keys())
+        assert real_dict["phase"] == mock_dict["phase"] == "Development"
+        assert real_dict["phase_order"] == mock_dict["phase_order"] == 1
+        assert real_dict["generated"] == mock_dict["generated"] is True
 
 
 class TestEdgeCases:
@@ -656,7 +709,7 @@ class TestEdgeCases:
             labels=["urgent", "backend", "database"],
             estimated_hours=10.0,
             dependencies=["dep-1", "dep-2", "dep-3"],
-            metadata={
+            source_context={
                 "phase": "Deployment",
                 "phase_order": 5,
                 "generated": True,

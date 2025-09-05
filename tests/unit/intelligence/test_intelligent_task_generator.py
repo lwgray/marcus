@@ -525,9 +525,9 @@ class TestTaskTemplateCustomization:
         assert "phase:backend" in task.labels
         assert "complexity:medium" in task.labels
         assert "tech:React" in task.labels
-        assert task.metadata["phase"] == "backend"  # type: ignore[attr-defined]
-        assert task.metadata["generated"] is True  # type: ignore[attr-defined]
-        assert task.metadata["dependencies_names"] == ["Other Task"]  # type: ignore[attr-defined]
+        assert task.source_context["phase"] == "backend"  # type: ignore[attr-defined]
+        assert task.source_context["generated"] is True  # type: ignore[attr-defined]
+        assert task.source_context["dependencies_names"] == ["Other Task"]  # type: ignore[attr-defined]
 
     def test_phase_priority_mapping(self, task_generator):
         """
@@ -822,23 +822,50 @@ class TestDependencyManagement:
         mapped using task IDs.
         """
         # Create mock tasks with dependency names in metadata
-        task1 = Mock()
-        task1.id = "task-1"
-        task1.name = "Setup Repository"
-        task1.dependencies = []
-        task1.metadata = {"dependencies_names": []}
+        task1 = Task(
+            id="task-1",
+            name="Setup Repository",
+            description="Set up repository",
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=4.0,
+            dependencies=[],
+            source_context={"dependencies_names": []},
+        )
 
-        task2 = Mock()
-        task2.id = "task-2"
-        task2.name = "Setup Environment"
-        task2.dependencies = []
-        task2.metadata = {"dependencies_names": ["Setup Repository"]}
+        task2 = Task(
+            id="task-2",
+            name="Setup Environment",
+            description="Set up environment",
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=4.0,
+            dependencies=[],
+            source_context={"dependencies_names": ["Setup Repository"]},
+        )
 
-        task3 = Mock()
-        task3.id = "task-3"
-        task3.name = "Create Database"
-        task3.dependencies = []
-        task3.metadata = {"dependencies_names": ["Setup Environment"]}
+        task3 = Task(
+            id="task-3",
+            name="Create Database",
+            description="Create database",
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=4.0,
+            dependencies=[],
+            source_context={"dependencies_names": ["Setup Environment"]},
+        )
 
         tasks = [task1, task2, task3]
 
@@ -860,11 +887,20 @@ class TestDependencyManagement:
         Verifies that missing dependency references are handled gracefully
         without causing errors.
         """
-        task = Mock()
-        task.id = "task-1"
-        task.name = "Test Task"
-        task.dependencies = []
-        task.metadata = {"dependencies_names": ["Non-existent Task"]}
+        task = Task(
+            id="task-1",
+            name="Test Task",
+            description="Test task",
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=4.0,
+            dependencies=[],
+            source_context={"dependencies_names": ["Non-existent Task"]},
+        )
 
         dependencies = task_generator._extract_dependencies([task])
 
@@ -982,14 +1018,21 @@ class TestFullProjectGeneration:
         """
 
         # Create properly structured mock tasks
-        def create_mock_task(task_id: str = "test-id", name: str = "Test Task") -> Mock:
-            mock_task = Mock()
-            mock_task.id = task_id
-            mock_task.name = name
-            mock_task.estimated_hours = 4
-            mock_task.metadata = {"dependencies_names": []}
-            mock_task.dependencies = []
-            return mock_task
+        def create_mock_task(task_id: str = "test-id", name: str = "Test Task") -> Task:
+            return Task(
+                id=task_id,
+                name=name,
+                description=f"Test task: {name}",
+                status=TaskStatus.TODO,
+                priority=Priority.MEDIUM,
+                assigned_to=None,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                due_date=None,
+                estimated_hours=4.0,
+                dependencies=[],
+                source_context={"dependencies_names": []},
+            )
 
         with patch.object(
             task_generator,
