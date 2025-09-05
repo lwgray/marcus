@@ -217,7 +217,9 @@ class LinearKanban(KanbanInterface):
 
         return self._linear_issue_to_task(result["issue"])
 
-    async def update_task(self, task_id: str, updates: Dict[str, Any]) -> Optional[Task]:
+    async def update_task(
+        self, task_id: str, updates: Dict[str, Any]
+    ) -> Optional[Task]:
         """Update existing task."""
         update_data = {"issueId": task_id}
 

@@ -162,7 +162,9 @@ class PlankaKanban(KanbanInterface):
                 # Convert to Task using the client's method
                 return self.client._card_to_task(card_result)
 
-    async def update_task(self, task_id: str, updates: Dict[str, Any]) -> Optional[Task]:
+    async def update_task(
+        self, task_id: str, updates: Dict[str, Any]
+    ) -> Optional[Task]:
         """Update existing task"""
         if not self.connected:
             await self.connect()

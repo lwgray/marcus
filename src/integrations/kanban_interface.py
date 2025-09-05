@@ -108,7 +108,9 @@ class KanbanInterface(ABC):
         pass
 
     @abstractmethod
-    async def update_task(self, task_id: str, updates: Dict[str, Any]) -> Optional[Task]:
+    async def update_task(
+        self, task_id: str, updates: Dict[str, Any]
+    ) -> Optional[Task]:
         """
         Update an existing task
 
