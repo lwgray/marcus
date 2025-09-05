@@ -1,5 +1,5 @@
 """
-Marcus Error Handling Strategies
+Marcus Error Handling Strategies.
 
 Advanced error handling patterns for autonomous agent environments:
 - Retry policies with exponential backoff
