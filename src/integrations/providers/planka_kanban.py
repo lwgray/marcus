@@ -262,7 +262,8 @@ class PlankaKanban(KanbanInterface):
 
                 # Debug logging
                 logger.info(
-                    f"Looking for list: '{target_list_name}' (from column_name: '{column_name}')"
+                    f"Looking for list: '{target_list_name}' "
+                    f"(from column_name: '{column_name}')"
                 )
                 logger.info(f"Available lists: {[lst['name'] for lst in lists]}")
 
