@@ -1,11 +1,9 @@
 """
-Common test fixtures for unit tests
+Common test fixtures for unit tests using real implementations.
 """
 
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock
-
 import pytest
 import pytest_asyncio
 
@@ -13,37 +11,45 @@ import pytest_asyncio
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.marcus_mcp.server import MarcusServer
+from src.core.context import Context
+
+# Import domain-specific fixtures
+pytest_plugins = [
+    "tests.fixtures.fixtures_core",
+    "tests.fixtures.fixtures_ai", 
+    "tests.fixtures.fixtures_integration",
+]
 
 
 @pytest.fixture
-def mock_env_vars(monkeypatch):
-    """Set up test environment variables"""
+def test_env_vars(monkeypatch):
+    """Set up test environment variables with real values."""
     monkeypatch.setenv("KANBAN_PROVIDER", "planka")
     monkeypatch.setenv("GITHUB_OWNER", "test-owner")
     monkeypatch.setenv("GITHUB_REPO", "test-repo")
+    monkeypatch.setenv("MARCUS_TEST_MODE", "true")
+    monkeypatch.setenv("LOG_LEVEL", "INFO")
 
 
 @pytest.fixture
-def mock_kanban_client():
-    """Create a mock kanban client"""
-    client = AsyncMock()
-    client.get_available_tasks = AsyncMock(return_value=[])
-    client.get_all_tasks = AsyncMock(return_value=[])
-    client.get_task_by_id = AsyncMock(return_value=None)
-    client.update_task = AsyncMock()
-    client.create_task = AsyncMock()
-    client.add_comment = AsyncMock()
-    client.get_board_summary = AsyncMock(return_value={})
-    # Add missing methods
-    client.update_task_progress = AsyncMock()
-    return client
-
-
-@pytest.fixture
-def marcus_server(mock_env_vars, mock_kanban_client):
-    """Create a Marcus server instance with mocks"""
+def test_marcus_server(test_env_vars):
+    """Create a Marcus server instance for testing.
+    
+    Uses real implementations but with test configuration.
+    For tests requiring external services, use @pytest.mark.integration
+    """
     server = MarcusServer()
-    server.kanban_client = mock_kanban_client
-    # Don't start the assignment monitor in tests
+    # Configure for testing but use real implementations
+    server.test_mode = True
+    # Don't start background services in unit tests
     server.assignment_monitor = None
     return server
+
+
+@pytest.fixture
+def test_context():
+    """Create a real test context for Marcus operations."""
+    context = Context()
+    context.test_mode = True
+    context.project_name = "Unit Test Project"
+    return context

@@ -440,7 +440,7 @@ class TestOpenAIProviderDescriptionEnhancement:
         task_without_description = Task(
             id="task-123",
             name="Task name",
-            description=None,
+            description="",
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
             assigned_to=None,

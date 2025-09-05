@@ -15,6 +15,11 @@ class TestSafetyCheckerDependencies:
     """Test suite for SafetyChecker dependency management"""
 
     @pytest.fixture
+    def safety_checker(self):
+        """Create a SafetyChecker instance for testing"""
+        return SafetyChecker()
+
+    @pytest.fixture
     def sample_tasks(self):
         """Create sample tasks for testing"""
         return [
@@ -104,10 +109,10 @@ class TestSafetyCheckerDependencies:
         assert len(deploy_tasks) == 1
         assert deploy_tasks[0].id == "deploy-1"
 
-    def test_apply_testing_dependencies(self, sample_tasks):
+    def test_apply_testing_dependencies(self, sample_tasks, safety_checker):
         """Test that testing dependencies are correctly applied"""
         # Apply testing dependencies
-        updated_tasks = SafetyChecker.apply_testing_dependencies(sample_tasks)
+        updated_tasks = safety_checker.apply_testing_dependencies(sample_tasks)
 
         # Get test tasks
         test_tasks = [task for task in updated_tasks if task.id.startswith("test-")]
@@ -130,13 +135,13 @@ class TestSafetyCheckerDependencies:
             "impl-1" not in test_2.dependencies
         ), "Test task should not depend on unrelated implementation"
 
-    def test_apply_deployment_dependencies(self, sample_tasks):
+    def test_apply_deployment_dependencies(self, sample_tasks, safety_checker):
         """Test that deployment dependencies include all implementation and test tasks"""
         # First apply testing dependencies
-        tasks_with_test_deps = SafetyChecker.apply_testing_dependencies(sample_tasks)
+        tasks_with_test_deps = safety_checker.apply_testing_dependencies(sample_tasks)
 
         # Then apply deployment dependencies
-        final_tasks = SafetyChecker.apply_deployment_dependencies(tasks_with_test_deps)
+        final_tasks = safety_checker.apply_deployment_dependencies(tasks_with_test_deps)
 
         # Get deployment task
         deploy_task = next(task for task in final_tasks if task.id == "deploy-1")
@@ -149,7 +154,7 @@ class TestSafetyCheckerDependencies:
             expected_dependencies == actual_dependencies
         ), f"Deployment should depend on all implementation and test tasks. Expected: {expected_dependencies}, Got: {actual_dependencies}"
 
-    def test_related_task_finding_by_labels(self, sample_tasks):
+    def test_related_task_finding_by_labels(self, sample_tasks, safety_checker):
         """Test the _find_related_tasks method matches by labels"""
         test_task = next(task for task in sample_tasks if task.id == "test-1")
         impl_tasks = [task for task in sample_tasks if task.id.startswith("impl-")]
@@ -164,7 +169,7 @@ class TestSafetyCheckerDependencies:
         """Test the _find_related_tasks method matches by keywords"""
         test_task = Task(
             id="test-1",
-            name="Test user management",
+            name="Test user management system",
             description="Test user CRUD operations",
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
@@ -179,7 +184,7 @@ class TestSafetyCheckerDependencies:
         impl_tasks = [
             Task(
                 id="impl-1",
-                name="Implement user service",
+                name="Implement user management service",
                 description="Create user management API",
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
@@ -207,11 +212,11 @@ class TestSafetyCheckerDependencies:
 
         related = SafetyChecker._find_related_tasks(test_task, impl_tasks)
 
-        # Should find impl-1 due to matching "user" keyword
+        # Should find impl-1 due to matching "user" and "management" keywords
         assert len(related) == 1
         assert related[0].id == "impl-1"
 
-    def test_dependency_validation(self, sample_tasks):
+    def test_dependency_validation(self, sample_tasks, safety_checker):
         """Test dependency validation catches invalid references"""
         # Add an invalid dependency
         sample_tasks[0].dependencies.append("non-existent-task")

@@ -194,8 +194,8 @@ class ErrorResponseFormatter:
         }
 
         # Add source information
+        error_dict = response["error"]
         if error.context.operation:
-            error_dict = response["error"]
             error_dict["source"] = {
                 "operation": error.context.operation,
                 "agent_id": error.context.agent_id,

@@ -4,7 +4,8 @@ Unit tests for ProjectQualityAssessor
 
 import json
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, Mock, patch
+from typing import Any, Dict
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -16,6 +17,9 @@ from src.core.models import (
     TaskStatus,
     WorkerStatus,
 )
+from src.integrations.ai_analysis_engine import AIAnalysisEngine
+from src.integrations.github_mcp_interface import GitHubMCPInterface
+from src.quality.board_quality_validator import BoardQualityValidator
 from src.quality.project_quality_assessor import (
     CodeQualityMetrics,
     ProcessQualityMetrics,
@@ -28,116 +32,103 @@ class TestProjectQualityAssessor:
     """Test suite for ProjectQualityAssessor"""
 
     @pytest.fixture
-    def mock_ai_engine(self):
-        """Create mock AI engine"""
-        mock = Mock()
-        mock.client = Mock()  # Indicates AI is available
-        mock._call_claude = AsyncMock(
-            return_value=json.dumps(
-                {
-                    "insights": [
-                        "Strong test coverage ensures reliability",
-                        "Fast code review turnaround",
-                    ],
-                    "recommendations": [
-                        "Improve documentation coverage",
-                        "Implement automated deployment",
-                    ],
-                    "overall_assessment": "good",
-                    "strengths": ["Quality focus", "Team collaboration"],
-                    "weaknesses": ["Manual deployments"],
+    def real_ai_engine(self):
+        """Create real AI engine configured for testing"""
+        # Create real AIAnalysisEngine but force it to use fallback mode (no client)
+        engine = AIAnalysisEngine()
+        engine.client = None  # Force fallback mode
+        
+        # Mock only the Claude API call to return controlled responses
+        async def mock_call_claude(prompt):
+            return json.dumps({
+                "insights": [
+                    "Strong test coverage ensures reliability",
+                    "Fast code review turnaround",
+                ],
+                "recommendations": [
+                    "Improve documentation coverage",
+                    "Implement automated deployment",
+                ],
+                "overall_assessment": "good",
+                "strengths": ["Quality focus", "Team collaboration"],
+                "weaknesses": ["Manual deployments"],
+            })
+        
+        engine._call_claude = AsyncMock(side_effect=mock_call_claude)
+        return engine
+
+    @pytest.fixture
+    def real_github_mcp(self):
+        """Create real GitHub MCP interface with controlled responses"""
+        
+        # Create a mock MCP caller function
+        async def mock_mcp_caller(tool_name: str, params: Dict[str, Any]):
+            if tool_name == "github.list_commits":
+                return {
+                    "commits": [
+                        {
+                            "commit": {
+                                "author": {"date": "2025-01-10T10:00:00Z"},
+                                "message": "Add user authentication",
+                            }
+                        },
+                        {
+                            "commit": {
+                                "author": {"date": "2025-01-09T10:00:00Z"},
+                                "message": "Update README documentation",
+                            }
+                        },
+                    ]
                 }
-            )
-        )
-        return mock
-
-    @pytest.fixture
-    def mock_github_mcp(self):
-        """Create mock GitHub MCP interface"""
-        mock = Mock()
-
-        # Mock commit data
-        mock.list_commits = AsyncMock(
-            return_value={
-                "commits": [
-                    {
-                        "commit": {
-                            "author": {"date": "2025-01-10T10:00:00Z"},
-                            "message": "Add user authentication",
-                        }
-                    },
-                    {
-                        "commit": {
-                            "author": {"date": "2025-01-09T10:00:00Z"},
-                            "message": "Update README documentation",
-                        }
-                    },
-                ]
-            }
-        )
-
-        # Mock PR data
-        mock.search_issues = AsyncMock(
-            side_effect=[
-                {  # PRs
-                    "items": [
-                        {
-                            "number": 1,
-                            "created_at": "2025-01-09T10:00:00Z",
-                            "merged_at": "2025-01-10T10:00:00Z",
-                            "user": {"login": "dev1"},
-                        }
-                    ]
-                },
-                {  # Issues
-                    "items": [
-                        {
-                            "created_at": "2025-01-08T10:00:00Z",
-                            "closed_at": "2025-01-09T10:00:00Z",
-                        }
-                    ]
-                },
-            ]
-        )
-
-        # Mock reviews
-        mock.list_pr_reviews = AsyncMock(
-            return_value={
-                "reviews": [
-                    {
-                        "state": "APPROVED",
-                        "pull_request_url": "https://github.com/owner/repo/pull/1",
-                        "user": {"login": "reviewer1"},
+            elif tool_name == "github.search_issues":
+                if "is:pr" in params["query"]:
+                    return {
+                        "items": [
+                            {
+                                "number": 1,
+                                "created_at": "2025-01-09T10:00:00Z",
+                                "merged_at": "2025-01-10T10:00:00Z",
+                                "user": {"login": "dev1"},
+                            }
+                        ]
                     }
-                ]
-            }
-        )
-
-        return mock
+                else:  # issues
+                    return {
+                        "items": [
+                            {
+                                "created_at": "2025-01-08T10:00:00Z",
+                                "closed_at": "2025-01-09T10:00:00Z",
+                            }
+                        ]
+                    }
+            elif tool_name == "github.list_pr_reviews":
+                return {
+                    "reviews": [
+                        {
+                            "state": "APPROVED",
+                            "pull_request_url": "https://github.com/owner/repo/pull/1",
+                            "user": {"login": "reviewer1"},
+                        }
+                    ]
+                }
+            return {}
+        
+        # Create real GitHub MCP interface with mock caller
+        github_mcp = GitHubMCPInterface(AsyncMock(side_effect=mock_mcp_caller))
+        return github_mcp
 
     @pytest.fixture
-    def mock_board_validator(self):
-        """Create mock board validator"""
-        mock = Mock()
-        mock.validate_board = Mock(
-            return_value=Mock(
-                score=0.85,
-                metrics={
-                    "description_coverage": 0.9,
-                    "acceptance_criteria": 0.8,
-                    "label_coverage": 0.85,
-                },
-            )
-        )
-        return mock
+    def real_board_validator(self):
+        """Create real board validator"""
+        return BoardQualityValidator()
 
     @pytest.fixture
-    def quality_assessor(self, mock_ai_engine, mock_github_mcp, mock_board_validator):
-        """Create quality assessor with mocked dependencies"""
+    def quality_assessor(self, real_ai_engine, real_github_mcp, real_board_validator):
+        """Create quality assessor with real dependencies"""
         return ProjectQualityAssessor(
-            ai_engine=mock_ai_engine,
-            github_mcp=mock_github_mcp,
-            board_validator=mock_board_validator,
+            ai_engine=real_ai_engine,
+            github_mcp=real_github_mcp,
+            board_validator=real_board_validator,
         )
 
     @pytest.fixture
@@ -269,7 +260,7 @@ class TestProjectQualityAssessor:
         sample_project_state,
         sample_tasks,
         sample_team_members,
-        mock_github_mcp,
+        real_github_mcp,
     ):
         """Test quality assessment with GitHub integration"""
         # Arrange
@@ -294,8 +285,7 @@ class TestProjectQualityAssessor:
         assert assessment.process_metrics.pr_approval_rate > 0
 
         # Verify GitHub calls were made
-        mock_github_mcp.list_commits.assert_called_once()
-        mock_github_mcp.search_issues.assert_called()
+        real_github_mcp.mcp_caller.assert_called()
 
     def test_analyze_task_quality(self, quality_assessor, sample_tasks):
         """Test task quality analysis"""
@@ -306,7 +296,9 @@ class TestProjectQualityAssessor:
         assert metrics["total_tasks"] == 20
         assert metrics["completed_tasks"] == 18
         assert metrics["completion_rate"] == 0.9
-        assert metrics["board_quality_score"] == 0.85
+        # Board quality score will be calculated by real validator
+        assert "board_quality_score" in metrics
+        assert 0 <= metrics["board_quality_score"] <= 1
         assert metrics["blocked_task_rate"] == 0.1
 
     def test_analyze_team_quality(

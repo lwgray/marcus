@@ -151,7 +151,7 @@ class TestPRDParserRobustness:
             confidence=0.8,
         )
 
-        req = {}  # Empty req
+        req: dict[str, Any] = {}  # Empty req
         tasks = await parser._break_down_epic(req, analysis, mock_constraints)
 
         assert len(tasks) == 3

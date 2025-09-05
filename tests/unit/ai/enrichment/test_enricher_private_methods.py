@@ -186,7 +186,7 @@ class TestIntelligentTaskEnricherPrivateMethods:
         task_without_desc = Task(
             id="task-123",
             name="Task name only",
-            description=None,
+            description="",
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
             assigned_to=None,
@@ -753,7 +753,7 @@ class TestIntelligentTaskEnricherPrivateMethods:
         enhanced_description = "Same description"
         suggested_labels = ["original"]
         estimated_hours = 5.0
-        acceptance_criteria = []
+        acceptance_criteria: list[str] = []
 
         result = enricher._track_changes(
             original_task,

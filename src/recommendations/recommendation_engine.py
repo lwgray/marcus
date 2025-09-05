@@ -56,10 +56,14 @@ class PatternDatabase:
 
     def _load_patterns(self) -> Dict[str, Any]:
         """Load patterns from disk."""
-        if self.db_path.exists():
-            with open(self.db_path, "r") as f:
-                loaded_data: Dict[str, Any] = json.load(f)
-                return loaded_data
+        if self.db_path.exists() and self.db_path.stat().st_size > 0:
+            try:
+                with open(self.db_path, "r") as f:
+                    loaded_data: Dict[str, Any] = json.load(f)
+                    return loaded_data
+            except json.JSONDecodeError:
+                # File exists but has invalid JSON, return default
+                pass
 
         return {
             "success_patterns": [],
@@ -157,7 +161,7 @@ class PatternDatabase:
                 categories["documentation"] += 1
             elif any(word in name for word in ["design", "architect"]):
                 categories["design"] += 1
-            elif any(word in name for word in ["implement", "build", "create"]):
+            elif any(word in name for word in ["implement", "build", "create", "setup"]):
                 categories["implementation"] += 1
             elif any(word in name for word in ["deploy", "ci", "cd"]):
                 categories["deployment"] += 1

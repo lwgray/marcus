@@ -252,7 +252,7 @@ class TestCircuitBreaker:
         await asyncio.sleep(1.1)  # Timeout is 1.0 seconds
 
         # Force state update
-        async with self.circuit_breaker._lock:
+        async with self.circuit_breaker.lock:
             await self.circuit_breaker._update_state()
 
         assert self.circuit_breaker.state.state == CircuitBreakerState.HALF_OPEN

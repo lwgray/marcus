@@ -884,7 +884,7 @@ Write unit tests for auth flow
             last_updated=datetime.now(),
         )
 
-        team_status = {}
+        team_status: dict[str, Any] = {}
 
         result = engine._generate_fallback_health_analysis(project_state, team_status)
 

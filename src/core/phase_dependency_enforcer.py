@@ -198,6 +198,8 @@ class PhaseDependencyEnforcer:
                 "logging",
                 "security",
                 "notification",
+                "infra",
+                "infrastructure",
             ]
             for label in task.labels:
                 label_lower = label.lower()

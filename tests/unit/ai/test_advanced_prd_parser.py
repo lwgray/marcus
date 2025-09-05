@@ -83,6 +83,7 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Verify error context contains troubleshooting information
         context = error.context.custom_context
+        assert context is not None
         assert context["prd_length"] == len(sample_prd_content)
         assert context["prd_preview"] in str(error.context.custom_context)
         assert context["original_error"] == "Unable to connect to AI provider"
@@ -113,6 +114,7 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Verify context includes timeout-specific troubleshooting
         context = error.context.custom_context
+        assert context is not None
         assert context["original_error"] == "AI provider request timed out"
         assert "troubleshooting_steps" in context
         troubleshooting_steps = context["troubleshooting_steps"]
@@ -141,6 +143,7 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Verify parsing error context - JSON errors are caught and re-raised as general AI errors
         context = error.context.custom_context
+        assert context is not None
         assert context["prd_length"] == len(sample_prd_content)
         assert "original_error" in context  # Contains the JSON parsing error details
         assert "troubleshooting_steps" in context
@@ -165,6 +168,7 @@ class TestAdvancedPRDParserErrorHandling:
         )  # JSON errors are caught and re-raised as prd_analysis errors
 
         context = error.context.custom_context
+        assert context is not None
         assert (
             "original_error" in context
         )  # JSON parsing error details are in original_error
@@ -189,6 +193,7 @@ class TestAdvancedPRDParserErrorHandling:
         )  # JSON errors are caught and re-raised as prd_analysis errors
 
         context = error.context.custom_context
+        assert context is not None
         assert (
             "original_error" in context
         )  # JSON parsing error details are in original_error
@@ -291,6 +296,7 @@ class TestAdvancedPRDParserErrorHandling:
 
         error = exc_info.value
         context = error.context.custom_context
+        assert context is not None
 
         # Verify all expected troubleshooting steps are present
         expected_steps = [

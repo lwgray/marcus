@@ -33,7 +33,7 @@ class EnhancementResult:
 
     # Change tracking
     changes_made: Dict[str, Any]
-    enhancement_timestamp: datetime
+    enhancement_timestamp: Optional[datetime] = None
 
     def __post_init__(self) -> None:
         if (

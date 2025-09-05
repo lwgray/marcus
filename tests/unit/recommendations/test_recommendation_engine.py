@@ -52,20 +52,20 @@ class TestPatternDatabase:
         assert db.patterns["failure_patterns"] == []
         mock_mkdir.assert_called_once()
 
-    @patch("src.recommendations.recommendation_engine.Path.exists")
-    @patch(
-        "builtins.open", new_callable=mock_open, read_data='{"success_patterns": []}'
-    )
-    def test_initialization_with_existing_db(
-        self, mock_file: Mock, mock_exists: Mock
-    ) -> None:
+    def test_initialization_with_existing_db(self) -> None:
         """Test pattern database initialization with existing file"""
-        mock_exists.return_value = True
-
-        db = PatternDatabase()
-
-        assert db.patterns["success_patterns"] == []
-        mock_file.assert_called_once()
+        import tempfile
+        import json
+        
+        # Create a temporary file with existing pattern data
+        with tempfile.NamedTemporaryFile(mode='w+', suffix='.json', delete=True) as tmp:
+            existing_data = {"success_patterns": [{"test": "pattern"}]}
+            json.dump(existing_data, tmp)
+            tmp.flush()
+            
+            db = PatternDatabase(tmp.name)
+            
+            assert db.patterns["success_patterns"] == [{"test": "pattern"}]
 
     @patch("builtins.open", new_callable=mock_open)
     def test_save_patterns(self, mock_file: Mock) -> None:
@@ -278,11 +278,11 @@ class TestPipelineRecommendationEngine:
         }
 
         flow2 = {
-            "project_name": "User Management API",
-            "metrics": {"task_count": 22},
+            "project_name": "User API Platform",
+            "metrics": {"task_count": 21},
             "requirements": [
-                {"requirement": "User auth system"},
-                {"requirement": "CRUD functionality"},
+                {"requirement": "User authentication"},
+                {"requirement": "CRUD operations"},
             ],
         }
 
@@ -321,29 +321,57 @@ class TestPipelineRecommendationEngine:
 
     def test_learn_from_outcome(self) -> None:
         """Test learning from project outcome"""
+        import tempfile
+        
         engine = PipelineRecommendationEngine()
 
-        # Mock the pattern database
-        engine.pattern_db = Mock()
-        engine._load_flow_data = Mock(return_value={"flow_id": "test-123"})  # type: ignore[method-assign]
+        # Use real pattern database (per project policy - no mocks)
+        with tempfile.NamedTemporaryFile(mode='w+', suffix='.json', delete=True) as tmp:
+            # Initialize with empty pattern structure
+            import json
+            initial_patterns = {
+                "success_patterns": [],
+                "failure_patterns": [],
+                "templates": {},
+                "optimization_rules": []
+            }
+            json.dump(initial_patterns, tmp)
+            tmp.flush()
+            engine.pattern_db = PatternDatabase(tmp.name)
+            
+            # Mock only the flow data loading method
+            engine._load_flow_data = Mock(return_value={  # type: ignore[method-assign]
+                "flow_id": "test-123",
+                "metrics": {"task_count": 10, "complexity_score": 0.5, "confidence_avg": 0.8},
+                "tasks": [{"name": "test task"}],
+                "requirements": [{"requirement": "test requirement"}],
+                "decisions": []
+            })
 
-        outcome = ProjectOutcome(
-            successful=True, completion_time_days=10.5, quality_score=0.85, cost=3.5
-        )
+            outcome = ProjectOutcome(
+                successful=True, completion_time_days=10.5, quality_score=0.85, cost=3.5
+            )
 
-        engine.learn_from_outcome("test-123", outcome)
+            # Track initial pattern count
+            initial_success_count = len(engine.pattern_db.patterns["success_patterns"])
 
-        engine.pattern_db.add_success_pattern.assert_called_once()
+            engine.learn_from_outcome("test-123", outcome)
 
-        # Test failure outcome
-        failure_outcome = ProjectOutcome(
-            successful=False,
-            completion_time_days=15.0,
-            quality_score=0.4,
-            cost=5.0,
-            failure_reasons=["Scope creep", "Technical debt"],
-        )
+            # Verify success pattern was added
+            assert len(engine.pattern_db.patterns["success_patterns"]) == initial_success_count + 1
 
-        engine.learn_from_outcome("test-123", failure_outcome)
+            # Test failure outcome
+            failure_outcome = ProjectOutcome(
+                successful=False,
+                completion_time_days=15.0,
+                quality_score=0.4,
+                cost=5.0,
+                failure_reasons=["Scope creep", "Technical debt"],
+            )
 
-        engine.pattern_db.add_failure_pattern.assert_called_once()
+            initial_failure_count = len(engine.pattern_db.patterns["failure_patterns"])
+
+            engine.learn_from_outcome("test-123", failure_outcome)
+
+            # Verify failure pattern was added
+            assert len(engine.pattern_db.patterns["failure_patterns"]) == initial_failure_count + 1

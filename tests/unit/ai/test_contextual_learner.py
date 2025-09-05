@@ -1548,7 +1548,7 @@ class TestContextualLearningSystem:
         3. Missing fields in projects are handled gracefully
         """
         # Test with completely empty projects
-        empty_projects = []
+        empty_projects: list[dict[str, Any]] = []
         velocity_patterns = learning_system._analyze_team_velocity(empty_projects)
         assert velocity_patterns == {}
 

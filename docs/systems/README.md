@@ -1,21 +1,23 @@
 # 🏗️ Marcus System Architecture Documentation
 
-Technical deep-dive documentation for all 32 systems powering Marcus's AI agent coordination platform.
+Technical deep-dive documentation for all 53 systems powering Marcus's AI agent coordination platform.
 
 ---
 
 ## 📋 **System Overview**
 
-Marcus is built on 32 interconnected systems that enable AI agents to collaborate autonomously. Each system is documented with implementation details, APIs, and integration patterns.
+Marcus is built on 53 interconnected systems that enable AI agents to collaborate autonomously. Each system is documented with implementation details, APIs, and integration patterns.
 
 ### **🎯 Quick Navigation**
 
 | System Category | Files | Description |
 |-----------------|-------|-------------|
-| **Core Intelligence** | 01, 07, 17, 23, 27 | Memory, AI engine, learning, task intelligence, recommendations |
+| **Core Intelligence** | 01, 07, 17, 23, 27, 44 | Memory, AI engine, learning, task intelligence, recommendations, task classifier |
 | **Agent Coordination** | 21, 26, 03, 12 | Agent management, worker support, context sharing, communication |
-| **Project Management** | 16, 04, 24, 25 | Project control, Kanban integration, analysis, reporting |
+| **Project Management** | 16, 04, 24, 25, 53 | Project control, Kanban integration, analysis, reporting, workflow management |
+| **Development & Analysis** | 42, 43 | Code analysis, API systems |
 | **Data & Storage** | 10, 32, 13, 19 | Persistence, models, cost tracking, NLP processing |
+| **Security & Compliance** | 51 | Security systems, access control, threat detection |
 | **Quality & Testing** | 18, 30, 11, 29 | QA systems, testing framework, monitoring, detection |
 | **Infrastructure** | 08, 09, 06, 14, 15 | Error handling, events, MCP server, isolation, service registry |
 | **Operations** | 22, 20, 28, 31 | Operational modes, pipelines, configuration, resilience |
@@ -39,6 +41,9 @@ Intelligent task analysis, dependency inference, and automatic task breakdown.
 
 ### **[27 - Recommendation Engine](27-recommendation-engine.md)**
 AI-powered recommendations for task assignment, technology choices, and workflow optimization.
+
+### **[44 - Enhanced Task Classifier](44-enhanced-task-classifier.md)**
+Intelligent task categorization, priority scoring, and agent matching using ML and NLP.
 
 ---
 
@@ -71,6 +76,26 @@ Project analytics, performance metrics, and insight generation.
 
 ### **[25 - Report Generation](25-report-generation.md)**
 Automated report creation for project status, agent performance, and system health.
+
+### **[53 - Workflow Management](53-workflow-management.md)**
+Multi-agent workflow orchestration, dependency resolution, and quality gate integration.
+
+---
+
+## 🔧 **Development & Analysis Systems**
+
+### **[42 - Code Analysis System](42-code-analysis-system.md)**
+Repository analysis, language detection, complexity assessment, and security scanning for agent-generated code.
+
+### **[43 - API Systems](43-api-systems.md)**
+REST and GraphQL APIs for external integrations, real-time communication, and agent coordination.
+
+---
+
+## 🔒 **Security & Compliance Systems**
+
+### **[51 - Security Systems](51-security-systems.md)**
+Comprehensive security framework including authentication, threat detection, and workspace isolation.
 
 ---
 
@@ -200,12 +225,15 @@ graph TD
 
 ## 📈 **System Metrics**
 
-- **32 Total Systems** documented
-- **4 Core Intelligence** systems for AI decision-making
+- **53 Total Systems** documented
+- **6 Core Intelligence** systems for AI decision-making and classification
 - **4 Agent Coordination** systems for workflow management
-- **8 Infrastructure** systems for reliability and scalability
-- **6 Quality & Testing** systems for reliability
-- **Rest**: Project management, data storage, operations, and visualization
+- **2 Development & Analysis** systems for code quality and API integration
+- **1 Security & Compliance** system for comprehensive security
+- **6 Project Management** systems including workflow orchestration
+- **5 Infrastructure** systems for reliability and scalability
+- **4 Quality & Testing** systems for reliability
+- **Rest**: Data storage, operations, and visualization systems
 
 ---
 
