@@ -38,7 +38,7 @@ User Request → NLP Processing → PRD Analysis → Task Generation → Depende
 
 ---
 
-## 🧠 **Stage 2: Natural Language Processing** 
+## 🧠 **Stage 2: Natural Language Processing**
 **System**: `38-natural-language-project-creation.md` (NLP Pipeline)
 
 ### What Happens:
@@ -66,7 +66,7 @@ Marcus sends your description to its AI engine with specialized prompts that ext
 #### **1. Functional Requirements** - What the system must DO
 Examples from "build a task management web app":
 - "Users must be able to create, edit, and delete tasks"
-- "Users must be able to assign due dates to tasks"  
+- "Users must be able to assign due dates to tasks"
 - "Users must be able to mark tasks as complete"
 - "System must display task lists organized by project"
 
@@ -129,7 +129,7 @@ Non-functional requirements add complexity, so Marcus decides which ones matter:
 ```python
 if project_size == "prototype":
     nfrs = nfrs[:1]  # Only the most critical NFR (usually security)
-elif project_size == "standard":  
+elif project_size == "standard":
     nfrs = nfrs[:3]  # Key performance and security requirements
 else:  # enterprise
     nfrs = nfrs      # All NFRs including compliance, monitoring, etc.
@@ -163,7 +163,7 @@ elif deployment_target == "production":
 PRDAnalysis {
     functional_requirements: [
         {"id": "F001", "description": "User authentication", "priority": "HIGH"},
-        {"id": "F002", "description": "Task CRUD operations", "priority": "HIGH"}, 
+        {"id": "F002", "description": "Task CRUD operations", "priority": "HIGH"},
         {"id": "F003", "description": "Project organization", "priority": "MEDIUM"}
     ],
     non_functional_requirements: [
@@ -215,7 +215,7 @@ Task {
 
 ### What Happens:
 1. **Pattern Rules**: Applies logical dependency rules (setup before development)
-2. **AI Analysis**: Uses AI to infer complex dependencies between tasks  
+2. **AI Analysis**: Uses AI to infer complex dependencies between tasks
 3. **Conflict Resolution**: Resolves circular dependencies and impossible orderings
 4. **Cycle Detection**: Ensures dependency graph is acyclic
 
@@ -277,7 +277,7 @@ ProjectPattern {
 ### What Gets Stored Where:
 ```
 data/marcus_state/projects.json     ← Project registry and metadata
-data/assignments/                   ← Task assignment tracking  
+data/assignments/                   ← Task assignment tracking
 data/marcus_state/memory/          ← Learning patterns and outcomes
 data/audit_logs/                   ← Complete audit trail of creation
 data/token_usage.json             ← AI API costs for this project
@@ -285,7 +285,7 @@ data/token_usage.json             ← AI API costs for this project
 
 ### System State Changes:
 - **Event System**: `09-event-driven-architecture.md` broadcasts project creation events
-- **Service Registry**: `15-service-registry.md` updates available project services  
+- **Service Registry**: `15-service-registry.md` updates available project services
 - **Monitoring**: `11-monitoring-systems.md` begins tracking project health
 - **Configuration**: `28-configuration-management.md` applies project-specific settings
 
@@ -296,7 +296,7 @@ data/token_usage.json             ← AI API costs for this project
 ### **Without This Orchestration:**
 Users would need to manually:
 - Break down projects into tasks
-- Figure out dependencies  
+- Figure out dependencies
 - Estimate time requirements
 - Create board structure
 - Set up monitoring and tracking

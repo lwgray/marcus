@@ -50,7 +50,7 @@ state.log_event(
     event_type="blocker_reported",
     data={
         "agent_id": "dev-001",
-        "task_id": "task_015", 
+        "task_id": "task_015",
         "severity": "high",
         "category": "api_access",
         "timestamp": "2025-09-05T16:45:00Z",
@@ -60,7 +60,7 @@ state.log_event(
 
 # Visualization event for real-time monitoring
 log_agent_event("blocker_reported", {
-    "agent_id": "dev-001", 
+    "agent_id": "dev-001",
     "task_id": "task_015",
     "severity": "high",
     "description": "OAuth API access issues"
@@ -81,7 +81,7 @@ log_thinking(
     f"Analyzing blocker from {agent_id}",
     {
         "task_id": "task_015",
-        "severity": "high", 
+        "severity": "high",
         "description": "OAuth API access issues",
         "agent_context": "Backend developer working on authentication",
         "project_impact": "Critical path task - blocks 3 frontend tasks"
@@ -119,7 +119,7 @@ Marcus gathers comprehensive context before AI analysis:
 ```python
 # Get agent details
 agent = state.agent_status.get("dev-001")
-# Get full task information  
+# Get full task information
 task = await state.kanban_client.get_task_by_id("task_015")
 
 # Context package for AI
@@ -151,7 +151,7 @@ Marcus's AI engine performs comprehensive blocker analysis:
 ```python
 suggestions = await state.ai_engine.analyze_blocker(
     task_id="task_015",
-    blocker_description="Cannot access the OAuth provider API - getting 401 unauthorized errors", 
+    blocker_description="Cannot access the OAuth provider API - getting 401 unauthorized errors",
     severity="high",
     agent=agent,
     task=task
@@ -162,7 +162,7 @@ suggestions = await state.ai_engine.analyze_blocker(
 
 **Root Cause Analysis**:
 - Pattern matching against known OAuth issues
-- Technical dependency chain analysis  
+- Technical dependency chain analysis
 - Configuration and credentials validation
 - API endpoint and authentication flow review
 
@@ -200,7 +200,7 @@ suggestions = await state.ai_engine.analyze_blocker(
       "steps": ["Check .env file", "Validate API key format", "Test with curl"]
     },
     {
-      "priority": "alternative", 
+      "priority": "alternative",
       "action": "Switch to development OAuth sandbox",
       "steps": ["Configure dev credentials", "Update API endpoints", "Test authentication flow"]
     }
@@ -261,7 +261,7 @@ pattern_insights = {
     "success_rate": 0.87,
     "most_effective_solutions": [
         "Credential reconfiguration (60% success)",
-        "API endpoint switching (30% success)", 
+        "API endpoint switching (30% success)",
         "Provider support contact (10% success)"
     ],
     "prevention_patterns": "Projects with early API validation have 70% fewer auth blockers"
@@ -294,7 +294,7 @@ reallocation_options = {
 {
   "risk_analysis": {
     "immediate_impact": "Critical task blocked on main development path",
-    "cascade_risk": "High - 2 frontend tasks cannot proceed", 
+    "cascade_risk": "High - 2 frontend tasks cannot proceed",
     "timeline_impact": "3-5 day delay if unresolved within 24 hours",
     "business_impact": "User authentication feature at risk",
     "confidence": 0.82
@@ -344,7 +344,7 @@ Description: Cannot access OAuth provider API - getting 401 unauthorized errors
 
 📋 AI ANALYSIS:
 Root Cause: API credentials likely expired or misconfigured
-Category: authentication_configuration  
+Category: authentication_configuration
 Estimated Resolution: 1-3 hours
 
 💡 IMMEDIATE SOLUTIONS:
@@ -383,7 +383,7 @@ Marcus updates the assignment and lease systems:
 # Update assignment persistence
 await state.assignment_persistence.update_assignment_status(
     agent_id="dev-001",
-    task_id="task_015", 
+    task_id="task_015",
     status="blocked",
     blocker_details={
         "description": "OAuth API access issues",
@@ -480,7 +480,7 @@ Marcus reinforces the blocker reporting and resolution procedures:
 await state.memory.enhance_procedure("blocker_resolution", {
     "immediate_actions": [
         "ai_analysis",
-        "solution_generation", 
+        "solution_generation",
         "impact_assessment",
         "task_status_update",
         "team_notification"
@@ -519,7 +519,7 @@ working_memory.current_blockers["dev-001"] = {
     "episodic": "blocker_event_2025_09_05_1645",
     "semantic_patterns": [
       "authentication_blockers",
-      "oauth_troubleshooting", 
+      "oauth_troubleshooting",
       "api_dependency_risks"
     ],
     "procedural_enhancement": "blocker_resolution_workflow",
@@ -655,7 +655,7 @@ response = {
             "title": "Credential Verification",
             "steps": [
                 "Check .env file for API_KEY and API_SECRET",
-                "Validate key format matches provider requirements", 
+                "Validate key format matches provider requirements",
                 "Test with curl command provided"
             ],
             "estimated_time": "30 minutes",
@@ -669,7 +669,7 @@ response = {
                 "Update API endpoints to sandbox URLs",
                 "Test authentication flow with test users"
             ],
-            "estimated_time": "2 hours", 
+            "estimated_time": "2 hours",
             "success_probability": 0.9
         }
     ],
@@ -703,7 +703,7 @@ await state.monitoring.create_blocker_watch(
     check_interval="30 minutes",
     escalation_triggers=[
         "no_progress_in_2_hours",
-        "resolution_deadline_approaching", 
+        "resolution_deadline_approaching",
         "additional_agents_blocked"
     ]
 )
@@ -716,7 +716,7 @@ await state.monitoring.create_blocker_watch(
 ### What Gets Stored Where:
 ```
 data/marcus_state/blockers/               ← Active blocker tracking and resolution status
-data/marcus_state/memory/                ← Learning patterns from blocker resolution  
+data/marcus_state/memory/                ← Learning patterns from blocker resolution
 data/assignments/                        ← Updated assignment status and lease extensions
 data/audit_logs/                         ← Complete audit trail of blocker handling
 data/token_usage.json                    ← AI costs for blocker analysis
