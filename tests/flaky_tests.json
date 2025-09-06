@@ -1,0 +1,17 @@
+{
+  "flaky_tests": {
+    "tests/unit/marcus_mcp/test_server.py::TestMarcusServerInitialization::test_server_initialization_success": {
+      "reason": "Async lifecycle management issues with MarcusServer background tasks",
+      "marked_at": "2025-09-05T14:47:00"
+    },
+    "tests/unit/marcus_mcp/test_server.py::TestMarcusServerInitialization::test_server_initialization_with_github": {
+      "reason": "Async lifecycle management issues with MarcusServer background tasks",
+      "marked_at": "2025-09-05T14:47:00"
+    },
+    "tests/unit/marcus_mcp/test_server.py::TestMarcusServerInitialization::test_server_registers_handlers": {
+      "reason": "Async lifecycle management issues with MarcusServer background tasks",
+      "marked_at": "2025-09-05T14:47:00"
+    }
+  },
+  "last_updated": "2025-09-05T14:47:00"
+}
