@@ -100,6 +100,11 @@
   - [ ] Context system
   - [ ] Task assignment
   - [ ] MCP tools
+- [ ] Implement tests for 14 new test directories (#53):
+  - [ ] Unit tests for api, workflow, operations, modes modules
+  - [ ] Unit tests for logging, infrastructure, performance modules
+  - [ ] Unit tests for remaining 7 modules
+  - [ ] Integration tests for api and external directories
 - [ ] Set up pytest fixtures for common scenarios
 - [ ] Add performance benchmarks
 - [ ] Create test data factories
@@ -107,6 +112,8 @@
 - **Related Issues:**
   - [#35: Task completion simulation test suite](https://github.com/lwgray/marcus/issues/35)
   - [#37: Automated testing framework for task ordering experiments](https://github.com/lwgray/marcus/issues/37)
+  - [#46: Improve test organization to align with application structure](https://github.com/lwgray/marcus/issues/46)
+  - [#53: Implement tests for 14 new test directories created in issue #46](https://github.com/lwgray/marcus/issues/53)
 - **Tools:** pytest, pytest-cov, pytest-asyncio, pytest-mock
 - **Estimate:** 5 days
 
