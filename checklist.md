@@ -105,6 +105,7 @@
   - [ ] Unit tests for logging, infrastructure, performance modules
   - [ ] Unit tests for remaining 7 modules
   - [ ] Integration tests for api and external directories
+- [ ] 🔴 [Comprehensive Test Coverage - Systems Architecture Based](https://github.com/lwgray/marcus/issues/54) - Systematic coverage improvement across 53 Marcus systems (current: 44%, target: 80%)
 - [ ] Set up pytest fixtures for common scenarios
 - [ ] Add performance benchmarks
 - [ ] Create test data factories
@@ -114,6 +115,7 @@
   - [#37: Automated testing framework for task ordering experiments](https://github.com/lwgray/marcus/issues/37)
   - [#46: Improve test organization to align with application structure](https://github.com/lwgray/marcus/issues/46)
   - [#53: Implement tests for 14 new test directories created in issue #46](https://github.com/lwgray/marcus/issues/53)
+  - [#54: Comprehensive Test Coverage Analysis - Systems Architecture Based](https://github.com/lwgray/marcus/issues/54)
 - **Tools:** pytest, pytest-cov, pytest-asyncio, pytest-mock
 - **Estimate:** 5 days
 
