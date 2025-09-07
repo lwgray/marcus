@@ -6,7 +6,7 @@ dependency awareness, and relevant patterns. Enhances agent effectiveness by
 reducing time spent understanding existing code and architectural decisions.
 """
 
-import asyncio
+# import asyncio  # Removed - not needed after lazy loading fix
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -135,9 +135,14 @@ class Context:
             self.hybrid_inferer = HybridDependencyInferer(ai_engine)
             logger.info("Using hybrid dependency inference for better accuracy")
 
-        # Load persisted data if available
-        if self.persistence:
-            asyncio.create_task(self._load_persisted_data())
+        # Mark that persisted data needs loading (lazy loading)
+        self._persisted_data_loaded = False
+
+    async def _ensure_persisted_data_loaded(self) -> None:
+        """Ensure persisted data is loaded, loading if necessary"""
+        if not self._persisted_data_loaded and self.persistence:
+            await self._load_persisted_data()
+            self._persisted_data_loaded = True
 
     async def _load_persisted_data(self) -> None:
         """Load persisted decisions from storage"""
@@ -1066,7 +1071,7 @@ class Context:
 
         return ordered
 
-    def get_decisions_for_task(self, task_id: str) -> List[Decision]:
+    async def get_decisions_for_task(self, task_id: str) -> List[Decision]:
         """
         Get all decisions related to a specific task.
 
@@ -1076,6 +1081,7 @@ class Context:
         Returns:
             List of related decisions
         """
+        await self._ensure_persisted_data_loaded()
         return [d for d in self.decisions if d.task_id == task_id]
 
     @with_fallback(
@@ -1102,13 +1108,14 @@ class Context:
                 "decisions", decision.decision_id, decision.__dict__
             )
 
-    def get_implementation_summary(self) -> Dict[str, Any]:
+    async def get_implementation_summary(self) -> Dict[str, Any]:
         """
         Get a summary of all tracked implementations.
 
         Returns:
             Summary statistics and recent implementations
         """
+        await self._ensure_persisted_data_loaded()
         return {
             "total_implementations": len(self.implementations),
             "total_decisions": len(self.decisions),
@@ -1117,13 +1124,14 @@ class Context:
             "tasks_with_dependents": len(self.dependencies),
         }
 
-    def clear_old_data(self, days: int = 30) -> None:
+    async def clear_old_data(self, days: int = 30) -> None:
         """
         Clear context data older than specified days.
 
         Args:
             days: Number of days to retain
         """
+        await self._ensure_persisted_data_loaded()
         cutoff = datetime.now().timestamp() - (days * 24 * 60 * 60)
 
         # Clear old implementations
