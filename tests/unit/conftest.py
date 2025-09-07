@@ -4,21 +4,17 @@ Common test fixtures for unit tests using real implementations.
 
 import sys
 from pathlib import Path
+
 import pytest
 import pytest_asyncio
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.marcus_mcp.server import MarcusServer
 from src.core.context import Context
+from src.marcus_mcp.server import MarcusServer
 
-# Import domain-specific fixtures
-pytest_plugins = [
-    "tests.fixtures.fixtures_core",
-    "tests.fixtures.fixtures_ai", 
-    "tests.fixtures.fixtures_integration",
-]
+# Domain-specific fixtures are now imported in the root conftest.py
 
 
 @pytest.fixture
@@ -34,7 +30,7 @@ def test_env_vars(monkeypatch):
 @pytest.fixture
 def test_marcus_server(test_env_vars):
     """Create a Marcus server instance for testing.
-    
+
     Uses real implementations but with test configuration.
     For tests requiring external services, use @pytest.mark.integration
     """
