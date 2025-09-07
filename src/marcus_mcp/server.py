@@ -503,16 +503,18 @@ class MarcusServer:
         if self.kanban_client and not self.config.is_multi_project_mode():
             # Create a project from the legacy config
             config_data = getattr(self.config, "_config", None)
+            project_id = None
             if config_data is not None:
                 project_id = await self.project_registry.create_from_legacy_config(
                     config_data
                 )
 
-            # Set it as active
-            await self.project_registry.set_active_project(project_id)
+            # Set it as active only if we have a valid project_id
+            if project_id:
+                await self.project_registry.set_active_project(project_id)
 
-            # Initialize project context with existing client
-            await self.project_manager.switch_project(project_id)
+                # Initialize project context with existing client
+                await self.project_manager.switch_project(project_id)
 
             # Successfully migrated to multi-project mode
 

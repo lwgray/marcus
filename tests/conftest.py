@@ -25,6 +25,13 @@ from mcp.client.stdio import stdio_client
 
 from mcp import ClientSession, StdioServerParameters
 
+# Import domain-specific fixtures
+pytest_plugins = [
+    "tests.fixtures.fixtures_core",
+    "tests.fixtures.fixtures_ai",
+    "tests.fixtures.fixtures_integration",
+]
+
 
 @pytest.fixture(scope="session")
 def event_loop() -> asyncio.AbstractEventLoop:

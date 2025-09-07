@@ -392,6 +392,328 @@ class TestKanbanInitialization:
 
 
 @mock_server_components()
+class TestMCPHandlers:
+    """Test suite for MCP protocol handlers"""
+
+    @pytest.fixture
+    def server(self):
+        """Create test server instance"""
+        with patch("src.config.config_loader.ConfigLoader") as mock_config_loader_class:
+            with patch("pathlib.Path.exists", return_value=False):
+                with patch("builtins.open", mock_open()):
+                    with patch("src.marcus_mcp.server.Path.mkdir"):
+                        config_data = {
+                            "kanban": {"provider": "planka"},
+                            "features": {
+                                "events": {"enabled": False},
+                                "context": {"enabled": False},
+                                "memory": {"enabled": False},
+                            },
+                        }
+                        mock_config_loader = MockConfigLoader(config_data)
+                        mock_config_loader_class.return_value = mock_config_loader
+                        server = MarcusServer()
+                        return server
+
+    @pytest.mark.asyncio
+    async def test_handle_list_tools(self, server):
+        """Test list_tools handler returns available tools"""
+        # Call the list_tools handler
+        tools = await server.server.list_tools()
+
+        assert isinstance(tools, list)
+        assert len(tools) > 0
+
+        # Check that all returned items are Tool objects
+        for tool in tools:
+            assert isinstance(tool, types.Tool)
+            assert hasattr(tool, "name")
+            assert hasattr(tool, "description")
+
+    @pytest.mark.asyncio
+    async def test_handle_call_tool_ping(self, server):
+        """Test call_tool handler with ping tool"""
+        # Test ping tool
+        result = await server.server.call_tool("ping", {"echo": "test message"})
+
+        assert isinstance(result, list)
+        assert len(result) > 0
+        assert isinstance(result[0], types.TextContent)
+
+        # Parse the JSON response
+        response_data = json.loads(result[0].text)
+        assert response_data["success"] is True
+        assert "test message" in response_data["message"]
+
+    @pytest.mark.asyncio
+    async def test_handle_call_tool_nonexistent(self, server):
+        """Test call_tool handler with nonexistent tool"""
+        result = await server.server.call_tool("nonexistent_tool", {})
+
+        assert isinstance(result, list)
+        assert len(result) > 0
+        assert isinstance(result[0], types.TextContent)
+
+        # Parse the JSON response
+        response_data = json.loads(result[0].text)
+        assert response_data["success"] is False
+        assert "Unknown tool" in response_data["error"]
+
+    @pytest.mark.asyncio
+    async def test_handle_list_resources(self, server):
+        """Test list_resources handler"""
+        resources = await server.server.list_resources()
+
+        assert isinstance(resources, list)
+        # Resources list can be empty or populated
+
+    @pytest.mark.asyncio
+    async def test_handle_list_prompts(self, server):
+        """Test list_prompts handler"""
+        prompts = await server.server.list_prompts()
+
+        assert isinstance(prompts, list)
+        # Prompts list can be empty or populated
+
+
+@mock_server_components()
+class TestServerLifecycle:
+    """Test suite for server lifecycle methods"""
+
+    @pytest.fixture
+    def server(self):
+        """Create test server instance"""
+        with patch("src.config.config_loader.ConfigLoader") as mock_config_loader_class:
+            with patch("pathlib.Path.exists", return_value=False):
+                with patch("builtins.open", mock_open()):
+                    with patch("src.marcus_mcp.server.Path.mkdir"):
+                        config_data = {
+                            "kanban": {"provider": "planka"},
+                            "features": {
+                                "events": {"enabled": False},
+                                "context": {"enabled": False},
+                                "memory": {"enabled": False},
+                            },
+                        }
+                        mock_config_loader = MockConfigLoader(config_data)
+                        mock_config_loader_class.return_value = mock_config_loader
+                        server = MarcusServer()
+                        return server
+
+    @pytest.mark.asyncio
+    @patch("src.marcus_mcp.server.KanbanFactory.create")
+    @patch.object(MarcusServer, "_ensure_environment_config")
+    async def test_initialize_success(self, mock_ensure_config, mock_factory, server):
+        """Test successful server initialization"""
+        # Create mock kanban client
+        mock_client = AsyncMock()
+        mock_client.create_task = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_factory.return_value = mock_client
+
+        # Initialize server
+        await server.initialize()
+
+        # Verify initialization steps
+        mock_ensure_config.assert_called_once()
+        assert server.kanban_client == mock_client
+        # Verify server initialized successfully (no exception raised)
+
+    def test_log_event(self, server):
+        """Test event logging functionality"""
+        event_type = "test_event"
+        event_data = {"key": "value", "number": 42}
+
+        # Should not raise an exception
+        server.log_event(event_type, event_data)
+
+        # Verify event is logged (basic verification)
+        assert True  # If no exception raised, logging worked
+
+    @pytest.mark.asyncio
+    async def test_refresh_project_state(self, server):
+        """Test project state refresh"""
+        # Mock the kanban client
+        mock_client = AsyncMock()
+        server.kanban_client = mock_client
+
+        # Should not raise an exception
+        await server.refresh_project_state()
+
+        # Basic verification that method completed
+        assert True
+
+    @pytest.mark.asyncio
+    async def test_cleanup_on_shutdown(self, server):
+        """Test cleanup during shutdown"""
+        # Set up some state to clean up
+        server.assignment_monitor = AsyncMock()
+        server.assignment_monitor.stop = AsyncMock()
+
+        # Call cleanup
+        await server._cleanup_on_shutdown()
+
+        # Verify cleanup was called
+        server.assignment_monitor.stop.assert_called_once()
+
+
+@mock_server_components()
+class TestAgentManagement:
+    """Test suite for agent management functionality"""
+
+    @pytest.fixture
+    def server(self):
+        """Create test server instance"""
+        with patch("src.config.config_loader.ConfigLoader") as mock_config_loader_class:
+            with patch("pathlib.Path.exists", return_value=False):
+                with patch("builtins.open", mock_open()):
+                    with patch("src.marcus_mcp.server.Path.mkdir"):
+                        config_data = {
+                            "kanban": {"provider": "planka"},
+                            "features": {
+                                "events": {"enabled": False},
+                                "context": {"enabled": False},
+                                "memory": {"enabled": False},
+                            },
+                        }
+                        mock_config_loader = MockConfigLoader(config_data)
+                        mock_config_loader_class.return_value = mock_config_loader
+                        server = MarcusServer()
+                        server.assignment_persistence = Mock()
+                        return server
+
+    @pytest.mark.asyncio
+    async def test_register_agent_via_tool(self, server):
+        """Test agent registration through tool handler"""
+        # Mock the tool call to register_agent
+        result = await server.server.call_tool(
+            "register_agent",
+            {
+                "agent_id": "test-agent-123",
+                "capabilities": ["task_execution", "code_analysis"],
+                "metadata": {"version": "1.0", "env": "test"},
+            },
+        )
+
+        assert isinstance(result, list)
+        assert len(result) > 0
+        assert isinstance(result[0], types.TextContent)
+
+        # Parse response
+        response_data = json.loads(result[0].text)
+        assert response_data["success"] is True
+        assert response_data["agent_id"] == "test-agent-123"
+
+    @pytest.mark.asyncio
+    async def test_get_agent_status_via_tool(self, server):
+        """Test getting agent status through tool handler"""
+        # First register an agent
+        await server.server.call_tool(
+            "register_agent",
+            {
+                "agent_id": "test-agent-123",
+                "capabilities": ["task_execution"],
+                "metadata": {},
+            },
+        )
+
+        # Then get its status
+        result = await server.server.call_tool(
+            "get_agent_status", {"agent_id": "test-agent-123"}
+        )
+
+        assert isinstance(result, list)
+        assert len(result) > 0
+        assert isinstance(result[0], types.TextContent)
+
+        response_data = json.loads(result[0].text)
+        assert response_data["success"] is True
+        assert response_data["agent_id"] == "test-agent-123"
+
+    @pytest.mark.asyncio
+    async def test_request_next_task_via_tool(self, server):
+        """Test requesting next task through tool handler"""
+        # Register agent first
+        await server.server.call_tool(
+            "register_agent",
+            {
+                "agent_id": "test-agent-123",
+                "capabilities": ["task_execution"],
+                "metadata": {},
+            },
+        )
+
+        # Request next task
+        result = await server.server.call_tool(
+            "request_next_task", {"agent_id": "test-agent-123"}
+        )
+
+        assert isinstance(result, list)
+        assert len(result) > 0
+        assert isinstance(result[0], types.TextContent)
+
+        response_data = json.loads(result[0].text)
+        assert response_data["success"] is True
+
+
+@mock_server_components()
+class TestProjectManagement:
+    """Test suite for project management functionality"""
+
+    @pytest.fixture
+    def server(self):
+        """Create test server instance"""
+        with patch("src.config.config_loader.ConfigLoader") as mock_config_loader_class:
+            with patch("pathlib.Path.exists", return_value=False):
+                with patch("builtins.open", mock_open()):
+                    with patch("src.marcus_mcp.server.Path.mkdir"):
+                        config_data = {
+                            "kanban": {"provider": "planka"},
+                            "features": {
+                                "events": {"enabled": False},
+                                "context": {"enabled": False},
+                                "memory": {"enabled": False},
+                            },
+                        }
+                        mock_config_loader = MockConfigLoader(config_data)
+                        mock_config_loader_class.return_value = mock_config_loader
+                        server = MarcusServer()
+                        return server
+
+    @pytest.mark.asyncio
+    async def test_get_project_status_via_tool(self, server):
+        """Test getting project status through tool handler"""
+        result = await server.server.call_tool("get_project_status", {})
+
+        assert isinstance(result, list)
+        assert len(result) > 0
+        assert isinstance(result[0], types.TextContent)
+
+        response_data = json.loads(result[0].text)
+        assert response_data["success"] is True
+        assert "project_name" in response_data
+
+    @pytest.mark.asyncio
+    async def test_create_project_via_tool(self, server):
+        """Test creating project through tool handler"""
+        result = await server.server.call_tool(
+            "create_project",
+            {
+                "project_name": "Test Project",
+                "description": "A test project",
+                "provider": "planka",
+            },
+        )
+
+        assert isinstance(result, list)
+        assert len(result) > 0
+        assert isinstance(result[0], types.TextContent)
+
+        response_data = json.loads(result[0].text)
+        assert response_data["success"] is True
+
+
+@mock_server_components()
 class TestEnvironmentConfiguration:
     """Test suite for environment configuration loading"""
 
