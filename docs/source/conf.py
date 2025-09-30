@@ -102,7 +102,7 @@ html_theme_options = {
 
     # Navigation
     'navbar_start': ['navbar-logo'],
-    'navbar_center': [],  # Empty - navigation only in sidebar
+    'navbar_center': ['navbar-nav'],  # Shows top-level navigation
     'navbar_end': ['navbar-icon-links', 'theme-switcher'],
     'navbar_persistent': ['search-button'],
 

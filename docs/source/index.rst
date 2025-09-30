@@ -94,6 +94,7 @@ Here's how an agent works with Marcus:
 
 
 .. toctree::
+   :hidden:
    :maxdepth: 2
    :caption: Getting Started
 
@@ -103,6 +104,7 @@ Here's how an agent works with Marcus:
    getting-started/setup-local-llm
 
 .. toctree::
+   :hidden:
    :maxdepth: 2
    :caption: Guides
 
@@ -126,6 +128,7 @@ Here's how an agent works with Marcus:
    guides/advanced/ping-system
 
 .. toctree::
+   :hidden:
    :maxdepth: 1
    :caption: API Reference
 
@@ -136,6 +139,7 @@ Here's how an agent works with Marcus:
    api/error_handling
 
 .. toctree::
+   :hidden:
    :maxdepth: 2
    :caption: Systems
 
@@ -148,6 +152,7 @@ Here's how an agent works with Marcus:
    systems/quality/index
 
 .. toctree::
+   :hidden:
    :maxdepth: 1
    :caption: Concepts & Roadmap
 
