@@ -25,7 +25,7 @@ Requirements:
 
 6. **Read the Relevant Documentation**: Before writing, read the Marcus system docs to understand:
    - Which systems are actually involved
-   - What the data structures look like  
+   - What the data structures look like
    - What the configuration options and constraints are
    - How systems coordinate with each other
 

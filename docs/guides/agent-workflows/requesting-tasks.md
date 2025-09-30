@@ -32,7 +32,7 @@ Marcus logs this as a multi-directional conversation:
 # Agent → Marcus communication
 conversation_logger.log_worker_message(
     agent_id="dev-001",
-    direction="to_pm", 
+    direction="to_pm",
     message="Requesting next task",
     metadata={"worker_info": "Worker dev-001 requesting task"}
 )
@@ -42,13 +42,13 @@ state.log_event(
     event_type="task_request",
     data={
         "worker_id": "dev-001",
-        "source": "dev-001", 
+        "source": "dev-001",
         "target": "marcus",
         "timestamp": "2025-09-05T14:30:00Z"
     }
 )
 
-# Visualization event for real-time monitoring  
+# Visualization event for real-time monitoring
 log_agent_event("task_request", {"worker_id": "dev-001"})
 ```
 
@@ -73,7 +73,7 @@ await state.initialize_kanban()  # Connect to Planka/Linear/GitHub Projects
 ```json
 {
   "request_id": "req_2025_1452_dev001",
-  "agent_id": "dev-001", 
+  "agent_id": "dev-001",
   "request_type": "task_request",
   "timestamp": "2025-09-05T14:30:00Z",
   "system_events": ["conversation_logged", "system_event_fired", "visualization_updated"],
@@ -100,7 +100,7 @@ log_thinking("marcus", "Need to check current project state")
 agent = state.agent_status.get("dev-001")
 if agent:
     log_thinking(
-        "marcus", 
+        "marcus",
         f"Finding optimal task for {agent.name}",
         {
             "agent_skills": ["Python", "FastAPI", "PostgreSQL"],
@@ -121,7 +121,7 @@ await state.refresh_project_state()
 - Pulls latest task status from Kanban board (in case external changes happened)
 - Updates internal task cache with current assignments
 - Identifies any tasks that may have been completed outside Marcus
-- Checks for new tasks added externally 
+- Checks for new tasks added externally
 - Validates that dependencies are still accurate
 - Updates project completion metrics
 
@@ -129,7 +129,7 @@ await state.refresh_project_state()
 ```python
 project_state = {
     "total_tasks": 47,
-    "completed_tasks": 23, 
+    "completed_tasks": 23,
     "in_progress_tasks": 8,
     "blocked_tasks": 3,
     "available_tasks": 13,
@@ -157,7 +157,7 @@ for other_agent_id, assignment in state.assignment_persistence.get_all_assignmen
 
 # Filter out already assigned tasks
 available_tasks = [
-    task for task in state.project_tasks 
+    task for task in state.project_tasks
     if task.status == TaskStatus.TODO and task.id not in all_assigned_ids
 ]
 ```
@@ -195,7 +195,7 @@ for task in available_tasks:
         keyword in task.name.lower() or keyword in task.labels
         for keyword in deployment_keywords
     )
-    
+
     if is_deployment:
         deployment_tasks.append(task)
     else:
@@ -212,7 +212,7 @@ available_tasks = non_deployment_tasks if non_deployment_tasks else deployment_t
 {
   "initial_tasks": 13,
   "after_assignment_check": 11,  # 2 already assigned to other agents
-  "after_phase_filtering": 8,    # 3 blocked by phase constraints  
+  "after_phase_filtering": 8,    # 3 blocked by phase constraints
   "after_deployment_filter": 7,  # 1 deployment task deprioritized
   "final_eligible_tasks": 7
 }
@@ -228,7 +228,7 @@ Instead of simple skill matching, Marcus uses a **4-phase AI analysis** to find 
 
 ### What Happens:
 
-#### **Phase 1: Safety Validation** 
+#### **Phase 1: Safety Validation**
 AI validates that tasks are logically safe to assign:
 ```python
 safe_tasks = await self._filter_safe_tasks(available_tasks)
@@ -236,9 +236,9 @@ safe_tasks = await self._filter_safe_tasks(available_tasks)
 # For deployment tasks, AI checks:
 if self._is_deployment_task(task):
     if not await self._are_dependencies_complete(task):
-        # AI analysis: "Dependencies incomplete" 
+        # AI analysis: "Dependencies incomplete"
         continue
-        
+
     # Additional AI safety check
     safety_check = await ai_engine.check_deployment_safety(task, project_tasks)
     if not safety_check.get("safe", False):
@@ -254,15 +254,15 @@ dependency_scores = await self._analyze_dependencies(safe_tasks)
 for task in safe_tasks:
     # Count tasks this would unblock
     unblocked_count = sum(
-        1 for other_task in project_tasks 
+        1 for other_task in project_tasks
         if task.id in other_task.dependencies and other_task.status == TaskStatus.TODO
     )
-    
+
     # Check if task is on critical path
     critical_path = dependency_graph.get_critical_path()
     is_critical = task.id in critical_path
-    
-    # Calculate dependency score  
+
+    # Calculate dependency score
     score = unblocked_count * 0.5 + (0.5 if is_critical else 0)
 ```
 
@@ -291,12 +291,12 @@ score = ai_analysis.get("suitability_score", 0.5) * ai_analysis.get("confidence"
 
 **AI evaluates**:
 - Skill alignment with task requirements
-- Agent's current workload and capacity  
+- Agent's current workload and capacity
 - Task complexity vs agent experience level
 - Project phase appropriateness
 - Historical performance on similar tasks
 
-#### **Phase 4: Predictive Impact Assessment** 
+#### **Phase 4: Predictive Impact Assessment**
 AI predicts the consequences of this assignment:
 ```python
 impact_scores = await self._predict_task_impact(safe_tasks)
@@ -316,7 +316,7 @@ impact_scores = await self._predict_task_impact(safe_tasks)
   "selection_reasoning": "High skill match, unblocks 3 frontend tasks, on critical path",
   "phase_scores": {
     "safety": 1.0,      # Completely safe to assign
-    "dependency": 0.8,  # High impact on project flow  
+    "dependency": 0.8,  # High impact on project flow
     "agent_match": 0.9, # Excellent skill alignment
     "impact": 0.7       # Good timeline optimization
   },
@@ -339,7 +339,7 @@ For GitHub-integrated projects, Marcus analyzes existing code:
 ```python
 if state.provider == "github" and state.code_analyzer:
     owner = os.getenv("GITHUB_OWNER")
-    repo = os.getenv("GITHUB_REPO") 
+    repo = os.getenv("GITHUB_REPO")
     impl_details = await state.code_analyzer.get_implementation_details(
         optimal_task.dependencies, owner, repo
     )
@@ -360,14 +360,14 @@ dep_map = await state.context.analyze_dependencies(state.project_tasks)
 # For each task that depends on the current task
 for dep_task_id in dep_map[optimal_task.id]:
     dep_task = find_task_by_id(dep_task_id)
-    
+
     # AI infers what the dependent task needs
     expected_interface = state.context.infer_needed_interface(dep_task, optimal_task.id)
-    
+
     # Add to context
     state.context.add_dependency(optimal_task.id, DependentTask(
         task_id=dep_task.id,
-        task_name=dep_task.name, 
+        task_name=dep_task.name,
         expected_interface=expected_interface  # "REST API with /auth endpoints"
     ))
 ```
@@ -390,7 +390,7 @@ context_data = {
     "previous_implementations": [
         {
             "file_path": "src/auth/oauth.py",
-            "pattern": "OAuth2 implementation with JWT tokens", 
+            "pattern": "OAuth2 implementation with JWT tokens",
             "interfaces": ["POST /auth/login", "GET /auth/verify"]
         }
     ],
@@ -401,7 +401,7 @@ context_data = {
             "expected_interface": "POST /auth/login endpoint with email/password"
         },
         {
-            "task_id": "task_025", 
+            "task_id": "task_025",
             "task_name": "Mobile Authentication",
             "expected_interface": "JWT token response format"
         }
@@ -418,7 +418,7 @@ context_data = {
 
 ---
 
-## 🔐 **Stage 6: Assignment Lease Creation** 
+## 🔐 **Stage 6: Assignment Lease Creation**
 **System**: `35-assignment-lease-system.md` (Assignment Lease System)
 
 ### What Is an Assignment Lease?
@@ -431,23 +431,23 @@ Marcus calculates how long this agent should have to complete this task:
 ```python
 def calculate_adaptive_duration(self, task: Task) -> float:
     base_hours = 2.0  # Default lease time
-    
+
     # Apply priority multiplier
     priority_mult = {
         "urgent": 0.5,   # Urgent tasks get shorter leases (faster escalation)
         "high": 0.8,
-        "medium": 1.0, 
+        "medium": 1.0,
         "low": 1.5       # Low priority gets more time
     }.get(task.priority.value.lower(), 1.0)
-    
+
     base_hours *= priority_mult
-    
+
     # Apply complexity multiplier based on labels
     if "complex" in task.labels:
         base_hours *= 2.0  # Complex tasks get more time
     if "simple" in task.labels:
         base_hours *= 0.5  # Simple tasks should be quick
-        
+
     return max(0.5, min(base_hours, 24.0))  # Between 30 minutes and 24 hours
 ```
 
@@ -455,7 +455,7 @@ def calculate_adaptive_duration(self, task: Task) -> float:
 ```python
 assignment_lease = AssignmentLease(
     task_id="task_015_user_auth_api",
-    agent_id="dev-001", 
+    agent_id="dev-001",
     created_at=datetime.now(),
     expires_at=datetime.now() + timedelta(hours=3.2),  # Calculated duration
     duration_hours=3.2,
@@ -479,7 +479,7 @@ Marcus starts monitoring this lease:
 
 **Why leases matter**:
 - **Automatic Recovery**: If an agent goes offline, their tasks get automatically reassigned
-- **Progress Accountability**: Agents must show progress or lose the assignment  
+- **Progress Accountability**: Agents must show progress or lose the assignment
 - **Capacity Planning**: Marcus knows exactly what's assigned and for how long
 - **Quality Control**: Tasks can't sit indefinitely without progress
 
@@ -489,7 +489,7 @@ Marcus starts monitoring this lease:
   "task_id": "task_015_user_auth_api",
   "agent_id": "dev-001",
   "created_at": "2025-09-05T14:30:45Z",
-  "expires_at": "2025-09-05T17:49:45Z", 
+  "expires_at": "2025-09-05T17:49:45Z",
   "duration_hours": 3.2,
   "renewable": true,
   "warning_threshold": "2025-09-05T17:19:45Z",
@@ -514,7 +514,7 @@ basic_prediction = await state.memory.predict_task_outcome("dev-001", optimal_ta
 
 # Based on:
 # - Agent's historical performance on similar tasks
-# - Task complexity vs agent skill level  
+# - Task complexity vs agent skill level
 # - Current project phase and pressure
 # - Similar task outcomes in memory
 
@@ -547,7 +547,7 @@ blockage_risk = {
     "overall_risk": 0.3,  # 30% chance of encountering blockers
     "risk_breakdown": {
         "technical_dependencies": 0.15,    # External API issues
-        "requirement_clarity": 0.08,       # Unclear specifications  
+        "requirement_clarity": 0.08,       # Unclear specifications
         "integration_complexity": 0.12     # Existing system conflicts
     },
     "preventive_measures": [
@@ -577,7 +577,7 @@ performance_trajectory = await state.memory.calculate_agent_performance_trajecto
 
 trajectory = {
     "improving_skills": {"Python": 0.15, "API_design": 0.23},  # Getting better
-    "skill_trends": "Strong upward trend in backend development", 
+    "skill_trends": "Strong upward trend in backend development",
     "recommendations": ["Good opportunity to cement authentication expertise"]
 }
 ```
@@ -589,7 +589,7 @@ await state.memory.record_task_start("dev-001", optimal_task)
 
 # Updates:
 # - Working Memory: Current agent assignments
-# - Episodic Memory: This specific assignment event  
+# - Episodic Memory: This specific assignment event
 # - Semantic Memory: Patterns about auth tasks
 # - Procedural Memory: Assignment process effectiveness
 ```
@@ -606,7 +606,7 @@ await state.memory.record_task_start("dev-001", optimal_task)
   },
   "memory_updates": {
     "working_memory": "agent_dev-001_assigned_task_015",
-    "episodic_event": "task_assignment_2025_09_05_1430", 
+    "episodic_event": "task_assignment_2025_09_05_1430",
     "semantic_pattern": "auth_task_backend_developer",
     "procedural_reinforcement": "ai_assignment_success"
   }
@@ -627,7 +627,7 @@ Marcus doesn't just say "do this task" - it generates **contextually adaptive in
 Marcus uses AI to create task-specific instructions:
 ```python
 base_instructions = await state.ai_engine.generate_task_instructions(
-    optimal_task, 
+    optimal_task,
     state.agent_status.get("dev-001")
 )
 
@@ -648,16 +648,16 @@ Marcus builds **6 layers** of increasingly sophisticated guidance:
 
 **Layer 2: Implementation Context** (if previous work exists)
 ```
-"📚 IMPLEMENTATION CONTEXT: 
+"📚 IMPLEMENTATION CONTEXT:
 2 relevant implementations found. Use these patterns and interfaces to maintain consistency."
 ```
 
 **Layer 3: Dependency Awareness** (if other tasks depend on this)
-```  
+```
 "🔗 DEPENDENCY AWARENESS:
 3 future tasks depend on your work:
 - Frontend Login Component (needs: POST /auth/login endpoint)
-- Mobile Authentication (needs: JWT token response format)  
+- Mobile Authentication (needs: JWT token response format)
 - User Profile Service (needs: User ID extraction from JWT)"
 ```
 
@@ -675,7 +675,7 @@ Example: 'I chose JWT tokens because mobile apps need stateless auth. This affec
 ⏱️ Expected duration: 2.8 hours (1.5-4.2 hours)
 ⚠️ High blockage risk: 30%
    • technical_dependencies: 15% chance
-   • integration_complexity: 12% chance  
+   • integration_complexity: 12% chance
 💡 Prevention tips:
    • Review existing OAuth implementation patterns
    • Validate API endpoints with frontend team early
@@ -717,7 +717,7 @@ Example: 'I chose JWT tokens because mobile apps need stateless auth. This affec
 ```
 data/assignments/assignments.json          ← Active task assignments with leases
 data/marcus_state/memory/                 ← Learning patterns from task assignments
-data/marcus_state/context/                ← Task dependencies and relationships  
+data/marcus_state/context/                ← Task dependencies and relationships
 data/audit_logs/                          ← Complete audit trail of assignment process
 data/token_usage.json                     ← AI costs for assignment analysis
 ```
@@ -743,7 +743,7 @@ data/token_usage.json                     ← AI costs for assignment analysis
 ### **With Marcus:**
 - **AI-Powered Selection**: Best task for this specific agent at this specific time
 - **Conflict Prevention**: Sophisticated safety checks prevent logical errors
-- **Rich Context**: Agents understand how their work affects the broader project  
+- **Rich Context**: Agents understand how their work affects the broader project
 - **Predictive Intelligence**: Risk analysis and time estimation based on learned patterns
 - **Automatic Recovery**: Time-bound leases with automatic reassignment
 - **Continuous Learning**: Every assignment improves future coordination

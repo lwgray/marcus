@@ -75,73 +75,73 @@ from src.core.agent_coordination import AgentCoordinator
 
 class WorkflowOrchestrationEngine:
     """Central engine for orchestrating multi-agent workflows"""
-    
+
     def __init__(self):
         self.agent_coordinator = AgentCoordinator()
         self.dependency_resolver = DependencyResolver()
         self.state_manager = WorkflowStateManager()
         self.quality_controller = QualityGateController()
-    
+
     async def execute_workflow(
-        self, 
+        self,
         workflow_definition: WorkflowDefinition,
         execution_context: ExecutionContext
     ) -> WorkflowExecution:
         """Execute complex multi-agent workflow with orchestration"""
-        
+
         # Create workflow instance
         workflow_instance = await self._create_workflow_instance(
             workflow_definition, execution_context
         )
-        
+
         # Analyze workflow for optimization opportunities
         optimization_plan = await self._analyze_workflow_optimization(
             workflow_definition, execution_context
         )
-        
+
         # Initialize workflow state
         workflow_state = await self.state_manager.initialize_workflow_state(
             workflow_instance, optimization_plan
         )
-        
+
         try:
             # Execute workflow phases
             while not workflow_state.is_complete():
                 # Get next executable tasks
                 executable_tasks = await self._get_next_executable_tasks(workflow_state)
-                
+
                 # Assign tasks to optimal agents
                 task_assignments = await self._assign_tasks_to_agents(
                     executable_tasks, execution_context
                 )
-                
+
                 # Execute tasks in parallel where possible
                 execution_results = await self._execute_parallel_tasks(
                     task_assignments, workflow_state
                 )
-                
+
                 # Process results and update state
                 await self._process_execution_results(
                     execution_results, workflow_state
                 )
-                
+
                 # Check quality gates
                 quality_check = await self.quality_controller.check_quality_gates(
                     workflow_state, execution_results
                 )
-                
+
                 if not quality_check.passed:
                     # Handle quality gate failure
                     await self._handle_quality_gate_failure(
                         quality_check, workflow_state
                     )
-                
+
                 # Update workflow progress
                 await self.state_manager.update_workflow_progress(workflow_state)
-            
+
             # Finalize workflow
             final_result = await self._finalize_workflow_execution(workflow_state)
-            
+
             return WorkflowExecution(
                 workflow_id=workflow_instance.id,
                 status=WorkflowStatus.COMPLETED,
@@ -149,7 +149,7 @@ class WorkflowOrchestrationEngine:
                 execution_metrics=workflow_state.execution_metrics,
                 quality_metrics=workflow_state.quality_metrics
             )
-            
+
         except WorkflowException as e:
             # Handle workflow failures with recovery
             recovery_result = await self._handle_workflow_failure(
@@ -163,24 +163,24 @@ class WorkflowOrchestrationEngine:
 # src/workflow/task_orchestration.py
 class TaskOrchestrator:
     """Orchestrates task execution within workflows"""
-    
+
     async def orchestrate_task_execution(
-        self, 
+        self,
         task_group: List[Task],
         workflow_context: WorkflowContext
     ) -> TaskGroupExecutionResult:
         """Orchestrate execution of related tasks with dependency awareness"""
-        
+
         # Build execution graph
         execution_graph = await self._build_task_execution_graph(
             task_group, workflow_context
         )
-        
+
         # Optimize execution order
         optimized_schedule = await self._optimize_execution_schedule(
             execution_graph, workflow_context.available_agents
         )
-        
+
         # Execute tasks according to schedule
         execution_results = []
         for execution_phase in optimized_schedule.phases:
@@ -188,9 +188,9 @@ class TaskOrchestrator:
             phase_results = await self._execute_task_phase(
                 execution_phase, workflow_context
             )
-            
+
             execution_results.extend(phase_results)
-            
+
             # Check for failures that would block subsequent phases
             critical_failures = [r for r in phase_results if r.is_critical_failure()]
             if critical_failures:
@@ -198,17 +198,17 @@ class TaskOrchestrator:
                 recovery_strategy = await self._determine_recovery_strategy(
                     critical_failures, execution_graph, optimized_schedule
                 )
-                
+
                 if recovery_strategy.requires_workflow_termination:
                     raise WorkflowTerminationException(
                         f"Critical failures prevent workflow continuation: {critical_failures}"
                     )
-                
+
                 # Apply recovery strategy
                 await self._apply_recovery_strategy(
                     recovery_strategy, workflow_context
                 )
-        
+
         return TaskGroupExecutionResult(
             tasks_executed=len(task_group),
             successful_tasks=len([r for r in execution_results if r.success]),
@@ -224,19 +224,19 @@ class TaskOrchestrator:
 # src/workflow/dependency_resolution.py
 class DependencyResolver:
     """Advanced dependency resolution for workflow orchestration"""
-    
+
     async def resolve_workflow_dependencies(
-        self, 
+        self,
         workflow_tasks: List[Task],
         execution_context: ExecutionContext
     ) -> DependencyResolutionResult:
         """Resolve all dependencies within workflow context"""
-        
+
         # Build comprehensive dependency graph
         dependency_graph = await self._build_dependency_graph(
             workflow_tasks, execution_context
         )
-        
+
         # Detect and resolve circular dependencies
         circular_dependencies = await self._detect_circular_dependencies(dependency_graph)
         if circular_dependencies:
@@ -246,40 +246,40 @@ class DependencyResolver:
             dependency_graph = await self._apply_circular_resolution(
                 dependency_graph, resolution_strategy
             )
-        
+
         # Optimize dependency resolution order
         resolution_order = await self._optimize_dependency_resolution_order(
             dependency_graph, execution_context.optimization_preferences
         )
-        
+
         # Identify parallel execution opportunities
         parallel_groups = await self._identify_parallel_execution_groups(
             dependency_graph, resolution_order
         )
-        
+
         # Calculate resource requirements
         resource_requirements = await self._calculate_resource_requirements(
             dependency_graph, parallel_groups, execution_context
         )
-        
+
         # Validate resource availability
         resource_validation = await self._validate_resource_availability(
             resource_requirements, execution_context.available_resources
         )
-        
+
         if not resource_validation.sufficient:
             # Suggest resource optimization strategies
             optimization_strategies = await self._suggest_resource_optimization(
                 resource_requirements, execution_context.available_resources
             )
-            
+
             return DependencyResolutionResult(
                 success=False,
                 resource_insufficient=True,
                 optimization_strategies=optimization_strategies,
                 minimum_resources_needed=resource_validation.minimum_required
             )
-        
+
         return DependencyResolutionResult(
             success=True,
             dependency_graph=dependency_graph,
@@ -299,39 +299,39 @@ class DependencyResolver:
 # src/workflow/load_balancing.py
 class DynamicLoadBalancer:
     """Dynamic load balancing for optimal agent utilization"""
-    
+
     async def balance_workflow_load(
-        self, 
+        self,
         workflow_tasks: List[Task],
         available_agents: List[AgentProfile],
         performance_constraints: PerformanceConstraints
     ) -> LoadBalancingResult:
         """Dynamically balance load across available agents"""
-        
+
         # Analyze current agent workloads
         agent_workloads = await self._analyze_agent_workloads(available_agents)
-        
+
         # Predict task completion times
         completion_predictions = await self._predict_task_completion_times(
             workflow_tasks, available_agents
         )
-        
+
         # Calculate optimal task distribution
         optimal_distribution = await self._calculate_optimal_distribution(
-            workflow_tasks, 
-            agent_workloads, 
+            workflow_tasks,
+            agent_workloads,
             completion_predictions,
             performance_constraints
         )
-        
+
         # Detect potential bottlenecks
         bottleneck_analysis = await self._analyze_potential_bottlenecks(
             optimal_distribution, agent_workloads
         )
-        
+
         # Apply load balancing strategies
         balancing_strategies = []
-        
+
         if bottleneck_analysis.has_bottlenecks:
             # Apply bottleneck resolution strategies
             bottleneck_resolution = await self._resolve_bottlenecks(
@@ -339,14 +339,14 @@ class DynamicLoadBalancer:
             )
             balancing_strategies.extend(bottleneck_resolution.strategies)
             optimal_distribution = bottleneck_resolution.adjusted_distribution
-        
+
         # Implement work stealing for dynamic rebalancing
         work_stealing_config = await self._configure_work_stealing(
             optimal_distribution, agent_workloads
         )
-        
+
         balancing_strategies.append(work_stealing_config)
-        
+
         return LoadBalancingResult(
             task_assignments=optimal_distribution,
             load_balancing_strategies=balancing_strategies,
@@ -369,28 +369,28 @@ Advanced AI-driven workflow optimization that learns from execution patterns:
 ```python
 class IntelligentWorkflowOptimizer:
     """AI-powered workflow optimization system"""
-    
+
     async def optimize_workflow_execution(
-        self, 
+        self,
         workflow_definition: WorkflowDefinition,
         historical_executions: List[WorkflowExecution],
         current_context: ExecutionContext
     ) -> WorkflowOptimization:
         """Use AI and historical data to optimize workflow execution"""
-        
+
         # Analyze historical performance patterns
         performance_patterns = await self._analyze_performance_patterns(
             historical_executions, workflow_definition
         )
-        
+
         # Identify optimization opportunities
         optimization_opportunities = await self._identify_optimization_opportunities(
             workflow_definition, performance_patterns, current_context
         )
-        
+
         # Generate optimization strategies
         optimization_strategies = []
-        
+
         for opportunity in optimization_opportunities:
             if opportunity.type == OptimizationType.PARALLELIZATION:
                 strategy = await self._generate_parallelization_strategy(
@@ -408,19 +408,19 @@ class IntelligentWorkflowOptimizer:
                 strategy = await self._generate_generic_optimization_strategy(
                     opportunity, workflow_definition, current_context
                 )
-            
+
             optimization_strategies.append(strategy)
-        
+
         # Simulate optimization impact
         impact_simulation = await self._simulate_optimization_impact(
             workflow_definition, optimization_strategies, historical_executions
         )
-        
+
         # Select best optimization combination
         optimal_combination = await self._select_optimal_strategy_combination(
             optimization_strategies, impact_simulation
         )
-        
+
         return WorkflowOptimization(
             original_workflow=workflow_definition,
             optimization_strategies=optimal_combination,
@@ -437,20 +437,20 @@ Sophisticated recovery mechanisms that adapt to different types of failures:
 ```python
 class AdaptiveWorkflowRecovery:
     """Adaptive recovery system for workflow failures"""
-    
+
     async def recover_from_workflow_failure(
-        self, 
+        self,
         workflow_failure: WorkflowFailure,
         workflow_state: WorkflowState,
         recovery_context: RecoveryContext
     ) -> RecoveryResult:
         """Implement adaptive recovery strategies based on failure type"""
-        
+
         # Analyze failure characteristics
         failure_analysis = await self._analyze_failure_characteristics(
             workflow_failure, workflow_state
         )
-        
+
         # Determine recovery strategy based on failure type
         if failure_analysis.failure_type == FailureType.AGENT_FAILURE:
             recovery_strategy = await self._create_agent_failure_recovery_strategy(
@@ -472,22 +472,22 @@ class AdaptiveWorkflowRecovery:
             recovery_strategy = await self._create_generic_recovery_strategy(
                 failure_analysis, workflow_state, recovery_context
             )
-        
+
         # Execute recovery strategy
         recovery_execution = await self._execute_recovery_strategy(
             recovery_strategy, workflow_state
         )
-        
+
         # Validate recovery success
         recovery_validation = await self._validate_recovery_success(
             recovery_execution, workflow_state, failure_analysis
         )
-        
+
         # Learn from recovery experience
         await self._learn_from_recovery_experience(
             workflow_failure, recovery_strategy, recovery_execution, recovery_validation
         )
-        
+
         return RecoveryResult(
             recovery_successful=recovery_validation.successful,
             recovery_strategy=recovery_strategy,
@@ -504,38 +504,38 @@ Dynamic workflow modification during execution based on changing conditions:
 ```python
 class RealTimeWorkflowAdapter:
     """Adapts workflows in real-time based on execution conditions"""
-    
+
     async def adapt_workflow_during_execution(
-        self, 
+        self,
         running_workflow: RunningWorkflow,
         adaptation_triggers: List[AdaptationTrigger]
     ) -> WorkflowAdaptation:
         """Adapt workflow in real-time based on execution conditions"""
-        
+
         adaptation_decisions = []
-        
+
         for trigger in adaptation_triggers:
             # Evaluate trigger significance
             trigger_evaluation = await self._evaluate_adaptation_trigger(
                 trigger, running_workflow
             )
-            
+
             if trigger_evaluation.requires_adaptation:
                 # Generate adaptation options
                 adaptation_options = await self._generate_adaptation_options(
                     trigger, running_workflow, trigger_evaluation
                 )
-                
+
                 # Select best adaptation option
                 selected_adaptation = await self._select_optimal_adaptation(
                     adaptation_options, running_workflow
                 )
-                
+
                 # Validate adaptation safety
                 safety_validation = await self._validate_adaptation_safety(
                     selected_adaptation, running_workflow
                 )
-                
+
                 if safety_validation.safe:
                     adaptation_decisions.append(selected_adaptation)
                 else:
@@ -543,24 +543,24 @@ class RealTimeWorkflowAdapter:
                     await self._log_unsafe_adaptation_attempt(
                         selected_adaptation, safety_validation, running_workflow
                     )
-        
+
         # Execute approved adaptations
         if adaptation_decisions:
             adaptation_result = await self._execute_workflow_adaptations(
                 adaptation_decisions, running_workflow
             )
-            
+
             # Monitor adaptation impact
             await self._monitor_adaptation_impact(
                 adaptation_result, running_workflow
             )
-            
+
             return WorkflowAdaptation(
                 adaptations_applied=adaptation_decisions,
                 adaptation_result=adaptation_result,
                 workflow_impact=adaptation_result.impact_metrics
             )
-        
+
         return WorkflowAdaptation(
             adaptations_applied=[],
             adaptation_result=None,
@@ -607,33 +607,33 @@ class WorkflowState:
 
 class WorkflowStateManager:
     """Manages workflow state and transitions"""
-    
+
     async def transition_workflow_state(
-        self, 
+        self,
         workflow_state: WorkflowState,
         target_status: WorkflowStatus,
         transition_context: TransitionContext
     ) -> StateTransitionResult:
         """Execute workflow state transition with validation"""
-        
+
         # Validate transition is allowed
         transition_validation = await self._validate_state_transition(
             current_status=workflow_state.status,
             target_status=target_status,
             context=transition_context
         )
-        
+
         if not transition_validation.valid:
             raise InvalidStateTransitionError(
                 f"Cannot transition from {workflow_state.status} to {target_status}: "
                 f"{transition_validation.reason}"
             )
-        
+
         # Execute pre-transition actions
         pre_transition_result = await self._execute_pre_transition_actions(
             workflow_state, target_status, transition_context
         )
-        
+
         # Create state transition record
         state_transition = StateTransition(
             from_status=workflow_state.status,
@@ -643,25 +643,25 @@ class WorkflowStateManager:
             context=transition_context,
             pre_transition_actions=pre_transition_result
         )
-        
+
         # Update workflow state
         previous_status = workflow_state.status
         workflow_state.status = target_status
         workflow_state.state_transitions.append(state_transition)
-        
+
         # Execute post-transition actions
         post_transition_result = await self._execute_post_transition_actions(
             workflow_state, previous_status, transition_context
         )
-        
+
         # Persist state change
         await self._persist_workflow_state(workflow_state)
-        
+
         # Notify state change listeners
         await self._notify_state_change_listeners(
             workflow_state, state_transition
         )
-        
+
         return StateTransitionResult(
             successful=True,
             previous_status=previous_status,
@@ -677,42 +677,42 @@ class WorkflowStateManager:
 # src/workflow/quality_gates.py
 class QualityGateController:
     """Controls quality gates within workflow execution"""
-    
+
     async def evaluate_quality_gate(
-        self, 
+        self,
         quality_gate: QualityGate,
         workflow_context: WorkflowContext,
         execution_artifacts: List[ExecutionArtifact]
     ) -> QualityGateResult:
         """Evaluate quality gate with comprehensive checks"""
-        
+
         evaluation_results = []
-        
+
         # Execute quality checks
         for quality_check in quality_gate.quality_checks:
             check_result = await self._execute_quality_check(
                 quality_check, workflow_context, execution_artifacts
             )
             evaluation_results.append(check_result)
-        
+
         # Calculate overall quality score
         overall_score = self._calculate_overall_quality_score(evaluation_results)
-        
+
         # Determine pass/fail based on gate criteria
         gate_passed = overall_score >= quality_gate.passing_threshold
-        
+
         # Generate detailed feedback
         feedback = self._generate_quality_feedback(
             evaluation_results, overall_score, quality_gate
         )
-        
+
         # Generate improvement recommendations if failed
         recommendations = []
         if not gate_passed:
             recommendations = await self._generate_improvement_recommendations(
                 evaluation_results, quality_gate, workflow_context
             )
-        
+
         quality_result = QualityGateResult(
             gate_id=quality_gate.id,
             passed=gate_passed,
@@ -722,10 +722,10 @@ class QualityGateController:
             improvement_recommendations=recommendations,
             evaluation_timestamp=datetime.utcnow()
         )
-        
+
         # Record quality gate result
         await self._record_quality_gate_result(quality_result, workflow_context)
-        
+
         return quality_result
 ```
 

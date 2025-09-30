@@ -39,7 +39,7 @@ conversation_logger.log_worker_message(
     message="Registering as Backend Developer with skills: ['Python', 'FastAPI', 'PostgreSQL']",
     metadata={
         "name": "Alice Backend",
-        "role": "Backend Developer", 
+        "role": "Backend Developer",
         "skills": ["Python", "FastAPI", "PostgreSQL"]
     }
 )
@@ -108,7 +108,7 @@ status = WorkerStatus(
     skills=["Python", "FastAPI", "PostgreSQL"],  # Capability list
     availability={                 # When agent can work
         "monday": True,
-        "tuesday": True, 
+        "tuesday": True,
         "wednesday": True,
         "thursday": True,
         "friday": True,
@@ -172,7 +172,7 @@ state.log_event(
     event_type="worker_registration",
     data={
         "worker_id": "dev-001",
-        "name": "Alice Backend", 
+        "name": "Alice Backend",
         "role": "Backend Developer",
         "skills": ["Python", "FastAPI", "PostgreSQL"],
         "source": "mcp_client",      # Where the registration came from
@@ -196,13 +196,13 @@ log_agent_event(
     data={
         "worker_id": "dev-001",
         "name": "Alice Backend",
-        "role": "Backend Developer", 
+        "role": "Backend Developer",
         "skills": ["Python", "FastAPI", "PostgreSQL"]
     }
 )
 ```
 
-**Why visualization matters**: 
+**Why visualization matters**:
 - **Operations teams** can see agent availability in real-time dashboards
 - **Project managers** can monitor team composition
 - **Developers** can debug coordination issues by seeing event flows
@@ -215,7 +215,7 @@ log_agent_event(
   "data": {
     "worker_id": "dev-001",
     "name": "Alice Backend",
-    "role": "Backend Developer", 
+    "role": "Backend Developer",
     "skills": ["Python", "FastAPI", "PostgreSQL"],
     "source": "mcp_client",
     "target": "marcus",
@@ -344,7 +344,7 @@ semantic_memory.update_pattern("backend_developers", {
 
 **Semantic Memory** = Marcus's general knowledge about how things work.
 
-#### 4. **Procedural Memory Reinforcement** 
+#### 4. **Procedural Memory Reinforcement**
 Marcus reinforces successful registration procedures:
 ```python
 procedural_memory.reinforce_procedure("agent_registration", {
@@ -369,7 +369,7 @@ procedural_memory.reinforce_procedure("agent_registration", {
     "agent_registration_events": [
       {
         "agent_id": "dev-001",
-        "outcome": "success", 
+        "outcome": "success",
         "context": {...},
         "timestamp": "2025-09-05T10:30:00Z"
       }

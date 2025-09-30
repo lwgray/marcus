@@ -83,7 +83,7 @@ async def create_project(
     current_user: User = Depends(get_current_user)
 ) -> ProjectResponse:
     """Create a new project with autonomous agent coordination"""
-    
+
     try:
         project = await project_manager.create_project(
             name=project_spec.name,
@@ -92,7 +92,7 @@ async def create_project(
             complexity=project_spec.complexity,
             technology_preferences=project_spec.technology_stack
         )
-        
+
         return ProjectResponse(
             id=project.id,
             name=project.name,
@@ -102,7 +102,7 @@ async def create_project(
             assigned_agents=project.agent_assignments,
             task_summary=project.task_summary
         )
-        
+
     except ProjectCreationError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -118,7 +118,7 @@ async def register_agent(
     agent_coordinator: AgentCoordinator = Depends(get_agent_coordinator)
 ) -> AgentRegistrationResponse:
     """Register a new autonomous agent with the system"""
-    
+
     registration_result = await agent_coordinator.register_agent(
         agent_id=agent_spec.agent_id,
         name=agent_spec.name,
@@ -127,7 +127,7 @@ async def register_agent(
         capacity=agent_spec.capacity,
         availability_schedule=agent_spec.availability
     )
-    
+
     return AgentRegistrationResponse(
         agent_id=registration_result.agent_id,
         status="registered",
@@ -142,15 +142,15 @@ async def get_next_task(
     agent_coordinator: AgentCoordinator = Depends(get_agent_coordinator)
 ) -> TaskAssignmentResponse:
     """Get the next optimal task assignment for an agent"""
-    
+
     task_assignment = await agent_coordinator.assign_next_task(agent_id)
-    
+
     if not task_assignment:
         return TaskAssignmentResponse(
             has_task=False,
             message="No tasks available matching agent capabilities"
         )
-    
+
     return TaskAssignmentResponse(
         has_task=True,
         task_id=task_assignment.task.id,
@@ -173,7 +173,7 @@ async def update_task_progress(
     task_manager: TaskManager = Depends(get_task_manager)
 ) -> ProgressUpdateResponse:
     """Update task progress with intelligent monitoring"""
-    
+
     try:
         progress_result = await task_manager.update_progress(
             task_id=task_id,
@@ -183,7 +183,7 @@ async def update_task_progress(
             artifacts=progress_update.artifacts,
             agent_id=progress_update.agent_id
         )
-        
+
         return ProgressUpdateResponse(
             success=True,
             task_id=task_id,
@@ -193,7 +193,7 @@ async def update_task_progress(
             estimated_completion=progress_result.updated_completion_estimate,
             risk_assessment=progress_result.risk_analysis
         )
-        
+
     except TaskNotFoundError:
         raise HTTPException(status_code=404, detail="Task not found")
     except InvalidProgressError as e:
@@ -206,7 +206,7 @@ async def report_blocker(
     blocker_resolver: BlockerResolver = Depends(get_blocker_resolver)
 ) -> BlockerReportResponse:
     """Report task blocker with AI-powered resolution suggestions"""
-    
+
     resolution_analysis = await blocker_resolver.analyze_blocker(
         task_id=task_id,
         blocker_description=blocker_report.description,
@@ -214,7 +214,7 @@ async def report_blocker(
         agent_id=blocker_report.agent_id,
         context=blocker_report.context
     )
-    
+
     return BlockerReportResponse(
         blocker_id=resolution_analysis.blocker_id,
         ai_suggestions=resolution_analysis.suggested_solutions,
@@ -258,21 +258,21 @@ class TaskType(graphene.ObjectType):
 
 class Query(graphene.ObjectType):
     """Root GraphQL query"""
-    
+
     project = graphene.Field(ProjectType, id=graphene.String(required=True))
     projects = graphene.List(ProjectType, status=graphene.String())
-    
+
     agent = graphene.Field(AgentType, id=graphene.String(required=True))
     agents = graphene.List(AgentType, available=graphene.Boolean())
-    
+
     task = graphene.Field(TaskType, id=graphene.String(required=True))
     tasks = graphene.List(TaskType, project_id=graphene.String(), status=graphene.String())
-    
+
     async def resolve_project(self, info, id):
         """Resolve single project query"""
         project_manager = info.context["project_manager"]
         return await project_manager.get_project(id)
-    
+
     async def resolve_projects(self, info, status=None):
         """Resolve projects list query with filtering"""
         project_manager = info.context["project_manager"]
@@ -284,27 +284,27 @@ class Query(graphene.ObjectType):
 # src/api/graphql/subscriptions.py
 class Subscription(graphene.ObjectType):
     """GraphQL subscriptions for real-time updates"""
-    
+
     task_progress_updates = graphene.Field(
         TaskProgressType,
         task_id=graphene.String(required=True)
     )
-    
+
     agent_status_updates = graphene.Field(
         AgentStatusType,
         agent_id=graphene.String(required=True)
     )
-    
+
     project_events = graphene.Field(
         ProjectEventType,
         project_id=graphene.String(required=True)
     )
-    
+
     async def resolve_task_progress_updates(root, info, task_id):
         """Subscribe to task progress updates"""
         async for progress_update in info.context["event_stream"].subscribe(f"task:{task_id}:progress"):
             yield progress_update
-    
+
     async def resolve_agent_status_updates(root, info, agent_id):
         """Subscribe to agent status changes"""
         async for status_update in info.context["event_stream"].subscribe(f"agent:{agent_id}:status"):
@@ -318,13 +318,13 @@ class Subscription(graphene.ObjectType):
 # src/api/webhooks.py
 class WebhookManager:
     """Manages webhook subscriptions and deliveries"""
-    
+
     async def register_webhook(self, subscription: WebhookSubscription) -> WebhookRegistration:
         """Register a new webhook subscription"""
-        
+
         # Validate webhook endpoint
         await self._validate_webhook_endpoint(subscription.url)
-        
+
         # Store subscription
         webhook_id = await self.webhook_store.create_subscription(
             url=subscription.url,
@@ -332,16 +332,16 @@ class WebhookManager:
             secret=subscription.secret,
             filters=subscription.filters
         )
-        
+
         return WebhookRegistration(
             webhook_id=webhook_id,
             status="active",
             events_subscribed=subscription.event_types
         )
-    
+
     async def deliver_webhook(self, event: SystemEvent, subscriptions: List[WebhookSubscription]):
         """Deliver webhook events with retry logic"""
-        
+
         for subscription in subscriptions:
             if self._event_matches_filters(event, subscription.filters):
                 try:
@@ -368,27 +368,27 @@ External Client → API Gateway → Marcus Core → Response → External Client
 # External client workflow integration
 class MarcusAPIClient:
     """Client SDK for Marcus API integration"""
-    
+
     async def create_project_workflow(self, project_spec: dict) -> ProjectWorkflow:
         """Complete project creation workflow via API"""
-        
+
         # Step 1: Create project
         project = await self.api.post("/projects", json=project_spec)
-        
+
         # Step 2: Wait for initial task generation
         while project["status"] != "tasks_generated":
             await asyncio.sleep(5)
             project = await self.api.get(f"/projects/{project['id']}")
-        
+
         # Step 3: Get available tasks
         tasks = await self.api.get(f"/projects/{project['id']}/tasks")
-        
+
         # Step 4: Register agents (if needed)
         agent_registrations = []
         for agent_spec in project_spec.get("agents", []):
             registration = await self.api.post("/agents/register", json=agent_spec)
             agent_registrations.append(registration)
-        
+
         return ProjectWorkflow(
             project=project,
             tasks=tasks,
@@ -405,7 +405,7 @@ Unlike traditional REST APIs designed for human-driven applications, Marcus APIs
 ```python
 class AgentOptimizedEndpoints:
     """API endpoints specifically designed for agent consumption"""
-    
+
     @router.get("/agents/{agent_id}/context", response_model=AgentContextResponse)
     async def get_agent_context(
         agent_id: str,
@@ -414,14 +414,14 @@ class AgentOptimizedEndpoints:
         context_depth: int = 3
     ) -> AgentContextResponse:
         """Get comprehensive context for autonomous agent decision-making"""
-        
+
         context = await self.context_manager.build_agent_context(
             agent_id=agent_id,
             include_task_history=include_history,
             include_dependency_graph=include_dependencies,
             context_depth=context_depth
         )
-        
+
         return AgentContextResponse(
             current_task=context.current_task,
             available_tools=context.available_tools,
@@ -439,13 +439,13 @@ Context-aware rate limiting that considers agent workload and task priority:
 ```python
 class IntelligentRateLimiter:
     """Smart rate limiting based on agent context and task priority"""
-    
+
     async def check_rate_limit(self, agent_id: str, endpoint: str, request_context: RequestContext) -> RateLimitResult:
         """Apply intelligent rate limiting based on context"""
-        
+
         agent_status = await self.get_agent_status(agent_id)
         task_priority = request_context.task_priority if request_context.task_id else Priority.LOW
-        
+
         # High priority tasks get higher rate limits
         if task_priority == Priority.CRITICAL:
             rate_limit = self.base_rate_limit * 3
@@ -453,13 +453,13 @@ class IntelligentRateLimiter:
             rate_limit = self.base_rate_limit * 2
         else:
             rate_limit = self.base_rate_limit
-        
+
         # Agents with good performance get bonus limits
         if agent_status.performance_score > 0.8:
             rate_limit *= 1.5
-        
+
         current_usage = await self.get_current_usage(agent_id, endpoint)
-        
+
         return RateLimitResult(
             allowed=current_usage < rate_limit,
             limit=rate_limit,
@@ -475,21 +475,21 @@ WebSocket and Server-Sent Events for real-time agent coordination:
 ```python
 class RealTimeCoordination:
     """Real-time communication for agent coordination"""
-    
+
     @router.websocket("/ws/agents/{agent_id}")
     async def agent_websocket(websocket: WebSocket, agent_id: str):
         """WebSocket connection for real-time agent communication"""
-        
+
         await websocket.accept()
-        
+
         # Register agent for real-time updates
         await self.connection_manager.register_agent(agent_id, websocket)
-        
+
         try:
             while True:
                 # Listen for agent messages
                 message = await websocket.receive_json()
-                
+
                 # Process different message types
                 if message["type"] == "progress_update":
                     await self.handle_progress_update(agent_id, message["data"])
@@ -497,11 +497,11 @@ class RealTimeCoordination:
                     await self.handle_blocker_report(agent_id, message["data"])
                 elif message["type"] == "request_assistance":
                     await self.handle_assistance_request(agent_id, message["data"])
-                
+
                 # Broadcast updates to other connected agents if needed
                 if message.get("broadcast"):
                     await self.connection_manager.broadcast_to_project(message["project_id"], message)
-                    
+
         except WebSocketDisconnect:
             await self.connection_manager.disconnect_agent(agent_id)
 ```
@@ -513,29 +513,29 @@ Built-in testing framework for API reliability:
 ```python
 class APITestingSuite:
     """Comprehensive API testing for reliability assurance"""
-    
+
     async def run_endpoint_health_checks(self) -> HealthCheckResults:
         """Run comprehensive health checks on all API endpoints"""
-        
+
         results = []
-        
+
         # Test all registered endpoints
         for endpoint in self.registered_endpoints:
             result = await self._test_endpoint_health(endpoint)
             results.append(result)
-        
+
         # Test authentication flows
         auth_results = await self._test_authentication_flows()
         results.extend(auth_results)
-        
+
         # Test rate limiting
         rate_limit_results = await self._test_rate_limiting()
         results.extend(rate_limit_results)
-        
+
         # Test error handling
         error_handling_results = await self._test_error_scenarios()
         results.extend(error_handling_results)
-        
+
         return HealthCheckResults(
             overall_health=self._calculate_overall_health(results),
             endpoint_results=results,
@@ -555,7 +555,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 class MarcusAPIGateway:
     """Main API Gateway for Marcus systems"""
-    
+
     def __init__(self):
         self.app = FastAPI(
             title="Marcus Agent Coordination API",
@@ -564,14 +564,14 @@ class MarcusAPIGateway:
             docs_url="/docs",
             redoc_url="/redoc"
         )
-        
+
         self._setup_middleware()
         self._setup_routes()
         self._setup_error_handlers()
-    
+
     def _setup_middleware(self):
         """Configure API middleware stack"""
-        
+
         # CORS middleware
         self.app.add_middleware(
             CORSMiddleware,
@@ -580,54 +580,54 @@ class MarcusAPIGateway:
             allow_methods=["*"],
             allow_headers=["*"],
         )
-        
+
         # Compression middleware
         self.app.add_middleware(GZipMiddleware, minimum_size=1000)
-        
+
         # Custom middleware
         self.app.middleware("http")(self._request_logging_middleware)
         self.app.middleware("http")(self._authentication_middleware)
         self.app.middleware("http")(self._rate_limiting_middleware)
-    
+
     async def _authentication_middleware(self, request: Request, call_next):
         """Authentication middleware for API requests"""
-        
+
         # Skip auth for public endpoints
         if self._is_public_endpoint(request.url.path):
             return await call_next(request)
-        
+
         # Extract and validate JWT token
         token = self._extract_bearer_token(request)
         if not token:
             return self._unauthorized_response()
-        
+
         try:
             user = await self.auth_service.validate_token(token)
             request.state.user = user
             return await call_next(request)
         except AuthenticationError:
             return self._unauthorized_response()
-    
+
     async def _rate_limiting_middleware(self, request: Request, call_next):
         """Intelligent rate limiting middleware"""
-        
+
         client_id = self._get_client_identifier(request)
         endpoint = request.url.path
-        
+
         rate_limit_result = await self.rate_limiter.check_rate_limit(
             client_id, endpoint, self._build_request_context(request)
         )
-        
+
         if not rate_limit_result.allowed:
             return self._rate_limit_exceeded_response(rate_limit_result)
-        
+
         response = await call_next(request)
-        
+
         # Add rate limit headers
         response.headers["X-RateLimit-Limit"] = str(rate_limit_result.limit)
         response.headers["X-RateLimit-Remaining"] = str(rate_limit_result.remaining)
         response.headers["X-RateLimit-Reset"] = str(rate_limit_result.reset_time)
-        
+
         return response
 ```
 
@@ -659,7 +659,7 @@ class ErrorResponse(BaseModel):
 @app.exception_handler(MarcusBaseError)
 async def marcus_error_handler(request: Request, exc: MarcusBaseError):
     """Handle Marcus system errors with consistent formatting"""
-    
+
     error_response = ErrorResponse(
         error_code=exc.__class__.__name__,
         error_message=str(exc),
@@ -668,17 +668,17 @@ async def marcus_error_handler(request: Request, exc: MarcusBaseError):
         timestamp=datetime.utcnow().isoformat(),
         help_url=f"https://docs.marcus.ai/errors/{exc.__class__.__name__}"
     )
-    
+
     # Log error for monitoring
     logger.error(f"API Error: {exc}", extra={
         "correlation_id": error_response.correlation_id,
         "endpoint": request.url.path,
         "method": request.method
     })
-    
+
     # Determine appropriate HTTP status code
     status_code = getattr(exc, 'http_status_code', 500)
-    
+
     return JSONResponse(
         status_code=status_code,
         content=error_response.dict()
@@ -691,10 +691,10 @@ async def marcus_error_handler(request: Request, exc: MarcusBaseError):
 # src/api/documentation.py
 class APIDocumentationGenerator:
     """Generates comprehensive API documentation"""
-    
+
     def generate_openapi_spec(self) -> Dict[str, Any]:
         """Generate OpenAPI 3.0 specification"""
-        
+
         spec = {
             "openapi": "3.0.0",
             "info": {
@@ -718,27 +718,27 @@ class APIDocumentationGenerator:
                 "securitySchemes": self._generate_security_schemes()
             }
         }
-        
+
         return spec
-    
+
     def _generate_example_requests(self, endpoint: APIEndpoint) -> Dict[str, Any]:
         """Generate example requests for each endpoint"""
-        
+
         examples = {}
-        
+
         # Generate examples for different scenarios
         if endpoint.supports_agent_workflow:
             examples["agent_workflow"] = {
                 "summary": "Typical agent workflow request",
                 "value": self._create_agent_workflow_example(endpoint)
             }
-        
+
         if endpoint.supports_batch_operations:
             examples["batch_operation"] = {
                 "summary": "Batch operation request",
                 "value": self._create_batch_operation_example(endpoint)
             }
-        
+
         return examples
 ```
 
