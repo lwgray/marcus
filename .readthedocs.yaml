@@ -1,0 +1,56 @@
+Read the Docs logo
+Add project
+Add a configuration file to your project
+Help topics
+Configuration file tutorial 
+Configuration file reference 
+Manually configuring a Git repository 
+A .readthedocs.yaml file is required at the root of your repository to build your project's documentation. You can pick an example for your documentation tool as a starting point below, and save and commit it to your repository.
+Example configuration for: 
+.readthedocs.yaml
+# Read the Docs configuration file
+# See https://docs.readthedocs.io/en/stable/config-file/v2.html for details
+
+# Required
+version: 2
+
+# Set the OS, Python version, and other tools you might need
+build:
+  os: ubuntu-24.04
+  tools:
+    python: "3.13"
+
+# Build documentation in the "docs/" directory with Sphinx
+sphinx:
+   configuration: docs/conf.py
+
+# Optionally, but recommended,
+# declare the Python requirements required to build your documentation
+# See https://docs.readthedocs.io/en/stable/guides/reproducible-builds.html
+# python:
+#    install:
+#    - requirements: docs/requirements.txt
+        
+  
+Stay updated
+Learn more
+Services
+About us
+Tools
+ 
+Version
+15.3.0
+  
+Language
+ 
+ Copyright 2025, Read the Docs, Inc & contributors
+Amazon Web ServicesAWS
+Cloud Computing
+CloudFlareCloudflare
+DNS & SSL
+SentrySentry
+Monitoring
+ElasticElastic
+Search
+New RelicNew Relic
+Performance

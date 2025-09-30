@@ -1,0 +1,44 @@
+/* Marcus AI custom styling */
+
+:root {
+    --pst-color-primary: #0D9373;
+    --pst-color-secondary: #07C983;
+    --pst-color-accent: #0A7A5E;
+}
+
+/* Logo styling */
+.navbar-brand {
+    font-weight: 600;
+    font-size: 1.2rem;
+}
+
+/* Code blocks */
+.highlight {
+    border-radius: 8px;
+}
+
+/* Cards */
+.sd-card {
+    border-radius: 12px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sd-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+}
+
+/* Admonitions */
+.admonition {
+    border-radius: 8px;
+}
+
+/* Navigation */
+.bd-sidebar {
+    scrollbar-width: thin;
+}
+
+/* Search bar */
+.bd-search {
+    border-radius: 8px;
+}
