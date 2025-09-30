@@ -1,0 +1,209 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Marcus AI",
+  "logo": {
+    "dark": "/logo/dark.svg",
+    "light": "/logo/light.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#0D9373",
+    "light": "#07C983",
+    "dark": "#0A7A5E",
+    "anchors": {
+      "from": "#0D9373",
+      "to": "#07C983"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "Support",
+      "url": "https://github.com/lwgray/marcus/discussions"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "GitHub",
+    "url": "https://github.com/lwgray/marcus"
+  },
+  "tabs": [
+    {
+      "name": "API Reference",
+      "url": "api-reference"
+    },
+    {
+      "name": "Guides",
+      "url": "guides"
+    },
+    {
+      "name": "Systems",
+      "url": "systems"
+    }
+  ],
+  "anchors": [
+    {
+      "name": "Documentation",
+      "icon": "book-open-cover",
+      "url": "https://marcus-ai.dev"
+    },
+    {
+      "name": "Community",
+      "icon": "discord",
+      "url": "https://github.com/lwgray/marcus/discussions"
+    },
+    {
+      "name": "GitHub",
+      "icon": "github",
+      "url": "https://github.com/lwgray/marcus"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Get Started",
+      "pages": [
+        "introduction",
+        "getting-started/quickstart",
+        "getting-started/core-concepts",
+        "getting-started/installation"
+      ]
+    },
+    {
+      "group": "Concepts",
+      "pages": [
+        "concepts/philosophy",
+        "concepts/core-values",
+        "concepts/architecture",
+        "concepts/coordination-philosophy",
+        "concepts/memory-architecture"
+      ]
+    },
+    {
+      "group": "Guides",
+      "pages": [
+        {
+          "group": "Agent Workflows",
+          "pages": [
+            "guides/agent-workflows/agent-workflow",
+            "guides/agent-workflows/registration",
+            "guides/agent-workflows/requesting-tasks",
+            "guides/agent-workflows/reporting-progress"
+          ]
+        },
+        {
+          "group": "Project Management",
+          "pages": [
+            "guides/project-management/creating-projects",
+            "guides/project-management/task-dependencies",
+            "guides/project-management/monitoring"
+          ]
+        },
+        {
+          "group": "Collaboration",
+          "pages": [
+            "guides/collaboration/board-communication",
+            "guides/collaboration/context-sharing",
+            "guides/collaboration/blocker-resolution"
+          ]
+        },
+        {
+          "group": "Advanced",
+          "pages": [
+            "guides/advanced/memory-system",
+            "guides/advanced/predictive-analytics",
+            "guides/advanced/custom-integrations"
+          ]
+        }
+      ]
+    },
+    {
+      "group": "Systems",
+      "pages": [
+        "systems/README",
+        {
+          "group": "Core Intelligence",
+          "pages": [
+            "systems/core-intelligence/01-memory-system",
+            "systems/core-intelligence/02-semantic-memory",
+            "systems/core-intelligence/03-procedural-memory",
+            "systems/core-intelligence/04-episodic-memory",
+            "systems/core-intelligence/05-working-memory",
+            "systems/core-intelligence/06-context-builder",
+            "systems/core-intelligence/07-ai-intelligence-engine",
+            "systems/core-intelligence/08-reflection-system"
+          ]
+        },
+        {
+          "group": "Agent Coordination",
+          "pages": [
+            "systems/agent-coordination/21-agent-coordination",
+            "systems/agent-coordination/22-task-assignment",
+            "systems/agent-coordination/23-context-provision",
+            "systems/agent-coordination/24-health-monitoring",
+            "systems/agent-coordination/25-synchronization",
+            "systems/agent-coordination/26-worker-support"
+          ]
+        },
+        {
+          "group": "Task Management",
+          "pages": [
+            "systems/task-management/31-task-breakdown",
+            "systems/task-management/32-dependency-analysis",
+            "systems/task-management/33-task-prioritization"
+          ]
+        },
+        {
+          "group": "Project Analytics",
+          "pages": [
+            "systems/project-analytics/41-predictive-analytics",
+            "systems/project-analytics/42-completion-forecasting",
+            "systems/project-analytics/43-blockage-prediction",
+            "systems/project-analytics/44-cascade-analysis",
+            "systems/project-analytics/45-resource-optimization"
+          ]
+        },
+        {
+          "group": "Infrastructure",
+          "pages": [
+            "systems/infrastructure/51-kanban-integration",
+            "systems/infrastructure/52-github-provider",
+            "systems/infrastructure/53-mcp-protocol"
+          ]
+        }
+      ]
+    },
+    {
+      "group": "API Reference",
+      "pages": [
+        "api-reference/introduction",
+        {
+          "group": "Tools",
+          "pages": [
+            "api-reference/tools/register-agent",
+            "api-reference/tools/request-next-task",
+            "api-reference/tools/report-task-progress",
+            "api-reference/tools/report-blocker",
+            "api-reference/tools/get-project-status",
+            "api-reference/tools/get-agent-status",
+            "api-reference/tools/create-project"
+          ]
+        }
+      ]
+    },
+    {
+      "group": "Roadmap",
+      "pages": [
+        "roadmap/README",
+        "roadmap/future-enhancements",
+        "roadmap/research-areas"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/lwgray/marcus",
+    "twitter": "https://twitter.com/yourtwitterhandle"
+  },
+  "feedback": {
+    "thumbsRating": true,
+    "suggestEdit": true,
+    "raiseIssue": true
+  }
+}
