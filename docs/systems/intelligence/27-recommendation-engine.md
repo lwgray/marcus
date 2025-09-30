@@ -353,9 +353,9 @@ def get_recommendations_for_seneca(flow_id: str) -> Dict[str, Any]:
 - **Recommendation Objects**: ~1KB per recommendation
 
 ### Response Times
-- **Small Projects (≤20 tasks)**: <100ms for recommendations
-- **Large Projects (>50 tasks)**: <500ms for recommendations
-- **Historical Analysis**: <2s for similarity detection across 1000+ projects
+- **Small Projects (≤20 tasks)**: `<100ms` for recommendations
+- **Large Projects (>50 tasks)**: `<500ms` for recommendations
+- **Historical Analysis**: `<2s` for similarity detection across 1000+ projects
 
 ## Error Handling and Resilience
 

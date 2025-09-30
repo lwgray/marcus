@@ -353,7 +353,7 @@ if not getattr(state, '_is_mcp_call', True):
 - **Execution**: Synchronous or simple async
 - **State**: Stateless
 - **Background Tasks**: None
-- **Response Time**: <100ms
+- **Response Time**: `<100ms`
 - **Process Exit**: Clean
 
 ### create_project Tool

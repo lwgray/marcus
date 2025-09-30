@@ -455,7 +455,7 @@ Feature: System Reliability
 
 #### **Technical KPIs**
 - **Uptime**: >99.5%
-- **Performance**: <2s median response time
+- **Performance**: `<2s` median response time
 - **Accuracy**: Predictions within 20% of actual
 - **Coverage**: 80% test coverage maintained
 
@@ -463,12 +463,12 @@ Feature: System Reliability
 - **Adoption**: 1000+ installs in first month
 - **Retention**: 70% weekly active users
 - **Satisfaction**: 4.5+ star rating
-- **Time to Value**: <5 minutes for 90% of users
+- **Time to Value**: `<5` minutes for 90% of users
 
 #### **Community KPIs**
 - **GitHub**: 500+ stars, 50+ contributors
 - **Documentation**: 90% helpfulness rating
-- **Support**: <24 hour response time
+- **Support**: `<24` hour response time
 - **Growth**: 50% month-over-month user growth
 
 ---

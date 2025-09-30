@@ -308,7 +308,7 @@ suggested_alternatives = find_parallel_tasks_without_dependency(blocked_task_id)
 ### 1. Hybrid Intelligence Strategy
 
 **Multi-Layered Approach for Optimal Balance**:
-- **Fast Pattern Matching**: Handles 90% of common dependencies in <1ms
+- **Fast Pattern Matching**: Handles 90% of common dependencies in `<1ms`
 - **AI Deep Analysis**: Tackles complex, domain-specific relationships
 - **Cost Optimization**: Minimizes API calls while maximizing accuracy
 - **Graceful Degradation**: Falls back to patterns when AI unavailable

@@ -99,7 +99,7 @@ class RiskFactor:
 
 **Risk Factors Analyzed:**
 - **High Task Count**: >50 tasks may lead to coordination issues
-- **Low AI Confidence**: <60% confidence suggests unclear requirements
+- **Low AI Confidence**: `<60%` confidence suggests unclear requirements
 - **High Complexity**: Complex dependency graphs increase failure risk
 - **Many Ambiguities**: >3 ambiguities indicate specification problems
 - **Missing Considerations**: Incomplete task breakdowns
