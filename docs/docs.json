@@ -211,10 +211,11 @@
           {
             "group": "Roadmap",
             "pages": [
-              "roadmap/README",
+              "roadmap/index",
+              "roadmap/public-release-roadmap",
               "roadmap/evolution",
               "roadmap/future-systems",
-              "roadmap/public-release-roadmap"
+              "roadmap/README"
             ]
           }
         ]
