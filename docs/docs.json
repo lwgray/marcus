@@ -22,200 +22,204 @@
     "name": "GitHub",
     "url": "https://github.com/lwgray/marcus"
   },
-  "anchors": [
-    {
-      "name": "Documentation",
-      "icon": "book-open-cover",
-      "url": "https://marcus-ai.dev"
-    },
-    {
-      "name": "Community",
-      "icon": "discord",
-      "url": "https://github.com/lwgray/marcus/discussions"
-    },
-    {
-      "name": "GitHub",
-      "icon": "github",
-      "url": "https://github.com/lwgray/marcus"
-    }
-  ],
-  "navigation": [
-    {
-      "group": "Get Started",
-      "pages": [
-        "introduction",
-        "getting-started/quickstart",
-        "getting-started/core-concepts",
-        "getting-started/introduction",
-        "getting-started/setup-local-llm"
-      ]
-    },
-    {
-      "group": "Concepts",
-      "pages": [
-        "concepts/philosophy",
-        "concepts/core-values"
-      ]
-    },
-    {
-      "group": "Agent Workflows",
-      "pages": [
-        "guides/agent-workflows/agent-workflow",
-        "guides/agent-workflows/registration",
-        "guides/agent-workflows/requesting-tasks",
-        "guides/agent-workflows/reporting-progress",
-        "guides/agent-workflows/checking-dependencies",
-        "guides/agent-workflows/getting-context",
-        "guides/agent-workflows/handling-blockers"
-      ]
-    },
-    {
-      "group": "Project Management",
-      "pages": [
-        "guides/project-management/creating-projects",
-        "guides/project-management/monitoring-status",
-        "guides/project-management/analyzing-health"
-      ]
-    },
-    {
-      "group": "Collaboration",
-      "pages": [
-        "guides/collaboration/communication-hub",
-        "guides/collaboration/logging-decisions",
-        "guides/collaboration/tracking-artifacts"
-      ]
-    },
-    {
-      "group": "Advanced Guides",
-      "pages": [
-        "guides/advanced/memory-system",
-        "guides/advanced/agent-status",
-        "guides/advanced/agent-support-tools",
-        "guides/advanced/ping-system"
-      ]
-    },
-    {
-      "group": "Systems Overview",
-      "pages": [
-        "systems/README",
-        "systems/data-persistence"
-      ]
-    },
-    {
-      "group": "Intelligence Systems",
-      "pages": [
-        "systems/intelligence/01-memory-system",
-        "systems/intelligence/07-ai-intelligence-engine",
-        "systems/intelligence/17-learning-systems",
-        "systems/intelligence/23-task-management-intelligence",
-        "systems/intelligence/27-recommendation-engine",
-        "systems/intelligence/44-enhanced-task-classifier"
-      ]
-    },
-    {
-      "group": "Coordination Systems",
-      "pages": [
-        "systems/coordination/21-agent-coordination",
-        "systems/coordination/26-worker-support",
-        "systems/coordination/03-context-dependency-system",
-        "systems/coordination/12-communication-hub",
-        "systems/coordination/33-orphan-task-recovery",
-        "systems/coordination/35-assignment-lease-system",
-        "systems/coordination/36-task-dependency-system"
-      ]
-    },
-    {
-      "group": "Project Management Systems",
-      "pages": [
-        "systems/project-management/04-kanban-integration",
-        "systems/project-management/16-project-management",
-        "systems/project-management/34-create-project-tool",
-        "systems/project-management/38-natural-language-project-creation",
-        "systems/project-management/24-analysis-tools",
-        "systems/project-management/25-report-generation",
-        "systems/project-management/53-workflow-management"
-      ]
-    },
-    {
-      "group": "Infrastructure Systems",
-      "pages": [
-        "systems/infrastructure/08-error-framework",
-        "systems/infrastructure/10-persistence-layer",
-        "systems/infrastructure/14-workspace-isolation",
-        "systems/infrastructure/19-nlp-system",
-        "systems/infrastructure/28-configuration-management",
-        "systems/infrastructure/31-resilience",
-        "systems/infrastructure/32-core-models"
-      ]
-    },
-    {
-      "group": "Architecture",
-      "pages": [
-        "systems/architecture/06-mcp-server",
-        "systems/architecture/09-event-driven-architecture",
-        "systems/architecture/15-service-registry",
-        "systems/architecture/39-task-execution-order-fix-architecture",
-        "systems/architecture/40-enhanced-ping-tool"
-      ]
-    },
-    {
-      "group": "Quality Systems",
-      "pages": [
-        "systems/quality/11-monitoring-systems",
-        "systems/quality/18-quality-assurance",
-        "systems/quality/29-detection-systems",
-        "systems/quality/30-testing-framework",
-        "systems/quality/37-board-health-analyzer",
-        "systems/quality/41-assignment-monitor"
-      ]
-    },
-    {
-      "group": "Operations",
-      "pages": [
-        "systems/operations/13-cost-tracking",
-        "systems/operations/20-pipeline-systems",
-        "systems/operations/22-operational-modes"
-      ]
-    },
-    {
-      "group": "Development Systems",
-      "pages": [
-        "systems/development/42-code-analysis-system",
-        "systems/development/43-api-systems"
-      ]
-    },
-    {
-      "group": "Visualization",
-      "pages": [
-        "systems/visualization/02-logging-system",
-        "systems/visualization/05-visualization-system"
-      ]
-    },
-    {
-      "group": "Security",
-      "pages": [
-        "systems/security/51-security-systems"
-      ]
-    },
-    {
-      "group": "API Reference",
-      "pages": [
-        "api/README"
-      ]
-    },
-    {
-      "group": "Roadmap",
-      "pages": [
-        "roadmap/README",
-        "roadmap/evolution",
-        "roadmap/future-systems",
-        "roadmap/public-release-roadmap"
-      ]
-    }
-  ],
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "getting-started/quickstart",
+              "getting-started/core-concepts",
+              "getting-started/introduction",
+              "getting-started/setup-local-llm"
+            ]
+          },
+          {
+            "group": "Concepts",
+            "pages": [
+              "concepts/philosophy",
+              "concepts/core-values"
+            ]
+          },
+          {
+            "group": "Agent Workflows",
+            "pages": [
+              "guides/agent-workflows/agent-workflow",
+              "guides/agent-workflows/registration",
+              "guides/agent-workflows/requesting-tasks",
+              "guides/agent-workflows/reporting-progress",
+              "guides/agent-workflows/checking-dependencies",
+              "guides/agent-workflows/getting-context",
+              "guides/agent-workflows/handling-blockers"
+            ]
+          },
+          {
+            "group": "Project Management",
+            "pages": [
+              "guides/project-management/creating-projects",
+              "guides/project-management/monitoring-status",
+              "guides/project-management/analyzing-health"
+            ]
+          },
+          {
+            "group": "Collaboration",
+            "pages": [
+              "guides/collaboration/communication-hub",
+              "guides/collaboration/logging-decisions",
+              "guides/collaboration/tracking-artifacts"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "guides/advanced/memory-system",
+              "guides/advanced/agent-status",
+              "guides/advanced/agent-support-tools",
+              "guides/advanced/ping-system"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Systems",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "systems/README",
+              "systems/data-persistence"
+            ]
+          },
+          {
+            "group": "Intelligence",
+            "pages": [
+              "systems/intelligence/01-memory-system",
+              "systems/intelligence/07-ai-intelligence-engine",
+              "systems/intelligence/17-learning-systems",
+              "systems/intelligence/23-task-management-intelligence",
+              "systems/intelligence/27-recommendation-engine",
+              "systems/intelligence/44-enhanced-task-classifier"
+            ]
+          },
+          {
+            "group": "Coordination",
+            "pages": [
+              "systems/coordination/21-agent-coordination",
+              "systems/coordination/26-worker-support",
+              "systems/coordination/03-context-dependency-system",
+              "systems/coordination/12-communication-hub",
+              "systems/coordination/33-orphan-task-recovery",
+              "systems/coordination/35-assignment-lease-system",
+              "systems/coordination/36-task-dependency-system"
+            ]
+          },
+          {
+            "group": "Project Management",
+            "pages": [
+              "systems/project-management/04-kanban-integration",
+              "systems/project-management/16-project-management",
+              "systems/project-management/34-create-project-tool",
+              "systems/project-management/38-natural-language-project-creation",
+              "systems/project-management/24-analysis-tools",
+              "systems/project-management/25-report-generation",
+              "systems/project-management/53-workflow-management"
+            ]
+          },
+          {
+            "group": "Infrastructure",
+            "pages": [
+              "systems/infrastructure/08-error-framework",
+              "systems/infrastructure/10-persistence-layer",
+              "systems/infrastructure/14-workspace-isolation",
+              "systems/infrastructure/19-nlp-system",
+              "systems/infrastructure/28-configuration-management",
+              "systems/infrastructure/31-resilience",
+              "systems/infrastructure/32-core-models"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "systems/architecture/06-mcp-server",
+              "systems/architecture/09-event-driven-architecture",
+              "systems/architecture/15-service-registry",
+              "systems/architecture/39-task-execution-order-fix-architecture",
+              "systems/architecture/40-enhanced-ping-tool"
+            ]
+          },
+          {
+            "group": "Quality",
+            "pages": [
+              "systems/quality/11-monitoring-systems",
+              "systems/quality/18-quality-assurance",
+              "systems/quality/29-detection-systems",
+              "systems/quality/30-testing-framework",
+              "systems/quality/37-board-health-analyzer",
+              "systems/quality/41-assignment-monitor"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "systems/operations/13-cost-tracking",
+              "systems/operations/20-pipeline-systems",
+              "systems/operations/22-operational-modes"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "systems/development/42-code-analysis-system",
+              "systems/development/43-api-systems"
+            ]
+          },
+          {
+            "group": "Visualization",
+            "pages": [
+              "systems/visualization/02-logging-system",
+              "systems/visualization/05-visualization-system"
+            ]
+          },
+          {
+            "group": "Security",
+            "pages": [
+              "systems/security/51-security-systems"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "API Reference",
+            "pages": [
+              "api/README"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Roadmap",
+        "groups": [
+          {
+            "group": "Roadmap",
+            "pages": [
+              "roadmap/README",
+              "roadmap/evolution",
+              "roadmap/future-systems",
+              "roadmap/public-release-roadmap"
+            ]
+          }
+        ]
+      }
+    ]
+  },
   "footerSocials": {
-    "github": "https://github.com/lwgray/marcus",
-    "twitter": "https://twitter.com/yourtwitterhandle"
+    "github": "https://github.com/lwgray/marcus"
   },
   "feedback": {
     "thumbsRating": true,
