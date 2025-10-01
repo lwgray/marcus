@@ -42,6 +42,16 @@ autodoc_default_options = {
 autodoc_typehints = "description"
 autodoc_class_signature = "separated"
 
+# Mock imports for modules that are not needed for documentation
+# This prevents import errors during doc builds
+autodoc_mock_imports = [
+    "anthropic",
+    "mcp",
+    "structlog",
+    "psutil",
+    "aiofiles",
+]
+
 # Autosummary settings
 autosummary_generate = True
 autosummary_generate_overwrite = True
