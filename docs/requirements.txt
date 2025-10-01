@@ -3,4 +3,7 @@ sphinx-rtd-theme
 pydata-sphinx-theme>=0.16.1
 sphinx-design
 sphinx-copybutton
-# Add any other extensions you're using
+sphinx-autodoc-typehints
+myst-parser
+sphinx-tabs
+sphinxcontrib-mermaid
