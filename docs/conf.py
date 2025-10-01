@@ -5,7 +5,7 @@ import sys
 from datetime import datetime
 
 # Add project root to path for autodoc
-sys.path.insert(0, os.path.abspath("../src"))
+sys.path.insert(0, os.path.abspath(".."))
 
 # -- Project information -----------------------------------------------------
 project = "Marcus AI"
