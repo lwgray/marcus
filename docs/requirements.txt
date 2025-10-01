@@ -1,3 +1,4 @@
+# Sphinx and extensions
 sphinx>=8.2.3
 sphinx-rtd-theme
 pydata-sphinx-theme>=0.16.1
@@ -7,3 +8,14 @@ sphinx-autodoc-typehints
 myst-parser
 sphinx-tabs
 sphinxcontrib-mermaid
+
+# Project dependencies (needed for autodoc to import modules)
+mcp==1.10.0
+anthropic>=0.18.0,<1.0.0
+httpx>=0.25.0
+aiofiles>=0.8.0
+psutil>=5.9.0
+structlog>=24.0.0
+jinja2>=3.1.0
+python-dotenv>=1.0.0
+pydantic>=2.0.0
