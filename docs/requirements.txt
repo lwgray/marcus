@@ -8,6 +8,7 @@ sphinx-autodoc-typehints
 myst-parser
 sphinx-tabs
 sphinxcontrib-mermaid
+linkify-it-py
 
 # Project dependencies (needed for autodoc to import modules)
 mcp==1.10.0
