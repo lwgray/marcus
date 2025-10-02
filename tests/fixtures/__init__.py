@@ -5,7 +5,7 @@ This package provides real implementations for testing Marcus components
 without relying on mocks. Fixtures are organized by domain:
 
 - fixtures_core: Core Marcus objects (tasks, agents, context)
-- fixtures_ai: AI and enrichment related objects  
+- fixtures_ai: AI and enrichment related objects
 - fixtures_integration: Integration and external service objects
 
 Usage:

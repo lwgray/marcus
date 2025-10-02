@@ -241,7 +241,12 @@ class TestTaskExecutionOrderComprehensive:
                 TaskType.IMPLEMENTATION,
                 0.90,  # Actually high confidence, adjusted from 0.60
             ),
-            ("Review and test", "Check implementation", TaskType.TESTING, 0.90),  # Actually high confidence, adjusted from 0.60
+            (
+                "Review and test",
+                "Check implementation",
+                TaskType.TESTING,
+                0.90,
+            ),  # Actually high confidence, adjusted from 0.60
             # Low confidence cases
             ("Update system", "Make changes", TaskType.OTHER, 0.0),
         ]

@@ -289,8 +289,10 @@ class TestMemory:
 
         # With history, should have non-default values
         # With one success and exponential moving average with learning rate 0.1:
-        # Initial: 0.0 * 0.9 + 1.0 * 0.1 = 0.1 
-        assert prediction["success_probability"] == 0.1  # One success with learning rate 0.1
+        # Initial: 0.0 * 0.9 + 1.0 * 0.1 = 0.1
+        assert (
+            prediction["success_probability"] == 0.1
+        )  # One success with learning rate 0.1
         assert prediction["estimated_duration"] != sample_task.estimated_hours
 
     @pytest.mark.asyncio

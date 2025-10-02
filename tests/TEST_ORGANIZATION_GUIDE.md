@@ -1,6 +1,6 @@
 # Marcus Test Organization Guide
 
-> **Updated:** September 5, 2025  
+> **Updated:** September 5, 2025
 > **Part of Issue #46:** Test Organization Improvement Initiative
 
 ## 🎯 Overview
@@ -43,18 +43,18 @@ tests/
 
 ### Key Improvements Made
 
-✅ **Complete Source Coverage:** All 38 `src/` modules now have corresponding test directories  
-✅ **Modular Organization:** Large test files split into focused modules (e.g., enricher tests → 7 modules)  
-✅ **Real Implementations:** Eliminated mocks in favor of real object testing  
-✅ **Domain Fixtures:** Organized fixtures by domain (core, ai, integration)  
-✅ **Test Infrastructure:** Added flaky test handling and performance baselines  
+✅ **Complete Source Coverage:** All 38 `src/` modules now have corresponding test directories
+✅ **Modular Organization:** Large test files split into focused modules (e.g., enricher tests → 7 modules)
+✅ **Real Implementations:** Eliminated mocks in favor of real object testing
+✅ **Domain Fixtures:** Organized fixtures by domain (core, ai, integration)
+✅ **Test Infrastructure:** Added flaky test handling and performance baselines
 
 ## 🏷️ Test Markers and Categories
 
 ### Standard Test Markers
 ```python
 @pytest.mark.unit           # Fast, isolated unit test (preferred)
-@pytest.mark.integration    # Requires external services 
+@pytest.mark.integration    # Requires external services
 @pytest.mark.slow          # Takes >1 second to complete
 @pytest.mark.asyncio       # Async test requiring event loop
 @pytest.mark.kanban        # Requires Kanban MCP server
@@ -90,7 +90,7 @@ Marcus tests prioritize **real implementations** over mocks to ensure:
 def sample_task() -> Task:
     return Task(id="task-001", name="Real task", ...)
 
-# Real agent objects  
+# Real agent objects
 @pytest.fixture
 def sample_agent() -> Agent:
     return Agent(id="agent-001", skills=["python"], ...)
@@ -189,7 +189,7 @@ def test_task_processing_performance():
 ```python
 # Automatic collection of:
 # - Test execution time
-# - Success/failure rates  
+# - Success/failure rates
 # - Memory usage (when available)
 # - Error patterns
 
@@ -217,26 +217,26 @@ from src.component.module import ComponentName
 
 class TestComponentName:
     """Test suite for ComponentName functionality."""
-    
+
     def test_successful_operation(self, sample_task):
         """Test component handles normal operation correctly.
-        
+
         Uses real Task object to verify actual behavior.
         """
         component = ComponentName()
         result = component.process(sample_task)
-        
+
         assert result.success
         assert result.output is not None
-    
+
     @pytest.mark.asyncio
     async def test_async_operation(self, sample_task):
         """Test async operation with real objects."""
         component = ComponentName()
         result = await component.async_process(sample_task)
-        
+
         assert result is not None
-    
+
     @pytest.mark.integration
     def test_with_external_service(self, real_kanban_client):
         """Integration test requiring external service."""
@@ -271,7 +271,7 @@ class TestComponentName:
 # Run all unit tests
 pytest tests/unit/
 
-# Run specific module tests  
+# Run specific module tests
 pytest tests/unit/ai/enrichment/
 
 # Run with specific markers

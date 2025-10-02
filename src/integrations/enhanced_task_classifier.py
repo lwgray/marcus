@@ -311,10 +311,8 @@ class EnhancedTaskClassifier:
         TaskType.DESIGN: [
             r"(?:create|define|plan)\s+(?:the\s+)?"
             r"(?:system|application|software)\s+(?:architecture|design)",
-            r"design\s+(?:the\s+)?(?:data|database)\s+"
-            r"(?:model|schema|structure)",
-            r"(?:create|design)\s+(?:ui|ux|user\s+interface|"
-            r"user\s+experience)",
+            r"design\s+(?:the\s+)?(?:data|database)\s+" r"(?:model|schema|structure)",
+            r"(?:create|design)\s+(?:ui|ux|user\s+interface|" r"user\s+experience)",
             r"(?:define|specify)\s+(?:api|interface)\s+"
             r"(?:contracts?|specifications?)",
             r"(?:plan|design)\s+(?:the\s+)?(?:workflow|process|flow)",
@@ -562,10 +560,7 @@ class EnhancedTaskClassifier:
         # Give extra weight if labels match task type directly
         label_boost = 0.0
         for label in labels:
-            if (
-                label.lower() in ["testing", "qa"]
-                and task_type == TaskType.TESTING
-            ):
+            if label.lower() in ["testing", "qa"] and task_type == TaskType.TESTING:
                 label_boost += 4.0  # Strong boost for testing labels
                 matched_keywords.append(label.lower())
             elif (
@@ -594,10 +589,7 @@ class EnhancedTaskClassifier:
                 position_weight = 1.5 if match.start() < 10 else 1.0
 
                 # Give testing keywords extra weight to avoid misclassification
-                if (
-                    task_type == TaskType.TESTING
-                    and keyword in ["test", "testing"]
-                ):
+                if task_type == TaskType.TESTING and keyword in ["test", "testing"]:
                     score += 3.0 * position_weight  # Higher weight
                 # Give documentation keywords high weight for specific phrases
                 elif (

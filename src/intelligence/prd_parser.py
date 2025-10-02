@@ -495,14 +495,14 @@ class PRDParser:
             content, ["success\s+metrics?", "kpis?", "measurements?"]
         )
 
-    def _extract_section(
-        self, content: str, section_names: List[str]
-    ) -> Optional[str]:
+    def _extract_section(self, content: str, section_names: List[str]) -> Optional[str]:
         """Extract a section by name."""
         for section_name in section_names:
             # Look for section header and extract until next major section or end
-            pattern = rf"(?i){section_name}[:\n](.*?)(?=\n\n\n|\n#+\\s|" \
-                     rf"\n[A-Z][^:\n]*:(?:\\s|$)|$)"
+            pattern = (
+                rf"(?i){section_name}[:\n](.*?)(?=\n\n\n|\n#+\\s|"
+                rf"\n[A-Z][^:\n]*:(?:\\s|$)|$)"
+            )
             match = re.search(pattern, content, re.DOTALL)
             if match:
                 return match.group(1).strip()

@@ -26,7 +26,7 @@ class TestPhaseDependencyEnforcerSimple:
         """Test that tasks within a single feature follow phase ordering"""
         # Create sample tasks
         from datetime import datetime
-        
+
         tasks = [
             Task(
                 id="design-001",
@@ -112,7 +112,7 @@ class TestPhaseDependencyEnforcerSimple:
     def test_multiple_features_isolation(self, enforcer):
         """Test that dependencies are isolated within features"""
         from datetime import datetime
-        
+
         tasks = [
             # Auth feature
             Task(
@@ -130,12 +130,12 @@ class TestPhaseDependencyEnforcerSimple:
                 estimated_hours=4.0,
             ),
             Task(
-                id="auth-impl", 
-                name="Implement auth", 
+                id="auth-impl",
+                name="Implement auth",
                 description="Implement authentication",
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
-                labels=["auth"], 
+                labels=["auth"],
                 dependencies=[],
                 assigned_to=None,
                 created_at=datetime.now(),
@@ -144,12 +144,12 @@ class TestPhaseDependencyEnforcerSimple:
                 estimated_hours=8.0,
             ),
             Task(
-                id="auth-test", 
-                name="Test auth", 
+                id="auth-test",
+                name="Test auth",
                 description="Test authentication",
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
-                labels=["auth"], 
+                labels=["auth"],
                 dependencies=[],
                 assigned_to=None,
                 created_at=datetime.now(),
@@ -187,12 +187,12 @@ class TestPhaseDependencyEnforcerSimple:
                 estimated_hours=8.0,
             ),
             Task(
-                id="pay-test", 
-                name="Test payment", 
+                id="pay-test",
+                name="Test payment",
                 description="Test payment system",
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
-                labels=["payment"], 
+                labels=["payment"],
                 dependencies=[],
                 assigned_to=None,
                 created_at=datetime.now(),
@@ -218,11 +218,11 @@ class TestPhaseDependencyEnforcerSimple:
     def test_preserve_existing_dependencies(self, enforcer):
         """Test that existing manual dependencies are preserved"""
         from datetime import datetime
-        
+
         tasks = [
             Task(
-                id="design-001", 
-                name="Design API", 
+                id="design-001",
+                name="Design API",
                 description="Design API architecture",
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
@@ -234,8 +234,8 @@ class TestPhaseDependencyEnforcerSimple:
                 estimated_hours=4.0,
             ),
             Task(
-                id="impl-001", 
-                name="Implement API", 
+                id="impl-001",
+                name="Implement API",
                 description="Implement API endpoints",
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
@@ -247,8 +247,8 @@ class TestPhaseDependencyEnforcerSimple:
                 estimated_hours=8.0,
             ),
             Task(
-                id="test-001", 
-                name="Test API", 
+                id="test-001",
+                name="Test API",
                 description="Test API functionality",
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,

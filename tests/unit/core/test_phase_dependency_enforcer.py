@@ -370,7 +370,10 @@ class TestPhaseDependencyEnforcer:
         [
             ("Design user interface", TaskPhase.DESIGN),
             ("Plan system architecture", TaskPhase.DESIGN),
-            ("Create wireframes", TaskPhase.DESIGN),  # "wireframes" is classified as design
+            (
+                "Create wireframes",
+                TaskPhase.DESIGN,
+            ),  # "wireframes" is classified as design
             ("Setup database", TaskPhase.INFRASTRUCTURE),
             ("Configure servers", TaskPhase.INFRASTRUCTURE),
             ("Implement login feature", TaskPhase.IMPLEMENTATION),

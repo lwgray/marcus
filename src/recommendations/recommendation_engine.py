@@ -161,7 +161,9 @@ class PatternDatabase:
                 categories["documentation"] += 1
             elif any(word in name for word in ["design", "architect"]):
                 categories["design"] += 1
-            elif any(word in name for word in ["implement", "build", "create", "setup"]):
+            elif any(
+                word in name for word in ["implement", "build", "create", "setup"]
+            ):
                 categories["implementation"] += 1
             elif any(word in name for word in ["deploy", "ci", "cd"]):
                 categories["deployment"] += 1

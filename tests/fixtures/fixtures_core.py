@@ -5,12 +5,13 @@ Provides real implementations for core Marcus components including
 tasks, projects, agents, and basic data structures.
 """
 
-import pytest
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
-from src.core.models import Task, TaskStatus, Priority, WorkerStatus
+import pytest
+
 from src.core.context import Context
+from src.core.models import Priority, Task, TaskStatus, WorkerStatus
 
 
 @pytest.fixture
@@ -84,7 +85,7 @@ def sample_worker_status():
         max_capacity=5,
         skills=["python", "django", "postgresql", "redis"],
         last_heartbeat=datetime.now(),
-        performance_metrics={"completed_tasks": 15, "average_time": 4.2}
+        performance_metrics={"completed_tasks": 15, "average_time": 4.2},
     )
 
 
@@ -93,13 +94,13 @@ def sample_frontend_worker():
     """Create a frontend-focused worker status for testing."""
     return WorkerStatus(
         worker_id="worker-002",
-        name="Frontend Developer", 
+        name="Frontend Developer",
         available=True,
         current_tasks=1,
         max_capacity=4,
         skills=["javascript", "react", "css", "html"],
         last_heartbeat=datetime.now(),
-        performance_metrics={"completed_tasks": 12, "average_time": 3.8}
+        performance_metrics={"completed_tasks": 12, "average_time": 3.8},
     )
 
 

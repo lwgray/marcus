@@ -5,12 +5,13 @@ Provides real AI-related objects for testing AI components,
 analysis engines, and enrichment systems without external API calls.
 """
 
-import pytest
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
-from src.ai.providers.base_provider import SemanticAnalysis, EffortEstimate
-from src.ai.enrichment.intelligent_enricher import ProjectContext, EnhancementResult
+import pytest
+
+from src.ai.enrichment.intelligent_enricher import EnhancementResult, ProjectContext
+from src.ai.providers.base_provider import EffortEstimate, SemanticAnalysis
 
 
 @pytest.fixture
@@ -104,7 +105,7 @@ def ai_analysis_context():
     }
 
 
-@pytest.fixture  
+@pytest.fixture
 def enrichment_settings():
     """Create real enrichment settings for testing."""
     return {

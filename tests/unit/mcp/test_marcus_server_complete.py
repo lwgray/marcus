@@ -72,7 +72,7 @@ async def test_server_initialization():
     """Test server initializes correctly"""
     os.environ["KANBAN_PROVIDER"] = "planka"
     os.environ["MARCUS_TEST_MODE"] = "true"
-    
+
     with patch("src.core.context.Context._load_persisted_data"):
         server = MarcusServer()
 

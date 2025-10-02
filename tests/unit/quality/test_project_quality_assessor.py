@@ -37,30 +37,32 @@ class TestProjectQualityAssessor:
         # Create real AIAnalysisEngine but force it to use fallback mode (no client)
         engine = AIAnalysisEngine()
         engine.client = None  # Force fallback mode
-        
+
         # Mock only the Claude API call to return controlled responses
         async def mock_call_claude(prompt):
-            return json.dumps({
-                "insights": [
-                    "Strong test coverage ensures reliability",
-                    "Fast code review turnaround",
-                ],
-                "recommendations": [
-                    "Improve documentation coverage",
-                    "Implement automated deployment",
-                ],
-                "overall_assessment": "good",
-                "strengths": ["Quality focus", "Team collaboration"],
-                "weaknesses": ["Manual deployments"],
-            })
-        
+            return json.dumps(
+                {
+                    "insights": [
+                        "Strong test coverage ensures reliability",
+                        "Fast code review turnaround",
+                    ],
+                    "recommendations": [
+                        "Improve documentation coverage",
+                        "Implement automated deployment",
+                    ],
+                    "overall_assessment": "good",
+                    "strengths": ["Quality focus", "Team collaboration"],
+                    "weaknesses": ["Manual deployments"],
+                }
+            )
+
         engine._call_claude = AsyncMock(side_effect=mock_call_claude)
         return engine
 
     @pytest.fixture
     def real_github_mcp(self):
         """Create real GitHub MCP interface with controlled responses"""
-        
+
         # Create a mock MCP caller function
         async def mock_mcp_caller(tool_name: str, params: Dict[str, Any]):
             if tool_name == "github.list_commits":
@@ -112,7 +114,7 @@ class TestProjectQualityAssessor:
                     ]
                 }
             return {}
-        
+
         # Create real GitHub MCP interface with mock caller
         github_mcp = GitHubMCPInterface(AsyncMock(side_effect=mock_mcp_caller))
         return github_mcp

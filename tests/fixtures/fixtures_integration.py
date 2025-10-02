@@ -5,10 +5,11 @@ Provides real integration objects for testing external service
 integrations, API clients, and cross-system communication.
 """
 
-import pytest
 import os
-from typing import Dict, Any, List
 from datetime import datetime
+from typing import Any, Dict, List
+
+import pytest
 
 from src.integrations.kanban_interface import KanbanInterface
 
@@ -19,7 +20,7 @@ def test_environment_config():
     return {
         "kanban_provider": "planka",
         "kanban_base_url": "http://localhost:3333",
-        "kanban_email": "demo@demo.demo", 
+        "kanban_email": "demo@demo.demo",
         "kanban_password": "demo",
         "project_id": "1533678301472621705",  # Task Master Test
         "test_mode": True,
@@ -30,7 +31,7 @@ def test_environment_config():
 @pytest.fixture
 def real_kanban_client(test_environment_config):
     """Create a real Kanban client for integration testing.
-    
+
     Note: This requires the Kanban MCP server to be running.
     Mark tests using this fixture with @pytest.mark.integration
     """
@@ -43,7 +44,7 @@ def real_kanban_client(test_environment_config):
             credentials={
                 "email": os.environ["PLANKA_AGENT_EMAIL"],
                 "password": os.environ["PLANKA_AGENT_PASSWORD"],
-            }
+            },
         )
     else:
         pytest.skip("Integration test environment not configured")
@@ -59,7 +60,7 @@ def sample_board_data():
         "project_id": "project-001",
         "lists": [
             {"id": "list-001", "name": "Backlog", "position": 1},
-            {"id": "list-002", "name": "In Progress", "position": 2}, 
+            {"id": "list-002", "name": "In Progress", "position": 2},
             {"id": "list-003", "name": "Review", "position": 3},
             {"id": "list-004", "name": "Done", "position": 4},
         ],
@@ -102,7 +103,7 @@ def api_response_templates():
         "error": {
             "success": False,
             "error": {
-                "code": "OPERATION_FAILED", 
+                "code": "OPERATION_FAILED",
                 "message": "The operation could not be completed",
                 "details": {},
             },
@@ -118,7 +119,7 @@ def api_response_templates():
                 }
             },
             "message": "Task created successfully",
-        }
+        },
     }
 
 
@@ -140,7 +141,7 @@ def integration_test_data():
                 "estimated_hours": 8.0,
             },
             {
-                "id": "int-task-002", 
+                "id": "int-task-002",
                 "name": "Implement error handling",
                 "type": "enhancement",
                 "priority": "medium",
