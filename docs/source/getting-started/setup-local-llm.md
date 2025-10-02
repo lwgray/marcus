@@ -117,7 +117,7 @@ Here's a full `config_marcus.json` configured for local model usage:
   "planka": {
     "base_url": "http://localhost:3333",
     "email": "demo@demo.demo",
-    "password": "demo"
+    "password": "demo"  # pragma: allowlist secret
   },
   "ai": {
     "provider": "local",

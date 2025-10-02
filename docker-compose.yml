@@ -1,0 +1,92 @@
+version: "3.8"
+
+services:
+  # PostgreSQL database for Planka
+  postgres:
+    image: postgres:15-alpine
+    container_name: marcus-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=planka
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d planka"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - marcus-network
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=100"
+      - "-c"
+      - "shared_buffers=256MB"
+
+  # Planka Kanban board
+  planka:
+    image: ghcr.io/plankanban/planka:latest
+    container_name: marcus-planka
+    restart: unless-stopped
+    ports:
+      - "3333:1337"
+    environment:
+      - BASE_URL=http://localhost:3333
+      - TRUST_PROXY=1
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/planka?sslmode=disable
+      - SECRET_KEY=secretkey
+      # Default admin credentials
+      - DEFAULT_ADMIN_EMAIL=demo@demo.demo
+      - DEFAULT_ADMIN_PASSWORD=demo
+      - DEFAULT_ADMIN_NAME=Demo User
+      - DEFAULT_ADMIN_USERNAME=demo
+      - NODE_ENV=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - planka-files:/app/public/user-files
+      - planka-user-avatars:/app/public/user-avatars
+      - planka-project-background-images:/app/public/project-background-images
+      - planka-attachments:/app/private/attachments
+    networks:
+      - marcus-network
+
+  # Marcus AI Agent Orchestrator
+  marcus:
+    image: lwgray575/marcus:latest
+    container_name: marcus
+    restart: unless-stopped
+    ports:
+      - "4298:4298"
+    environment:
+      # Planka connection settings for kanban-mcp
+      - PLANKA_BASE_URL=http://planka:1337
+      - PLANKA_AGENT_EMAIL=demo@demo.demo
+      - PLANKA_AGENT_PASSWORD=demo
+    volumes:
+      # Mount your Marcus config file
+      - ./config_marcus.json.anthropic:/app/config_marcus.json
+      # Optional: Mount logs directory to persist logs
+      - ./logs:/app/logs
+    depends_on:
+      planka:
+        condition: service_started
+    networks:
+      - marcus-network
+
+networks:
+  marcus-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+    name: marcus-postgres-data
+  planka-files:
+  planka-user-avatars:
+  planka-project-background-images:
+  planka-attachments:

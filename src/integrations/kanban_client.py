@@ -166,7 +166,9 @@ class KanbanClient:
 
         # Use the exact same pattern as working scripts
         server_params = StdioServerParameters(
-            command="node", args=["../kanban-mcp/dist/index.js"], env=os.environ.copy()
+            command="node",
+            args=["/app/kanban-mcp/dist/index.js"],
+            env=os.environ.copy(),
         )
 
         async with stdio_client(server_params) as (read, write):
@@ -303,7 +305,9 @@ class KanbanClient:
 
         # Use the exact same pattern as working scripts
         server_params = StdioServerParameters(
-            command="node", args=["../kanban-mcp/dist/index.js"], env=os.environ.copy()
+            command="node",
+            args=["/app/kanban-mcp/dist/index.js"],
+            env=os.environ.copy(),
         )
 
         async with stdio_client(server_params) as (read, write):
@@ -431,7 +435,9 @@ class KanbanClient:
         "progress" in its name (case-insensitive).
         """
         server_params = StdioServerParameters(
-            command="node", args=["../kanban-mcp/dist/index.js"], env=os.environ.copy()
+            command="node",
+            args=["/app/kanban-mcp/dist/index.js"],
+            env=os.environ.copy(),
         )
 
         async with stdio_client(server_params) as (read, write):
@@ -512,7 +518,9 @@ class KanbanClient:
             raise RuntimeError("Board ID not set")
 
         server_params = StdioServerParameters(
-            command="node", args=["../kanban-mcp/dist/index.js"], env=os.environ.copy()
+            command="node",
+            args=["/app/kanban-mcp/dist/index.js"],
+            env=os.environ.copy(),
         )
 
         async with stdio_client(server_params) as (read, write):
@@ -746,7 +754,9 @@ class KanbanClient:
         Comments are visible in the Planka UI and are timestamped automatically.
         """
         server_params = StdioServerParameters(
-            command="node", args=["../kanban-mcp/dist/index.js"], env=os.environ.copy()
+            command="node",
+            args=["/app/kanban-mcp/dist/index.js"],
+            env=os.environ.copy(),
         )
 
         async with stdio_client(server_params) as (read, write):
@@ -829,7 +839,9 @@ class KanbanClient:
         This is a helper method used by other status update methods.
         """
         server_params = StdioServerParameters(
-            command="node", args=["../kanban-mcp/dist/index.js"], env=os.environ.copy()
+            command="node",
+            args=["/app/kanban-mcp/dist/index.js"],
+            env=os.environ.copy(),
         )
 
         async with stdio_client(server_params) as (read, write):

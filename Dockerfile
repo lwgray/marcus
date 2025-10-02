@@ -2,10 +2,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies including Node.js for Planka MCP integration
+# Install system dependencies including Node.js and git for Planka MCP integration
 RUN apt-get update && apt-get install -y \
     gcc \
     curl \
+    git \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
@@ -13,6 +14,12 @@ RUN apt-get update && apt-get install -y \
 # Copy requirements first for better caching
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Clone and build kanban-mcp for Planka integration
+RUN git clone https://github.com/bradrisse/kanban-mcp.git /app/kanban-mcp && \
+    cd /app/kanban-mcp && \
+    npm install && \
+    npm run build
 
 # Copy application code
 COPY . .

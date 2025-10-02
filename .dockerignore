@@ -19,8 +19,16 @@ htmlcov/
 tests/
 
 # Environment files (but keep .env for defaults)
+.env
 .env.local
 .env.*.local
+
+# Configuration files with sensitive data (mount as volumes instead)
+config_marcus.json
+config_marcus.json.anthropic
+config_marcus.json.github
+config_marcus.*.json
+marcus.config.json
 
 # Logs and data (will be mounted as volumes)
 logs/

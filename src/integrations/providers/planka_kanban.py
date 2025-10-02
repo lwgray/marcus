@@ -50,7 +50,9 @@ class PlankaKanban(KanbanInterface):
 
         # Store server parameters for MCP calls
         self._server_params = StdioServerParameters(
-            command="node", args=["../kanban-mcp/dist/index.js"], env=os.environ.copy()
+            command="node",
+            args=["/app/kanban-mcp/dist/index.js"],
+            env=os.environ.copy(),
         )
 
     async def connect(self) -> bool:

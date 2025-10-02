@@ -259,7 +259,7 @@ class MarcusServer:
     def _register_handlers(self) -> None:
         """Register MCP tool handlers"""
 
-        @self.server.list_tools()  # type: ignore[no-untyped-call,misc]
+        @self.server.list_tools()  # type: ignore[misc]
         async def handle_list_tools() -> List[types.Tool]:
             """Return list of available tools based on client role"""
             # Import here to avoid circular dependency
@@ -280,22 +280,22 @@ class MarcusServer:
             """Handle tool calls"""
             return await handle_tool_call(name, arguments, self)
 
-        @self.server.list_prompts()  # type: ignore[no-untyped-call,misc]
+        @self.server.list_prompts()  # type: ignore[misc]
         async def handle_list_prompts() -> List[types.Prompt]:
             """Return list of available prompts - not used by Marcus"""
             return []
 
-        @self.server.list_resources()  # type: ignore[no-untyped-call,misc]
+        @self.server.list_resources()  # type: ignore[misc]
         async def handle_list_resources() -> List[types.Resource]:
             """Return list of available resources - not used by Marcus"""
             return []
 
-        @self.server.read_resource()  # type: ignore[no-untyped-call,misc]
+        @self.server.read_resource()  # type: ignore[misc]
         async def handle_read_resource(uri: str) -> str:
             """Read a resource - Marcus doesn't use resources currently"""
             raise ValueError(f"Resource not found: {uri}")
 
-        @self.server.get_prompt()  # type: ignore[no-untyped-call,misc]
+        @self.server.get_prompt()  # type: ignore[misc]
         async def handle_get_prompt(
             name: str, arguments: Optional[Dict[str, str]] = None
         ) -> types.GetPromptResult:
@@ -869,14 +869,14 @@ class MarcusServer:
         server = self
 
         # Register core tools with proper signatures
-        @self._fastmcp.tool()
+        @self._fastmcp.tool()  # type: ignore[misc]
         async def ping(echo: str = "") -> Dict[str, Any]:
             """Check Marcus status and connectivity."""
             from .tools.system import ping as ping_impl
 
             return await ping_impl(echo=echo, state=server)
 
-        @self._fastmcp.tool()
+        @self._fastmcp.tool()  # type: ignore[misc]
         async def register_agent(
             agent_id: str, name: str, role: str, skills: List[str] = []
         ) -> Dict[str, Any]:
@@ -887,14 +887,14 @@ class MarcusServer:
                 agent_id=agent_id, name=name, role=role, skills=skills, state=server
             )
 
-        @self._fastmcp.tool()
+        @self._fastmcp.tool()  # type: ignore[misc]
         async def get_agent_status(agent_id: str) -> Dict[str, Any]:
             """Get status and current assignment for an agent."""
             from .tools.agent import get_agent_status as impl
 
             return await impl(agent_id=agent_id, state=server)
 
-        @self._fastmcp.tool()
+        @self._fastmcp.tool()  # type: ignore[misc]
         async def request_next_task(agent_id: str) -> Dict[str, Any]:
             """Request the next optimal task assignment for an agent."""
             from .tools.task import request_next_task as impl
@@ -902,7 +902,7 @@ class MarcusServer:
             result = await impl(agent_id=agent_id, state=server)
             return result  # type: ignore[no-any-return]
 
-        @self._fastmcp.tool()
+        @self._fastmcp.tool()  # type: ignore[misc]
         async def report_task_progress(
             agent_id: str,
             task_id: str,
@@ -922,7 +922,7 @@ class MarcusServer:
                 state=server,
             )
 
-        @self._fastmcp.tool()
+        @self._fastmcp.tool()  # type: ignore[misc]
         async def report_blocker(
             agent_id: str,
             task_id: str,
@@ -940,7 +940,7 @@ class MarcusServer:
                 state=server,
             )
 
-        @self._fastmcp.tool()
+        @self._fastmcp.tool()  # type: ignore[misc]
         async def get_project_status() -> Dict[str, Any]:
             """Get current project status and metrics."""
             from .tools.project import get_project_status as impl
@@ -952,7 +952,7 @@ class MarcusServer:
                 else {"error": "Invalid response format"}
             )
 
-        @self._fastmcp.tool()
+        @self._fastmcp.tool()  # type: ignore[misc]
         async def create_project(
             description: str,
             project_name: str,
@@ -979,7 +979,7 @@ class MarcusServer:
         # Register each allowed tool
         if "ping" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def ping(echo: str = "") -> Dict[str, Any]:
                 """Check Marcus status and connectivity."""
                 from .tools.system import ping as ping_impl
@@ -988,7 +988,7 @@ class MarcusServer:
 
         if "authenticate" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def authenticate(
                 client_id: str,
                 client_type: str,
@@ -1008,7 +1008,7 @@ class MarcusServer:
 
         if "register_agent" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def register_agent(
                 agent_id: str, name: str, role: str, skills: List[str] = []
             ) -> Dict[str, Any]:
@@ -1021,7 +1021,7 @@ class MarcusServer:
 
         if "get_agent_status" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def get_agent_status(agent_id: str) -> Dict[str, Any]:
                 """Get status and current assignment for an agent."""
                 from .tools.agent import get_agent_status as impl
@@ -1030,7 +1030,7 @@ class MarcusServer:
 
         if "request_next_task" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def request_next_task(agent_id: str) -> Dict[str, Any]:
                 """Request the next optimal task assignment for an agent."""
                 from .tools.task import request_next_task as impl
@@ -1044,7 +1044,7 @@ class MarcusServer:
 
         if "report_task_progress" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def report_task_progress(
                 agent_id: str,
                 task_id: str,
@@ -1066,7 +1066,7 @@ class MarcusServer:
 
         if "report_blocker" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def report_blocker(
                 agent_id: str,
                 task_id: str,
@@ -1086,7 +1086,7 @@ class MarcusServer:
 
         if "get_project_status" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def get_project_status() -> Dict[str, Any]:
                 """Get current project status and metrics."""
                 from .tools.project import get_project_status as impl
@@ -1095,7 +1095,7 @@ class MarcusServer:
 
         if "create_project" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def create_project(
                 description: str,
                 project_name: str,
@@ -1113,7 +1113,7 @@ class MarcusServer:
 
         if "list_projects" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def list_projects() -> List[Dict[str, Any]]:
                 """List all available projects."""
                 from .tools.project_management import list_projects as impl
@@ -1122,7 +1122,7 @@ class MarcusServer:
 
         if "switch_project" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def switch_project(project_name: str) -> Dict[str, Any]:
                 """Switch to a different project."""
                 from .tools.project_management import switch_project as impl
@@ -1131,7 +1131,7 @@ class MarcusServer:
 
         if "get_current_project" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def get_current_project() -> Dict[str, Any]:
                 """Get the currently active project."""
                 from .tools.project_management import get_current_project as impl
@@ -1140,7 +1140,7 @@ class MarcusServer:
 
         if "add_feature" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def add_feature(
                 description: str,
                 context: Optional[Dict[str, Any]] = None,
@@ -1156,7 +1156,7 @@ class MarcusServer:
 
         if "get_usage_report" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def get_usage_report(
                 start_date: Optional[str] = None,
                 end_date: Optional[str] = None,
@@ -1172,7 +1172,7 @@ class MarcusServer:
 
         if "get_task_context" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def get_task_context(task_id: str) -> Dict[str, Any]:
                 """Get the full context for a specific task."""
                 from .tools.context import get_task_context as impl
@@ -1181,7 +1181,7 @@ class MarcusServer:
 
         if "log_decision" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def log_decision(
                 agent_id: str,
                 task_id: str,
@@ -1199,7 +1199,7 @@ class MarcusServer:
 
         if "log_artifact" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def log_artifact(
                 task_id: str,
                 filename: str,
@@ -1223,7 +1223,7 @@ class MarcusServer:
 
         if "check_task_dependencies" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def check_task_dependencies(task_id: str) -> Dict[str, Any]:
                 """Check dependencies for a specific task."""
                 from .tools.board_health import check_task_dependencies as impl
@@ -1233,7 +1233,7 @@ class MarcusServer:
         # Prediction and AI intelligence tools
         if "predict_completion_time" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def predict_completion_time(
                 project_id: Optional[str] = None,
                 include_confidence: bool = True,
@@ -1249,7 +1249,7 @@ class MarcusServer:
 
         if "predict_task_outcome" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def predict_task_outcome(
                 task_id: str,
                 agent_id: Optional[str] = None,
@@ -1265,7 +1265,7 @@ class MarcusServer:
 
         if "predict_blockage_probability" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def predict_blockage_probability(
                 task_id: str,
                 include_mitigation: bool = True,
@@ -1281,7 +1281,7 @@ class MarcusServer:
 
         if "predict_cascade_effects" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def predict_cascade_effects(
                 task_id: str,
                 delay_days: int = 1,
@@ -1297,7 +1297,7 @@ class MarcusServer:
 
         if "get_task_assignment_score" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def get_task_assignment_score(
                 task_id: str,
                 agent_id: str,
@@ -1314,7 +1314,7 @@ class MarcusServer:
         # Analytics and metrics tools
         if "get_system_metrics" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def get_system_metrics(
                 time_window: str = "1h",
             ) -> Dict[str, Any]:
@@ -1328,7 +1328,7 @@ class MarcusServer:
 
         if "get_agent_metrics" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def get_agent_metrics(
                 agent_id: str,
                 time_window: str = "7d",
@@ -1344,7 +1344,7 @@ class MarcusServer:
 
         if "get_project_metrics" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def get_project_metrics(
                 project_id: Optional[str] = None,
                 time_window: str = "7d",
@@ -1360,7 +1360,7 @@ class MarcusServer:
 
         if "get_task_metrics" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def get_task_metrics(
                 time_window: str = "30d",
                 group_by: str = "status",
@@ -1377,7 +1377,7 @@ class MarcusServer:
         # Code production metrics tools
         if "get_code_metrics" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def get_code_metrics(
                 agent_id: str,
                 start_date: Optional[str] = None,
@@ -1395,7 +1395,7 @@ class MarcusServer:
 
         if "get_repository_metrics" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def get_repository_metrics(
                 repository: str,
                 time_window: str = "7d",
@@ -1411,7 +1411,7 @@ class MarcusServer:
 
         if "get_code_review_metrics" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def get_code_review_metrics(
                 agent_id: Optional[str] = None,
                 time_window: str = "7d",
@@ -1427,7 +1427,7 @@ class MarcusServer:
 
         if "get_code_quality_metrics" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def get_code_quality_metrics(
                 repository: str,
                 branch: str = "main",
@@ -1444,7 +1444,7 @@ class MarcusServer:
         # Pipeline tools
         if "pipeline_replay_start" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def pipeline_replay_start(flow_id: str) -> Dict[str, Any]:
                 """Start replay session for a pipeline flow."""
                 from .tools.pipeline import start_replay as impl
@@ -1453,7 +1453,7 @@ class MarcusServer:
 
         if "pipeline_replay_forward" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def pipeline_replay_forward() -> Dict[str, Any]:
                 """Step forward in pipeline replay."""
                 from .tools.pipeline import replay_step_forward as impl
@@ -1462,7 +1462,7 @@ class MarcusServer:
 
         if "pipeline_replay_backward" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def pipeline_replay_backward() -> Dict[str, Any]:
                 """Step backward in pipeline replay."""
                 from .tools.pipeline import replay_step_backward as impl
@@ -1471,7 +1471,7 @@ class MarcusServer:
 
         if "pipeline_replay_jump" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def pipeline_replay_jump(position: int) -> Dict[str, Any]:
                 """Jump to specific position in replay."""
                 from .tools.pipeline import replay_jump_to as impl
@@ -1480,7 +1480,7 @@ class MarcusServer:
 
         if "what_if_start" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def what_if_start(flow_id: str) -> Dict[str, Any]:
                 """Start what-if analysis session."""
                 from .tools.pipeline import start_what_if_analysis as impl
@@ -1489,7 +1489,7 @@ class MarcusServer:
 
         if "what_if_simulate" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def what_if_simulate(
                 modifications: List[Dict[str, Any]],
             ) -> Dict[str, Any]:
@@ -1500,7 +1500,7 @@ class MarcusServer:
 
         if "what_if_compare" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def what_if_compare() -> Dict[str, Any]:
                 """Compare all what-if scenarios."""
                 from .tools.pipeline import compare_what_if_scenarios as impl
@@ -1509,7 +1509,7 @@ class MarcusServer:
 
         if "pipeline_compare" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def pipeline_compare(flow_ids: List[str]) -> Dict[str, Any]:
                 """Compare multiple pipeline flows."""
                 from .tools.pipeline import compare_pipelines as impl
@@ -1518,7 +1518,7 @@ class MarcusServer:
 
         if "pipeline_report" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def pipeline_report(
                 flow_id: str, format: str = "html"
             ) -> Dict[str, Any]:
@@ -1529,7 +1529,7 @@ class MarcusServer:
 
         if "pipeline_monitor_dashboard" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def pipeline_monitor_dashboard() -> Dict[str, Any]:
                 """Get live monitoring dashboard data."""
                 from .tools.pipeline import get_live_dashboard as impl
@@ -1538,7 +1538,7 @@ class MarcusServer:
 
         if "pipeline_monitor_flow" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def pipeline_monitor_flow(flow_id: str) -> Dict[str, Any]:
                 """Track specific flow progress."""
                 from .tools.pipeline import track_flow_progress as impl
@@ -1547,7 +1547,7 @@ class MarcusServer:
 
         if "pipeline_predict_risk" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def pipeline_predict_risk(flow_id: str) -> Dict[str, Any]:
                 """Predict failure risk for a flow."""
                 from .tools.pipeline import predict_failure_risk as impl
@@ -1556,7 +1556,7 @@ class MarcusServer:
 
         if "pipeline_recommendations" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def pipeline_recommendations(flow_id: str) -> Dict[str, Any]:
                 """Get recommendations for a pipeline flow."""
                 from .tools.pipeline import get_recommendations as impl
@@ -1565,7 +1565,7 @@ class MarcusServer:
 
         if "pipeline_find_similar" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def pipeline_find_similar(
                 flow_id: str, limit: int = 5
             ) -> Dict[str, Any]:
@@ -1577,7 +1577,7 @@ class MarcusServer:
         # Project management tools
         if "add_project" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def add_project(
                 name: str,
                 provider: str,
@@ -1601,7 +1601,7 @@ class MarcusServer:
 
         if "remove_project" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def remove_project(
                 project_id: str, confirm: bool = False
             ) -> Dict[str, Any]:
@@ -1615,7 +1615,7 @@ class MarcusServer:
 
         if "update_project" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def update_project(
                 project_id: str,
                 name: Optional[str] = None,
@@ -1638,7 +1638,7 @@ class MarcusServer:
         # Agent management tools
         if "list_registered_agents" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def list_registered_agents() -> Dict[str, Any]:
                 """List all registered agents."""
                 from .tools.agent import list_registered_agents as impl
@@ -1647,7 +1647,7 @@ class MarcusServer:
 
         if "check_assignment_health" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def check_assignment_health() -> Dict[str, Any]:
                 """Check the health of the assignment tracking system."""
                 from .tools.system import check_assignment_health as impl
@@ -1656,7 +1656,7 @@ class MarcusServer:
 
         if "check_board_health" in allowed_tools:
 
-            @app.tool()
+            @app.tool()  # type: ignore[misc]
             async def check_board_health() -> Dict[str, Any]:
                 """Analyze overall board health and detect systemic issues."""
                 from .tools.board_health import check_board_health as impl

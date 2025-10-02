@@ -299,6 +299,10 @@ class ConfigLoader:
             if self._config and "linear" in self._config:
                 self._config["providers"]["linear"] = self._config["linear"]
 
+            # IMPORTANT: Preserve ai section during migration
+            # The ai config should remain at top level for backward compatibility
+            # Don't move or remove it - just leave it in place
+
             logger.info(
                 f"Migration complete. Created default project with ID: {default_project_id}"
             )

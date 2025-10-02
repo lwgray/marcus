@@ -60,7 +60,7 @@ mv config_marcus.local.example.json config_marcus.json
 
 # Run with mounted config
 docker run -p 4298:4298 \
-  -v $(pwd)/config_marcus.json:/app/config_marcus.json \
+  -v $(pwd)/config_marcus.json.anthropic:/app/config_marcus.json \
   lwgray575/marcus:latest
 ```
 
@@ -81,7 +81,7 @@ docker run -p 4298:4298 \
 ### **2. Connect Your AI Agent**
 ```bash
 # For Claude Code:
-claude mcp add http://localhost:4298/marcus
+claude mcp add --transport http marcus http://localhost:4298
 
 # Marcus provides MCP-compatible endpoints for any agent
 ```
