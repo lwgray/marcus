@@ -31,4 +31,4 @@ RUN if [ ! -f config_marcus.json ] && [ -f config_marcus.example.json ]; then \
 # MCP uses stdio, not HTTP
 
 # Default command - run Marcus MCP server
-CMD ["python", "marcus_mcp_server.py"]
+CMD ["python", "-m", "src.marcus_mcp.server"]
