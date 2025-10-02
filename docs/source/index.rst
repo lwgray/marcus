@@ -67,30 +67,49 @@ Here's how an agent works with Marcus:
 
 .. code-block:: python
 
-    from marcus_mcp import MarcusClient
+    from src.worker.client import WorkerMCPClient
 
-    # Agent registers and enters work loop
-    client = MarcusClient()
-    await client.register_agent(
-        agent_id="worker-1",
-        capabilities=["python", "react"]
-    )
+    # Connect to Marcus MCP server
+    client = WorkerMCPClient()
+    async with client.connect_to_marcus() as session:
+        # Register agent with capabilities
+        await client.register_agent(
+            agent_id="worker-1",
+            name="Backend Developer",
+            role="Developer",
+            skills=["python", "fastapi", "postgresql"]
+        )
 
-    while True:
-        # Request optimal task based on capabilities and context
-        task = await client.request_next_task("worker-1")
+        # Agent work loop
+        while True:
+            # Request next task based on capabilities
+            task_result = await client.request_next_task("worker-1")
 
-        if task:
-            # Get rich context including dependencies
-            context = await client.get_task_context(task['id'])
+            if task_result.get('task'):
+                task = task_result['task']
+                print(f"Working on: {task['title']}")
 
-            # Work autonomously with full context
-            result = await do_work(task, context)
+                # Report progress milestones
+                await client.report_task_progress(
+                    agent_id="worker-1",
+                    task_id=task['id'],
+                    status="in_progress",
+                    progress=25
+                )
 
-            # Report completion
-            await client.report_task_progress(
-                task['id'], "worker-1", 100, result
-            )
+                # Do the work...
+                result = await do_work(task)
+
+                # Report completion
+                await client.report_task_progress(
+                    agent_id="worker-1",
+                    task_id=task['id'],
+                    status="completed",
+                    progress=100
+                )
+            else:
+                # No tasks available
+                break
 
 
 .. toctree::

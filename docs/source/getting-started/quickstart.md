@@ -4,191 +4,150 @@ Get Marcus up and running in 5 minutes.
 
 ## Prerequisites
 
-- **Python 3.10+** (Python 3.11+ recommended)
-- **Docker & Docker Compose** (for Kanban server)
-- **Git** (for version control)
-- **AI Provider Access** (Anthropic, OpenAI, or local Ollama)
+- **Docker** (for running Marcus)
+- **GitHub Account** with a [personal access token](https://github.com/settings/tokens) (needs `project` scope)
+- **Claude Code** or another MCP-compatible AI agent
+- **AI API Key** (Anthropic, OpenAI, or local Ollama)
 
 ## Quick Install
 
-### 1. Clone the Repository
+### 1. Run Marcus with Docker
 
 ```bash
+# Quick start with environment variables
+docker run -p 4298:4298 \
+  -e GITHUB_TOKEN=your_github_token \
+  -e ANTHROPIC_API_KEY=your_api_key \
+  marcus/marcus:latest
+
+# Or build from source
 git clone https://github.com/lwgray/marcus.git
 cd marcus
-```
-
-### 2. Set Up Python Environment
-
-```bash
-# Create virtual environment
-python -m venv venv
-
-# Activate it
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install Marcus
-pip install -e .
-```
-
-### 3. Start Kanban Server
-
-Marcus uses a Kanban board for task management. Start Planka (recommended):
-
-```bash
-# Start Planka with Docker Compose
-docker-compose up -d planka
-```
-
-Wait ~30 seconds for Planka to start, then access it at `http://localhost:3333`
-
-**Default credentials**:
-- Email: `demo@demo.demo`
-- Password: `demo`
-
-### 4. Configure Marcus
-
-Create your configuration file:
-
-```bash
 cp config_marcus.example.json config_marcus.json
+# Edit config_marcus.json with your settings
+docker build -t marcus .
+docker run -p 4298:4298 -v $(pwd)/config_marcus.json:/app/config_marcus.json marcus
 ```
 
-Edit `config_marcus.json`:
+### 2. Connect Your AI Agent
 
-```json
-{
-  "project_id": "",
-  "board_id": "",
-  "project_name": "My First Project",
-  "auto_find_board": true,
-  "kanban": {
-    "provider": "planka"
-  },
-  "planka": {
-    "base_url": "http://localhost:3333",
-    "email": "demo@demo.demo",
-    "password": "demo"
-  },
-  "ai": {
-    "provider": "anthropic",
-    "enabled": true,
-    "anthropic_api_key": "YOUR_ANTHROPIC_API_KEY",
-    "model": "claude-3-5-sonnet-20241022"
-  },
-  "features": {
-    "events": true,
-    "context": true,
-    "memory": true,
-    "visibility": false
-  }
-}
+For Claude Code:
+```bash
+# Add Marcus MCP server
+claude mcp add http://localhost:4298/marcus
+
+# Marcus provides MCP-compatible endpoints for any agent
 ```
 
-**AI Provider Options**:
-- **Anthropic** (recommended): Set `provider: "anthropic"` and add your API key
-- **OpenAI**: Set `provider: "openai"` and add your API key
-- **Local (Ollama)**: See [Local LLM Setup](setup-local-llm.md)
+### 3. Configure Your Agent
 
-### 5. Start Marcus
+Use the Marcus workflow prompt to establish autonomous work patterns:
 
 ```bash
-python -m marcus_mcp
+# Copy the contents of prompts/Agent_prompt.md as your agent's system prompt
+# This gives your agent:
+# - Autonomous work loop (register → request → work → report → repeat)
+# - Context sharing through artifacts and decisions
+# - Progress reporting and error recovery
+# - Dependency handling
 ```
 
-You should see:
+See [docs/agent-workflow.md](../guides/agent-workflows/agent-workflow.md) for all workflow components.
+
+### 4. Start Building
+
+Tell your configured agent:
 ```
-Marcus MCP Server starting...
-Connected to Planka at http://localhost:3333
-Waiting for agent connections...
+"Create a project for a todo app with Marcus and start working"
 ```
 
-## Your First Project
+The agent will automatically:
+1. Register with Marcus
+2. Create a GitHub project board from your description
+3. Request and work on tasks continuously
+4. Report progress as it goes
+5. Keep working until all tasks are done
 
-### Option 1: Natural Language (Recommended)
+## What You'll See
 
-Marcus can create projects from natural language descriptions:
+When your agent starts working with Marcus:
 
+- ✅ Agent registers itself ("Agent claude-1 registered")
+- ✅ Project created on GitHub with structured tasks
+- ✅ Agent continuously pulling and completing tasks
+- ✅ Progress updates: "25% complete", "50% complete", etc.
+- ✅ Tasks moving through board columns: TODO → IN PROGRESS → DONE
+- ✅ Context flowing between tasks (API specs → implementation → tests)
+
+## Add More Agents (Optional)
+
+Want multiple agents working in parallel? Three options:
+
+### Option A: Multiple Windows (Simplest)
+Open a new terminal/Claude window, connect to Marcus, and start another agent. Both agents will pull different tasks from the same board.
+
+### Option B: Claude Subagents
+If using Claude, launch subagents with the Task tool. Each subagent automatically registers and works independently.
+
+### Option C: Git Worktrees (Prevents Code Conflicts)
 ```bash
-# In a new terminal, with Marcus MCP tools available:
-# Use the create_project tool with a description:
-
-{
-  "tool": "create_project",
-  "arguments": {
-    "description": "Build a simple todo app with a React frontend and Python FastAPI backend. Include user authentication, CRUD operations for todos, and deployment to Docker."
-  }
-}
+git worktree add ../project-agent2 -b agent2-branch
+# Each agent works in its own directory/branch
+# Merge when ready
 ```
 
-Marcus will:
-1. Parse your description using NLP
-2. Extract requirements, constraints, and objectives
-3. Generate intelligent task breakdown
-4. Infer dependencies automatically
-5. Create organized project on Kanban board
+## Build a Custom Agent (Advanced)
 
-### Option 2: Use Claude Desktop
-
-If using Claude Desktop with MCP:
-
-1. Add Marcus to your Claude Desktop config
-2. Chat naturally: "Create a project to build a REST API for a blog platform"
-3. Marcus creates the structured project automatically
-
-### Option 3: Manual Project Creation
-
-Create a project manually in Planka:
-1. Go to `http://localhost:3333`
-2. Create a new board
-3. Add lists: "Planning", "Development", "Testing", "Deployment"
-4. Create task cards in each list
-5. Marcus will detect and manage them
-
-## Connect an Agent
-
-Agents are AI workers that complete tasks. Here's a simple agent:
+If you want to build your own agent programmatically:
 
 ```python
 # simple_agent.py
 import asyncio
-from marcus_mcp import MarcusClient
+from src.worker.client import WorkerMCPClient
 
 async def main():
-    client = MarcusClient()
+    client = WorkerMCPClient()
 
-    # Register agent
-    await client.register_agent(
-        agent_id="my-agent-1",
-        capabilities=["python", "javascript", "testing"]
-    )
+    # Connect to Marcus MCP server
+    async with client.connect_to_marcus() as session:
+        # Register agent with skills
+        await client.register_agent(
+            agent_id="my-agent-1",
+            name="Backend Developer",
+            role="Developer",
+            skills=["python", "javascript", "testing"]
+        )
 
-    # Work loop
-    while True:
-        # Request task
-        task = await client.request_next_task("my-agent-1")
+        # Work loop
+        while True:
+            # Request next task
+            task_result = await client.request_next_task("my-agent-1")
 
-        if task:
-            print(f"Working on: {task['name']}")
+            if task_result.get('task'):
+                task = task_result['task']
+                print(f"Working on: {task['title']}")
 
-            # Get context if needed
-            if task.get('dependencies'):
-                context = await client.get_task_context(task['id'])
-                print(f"Context: {context}")
+                # Report progress milestones
+                await client.report_task_progress(
+                    agent_id="my-agent-1",
+                    task_id=task['id'],
+                    status="in_progress",
+                    progress=50
+                )
 
-            # Do the work (your implementation here)
-            # ...
+                # Do the work (your implementation here)
+                # ...
 
-            # Report progress
-            await client.report_task_progress(
-                task['id'],
-                "my-agent-1",
-                progress=100,
-                details="Task completed successfully"
-            )
-        else:
-            print("No tasks available, waiting...")
-            await asyncio.sleep(30)
+                # Report completion
+                await client.report_task_progress(
+                    agent_id="my-agent-1",
+                    task_id=task['id'],
+                    status="completed",
+                    progress=100
+                )
+            else:
+                print("No tasks available, waiting...")
+                await asyncio.sleep(30)
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -201,68 +160,44 @@ python simple_agent.py
 
 ## Verify Everything Works
 
-### Check Project Status
+### Check Agent Status via MCP Tools
 
-```python
-from marcus_mcp import MarcusClient
+Using MCP tools from your agent:
+- `get_agent_status` - Check agent capabilities, assignments, and health
+- `get_project_status` - View project health, tasks, and predictions
+- `ping` - Test Marcus server connectivity
 
-client = MarcusClient()
-status = await client.get_project_status()
-print(status)
-```
+### Monitor on GitHub
 
-You should see:
-- Project name and health metrics
-- Task breakdown by phase
-- Agent assignments
-- Completion predictions
-
-### Check Agent Status
-
-```python
-agent_status = await client.get_agent_status("my-agent-1")
-print(agent_status)
-```
-
-You should see:
-- Agent capabilities
-- Current assignment
-- Performance metrics
-- Health status
-
-### Test Connectivity
-
-```python
-pong = await client.ping()
-print(pong)  # Should return system health info
-```
+Go to your GitHub project board to see:
+- Tasks organized by status (TODO, IN PROGRESS, DONE)
+- Agent assignments on each task
+- Progress updates in task comments
+- Dependency relationships between tasks
 
 ## Common Issues
 
-### Planka Won't Start
+### "Connection refused"
+Ensure Marcus Docker container is running on port 4298:
 ```bash
-# Check if port 3333 is in use
-lsof -i :3333
-
-# Stop and restart
-docker-compose down
-docker-compose up -d planka
+docker ps | grep marcus
 ```
 
-### Can't Connect to Marcus
-- Verify Marcus is running: `ps aux | grep marcus`
-- Check configuration in `config_marcus.json`
-- Ensure Planka is accessible: `curl http://localhost:3333`
+### "No tasks available"
+Agent needs to create a project first using natural language description.
+
+### "Agent not registered"
+Agent must call `register_agent` before requesting tasks.
+
+### "GitHub auth failed"
+- Check GitHub token has `project` scope permissions
+- Verify token is correctly set in environment or config
+- Test token: `curl -H "Authorization: token YOUR_TOKEN" https://api.github.com/user`
 
 ### AI Provider Errors
 - Verify API key is correct
 - Check API key has sufficient credits
 - Try switching to local LLM: [Setup Guide](setup-local-llm.md)
-
-### Agent Can't Find Tasks
-- Verify agent is registered: Check agent list in Planka
-- Ensure tasks exist in "Planning" or "Development" lists
-- Check task dependencies are met
 
 ## Next Steps
 
@@ -277,40 +212,25 @@ Now that Marcus is running:
 ## Quick Commands Reference
 
 ```bash
-# Start Marcus
-python -m marcus_mcp
+# Start Marcus with Docker
+docker run -p 4298:4298 \
+  -e GITHUB_TOKEN=your_token \
+  -e ANTHROPIC_API_KEY=your_key \
+  marcus/marcus:latest
 
-# Start Planka
-docker-compose up -d planka
+# Stop Marcus
+docker stop $(docker ps -q --filter ancestor=marcus/marcus)
 
-# Stop everything
-docker-compose down
-pkill -f marcus_mcp
+# View Marcus logs
+docker logs -f $(docker ps -q --filter ancestor=marcus/marcus)
 
-# View logs
-tail -f logs/marcus.log
+# Build from source
+git clone https://github.com/lwgray/marcus.git
+cd marcus
+docker build -t marcus .
 
-# Run tests
+# Run tests (development)
 pytest tests/
-
-# Check health
-curl http://localhost:3333/health
-```
-
-## Development Mode
-
-For development and testing:
-
-```bash
-# Enable all features
-export MARCUS_FEATURES_MEMORY=true
-export MARCUS_FEATURES_VISIBILITY=true
-
-# Use verbose logging
-export MARCUS_LOG_LEVEL=DEBUG
-
-# Start Marcus
-python -m marcus_mcp
 ```
 
 ## Getting Help
