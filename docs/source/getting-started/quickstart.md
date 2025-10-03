@@ -4,76 +4,68 @@ Get Marcus up and running in 5 minutes.
 
 ## Prerequisites
 
-- **Docker** (for running Marcus)
-- **Kanban Board**: Either GitHub (with [personal access token](https://github.com/settings/tokens) with `project` scope) OR Planka (included in Docker Compose)
+- **Docker and Docker Compose** installed and running
 - **Claude Code** or another MCP-compatible AI agent
 - **AI API Key** (Anthropic, OpenAI, or local Ollama)
 
-## Choose Your Setup Path
+## Setup (Two-Stage Process)
 
-### Option 1: GitHub Projects (Cloud-Based)
+📖 **Complete guide:** [DOCKER_QUICKSTART.md](../../../DOCKER_QUICKSTART.md)
 
-Best for teams using GitHub or wanting cloud-based project management.
+### Stage 1: Start Planka and Postgres
 
 ```bash
-# Quick start with environment variables
-docker run -p 4298:4298 \
-  -e MARCUS_KANBAN_PROVIDER=github \
-  -e MARCUS_KANBAN_GITHUB_TOKEN=ghp_your_token_here \
-  -e MARCUS_KANBAN_GITHUB_OWNER=your_github_username \
-  -e MARCUS_KANBAN_GITHUB_REPO=your_repository_name \
-  -e MARCUS_AI_ANTHROPIC_API_KEY=sk-ant-your_key_here \
-  lwgray575/marcus:latest
-```
-
-**Or build from source:**
-```bash
+# Clone the repository
 git clone https://github.com/lwgray/marcus.git
 cd marcus
-cp config_marcus.example.json config_marcus.json
-# Edit config_marcus.json with your GitHub settings
-docker build -t marcus .
-docker run -p 4298:4298 \
-  -e MARCUS_KANBAN_PROVIDER=github \
-  -e MARCUS_KANBAN_GITHUB_TOKEN=ghp_your_token_here \
-  -e MARCUS_KANBAN_GITHUB_OWNER=your_github_username \
-  -e MARCUS_KANBAN_GITHUB_REPO=your_repository_name \
-  -e MARCUS_AI_ANTHROPIC_API_KEY=sk-ant-your_key_here \
-  marcus
-```
 
-### Option 2: Planka (Local, Self-Hosted)
-
-Best for local development or those who prefer self-hosted solutions.
-
-📖 **See the complete guide:** [DOCKER_QUICKSTART.md](../../../DOCKER_QUICKSTART.md)
-
-**Quick overview:**
-```bash
-# 1. Clone and start Planka
-git clone https://github.com/lwgray/marcus.git
-cd marcus
+# Start Planka first
 docker-compose up -d postgres planka
+```
 
-# 2. Create project and board in Planka (http://localhost:3333)
-#    Login: demo@demo.demo / demo  # pragma: allowlist secret
+Wait 10-15 seconds for Planka to initialize, then open http://localhost:3333
 
-# 3. ⚠️ CRITICAL: Create these lists on your board:
-#    - Backlog
-#    - In Progress
-#    - Blocked
-#    - Done
-#    (Without lists, task creation fails!)
+### Stage 2: Configure Planka Board
 
-# 4. Configure and start Marcus
+Login to Planka:
+- Email: `demo@demo.demo`
+- Password: `demo`  # pragma: allowlist secret
+
+**Create your project and board:**
+1. Click **"Create project"**
+2. Name it (e.g., "Marcus AI Project")
+3. Note the project ID from the URL: `http://localhost:3333/projects/PROJECT_ID`
+4. Click `+` to create a board
+5. Note the board ID from the URL: `http://localhost:3333/boards/BOARD_ID`
+
+**⚠️ CRITICAL: Create lists on your board:**
+Click "Add another list" to create these 4 lists:
+- **Backlog**
+- **In Progress**
+- **Blocked**
+- **Done**
+
+> **Without these lists, task creation will fail!**
+
+### Stage 3: Configure and Start Marcus
+
+```bash
+# Copy and edit the configuration
 cp config_marcus.example.json config_marcus.json
-# Edit config with your board IDs and API key
+```
+
+Edit `config_marcus.json` with:
+- Your project ID and board ID from Planka
+- Your Anthropic API key (or other AI provider)
+
+```bash
+# Start Marcus
 docker-compose up -d marcus
 ```
 
-For detailed Planka setup instructions, see [DOCKER_QUICKSTART.md](../../../DOCKER_QUICKSTART.md).
+Marcus is now running at http://localhost:4298
 
-### 2. Connect Your AI Agent
+## 2. Connect Your AI Agent
 
 For Claude Code:
 ```bash
@@ -269,45 +261,27 @@ Now that Marcus is running:
 
 ## Quick Commands Reference
 
-### GitHub Setup
 ```bash
-# Start Marcus with GitHub
-docker run -p 4298:4298 \
-  -e MARCUS_KANBAN_PROVIDER=github \
-  -e MARCUS_KANBAN_GITHUB_TOKEN=ghp_your_token \
-  -e MARCUS_KANBAN_GITHUB_OWNER=your_username \
-  -e MARCUS_KANBAN_GITHUB_REPO=your_repo \
-  -e MARCUS_AI_ANTHROPIC_API_KEY=sk-ant-your_key \
-  lwgray575/marcus:latest
-```
-
-### Planka Setup
-```bash
-# Start Planka and Marcus with Docker Compose
-docker-compose up -d postgres planka
-# Wait 10-15 seconds, create project/board at http://localhost:3333
-# Create lists: Backlog, In Progress, Blocked, Done
-docker-compose up -d marcus
+# Start services (two-stage)
+docker-compose up -d postgres planka  # Stage 1: Start Planka
+# Create project/board and lists in Planka
+docker-compose up -d marcus           # Stage 2: Start Marcus
 
 # View logs
-docker-compose logs -f marcus
+docker-compose logs -f marcus         # Marcus logs
+docker-compose logs -f planka         # Planka logs
+docker-compose logs -f                # All logs
 
-# Stop all services
-docker-compose down
-```
+# Stop services
+docker-compose down                   # Stop all
+docker-compose restart marcus         # Restart just Marcus
 
-### General Commands
-```bash
-# Stop Marcus container
-docker stop $(docker ps -q --filter ancestor=lwgray575/marcus)
+# Rebuild Marcus (after code changes)
+docker-compose build marcus
+docker-compose up -d marcus
 
-# View Marcus logs
-docker logs -f $(docker ps -q --filter ancestor=lwgray575/marcus)
-
-# Build from source
-git clone https://github.com/lwgray/marcus.git
-cd marcus
-docker build -t marcus .
+# Clean slate (removes all data)
+docker-compose down -v
 
 # Run tests (development)
 pytest tests/
