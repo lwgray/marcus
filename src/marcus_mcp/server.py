@@ -1205,10 +1205,48 @@ class MarcusServer:
                 filename: str,
                 content: str,
                 artifact_type: str,
+                project_root: str,
                 description: str = "",
                 location: Optional[str] = None,
             ) -> Dict[str, Any]:
-                """Store an artifact with smart location management."""
+                """
+                Store an artifact with smart location management.
+
+                Artifacts are automatically placed in standard locations based on type:
+                - specification → docs/specifications/
+                - api → docs/api/
+                - design → docs/design/
+                - architecture → docs/architecture/
+                - documentation → docs/
+                - reference → docs/references/
+                - temporary → tmp/artifacts/
+
+                Parameters
+                ----------
+                task_id : str
+                    The current task ID
+                filename : str
+                    Name for the artifact file
+                content : str
+                    The artifact content to store
+                artifact_type : str
+                    Type of artifact: specification, api, design, architecture,
+                    documentation, reference, or temporary
+                project_root : str
+                    REQUIRED: Absolute path to the project root directory where
+                    artifacts will be created. All agents working on the same
+                    project MUST use the same project_root path.
+                    Example: /Users/username/projects/my-app
+                description : str, optional
+                    Description of the artifact
+                location : str, optional
+                    Override the default location with a custom relative path
+
+                Returns
+                -------
+                Dict[str, Any]
+                    Result with artifact location and storage details
+                """
                 from .tools.attachment import log_artifact as impl
 
                 return await impl(
@@ -1216,6 +1254,7 @@ class MarcusServer:
                     filename=filename,
                     content=content,
                     artifact_type=artifact_type,
+                    project_root=project_root,
                     description=description,
                     location=location,
                     state=server,
