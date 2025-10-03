@@ -143,7 +143,7 @@ class KanbanClientWithCreate(KanbanClient):
             )
 
         server_params = StdioServerParameters(
-            command="node", args=["../kanban-mcp/dist/index.js"], env=os.environ.copy()
+            command="node", args=["/app/kanban-mcp/dist/index.js"], env=os.environ.copy()
         )
 
         async with stdio_client(server_params) as (read, write):
