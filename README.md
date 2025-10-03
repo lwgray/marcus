@@ -51,7 +51,7 @@ docker-compose up -d postgres planka
                                                    ^project_id
 3. Click `+` to create board (e.g. "My Board")
 4. Note board ID http://localhost:3333/boards/56789101112
-                                              ^board_id  
+                                              ^board_id
 
 # 3. Set up your board (IMPORTANT - required for task creation):
  - Go to "Marcus Todo Demo" board
@@ -63,8 +63,16 @@ docker-compose up -d postgres planka
  - Without these lists, task creation will fail!
 
 # 4. Configure and start Marcus
+# Option A: Use default config
 cp config_marcus.example.json config_marcus.json
 # Edit config with your board IDs and API key
+docker-compose up -d marcus
+
+# Option B: Use a specific config (Anthropic, GitHub, etc.)
+MARCUS_CONFIG=config_marcus.json.anthropic docker-compose up -d marcus
+
+# Option C: Create .env file for persistent config selection
+echo "MARCUS_CONFIG=config_marcus.json.anthropic" > .env
 docker-compose up -d marcus
 ```
 

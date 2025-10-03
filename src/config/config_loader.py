@@ -37,11 +37,22 @@ class ConfigLoader:
         """Load configuration from marcus.config.json"""
         # Find config file
         # Try multiple locations in order of preference
-        possible_paths = [
-            Path.cwd() / "config_marcus.json",  # Current directory
-            Path(__file__).parent.parent.parent / "config_marcus.json",  # Project root
-            Path.home() / ".marcus" / "config_marcus.json",  # User home
-        ]
+        possible_paths = []
+
+        # 1. Check MARCUS_CONFIG environment variable first (highest priority)
+        if "MARCUS_CONFIG" in os.environ:
+            env_path = Path(os.environ["MARCUS_CONFIG"])
+            possible_paths.append(env_path)
+
+        # 2. Then try default locations
+        possible_paths.extend(
+            [
+                Path.cwd() / "config_marcus.json",  # Current directory
+                Path(__file__).parent.parent.parent
+                / "config_marcus.json",  # Project root
+                Path.home() / ".marcus" / "config_marcus.json",  # User home
+            ]
+        )
 
         for path in possible_paths:
             if path.exists():
@@ -50,8 +61,8 @@ class ConfigLoader:
 
         if self._config_path is None:
             raise FileNotFoundError(
-                "config_marcus.json not found. Please copy config_marcus.example.json "
-                "to config_marcus.json and fill in your settings."
+                f"config_marcus.json not found. Tried: {[str(p) for p in possible_paths]}. "
+                "Please copy config_marcus.example.json to config_marcus.json and fill in your settings."
             )
 
         # Load the config file

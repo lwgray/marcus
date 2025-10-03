@@ -68,9 +68,12 @@ services:
       - PLANKA_BASE_URL=http://planka:1337
       - PLANKA_AGENT_EMAIL=demo@demo.demo
       - PLANKA_AGENT_PASSWORD=demo
+      # Marcus config file selection (default: config_marcus.json)
+      # Override with: MARCUS_CONFIG=config_marcus.json.anthropic docker-compose up
+      - MARCUS_CONFIG=/app/config/${MARCUS_CONFIG:-config_marcus.json}
     volumes:
-      # Mount your Marcus config file
-      - ./config_marcus.json.anthropic:/app/config_marcus.json
+      # Mount config directory to allow choosing different config files
+      - ./:/app/config
       # Optional: Mount logs directory to persist logs
       - ./logs:/app/logs
     depends_on:

@@ -77,7 +77,10 @@ async def create_project(
             },
             "examples": [
                 {
-                    "description": "Create a task management app with user authentication and team collaboration",
+                    "description": (
+                        "Create a task management app with user "
+                        "authentication and team collaboration"
+                    ),
                     "project_name": "TeamTasks",
                     "options": {
                         "complexity": "standard",
@@ -92,12 +95,20 @@ async def create_project(
                     "options": {"complexity": "prototype", "deployment": "none"},
                 },
                 {
-                    "description": "Develop an e-commerce platform with inventory management, payment processing, and analytics",
+                    "description": (
+                        "Develop an e-commerce platform with inventory "
+                        "management, payment processing, and analytics"
+                    ),
                     "project_name": "ShopFlow",
                     "options": {
                         "complexity": "enterprise",
                         "deployment": "production",
-                        "tech_stack": ["React", "Node.js", "PostgreSQL", "Stripe"],
+                        "tech_stack": [
+                            "React",
+                            "Node.js",
+                            "PostgreSQL",
+                            "Stripe",
+                        ],
                         "team_size": 5,
                         "planka_project_name": "ShopFlow Production",
                     },
