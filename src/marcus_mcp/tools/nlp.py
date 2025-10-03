@@ -31,12 +31,17 @@ async def create_project(
     - Assigns priorities and dependencies
     - Estimates time requirements
     - Creates organized kanban board structure
+    - Auto-creates Planka project/board if needed
 
     Args:
         description: Natural language project description
-        project_name: Name for the project board
+        project_name: Name for the project board and task organization
         options: Optional configuration (deadline, team_size, tech_stack,
-                 deployment_target)
+                 deployment_target, planka_project_name, planka_board_name)
+            - planka_project_name: Name for the Planka project (defaults to
+              project_name)
+            - planka_board_name: Name for the Planka board (defaults to
+              "Main Board")
             - deployment_target: "local" (default), "dev", "prod", "remote"
                 - local: No deployment tasks, just local development
                 - dev: Basic deployment to development environment
@@ -74,7 +79,12 @@ async def create_project(
                 {
                     "description": "Create a task management app with user authentication and team collaboration",
                     "project_name": "TeamTasks",
-                    "options": {"complexity": "standard", "deployment": "internal"},
+                    "options": {
+                        "complexity": "standard",
+                        "deployment": "internal",
+                        "planka_project_name": "Team Tasks Project",
+                        "planka_board_name": "Development Board",
+                    },
                 },
                 {
                     "description": "Build a simple blog with markdown support",
@@ -89,6 +99,7 @@ async def create_project(
                         "deployment": "production",
                         "tech_stack": ["React", "Node.js", "PostgreSQL", "Stripe"],
                         "team_size": 5,
+                        "planka_project_name": "ShopFlow Production",
                     },
                 },
             ],

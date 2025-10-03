@@ -784,6 +784,50 @@ async def create_project_from_natural_language(
                     "error": f"Failed to initialize kanban client: {str(e)}",
                 }
 
+        # Auto-create Planka project/board if no IDs exist
+        if not state.kanban_client.project_id or not state.kanban_client.board_id:
+            # Get names from options or use defaults
+            planka_project_name = (
+                options.get("planka_project_name", project_name)
+                if options
+                else project_name
+            )
+            planka_board_name = (
+                options.get("planka_board_name", "Main Board")
+                if options
+                else "Main Board"
+            )
+
+            logger.info(
+                "No project/board IDs found. Auto-creating Planka project "
+                f"'{planka_project_name}' with board '{planka_board_name}'"
+            )
+
+            try:
+                # Check if kanban client supports auto_setup_project
+                if not hasattr(state.kanban_client, "auto_setup_project"):
+                    return {
+                        "success": False,
+                        "error": (
+                            "Kanban client does not support auto_setup_project. "
+                            "Please ensure you're using the latest KanbanClient."
+                        ),
+                    }
+
+                result = await state.kanban_client.auto_setup_project(
+                    project_name=planka_project_name, board_name=planka_board_name
+                )
+
+                logger.info(
+                    f"Auto-created Planka project: {result['project_id']}, "
+                    f"board: {result['board_id']}"
+                )
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": (f"Failed to auto-create Planka project/board: {str(e)}"),
+                }
+
         # Verify kanban client supports create_task
         if not hasattr(state.kanban_client, "create_task"):
             return {
