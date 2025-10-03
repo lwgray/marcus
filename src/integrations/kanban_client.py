@@ -70,6 +70,9 @@ class KanbanClient:
         self.board_id: Optional[str] = None
         self.project_id: Optional[str] = None
 
+        # Detect kanban-mcp path once at initialization
+        self.kanban_mcp_path = self._get_kanban_mcp_path()
+
         # Load config first - this may set environment variables
         self._load_config()
 
@@ -92,6 +95,70 @@ class KanbanClient:
             os.environ["PLANKA_AGENT_EMAIL"] = "demo@demo.demo"
         if "PLANKA_AGENT_PASSWORD" not in os.environ:
             os.environ["PLANKA_AGENT_PASSWORD"] = "demo"  # nosec B105
+
+    def _get_kanban_mcp_path(self) -> str:
+        """
+        Automatically detect kanban-mcp path.
+
+        Checks in priority order:
+        1. KANBAN_MCP_PATH environment variable (user override)
+        2. /app/kanban-mcp/dist/index.js (Docker)
+        3. ../kanban-mcp/dist/index.js (sibling directory for local dev)
+
+        Returns
+        -------
+        str
+            Path to kanban-mcp index.js
+
+        Raises
+        ------
+        FileNotFoundError
+            If kanban-mcp cannot be found in any expected location
+        """
+        from pathlib import Path
+
+        # 1. Check environment variable (highest priority)
+        if env_path := os.getenv("KANBAN_MCP_PATH"):
+            env_path_obj = Path(env_path)
+            if env_path_obj.exists():
+                logger.info(f"Using kanban-mcp from KANBAN_MCP_PATH: {env_path}")
+                return env_path
+            else:
+                logger.warning(
+                    f"KANBAN_MCP_PATH set to {env_path} but file doesn't exist"
+                )
+
+        # 2. Check Docker path
+        docker_path = Path("/app/kanban-mcp/dist/index.js")
+        if docker_path.exists():
+            logger.info(f"Using kanban-mcp from Docker: {docker_path}")
+            return str(docker_path)
+
+        # 3. Check sibling directory (../kanban-mcp relative to marcus/)
+        # Path(__file__) -> kanban_client.py
+        # .parent -> integrations/
+        # .parent -> src/
+        # .parent -> marcus/
+        # .parent -> parent directory containing marcus/
+        marcus_root = Path(__file__).parent.parent.parent
+        sibling_path = marcus_root.parent / "kanban-mcp" / "dist" / "index.js"
+        if sibling_path.exists():
+            logger.info(f"Using kanban-mcp from sibling directory: {sibling_path}")
+            return str(sibling_path)
+
+        # 4. Give up with helpful message
+        raise FileNotFoundError(
+            "Could not find kanban-mcp. Please either:\n"
+            "  1. Set KANBAN_MCP_PATH environment variable to point to "
+            "kanban-mcp/dist/index.js\n"
+            f"  2. Clone kanban-mcp as sibling directory: "
+            f"{marcus_root.parent}/kanban-mcp\n"
+            "  3. Run in Docker where it's at /app/kanban-mcp\n"
+            f"\nSearched in:\n"
+            f"  - KANBAN_MCP_PATH env var\n"
+            f"  - {docker_path}\n"
+            f"  - {sibling_path}"
+        )
 
     def _load_config(self) -> None:
         """
@@ -182,7 +249,7 @@ class KanbanClient:
         # Use the exact same pattern as working scripts
         server_params = StdioServerParameters(
             command="node",
-            args=["/app/kanban-mcp/dist/index.js"],
+            args=[self.kanban_mcp_path],
             env=os.environ.copy(),
         )
 
@@ -248,7 +315,8 @@ class KanbanClient:
                     all_tasks.append(task)
 
                 # Build mapping of original IDs to new IDs from ALL tasks
-                # This ensures completed/assigned tasks can still be resolved as dependencies
+                # This ensures completed/assigned tasks can still be
+                # resolved as dependencies
                 id_mapping = {}
                 for task in all_tasks:
                     if hasattr(task, "_original_id") and task._original_id:
@@ -328,7 +396,7 @@ class KanbanClient:
         # Use the exact same pattern as working scripts
         server_params = StdioServerParameters(
             command="node",
-            args=["/app/kanban-mcp/dist/index.js"],
+            args=[self.kanban_mcp_path],
             env=os.environ.copy(),
         )
 
@@ -461,7 +529,7 @@ class KanbanClient:
         """
         server_params = StdioServerParameters(
             command="node",
-            args=["/app/kanban-mcp/dist/index.js"],
+            args=[self.kanban_mcp_path],
             env=os.environ.copy(),
         )
 
@@ -547,7 +615,7 @@ class KanbanClient:
 
         server_params = StdioServerParameters(
             command="node",
-            args=["/app/kanban-mcp/dist/index.js"],
+            args=[self.kanban_mcp_path],
             env=os.environ.copy(),
         )
 
@@ -783,7 +851,7 @@ class KanbanClient:
         """
         server_params = StdioServerParameters(
             command="node",
-            args=["/app/kanban-mcp/dist/index.js"],
+            args=[self.kanban_mcp_path],
             env=os.environ.copy(),
         )
 
@@ -868,7 +936,7 @@ class KanbanClient:
         """
         server_params = StdioServerParameters(
             command="node",
-            args=["/app/kanban-mcp/dist/index.js"],
+            args=[self.kanban_mcp_path],
             env=os.environ.copy(),
         )
 
@@ -951,7 +1019,7 @@ class KanbanClient:
         """
         server_params = StdioServerParameters(
             command="node",
-            args=["/app/kanban-mcp/dist/index.js"],
+            args=[self.kanban_mcp_path],
             env=os.environ.copy(),
         )
 
