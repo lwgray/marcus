@@ -52,6 +52,7 @@ class AnthropicProvider(BaseLLMProvider):
         self.timeout = 30.0
 
         # HTTP client with proper headers
+        # Disable HTTP/2 to avoid connection issues in Docker environments
         self.client = httpx.AsyncClient(
             headers={
                 "x-api-key": self.api_key,
@@ -59,6 +60,7 @@ class AnthropicProvider(BaseLLMProvider):
                 "anthropic-version": "2023-06-01",
             },
             timeout=self.timeout,
+            http2=False,
         )
 
         logger.info(f"Anthropic provider initialized with model: {self.model}")
