@@ -79,30 +79,35 @@ docker run -p 4298:4298 \
 ```
 
 **Using Planka with Docker Compose (Alternative to GitHub)**
-```bash
-# If you prefer a local Kanban board instead of GitHub, use docker-compose with Planka:
 
-# 1. Clone the repository
+For a local Kanban board instead of GitHub, use Marcus with Planka.
+
+📖 **See the complete guide:** [DOCKER_QUICKSTART.md](DOCKER_QUICKSTART.md)
+
+**Quick overview:**
+```bash
+# 1. Clone and start Planka
 git clone https://github.com/lwgray/marcus.git
 cd marcus
+docker-compose up -d postgres planka
 
-# 2. Start Marcus with Planka
-MARCUS_CONFIG=config_marcus.json.anthropic docker-compose up -d
+# 2. Create project and board in Planka (http://localhost:3333)
+#    Login: demo@demo.demo / demo
 
-# 3. Access Planka at http://localhost:3333
-# Login: demo@demo.demo / demo
+# 3. ⚠️ CRITICAL: Create these lists on your board:
+#    - Backlog
+#    - In Progress
+#    - Blocked
+#    - Done
+#    (Without lists, task creation fails!)
 
-# 4. Set up your board (IMPORTANT - required for task creation):
-# - Go to "Marcus Todo Demo" board
-# - Click "Add another list" to create these columns in order:
-#   • Backlog
-#   • In Progress
-#   • Blocked
-#   • Done
-# - Without these lists, task creation will fail!
-
-# 5. Marcus is now running at http://localhost:4298
+# 4. Configure and start Marcus
+cp config_marcus.example.json config_marcus.json
+# Edit config with your board IDs and API key
+docker-compose up -d marcus
 ```
+
+For detailed setup instructions, troubleshooting, and customization options, see [DOCKER_QUICKSTART.md](DOCKER_QUICKSTART.md).
 
 ### **2. Connect Your AI Agent**
 ```bash
