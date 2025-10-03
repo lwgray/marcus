@@ -74,17 +74,18 @@ class KanbanClient:
         self._load_config()
 
         # If config didn't have IDs, try loading from workspace state
-        if not self.project_id or not self.board_id:
+        if (self.project_id is None) or (self.board_id is None):
             workspace_state = self._load_workspace_state()
             if workspace_state:
                 self.project_id = workspace_state.get("project_id")
                 self.board_id = workspace_state.get("board_id")
                 logger.info(
-                    f"Loaded project_id and board_id from workspace state: "
+                    "Loaded project_id and board_id from workspace state: "
                     f"project={self.project_id}, board={self.board_id}"
                 )
 
-        # Set environment for Planka from .env or use defaults (only if not already set by config)
+        # Set environment for Planka from .env or use defaults
+        # (only if not already set by config)
         if "PLANKA_BASE_URL" not in os.environ:
             os.environ["PLANKA_BASE_URL"] = "http://localhost:3333"
         if "PLANKA_AGENT_EMAIL" not in os.environ:
@@ -96,8 +97,9 @@ class KanbanClient:
         """
         Load configuration from config_marcus.json file.
 
-        Reads project_id, board_id, and Planka credentials from the configuration file if it exists.
-        Prints confirmation message to stderr for debugging.
+        Reads project_id, board_id, and Planka credentials from the
+        configuration file if it exists. Prints confirmation message
+        to stderr for debugging.
 
         Notes
         -----
@@ -110,7 +112,8 @@ class KanbanClient:
 
         config_paths = [
             Path("config_marcus.json"),  # Current directory
-            Path(__file__).parent.parent.parent / "config_marcus.json",  # Project root
+            # Project root
+            Path(__file__).parent.parent.parent / "config_marcus.json",
         ]
 
         config_path = None
@@ -134,10 +137,11 @@ class KanbanClient:
                 if planka_config.get("password"):
                     os.environ["PLANKA_AGENT_PASSWORD"] = planka_config["password"]
 
-                # Config loaded successfully - don't print as it interferes with MCP stdio
+                # Config loaded successfully
+                # Don't print - interferes with MCP stdio
         else:
             print(
-                "❌ config_marcus.json not found in any of the following locations:",
+                "❌ config_marcus.json not found in any of these " "locations:",
                 file=sys.stderr,
             )
             for path in config_paths:
@@ -237,27 +241,25 @@ class KanbanClient:
                                         card["listName"] = lst.get("name", "")
                                         all_cards.append(card)
 
-                tasks = []
-
-                # Use the all_cards we collected
+                # First, convert ALL cards to tasks to build complete ID mapping
+                all_tasks = []
                 for card in all_cards:
                     task = self._card_to_task(card)
-                    if not task.assigned_to and self._is_available_task(card):
-                        tasks.append(task)
+                    all_tasks.append(task)
 
-                # Apply the same dependency ID mapping and filtering as get_all_tasks()
-                # Build mapping of original IDs to new IDs
+                # Build mapping of original IDs to new IDs from ALL tasks
+                # This ensures completed/assigned tasks can still be resolved as dependencies
                 id_mapping = {}
-                for task in tasks:
+                for task in all_tasks:
                     if hasattr(task, "_original_id") and task._original_id:
                         id_mapping[task._original_id] = task.id
 
-                # Resolve dependencies using the mapping
+                # Resolve dependencies using the complete mapping
                 if id_mapping:
                     logger.debug(
                         f"Resolving dependencies with ID mapping: {id_mapping}"
                     )
-                    for task in tasks:
+                    for task in all_tasks:
                         if task.dependencies:
                             resolved_deps = []
                             for dep_id in task.dependencies:
@@ -269,16 +271,25 @@ class KanbanClient:
                                     )
                                     resolved_deps.append(resolved_id)
                                 else:
-                                    # Dependency doesn't exist on the board - check if it's already a board ID
-                                    if dep_id in [t.id for t in tasks]:
+                                    # Dependency doesn't exist on the board
+                                    # Check if it's already a board ID
+                                    if dep_id in [t.id for t in all_tasks]:
                                         # It's a valid board ID, keep it
                                         resolved_deps.append(dep_id)
                                     else:
                                         # Orphaned dependency - skip it
                                         logger.warning(
-                                            f"Skipping orphaned dependency '{dep_id}' for task '{task.name}'"
+                                            f"Skipping orphaned dependency "
+                                            f"'{dep_id}' for task "
+                                            f"'{task.name}'"
                                         )
                             task.dependencies = resolved_deps
+
+                # Now filter for available tasks (after dependency resolution)
+                tasks = []
+                for task in all_tasks:
+                    if not task.assigned_to and self._is_available_task(task):
+                        tasks.append(task)
 
                 return tasks
 
@@ -406,14 +417,17 @@ class KanbanClient:
                                     )
                                     resolved_deps.append(resolved_id)
                                 else:
-                                    # Dependency doesn't exist on the board - check if it's already a board ID
+                                    # Dependency doesn't exist on the board
+                                    # Check if it's already a board ID
                                     if dep_id in [t.id for t in tasks]:
                                         # It's a valid board ID, keep it
                                         resolved_deps.append(dep_id)
                                     else:
                                         # Orphaned dependency - skip it
                                         logger.warning(
-                                            f"Skipping orphaned dependency '{dep_id}' for task '{task.name}'"
+                                            f"Skipping orphaned dependency "
+                                            f"'{dep_id}' for task "
+                                            f"'{task.name}'"
                                         )
                             task.dependencies = resolved_deps
 
@@ -461,7 +475,10 @@ class KanbanClient:
                     {
                         "action": "create",
                         "cardId": task_id,
-                        "text": f"📋 Task assigned to {agent_id} at {datetime.now().isoformat()}",
+                        "text": (
+                            f"📋 Task assigned to {agent_id} at "
+                            f"{datetime.now().isoformat()}"
+                        ),
                     },
                 )
 
