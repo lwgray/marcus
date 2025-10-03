@@ -78,6 +78,32 @@ docker run -p 4298:4298 \
   marcus
 ```
 
+**Using Planka with Docker Compose (Alternative to GitHub)**
+```bash
+# If you prefer a local Kanban board instead of GitHub, use docker-compose with Planka:
+
+# 1. Clone the repository
+git clone https://github.com/lwgray/marcus.git
+cd marcus
+
+# 2. Start Marcus with Planka
+MARCUS_CONFIG=config_marcus.json.anthropic docker-compose up -d
+
+# 3. Access Planka at http://localhost:3333
+# Login: demo@demo.demo / demo
+
+# 4. Set up your board (IMPORTANT - required for task creation):
+# - Go to "Marcus Todo Demo" board
+# - Click "Add another list" to create these columns in order:
+#   • Backlog
+#   • In Progress
+#   • Blocked
+#   • Done
+# - Without these lists, task creation will fail!
+
+# 5. Marcus is now running at http://localhost:4298
+```
+
 ### **2. Connect Your AI Agent**
 ```bash
 # For Claude Code:
@@ -179,6 +205,8 @@ Built by developers, for developers. We're focused on making software creation a
 | **"No tasks available"** | Agent needs to create a project first with `create_project` |
 | **"Agent not registered"** | Agent must call `register_agent` before requesting tasks |
 | **"GitHub auth failed"** | Check GitHub token has project permissions |
+| **"Failed to create any tasks" (Planka)** | Board has no lists! Add lists: Backlog, In Progress, Blocked, Done |
+| **"find_target_list failed"** | Open Planka board and create at least one list/column |
 
 ---
 
