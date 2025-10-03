@@ -16,7 +16,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Clone and build kanban-mcp for Planka integration
-RUN git clone https://github.com/bradrisse/kanban-mcp.git /app/kanban-mcp && \
+# Using lwgray fork with project/board creation features
+RUN git clone --branch feature/add-project-crud-operations https://github.com/lwgray/kanban-mcp.git /app/kanban-mcp && \
     cd /app/kanban-mcp && \
     npm install && \
     npm run build

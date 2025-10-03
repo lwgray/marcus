@@ -73,6 +73,17 @@ class KanbanClient:
         # Load config first - this may set environment variables
         self._load_config()
 
+        # If config didn't have IDs, try loading from workspace state
+        if not self.project_id or not self.board_id:
+            workspace_state = self._load_workspace_state()
+            if workspace_state:
+                self.project_id = workspace_state.get("project_id")
+                self.board_id = workspace_state.get("board_id")
+                logger.info(
+                    f"Loaded project_id and board_id from workspace state: "
+                    f"project={self.project_id}, board={self.board_id}"
+                )
+
         # Set environment for Planka from .env or use defaults (only if not already set by config)
         if "PLANKA_BASE_URL" not in os.environ:
             os.environ["PLANKA_BASE_URL"] = "http://localhost:3333"
@@ -889,3 +900,157 @@ class KanbanClient:
                         raise RuntimeError(
                             f"No list found matching keywords: {list_keywords}"
                         )
+
+    async def auto_setup_project(
+        self, project_name: str, board_name: str = "Main Board"
+    ) -> Dict[str, str]:
+        """
+        Automatically create a Planka project and board if they don't exist.
+
+        This method will:
+        1. Create a new project in Planka
+        2. Create a new board in that project with default lists/labels
+        3. Save the IDs to .marcus_workspace.json
+        4. Load the IDs into memory
+
+        Parameters
+        ----------
+        project_name : str
+            Name of the project to create
+        board_name : str
+            Name of the board to create (default: "Main Board")
+
+        Returns
+        -------
+        Dict[str, str]
+            Dictionary with project_id and board_id
+
+        Examples
+        --------
+        >>> client = KanbanClient()
+        >>> result = await client.auto_setup_project("My Project")
+        >>> print(f"Project ID: {result['project_id']}")
+        >>> print(f"Board ID: {result['board_id']}")
+        """
+        server_params = StdioServerParameters(
+            command="node",
+            args=["/app/kanban-mcp/dist/index.js"],
+            env=os.environ.copy(),
+        )
+
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+
+                # Create project
+                project_result = await session.call_tool(
+                    "mcp_kanban_project_board_manager",
+                    {"action": "create_project", "name": project_name},
+                )
+
+                if not project_result or not hasattr(project_result, "content"):
+                    raise RuntimeError("Failed to create project")
+
+                first_content = cast(TextContent, project_result.content[0])
+                project_data = json.loads(first_content.text)
+                project_id = project_data.get("id")
+
+                if not project_id:
+                    raise RuntimeError("Project created but no ID returned")
+
+                # Create board with default position
+                board_result = await session.call_tool(
+                    "mcp_kanban_project_board_manager",
+                    {
+                        "action": "create_board",
+                        "projectId": project_id,
+                        "name": board_name,
+                        "position": 65535,
+                    },
+                )
+
+                if not board_result or not hasattr(board_result, "content"):
+                    raise RuntimeError("Failed to create board")
+
+                first_content = cast(TextContent, board_result.content[0])
+                board_data = json.loads(first_content.text)
+                board_id = board_data.get("id")
+
+                if not board_id:
+                    raise RuntimeError("Board created but no ID returned")
+
+                # Save to workspace file
+                self._save_workspace_state(
+                    project_id=project_id,
+                    board_id=board_id,
+                    project_name=project_name,
+                    board_name=board_name,
+                )
+
+                # Update instance variables
+                self.project_id = project_id
+                self.board_id = board_id
+
+                return {"project_id": project_id, "board_id": board_id}
+
+    def _save_workspace_state(
+        self, project_id: str, board_id: str, project_name: str, board_name: str
+    ) -> None:
+        """
+        Save project and board IDs to workspace state file.
+
+        Parameters
+        ----------
+        project_id : str
+            The Planka project ID
+        board_id : str
+            The Planka board ID
+        project_name : str
+            Name of the project
+        board_name : str
+            Name of the board
+        """
+        from pathlib import Path
+
+        workspace_file = Path(".marcus_workspace.json")
+
+        workspace_data = {
+            "project_id": project_id,
+            "board_id": board_id,
+            "project_name": project_name,
+            "board_name": board_name,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+        }
+
+        with open(workspace_file, "w") as f:
+            json.dump(workspace_data, f, indent=2)
+
+        logger.info(f"Saved workspace state to {workspace_file.absolute()}")
+
+    def _load_workspace_state(self) -> Optional[Dict[str, str]]:
+        """
+        Load project and board IDs from workspace state file.
+
+        Returns
+        -------
+        Optional[Dict[str, str]]
+            Dictionary with project_id and board_id if file exists, None otherwise
+        """
+        from pathlib import Path
+
+        workspace_file = Path(".marcus_workspace.json")
+
+        if not workspace_file.exists():
+            return None
+
+        try:
+            with open(workspace_file, "r") as f:
+                data = json.load(f)
+                return {
+                    "project_id": data.get("project_id"),
+                    "board_id": data.get("board_id"),
+                }
+        except Exception as e:
+            logger.warning(f"Failed to load workspace state: {e}")
+            return None
