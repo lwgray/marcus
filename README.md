@@ -27,60 +27,13 @@ Each task is locked to one agent until complete, preventing conflicts. Agents sh
 
 ### **Prerequisites**
 - Docker
-- GitHub account with a [personal access token](https://github.com/settings/tokens) (needs `project` scope)
 - Claude Code or another MCP-compatible AI agent
 - API key for your AI model (Anthropic, OpenAI, or local with Ollama)
 
 ### **1. Run Marcus with Docker**
 
 ```bash
-# Quick start - just pull and run!
-docker run -p 4298:4298 \
-  -e MARCUS_KANBAN_PROVIDER=github \
-  -e MARCUS_KANBAN_GITHUB_TOKEN=ghp_your_token_here \
-  -e MARCUS_KANBAN_GITHUB_OWNER=your_github_username \
-  -e MARCUS_KANBAN_GITHUB_REPO=your_repository_name \
-  -e MARCUS_AI_ANTHROPIC_API_KEY=sk-ant-your_key_here \
-  lwgray575/marcus:latest
-```
-
-**Environment Variables Reference:**
-- `MARCUS_KANBAN_PROVIDER` - Set to `github` (required)
-- `MARCUS_KANBAN_GITHUB_TOKEN` - Your GitHub personal access token (required)
-- `MARCUS_KANBAN_GITHUB_OWNER` - Your GitHub username or organization (required)
-- `MARCUS_KANBAN_GITHUB_REPO` - Repository where projects will be created (required)
-- `MARCUS_AI_ANTHROPIC_API_KEY` - For Claude models (or use `MARCUS_AI_OPENAI_API_KEY` for GPT)
-
-**Alternative: Run with a config file**
-```bash
-# Create config file
-curl -O https://raw.githubusercontent.com/lwgray/marcus/main/config_marcus.local.example.json
-mv config_marcus.local.example.json config_marcus.json
-# Edit config_marcus.json with your settings
-
-# Run with mounted config
-docker run -p 4298:4298 \
-  -v $(pwd)/config_marcus.json.anthropic:/app/config_marcus.json \
-  lwgray575/marcus:latest
-```
-
-**Build from source (for development)**
-```bash
-git clone https://github.com/lwgray/marcus.git
-cd marcus
-docker build -t marcus .
-docker run -p 4298:4298 \
-  -e MARCUS_KANBAN_PROVIDER=github \
-  -e MARCUS_KANBAN_GITHUB_TOKEN=ghp_your_token_here \
-  -e MARCUS_KANBAN_GITHUB_OWNER=your_github_username \
-  -e MARCUS_KANBAN_GITHUB_REPO=your_repository_name \
-  -e MARCUS_AI_ANTHROPIC_API_KEY=sk-ant-your_key_here \
-  marcus
-```
-
-**Using Planka with Docker Compose (Alternative to GitHub)**
-
-For a local Kanban board instead of GitHub, use Marcus with Planka.
+**Using Planka with Docker Compose**
 
 📖 **See the complete guide:** [DOCKER_QUICKSTART.md](DOCKER_QUICKSTART.md)
 
@@ -92,14 +45,22 @@ cd marcus
 docker-compose up -d postgres planka
 
 # 2. Create project and board in Planka (http://localhost:3333)
-#    Login: demo@demo.demo / demo
+# Login: demo@demo.demo / demo
+1. Create Project (e.g. "My Project")
+2. Note project ID: http://localhost:3333/projects/1234567890
+                                                   ^project_id
+3. Click `+` to create board (e.g. "My Board")
+4. Note board ID http://localhost:3333/boards/56789101112
+                                              ^board_id  
 
-# 3. ⚠️ CRITICAL: Create these lists on your board:
-#    - Backlog
-#    - In Progress
-#    - Blocked
-#    - Done
-#    (Without lists, task creation fails!)
+# 3. Set up your board (IMPORTANT - required for task creation):
+ - Go to "Marcus Todo Demo" board
+ - Click "Add another list" to create these columns in order:
+   • Backlog
+   • In Progress
+   • Blocked
+   • Done
+ - Without these lists, task creation will fail!
 
 # 4. Configure and start Marcus
 cp config_marcus.example.json config_marcus.json
@@ -121,17 +82,10 @@ claude mcp add --transport http marcus http://localhost:4298
 
 **Copy the [Agent System Prompt](https://raw.githubusercontent.com/lwgray/marcus/main/prompts/Agent_prompt.md) to your AI agent:**
 
-```bash
-# Download the prompt
-curl https://raw.githubusercontent.com/lwgray/marcus/main/prompts/Agent_prompt.md
-
-# Or view it at: https://github.com/lwgray/marcus/blob/main/prompts/Agent_prompt.md
-# Then copy and paste into your agent's system prompt configuration
-```
 
 **For Claude Code users:**
 1. Copy the contents from [prompts/Agent_prompt.md](prompts/Agent_prompt.md)
-2. Add to your Claude Code configuration as a system prompt
+2. Add to your Claude Code configuration as a CLAUDE.md file
 
 **What this enables:**
 - ✅ Autonomous work loop (register → request → work → report → repeat)
@@ -150,7 +104,7 @@ curl https://raw.githubusercontent.com/lwgray/marcus/main/prompts/Agent_prompt.m
 
 # The agent will automatically:
 # 1. Register with Marcus
-# 2. Create a GitHub project board from your description
+# 2. Create Tasks onto the Planka board from your description
 # 3. Request and work on tasks continuously
 # 4. Report progress as it goes
 # 5. Keep working until all tasks are done
