@@ -13,33 +13,6 @@ FILE_MANAGEMENT:
   - Always Make sure all tests pass and you have 80% coverage
   - Always fix the mypy errors for your code changes
 
-  DOCUMENTATION_PLACEMENT_RULES:
-  When creating or updating documentation:
-  1. Determine audience FIRST:
-     - End users → /docs/user-guide/
-     - Developers → /docs/developer-guide/
-     - DevOps/Operations → /docs/operations-guide/
-     - Internal only → /docs/archive/
-
-  2. Choose correct subdirectory:
-     - Step-by-step guides → how-to/
-     - Concepts/explanations → concepts/
-     - Reference/config → reference/
-     - Technical architecture → developer-guide/sphinx/
-
-  3. Follow patterns:
-     - Check if docs already exist (update rather than duplicate)
-     - Use kebab-case filenames: feature-name.md
-     - Be descriptive: setup-github-integration.md not github.md
-     - Match style of existing docs in that section
-
-  4. Examples:
-     - "How to use X" → /docs/user-guide/how-to/use-x.md
-     - "X API Reference" → /docs/developer-guide/x-api.md
-     - "Deploy on Y" → /docs/operations-guide/setup/deploy-y.md
-     - "X Architecture" → /docs/developer-guide/sphinx/source/developer/x-architecture.md
-
-  Each directory has a README.md explaining what belongs there. When in doubt, check /docs/README.md for structure.
 
   TEST_WRITING_INSTRUCTIONS:
   When writing tests for Marcus, follow this systematic approach:

@@ -1,10 +1,13 @@
 {
-  "project_id": "1533678301472621705",
-  "board_id": "1555328385134101659",
-  "project_name": "Task Master Test",
+  "project_id": "1555318548920796226",
+  "board_id": "1555320228445946953",
+  "project_name": "Marcus Todo Demo",
+  "board_name": "Marcus Todo Demo",
   "auto_find_board": false,
+  "single_project_mode": true,
   "kanban": {
-    "provider": "planka"
+    "provider": "planka",
+    "board_name": "Marcus Todo Demo"
   },
   "planka": {
     "base_url": "http://localhost:3333",
@@ -14,12 +17,9 @@
   "ai": {
     "provider": "local",
     "enabled": true,
-    "local_model": "deepseek-coder:6.7b",
+    "local_model": "CodeLlama:34b-instruct",
     "local_url": "http://localhost:11434/v1",
-    "local_key": "none",
-    "anthropic_api_key": "",
-    "openai_api_key": "",
-    "model": "claude-3-sonnet-20240229"
+    "local_key": "none"
   },
   "github": {
     "token": "",
@@ -46,5 +46,61 @@
     "cache_ttl_hours": 24,
     "require_component_match": true,
     "max_dependency_chain_length": 10
+  },
+  "task_lease": {
+    "default_hours": 2.0,
+    "max_renewals": 10,
+    "warning_hours": 0.5,
+    "grace_period_minutes": 30,
+    "renewal_decay_factor": 0.9,
+    "min_lease_hours": 1.0,
+    "max_lease_hours": 24.0,
+    "stuck_threshold_renewals": 5,
+    "enable_adaptive": true,
+    "priority_multipliers": {
+      "critical": 0.5,
+      "high": 0.75,
+      "medium": 1.0,
+      "low": 1.5
+    },
+    "complexity_multipliers": {
+      "simple": 0.5,
+      "complex": 1.5,
+      "research": 2.0,
+      "epic": 3.0
+    }
+  },
+  "board_health": {
+    "stale_task_days": 7,
+    "max_tasks_per_agent": 3
+  },
+  "transport": {
+    "type": "http",
+    "http": {
+      "host": "0.0.0.0",
+      "port": 4298,
+      "path": "/mcp",
+      "log_level": "info"
+    }
+  },
+  "multi_endpoint": {
+    "human": {
+      "port": 4298,
+      "host": "0.0.0.0",
+      "path": "/mcp",
+      "enabled": true
+    },
+    "agent": {
+      "port": 4299,
+      "host": "0.0.0.0",
+      "path": "/mcp",
+      "enabled": true
+    },
+    "analytics": {
+      "port": 4300,
+      "host": "0.0.0.0",
+      "path": "/mcp",
+      "enabled": true
+    }
   }
 }
