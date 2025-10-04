@@ -1,36 +1,23 @@
-# Marcus Configuration Guide
+# Marcus Configuration Reference
 
-## Quick Reference
+> **📖 See Also:**
+> - [Local Development](local-development.md) - First-time setup and directory structure
+> - [Development Workflow](development-workflow.md) - Daily development workflows
 
-### Choosing Configuration Files
+This is a comprehensive reference for all Marcus configuration options. For setup guides and workflows, see the linked documents above.
 
-Marcus supports multiple configuration files for different setups. Use `MARCUS_CONFIG` to select which one to use:
+---
+
+## Quick Start
+
+### Basic Configuration
 
 ```bash
-# Default: config_marcus.json
-docker-compose up -d
-
-# Use Anthropic/Claude setup
+# 1. Choose a config file (optional - defaults to config_marcus.json)
 MARCUS_CONFIG=config_marcus.json.anthropic docker-compose up -d
 
-# Use GitHub Projects setup
-MARCUS_CONFIG=config_marcus.json.github docker-compose up -d
-
-# Use custom config
-MARCUS_CONFIG=my_custom_config.json docker-compose up -d
-```
-
-### Persistent Configuration
-
-Create a `.env` file in the Marcus directory for persistent configuration:
-
-```bash
-# .env file
-MARCUS_CONFIG=config_marcus.json.anthropic
-```
-
-Then just run:
-```bash
+# 2. Or create .env for persistent configuration
+echo "MARCUS_CONFIG=config_marcus.json.anthropic" > .env
 docker-compose up -d
 ```
 
@@ -139,14 +126,14 @@ MARCUS_AI_MODEL=claude-3-opus docker-compose up -d
     "planka": {
       "base_url": "http://localhost:3333",
       "email": "demo@demo.demo",
-      "password": "demo",
+      "password": "demo",  // pragma: allowlist secret
       "project_id": "your-project-uuid",
       "board_id": "your-board-uuid"
     }
   },
   "ai": {
     "provider": "anthropic",
-    "anthropic_api_key": "sk-ant-...",
+    "anthropic_api_key": "sk-ant-...",  // pragma: allowlist secret
     "model": "claude-3-sonnet-20241022",
     "enabled": true
   },
@@ -163,7 +150,7 @@ MARCUS_AI_MODEL=claude-3-opus docker-compose up -d
 
 ---
 
-## Common Scenarios
+## Common Configuration Patterns
 
 ### Switching Between Providers
 
@@ -189,46 +176,17 @@ docker-compose up -d
 
 ### Multiple Marcus Instances
 
-To run multiple Marcus instances, create separate docker-compose files or use different ports:
-
 ```bash
-# Edit docker-compose.yml to use different ports and configs
-# Then run multiple instances:
-
 # Instance 1: Personal projects (port 4298)
 MARCUS_CONFIG=config_personal.json docker-compose -p marcus-personal up -d
 
-# Instance 2: Work projects (port 4299 - requires changing docker-compose.yml)
+# Instance 2: Work projects (requires changing port in docker-compose.yml)
 MARCUS_CONFIG=config_work.json docker-compose -p marcus-work -f docker-compose-work.yml up -d
 ```
 
 ---
 
-## Troubleshooting
-
-### "Config file not found"
-- Check `MARCUS_CONFIG` points to correct path
-- Ensure file exists and is mounted in Docker
-- Default path is `config_marcus.json` in working directory
-
-### "API key not configured"
-- Set via environment variable OR config file
-- Environment variables override config file
-- Check variable name matches your AI provider
-
-### "Board ID not found"
-- Get board ID from Planka/GitHub URL
-- Format: UUID for Planka, number for GitHub
-- Must exist before starting Marcus
-
-### "Provider not supported"
-- Valid providers: `planka`, `github`, `linear`
-- Check spelling in config file
-- Case-sensitive!
-
----
-
-## Best Practices
+## Configuration Best Practices
 
 1. **Use environment variables for secrets** (API keys, tokens)
 2. **Use config files for structure** (board IDs, model names)
@@ -240,6 +198,7 @@ MARCUS_CONFIG=config_work.json docker-compose -p marcus-work -f docker-compose-w
 
 ## See Also
 
-- [Docker Quickstart](../DOCKER_QUICKSTART.md)
-- [Agent Workflow Guide](source/guides/agent-workflows/agent-workflow.md)
-- [API Reference](source/api/index.md)
+- [Local Development](local-development.md) - Setup and troubleshooting
+- [Development Workflow](development-workflow.md) - Daily workflows
+- [Docker Quickstart](../../DOCKER_QUICKSTART.md) - Docker setup
+- [Agent Workflow Guide](../guides/agent-workflows/agent-workflow.md)

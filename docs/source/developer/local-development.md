@@ -1,15 +1,21 @@
-# Local Development Guide
+# Local Development Setup
 
-This guide explains how to develop Marcus locally (outside Docker) while also being able to test in Docker.
+> **📖 See Also:**
+> - [Configuration Reference](configuration.md) - All configuration options
+> - [Development Workflow](development-workflow.md) - Daily development workflows
 
-## The Problem
+This guide covers first-time setup for developing Marcus locally (outside Docker).
 
-Marcus references kanban-mcp differently depending on where it runs:
+---
 
-- **In Docker:** `/app/kanban-mcp/dist/index.js` (built into container)
-- **Locally:** Depends on where you cloned it
+## Overview
 
-This means you need a flexible way to handle both scenarios.
+Marcus can run in two environments:
+
+- **In Docker:** Uses `/app/kanban-mcp/dist/index.js` (built into container)
+- **Locally:** Auto-detects kanban-mcp in sibling directory
+
+This guide focuses on setting up the recommended local development environment.
 
 ## Quick Setup (Recommended)
 
@@ -328,6 +334,8 @@ docker compose logs -f
 
 ## Troubleshooting
 
+> **💡 For Docker-specific issues, see [Development Workflow](development-workflow.md#troubleshooting)**
+
 ### "Could not find kanban-mcp"
 
 **Check directory structure:**
@@ -339,27 +347,25 @@ ls ~/projects/
 **Check kanban-mcp is built:**
 ```bash
 ls ~/projects/kanban-mcp/dist/index.js
-# Should exist
-
-# If not, build it:
+# Should exist - if not:
 cd ~/projects/kanban-mcp
 npm run build
 ```
 
-**Set environment variable:**
+**Or set custom path:**
 ```bash
-export KANBAN_MCP_PATH="$(pwd)/../kanban-mcp/dist/index.js"
+export KANBAN_MCP_PATH="/custom/path/to/kanban-mcp/dist/index.js"
 ./marcus start
 ```
 
 ### "Module not found" errors
 
 ```bash
-# Make sure dependencies are installed
+# Install dependencies
 pip install -r requirements.txt
 
-# Check Python version
-python --version  # Should be 3.11+
+# Check Python version (requires 3.11+)
+python --version
 ```
 
 ### Marcus won't start
@@ -368,43 +374,21 @@ python --version  # Should be 3.11+
 # Check if already running
 ./marcus status
 
-# Stop if running
-./marcus stop
-
-# Check Planka is running
+# Ensure Planka is running
 docker compose ps
-
-# Start Planka if needed
 docker compose up -d postgres planka
 
-# Try starting Marcus again
+# Restart Marcus
+./marcus stop
 ./marcus start
 
-# View detailed logs
+# View logs
 ./marcus logs
 ```
 
-### Changes not reflecting
+### Configuration Issues
 
-**For Marcus changes:**
-```bash
-./marcus stop
-./marcus start
-```
-
-**For kanban-mcp changes:**
-```bash
-cd ~/projects/kanban-mcp
-npm run build
-cd ~/projects/marcus
-./marcus stop
-./marcus start
-```
-
-**For Docker:**
-```bash
-docker compose restart marcus
-```
+See [Configuration Reference](configuration.md) for all configuration options and troubleshooting.
 
 ## Best Practices
 

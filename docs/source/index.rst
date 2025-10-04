@@ -149,6 +149,15 @@ Here's how an agent works with Marcus:
 .. toctree::
    :hidden:
    :maxdepth: 1
+   :caption: Developer Guide
+
+   developer/local-development
+   developer/development-workflow
+   developer/configuration
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
    :caption: API Reference
 
    api/index

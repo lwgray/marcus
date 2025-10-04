@@ -1,6 +1,12 @@
 # Development Workflow Guide
 
-This guide explains what to do when you make changes to Marcus code during development.
+> **📖 See Also:**
+> - [Local Development](local-development.md) - First-time setup and directory structure
+> - [Configuration Reference](configuration.md) - All configuration options
+
+This guide covers daily development workflows for making changes to Marcus code.
+
+---
 
 ## Quick Reference
 
@@ -92,7 +98,9 @@ docker compose up -d marcus
 
 ## Development Mode (Hot Reload)
 
-For active development, mount your local code as a volume to avoid rebuilds:
+> **💡 For local development setup (outside Docker), see [Local Development](local-development.md)**
+
+For Docker-based development with hot reload, mount code as a volume:
 
 ### Create `docker-compose.dev.yml`:
 
@@ -102,11 +110,8 @@ version: "3.8"
 services:
   marcus:
     volumes:
-      # Mount local code for hot reload
       - ./src:/app/src:ro
       - ./config_marcus.json:/app/config_marcus.json
-
-      # Mount local kanban-mcp for development
       - ../kanban-mcp:/app/kanban-mcp:ro
 
     # Auto-restart on code changes (optional)
@@ -119,51 +124,22 @@ services:
 ### Use it:
 
 ```bash
-# Start with dev overrides
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
-
-# Now code changes reload automatically
-# Edit src/... and see changes without restart
+# Code changes reload automatically
 ```
 
-**Benefits:**
-- No rebuilds needed for code changes
-- Faster iteration
-- Changes reflect immediately
-
-**Drawbacks:**
-- Slightly different from production
-- Auto-restart can be flaky
-- Don't use for production
+**Note:** For faster iteration, consider running Marcus locally instead. See [Local Development](local-development.md#daily-workflow).
 
 ## Testing Workflow
 
-### Local Testing (Outside Docker)
+### Run Tests
 
 ```bash
-# 1. Install dependencies locally
-pip install -r requirements.txt
-
-# 2. Set up environment
-export PLANKA_BASE_URL=http://localhost:3333
-export PLANKA_AGENT_EMAIL=demo@demo.demo
-export PLANKA_AGENT_PASSWORD=demo
-
-# 3. Run tests
-pytest tests/
-
-# 4. Run Marcus locally
-python -m src.marcus_mcp.server
-```
-
-### Testing in Docker
-
-```bash
-# Run tests inside container
+# In Docker
 docker compose exec marcus pytest tests/
 
-# Or run one-off test container
-docker compose run --rm marcus pytest tests/unit/
+# Locally (see Local Development guide for setup)
+pytest tests/
 ```
 
 ## Common Development Tasks
@@ -268,47 +244,28 @@ docker compose restart marcus
 
 ## Best Practices
 
-### 1. Use Git Branches for Features
+### 1. Test Before Committing
 
 ```bash
-git checkout -b feature/new-feature
-# Make changes
-docker compose restart marcus
-# Test
-git commit -am "feat: add new feature"
+pytest tests/                        # Run tests
+pre-commit run --all-files          # Check linting
+docker compose restart marcus       # Test in Docker
 ```
 
-### 2. Test Before Committing
+### 2. Keep Docker Clean
 
 ```bash
-# Run tests
-pytest tests/
-
-# Check linting
-pre-commit run --all-files
-
-# Test in Docker
-docker compose restart marcus
-# Verify it works
+docker image prune -a               # Remove unused images
+docker volume prune                 # Remove unused volumes
 ```
 
-### 3. Keep Images Clean
+### 3. Document Changes
 
-```bash
-# Remove unused images periodically
-docker image prune -a
-
-# Remove unused volumes
-docker volume prune
-```
-
-### 4. Document Your Changes
-
-When you add features:
 1. Update relevant docs
 2. Add tests
 3. Update CHANGELOG.md
-4. Consider updating examples
+
+> **For configuration changes, update [Configuration Reference](configuration.md)**
 
 ## Quick Decision Tree
 
