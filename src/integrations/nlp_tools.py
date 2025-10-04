@@ -910,6 +910,11 @@ async def create_project_from_natural_language(
                 f"Mode 'new_project' - forcing new project creation "
                 f"for '{project_name}'"
             )
+            # Clear any stale project/board IDs to force new creation
+            if state.kanban_client:
+                state.kanban_client.project_id = None
+                state.kanban_client.board_id = None
+                logger.debug("Cleared stale project/board IDs to force new creation")
             # Continue to auto-creation below
 
         # Otherwise, search for existing projects by name

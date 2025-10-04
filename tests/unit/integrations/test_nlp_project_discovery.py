@@ -157,6 +157,62 @@ class TestCreateProjectWithDiscovery:
             mock_state.project_manager.switch_project.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_create_project_with_mode_new_project_clears_stale_config_ids(
+        self, mock_state
+    ):
+        """Test mode=new_project creates new project even with stale config IDs"""
+        from src.integrations.nlp_tools import create_project_from_natural_language
+
+        # Arrange - kanban_client has stale IDs from config (non-existent board)
+        mock_state.kanban_client.project_id = "stale-project-999"
+        mock_state.kanban_client.board_id = "1555320228445946953"  # stale board ID
+
+        # Mock auto_setup_project to return new IDs
+        mock_state.kanban_client.auto_setup_project = AsyncMock(
+            return_value={"project_id": "new-proj-123", "board_id": "new-board-456"}
+        )
+
+        with (
+            patch(
+                "src.integrations.nlp_tools.NaturalLanguageProjectCreator"
+            ) as MockCreator,
+            patch("src.integrations.nlp_tools.ProjectAutoSetup") as MockAutoSetup,
+        ):
+            mock_creator = MockCreator.return_value
+            mock_creator.create_project_from_description = AsyncMock(
+                return_value={"success": True, "tasks_created": 5}
+            )
+
+            mock_auto_setup = MockAutoSetup.return_value
+            mock_auto_setup.setup_new_project = AsyncMock(
+                return_value=Mock(
+                    name="NewProject",
+                    provider="planka",
+                    provider_config={
+                        "project_id": "new-proj-123",
+                        "board_id": "new-board-456",
+                    },
+                )
+            )
+
+            # Act - force new project creation with mode=new_project
+            result = await create_project_from_natural_language(
+                description="Build a notification system",
+                project_name="Real-Time Notification System",
+                state=mock_state,
+                options={"mode": "new_project"},
+            )
+
+            # Assert
+            assert result["success"] is True
+            # Should call auto_setup to create new project/board
+            mock_auto_setup.setup_new_project.assert_called_once()
+            # Should register the new project
+            mock_state.project_registry.add_project.assert_called_once()
+            # Should switch to the new project
+            mock_state.project_manager.switch_project.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_create_project_with_fuzzy_match_suggests_projects(
         self, mock_state, sample_existing_project
     ):
