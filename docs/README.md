@@ -59,6 +59,15 @@ Complete agent lifecycle from registration to task completion.
 
 **Best for**: Agents, agent developers, understanding coordination
 
+#### [Developer Guide](source/developer/)
+Setup and workflows for contributing to Marcus.
+
+- **[Local Development Setup](source/developer/local-development.md)** - First-time setup and directory structure
+- **[Development Workflow](source/developer/development-workflow.md)** - Daily workflows (restart, rebuild, test)
+- **[Configuration Reference](source/developer/configuration.md)** - All environment variables and config options
+
+**Best for**: Contributors, developers extending Marcus
+
 #### [Project Management](guides/project-management/)
 Create, monitor, and optimize projects.
 
@@ -165,9 +174,11 @@ Deep-dive topics for power users.
 
 ### **Contributor Path**
 1. Read [Introduction](getting-started/introduction.md) - Philosophy
-2. Review [Systems Documentation](systems/) - Architecture
-3. Check [Roadmap](roadmap/) - Contribution areas
-4. See GitHub issues and discussions - Active work
+2. Set up [Local Development](source/developer/local-development.md) - Development environment
+3. Learn [Development Workflow](source/developer/development-workflow.md) - Daily workflows
+4. Review [Systems Documentation](systems/) - Architecture
+5. Check [Roadmap](roadmap/) - Contribution areas
+6. See GitHub issues and discussions - Active work
 
 ---
 

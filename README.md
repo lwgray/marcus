@@ -179,14 +179,18 @@ Built by developers, for developers. We're focused on making software creation a
 
 ## 🤝 **Contributing**
 
-Marcus is open source and we need your help! Priority areas:
+> **📖 Developer guides:**
+> - [Local Development Setup](docs/source/developer/local-development.md) - First-time setup
+> - [Development Workflow](docs/source/developer/development-workflow.md) - Daily workflows
 
-### **Most Needed**
-1. **Kanban Provider Integrations** - Add support for Jira, Trello, Linear, etc.
-2. **Documentation** - Tutorials, use cases, and examples
+Marcus is open source and we need your help!
+
+### **Priority Areas**
+1. **Kanban Provider Integrations** - Add Jira, Trello, Linear support
+2. **Documentation** - Tutorials, use cases, examples
 3. **Use Case Definitions** - Show what Marcus can build
 
-### **Getting Started**
+### **Quick Start**
 ```bash
 # Fork and clone
 git clone https://github.com/YOUR_USERNAME/marcus.git
@@ -197,67 +201,67 @@ pip install -r requirements-dev.txt
 
 # Run tests
 pytest tests/
-
-# Submit PR with your contribution
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [Local Development Setup](docs/source/developer/local-development.md) for detailed guidelines.
 
 ---
 
 ## ⚙️ **Configuration**
 
-Marcus needs a few settings to work. You can provide them via:
+> **📖 Full reference:** [Configuration Guide](docs/CONFIGURATION.md)
 
-1. **Environment variables** (recommended for Docker):
-   - `MARCUS_KANBAN_PROVIDER=github` - Use GitHub Projects
-   - `MARCUS_KANBAN_GITHUB_TOKEN` - Your GitHub personal access token
-   - `MARCUS_KANBAN_GITHUB_OWNER` - Your GitHub username/organization
-   - `MARCUS_KANBAN_GITHUB_REPO` - Repository name
-   - `MARCUS_AI_ANTHROPIC_API_KEY` - For Claude models
-   - `MARCUS_AI_OPENAI_API_KEY` - For GPT models (alternative)
+Marcus supports multiple configuration methods:
 
-2. **Config file** (`config_marcus.json`):
-   ```json
-   {
-     "kanban": {
-       "provider": "github",
-       "github": {
-         "token": "ghp_...",
-         "owner": "your_username",
-         "repo": "your_repo"
-       }
-     },
-     "ai": {
-       "provider": "anthropic",
-       "anthropic_api_key": "sk-ant-...",
-       "model": "claude-3-sonnet-20240229"
-     }
-   }
-   ```
+**Quick config via environment variables:**
+```bash
+MARCUS_KANBAN_PROVIDER=github \
+MARCUS_KANBAN_GITHUB_TOKEN=ghp_... \
+MARCUS_KANBAN_GITHUB_OWNER=your_username \
+MARCUS_KANBAN_GITHUB_REPO=your_repo \
+MARCUS_AI_ANTHROPIC_API_KEY=sk-ant-... \
+docker-compose up -d
+```
 
-See [config_marcus.local.example.json](config_marcus.local.example.json) for all configuration options.
+**Or use a config file:**
+```bash
+# Use default config
+cp config_marcus.example.json config_marcus.json
+# Edit with your settings
+docker-compose up -d
+
+# Or select a specific config
+MARCUS_CONFIG=config_marcus.json.anthropic docker-compose up -d
+```
+
+See the [Configuration Reference](docs/source/developer/configuration.md) for all available options.
 
 ---
 
 ## 📚 **Documentation**
 
 ### **Getting Started**
-- **[Agent System Prompt](prompts/Agent_prompt.md)** - The complete prompt to configure your AI agent
-- **[Agent Workflow Guide](docs/source/guides/agent-workflows/agent-workflow.md)** - How agents interact with Marcus
-- **[Quick Start](docs/README.md)** - Comprehensive getting started guide
+- **[Quick Start](docs/source/getting-started/quickstart.md)** - Get Marcus running in 5 minutes
+- **[Docker Quickstart](DOCKER_QUICKSTART.md)** - Complete Docker setup guide
+- **[Agent System Prompt](prompts/Agent_prompt.md)** - Configure your AI agent
+- **[Core Concepts](docs/source/getting-started/core-concepts.md)** - Understand Marcus fundamentals
 
-### **Agent Workflow Deep Dives**
-- **[Registration](docs/source/guides/agent-workflows/registration.md)** - How agents register with Marcus
-- **[Requesting Tasks](docs/source/guides/agent-workflows/requesting-tasks.md)** - Task assignment flow
-- **[Getting Context](docs/source/guides/agent-workflows/getting-context.md)** - Understanding task dependencies
+### **Development**
+- **[Local Development Setup](docs/source/developer/local-development.md)** - First-time setup and directory structure
+- **[Development Workflow](docs/source/developer/development-workflow.md)** - Daily development workflows (restart, rebuild, test)
+- **[Configuration Reference](docs/source/developer/configuration.md)** - All environment variables and config options
+
+### **Agent Workflows**
+- **[Agent Workflow Guide](docs/source/guides/agent-workflows/agent-workflow.md)** - How agents interact with Marcus
+- **[Registration](docs/source/guides/agent-workflows/registration.md)** - How agents register
+- **[Requesting Tasks](docs/source/guides/agent-workflows/requesting-tasks.md)** - Task assignment
+- **[Getting Context](docs/source/guides/agent-workflows/getting-context.md)** - Task dependencies
 - **[Reporting Progress](docs/source/guides/agent-workflows/reporting-progress.md)** - Progress tracking
 - **[Handling Blockers](docs/source/guides/agent-workflows/handling-blockers.md)** - Error recovery
-- **[Checking Dependencies](docs/source/guides/agent-workflows/checking-dependencies.md)** - Dependency management
 
 ### **Full Documentation**
-- **[Complete Documentation](https://marcus.readthedocs.io/)** - Full Sphinx documentation (when published)
-- **[Docker Hub Publishing Guide](DOCKER_HUB_PUBLISHING.md)** - How to publish Marcus images
+- **[Complete Documentation](https://marcus.readthedocs.io/)** - Full Sphinx docs (when published)
+- **[Docker Hub Publishing](DOCKER_HUB_PUBLISHING.md)** - Publishing Marcus images
 
 ---
 
