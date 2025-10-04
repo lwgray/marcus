@@ -77,15 +77,22 @@ class KanbanClient:
         self._load_config()
 
         # If config didn't have IDs, try loading from workspace state
-        if (self.project_id is None) or (self.board_id is None):
+        workspace_state = None
+        if self.project_id is None:
             workspace_state = self._load_workspace_state()
             if workspace_state:
                 self.project_id = workspace_state.get("project_id")
+        if self.board_id is None:
+            if workspace_state is None:
+                workspace_state = self._load_workspace_state()
+            if workspace_state:
                 self.board_id = workspace_state.get("board_id")
-                logger.info(
-                    "Loaded project_id and board_id from workspace state: "
-                    f"project={self.project_id}, board={self.board_id}"
-                )
+
+        if workspace_state:
+            logger.info(
+                "Loaded project_id and board_id from workspace state: "
+                f"project={self.project_id}, board={self.board_id}"
+            )
 
         # Set environment for Planka from .env or use defaults
         # (only if not already set by config)
@@ -95,6 +102,104 @@ class KanbanClient:
             os.environ["PLANKA_AGENT_EMAIL"] = "demo@demo.demo"
         if "PLANKA_AGENT_PASSWORD" not in os.environ:
             os.environ["PLANKA_AGENT_PASSWORD"] = "demo"  # nosec B105
+
+    def _is_running_in_docker(self) -> bool:
+        """
+        Detect if Marcus is running inside a Docker container.
+
+        Returns
+        -------
+        bool
+            True if running in Docker, False otherwise
+
+        Notes
+        -----
+        Checks for common Docker environment indicators:
+        - /.dockerenv file exists
+        - Running on Alpine Linux (common in Docker)
+        - Container-specific cgroup entries
+        """
+        from pathlib import Path
+
+        # Check 1: /.dockerenv file (most reliable)
+        if Path("/.dockerenv").exists():
+            return True
+
+        # Check 2: Check cgroup for docker/containerd
+        try:
+            if Path("/proc/1/cgroup").exists():
+                with open("/proc/1/cgroup", "r") as f:
+                    content = f.read()
+                    if "docker" in content or "containerd" in content:
+                        return True
+        except Exception:
+            pass  # nosec B110 - Intentional fallback for environment detection
+
+        # Check 3: Check if hostname is a container ID (12 char hex)
+        try:
+            import socket
+
+            hostname = socket.gethostname()
+            # Docker container hostnames are typically 12 character hex strings
+            if len(hostname) == 12 and all(c in "0123456789abcdef" for c in hostname):
+                return True
+        except Exception:
+            pass  # nosec B110 - Intentional fallback for environment detection
+
+        return False
+
+    def _adjust_planka_url_for_environment(self, base_url: str) -> str:
+        """
+        Adjust Planka base URL based on environment (Docker vs local).
+
+        If running in Docker, use Docker service names (planka:1337).
+        If running locally, convert to localhost.
+
+        Parameters
+        ----------
+        base_url : str
+            Base URL from config (e.g., "http://planka:1337")
+
+        Returns
+        -------
+        str
+            Adjusted URL appropriate for current environment
+
+        Examples
+        --------
+        >>> # In Docker
+        >>> client._adjust_planka_url_for_environment("http://planka:1337")
+        'http://planka:1337'
+
+        >>> # Locally
+        >>> client._adjust_planka_url_for_environment("http://planka:1337")
+        'http://localhost:3333'
+        """
+        in_docker = self._is_running_in_docker()
+
+        # If in Docker, keep the URL as-is (use service names)
+        if in_docker:
+            logger.info(f"Running in Docker - using Planka URL as-is: {base_url}")
+            return base_url
+
+        # If local, convert Docker service names to localhost
+        # Handle common patterns:
+        # - http://planka:1337 -> http://localhost:3333
+        # - http://planka -> http://localhost:3333
+        if "planka:" in base_url or base_url.endswith("planka"):
+            # Extract protocol
+            if base_url.startswith("https://"):
+                local_url = "https://localhost:3333"
+            else:
+                local_url = "http://localhost:3333"
+            logger.info(
+                f"Running locally - converted Planka URL: {base_url} -> {local_url}"
+            )
+            return local_url
+
+        # If it's already localhost or an IP, keep it
+        logger.info(f"Using Planka URL from config: {base_url}")
+        return base_url
 
     def _get_kanban_mcp_path(self) -> str:
         """
@@ -119,13 +224,17 @@ class KanbanClient:
 
         # 1. Check environment variable (highest priority)
         if env_path := os.getenv("KANBAN_MCP_PATH"):
-            env_path_obj = Path(env_path)
+            # Expand ~ and environment variables
+            env_path_obj = Path(env_path).expanduser()
             if env_path_obj.exists():
-                logger.info(f"Using kanban-mcp from KANBAN_MCP_PATH: {env_path}")
-                return env_path
+                logger.info(
+                    f"Using kanban-mcp from KANBAN_MCP_PATH: " f"{env_path_obj}"
+                )
+                return str(env_path_obj)
             else:
                 logger.warning(
-                    f"KANBAN_MCP_PATH set to {env_path} but file doesn't exist"
+                    f"KANBAN_MCP_PATH set to {env_path} but file "
+                    f"doesn't exist at {env_path_obj}"
                 )
 
         # 2. Check Docker path
@@ -198,7 +307,10 @@ class KanbanClient:
                 # Load Planka credentials from config if available
                 planka_config = config.get("planka", {})
                 if planka_config.get("base_url"):
-                    os.environ["PLANKA_BASE_URL"] = planka_config["base_url"]
+                    # Auto-adjust base_url based on environment
+                    base_url = planka_config["base_url"]
+                    base_url = self._adjust_planka_url_for_environment(base_url)
+                    os.environ["PLANKA_BASE_URL"] = base_url
                 if planka_config.get("email"):
                     os.environ["PLANKA_AGENT_EMAIL"] = planka_config["email"]
                 if planka_config.get("password"):
@@ -355,8 +467,9 @@ class KanbanClient:
 
                 # Now filter for available tasks (after dependency resolution)
                 tasks = []
+                # Only include tasks in TODO status that aren't assigned
                 for task in all_tasks:
-                    if not task.assigned_to and self._is_available_task(task):
+                    if not task.assigned_to and task.status == TaskStatus.TODO:
                         tasks.append(task)
 
                 return tasks

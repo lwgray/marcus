@@ -10,10 +10,17 @@ This guide covers first-time setup for developing Marcus locally (outside Docker
 
 ## Overview
 
-Marcus can run in two environments:
+Marcus can run in two environments and **auto-detects** which one you're using:
 
-- **In Docker:** Uses `/app/kanban-mcp/dist/index.js` (built into container)
-- **Locally:** Auto-detects kanban-mcp in sibling directory
+| Environment | kanban-mcp Path | Planka URL |
+|-------------|----------------|------------|
+| **Docker** | `/app/kanban-mcp/dist/index.js` | `http://planka:1337` |
+| **Local** | `../kanban-mcp/dist/index.js` (sibling) | `http://localhost:3333` |
+
+**Auto-Detection Features:**
+- ✅ Automatically finds kanban-mcp in sibling directory when running locally
+- ✅ Auto-converts `planka:1337` → `localhost:3333` when not in Docker
+- ✅ Same `config_marcus.json` works in both environments!
 
 This guide focuses on setting up the recommended local development environment.
 
@@ -171,39 +178,41 @@ docker compose up -d postgres planka
 
 ## The Technical Details
 
-### How Path Detection Works
+### How Auto-Detection Works
 
-Marcus should use this logic (needs to be implemented in `kanban_client.py`):
+#### 1. Environment Detection
+
+Marcus detects if it's running in Docker by checking:
+- `/.dockerenv` file exists
+- `/proc/1/cgroup` contains "docker" or "containerd"
+- Hostname is a 12-character hex string (typical Docker container ID)
+
+#### 2. kanban-mcp Path Detection
+
+Priority order:
+1. **`KANBAN_MCP_PATH` environment variable** (highest priority)
+   - Supports `~` expansion (e.g., `~/dev/kanban-mcp/dist/index.js`)
+2. **Docker path**: `/app/kanban-mcp/dist/index.js`
+3. **Sibling directory**: `../kanban-mcp/dist/index.js` (relative to Marcus root)
+
+#### 3. Planka URL Auto-Adjustment
+
+Marcus automatically adjusts the Planka URL based on environment:
 
 ```python
-def _get_kanban_mcp_path(self):
-    """Find kanban-mcp automatically."""
-    from pathlib import Path
+# Config has: "base_url": "http://planka:1337"
 
-    # 1. Environment variable (highest priority)
-    if env_path := os.getenv("KANBAN_MCP_PATH"):
-        if Path(env_path).exists():
-            return env_path
+# In Docker:     Uses http://planka:1337 (Docker service name)
+# Running Locally: Converts to http://localhost:3333
 
-    # 2. Docker path
-    docker_path = Path("/app/kanban-mcp/dist/index.js")
-    if docker_path.exists():
-        return str(docker_path)
-
-    # 3. Sibling directory (../kanban-mcp relative to marcus/)
-    marcus_root = Path(__file__).parent.parent.parent
-    sibling_path = marcus_root.parent / "kanban-mcp" / "dist" / "index.js"
-    if sibling_path.exists():
-        return str(sibling_path)
-
-    # 4. Give helpful error
-    raise FileNotFoundError(
-        "Could not find kanban-mcp. Please either:\n"
-        f"  1. Set KANBAN_MCP_PATH environment variable\n"
-        f"  2. Clone kanban-mcp as sibling directory\n"
-        f"  3. Run in Docker (uses /app/kanban-mcp)"
-    )
+# This means the SAME config_marcus.json works in both environments!
 ```
+
+**Supported conversions:**
+- `http://planka:1337` → `http://localhost:3333` (when local)
+- `http://planka` → `http://localhost:3333` (when local)
+- `http://localhost:3333` → kept as-is
+- Custom IPs/domains → kept as-is
 
 ### Why Sibling Directories?
 
