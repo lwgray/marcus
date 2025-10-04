@@ -90,7 +90,66 @@ create_project(
 3. Registers it as a separate project
 4. Switches to the new project context
 
-### Scenario 4: Handling Fuzzy Matches
+### Scenario 4: Agents Working on Existing Projects (Select Project Mode)
+
+**For Autonomous Agents:** If you're an AI agent or worker that wants to work on an existing project's backlog without creating new tasks:
+
+```python
+# Step 1: List available projects
+projects = list_projects()
+
+# Step 2: Select a project to work on (NO task creation)
+result = create_project(
+    description="",  # Not required in select_project mode
+    project_name="UserAuthAPI",
+    options={"mode": "select_project"}
+)
+
+# Result:
+{
+    "success": True,
+    "action": "selected_existing",
+    "project": {
+        "id": "proj-123",
+        "name": "UserAuthAPI",
+        "provider": "planka",
+        "task_count": 15  # Existing tasks ready to work on
+    },
+    "message": "Selected project 'UserAuthAPI' - ready to work"
+}
+
+# Step 3: Now request tasks from this project
+task = request_next_task(agent_id="my-agent")
+```
+
+**What happens:**
+1. Marcus searches for "UserAuthAPI"
+2. Finds it and switches context
+3. **Does NOT create any new tasks**
+4. Returns project info with existing task count
+5. Agent can now request tasks from the backlog
+
+**Why use `select_project` mode?**
+- ✅ Agents working on existing backlogs
+- ✅ No task creation needed
+- ✅ Just switch context and start working
+- ✅ Simpler than `switch_project` (includes discovery)
+
+**Alternative: Select by ID (most reliable for agents)**
+```python
+result = create_project(
+    description="",
+    project_name="",  # Can be empty when using project_id
+    options={
+        "mode": "select_project",
+        "project_id": "proj-123"  # Exact ID
+    }
+)
+```
+
+See [examples/agent_select_project.py](../../examples/agent_select_project.py) for complete agent workflow.
+
+### Scenario 5: Handling Fuzzy Matches
 
 If Marcus finds similar (but not exact) project names, it will ask for clarification:
 
