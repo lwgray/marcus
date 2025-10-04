@@ -1,5 +1,5 @@
 """
-Natural Language MCP Tools for Marcus (Refactored)
+Natural Language MCP Tools for Marcus (Refactored).
 
 These tools expose Marcus's AI capabilities for:
 1. Creating projects from natural language descriptions
@@ -17,17 +17,22 @@ from typing import Any, Dict, List, Optional
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
-from src.ai.advanced.prd.advanced_parser import AdvancedPRDParser, ProjectConstraints
-from src.core.models import Priority, Task, TaskStatus
-from src.detection.board_analyzer import BoardAnalyzer
-from src.detection.context_detector import ContextDetector, MarcusMode
+from src.ai.advanced.prd.advanced_parser import (  # noqa: E402
+    AdvancedPRDParser,
+    ProjectConstraints,
+)
+from src.core.models import Priority, Task, TaskStatus  # noqa: E402
+from src.detection.board_analyzer import BoardAnalyzer  # noqa: E402
+from src.detection.context_detector import ContextDetector, MarcusMode  # noqa: E402
 
 # Import refactored base classes and utilities
-from src.integrations.nlp_base import NaturalLanguageTaskCreator
-from src.integrations.nlp_task_utils import (
-    TaskType,
+from src.integrations.nlp_base import NaturalLanguageTaskCreator  # noqa: E402
+from src.integrations.nlp_task_utils import TaskType  # noqa: E402
+from src.integrations.project_auto_setup import ProjectAutoSetup  # noqa: E402
+from src.marcus_mcp.tools.project_management import (  # noqa: E402
+    find_or_create_project,
 )
-from src.modes.adaptive.basic_adaptive import BasicAdaptiveMode
+from src.modes.adaptive.basic_adaptive import BasicAdaptiveMode  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +61,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         Implementation of abstract method from base class.
         """
         # Extract arguments from kwargs
-        project_name = kwargs.get("project_name")
+        project_name = kwargs.get("project_name")  # noqa: F841
         options = kwargs.get("options")
 
         # Detect context (Phase 1)
@@ -161,7 +166,10 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                     )
 
             if not tasks:
-                from src.core.error_framework import BusinessLogicError, ErrorContext
+                from src.core.error_framework import (  # noqa: F811
+                    BusinessLogicError,
+                    ErrorContext,
+                )
 
                 logger.warning("No tasks generated from natural language processing!")
 
@@ -774,6 +782,73 @@ async def create_project_from_natural_language(
         if state is None:
             raise ValueError("State parameter is required")
 
+        # Initialize options if not provided
+        if options is None:
+            options = {}
+
+        # PHASE 1: PROJECT DISCOVERY
+        # Check if user explicitly provided project_id → use existing project
+        if "project_id" in options and options["project_id"]:
+            logger.info(f"Using existing project: {options['project_id']}")
+            try:
+                # Switch to the specified project
+                await state.project_manager.switch_project(options["project_id"])
+                state.kanban_client = await state.project_manager.get_kanban_client()
+            except Exception as e:
+                project_id_val = options["project_id"]
+                return {
+                    "success": False,
+                    "error": f"Failed to switch to project {project_id_val}: {str(e)}",
+                }
+
+        # Check if mode is "new_project" → force creation (skip discovery)
+        elif options.get("mode") == "new_project":
+            logger.info(
+                f"Mode 'new_project' - forcing new project creation "
+                f"for '{project_name}'"
+            )
+            # Continue to auto-creation below
+
+        # Otherwise, search for existing projects by name
+        elif hasattr(state, "project_registry"):
+            discovery_result = await find_or_create_project(
+                server=state,
+                arguments={
+                    "project_name": project_name,
+                    "create_if_missing": False,
+                },
+            )
+
+            # Handle discovery results
+            if discovery_result["action"] == "found_existing":
+                # Exact match found - offer to use it or create new
+                logger.info(
+                    f"Found existing project '{discovery_result['project']['name']}' - "
+                    f"using it unless mode=new_project specified"
+                )
+                # Switch to existing project
+                await state.project_manager.switch_project(
+                    discovery_result["project"]["id"]
+                )
+                state.kanban_client = await state.project_manager.get_kanban_client()
+
+            elif discovery_result["action"] == "found_similar":
+                # Similar projects found - suggest to user
+                return {
+                    "success": False,
+                    "action": "found_similar",
+                    "message": discovery_result["suggestion"],
+                    "matches": discovery_result["matches"],
+                    "next_steps": discovery_result["next_steps"],
+                    "hint": (
+                        "To proceed: specify project_id in options or "
+                        "set mode='new_project' to create new"
+                    ),
+                }
+
+            # If action == "not_found", continue to auto-creation below
+
+        # PHASE 2: INITIALIZE KANBAN CLIENT
         # Initialize kanban client if needed
         if not state.kanban_client:
             try:
@@ -784,48 +859,53 @@ async def create_project_from_natural_language(
                     "error": f"Failed to initialize kanban client: {str(e)}",
                 }
 
+        # PHASE 3: AUTO-CREATE PROJECT (if needed)
         # Auto-create Planka project/board if no IDs exist
         if not state.kanban_client.project_id or not state.kanban_client.board_id:
-            # Get names from options or use defaults
-            planka_project_name = (
-                options.get("planka_project_name", project_name)
-                if options
-                else project_name
-            )
-            planka_board_name = (
-                options.get("planka_board_name", "Main Board")
-                if options
-                else "Main Board"
-            )
+            # Get provider from options or default to planka
+            provider = options.get("provider", "planka")
 
             logger.info(
-                "No project/board IDs found. Auto-creating Planka project "
-                f"'{planka_project_name}' with board '{planka_board_name}'"
+                f"No project/board IDs found. Auto-creating {provider} "
+                f"project '{project_name}'"
             )
 
             try:
-                # Check if kanban client supports auto_setup_project
-                if not hasattr(state.kanban_client, "auto_setup_project"):
-                    return {
-                        "success": False,
-                        "error": (
-                            "Kanban client does not support auto_setup_project. "
-                            "Please ensure you're using the latest KanbanClient."
-                        ),
-                    }
-
-                result = await state.kanban_client.auto_setup_project(
-                    project_name=planka_project_name, board_name=planka_board_name
+                # Use ProjectAutoSetup for provider-agnostic creation
+                auto_setup = ProjectAutoSetup()
+                project_config = await auto_setup.setup_new_project(
+                    kanban_client=state.kanban_client,
+                    provider=provider,
+                    project_name=project_name,
+                    options=options,
                 )
 
                 logger.info(
-                    f"Auto-created Planka project: {result['project_id']}, "
-                    f"board: {result['board_id']}"
+                    f"Auto-created {provider} project: "
+                    f"{project_config.provider_config}"
                 )
+
+                # Register new project in ProjectRegistry
+                if hasattr(state, "project_registry"):
+                    project_id = await state.project_registry.add_project(
+                        project_config
+                    )
+                    logger.info(f"Registered new project in registry: {project_id}")
+
+                    # Switch to new project
+                    await state.project_manager.switch_project(project_id)
+                    state.kanban_client = (
+                        await state.project_manager.get_kanban_client()
+                    )
+                else:
+                    logger.warning(
+                        "ProjectRegistry not available - project not registered"
+                    )
+
             except Exception as e:
                 return {
                     "success": False,
-                    "error": (f"Failed to auto-create Planka project/board: {str(e)}"),
+                    "error": f"Failed to auto-create {provider} project: {str(e)}",
                 }
 
         # Verify kanban client supports create_task
