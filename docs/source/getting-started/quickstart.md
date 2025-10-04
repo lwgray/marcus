@@ -6,7 +6,9 @@ Get Marcus up and running in 5 minutes.
 
 - **Docker and Docker Compose** installed and running
 - **Claude Code** or another MCP-compatible AI agent
-- **AI API Key** (Anthropic, OpenAI, or local Ollama)
+- **AI Model** - Choose one:
+  - **FREE:** Local model with Ollama (zero cost, [setup guide](setup-local-llm.md))
+  - **Paid:** Anthropic or OpenAI API key
 
 ## Setup (Two-Stage Process)
 
@@ -56,7 +58,9 @@ cp config_marcus.example.json config_marcus.json
 
 Edit `config_marcus.json` with:
 - Your project ID and board ID from Planka
-- Your Anthropic API key (or other AI provider)
+- Your AI configuration:
+  - **For paid API:** Add your Anthropic or OpenAI API key
+  - **For free local:** Set `"provider": "local"` and `"local_model": "qwen2.5-coder:7b"` (see [setup guide](setup-local-llm.md))
 
 ```bash
 # Start Marcus
@@ -245,9 +249,8 @@ Agent must call `register_agent` before requesting tasks.
 **Solution:** Create at least one list on your Planka board before creating projects.
 
 ### AI Provider Errors
-- Verify API key is correct
-- Check API key has sufficient credits
-- Try switching to local LLM: [Setup Guide](setup-local-llm.md)
+- **Paid APIs:** Verify API key is correct and has sufficient credits
+- **Alternative:** Switch to 100% free local LLM - no API costs ever! [Setup Guide](setup-local-llm.md)
 
 ## Next Steps
 

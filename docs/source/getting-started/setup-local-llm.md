@@ -13,25 +13,41 @@ Marcus supports two ways to configure local models:
 
 For Marcus's task analysis and code understanding, these models work best:
 
-1. **DeepSeek-Coder** (Recommended)
-   - Excellent for code understanding and generation
+### 🏆 Top Pick for Contributors
+
+1. **Qwen2.5-Coder** ⭐ **(Highly Recommended - Best Free Coding Model)**
+   - **Best for:** Complex software development, Marcus contribution
+   - **Quality:** Rivals GPT-4 on coding benchmarks
+   - **Sizes:** 1.5B, 7B, 14B, 32B
+   - **Best balance:** `qwen2.5-coder:7b` (runs on 8GB RAM)
+   - **Why choose this:** State-of-the-art code understanding, excellent instruction following
+   - **Released:** Late 2024, specifically optimized for software engineering tasks
+
+### Other Excellent Options
+
+2. **DeepSeek-Coder** (Also Excellent)
+   - Great for code understanding and generation
    - Sizes: 1.3B, 6.7B, 33B
    - Best balance: `deepseek-coder:6.7b`
+   - Slightly older than Qwen2.5 but still very capable
 
-2. **CodeLlama**
+3. **CodeLlama**
    - Meta's code-specialized model
    - Sizes: 7B, 13B, 34B
    - Best for Marcus: `codellama:13b`
+   - Good for smaller tasks, fast responses
 
-3. **Mixtral** (For advanced reasoning)
+4. **Mixtral** (For advanced reasoning)
    - Strong general reasoning + code
    - Size: 8x7B (requires ~48GB RAM)
    - Use: `mixtral:8x7b`
+   - Best for complex multi-step reasoning
 
-4. **Mistral** (Lightweight option)
+5. **Mistral** (Lightweight option)
    - Good general purpose model
    - Size: 7B
    - Use: `mistral:7b`
+   - Best for: Low-end hardware, fast iteration
 
 ## Quick Start with Ollama
 
@@ -47,13 +63,16 @@ curl -fsSL https://ollama.com/install.sh | sh
 ### 2. Pull a Model
 
 ```bash
-# For coding tasks (recommended)
+# Best for Marcus development (recommended)
+ollama pull qwen2.5-coder:7b
+
+# Alternative: DeepSeek-Coder (also excellent)
 ollama pull deepseek-coder:6.7b
 
-# Or CodeLlama
+# Alternative: CodeLlama
 ollama pull codellama:13b
 
-# For lighter systems
+# For lighter systems (8GB RAM minimum)
 ollama pull mistral:7b
 ```
 
@@ -68,7 +87,7 @@ Update your `config_marcus.json`:
   "ai": {
     "provider": "local",
     "enabled": true,
-    "local_model": "deepseek-coder:6.7b",
+    "local_model": "qwen2.5-coder:7b",
     "local_url": "http://localhost:11434/v1",
     "local_key": "none"
   }
@@ -83,8 +102,8 @@ Environment variables override config values:
 # Override the provider
 export MARCUS_LLM_PROVIDER=local
 
-# Override the model
-export MARCUS_LOCAL_LLM_PATH=deepseek-coder:6.7b
+# Override the model (use the best one)
+export MARCUS_LOCAL_LLM_PATH=qwen2.5-coder:7b
 
 # Override the URL (if not using default Ollama)
 export MARCUS_LOCAL_LLM_URL=http://localhost:11434/v1
@@ -122,7 +141,7 @@ Here's a full `config_marcus.json` configured for local model usage:
   "ai": {
     "provider": "local",
     "enabled": true,
-    "local_model": "deepseek-coder:6.7b",
+    "local_model": "qwen2.5-coder:7b",
     "local_url": "http://localhost:11434/v1",
     "local_key": "none",
     "anthropic_api_key": "",
@@ -234,8 +253,10 @@ export MARCUS_LLM_PROVIDER=anthropic
 
 | Use Case | Recommended Model | Why |
 |----------|------------------|-----|
-| General Marcus usage | `deepseek-coder:6.7b` | Best code understanding |
-| Low-end hardware | `mistral:7b` | Good balance of size/performance |
+| **Contributing to Marcus** | `qwen2.5-coder:7b` | **Best overall - state-of-the-art coding** |
+| General Marcus usage | `qwen2.5-coder:7b` or `deepseek-coder:6.7b` | Excellent code understanding |
+| Low-end hardware (8GB) | `mistral:7b` | Good balance of size/performance |
+| High-end hardware (16GB+) | `qwen2.5-coder:14b` | Even better quality |
 | Complex reasoning | `mixtral:8x7b` | Advanced reasoning (needs 48GB RAM) |
 | Fast responses | `codellama:7b` | Smaller but still code-focused |
 
@@ -244,15 +265,17 @@ export MARCUS_LLM_PROVIDER=anthropic
 ```bash
 # 1. Install and setup
 curl -fsSL https://ollama.com/install.sh | sh
-ollama pull deepseek-coder:6.7b
+ollama pull qwen2.5-coder:7b
 
-# 2. Update config_marcus.json
-# Set "provider": "local" and "local_model": "deepseek-coder:6.7b"
+# 2. Configure for local development
+cp .env.dev.example .env
+# Or update config_marcus.json: Set "provider": "local" and "local_model": "qwen2.5-coder:7b"
 
 # 3. Use Marcus normally
 python -m marcus_mcp
 
 # Marcus will now use your local model for all AI operations!
+# Zero API costs, excellent code quality ✨
 ```
 
 ## Benefits of Local Models

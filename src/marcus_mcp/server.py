@@ -1101,7 +1101,27 @@ class MarcusServer:
                 project_name: str,
                 options: Optional[Dict[str, Any]] = None,
             ) -> Dict[str, Any]:
-                """Create a complete project from natural language description."""
+                """
+                Create a complete project from natural language description.
+
+                Automatically discovers existing projects by name or creates new ones.
+                Breaks down description into tasks with priorities and dependencies.
+
+                Args:
+                    description: Natural language project description
+                    project_name: Name for the project
+                    options: Optional settings:
+                        - mode: "auto" (default) | "new_project" | "select_project"
+                          - auto: Find existing or create new
+                          - new_project: Force create new (skip discovery)
+                          - select_project: Find and select existing (no task creation)
+                        - project_id: Use specific project ID (skips discovery)
+                        - complexity: "prototype" | "standard" | "enterprise"
+                        - provider: "planka" | "github" | "linear"
+
+                Returns:
+                    Dict with success, project_id, tasks_created, and board info.
+                """
                 from .tools.nlp import create_project as impl
 
                 return await impl(

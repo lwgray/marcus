@@ -28,7 +28,9 @@ Each task is locked to one agent until complete, preventing conflicts. Agents sh
 ### **Prerequisites**
 - Docker
 - Claude Code or another MCP-compatible AI agent
-- API key for your AI model (Anthropic, OpenAI, or local with Ollama)
+- AI model: Choose one option:
+  - **Free:** Local model with Ollama (zero cost, recommended for contributors)
+  - **Paid:** Anthropic or OpenAI API key
 
 ### **1. Run Marcus with Docker**
 

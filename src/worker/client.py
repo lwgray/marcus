@@ -81,6 +81,7 @@ from typing import (
     cast,
 )
 
+from mcp.client.sse import sse_client
 from mcp.client.stdio import stdio_client
 from mcp.types import CallToolResult, ListToolsResult, TextContent
 
@@ -339,14 +340,26 @@ class WorkerMCPClient:
         - The connection verifies available tools upon successful initialization
         - Multiple concurrent connections from the same client are not supported
         """
-        # Marcus server command
+        # Marcus server command - run as module from project root
+        # Use sys.executable to ensure same Python environment with all dependencies
+        import sys
+
+        project_root = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "..")
+        )
         server_cmd = [
-            "python",
-            os.path.join(os.path.dirname(__file__), "..", "..", "marcus_mcp_server.py"),
+            sys.executable,
+            "-m",
+            "src.marcus_mcp.server",
+            "--stdio",  # Force stdio mode to avoid port conflicts
         ]
 
+        # Inherit current environment and add PYTHONPATH
+        env = os.environ.copy()
+        env["PYTHONPATH"] = project_root
+
         server_params = StdioServerParameters(
-            command=server_cmd[0], args=server_cmd[1:], env=None
+            command=server_cmd[0], args=server_cmd[1:], env=env
         )
 
         async with stdio_client(server_params) as (read_stream, write_stream):
@@ -364,6 +377,72 @@ class WorkerMCPClient:
                     tools = cast(List[Any], tools_response)
                 print(
                     f"Connected to Marcus. Available tools: {[t.name for t in tools]}"
+                )
+
+                yield session
+
+    @asynccontextmanager
+    async def connect_to_marcus_http(
+        self, url: str = "http://localhost:4299/mcp"
+    ) -> AsyncIterator[ClientSession]:
+        """
+        Connect to a running Marcus HTTP server instance.
+
+        This method connects to an existing Marcus server running in HTTP mode,
+        allowing multiple clients to connect to the same server instance.
+
+        Parameters
+        ----------
+        url : str, optional
+            The HTTP URL of the Marcus server (default: http://localhost:4299/mcp)
+            Common URLs:
+            - http://localhost:4298/mcp - Main Marcus instance for Claude
+            - http://localhost:4299/mcp - Worker agent instance
+            - http://localhost:4300/mcp - Analytics instance
+
+        Yields
+        ------
+        ClientSession
+            An active MCP client session for communicating with Marcus
+
+        Raises
+        ------
+        RuntimeError
+            If connection to the HTTP server fails
+
+        Examples
+        --------
+        Basic HTTP connection:
+
+        >>> async with client.connect_to_marcus_http() as session:
+        ...     await client.register_agent("worker-1", "Test", "Developer", [])
+
+        Connect to specific port:
+
+        >>> async with client.connect_to_marcus_http("http://localhost:4300/mcp") as session:
+        ...     # Session is active and connected to analytics instance
+        ...     await client.get_agent_status("worker-1")
+
+        Notes
+        -----
+        - Multiple clients can connect to the same HTTP server simultaneously
+        - The server must already be running before calling this method
+        - Connection is over SSE (Server-Sent Events) for real-time communication
+        - Session cleanup is guaranteed even if exceptions occur
+        """
+        async with sse_client(url) as (read_stream, write_stream):
+            async with ClientSession(read_stream, write_stream) as session:
+                self.session = session
+                await session.initialize()
+
+                # List available tools to verify connection
+                tools_response = await session.list_tools()
+                if hasattr(tools_response, "tools"):
+                    tools = tools_response.tools
+                else:
+                    tools = cast(List[Any], tools_response)
+                print(
+                    f"Connected to Marcus HTTP server at {url}. Available tools: {[t.name for t in tools]}"
                 )
 
                 yield session

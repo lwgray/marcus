@@ -2,6 +2,42 @@
 
 Welcome to Marcus! We're excited you're interested in contributing. This guide will help you get started, whether you're fixing a typo or building a major feature.
 
+## 💰 Zero-Cost Development (No API Keys Needed!)
+
+**You can contribute to Marcus 100% FREE** - no paid API keys required!
+
+Marcus supports local AI models through Ollama. The recommended free setup:
+
+```bash
+# 1. Install Ollama (one-time, 2 minutes)
+curl -fsSL https://ollama.com/install.sh | sh
+
+# 2. Pull Qwen2.5-Coder (best free coding model, ~5GB download)
+ollama pull qwen2.5-coder:7b
+
+# 3. Use the free development config
+cp .env.dev.example .env
+
+# 4. Start developing!
+./marcus start
+```
+
+**Why Qwen2.5-Coder?**
+- ✅ **Free & Open Source** - No costs, ever
+- ✅ **Excellent Code Quality** - Rivals GPT-4 for coding tasks
+- ✅ **Runs Locally** - Works on 8GB RAM, no internet needed
+- ✅ **Fast Responses** - No API latency
+- ✅ **Privacy First** - Your code never leaves your machine
+
+📖 **Full guide:** [Setup Local LLM](docs/source/getting-started/setup-local-llm.md)
+
+**Alternative free models:**
+- `deepseek-coder:6.7b` - Excellent code understanding
+- `codellama:7b` - Fast responses
+- `mistral:7b` - Good general purpose
+
+> **💡 Tip:** All Marcus features work identically with local or cloud models!
+
 ## 🔀 Branching Strategy
 
 **Important:** Marcus uses a `develop` branch workflow to manage contributions efficiently.
@@ -148,6 +184,9 @@ Ready to code? Follow these steps:
 - Docker and Docker Compose (for running Planka)
 - Git
 - Node.js 16+ (for kanban-mcp)
+- AI Model (choose one):
+  - **FREE:** Ollama with Qwen2.5-Coder (recommended for contributors, see above ⬆️)
+  - **Paid:** Anthropic or OpenAI API key
 
 ### Detailed Setup
 

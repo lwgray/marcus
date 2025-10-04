@@ -22,8 +22,8 @@ Welcome to the complete Marcus documentation! This guide helps you find exactly 
 
 - **[Introduction](getting-started/introduction.md)** - Marcus's philosophy and approach
 - **[Quickstart Guide](getting-started/quickstart.md)** - Get running in 5 minutes
+- **[💰 FREE Local AI Setup](getting-started/setup-local-llm.md)** - Zero-cost development with Qwen2.5-Coder
 - **[Core Concepts](getting-started/core-concepts.md)** - Agents, tasks, projects, and more
-- **[Local LLM Setup](getting-started/setup-local-llm.md)** - Use Marcus with local AI models
 
 **Best for**: New users, evaluators, anyone starting with Marcus
 
@@ -174,11 +174,12 @@ Deep-dive topics for power users.
 
 ### **Contributor Path**
 1. Read [Introduction](getting-started/introduction.md) - Philosophy
-2. Set up [Local Development](source/developer/local-development.md) - Development environment
-3. Learn [Development Workflow](source/developer/development-workflow.md) - Daily workflows
-4. Review [Systems Documentation](systems/) - Architecture
-5. Check [Roadmap](roadmap/) - Contribution areas
-6. See GitHub issues and discussions - Active work
+2. **💰 [Setup Free AI](getting-started/setup-local-llm.md)** - Zero-cost development (no API keys!)
+3. Set up [Local Development](source/developer/local-development.md) - Development environment
+4. Learn [Development Workflow](source/developer/development-workflow.md) - Daily workflows
+5. Review [Systems Documentation](systems/) - Architecture
+6. Check [Roadmap](roadmap/) - Contribution areas
+7. See GitHub issues and discussions - Active work
 
 ---
 
