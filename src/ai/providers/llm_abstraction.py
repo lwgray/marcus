@@ -132,9 +132,18 @@ class LLMAbstraction:
             logger.warning(f"Failed to load config, falling back to env vars: {e}")
             ai_config = {}
 
+        # Check if user explicitly configured a provider
+        # If so, only initialize that provider (no fallbacks to env vars)
+        configured_provider = ai_config.get("provider", "").strip()
+
         # Try to initialize Anthropic provider
         anthropic_key = ai_config.get("anthropic_api_key", "").strip()
-        if not anthropic_key:  # Fallback to env var if not in config
+        # Only fall back to env var if no specific provider is configured
+        # or if anthropic is the configured provider
+        should_fallback_anthropic = (
+            not configured_provider or configured_provider == "anthropic"
+        )
+        if not anthropic_key and should_fallback_anthropic:
             anthropic_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
 
         if (
@@ -160,7 +169,12 @@ class LLMAbstraction:
 
         # Only try OpenAI if we have a valid API key
         openai_key = ai_config.get("openai_api_key", "").strip()
-        if not openai_key:  # Fallback to env var if not in config
+        # Only fall back to env var if no specific provider is configured
+        # or if openai is the configured provider
+        should_fallback_openai = (
+            not configured_provider or configured_provider == "openai"
+        )
+        if not openai_key and should_fallback_openai:
             openai_key = os.getenv("OPENAI_API_KEY", "").strip()
 
         if (
@@ -186,7 +200,12 @@ class LLMAbstraction:
 
         # Add local provider if configured
         local_model_path = ai_config.get("local_model", "").strip()
-        if not local_model_path:  # Fallback to env var if not in config
+        # Only fall back to env var if no specific provider is configured
+        # or if local is the configured provider
+        should_fallback_local = (
+            not configured_provider or configured_provider == "local"
+        )
+        if not local_model_path and should_fallback_local:
             local_model_path = os.getenv("MARCUS_LOCAL_LLM_PATH", "").strip()
 
         if local_model_path:
