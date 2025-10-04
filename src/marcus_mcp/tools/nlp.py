@@ -24,33 +24,117 @@ async def create_project(
     description: str, project_name: str, options: Optional[Dict[str, Any]], state: Any
 ) -> Dict[str, Any]:
     """
-    Create a complete project from natural language description.
+    Create a complete project from natural language description with smart project discovery.
 
     Uses AI to parse natural language project requirements and automatically:
+    - Discovers existing projects by name (exact and fuzzy matching)
     - Breaks down into tasks and subtasks
     - Assigns priorities and dependencies
     - Estimates time requirements
     - Creates organized kanban board structure
-    - Auto-creates Planka project/board if needed
+    - Auto-creates and registers new projects if needed
+
+    Project Discovery Workflow:
+    1. If options.project_id provided → use that specific project
+    2. If options.mode="new_project" → force creation (skip discovery)
+    3. Otherwise → search for existing projects by name:
+       - Exact match found → automatically use existing project
+       - Similar matches found → return suggestions, require clarification
+       - No matches → create and register new project
 
     Args:
         description: Natural language project description
-        project_name: Name for the project board and task organization
-        options: Optional configuration (deadline, team_size, tech_stack,
-                 deployment_target, planka_project_name, planka_board_name)
-            - planka_project_name: Name for the Planka project (defaults to
-              project_name)
-            - planka_board_name: Name for the Planka board (defaults to
-              "Main Board")
-            - deployment_target: "local" (default), "dev", "prod", "remote"
-                - local: No deployment tasks, just local development
-                - dev: Basic deployment to development environment
-                - prod: Full production deployment with monitoring, scaling
-                - remote: Deploy to cloud/remote servers
+        project_name: Name for the project (used for discovery and creation)
+        options: Optional configuration dictionary with the following keys:
+
+            Project Selection:
+            - project_id (str): Explicit project ID to use (skips discovery)
+            - mode (str): Creation mode - "auto" (default), "new_project", "add_feature"
+
+            Provider Config:
+            - provider (str): Kanban provider - "planka" (default), "github", "linear"
+            - planka_project_name (str): Custom Planka project name (defaults to project_name)
+            - planka_board_name (str): Custom Planka board name (defaults to "Main Board")
+
+            Project Settings:
+            - complexity (str): "prototype", "standard" (default), "enterprise"
+            - deployment (str): "none" (default), "internal", "production"
+            - team_size (int): Team size 1-20 for estimation (default: 1)
+            - tech_stack (List[str]): Technologies to use (e.g., ["React", "Python"])
+            - deadline (str): Project deadline in YYYY-MM-DD format
+            - tags (List[str]): Tags for project organization
+
+            Legacy Options:
+            - deployment_target (str): "local", "dev", "prod", "remote"
+              (mapped to deployment setting for backwards compatibility)
+
         state: Marcus server state instance
 
     Returns:
-        Dict with created project details and task list
+        On success:
+        {
+            "success": True,
+            "project_id": str,  # Marcus project ID
+            "tasks_created": int,
+            "board": {
+                "project_id": str,  # Provider project ID
+                "board_id": str,
+                "provider": str
+            },
+            "phases": List[str],
+            "estimated_duration": str,
+            "complexity_score": float
+        }
+
+        On similar matches found:
+        {
+            "success": False,
+            "action": "found_similar",
+            "message": str,
+            "matches": List[Dict],
+            "next_steps": List[str],
+            "hint": str
+        }
+
+        On error:
+        {
+            "success": False,
+            "error": str
+        }
+
+    Examples:
+        # Auto-discover or create
+        create_project(
+            description="Build a REST API",
+            project_name="MyAPI"
+        )
+
+        # Force new project creation
+        create_project(
+            description="Build OAuth 2.0 system",
+            project_name="MyAPI-v2",
+            options={"mode": "new_project"}
+        )
+
+        # Use specific existing project
+        create_project(
+            description="Add password reset",
+            project_name="MyAPI",
+            options={"project_id": "proj-123"}
+        )
+
+        # Advanced configuration
+        create_project(
+            description="E-commerce platform",
+            project_name="ShopFlow",
+            options={
+                "complexity": "enterprise",
+                "deployment": "production",
+                "team_size": 5,
+                "tech_stack": ["React", "Node.js", "PostgreSQL"],
+                "tags": ["client:acme", "priority:high"]
+            }
+        )
     """
     import uuid
     from datetime import datetime
