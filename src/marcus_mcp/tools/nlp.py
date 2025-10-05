@@ -631,11 +631,13 @@ async def create_tasks(
     try:
         # Create a single task with the description
         task = await kanban_client.create_task(
-            board_id=board_id,
-            name=task_description[:100],  # Use first 100 chars as name
-            description=task_description,
-            priority="medium",
-            labels=[],
+            {
+                "board_id": board_id,
+                "name": task_description[:100],  # Use first 100 chars as name
+                "description": task_description,
+                "priority": "medium",
+                "labels": [],
+            }
         )
 
         return {
