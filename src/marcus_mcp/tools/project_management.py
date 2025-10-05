@@ -829,7 +829,7 @@ async def _deduplicate_registry(server: Any) -> Dict[str, Any]:
             duplicates = projects_sorted[1:]
 
             for dup in duplicates:
-                await server.project_registry.remove_project(dup.id)
+                await server.project_registry.delete_project(dup.id)
                 removed.append({"id": dup.id, "name": dup.name, "kept": keep.name})
                 logger.info(
                     f"Removed duplicate project '{dup.name}' (kept '{keep.name}')"

@@ -26,7 +26,7 @@ class TestSyncProjects:
             return_value="new-project-id-123"
         )
         server.project_registry.get_project = AsyncMock(return_value=None)
-        server.project_registry.remove_project = AsyncMock()
+        server.project_registry.delete_project = AsyncMock()
         return server
 
     @pytest.fixture
@@ -449,7 +449,7 @@ class TestSyncProjects:
         assert result["summary"]["duplicates_removed"] == 1
 
         # Should have removed the older one
-        mock_server.project_registry.remove_project.assert_called_once_with(
+        mock_server.project_registry.delete_project.assert_called_once_with(
             "old-dup-123"
         )
 
@@ -504,6 +504,6 @@ class TestSyncProjects:
         )
 
         # Should remove the older project
-        mock_server.project_registry.remove_project.assert_called_once_with("old-456")
+        mock_server.project_registry.delete_project.assert_called_once_with("old-456")
 
         assert result["details"]["deduplicated"][0]["kept"] == "Recent Project"
