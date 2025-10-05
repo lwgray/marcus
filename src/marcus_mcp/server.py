@@ -422,7 +422,7 @@ class MarcusServer:
         if default_project_name:
             logger.info(f"Auto-selecting default project: {default_project_name}")
             try:
-                from .tools.project_management import select_project
+                from src.marcus_mcp.tools.project_management import select_project
 
                 result = await select_project(
                     self, {"project_name": default_project_name}

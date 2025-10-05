@@ -30,15 +30,15 @@ class Planka(KanbanInterface):
 
         # Set environment variables from config before creating client
         if config:
-            if "base_url" in config:
+            if "base_url" in config and config["base_url"]:
                 os.environ["PLANKA_BASE_URL"] = config["base_url"]
-            if "email" in config:
+            if "email" in config and config["email"]:
                 os.environ["PLANKA_AGENT_EMAIL"] = config["email"]
-            if "password" in config:
+            if "password" in config and config["password"]:
                 os.environ["PLANKA_AGENT_PASSWORD"] = config["password"]
-            if "project_id" in config:
+            if "project_id" in config and config["project_id"]:
                 os.environ["PLANKA_PROJECT_ID"] = config["project_id"]
-            if "board_id" in config:
+            if "board_id" in config and config["board_id"]:
                 os.environ["PLANKA_BOARD_ID"] = config["board_id"]
 
         self.client = KanbanClientWithCreate()
