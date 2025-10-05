@@ -626,34 +626,38 @@ async def create_tasks(
             "error": "No board_id available",
         }
 
-    # For now, create a simple task with the description
-    # TODO: Integrate with AI task parsing in the future
+    # Use AI to intelligently parse and break down the task description
     try:
-        # Create a single task with the description
-        task = await kanban_client.create_task(
-            {
-                "board_id": board_id,
-                "name": task_description[:100],  # Use first 100 chars as name
-                "description": task_description,
-                "priority": "medium",
-                "labels": [],
-            }
+        # Use the same natural language project creator that create_project uses
+        from src.integrations.nlp_tools import NaturalLanguageProjectCreator
+
+        # Create a temporary project name for AI processing
+        temp_project_name = current_project.name or "Task Breakdown"
+
+        # Initialize project creator
+        creator = NaturalLanguageProjectCreator(
+            kanban_client=kanban_client, ai_engine=state.ai_engine
         )
+
+        # Use the creator to parse tasks from description
+        result = await creator.create_project_from_description(
+            description=task_description,
+            project_name=temp_project_name,
+            options=options or {},
+        )
+
+        if not result.get("success"):
+            return result
 
         return {
             "success": True,
-            "tasks_created": 1,
+            "tasks_created": result.get("tasks_created", 0),
             "board": {
                 "project_id": project_id,
                 "board_id": board_id,
                 "board_name": board_name or current_board_name,
             },
-            "tasks": [task],
-            "note": (
-                "Created a single task with your description. "
-                "For AI-powered multi-task generation from descriptions, "
-                "use create_project or add_feature instead."
-            ),
+            "tasks": result.get("tasks", []),
         }
 
     except Exception as e:
