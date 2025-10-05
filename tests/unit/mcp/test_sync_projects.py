@@ -26,6 +26,7 @@ class TestSyncProjects:
             return_value="new-project-id-123"
         )
         server.project_registry.get_project = AsyncMock(return_value=None)
+        server.project_registry.remove_project = AsyncMock()
         return server
 
     @pytest.fixture
@@ -371,6 +372,7 @@ class TestSyncProjects:
         )
 
         mock_server.project_registry.list_projects = AsyncMock(return_value=[existing])
+        mock_server.project_registry.remove_project = AsyncMock()
 
         # Sync same project with different name
         updated_name = [
@@ -388,3 +390,120 @@ class TestSyncProjects:
         assert result["summary"]["updated"] == 1
         assert result["summary"]["added"] == 0
         assert existing.name == "Engineering - Q1 Project"
+
+    async def test_automatic_deduplication_on_sync(self, mock_server):
+        """
+        Test that sync_projects automatically removes duplicates before syncing.
+
+        This ensures users don't need to manually clean up duplicates.
+        """
+        from src.marcus_mcp.tools.project_management import sync_projects
+
+        # Create duplicate projects (same provider_config, different names)
+        now = datetime.now()
+        old_duplicate = ProjectConfig(
+            id="old-dup-123",
+            name="1st Project",  # Old name
+            provider="planka",
+            provider_config={
+                "project_id": "proj-123",
+                "board_id": "board-456",
+            },
+            created_at=now,
+            last_used=now,  # Used at same time
+        )
+
+        new_duplicate = ProjectConfig(
+            id="new-dup-456",
+            name="1st Project - Main Board",  # New name format
+            provider="planka",
+            provider_config={
+                "project_id": "proj-123",
+                "board_id": "board-456",
+            },
+            created_at=now,
+            last_used=datetime(2025, 10, 5, 12, 0, 0),  # Used more recently
+        )
+
+        mock_server.project_registry.list_projects = AsyncMock(
+            return_value=[old_duplicate, new_duplicate]
+        )
+        mock_server.project_registry.remove_project = AsyncMock()
+
+        # Sync empty list (just triggers deduplication)
+        result = await sync_projects(
+            mock_server,
+            {
+                "projects": [
+                    {
+                        "name": "Different Project",
+                        "provider": "planka",
+                        "config": {"project_id": "other", "board_id": "other"},
+                    }
+                ]
+            },
+        )
+
+        # Should have removed 1 duplicate
+        assert result["success"] is True
+        assert result["summary"]["duplicates_removed"] == 1
+
+        # Should have removed the older one
+        mock_server.project_registry.remove_project.assert_called_once_with(
+            "old-dup-123"
+        )
+
+        # Verify deduplication details
+        assert len(result["details"]["deduplicated"]) == 1
+        assert result["details"]["deduplicated"][0]["id"] == "old-dup-123"
+        assert result["details"]["deduplicated"][0]["name"] == "1st Project"
+        assert (
+            result["details"]["deduplicated"][0]["kept"] == "1st Project - Main Board"
+        )
+
+    async def test_deduplication_keeps_most_recently_used(self, mock_server):
+        """Test that deduplication keeps the most recently used project"""
+        from src.marcus_mcp.tools.project_management import sync_projects
+
+        # Create duplicates with different last_used times
+        recent_project = ProjectConfig(
+            id="recent-123",
+            name="Recent Project",
+            provider="planka",
+            provider_config={"project_id": "proj-1", "board_id": "board-1"},
+            created_at=datetime(2025, 1, 1),
+            last_used=datetime(2025, 10, 5, 10, 0, 0),  # Most recent
+        )
+
+        old_project = ProjectConfig(
+            id="old-456",
+            name="Old Project",
+            provider="planka",
+            provider_config={"project_id": "proj-1", "board_id": "board-1"},
+            created_at=datetime(2025, 1, 1),
+            last_used=datetime(2025, 9, 1),  # Older
+        )
+
+        mock_server.project_registry.list_projects = AsyncMock(
+            return_value=[recent_project, old_project]
+        )
+        mock_server.project_registry.remove_project = AsyncMock()
+
+        # Trigger sync with a different project
+        result = await sync_projects(
+            mock_server,
+            {
+                "projects": [
+                    {
+                        "name": "Different",
+                        "provider": "planka",
+                        "config": {"project_id": "diff", "board_id": "diff"},
+                    }
+                ]
+            },
+        )
+
+        # Should remove the older project
+        mock_server.project_registry.remove_project.assert_called_once_with("old-456")
+
+        assert result["details"]["deduplicated"][0]["kept"] == "Recent Project"

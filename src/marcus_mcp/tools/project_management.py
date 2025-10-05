@@ -774,12 +774,78 @@ async def discover_planka_projects(
         await planka.disconnect()
 
 
+def _get_provider_key(provider: str, config: Dict[str, Any]) -> str:
+    """
+    Generate a unique key for a project based on provider and config.
+
+    This key is used to identify duplicate projects.
+    """
+    if provider == "planka":
+        return f"planka:{config.get('project_id')}:{config.get('board_id')}"
+    elif provider == "github":
+        return f"github:{config.get('owner')}:{config.get('repo')}"
+    elif provider == "linear":
+        return f"linear:{config.get('project_id')}"
+    else:
+        # For unknown providers, use all config values
+        config_str = ":".join(f"{k}={v}" for k, v in sorted(config.items()))
+        return f"{provider}:{config_str}"
+
+
+async def _deduplicate_registry(server: Any) -> Dict[str, Any]:
+    """
+    Remove duplicate projects from the registry automatically.
+
+    Keeps the most recently used project for each unique provider_config.
+
+    Returns
+    -------
+    Dict[str, Any]
+        Summary with count of duplicates removed
+    """
+    from collections import defaultdict
+
+    existing_projects = await server.project_registry.list_projects()
+
+    # Group projects by their provider key
+    project_groups = defaultdict(list)
+    for project in existing_projects:
+        key = _get_provider_key(project.provider, project.provider_config)
+        project_groups[key].append(project)
+
+    # Find and remove duplicates
+    removed = []
+    for key, projects in project_groups.items():
+        if len(projects) > 1:
+            # Sort by last_used (most recent first)
+            projects_sorted = sorted(
+                projects,
+                key=lambda p: p.last_used if p.last_used else p.created_at,
+                reverse=True,
+            )
+
+            # Keep the first (most recently used), remove the rest
+            keep = projects_sorted[0]
+            duplicates = projects_sorted[1:]
+
+            for dup in duplicates:
+                await server.project_registry.remove_project(dup.id)
+                removed.append({"id": dup.id, "name": dup.name, "kept": keep.name})
+                logger.info(
+                    f"Removed duplicate project '{dup.name}' (kept '{keep.name}')"
+                )
+
+    return {"removed_count": len(removed), "removed": removed}
+
+
 async def sync_projects(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
     """
     Sync projects from Planka/provider into Marcus's registry.
 
     This tool allows you to register existing Planka projects in Marcus
     so they appear in list_projects and can be selected with select_project.
+
+    Automatically deduplicates existing registry entries before syncing.
 
     Parameters
     ----------
@@ -832,6 +898,9 @@ async def sync_projects(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any
                 "project definitions."
             ),
         }
+
+    # First, automatically deduplicate the registry
+    dedup_result = await _deduplicate_registry(server)
 
     added = []
     updated = []
@@ -902,16 +971,22 @@ async def sync_projects(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any
         return {"success": False, "error": str(e)}
 
     # Log the sync operation
+    dedup_count = dedup_result.get("removed_count", 0)
+    log_message = (
+        f"Synced {len(added)} new projects, updated {len(updated)}, "
+        f"skipped {len(skipped)}"
+    )
+    if dedup_count > 0:
+        log_message += f", removed {dedup_count} duplicates"
+
     conversation_logger.log_pm_decision(
-        decision=(
-            f"Synced {len(added)} new projects, updated {len(updated)}, "
-            f"skipped {len(skipped)}"
-        ),
+        decision=log_message,
         rationale="User requested project sync from provider",
         decision_factors={
             "added_count": len(added),
             "updated_count": len(updated),
             "skipped_count": len(skipped),
+            "duplicates_removed": dedup_count,
         },
     )
 
@@ -921,8 +996,14 @@ async def sync_projects(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any
             "added": len(added),
             "updated": len(updated),
             "skipped": len(skipped),
+            "duplicates_removed": dedup_count,
         },
-        "details": {"added": added, "updated": updated, "skipped": skipped},
+        "details": {
+            "added": added,
+            "updated": updated,
+            "skipped": skipped,
+            "deduplicated": dedup_result.get("removed", []),
+        },
     }
 
 
