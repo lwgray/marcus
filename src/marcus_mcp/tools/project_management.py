@@ -553,12 +553,141 @@ async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
         }
 
     else:  # not_found
+        # Check if auto_sync is enabled and provide helpful guidance
+        auto_sync_enabled = server.config.get("auto_sync_projects", False)
+
+        if auto_sync_enabled:
+            hint = (
+                f"Project '{project_name}' not found in Marcus registry. "
+                "Since auto_sync_projects is enabled, you may need to run sync_projects "
+                "to import projects from Planka. Use list_projects to see currently registered projects."
+            )
+        else:
+            hint = "Use list_projects to see available projects, or create_project to create a new one"
+
         return {
             "success": False,
             "action": "not_found",
-            "message": f"Project '{project_name}' not found",
-            "hint": "Use list_projects to see available projects, or create_project to create a new one",
+            "message": f"Project '{project_name}' not found in Marcus registry",
+            "hint": hint,
         }
+
+
+async def sync_projects(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Sync projects from Planka/provider into Marcus's registry.
+
+    This tool allows you to register existing Planka projects in Marcus
+    so they appear in list_projects and can be selected with select_project.
+
+    Parameters
+    ----------
+    server : Any
+        MarcusServer instance
+    arguments : Dict[str, Any]
+        - projects: List of project definitions to sync:
+          [{
+              "name": str,
+              "provider": str (planka/github/linear),
+              "config": {
+                  "project_id": str,
+                  "board_id": str  # for planka
+              },
+              "tags": List[str] (optional)
+          }]
+
+    Returns
+    -------
+    Dict[str, Any]
+        Summary of sync operation with added/updated/skipped counts
+
+    Examples
+    --------
+    >>> # Sync Planka projects into Marcus
+    >>> sync_projects(server, {
+    ...     "projects": [
+    ...         {
+    ...             "name": "1st Project",
+    ...             "provider": "planka",
+    ...             "config": {
+    ...                 "project_id": "1234567890",
+    ...                 "board_id": "9876543210"
+    ...             },
+    ...             "tags": ["production"]
+    ...         }
+    ...     ]
+    ... })
+    """
+    from src.core.project_registry import ProjectConfig
+    from src.logging.conversation_logger import conversation_logger
+
+    projects_to_sync = arguments.get("projects", [])
+
+    if not projects_to_sync:
+        return {
+            "success": False,
+            "error": "No projects provided. Provide 'projects' array with project definitions.",
+        }
+
+    added = []
+    updated = []
+    skipped = []
+
+    try:
+        for proj_def in projects_to_sync:
+            name = proj_def.get("name")
+            provider = proj_def.get("provider", "planka")
+            config = proj_def.get("config", {})
+            tags = proj_def.get("tags", ["synced"])
+
+            if not name:
+                skipped.append({"error": "Missing name", "definition": proj_def})
+                continue
+
+            # Check if project already exists
+            existing_projects = await server.project_registry.list_projects()
+            existing = next((p for p in existing_projects if p.name == name), None)
+
+            if existing:
+                # Update existing project config
+                existing.provider_config.update(config)
+                existing.tags = list(set(existing.tags + tags))
+                # Save happens automatically via registry
+                updated.append({"id": existing.id, "name": name})
+            else:
+                # Add new project
+                project = ProjectConfig(
+                    id="",  # Will be generated
+                    name=name,
+                    provider=provider,
+                    provider_config=config,
+                    tags=tags,
+                )
+                project_id = await server.project_registry.add_project(project)
+                added.append({"id": project_id, "name": name})
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+    # Log the sync operation
+    conversation_logger.log_pm_decision(
+        decision=f"Synced {len(added)} new projects, updated {len(updated)}, skipped {len(skipped)}",
+        rationale="User requested project sync from provider",
+        decision_factors={
+            "added_count": len(added),
+            "updated_count": len(updated),
+            "skipped_count": len(skipped),
+        },
+    )
+
+    return {
+        "success": True,
+        "summary": {
+            "added": len(added),
+            "updated": len(updated),
+            "skipped": len(skipped),
+        },
+        "details": {"added": added, "updated": updated, "skipped": skipped},
+    }
 
 
 async def find_or_create_project(

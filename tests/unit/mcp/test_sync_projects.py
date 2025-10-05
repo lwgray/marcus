@@ -1,0 +1,216 @@
+"""
+Unit tests for sync_projects MCP tool.
+
+Tests the sync_projects functionality that syncs projects
+from external providers (like Planka) into Marcus's registry.
+"""
+
+from datetime import datetime
+from unittest.mock import AsyncMock, Mock
+
+import pytest
+
+from src.core.project_registry import ProjectConfig
+
+
+class TestSyncProjects:
+    """Test suite for sync_projects tool"""
+
+    @pytest.fixture
+    def mock_server(self):
+        """Create mock server with project registry"""
+        server = Mock()
+        server.project_registry = Mock()
+        server.project_registry.list_projects = AsyncMock(return_value=[])
+        server.project_registry.add_project = AsyncMock(
+            return_value="new-project-id-123"
+        )
+        server.project_registry.get_project = AsyncMock(return_value=None)
+        return server
+
+    @pytest.fixture
+    def sample_project_definitions(self):
+        """Sample project definitions to sync"""
+        return [
+            {
+                "name": "Project Alpha",
+                "provider": "planka",
+                "config": {"project_id": "planka-proj-1", "board_id": "board-1"},
+            },
+            {
+                "name": "Project Beta",
+                "provider": "planka",
+                "config": {"project_id": "planka-proj-2", "board_id": "board-2"},
+            },
+        ]
+
+    @pytest.fixture
+    def existing_project(self):
+        """Create an existing project in registry"""
+        return ProjectConfig(
+            id="existing-id-123",
+            name="Existing Project",
+            provider="planka",
+            provider_config={"project_id": "old-id", "board_id": "old-board"},
+            created_at=datetime.now(),
+            last_used=datetime.now(),
+        )
+
+    async def test_sync_projects_adds_new_projects(
+        self, mock_server, sample_project_definitions
+    ):
+        """Test syncing new projects to empty registry"""
+        from src.marcus_mcp.tools.project_management import sync_projects
+
+        result = await sync_projects(
+            mock_server, {"projects": sample_project_definitions}
+        )
+
+        assert result["success"] is True
+        assert result["summary"]["added"] == 2
+        assert result["summary"]["updated"] == 0
+        assert result["summary"]["skipped"] == 0
+        assert len(result["details"]["added"]) == 2
+        added_names = [proj["name"] for proj in result["details"]["added"]]
+        assert "Project Alpha" in added_names
+        assert "Project Beta" in added_names
+
+    async def test_sync_projects_updates_existing(self, mock_server, existing_project):
+        """Test updating existing project with new config"""
+        from src.marcus_mcp.tools.project_management import sync_projects
+
+        # Mock existing project in registry
+        mock_server.project_registry.list_projects = AsyncMock(
+            return_value=[existing_project]
+        )
+
+        # Sync with updated config
+        updated_definition = [
+            {
+                "name": "Existing Project",
+                "provider": "planka",
+                "config": {"project_id": "new-id", "board_id": "new-board"},
+            }
+        ]
+
+        result = await sync_projects(mock_server, {"projects": updated_definition})
+
+        assert result["success"] is True
+        assert result["summary"]["added"] == 0
+        assert result["summary"]["updated"] == 1
+        assert result["summary"]["skipped"] == 0
+        updated_names = [proj["name"] for proj in result["details"]["updated"]]
+        assert "Existing Project" in updated_names
+
+    async def test_sync_projects_skips_invalid(self, mock_server):
+        """Test that projects without names are skipped"""
+        from src.marcus_mcp.tools.project_management import sync_projects
+
+        # Sync with missing name
+        invalid_definition = [
+            {
+                "provider": "planka",
+                "config": {"project_id": "123", "board_id": "456"},
+            }
+        ]
+
+        result = await sync_projects(mock_server, {"projects": invalid_definition})
+
+        assert result["success"] is True
+        assert result["summary"]["added"] == 0
+        assert result["summary"]["updated"] == 0
+        assert result["summary"]["skipped"] == 1
+        assert "Missing name" in result["details"]["skipped"][0]["error"]
+
+    async def test_sync_projects_mixed_operations(
+        self, mock_server, existing_project, sample_project_definitions
+    ):
+        """Test sync with mix of add, update, and skip"""
+        from src.marcus_mcp.tools.project_management import sync_projects
+
+        # Mock one existing project
+        mock_server.project_registry.list_projects = AsyncMock(
+            return_value=[existing_project]
+        )
+
+        # Mix of operations: 2 new + 1 existing (which gets updated)
+        mixed_definitions = sample_project_definitions + [
+            {
+                "name": "Existing Project",
+                "provider": "planka",
+                "config": {"project_id": "old-id", "board_id": "old-board"},
+            }
+        ]
+
+        result = await sync_projects(mock_server, {"projects": mixed_definitions})
+
+        assert result["success"] is True
+        assert result["summary"]["added"] == 2  # Project Alpha, Project Beta
+        assert result["summary"]["updated"] == 1  # Existing Project
+        assert result["summary"]["skipped"] == 0
+
+    async def test_sync_projects_empty_list(self, mock_server):
+        """Test syncing with empty project list returns error"""
+        from src.marcus_mcp.tools.project_management import sync_projects
+
+        result = await sync_projects(mock_server, {"projects": []})
+
+        assert result["success"] is False
+        assert "error" in result
+        assert "No projects provided" in result["error"]
+
+    async def test_sync_projects_handles_errors(self, mock_server):
+        """Test error handling when add_project fails"""
+        from src.marcus_mcp.tools.project_management import sync_projects
+
+        # Make add_project raise an exception
+        mock_server.project_registry.add_project = AsyncMock(
+            side_effect=Exception("Database error")
+        )
+
+        result = await sync_projects(
+            mock_server,
+            {
+                "projects": [
+                    {
+                        "name": "Test Project",
+                        "provider": "planka",
+                        "config": {"project_id": "123"},
+                    }
+                ]
+            },
+        )
+
+        assert result["success"] is False
+        assert "error" in result
+        assert "Database error" in result["error"]
+
+    async def test_select_project_with_auto_sync_hint(self, mock_server):
+        """Test that select_project provides helpful hint when auto_sync enabled"""
+        from src.marcus_mcp.tools.project_management import select_project
+
+        # Mock config with auto_sync enabled
+        mock_server.config = Mock()
+        mock_server.config.get = Mock(
+            side_effect=lambda k, default=False: (
+                True if k == "auto_sync_projects" else default
+            )
+        )
+
+        # Mock find_or_create_project to return not_found
+        from unittest.mock import patch
+
+        with patch(
+            "src.marcus_mcp.tools.project_management.find_or_create_project",
+            new_callable=AsyncMock,
+        ) as mock_find:
+            mock_find.return_value = {"action": "not_found"}
+
+            result = await select_project(
+                mock_server, {"project_name": "NonExistent Project"}
+            )
+
+            assert result["success"] is False
+            assert result["action"] == "not_found"
+            assert "sync_projects" in result["hint"]
+            assert "auto_sync_projects is enabled" in result["hint"]

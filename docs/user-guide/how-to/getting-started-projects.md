@@ -169,7 +169,95 @@ create_project(
 - ✅ Optional (won't break existing setups)
 - ✅ Clean separation: settings vs runtime state
 
-### Scenario 6: Handling Fuzzy Matches
+### Scenario 6: Syncing Projects from Planka to Marcus
+
+**Problem:** You have existing projects in Planka that don't appear in Marcus's registry.
+
+When Marcus's project list gets out of sync with your Planka board, use the `sync_projects` tool to import them:
+
+```python
+# First, get your Planka project info (manually from Planka UI)
+# Then sync them into Marcus:
+sync_projects(
+    projects=[
+        {
+            "name": "1st Project",
+            "provider": "planka",
+            "config": {
+                "project_id": "1234567890",
+                "board_id": "9876543210"
+            },
+            "tags": ["production"]
+        },
+        {
+            "name": "Backend API",
+            "provider": "planka",
+            "config": {
+                "project_id": "0987654321",
+                "board_id": "1234567890"
+            }
+        }
+    ]
+)
+```
+
+**Response:**
+```json
+{
+    "success": true,
+    "summary": {
+        "added": 2,
+        "updated": 0,
+        "skipped": 0
+    },
+    "details": {
+        "added": [
+            {"id": "proj-new-1", "name": "1st Project"},
+            {"id": "proj-new-2", "name": "Backend API"}
+        ],
+        "updated": [],
+        "skipped": []
+    }
+}
+```
+
+**What happens:**
+1. Marcus checks each project against its registry
+2. **New projects** are added to the registry
+3. **Existing projects** get their configs updated
+4. **Invalid entries** (missing name) are skipped
+5. All projects become available in `list_projects()`
+
+**When to use:**
+- ✅ Marcus says "project not found" but it exists in Planka
+- ✅ After manually creating projects in Planka UI
+- ✅ Setting up Marcus with existing Planka boards
+- ✅ Recovering from registry corruption
+
+**Configuration Option:**
+
+Enable `auto_sync_projects` in `config_marcus.json` to get helpful hints:
+
+```json
+{
+    "auto_sync_projects": true,
+    "default_project_name": "MainProject",
+    "planka": {...}
+}
+```
+
+With this enabled, when `select_project` can't find a project, it will suggest running `sync_projects`:
+
+```json
+{
+    "success": false,
+    "action": "not_found",
+    "message": "Project '1st Project' not found in Marcus registry",
+    "hint": "Since auto_sync_projects is enabled, you may need to run sync_projects to import projects from Planka."
+}
+```
+
+### Scenario 7: Handling Fuzzy Matches
 
 If Marcus finds similar (but not exact) project names, it will ask for clarification:
 

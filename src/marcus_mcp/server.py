@@ -1176,6 +1176,15 @@ class MarcusServer:
                     server, {"project_name": project_name, "project_id": project_id}
                 )
 
+        if "sync_projects" in allowed_tools:
+
+            @app.tool()  # type: ignore[misc]
+            async def sync_projects(projects: List[Dict[str, Any]]) -> Dict[str, Any]:
+                """Sync projects from Planka/provider into Marcus registry."""
+                from .tools.project_management import sync_projects as impl
+
+                return await impl(server, {"projects": projects})
+
         if "switch_project" in allowed_tools:
 
             @app.tool()  # type: ignore[misc]

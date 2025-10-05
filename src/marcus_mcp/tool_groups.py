@@ -16,6 +16,7 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "get_project_status",
         "list_projects",
         "select_project",
+        "sync_projects",  # Sync projects from Planka into Marcus
         "switch_project",
         "get_current_project",
         "create_project",  # NLP project creation
@@ -48,6 +49,7 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "get_project_status",
         "list_projects",
         "select_project",
+        "sync_projects",
         "switch_project",
         "get_current_project",
         "add_project",
