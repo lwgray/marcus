@@ -46,6 +46,10 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "select_project",  # Select project to work on
         "create_project",  # NLP project creation for autonomous agents
         "create_tasks",  # Create tasks on existing project/board
+        # Experiment tracking (temporary until UI is ready)
+        "start_experiment",
+        "end_experiment",
+        "get_experiment_status",
     },
     "analytics": {
         # All tools for comprehensive analytics (Seneca)
