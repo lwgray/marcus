@@ -910,7 +910,15 @@ async def create_project_from_natural_language(
                     ),
                 }
 
-            # If action == "not_found", continue to auto-creation below
+            # If action == "not_found", clear IDs to force auto-creation below
+            if discovery_result.get("action") == "not_found":
+                if state.kanban_client:
+                    state.kanban_client.project_id = None
+                    state.kanban_client.board_id = None
+                    logger.info(
+                        f"No existing project found for '{project_name}' - "
+                        f"will auto-create new project"
+                    )
 
         # PHASE 2: INITIALIZE KANBAN CLIENT
         # Initialize kanban client if needed
