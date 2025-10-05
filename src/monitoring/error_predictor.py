@@ -230,7 +230,10 @@ class PipelineErrorPredictor:
                 RiskFactor(
                     factor="high_task_count",
                     risk_level=min(patterns["task_count"] / 100, 1.0),
-                    description=f"{patterns['task_count']} tasks may lead to coordination issues",
+                    description=(
+                        f"{patterns['task_count']} tasks may lead to "
+                        "coordination issues"
+                    ),
                     mitigation="Consider breaking project into phases",
                 )
             )
@@ -241,7 +244,10 @@ class PipelineErrorPredictor:
                 RiskFactor(
                     factor="low_ai_confidence",
                     risk_level=1.0 - patterns["avg_confidence"],
-                    description=f"AI confidence is only {patterns['avg_confidence'] * 100:.0f}%",
+                    description=(
+                        f"AI confidence is only "
+                        f"{patterns['avg_confidence'] * 100:.0f}%"
+                    ),
                     mitigation="Review and clarify requirements",
                 )
             )
@@ -263,7 +269,9 @@ class PipelineErrorPredictor:
                 RiskFactor(
                     factor="many_ambiguities",
                     risk_level=min(patterns["ambiguity_count"] / 10, 1.0),
-                    description=f"{patterns['ambiguity_count']} ambiguities in requirements",
+                    description=(
+                        f"{patterns['ambiguity_count']} ambiguities in " "requirements"
+                    ),
                     mitigation="Clarify ambiguous requirements before proceeding",
                 )
             )

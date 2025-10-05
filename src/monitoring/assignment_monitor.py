@@ -98,7 +98,8 @@ class AssignmentMonitor:
                     f"get_all_tasks not available on {type(self.kanban_client)}: {e}"
                 )
                 logger.warning(
-                    "Using get_available_tasks as fallback - health check will be limited"
+                    "Using get_available_tasks as fallback - "
+                    "health check will be limited"
                 )
                 all_tasks = await self.kanban_client.get_available_tasks()
 
@@ -281,7 +282,8 @@ class AssignmentHealthChecker:
                     f"get_all_tasks not available on {type(self.kanban_client)}: {e}"
                 )
                 logger.warning(
-                    "Using get_available_tasks as fallback - health check will be limited"
+                    "Using get_available_tasks as fallback - "
+                    "health check will be limited"
                 )
                 tasks = await self.kanban_client.get_available_tasks()
 
@@ -299,7 +301,10 @@ class AssignmentHealthChecker:
                 health["issues"].append(
                     {
                         "type": "orphaned_assignments",
-                        "description": f"{len(orphaned_persisted)} tasks in persistence but not assigned in kanban",
+                        "description": (
+                            f"{len(orphaned_persisted)} tasks in persistence "
+                            "but not assigned in kanban"
+                        ),
                         "task_ids": list(orphaned_persisted),
                     }
                 )
@@ -311,7 +316,10 @@ class AssignmentHealthChecker:
                 health["issues"].append(
                     {
                         "type": "untracked_assignments",
-                        "description": f"{len(orphaned_kanban)} tasks assigned in kanban but not tracked",
+                        "description": (
+                            f"{len(orphaned_kanban)} tasks assigned in kanban "
+                            "but not tracked"
+                        ),
                         "task_ids": list(orphaned_kanban),
                     }
                 )

@@ -79,9 +79,8 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
 
         prd_result = await self.prd_parser.parse_prd_to_tasks(description, constraints)
 
-        logger.info(
-            f"PRD parser returned {len(prd_result.tasks) if prd_result.tasks else 0} tasks"
-        )
+        task_count = len(prd_result.tasks) if prd_result.tasks else 0
+        logger.info(f"PRD parser returned {task_count} tasks")
         if not prd_result.tasks:
             logger.warning("PRD parser returned no tasks!")
             logger.debug(f"PRD result: {prd_result}")
@@ -89,9 +88,8 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
 
         # Apply the inferred dependencies to the task objects
         if prd_result.dependencies:
-            logger.info(
-                f"Applying {len(prd_result.dependencies)} inferred dependencies to tasks"
-            )
+            dep_count = len(prd_result.dependencies)
+            logger.info(f"Applying {dep_count} inferred dependencies to tasks")
 
             # Create a mapping of task IDs to tasks for quick lookup
             task_map = {task.id: task for task in prd_result.tasks}
@@ -114,7 +112,8 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                         )
                 else:
                     logger.warning(
-                        f"Could not apply dependency: {dependent_task_id} -> {dependency_task_id} "
+                        f"Could not apply dependency: "
+                        f"{dependent_task_id} -> {dependency_task_id} "
                         f"(task not found in task map)"
                     )
         else:
@@ -137,6 +136,55 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             logger.info(f"Creating project '{project_name}' from natural language")
             logger.debug(f"Description: {description[:200]}...")
             logger.debug(f"Options: {options}")
+
+            # Clear project/board IDs if mode is "new_project" to force new creation
+            if options and options.get("mode") == "new_project":
+                if self.kanban_client:
+                    logger.info(
+                        f"Clearing project/board IDs for new_project mode "
+                        f"(current: project_id={self.kanban_client.project_id}, "
+                        f"board_id={self.kanban_client.board_id})"
+                    )
+                    # Set on the underlying client
+                    # (Planka wrapper has read-only properties)
+                    if hasattr(self.kanban_client, "client"):
+                        self.kanban_client.client.project_id = None
+                        self.kanban_client.client.board_id = None
+                    else:
+                        # Direct client (not a wrapper)
+                        self.kanban_client.project_id = None
+                        self.kanban_client.board_id = None
+                    logger.info(
+                        "Cleared project/board IDs to force new project creation"
+                    )
+
+                    # Now create the new project/board
+                    from src.integrations.project_auto_setup import ProjectAutoSetup
+
+                    auto_setup = ProjectAutoSetup()
+                    try:
+                        # Pass the underlying client (not the wrapper) if available
+                        client_to_use = (
+                            self.kanban_client.client
+                            if hasattr(self.kanban_client, "client")
+                            else self.kanban_client
+                        )
+                        project_config = await auto_setup.setup_planka_project(
+                            kanban_client=client_to_use,
+                            project_name=project_name,
+                            options=options,
+                        )
+                        proj_id = project_config.provider_config.get(
+                            "project_id"
+                        )
+                        bd_id = project_config.provider_config.get("board_id")
+                        logger.info(
+                            f"Created new Planka project: "
+                            f"project_id={proj_id}, board_id={bd_id}"
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to create new project: {e}")
+                        raise
 
             # Parse tasks
             from src.core.error_framework import ErrorContext, error_context
@@ -161,8 +209,10 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                         task_types[task_type] = task_types.get(task_type, 0) + 1
                     logger.info(f"Task type breakdown: {task_types}")
                 else:
+                    desc_len = len(description)
                     logger.warning(
-                        f"No tasks generated for project '{project_name}' with description length {len(description)}"
+                        f"No tasks generated for project '{project_name}' "
+                        f"with description length {desc_len}"
                     )
 
             if not tasks:
@@ -173,10 +223,14 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
 
                 logger.warning("No tasks generated from natural language processing!")
 
-                raise BusinessLogicError(
+                error_msg = (
                     f"Failed to generate any tasks from project description. "
-                    f"The description may be too vague, missing key details, or not match "
-                    f"expected patterns. Description: '{description[:200]}...'",
+                    f"The description may be too vague, missing key details, "
+                    f"or not match expected patterns. "
+                    f"Description: '{description[:200]}...'"
+                )
+                raise BusinessLogicError(
+                    error_msg,
                     context=ErrorContext(
                         operation="create_project",
                         integration_name="nlp_tools",
@@ -309,7 +363,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 )
 
     async def _cleanup_background(self) -> None:
-        """Cleanup AI engine after response is sent"""
+        """Cleanup AI engine after response is sent."""
         try:
             # Only cleanup AI engine, skip task cancellation
             # Task cancellation was causing issues
@@ -324,7 +378,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
     def _build_constraints(
         self, options: Optional[Dict[str, Any]]
     ) -> ProjectConstraints:
-        """Build project constraints from options"""
+        """Build project constraints from options."""
         if not options:
             return ProjectConstraints()
 
@@ -384,7 +438,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         return constraints
 
     def _extract_phases(self, tasks: List[Task]) -> List[str]:
-        """Extract project phases from tasks"""
+        """Extract project phases from tasks."""
         phases = set()
         for task in tasks:
             for label in task.labels:
@@ -674,7 +728,10 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
         tasks.append(
             {
                 "name": f"Design {feature_description}",
-                "description": f"Create technical design and plan for implementing {feature_description}",
+                "description": (
+                    f"Create technical design and plan for implementing "
+                    f"{feature_description}"
+                ),
                 "estimated_hours": 4,
                 "labels": ["feature", "design", "planning"],
                 "critical": False,
@@ -706,7 +763,9 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
             },
             "auth": {
                 "name": f"Implement security for {feature_description}",
-                "description": "Add authentication, authorization, and security measures",
+                "description": (
+                    "Add authentication, authorization, and security measures"
+                ),
                 "estimated_hours": 8,
                 "labels": ["feature", "security", "auth"],
                 "critical": True,
@@ -734,7 +793,9 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
             [
                 {
                     "name": f"Test {feature_description}",
-                    "description": "Write unit tests, integration tests, and perform QA",
+                    "description": (
+                        "Write unit tests, integration tests, and perform QA"
+                    ),
                     "estimated_hours": 6,
                     "labels": ["feature", "testing", "qa"],
                     "critical": False,
@@ -864,6 +925,17 @@ async def create_project_from_natural_language(
                     "error": f"Failed to initialize kanban client: {str(e)}",
                 }
 
+        # Re-clear project/board IDs if mode is "new_project"
+        # (in case initialize_kanban reloaded them from active project)
+        if options.get("mode") == "new_project":
+            if state.kanban_client:
+                state.kanban_client.project_id = None
+                state.kanban_client.board_id = None
+                logger.info(
+                    "Re-cleared project/board IDs after kanban init "
+                    "to force new creation"
+                )
+
         # PHASE 3: AUTO-CREATE PROJECT (if needed)
         # Auto-create Planka project/board if no IDs exist
         if not state.kanban_client.project_id or not state.kanban_client.board_id:
@@ -917,7 +989,10 @@ async def create_project_from_natural_language(
         if not hasattr(state.kanban_client, "create_task"):
             return {
                 "success": False,
-                "error": "Kanban client does not support task creation. Please ensure KanbanClientWithCreate is being used.",
+                "error": (
+                    "Kanban client does not support task creation. "
+                    "Please ensure KanbanClientWithCreate is being used."
+                ),
             }
 
         # Initialize project creator
@@ -981,14 +1056,20 @@ async def add_feature_natural_language(
         if not hasattr(state.kanban_client, "create_task"):
             return {
                 "success": False,
-                "error": "Kanban client does not support task creation. Please ensure KanbanClientWithCreate is being used.",
+                "error": (
+                    "Kanban client does not support task creation. "
+                    "Please ensure KanbanClientWithCreate is being used."
+                ),
             }
 
         # Check if there are existing tasks (required for feature addition)
         if not state.project_tasks or len(state.project_tasks) == 0:
             return {
                 "success": False,
-                "error": "No existing project found. Please create a project first before adding features.",
+                "error": (
+                    "No existing project found. "
+                    "Please create a project first before adding features."
+                ),
             }
 
         # Initialize feature adder

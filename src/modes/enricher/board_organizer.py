@@ -239,7 +239,10 @@ class BoardOrganizer:
 
         return OrganizationStrategy(
             name="phase_based",
-            description="Organize tasks by development phases (planning → development → testing → deployment)",
+            description=(
+                "Organize tasks by development phases "
+                "(planning → development → testing → deployment)"
+            ),
             confidence=confidence,
             structure={
                 "phases": dict(phase_distribution),
@@ -247,7 +250,9 @@ class BoardOrganizer:
                     k: [t.id for t in v] for k, v in list(phase_tasks.items())
                 },
             },
-            reasoning=f"Found {unique_phases} distinct phases across {total_tasks} tasks",
+            reasoning=(
+                f"Found {unique_phases} distinct phases " f"across {total_tasks} tasks"
+            ),
         )
 
     async def _analyze_component_organization(
@@ -303,7 +308,10 @@ class BoardOrganizer:
 
         return OrganizationStrategy(
             name="component_based",
-            description="Organize tasks by system components (frontend, backend, database, etc.)",
+            description=(
+                "Organize tasks by system components "
+                "(frontend, backend, database, etc.)"
+            ),
             confidence=confidence,
             structure={
                 "components": dict(component_distribution),
@@ -311,7 +319,10 @@ class BoardOrganizer:
                     k: [t.id for t in v] for k, v in list(component_tasks.items())
                 },
             },
-            reasoning=f"Found {unique_components} distinct components across {total_tasks} tasks",
+            reasoning=(
+                f"Found {unique_components} distinct components "
+                f"across {total_tasks} tasks"
+            ),
         )
 
     async def _analyze_feature_organization(
@@ -399,7 +410,10 @@ class BoardOrganizer:
                     k: [t.id for t in v] for k, v in list(feature_tasks.items())
                 },
             },
-            reasoning=f"Identified {len(feature_distribution)} potential features with avg {avg_tasks_per_feature:.1f} tasks each",
+            reasoning=(
+                f"Identified {len(feature_distribution)} potential features "
+                f"with avg {avg_tasks_per_feature:.1f} tasks each"
+            ),
         )
 
     async def _analyze_priority_organization(
@@ -431,7 +445,9 @@ class BoardOrganizer:
 
         return OrganizationStrategy(
             name="priority_based",
-            description="Organize tasks by priority levels (urgent → high → medium → low)",
+            description=(
+                "Organize tasks by priority levels " "(urgent → high → medium → low)"
+            ),
             confidence=confidence,
             structure={
                 "priorities": dict(priority_distribution),
@@ -439,7 +455,10 @@ class BoardOrganizer:
                     k: [t.id for t in v] for k, v in list(priority_tasks.items())
                 },
             },
-            reasoning=f"Found {unique_priorities} priority levels across {total_tasks} tasks",
+            reasoning=(
+                f"Found {unique_priorities} priority levels "
+                f"across {total_tasks} tasks"
+            ),
         )
 
     async def organize_by_phase(self, tasks: List[Task]) -> PhasedStructure:

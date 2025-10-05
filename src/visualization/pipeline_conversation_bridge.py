@@ -1,12 +1,10 @@
-"""
-Minimal stubs for pipeline conversation bridge
-"""
+"""Minimal stubs for pipeline conversation bridge."""
 
 from typing import Any, Dict, List, Optional
 
 
 class PipelineConversationBridge:
-    """Minimal stub for bridging pipeline events and conversations"""
+    """Minimal stub for bridging pipeline events and conversations."""
 
     def __init__(
         self,
@@ -24,7 +22,20 @@ class PipelineConversationBridge:
         message: str,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Log a conversation event tied to pipeline"""
+        """
+        Log a conversation event tied to pipeline.
+
+        Parameters
+        ----------
+        pipeline_id : str
+            The pipeline identifier.
+        stage : str
+            The pipeline stage.
+        message : str
+            The conversation message.
+        metadata : Optional[Dict[str, Any]], optional
+            Additional metadata for the event.
+        """
         entry = {
             "pipeline_id": pipeline_id,
             "stage": stage,
@@ -35,7 +46,19 @@ class PipelineConversationBridge:
         self.conversation_log.append(entry)
 
     def get_pipeline_conversations(self, pipeline_id: str) -> List[Dict[str, Any]]:
-        """Get conversations for a specific pipeline"""
+        """
+        Get conversations for a specific pipeline.
+
+        Parameters
+        ----------
+        pipeline_id : str
+            The pipeline identifier.
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of conversation entries for the pipeline.
+        """
         return [
             entry
             for entry in self.conversation_log
@@ -43,13 +66,27 @@ class PipelineConversationBridge:
         ]
 
     def bridge_to_conversation_logger(self, conversation_logger: Any) -> None:
-        """Bridge pipeline events to conversation logger"""
+        """
+        Bridge pipeline events to conversation logger.
+
+        Parameters
+        ----------
+        conversation_logger : Any
+            The conversation logger instance.
+        """
         # This would normally integrate with the conversation logger
         # For now, it's just a stub
         pass
 
     def log_ai_analysis_with_context(self, **kwargs: Any) -> None:
-        """Log AI analysis with context (stub)"""
+        """
+        Log AI analysis with context (stub).
+
+        Parameters
+        ----------
+        **kwargs : Any
+            Keyword arguments containing analysis context.
+        """
         # Log to conversation log for compatibility
         self.log_pipeline_conversation(
             pipeline_id=kwargs.get("flow_id", "unknown"),
@@ -59,7 +96,14 @@ class PipelineConversationBridge:
         )
 
     def log_task_generation_with_reasoning(self, **kwargs: Any) -> None:
-        """Log task generation with reasoning (stub)"""
+        """
+        Log task generation with reasoning (stub).
+
+        Parameters
+        ----------
+        **kwargs : Any
+            Keyword arguments containing task generation data.
+        """
         # Log to conversation log for compatibility
         self.log_pipeline_conversation(
             pipeline_id=kwargs.get("flow_id", "unknown"),
@@ -69,7 +113,14 @@ class PipelineConversationBridge:
         )
 
     def log_quality_assessment(self, **kwargs: Any) -> None:
-        """Log quality assessment (stub)"""
+        """
+        Log quality assessment (stub).
+
+        Parameters
+        ----------
+        **kwargs : Any
+            Keyword arguments containing quality assessment data.
+        """
         # Log to conversation log for compatibility
         self.log_pipeline_conversation(
             pipeline_id=kwargs.get("flow_id", "unknown"),

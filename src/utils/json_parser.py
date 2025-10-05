@@ -1,8 +1,9 @@
 """
-JSON Parser Utility
+JSON Parser Utility.
 
-Handles parsing JSON that may be wrapped in markdown code blocks or have other formatting issues.
-This is common when working with LLM responses that return formatted JSON.
+Handles parsing JSON that may be wrapped in markdown code blocks or
+have other formatting issues. This is common when working with LLM
+responses that return formatted JSON.
 """
 
 import json
@@ -15,16 +16,22 @@ logger = logging.getLogger(__name__)
 
 def extract_json_from_response(response: str) -> str:
     """
-    Extract JSON content from a response that might be wrapped in markdown or other formatting.
+    Extract JSON content from a response with markdown or other formatting.
 
-    Args:
-        response: The raw response string that may contain JSON
+    Parameters
+    ----------
+    response : str
+        The raw response string that may contain JSON
 
-    Returns:
+    Returns
+    -------
+    str
         The extracted JSON string
 
-    Raises:
-        ValueError: If no valid JSON structure can be found
+    Raises
+    ------
+    ValueError
+        If no valid JSON structure can be found
     """
     if not response:
         raise ValueError("Empty response provided")
@@ -107,18 +114,26 @@ def parse_json_response(
     response: str, default: Optional[Any] = None
 ) -> Union[Dict[str, Any], list[Any], Any]:
     """
-    Parse a JSON response that might be wrapped in markdown or have other formatting.
+    Parse a JSON response with markdown or other formatting.
 
-    Args:
-        response: The raw response string that may contain JSON
-        default: Default value to return if parsing fails (if None, raises exception)
+    Parameters
+    ----------
+    response : str
+        The raw response string that may contain JSON
+    default : Optional[Any], optional
+        Default value to return if parsing fails (if None, raises exception)
 
-    Returns:
+    Returns
+    -------
+    Union[Dict[str, Any], list[Any], Any]
         The parsed JSON object
 
-    Raises:
-        json.JSONDecodeError: If JSON parsing fails and no default is provided
-        ValueError: If no valid JSON can be extracted and no default is provided
+    Raises
+    ------
+    json.JSONDecodeError
+        If JSON parsing fails and no default is provided
+    ValueError
+        If no valid JSON can be extracted and no default is provided
     """
     try:
         # Extract JSON from the response
@@ -127,7 +142,8 @@ def parse_json_response(
         # Parse the JSON
         result = json.loads(json_str)
         logger.debug(
-            f"Successfully parsed JSON: {type(result).__name__} with {len(str(result))} chars"
+            f"Successfully parsed JSON: {type(result).__name__} with "
+            f"{len(str(result))} chars"
         )
         return result
 
@@ -143,10 +159,14 @@ def clean_json_response(response: str) -> str:
     """
     Clean a JSON response by removing common formatting issues.
 
-    Args:
-        response: The raw response string
+    Parameters
+    ----------
+    response : str
+        The raw response string
 
-    Returns:
+    Returns
+    -------
+    str
         Cleaned JSON string
     """
     # Remove markdown code blocks
@@ -191,11 +211,16 @@ def validate_json_structure(
     """
     Validate that parsed JSON has expected structure.
 
-    Args:
-        data: The parsed JSON data
-        required_fields: List of required field names (for dict validation)
+    Parameters
+    ----------
+    data : Any
+        The parsed JSON data
+    required_fields : Optional[list[str]], optional
+        List of required field names (for dict validation)
 
-    Returns:
+    Returns
+    -------
+    bool
         True if structure is valid, False otherwise
     """
     if required_fields and isinstance(data, dict):
@@ -210,15 +235,23 @@ def parse_ai_json_response(
     """
     Parse JSON from AI responses with validation.
 
-    Args:
-        response: The AI response that should contain JSON
-        required_fields: Optional list of required fields to validate
+    Parameters
+    ----------
+    response : str
+        The AI response that should contain JSON
+    required_fields : Optional[list[str]], optional
+        Optional list of required fields to validate
 
-    Returns:
+    Returns
+    -------
+    Dict[str, Any]
         Parsed and validated JSON dictionary
 
-    Raises:
-        ValueError: If response doesn't contain valid JSON or required fields are missing
+    Raises
+    ------
+    ValueError
+        If response doesn't contain valid JSON or required fields are
+        missing
     """
     # Clean and parse the response
     cleaned = clean_json_response(response)

@@ -1,7 +1,7 @@
-"""
-Task Generator for Marcus Creator Mode
+"""Task Generator for Marcus Creator Mode.
 
-Generates properly ordered tasks from templates to prevent illogical assignments.
+Generates properly ordered tasks from templates to prevent illogical
+assignments.
 """
 
 import logging
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class TaskGenerator:
-    """Generates task structures from templates or requirements"""
+    """Generates task structures from templates or requirements."""
 
     def __init__(self) -> None:
         self.generated_tasks: List[Task] = []
@@ -30,14 +30,18 @@ class TaskGenerator:
     async def generate_from_template(
         self, template: ProjectTemplate, customizations: Dict[str, Any]
     ) -> List[Task]:
-        """
-        Generate tasks from template with customizations
+        """Generate tasks from template with customizations.
 
-        Args:
-            template: Project template to use
-            customizations: Custom parameters like size, excluded_phases, etc.
+        Parameters
+        ----------
+        template : ProjectTemplate
+            Project template to use
+        customizations : Dict[str, Any]
+            Custom parameters like size, excluded_phases, etc.
 
-        Returns:
+        Returns
+        -------
+        List[Task]
             List of generated tasks with proper dependencies
         """
         # Extract customizations
@@ -48,7 +52,8 @@ class TaskGenerator:
         start_date = customizations.get("start_date", datetime.now())
 
         logger.info(
-            f"Generating tasks from template '{template.name}' with size '{project_size.value}'"
+            f"Generating tasks from template '{template.name}' "
+            f"with size '{project_size.value}'"
         )
 
         # Reset state
@@ -100,7 +105,28 @@ class TaskGenerator:
         project_name: str,
         start_date: datetime,
     ) -> List[Task]:
-        """Generate tasks for a single phase"""
+        """Generate tasks for a single phase.
+
+        Parameters
+        ----------
+        phase : PhaseTemplate
+            Phase template to generate tasks from
+        template : ProjectTemplate
+            Project template being used
+        project_size : ProjectSize
+            Size of the project
+        additional_labels : List[str]
+            Additional labels to apply to tasks
+        project_name : str
+            Name of the project
+        start_date : datetime
+            Start date for the phase
+
+        Returns
+        -------
+        List[Task]
+            List of tasks generated for the phase
+        """
         phase_tasks: List[Task] = []
 
         for task_template in phase.tasks:
@@ -139,7 +165,26 @@ class TaskGenerator:
         project_name: str,
         phase_order: int,
     ) -> Task:
-        """Create a Task object from a TaskTemplate"""
+        """Create a Task object from a TaskTemplate.
+
+        Parameters
+        ----------
+        task_template : TaskTemplate
+            Template to create task from
+        phase_name : str
+            Name of the phase this task belongs to
+        additional_labels : List[str]
+            Additional labels to apply to the task
+        project_name : str
+            Name of the project
+        phase_order : int
+            Order of the phase in the project
+
+        Returns
+        -------
+        Task
+            Task object created from the template
+        """
         # Combine labels
         labels = [f"phase:{phase_name.lower()}"]
         labels.extend(task_template.labels)
@@ -180,7 +225,13 @@ class TaskGenerator:
         return task
 
     async def _resolve_dependencies(self) -> None:
-        """Resolve task dependencies by name"""
+        """Resolve task dependencies by name.
+
+        Notes
+        -----
+        This method resolves dependencies by matching task names from the
+        template to actual task IDs in the generated task list.
+        """
         for task in self.generated_tasks:
             # Get template dependencies from source_context
             task_name = (
@@ -200,7 +251,18 @@ class TaskGenerator:
                     )
 
     def _find_template_dependencies(self, task_name: str) -> List[str]:
-        """Find dependencies from the original template"""
+        """Find dependencies from the original template.
+
+        Parameters
+        ----------
+        task_name : str
+            Name of the task to find dependencies for
+
+        Returns
+        -------
+        List[str]
+            List of dependency task names
+        """
         # This is a simplified version - in practice, we'd look up the template
         # For now, we'll parse from the task description
         for task in self.generated_tasks:
@@ -214,7 +276,17 @@ class TaskGenerator:
         return []
 
     async def _validate_task_order(self) -> None:
-        """Validate that task dependencies make sense"""
+        """Validate that task dependencies make sense.
+
+        Raises
+        ------
+        ValueError
+            If invalid task dependencies are detected
+
+        Notes
+        -----
+        Ensures dependencies are in the same or earlier phase than the task.
+        """
         errors: List[str] = []
 
         for task in self.generated_tasks:
@@ -248,14 +320,18 @@ class TaskGenerator:
     async def create_task_hierarchy(
         self, tasks: List[Dict[str, Any]], project_name: str = "unnamed_project"
     ) -> List[Task]:
-        """
-        Create proper task objects from raw task data
+        """Create proper task objects from raw task data.
 
-        Args:
-            tasks: List of task dictionaries
-            project_name: Name of the project for working directory
+        Parameters
+        ----------
+        tasks : List[Dict[str, Any]]
+            List of task dictionaries
+        project_name : str, optional
+            Name of the project for working directory (default: "unnamed_project")
 
-        Returns:
+        Returns
+        -------
+        List[Task]
             List of Task objects with proper structure
         """
         created_tasks: List[Task] = []
@@ -300,7 +376,20 @@ class TaskGenerator:
     def _check_conditions(
         self, conditions: Dict[str, Any], project_size: ProjectSize
     ) -> bool:
-        """Check if task conditions are met"""
+        """Check if task conditions are met.
+
+        Parameters
+        ----------
+        conditions : Dict[str, Any]
+            Conditions to check for the task
+        project_size : ProjectSize
+            Size of the project being created
+
+        Returns
+        -------
+        bool
+            True if conditions are met, False otherwise
+        """
         if not conditions:
             return True
 
@@ -325,7 +414,18 @@ class TaskGenerator:
         return True
 
     def _parse_priority(self, priority_str: str) -> Priority:
-        """Parse priority string to Priority enum"""
+        """Parse priority string to Priority enum.
+
+        Parameters
+        ----------
+        priority_str : str
+            String representation of priority level
+
+        Returns
+        -------
+        Priority
+            Priority enum value
+        """
         priority_map = {
             "low": Priority.LOW,
             "medium": Priority.MEDIUM,

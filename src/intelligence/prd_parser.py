@@ -87,16 +87,32 @@ class PRDParser:
         ]
 
         self.user_story_patterns = [
-            r"(?i)as\s+a\s+(.+?),?\s+i\s+want\s+(.+?)(?:\s+so\s+that\s+(.+?))?(?=\n|as\s+a|$)",
+            (
+                r"(?i)as\s+a\s+(.+?),?\s+i\s+want\s+(.+?)"
+                r"(?:\s+so\s+that\s+(.+?))?(?=\n|as\s+a|$)"
+            ),
             r"(?i)user\s+story[:\s]*(.+?)(?=\n|user\s+story|acceptance|$)",
         ]
 
         self.tech_patterns = {
-            "frontend": r"(?i)(react|vue|angular|html|css|javascript|typescript|svelte|next\.js)",
-            "backend": r"(?i)(node|express|django|flask|spring|rails|laravel|fastapi|.net|java|python|php)",
-            "database": r"(?i)(mysql|postgresql|mongodb|redis|sqlite|dynamodb|firestore|cassandra)",
-            "mobile": r"(?i)(ios|android|react\s*native|flutter|swift|kotlin|xamarin)",
-            "infrastructure": r"(?i)(aws|azure|gcp|docker|kubernetes|heroku|vercel|netlify)",
+            "frontend": (
+                r"(?i)(react|vue|angular|html|css|javascript|typescript|"
+                r"svelte|next\.js)"
+            ),
+            "backend": (
+                r"(?i)(node|express|django|flask|spring|rails|laravel|"
+                r"fastapi|.net|java|python|php)"
+            ),
+            "database": (
+                r"(?i)(mysql|postgresql|mongodb|redis|sqlite|dynamodb|"
+                r"firestore|cassandra)"
+            ),
+            "mobile": (
+                r"(?i)(ios|android|react\s*native|flutter|swift|kotlin|" r"xamarin)"
+            ),
+            "infrastructure": (
+                r"(?i)(aws|azure|gcp|docker|kubernetes|heroku|vercel|" r"netlify)"
+            ),
         }
 
     async def parse_prd(self, content: str, format_hint: str = "auto") -> ParsedPRD:

@@ -180,7 +180,10 @@ class PatternLearner:
                 patterns.append(
                     {
                         "pattern": f"{current_type}_before_{next_type}",
-                        "description": f"{current_type} tasks typically complete before {next_type} tasks",
+                        "description": (
+                            f"{current_type} tasks typically complete "
+                            f"before {next_type} tasks"
+                        ),
                         "confidence": 0.7,
                         "evidence": {
                             "current_task": current_task.name,

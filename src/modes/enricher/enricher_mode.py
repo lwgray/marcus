@@ -1,5 +1,5 @@
 """
-Complete Enricher Mode for Marcus Phase 2
+Complete Enricher Mode for Marcus Phase 2.
 
 Enriches existing boards with metadata, structure, and organization.
 """
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class EnricherMode:
-    """Complete Enricher Mode for organizing and enriching existing boards"""
+    """Complete Enricher Mode for organizing and enriching existing boards."""
 
     def __init__(self) -> None:
         self.task_enricher = TaskEnricher()
@@ -28,7 +28,14 @@ class EnricherMode:
         }
 
     async def initialize(self, saved_state: Dict[str, Any]) -> None:
-        """Initialize mode with saved state"""
+        """
+        Initialize mode with saved state.
+
+        Parameters
+        ----------
+        saved_state : Dict[str, Any]
+            Previously saved state to restore
+        """
         if saved_state:
             self.state.update(saved_state)
             logger.info("Enricher mode initialized with saved state")
@@ -36,11 +43,25 @@ class EnricherMode:
             logger.info("Enricher mode initialized with default state")
 
     async def get_state(self) -> Dict[str, Any]:
-        """Get current mode state for saving"""
+        """
+        Get current mode state for saving.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Current state dictionary
+        """
         return self.state.copy()
 
     async def get_status(self) -> Dict[str, Any]:
-        """Get current mode status"""
+        """
+        Get current mode status.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Status information including current enrichment and strategies
+        """
         return {
             "mode": "enricher",
             "current_enrichment": self.state.get("current_enrichment"),
@@ -50,18 +71,24 @@ class EnricherMode:
 
     async def analyze_board_for_enrichment(self, tasks: List[Task]) -> Dict[str, Any]:
         """
-        Analyze board and suggest enrichment opportunities
+        Analyze board and suggest enrichment opportunities.
 
-        Args:
-            tasks: Current tasks on the board
+        Parameters
+        ----------
+        tasks : List[Task]
+            Current tasks on the board
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Analysis results with enrichment suggestions
         """
         if not tasks:
             return {
                 "success": True,
-                "message": "Board is empty - consider using Creator mode to generate tasks",
+                "message": (
+                    "Board is empty - consider using Creator mode to " "generate tasks"
+                ),
                 "recommendations": [
                     "Switch to Creator mode",
                     "Import tasks from template",
@@ -113,13 +140,18 @@ class EnricherMode:
         self, tasks: List[Task], enrichment_options: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Apply enrichments to board tasks
+        Apply enrichments to board tasks.
 
-        Args:
-            tasks: Tasks to enrich
-            enrichment_options: Specific enrichment options
+        Parameters
+        ----------
+        tasks : List[Task]
+            Tasks to enrich
+        enrichment_options : Optional[Dict[str, Any]], optional
+            Specific enrichment options
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Results of enrichment process
         """
         board_context = await self._analyze_board_context(tasks)
@@ -180,14 +212,20 @@ class EnricherMode:
         organization_options: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
-        Organize board using specified strategy
+        Organize board using specified strategy.
 
-        Args:
-            tasks: Tasks to organize
-            strategy_name: Name of organization strategy to use
-            organization_options: Additional organization options
+        Parameters
+        ----------
+        tasks : List[Task]
+            Tasks to organize
+        strategy_name : str
+            Name of organization strategy to use
+        organization_options : Optional[Dict[str, Any]], optional
+            Additional organization options
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Results of organization process
         """
         # Find the strategy
@@ -224,13 +262,18 @@ class EnricherMode:
         self, tasks: List[Task], task_ids: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
-        Preview enrichments without applying them
+        Preview enrichments without applying them.
 
-        Args:
-            tasks: All tasks on the board
-            task_ids: Specific task IDs to preview (None for all)
+        Parameters
+        ----------
+        tasks : List[Task]
+            All tasks on the board
+        task_ids : Optional[List[str]], optional
+            Specific task IDs to preview (None for all)
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Preview of what enrichments would be applied
         """
         board_context = await self._analyze_board_context(tasks)
@@ -278,7 +321,19 @@ class EnricherMode:
         }
 
     async def _analyze_board_context(self, tasks: List[Task]) -> BoardContext:
-        """Analyze board context for enrichment"""
+        """
+        Analyze board context for enrichment.
+
+        Parameters
+        ----------
+        tasks : List[Task]
+            Tasks to analyze
+
+        Returns
+        -------
+        BoardContext
+            Analyzed board context
+        """
         # Detect project type
         project_type = self._detect_project_type(tasks)
 
@@ -310,7 +365,19 @@ class EnricherMode:
         )
 
     def _detect_project_type(self, tasks: List[Task]) -> str:
-        """Detect type of project from tasks"""
+        """
+        Detect type of project from tasks.
+
+        Parameters
+        ----------
+        tasks : List[Task]
+            Tasks to analyze
+
+        Returns
+        -------
+        str
+            Detected project type
+        """
         all_text = " ".join(
             [f"{task.name} {task.description or ''}" for task in tasks]
         ).lower()
@@ -331,7 +398,19 @@ class EnricherMode:
             return "general"
 
     def _detect_phases(self, tasks: List[Task]) -> List[str]:
-        """Detect development phases from task content"""
+        """
+        Detect development phases from task content.
+
+        Parameters
+        ----------
+        tasks : List[Task]
+            Tasks to analyze
+
+        Returns
+        -------
+        List[str]
+            Detected development phases
+        """
         phases = []
         all_text = " ".join(
             [f"{task.name} {task.description or ''}" for task in tasks]
@@ -352,7 +431,19 @@ class EnricherMode:
         return phases
 
     def _detect_components(self, tasks: List[Task]) -> List[str]:
-        """Detect system components from task content"""
+        """
+        Detect system components from task content.
+
+        Parameters
+        ----------
+        tasks : List[Task]
+            Tasks to analyze
+
+        Returns
+        -------
+        List[str]
+            Detected system components
+        """
         components = []
         all_text = " ".join(
             [f"{task.name} {task.description or ''}" for task in tasks]
@@ -373,7 +464,19 @@ class EnricherMode:
         return components
 
     def _detect_workflow_pattern(self, tasks: List[Task]) -> str:
-        """Detect workflow pattern from task statuses"""
+        """
+        Detect workflow pattern from task statuses.
+
+        Parameters
+        ----------
+        tasks : List[Task]
+            Tasks to analyze
+
+        Returns
+        -------
+        str
+            Detected workflow pattern
+        """
         status_counts: Dict[str, int] = {}
         for task in tasks:
             status = task.status.value
@@ -395,7 +498,21 @@ class EnricherMode:
     async def _analyze_tasks_for_enrichment(
         self, tasks: List[Task], board_context: BoardContext
     ) -> Dict[str, Any]:
-        """Analyze tasks for enrichment opportunities"""
+        """
+        Analyze tasks for enrichment opportunities.
+
+        Parameters
+        ----------
+        tasks : List[Task]
+            Tasks to analyze
+        board_context : BoardContext
+            Board context information
+
+        Returns
+        -------
+        Dict[str, Any]
+            Analysis of enrichment opportunities
+        """
         total_tasks = len(tasks)
 
         # Count missing metadata
@@ -439,23 +556,44 @@ class EnricherMode:
         enrichment_analysis: Dict[str, Any],
         organization_strategies: List[OrganizationStrategy],
     ) -> List[str]:
-        """Generate recommendations for board improvement"""
+        """
+        Generate recommendations for board improvement.
+
+        Parameters
+        ----------
+        tasks : List[Task]
+            Board tasks
+        board_context : BoardContext
+            Board context information
+        enrichment_analysis : Dict[str, Any]
+            Analysis of enrichment opportunities
+        organization_strategies : List[OrganizationStrategy]
+            Available organization strategies
+
+        Returns
+        -------
+        List[str]
+            List of recommendations
+        """
         recommendations = []
 
         # Enrichment recommendations
         if enrichment_analysis["enrichment_score"] > 0.5:
             recommendations.append(
-                "🔧 Board needs significant enrichment - add descriptions, labels, and estimates"
+                "🔧 Board needs significant enrichment - add descriptions, "
+                "labels, and estimates"
             )
 
         if enrichment_analysis["missing_descriptions"] > 0:
             recommendations.append(
-                f"📝 {enrichment_analysis['missing_descriptions']} tasks need better descriptions"
+                f"📝 {enrichment_analysis['missing_descriptions']} tasks need "
+                f"better descriptions"
             )
 
         if enrichment_analysis["missing_estimates"] > 0:
             recommendations.append(
-                f"⏱️ {enrichment_analysis['missing_estimates']} tasks need time estimates"
+                f"⏱️ {enrichment_analysis['missing_estimates']} tasks need "
+                f"time estimates"
             )
 
         # Organization recommendations
@@ -477,11 +615,11 @@ class EnricherMode:
         # Workflow recommendations
         if board_context.workflow_pattern == "parallel":
             recommendations.append(
-                "⚡ High parallelism detected - ensure proper dependency management"
+                "⚡ High parallelism detected - ensure proper dependency " "management"
             )
         elif board_context.workflow_pattern == "sequential":
             recommendations.append(
-                "📈 Sequential workflow - consider if more parallelism is possible"
+                "📈 Sequential workflow - consider if more parallelism is " "possible"
             )
 
         return recommendations
@@ -489,7 +627,21 @@ class EnricherMode:
     async def _apply_task_enrichments(
         self, enriched_task: EnrichedTask, options: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
-        """Apply enrichments to a task"""
+        """
+        Apply enrichments to a task.
+
+        Parameters
+        ----------
+        enriched_task : EnrichedTask
+            Task with enrichment suggestions
+        options : Dict[str, Any]
+            Options controlling which enrichments to apply
+
+        Returns
+        -------
+        Optional[Dict[str, Any]]
+            Changes applied, or None if no changes
+        """
         changes: Dict[str, Any] = {
             "task_id": enriched_task.original_task.id,
             "task_name": enriched_task.original_task.name,
@@ -549,7 +701,23 @@ class EnricherMode:
     async def _apply_organization_strategy(
         self, tasks: List[Task], strategy: OrganizationStrategy, options: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Apply organization strategy to tasks"""
+        """
+        Apply organization strategy to tasks.
+
+        Parameters
+        ----------
+        tasks : List[Task]
+            Tasks to organize
+        strategy : OrganizationStrategy
+            Organization strategy to apply
+        options : Dict[str, Any]
+            Additional options
+
+        Returns
+        -------
+        Dict[str, Any]
+            Results of organization
+        """
         try:
             if strategy.name == "phase_based":
                 phase_structure = await self.board_organizer.organize_by_phase(tasks)
@@ -565,7 +733,10 @@ class EnricherMode:
                             phase_structure.cross_phase_dependencies
                         ),
                     },
-                    "message": f"Organized {len(tasks)} tasks into {len(phase_structure.phases)} phases",
+                    "message": (
+                        f"Organized {len(tasks)} tasks into "
+                        f"{len(phase_structure.phases)} phases"
+                    ),
                 }
 
             elif strategy.name == "component_based":

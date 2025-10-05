@@ -12,7 +12,22 @@ from src.core.models import Priority
 
 
 class ProjectSize(Enum):
-    """Project size categories."""
+    """
+    Project size categories.
+
+    Attributes
+    ----------
+    MVP : str
+        Minimum viable product size
+    SMALL : str
+        Small project size
+    MEDIUM : str
+        Medium project size
+    LARGE : str
+        Large project size
+    ENTERPRISE : str
+        Enterprise project size
+    """
 
     MVP = "mvp"
     SMALL = "small"
@@ -23,7 +38,30 @@ class ProjectSize(Enum):
 
 @dataclass
 class TaskTemplate:
-    """Template for a single task."""
+    """
+    Template for a single task.
+
+    Attributes
+    ----------
+    name : str
+        Name of the task
+    description : str
+        Detailed description of the task
+    phase : str
+        Phase this task belongs to
+    estimated_hours : int
+        Estimated hours to complete the task
+    priority : Priority
+        Task priority level (default: MEDIUM)
+    labels : List[str]
+        Labels/tags for categorizing the task
+    dependencies : List[str]
+        Names of tasks that this task depends on
+    optional : bool
+        Whether this task is optional (default: False)
+    conditions : Dict[str, Any]
+        Conditions for when to include this task
+    """
 
     name: str
     description: str
@@ -31,14 +69,27 @@ class TaskTemplate:
     estimated_hours: int
     priority: Priority = Priority.MEDIUM
     labels: List[str] = field(default_factory=list)
-    dependencies: List[str] = field(default_factory=list)  # Task names this depends on
+    dependencies: List[str] = field(default_factory=list)
     optional: bool = False
-    conditions: Dict[str, Any] = field(default_factory=dict)  # When to include
+    conditions: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class PhaseTemplate:
-    """Template for a project phase."""
+    """
+    Template for a project phase.
+
+    Attributes
+    ----------
+    name : str
+        Name of the phase
+    description : str
+        Description of the phase
+    order : int
+        Order in which this phase should be executed
+    tasks : List[TaskTemplate]
+        List of tasks in this phase
+    """
 
     name: str
     description: str
@@ -46,13 +97,35 @@ class PhaseTemplate:
     tasks: List[TaskTemplate]
 
     def get_required_tasks(self) -> List[TaskTemplate]:
-        """Get only required tasks."""
+        """
+        Get only required tasks.
+
+        Returns
+        -------
+        List[TaskTemplate]
+            List of required (non-optional) tasks in this phase
+        """
         return [t for t in self.tasks if not t.optional]
 
 
 @dataclass
 class ProjectTemplate:
-    """Base class for project templates."""
+    """
+    Base class for project templates.
+
+    Attributes
+    ----------
+    name : str
+        Name of the project template
+    description : str
+        Description of the project template
+    category : str
+        Category of the project (e.g., "web", "api", "mobile")
+    phases : List[PhaseTemplate]
+        List of phases in this project template
+    default_size : ProjectSize
+        Default project size (default: MEDIUM)
+    """
 
     name: str
     description: str
@@ -61,7 +134,19 @@ class ProjectTemplate:
     default_size: ProjectSize = ProjectSize.MEDIUM
 
     def get_all_tasks(self, size: Optional[ProjectSize] = None) -> List[TaskTemplate]:
-        """Get all tasks adjusted for project size."""
+        """
+        Get all tasks adjusted for project size.
+
+        Parameters
+        ----------
+        size : Optional[ProjectSize]
+            Target project size. If None, uses default_size
+
+        Returns
+        -------
+        List[TaskTemplate]
+            List of tasks adjusted for the specified project size
+        """
         tasks = []
         target_size = size if size is not None else self.default_size
 
@@ -80,7 +165,21 @@ class ProjectTemplate:
     def _adjust_task_for_size(
         self, task: TaskTemplate, size: ProjectSize
     ) -> TaskTemplate:
-        """Adjust task estimates based on project size."""
+        """
+        Adjust task estimates based on project size.
+
+        Parameters
+        ----------
+        task : TaskTemplate
+            The task template to adjust
+        size : ProjectSize
+            The target project size
+
+        Returns
+        -------
+        TaskTemplate
+            Adjusted task template with size-appropriate estimates
+        """
         size_multipliers = {
             ProjectSize.MVP: 0.5,
             ProjectSize.SMALL: 0.7,
@@ -111,9 +210,15 @@ class ProjectTemplate:
 
 
 class WebAppTemplate(ProjectTemplate):
-    """Template for full-stack web applications."""
+    """
+    Template for full-stack web applications.
+
+    This template includes phases for setup, design, backend development,
+    frontend development, testing, and deployment.
+    """
 
     def __init__(self) -> None:
+        """Initialize the web application template with predefined phases."""
         phases = [
             PhaseTemplate(
                 name="Setup",
@@ -139,7 +244,9 @@ class WebAppTemplate(ProjectTemplate):
                     ),
                     TaskTemplate(
                         name="Configure build tools",
-                        description="Set up webpack/vite, TypeScript, and build pipeline",
+                        description=(
+                            "Set up webpack/vite, TypeScript, and build " "pipeline"
+                        ),
                         phase="setup",
                         estimated_hours=3,
                         priority=Priority.HIGH,
@@ -148,7 +255,10 @@ class WebAppTemplate(ProjectTemplate):
                     ),
                     TaskTemplate(
                         name="Set up CI/CD pipeline",
-                        description="Configure GitHub Actions or similar for automated testing",
+                        description=(
+                            "Configure GitHub Actions or similar for "
+                            "automated testing"
+                        ),
                         phase="setup",
                         estimated_hours=4,
                         priority=Priority.MEDIUM,
@@ -165,7 +275,10 @@ class WebAppTemplate(ProjectTemplate):
                 tasks=[
                     TaskTemplate(
                         name="Design system architecture",
-                        description="Create high-level architecture diagram and tech stack decisions",
+                        description=(
+                            "Create high-level architecture diagram and "
+                            "tech stack decisions"
+                        ),
                         phase="design",
                         estimated_hours=4,
                         priority=Priority.HIGH,
@@ -174,7 +287,10 @@ class WebAppTemplate(ProjectTemplate):
                     ),
                     TaskTemplate(
                         name="Design database schema",
-                        description="Create database schema with tables, relationships, and indexes",
+                        description=(
+                            "Create database schema with tables, "
+                            "relationships, and indexes"
+                        ),
                         phase="design",
                         estimated_hours=6,
                         priority=Priority.HIGH,
@@ -208,7 +324,10 @@ class WebAppTemplate(ProjectTemplate):
                 tasks=[
                     TaskTemplate(
                         name="Set up backend framework",
-                        description="Initialize Express/FastAPI/Django with basic configuration",
+                        description=(
+                            "Initialize Express/FastAPI/Django with basic "
+                            "configuration"
+                        ),
                         phase="backend",
                         estimated_hours=3,
                         priority=Priority.HIGH,
@@ -229,7 +348,9 @@ class WebAppTemplate(ProjectTemplate):
                     ),
                     TaskTemplate(
                         name="Implement authentication",
-                        description="Add user registration, login, and JWT token handling",
+                        description=(
+                            "Add user registration, login, and JWT token " "handling"
+                        ),
                         phase="backend",
                         estimated_hours=8,
                         priority=Priority.HIGH,
@@ -238,7 +359,10 @@ class WebAppTemplate(ProjectTemplate):
                     ),
                     TaskTemplate(
                         name="Create CRUD API endpoints",
-                        description="Implement Create, Read, Update, Delete operations for main entities",
+                        description=(
+                            "Implement Create, Read, Update, Delete "
+                            "operations for main entities"
+                        ),
                         phase="backend",
                         estimated_hours=12,
                         priority=Priority.HIGH,
@@ -284,7 +408,9 @@ class WebAppTemplate(ProjectTemplate):
                     ),
                     TaskTemplate(
                         name="Create component library",
-                        description="Build reusable UI components (buttons, forms, etc)",
+                        description=(
+                            "Build reusable UI components (buttons, forms, " "etc)"
+                        ),
                         phase="frontend",
                         estimated_hours=8,
                         priority=Priority.HIGH,
@@ -418,7 +544,9 @@ class WebAppTemplate(ProjectTemplate):
                     ),
                     TaskTemplate(
                         name="Set up monitoring and logging",
-                        description="Configure error tracking and performance monitoring",
+                        description=(
+                            "Configure error tracking and performance " "monitoring"
+                        ),
                         phase="deployment",
                         estimated_hours=4,
                         priority=Priority.MEDIUM,
@@ -462,9 +590,15 @@ class WebAppTemplate(ProjectTemplate):
 
 
 class APIServiceTemplate(ProjectTemplate):
-    """Template for API-only services."""
+    """
+    Template for API-only services.
+
+    This template includes phases for setup, design, implementation,
+    testing & documentation, and deployment.
+    """
 
     def __init__(self) -> None:
+        """Initialize the API service template with predefined phases."""
         phases = [
             PhaseTemplate(
                 name="Setup",
@@ -490,7 +624,9 @@ class APIServiceTemplate(ProjectTemplate):
                     ),
                     TaskTemplate(
                         name="Configure development environment",
-                        description="Set up Docker, environment variables, and hot reload",
+                        description=(
+                            "Set up Docker, environment variables, and hot " "reload"
+                        ),
                         phase="setup",
                         estimated_hours=3,
                         priority=Priority.HIGH,
@@ -628,9 +764,15 @@ class APIServiceTemplate(ProjectTemplate):
 
 
 class MobileAppTemplate(ProjectTemplate):
-    """Template for mobile applications."""
+    """
+    Template for mobile applications.
+
+    This template includes phases for setup, core features, platform
+    integration, and testing & release.
+    """
 
     def __init__(self) -> None:
+        """Initialize the mobile app template with predefined phases."""
         phases = [
             PhaseTemplate(
                 name="Setup",

@@ -462,8 +462,13 @@ async def get_task_assignment_score(
         "availability_score": round(availability_score, 2),
         "historical_performance": round(historical_score, 2),
         "active_tasks": len(active_tasks),
-        "recommendation": "assign" if overall_score >= 70 else "consider alternatives",
-        "reasoning": f"Agent has {round(skill_match*100)}% skill match and {len(active_tasks)} active tasks",
+        "recommendation": (
+            "assign" if overall_score >= 70 else "consider alternatives"
+        ),
+        "reasoning": (
+            f"Agent has {round(skill_match*100)}% skill match and "
+            f"{len(active_tasks)} active tasks"
+        ),
     }
 
 

@@ -1,7 +1,8 @@
 """
-MCP Tools for Marcus Hybrid Approach
+MCP Tools for Marcus Hybrid Approach.
 
-Provides MCP tools for mode switching, project creation, and intelligent coordination.
+Provides MCP tools for mode switching, project creation, and intelligent
+coordination.
 """
 
 import logging
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class HybridMarcusTools:
-    """MCP tools for the hybrid Marcus approach"""
+    """MCP tools for the hybrid Marcus approach."""
 
     def __init__(self, kanban_client: Any) -> None:
         self.kanban_client = kanban_client
@@ -28,23 +29,33 @@ class HybridMarcusTools:
         self, mode: str, reason: Optional[str] = None, user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Switch Marcus to a different operating mode
+        Switch Marcus to a different operating mode.
 
-        Args:
-            mode: Target mode ("creator", "enricher", or "adaptive")
-            reason: Optional reason for the switch
-            user_id: Optional user who triggered the switch
+        Parameters
+        ----------
+        mode : str
+            Target mode ("creator", "enricher", or "adaptive")
+        reason : Optional[str], optional
+            Optional reason for the switch
+        user_id : Optional[str], optional
+            Optional user who triggered the switch
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Result of the mode switch
         """
         try:
             # Validate mode
             mode_enum = MarcusMode(mode.lower())
         except ValueError:
+            error_msg = (
+                f"Invalid mode '{mode}'. Available modes: "
+                "creator, enricher, adaptive"
+            )
             return {
                 "success": False,
-                "error": f"Invalid mode '{mode}'. Available modes: creator, enricher, adaptive",
+                "error": error_msg,
                 "available_modes": [m.value for m in MarcusMode],
             }
 
@@ -60,9 +71,11 @@ class HybridMarcusTools:
 
     async def get_current_mode(self) -> Dict[str, Any]:
         """
-        Get information about the current Marcus mode
+        Get information about the current Marcus mode.
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Current mode information and capabilities
         """
         return await self.mode_registry.get_current_mode()
@@ -71,13 +84,18 @@ class HybridMarcusTools:
         self, board_id: Optional[str] = None, user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Analyze board context and recommend optimal mode
+        Analyze board context and recommend optimal mode.
 
-        Args:
-            board_id: Board to analyze (uses default if not provided)
-            user_id: User requesting analysis
+        Parameters
+        ----------
+        board_id : Optional[str], optional
+            Board to analyze (uses default if not provided)
+        user_id : Optional[str], optional
+            User requesting analysis
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Board analysis and mode recommendation
         """
         try:
@@ -137,16 +155,24 @@ class HybridMarcusTools:
         additional_labels: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
-        Create a new project from a template (Creator Mode)
+        Create a new project from a template (Creator Mode).
 
-        Args:
-            template_name: Template to use ("web", "api", "mobile")
-            project_name: Name for the new project
-            size: Project size ("mvp", "small", "medium", "large", "enterprise")
-            excluded_phases: Phases to exclude
-            additional_labels: Additional labels to add to all tasks
+        Parameters
+        ----------
+        template_name : str
+            Template to use ("web", "api", "mobile")
+        project_name : str
+            Name for the new project
+        size : str, optional
+            Project size ("mvp", "small", "medium", "large", "enterprise")
+        excluded_phases : Optional[List[str]], optional
+            Phases to exclude
+        additional_labels : Optional[List[str]], optional
+            Additional labels to add to all tasks
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Generated project information
         """
         # Ensure we're in creator mode
@@ -167,9 +193,13 @@ class HybridMarcusTools:
         try:
             project_size = ProjectSize(size.lower())
         except ValueError:
+            error_msg = (
+                f"Invalid project size '{size}'. Available sizes: "
+                "mvp, small, medium, large, enterprise"
+            )
             return {
                 "success": False,
-                "error": f"Invalid project size '{size}'. Available sizes: mvp, small, medium, large, enterprise",
+                "error": error_msg,
             }
 
         customizations = {
@@ -199,20 +229,28 @@ class HybridMarcusTools:
         self, description: str, project_name: str
     ) -> Dict[str, Any]:
         """
-        Create a project from natural language description (Creator Mode)
+        Create a project from natural language description (Creator Mode).
 
-        Args:
-            description: Natural language description of the project
-            project_name: Name for the new project
+        Parameters
+        ----------
+        description : str
+            Natural language description of the project
+        project_name : str
+            Name for the new project
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Generated project information
         """
         # Ensure we're in creator mode
         if self.mode_registry.current_mode != MarcusMode.CREATOR:
+            switch_reason = (
+                "Switching to creator mode for project generation from description"
+            )
             await self.mode_registry.switch_mode(
                 MarcusMode.CREATOR,
-                reason="Switching to creator mode for project generation from description",
+                reason=switch_reason,
             )
 
         # Get creator mode handler
@@ -237,9 +275,11 @@ class HybridMarcusTools:
 
     async def get_available_templates(self) -> Dict[str, Any]:
         """
-        Get list of available project templates
+        Get list of available project templates.
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Available templates with their information
         """
         # Get creator mode handler
@@ -253,13 +293,18 @@ class HybridMarcusTools:
         self, template_name: str, size: str = "medium"
     ) -> Dict[str, Any]:
         """
-        Preview what a template would generate
+        Preview what a template would generate.
 
-        Args:
-            template_name: Template to preview
-            size: Project size to preview
+        Parameters
+        ----------
+        template_name : str
+            Template to preview
+        size : str, optional
+            Project size to preview
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Preview of tasks that would be generated
         """
         # Get creator mode handler
@@ -276,20 +321,26 @@ class HybridMarcusTools:
         self, agent_id: str, agent_skills: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
-        Get next task using intelligent assignment (Adaptive Mode)
+        Get next task using intelligent assignment (Adaptive Mode).
 
-        Args:
-            agent_id: ID of the agent requesting work
-            agent_skills: Skills/capabilities of the agent
+        Parameters
+        ----------
+        agent_id : str
+            ID of the agent requesting work
+        agent_skills : Optional[List[str]], optional
+            Skills/capabilities of the agent
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Recommended task or explanation of why no task is available
         """
         # Ensure we're in adaptive mode
         if self.mode_registry.current_mode != MarcusMode.ADAPTIVE:
+            switch_reason = "Switching to adaptive mode for intelligent task assignment"
             await self.mode_registry.switch_mode(
                 MarcusMode.ADAPTIVE,
-                reason="Switching to adaptive mode for intelligent task assignment",
+                reason=switch_reason,
             )
 
         # Get adaptive mode handler
@@ -316,6 +367,9 @@ class HybridMarcusTools:
             )
 
             if optimal_task:
+                assignment_reason = (
+                    "Selected based on skills, dependencies, and priority"
+                )
                 return {
                     "success": True,
                     "task": {
@@ -326,7 +380,7 @@ class HybridMarcusTools:
                         "estimated_hours": optimal_task.estimated_hours,
                         "labels": optimal_task.labels,
                     },
-                    "assignment_reasoning": "Selected based on skills, dependencies, and priority",
+                    "assignment_reasoning": assignment_reason,
                 }
             else:
                 # Get blocking analysis to explain why no tasks are available
@@ -345,9 +399,11 @@ class HybridMarcusTools:
 
     async def get_blocking_analysis(self) -> Dict[str, Any]:
         """
-        Get analysis of what tasks are blocking others
+        Get analysis of what tasks are blocking others.
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Analysis of blocking relationships
         """
         # Get adaptive mode handler
@@ -366,7 +422,7 @@ class HybridMarcusTools:
             return {"success": False, "error": str(e)}
 
     async def _create_tasks_on_board(self, tasks: List[Dict[str, Any]]) -> None:
-        """Create tasks on the kanban board"""
+        """Create tasks on the kanban board."""
         for task_data in tasks:
             try:
                 # Create task on kanban board
@@ -384,11 +440,14 @@ class HybridMarcusTools:
                 logger.error(f"Error creating task '{task_data['name']}' on board: {e}")
 
     def get_tool_definitions(self) -> List[Dict[str, Any]]:
-        """Get MCP tool definitions for the hybrid approach"""
+        """Get MCP tool definitions for the hybrid approach."""
         return [
             {
                 "name": "switch_mode",
-                "description": "Switch Marcus to a different operating mode (creator, enricher, adaptive)",
+                "description": (
+                    "Switch Marcus to a different operating mode "
+                    "(creator, enricher, adaptive)"
+                ),
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -412,7 +471,9 @@ class HybridMarcusTools:
             },
             {
                 "name": "create_project_from_template",
-                "description": "Create a new project using a template (web, api, mobile)",
+                "description": (
+                    "Create a new project using a template (web, api, mobile)"
+                ),
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -441,7 +502,7 @@ class HybridMarcusTools:
             },
             {
                 "name": "create_project_from_description",
-                "description": "Create a project from natural language description",
+                "description": ("Create a project from natural language description"),
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -464,7 +525,10 @@ class HybridMarcusTools:
             },
             {
                 "name": "get_next_task_intelligent",
-                "description": "Get next task using intelligent assignment with dependency checking",
+                "description": (
+                    "Get next task using intelligent assignment with "
+                    "dependency checking"
+                ),
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -483,7 +547,9 @@ class HybridMarcusTools:
             },
             {
                 "name": "get_blocking_analysis",
-                "description": "Get analysis of task dependencies and blocking relationships",
+                "description": (
+                    "Get analysis of task dependencies and blocking relationships"
+                ),
                 "inputSchema": {"type": "object", "properties": {}, "required": []},
             },
         ]

@@ -1,5 +1,4 @@
-"""
-Board State Analyzer for Marcus Hybrid Approach
+"""Board State Analyzer for Marcus Hybrid Approach.
 
 Analyzes kanban board state to determine optimal Marcus mode and understand
 project organization level.
@@ -18,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class WorkflowPattern(Enum):
-    """Detected workflow patterns"""
+    """Detected workflow patterns."""
 
     SEQUENTIAL = "sequential"  # Tasks completed one by one
     PARALLEL = "parallel"  # Multiple tasks in progress
@@ -29,7 +28,7 @@ class WorkflowPattern(Enum):
 
 @dataclass
 class BoardState:
-    """Represents the analyzed state of a board"""
+    """Represents the analyzed state of a board."""
 
     task_count: int
     tasks_with_descriptions: int
@@ -48,7 +47,7 @@ class BoardState:
 
 
 class BoardAnalyzer:
-    """Analyzes kanban board state to determine optimal Marcus mode"""
+    """Analyzes kanban board state to determine optimal Marcus mode."""
 
     # Common phase indicators
     PHASE_PATTERNS = {
@@ -71,15 +70,19 @@ class BoardAnalyzer:
     }
 
     async def analyze_board(self, board_id: str, tasks: List[Task]) -> BoardState:
-        """
-        Analyze board characteristics to determine state and recommended mode
+        """Analyze board characteristics to determine state and recommended mode.
 
-        Args:
-            board_id: The board identifier
-            tasks: List of tasks on the board
+        Parameters
+        ----------
+        board_id : str
+            The board identifier.
+        tasks : List[Task]
+            List of tasks on the board.
 
-        Returns:
-            BoardState with analysis results
+        Returns
+        -------
+        BoardState
+            BoardState with analysis results.
         """
         if not tasks:
             return self._empty_board_state()
@@ -144,18 +147,22 @@ class BoardAnalyzer:
         )
 
     async def calculate_structure_score(self, tasks: List[Task]) -> float:
-        """
-        Score 0-1 indicating how well-structured the board is:
+        """Score 0-1 indicating how well-structured the board is.
+
         - 0.0-0.3: Chaotic (just task titles)
         - 0.3-0.6: Basic (some organization)
         - 0.6-0.8: Good (clear structure)
         - 0.8-1.0: Excellent (full metadata)
 
-        Args:
-            tasks: List of tasks to analyze
+        Parameters
+        ----------
+        tasks : List[Task]
+            List of tasks to analyze.
 
-        Returns:
-            Structure score between 0 and 1
+        Returns
+        -------
+        float
+            Structure score between 0 and 1.
         """
         if not tasks:
             return 0.0
@@ -193,14 +200,17 @@ class BoardAnalyzer:
         return sum(scores)
 
     async def detect_workflow_patterns(self, tasks: List[Task]) -> WorkflowPattern:
-        """
-        Detect how the team works based on task patterns
+        """Detect how the team works based on task patterns.
 
-        Args:
-            tasks: List of tasks to analyze
+        Parameters
+        ----------
+        tasks : List[Task]
+            List of tasks to analyze.
 
-        Returns:
-            Detected workflow pattern
+        Returns
+        -------
+        WorkflowPattern
+            Detected workflow pattern.
         """
         if not tasks:
             return WorkflowPattern.UNKNOWN
@@ -228,7 +238,7 @@ class BoardAnalyzer:
             return WorkflowPattern.AD_HOC
 
     async def _detect_phases(self, tasks: List[Task]) -> List[str]:
-        """Detect development phases from task names and descriptions"""
+        """Detect development phases from task names and descriptions."""
         phases_found = set()
 
         for task in tasks:
@@ -249,7 +259,7 @@ class BoardAnalyzer:
         return [p for p in phase_order if p in phases_found]
 
     async def _detect_components(self, tasks: List[Task]) -> List[str]:
-        """Detect system components from task names and labels"""
+        """Detect system components from task names and labels."""
         components_found = set()
 
         for task in tasks:
@@ -275,7 +285,7 @@ class BoardAnalyzer:
         is_well_structured: bool,
         task_count: int,
     ) -> str:
-        """Recommend the best Marcus mode based on board state"""
+        """Recommend the best Marcus mode based on board state."""
         if is_empty:
             return "creator"  # Empty board - help create structure
         elif is_chaotic and task_count > 10:
@@ -288,7 +298,7 @@ class BoardAnalyzer:
             return "enricher"  # Default to helping organize
 
     def _empty_board_state(self) -> BoardState:
-        """Return state for an empty board"""
+        """Return state for an empty board."""
         return BoardState(
             task_count=0,
             tasks_with_descriptions=0,

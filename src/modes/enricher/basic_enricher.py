@@ -10,9 +10,16 @@ from src.core.models import Priority, Task
 
 
 class BasicEnricher:
-    """Basic task enricher that improves poorly defined tasks."""
+    """
+    Basic task enricher that improves poorly defined tasks.
+
+    This enricher analyzes task content and enhances it with better names,
+    descriptions, labels, priorities, and effort estimates without requiring
+    external board context.
+    """
 
     def __init__(self) -> None:
+        """Initialize the BasicEnricher with pattern matching configurations."""
         # Keywords for priority detection
         self.priority_keywords = {
             Priority.URGENT: ["urgent", "critical", "emergency", "asap", "immediately"],
@@ -32,7 +39,20 @@ class BasicEnricher:
         }
 
     def enrich_task(self, task: Task) -> Task:
-        """Enrich a single task with better information."""
+        """
+        Enrich a single task with better information.
+
+        Parameters
+        ----------
+        task : Task
+            The task to enrich with improved metadata and descriptions.
+
+        Returns
+        -------
+        Task
+            An enriched copy of the task with improved name, description,
+            priority, labels, and effort estimates.
+        """
         # Create a copy to avoid modifying the original
         enriched = Task(
             id=task.id,
@@ -52,7 +72,19 @@ class BasicEnricher:
         return enriched
 
     def _improve_name(self, name: str) -> str:
-        """Improve vague task names."""
+        """
+        Improve vague task names.
+
+        Parameters
+        ----------
+        name : str
+            The original task name to improve.
+
+        Returns
+        -------
+        str
+            An improved, more descriptive task name.
+        """
         # Capitalize first letter of each word
         improved = name.title()
 
@@ -67,7 +99,20 @@ class BasicEnricher:
         return vague_improvements.get(improved, improved)
 
     def _generate_description(self, task: Task) -> str:
-        """Generate helpful description if missing."""
+        """
+        Generate helpful description if missing.
+
+        Parameters
+        ----------
+        task : Task
+            The task that needs a description.
+
+        Returns
+        -------
+        str
+            A generated description based on task name patterns, or the
+            existing description if already adequate.
+        """
         if task.description and len(task.description) > 10:
             return task.description
 
@@ -75,18 +120,42 @@ class BasicEnricher:
         name_lower = task.name.lower()
 
         if "bug" in name_lower or "fix" in name_lower:
-            return "Investigate and resolve the reported issue. Ensure the fix is tested and doesn't introduce regressions."
+            return (
+                "Investigate and resolve the reported issue. Ensure the fix "
+                "is tested and doesn't introduce regressions."
+            )
         elif "feature" in name_lower or "implement" in name_lower:
-            return "Implement the new functionality as specified. Include unit tests and documentation."
+            return (
+                "Implement the new functionality as specified. Include unit "
+                "tests and documentation."
+            )
         elif "test" in name_lower:
-            return "Create and run tests to ensure functionality works as expected."
+            return "Create and run tests to ensure functionality works as " "expected."
         elif "deploy" in name_lower:
-            return "Deploy the application to the target environment following the deployment checklist."
+            return (
+                "Deploy the application to the target environment following "
+                "the deployment checklist."
+            )
         else:
-            return f"Complete the task: {task.name}. Ensure quality standards are met."
+            return (
+                f"Complete the task: {task.name}. Ensure quality standards " f"are met."
+            )
 
     def _suggest_labels(self, task: Task) -> List[str]:
-        """Suggest relevant labels based on task content."""
+        """
+        Suggest relevant labels based on task content.
+
+        Parameters
+        ----------
+        task : Task
+            The task to analyze for label suggestions.
+
+        Returns
+        -------
+        List[str]
+            A list of suggested labels including existing ones plus
+            pattern-based and technology-specific labels.
+        """
         labels = list(task.labels)  # Start with existing labels
         name_lower = task.name.lower()
 
@@ -116,7 +185,20 @@ class BasicEnricher:
         return labels
 
     def _adjust_priority(self, task: Task) -> Priority:
-        """Adjust priority based on keywords."""
+        """
+        Adjust priority based on keywords.
+
+        Parameters
+        ----------
+        task : Task
+            The task to analyze for priority adjustment.
+
+        Returns
+        -------
+        Priority
+            An adjusted priority based on keyword analysis of the task name
+            and description, or the original priority if no keywords match.
+        """
         name_lower = task.name.lower()
         desc_lower = (task.description or "").lower()
         combined = f"{name_lower} {desc_lower}"
@@ -133,7 +215,21 @@ class BasicEnricher:
         return task.priority
 
     def _estimate_hours(self, task: Task) -> float:
-        """Estimate effort hours based on task type."""
+        """
+        Estimate effort hours based on task type.
+
+        Parameters
+        ----------
+        task : Task
+            The task to estimate effort for.
+
+        Returns
+        -------
+        float
+            Estimated hours for task completion based on pattern matching,
+            or the existing estimate if already set. Defaults to 4.0 hours
+            if no pattern matches.
+        """
         if task.estimated_hours:
             return task.estimated_hours
 

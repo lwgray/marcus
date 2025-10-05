@@ -141,7 +141,8 @@ class DependencyInferer:
                 confidence=0.95,
                 mandatory=True,
             ),
-            # Design comes before implementation (unified pattern with specific task prefixes)
+            # Design comes before implementation
+            # (unified pattern with specific task prefixes)
             DependencyPattern(
                 name="design_before_implementation",
                 description="Design must complete before implementation",
@@ -551,7 +552,10 @@ class DependencyInferer:
                     (weakest_dep.dependency_task_id, weakest_dep.dependent_task_id)
                 )
                 logger.info(
-                    f"Breaking circular dependency by removing: {weakest_dep.dependency_task_id} -> {weakest_dep.dependent_task_id} (confidence: {weakest_dep.confidence})"
+                    f"Breaking circular dependency by removing: "
+                    f"{weakest_dep.dependency_task_id} -> "
+                    f"{weakest_dep.dependent_task_id} "
+                    f"(confidence: {weakest_dep.confidence})"
                 )
 
         # Filter out the dependencies we decided to remove
@@ -562,7 +566,8 @@ class DependencyInferer:
                 cleaned.append(dep)
 
         logger.info(
-            f"Removed {len(dependencies) - len(cleaned)} dependencies to break circular references"
+            f"Removed {len(dependencies) - len(cleaned)} dependencies to "
+            f"break circular references"
         )
         return cleaned
 
@@ -665,7 +670,9 @@ class DependencyInferer:
                 graph.reverse_adjacency = dict(reverse_adjacency)
 
                 logger.info(
-                    f"Removed edge to break cycle: {edge_to_remove.dependency_task_id} -> {edge_to_remove.dependent_task_id}"
+                    f"Removed edge to break cycle: "
+                    f"{edge_to_remove.dependency_task_id} -> "
+                    f"{edge_to_remove.dependent_task_id}"
                 )
             else:
                 break

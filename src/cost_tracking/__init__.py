@@ -1,5 +1,5 @@
 """
-Cost Tracking Module for Marcus
+Cost Tracking Module for Marcus.
 
 Provides token-based cost tracking for AI usage across projects.
 """

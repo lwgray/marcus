@@ -130,8 +130,9 @@ async def authenticate(
     Parameters
     ----------
     client_id : str
-        Unique identifier for the client (e.g., "seneca-001", "user-john", "agent-backend-01")
-        This should be consistent across sessions for the same client
+        Unique identifier for the client (e.g., "seneca-001",
+        "user-john", "agent-backend-01"). This should be consistent
+        across sessions for the same client
 
     client_type : str
         Must be one of: "observer", "developer", "agent", "admin"
@@ -141,8 +142,9 @@ async def authenticate(
         - admin: Full access to all tools
 
     role : str
-        Specific role within the client type for identification (e.g., "analytics", "frontend", "pm")
-        This is descriptive and helps with audit logs but doesn't affect permissions
+        Specific role within the client type for identification
+        (e.g., "analytics", "frontend", "pm"). This is descriptive
+        and helps with audit logs but doesn't affect permissions
 
     metadata : Optional[Dict[str, Any]]
         Additional client metadata such as:
@@ -239,7 +241,10 @@ async def authenticate(
         "client_type": client_type,
         "role": role,
         "available_tools": available_tools,
-        "message": f"Client '{client_id}' authenticated as {client_type} with role '{role}'",
+        "message": (
+            f"Client '{client_id}' authenticated as {client_type} "
+            f"with role '{role}'"
+        ),
     }
 
 
@@ -325,7 +330,9 @@ AUTHENTICATE_TOOL = Tool(
         "properties": {
             "client_id": {
                 "type": "string",
-                "description": "Unique client identifier (e.g., 'seneca-001', 'user-john')",
+                "description": (
+                    "Unique client identifier " "(e.g., 'seneca-001', 'user-john')"
+                ),
             },
             "client_type": {
                 "type": "string",
@@ -334,7 +341,9 @@ AUTHENTICATE_TOOL = Tool(
             },
             "role": {
                 "type": "string",
-                "description": "Specific role (e.g., 'analytics', 'developer', 'backend')",
+                "description": (
+                    "Specific role " "(e.g., 'analytics', 'developer', 'backend')"
+                ),
             },
             "metadata": {
                 "type": "object",

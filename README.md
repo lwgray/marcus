@@ -46,25 +46,9 @@ git clone https://github.com/lwgray/marcus.git
 cd marcus
 docker-compose up -d postgres planka
 
-# 2. Create project and board in Planka (http://localhost:3333)
-# Login: demo@demo.demo / demo
-1. Create Project (e.g. "My Project")
-2. Note project ID: http://localhost:3333/projects/1234567890
-                                                   ^project_id
-3. Click `+` to create board (e.g. "My Board")
-4. Note board ID http://localhost:3333/boards/56789101112
-                                              ^board_id
+  ^board_id
 
-# 3. Set up your board (IMPORTANT - required for task creation):
- - Go to "Marcus Todo Demo" board
- - Click "Add another list" to create these columns in order:
-   • Backlog
-   • In Progress
-   • Blocked
-   • Done
- - Without these lists, task creation will fail!
-
-# 4. Configure and start Marcus
+# 2. Configure and start Marcus
 # Option A: Use default config
 cp config_marcus.example.json config_marcus.json
 # Edit config with your board IDs and API key
@@ -83,7 +67,7 @@ For detailed setup instructions, troubleshooting, and customization options, see
 ### **2. Connect Your AI Agent**
 ```bash
 # For Claude Code:
-claude mcp add --transport http marcus http://localhost:4298
+claude mcp add --transport http marcus http://localhost:4298/mcp
 
 # Marcus provides MCP-compatible endpoints for any agent
 ```

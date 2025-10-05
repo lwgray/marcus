@@ -32,7 +32,27 @@ def build_tiered_instructions(
     """
     Build tiered instructions based on task context and complexity.
 
-    Layers:
+    Parameters
+    ----------
+    base_instructions : str
+        Base instructions always included
+    task : Task
+        Task to build instructions for
+    context_data : Optional[Dict[str, Any]]
+        Context data including previous implementations
+    dependency_awareness : Optional[str]
+        Dependency awareness message if task has dependents
+    predictions : Optional[Dict[str, Any]]
+        AI predictions and warnings if available
+
+    Returns
+    -------
+    str
+        Tiered instructions with appropriate layers
+
+    Notes
+    -----
+    Instruction layers:
     1. Base instructions (always included)
     2. Implementation context (if previous work exists)
     3. Dependency awareness (if task has dependents)
@@ -45,8 +65,9 @@ def build_tiered_instructions(
     if context_data and context_data.get("previous_implementations"):
         impl_count = len(context_data["previous_implementations"])
         instructions_parts.append(
-            f"\n\n📚 IMPLEMENTATION CONTEXT:\n{impl_count} relevant implementations found. "
-            "Use these patterns and interfaces to maintain consistency."
+            f"\n\n📚 IMPLEMENTATION CONTEXT:\n{impl_count} relevant "
+            "implementations found. Use these patterns and interfaces to "
+            "maintain consistency."
         )
 
     # Layer 3: Dependency Awareness
@@ -62,12 +83,13 @@ def build_tiered_instructions(
         # High-impact task with many dependents
         instructions_parts.append(
             "\n\n📝 ARCHITECTURAL DECISIONS:\n"
-            "This task has significant downstream impact. When making technical choices that affect other tasks:\n"
+            "This task has significant downstream impact. When making "
+            "technical choices that affect other tasks:\n"
             "Use: 'Marcus, log decision: I chose [WHAT] because [WHY]. "
             "This affects [IMPACT].'\n"
             "Examples:\n"
-            "- 'I chose JWT tokens because mobile apps need stateless auth. "
-            "This affects all API endpoints.'\n"
+            "- 'I chose JWT tokens because mobile apps need stateless "
+            "auth. This affects all API endpoints.'\n"
             "- 'I chose PostgreSQL because we need ACID compliance. "
             "This affects all data models.'"
         )
@@ -79,7 +101,8 @@ def build_tiered_instructions(
         # Success probability warning
         if predictions.get("success_probability", 1.0) < 0.6:
             risk_parts.append(
-                f"⚠️ Success probability: {predictions['success_probability']:.0%} - Extra care needed"
+                f"⚠️ Success probability: "
+                f"{predictions['success_probability']:.0%} - Extra care needed"
             )
 
         # Enhanced completion time prediction
@@ -198,12 +221,16 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
     - Task priority and dependencies
     - Current workload distribution
 
-    Args:
-        agent_id: The requesting agent's ID
-        state: Marcus server state instance
+    Parameters
+    ----------
+    agent_id : str
+        The requesting agent's ID
+    state : Any
+        Marcus server state instance
 
     Returns
     -------
+    Any
         Dict with task details and instructions if successful
     """
     # Log task request
@@ -269,9 +296,11 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 # Context can be built asynchronously after task assignment
                 build_context = hasattr(state, "context") and state.context
 
-                # Check if we're in project creation mode (lots of tasks being created)
+                # Check if we're in project creation mode (many tasks being
+                # created)
                 if build_context and hasattr(state, "project_tasks"):
-                    # If more than 5 tasks in TODO state, we're likely creating a project
+                    # If more than 5 tasks in TODO state, likely creating
+                    # a project
                     todo_count = sum(
                         1 for t in state.project_tasks if t.status == TaskStatus.TODO
                     )
@@ -334,10 +363,9 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                         dep_count = len(task_context.dependent_tasks)
                         dep_list = "\n".join(
                             [
-                                f"- {dt['task_name']} (needs: {dt['expected_interface']})"
-                                for dt in task_context.dependent_tasks[
-                                    :3
-                                ]  # Show first 3
+                                f"- {dt['task_name']} "
+                                f"(needs: {dt['expected_interface']})"
+                                for dt in task_context.dependent_tasks[:3]
                             ]
                         )
                         dependency_awareness = (
@@ -573,17 +601,88 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 return {"success": False, "error": f"Failed to assign task: {str(e)}"}
 
         else:
+            # Check if there are any TODO tasks remaining
+            # Only run diagnostics if tasks exist but can't be assigned
+            todo_tasks = [t for t in state.project_tasks if t.status == TaskStatus.TODO]
+
+            diagnostic_summary = None
+
+            if todo_tasks:
+                # Tasks exist but can't be assigned - run diagnostics
+                logger.warning(
+                    f"No tasks assignable but {len(todo_tasks)} TODO tasks exist - "
+                    "running diagnostics"
+                )
+
+                from src.core.task_diagnostics import (
+                    format_diagnostic_report,
+                    run_automatic_diagnostics,
+                )
+
+                # Get completed task IDs for diagnostics
+                completed_task_ids = {
+                    t.id for t in state.project_tasks if t.status == TaskStatus.DONE
+                }
+                assigned_task_ids = {a.task_id for a in state.agent_tasks.values()}
+
+                # Run diagnostics
+                try:
+                    diagnostic_report = await run_automatic_diagnostics(
+                        project_tasks=state.project_tasks,
+                        completed_task_ids=completed_task_ids,
+                        assigned_task_ids=assigned_task_ids,
+                    )
+
+                    # Format report for logging
+                    formatted_report = format_diagnostic_report(diagnostic_report)
+                    logger.info(f"Diagnostic Report:\n{formatted_report}")
+
+                    # Include diagnostic summary in response
+                    diagnostic_summary = {
+                        "total_tasks": diagnostic_report.total_tasks,
+                        "available_tasks": diagnostic_report.available_tasks,
+                        "blocked_tasks": diagnostic_report.blocked_tasks,
+                        "issues_found": len(diagnostic_report.issues),
+                        "top_issues": [
+                            {
+                                "type": issue.issue_type,
+                                "severity": issue.severity,
+                                "description": issue.description,
+                                "recommendation": issue.recommendation,
+                            }
+                            for issue in diagnostic_report.issues[:3]
+                        ],
+                        "recommendations": diagnostic_report.recommendations[:5],
+                    }
+
+                except Exception as diag_error:
+                    logger.error(
+                        f"Diagnostic system error: {diag_error}", exc_info=True
+                    )
+                    diagnostic_summary = {
+                        "error": "Diagnostics failed",
+                        "details": str(diag_error),
+                    }
+            else:
+                # No TODO tasks remaining - all tasks are done or in progress
+                logger.info("No TODO tasks remaining - project may be complete")
+
             conversation_logger.log_worker_message(
                 agent_id,
                 "from_pm",
                 "No suitable tasks available at this time",
-                {"reason": "no_matching_tasks"},
+                {"reason": "no_matching_tasks", "diagnostics": diagnostic_summary},
             )
 
-            return {
+            response = {
                 "success": False,
                 "message": "No suitable tasks available at this time",
             }
+
+            if diagnostic_summary:
+                response["diagnostics"] = diagnostic_summary
+
+            return response
 
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -598,16 +697,24 @@ async def report_task_progress(
     Updates task status, progress percentage, and handles completion.
     Includes code analysis for GitHub projects.
 
-    Args:
-        agent_id: The reporting agent's ID
-        task_id: ID of the task being updated
-        status: Task status (in_progress, completed, blocked)
-        progress: Progress percentage (0-100)
-        message: Progress update message
-        state: Marcus server state instance
+    Parameters
+    ----------
+    agent_id : str
+        The reporting agent's ID
+    task_id : str
+        ID of the task being updated
+    status : str
+        Task status (in_progress, completed, blocked)
+    progress : int
+        Progress percentage (0-100)
+    message : str
+        Progress update message
+    state : Any
+        Marcus server state instance
 
     Returns
     -------
+    Dict[str, Any]
         Dict with success status
     """
     # Log progress update
@@ -650,7 +757,8 @@ async def report_task_progress(
 
             # Record completion in Memory if available
             if hasattr(state, "memory") and state.memory:
-                # Calculate actual hours (simplified - in real system would track actual time)
+                # Calculate actual hours (simplified - in real system
+                # would track actual time)
                 task_assignment = state.agent_tasks.get(agent_id)
                 if task_assignment:
                     start_time = task_assignment.assigned_at
@@ -700,9 +808,10 @@ async def report_task_progress(
 
                     if analysis and analysis.get("findings"):
                         # Store findings for future tasks
+                        findings_str = json.dumps(analysis["findings"], indent=2)
                         await state.kanban_client.add_comment(
                             task_id,
-                            f"🤖 Code Analysis:\n{json.dumps(analysis['findings'], indent=2)}",
+                            f"🤖 Code Analysis:\n{findings_str}",
                         )
 
         elif status == "in_progress":
@@ -782,15 +891,22 @@ async def report_blocker(
     Uses AI to analyze the blocker and provide actionable suggestions.
     Updates task status and adds detailed documentation.
 
-    Args:
-        agent_id: The reporting agent's ID
-        task_id: ID of the blocked task
-        blocker_description: Detailed description of the blocker
-        severity: Blocker severity (low, medium, high)
-        state: Marcus server state instance
+    Parameters
+    ----------
+    agent_id : str
+        The reporting agent's ID
+    task_id : str
+        ID of the blocked task
+    blocker_description : str
+        Detailed description of the blocker
+    severity : str
+        Blocker severity (low, medium, high)
+    state : Any
+        Marcus server state instance
 
     Returns
     -------
+    Dict[str, Any]
         Dict with AI suggestions and success status
     """
     # Log blocker report
@@ -872,6 +988,13 @@ async def report_blocker(
 async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Task]:
     """
     Find the best task for an agent using AI-powered analysis.
+
+    Parameters
+    ----------
+    agent_id : str
+        The requesting agent's ID
+    state : Any
+        Marcus server state instance
 
     Returns
     -------
@@ -985,14 +1108,15 @@ async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Tas
                 completed_non_doc_tasks / total_non_doc_tasks
             ) * 100
 
-            # Filter out PROJECT_SUCCESS tasks if project is not nearly complete
-            # Using 90% threshold since some tasks might be blocked or optional
+            # Filter out PROJECT_SUCCESS tasks if not nearly complete
+            # Using 90% threshold since some tasks might be blocked
             if completion_percentage < 90:
                 available_tasks = [
                     t for t in available_tasks if "PROJECT_SUCCESS" not in t.name
                 ]
                 logger.debug(
-                    f"Filtering out PROJECT_SUCCESS tasks - project only {completion_percentage:.1f}% complete"
+                    f"Filtering out PROJECT_SUCCESS tasks - project only "
+                    f"{completion_percentage:.1f}% complete"
                 )
 
         # Apply phase-based task filtering
@@ -1033,12 +1157,14 @@ async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Tas
                             if phase_enforcer._should_depend_on_phase(
                                 task_phase, ip_phase
                             ):
-                                # This task's phase should wait for in-progress phase
+                                # This task's phase should wait for
+                                # in-progress phase
                                 phase_allowed = False
                                 logger.debug(
-                                    f"Task '{task.name}' ({task_phase.value}) blocked by "
-                                    f"in-progress task '{ip_task.name}' ({ip_phase.value}) "
-                                    f"in same feature"
+                                    f"Task '{task.name}' "
+                                    f"({task_phase.value}) blocked by "
+                                    f"in-progress task '{ip_task.name}' "
+                                    f"({ip_phase.value}) in same feature"
                                 )
                                 break
 
@@ -1066,7 +1192,7 @@ async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Tas
                 ]
                 for req_phase in required_phases:
                     if req_phase not in completed_phases:
-                        # Check if there are any tasks of this phase at all
+                        # Check if there are any tasks of this phase
                         phase_exists = any(
                             phase_enforcer._get_task_phase(classifier.classify(t))
                             == req_phase
@@ -1076,9 +1202,12 @@ async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Tas
                         if phase_exists:
                             phase_allowed = False
                             logger.info(
-                                f"Task '{task.name}' ({task_phase.value}) blocked - "
-                                f"waiting for {req_phase.name} phase to complete in same feature. "
-                                f"Task labels: {task.labels}, Required phase: {req_phase.name}"
+                                f"Task '{task.name}' "
+                                f"({task_phase.value}) blocked - waiting "
+                                f"for {req_phase.name} phase to complete "
+                                f"in same feature. Task labels: "
+                                f"{task.labels}, Required phase: "
+                                f"{req_phase.name}"
                             )
                             break
 
@@ -1155,7 +1284,23 @@ async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Tas
 async def find_optimal_task_basic(
     agent_id: str, available_tasks: List[Task], state: Any
 ) -> Optional[Task]:
-    """Find optimal task using basic assignment logic (fallback)."""
+    """
+    Find optimal task using basic assignment logic (fallback).
+
+    Parameters
+    ----------
+    agent_id : str
+        The requesting agent's ID
+    available_tasks : List[Task]
+        List of available tasks to choose from
+    state : Any
+        Marcus server state instance
+
+    Returns
+    -------
+    Optional[Task]
+        The best task for the agent, or None if no suitable task found
+    """
     agent = state.agent_status.get(agent_id)
     if not agent:
         return None

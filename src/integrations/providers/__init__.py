@@ -1,4 +1,4 @@
-"""Kanban provider implementations"""
+"""Kanban provider implementations."""
 
 from .github_kanban import GitHubKanban
 from .linear_kanban import LinearKanban

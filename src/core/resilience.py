@@ -72,7 +72,8 @@ class CircuitBreaker:
         if self.failure_count >= self.config.failure_threshold:
             self.state = "open"
             logger.warning(
-                f"Circuit breaker '{self.name}' opened after {self.failure_count} failures"
+                f"Circuit breaker '{self.name}' opened after "
+                f"{self.failure_count} failures"
             )
 
 
@@ -162,7 +163,8 @@ def with_retry(
                         delay *= 0.5 + secure_random.random()
 
                     logger.debug(
-                        f"{func.__name__} attempt {attempt + 1} failed, retrying in {delay:.2f}s"
+                        f"{func.__name__} attempt {attempt + 1} failed, "
+                        f"retrying in {delay:.2f}s"
                     )
                     await asyncio.sleep(delay)
 
@@ -195,7 +197,8 @@ def with_retry(
                         delay *= 0.5 + secure_random.random()
 
                     logger.debug(
-                        f"{func.__name__} attempt {attempt + 1} failed, retrying in {delay:.2f}s"
+                        f"{func.__name__} attempt {attempt + 1} failed, "
+                        f"retrying in {delay:.2f}s"
                     )
                     time.sleep(delay)
 

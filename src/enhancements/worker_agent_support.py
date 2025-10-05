@@ -276,7 +276,9 @@ class EnhancedPMAgentMethods:
         # Return enhanced registration info including prompt
         return {
             **result,
-            "instructions": "Start by calling request_next_task to get your first assignment",
+            "instructions": (
+                "Start by calling request_next_task to get your first " "assignment"
+            ),
             "available_tools": [
                 "request_next_task",
                 "report_task_progress",

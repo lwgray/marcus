@@ -1,18 +1,28 @@
-"""
-Minimal stubs for pipeline replay functionality
-"""
+"""Minimal stubs for pipeline replay functionality."""
 
 from typing import Any, Dict
 
 
 class PipelineReplayController:
-    """Minimal stub for pipeline replay"""
+    """Minimal stub for pipeline replay."""
 
     def __init__(self) -> None:
         self.replay_sessions: Dict[str, Dict[str, Any]] = {}
 
     def start_replay(self, flow_id: str) -> Dict[str, Any]:
-        """Start replay session for a flow"""
+        """
+        Start replay session for a flow.
+
+        Parameters
+        ----------
+        flow_id : str
+            The flow identifier.
+
+        Returns
+        -------
+        Dict[str, Any]
+            The replay session state.
+        """
         session = {
             "flow_id": flow_id,
             "status": "active",
@@ -23,7 +33,19 @@ class PipelineReplayController:
         return session
 
     def step_forward(self, flow_id: str) -> Dict[str, Any]:
-        """Step forward in replay"""
+        """
+        Step forward in replay.
+
+        Parameters
+        ----------
+        flow_id : str
+            The flow identifier.
+
+        Returns
+        -------
+        Dict[str, Any]
+            The updated replay session state.
+        """
         session = self.replay_sessions.get(flow_id, {})
         if session:
             session["current_position"] = min(
@@ -32,14 +54,40 @@ class PipelineReplayController:
         return session
 
     def step_backward(self, flow_id: str) -> Dict[str, Any]:
-        """Step backward in replay"""
+        """
+        Step backward in replay.
+
+        Parameters
+        ----------
+        flow_id : str
+            The flow identifier.
+
+        Returns
+        -------
+        Dict[str, Any]
+            The updated replay session state.
+        """
         session = self.replay_sessions.get(flow_id, {})
         if session:
             session["current_position"] = max(session["current_position"] - 1, 0)
         return session
 
     def jump_to_position(self, flow_id: str, position: int) -> Dict[str, Any]:
-        """Jump to specific position"""
+        """
+        Jump to specific position.
+
+        Parameters
+        ----------
+        flow_id : str
+            The flow identifier.
+        position : int
+            The target position.
+
+        Returns
+        -------
+        Dict[str, Any]
+            The updated replay session state.
+        """
         session = self.replay_sessions.get(flow_id, {})
         if session:
             session["current_position"] = max(
@@ -48,6 +96,13 @@ class PipelineReplayController:
         return session
 
     def stop_replay(self, flow_id: str) -> None:
-        """Stop replay session"""
+        """
+        Stop replay session.
+
+        Parameters
+        ----------
+        flow_id : str
+            The flow identifier.
+        """
         if flow_id in self.replay_sessions:
             del self.replay_sessions[flow_id]

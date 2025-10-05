@@ -259,8 +259,9 @@ class TaskRecoveryManager:
             if hasattr(self.kanban_client, "update_task_status"):
                 await self.kanban_client.update_task_status(task.id, new_status)
 
-                # Note: KanbanInterface.update_task doesn't support additional parameters
-                # Skip the update_task call to avoid interface limitations
+                # Note: KanbanInterface.update_task doesn't support
+                # additional parameters. Skip the update_task call to
+                # avoid interface limitations
                 pass
             else:
                 logger.warning(
@@ -272,8 +273,9 @@ class TaskRecoveryManager:
             # Check if we've hit max recovery attempts
             if self.recovery_attempts[task.id] >= self.max_recovery_attempts:
                 logger.error(
-                    f"Task {task.id} has been recovered {self.recovery_attempts[task.id]} times. "
-                    "Consider manual intervention or task redesign."
+                    f"Task {task.id} has been recovered "
+                    f"{self.recovery_attempts[task.id]} times. "
+                    f"Consider manual intervention or task redesign."
                 )
                 # Could trigger escalation here
 

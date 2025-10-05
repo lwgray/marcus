@@ -126,9 +126,6 @@ Here's a full `config_marcus.json` configured for local model usage:
 
 ```json
 {
-  "project_id": "your-project-id",
-  "board_id": "your-board-id",
-  "project_name": "Your Project",
   "auto_find_board": false,
   "kanban": {
     "provider": "planka"

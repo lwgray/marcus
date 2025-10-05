@@ -164,17 +164,22 @@ class ConversationLogger:
         Log communications between workers and PM agent.
     log_pm_thinking(thought, context=None)
         Log internal reasoning and decision-making processes.
-    log_pm_decision(decision, rationale, alternatives_considered=None, confidence_score=None, decision_factors=None)
+    log_pm_decision(decision, rationale, alternatives_considered=None,
+                    confidence_score=None, decision_factors=None)
         Log formal decisions with comprehensive context and analysis.
     log_kanban_interaction(action, direction, data, processing_steps=None)
         Log interactions with kanban board system.
-    log_task_assignment(task_id, worker_id, task_details, assignment_score, dependency_analysis=None)
+    log_task_assignment(task_id, worker_id, task_details, assignment_score,
+                        dependency_analysis=None)
         Log task assignment decisions with scoring and dependency analysis.
-    log_progress_update(worker_id, task_id, progress, status, message, metrics=None)
+    log_progress_update(worker_id, task_id, progress, status, message,
+                        metrics=None)
         Log progress updates with performance metrics.
-    log_blocker(worker_id, task_id, blocker_description, severity, suggested_solutions=None, resolution_attempts=None)
+    log_blocker(worker_id, task_id, blocker_description, severity,
+                suggested_solutions=None, resolution_attempts=None)
         Log blockers with resolution context and suggestions.
-    log_system_state(active_workers, tasks_in_progress, tasks_completed, tasks_blocked, system_metrics)
+    log_system_state(active_workers, tasks_in_progress, tasks_completed,
+                     tasks_blocked, system_metrics)
         Log overall system state for monitoring and analysis.
     get_conversation_replay(start_time=None, end_time=None, filter_type=None)
         Retrieve conversation logs for replay and analysis.
@@ -551,21 +556,29 @@ class ConversationLogger:
 
         >>> logger.log_pm_decision(
         ...     decision="Assign critical authentication task to worker_senior_1",
-        ...     rationale="Worker has extensive security experience and current availability",
+        ...     rationale=(
+        ...         "Worker has extensive security experience and current "
+        ...         "availability"
+        ...     ),
         ...     alternatives_considered=[
         ...         {
         ...             "option": "Assign to worker_junior_2",
         ...             "score": 0.4,
         ...             "pros": ["Available immediately", "Eager to learn"],
         ...             "cons": ["Limited security experience", "Higher risk"],
-        ...             "reason_rejected": "Task criticality requires experienced developer"
+        ...             "reason_rejected": (
+        ...                 "Task criticality requires experienced developer"
+        ...             )
         ...         },
         ...         {
         ...             "option": "Split task between two workers",
         ...             "score": 0.6,
         ...             "pros": ["Knowledge sharing", "Faster completion"],
         ...             "cons": ["Coordination overhead", "Potential conflicts"],
-        ...             "reason_rejected": "Security task requires single point of responsibility"
+        ...             "reason_rejected": (
+        ...                 "Security task requires single point of "
+        ...                 "responsibility"
+        ...             )
         ...         }
         ...     ],
         ...     confidence_score=0.85,
@@ -581,8 +594,14 @@ class ConversationLogger:
         Resource reallocation decision:
 
         >>> logger.log_pm_decision(
-        ...     decision="Reallocate 2 developers from Feature B to critical Bug Fix A",
-        ...     rationale="Production issue affecting 40% of users requires immediate attention",
+        ...     decision=(
+        ...         "Reallocate 2 developers from Feature B to critical "
+        ...         "Bug Fix A"
+        ...     ),
+        ...     rationale=(
+        ...         "Production issue affecting 40% of users requires "
+        ...         "immediate attention"
+        ...     ),
         ...     confidence_score=0.92,
         ...     decision_factors={
         ...         "user_impact": "high",
@@ -596,8 +615,13 @@ class ConversationLogger:
         Timeline adjustment decision:
 
         >>> logger.log_pm_decision(
-        ...     decision="Extend sprint by 2 days to accommodate dependency delays",
-        ...     rationale="External API delays beyond team control, extension minimizes scope reduction",
+        ...     decision=(
+        ...         "Extend sprint by 2 days to accommodate dependency delays"
+        ...     ),
+        ...     rationale=(
+        ...         "External API delays beyond team control, extension "
+        ...         "minimizes scope reduction"
+        ...     ),
         ...     alternatives_considered=[
         ...         {
         ...             "option": "Reduce sprint scope by 20%",
@@ -743,9 +767,21 @@ class ConversationLogger:
         ...     direction="to_kanban",
         ...     data={
         ...         "operations": [
-        ...             {"task_id": "TASK-456", "status": "Done", "completion_time": "2024-01-15T14:30:00Z"},
-        ...             {"task_id": "TASK-457", "status": "In Progress", "assignee": "worker_2"},
-        ...             {"task_id": "TASK-458", "priority": "urgent", "due_date": "2024-01-17"}
+        ...             {
+        ...                 "task_id": "TASK-456",
+        ...                 "status": "Done",
+        ...                 "completion_time": "2024-01-15T14:30:00Z",
+        ...             },
+        ...             {
+        ...                 "task_id": "TASK-457",
+        ...                 "status": "In Progress",
+        ...                 "assignee": "worker_2",
+        ...             },
+        ...             {
+        ...                 "task_id": "TASK-458",
+        ...                 "priority": "urgent",
+        ...                 "due_date": "2024-01-17",
+        ...             }
         ...         ],
         ...         "batch_id": "BATCH-789",
         ...         "total_operations": 3
@@ -847,7 +883,9 @@ class ConversationLogger:
         ...     worker_id="worker_backend_senior_1",
         ...     task_details={
         ...         "title": "Implement OAuth2 authentication system",
-        ...         "description": "Design and implement secure OAuth2 flow with JWT tokens",
+        ...         "description": (
+        ...             "Design and implement secure OAuth2 flow with JWT tokens"
+        ...         ),
         ...         "priority": "high",
         ...         "estimated_hours": 24,
         ...         "required_skills": ["oauth2", "jwt", "security", "nodejs"],
@@ -873,7 +911,9 @@ class ConversationLogger:
         ...     worker_id="worker_frontend_2",
         ...     task_details={
         ...         "title": "Create responsive dashboard component",
-        ...         "description": "Build React dashboard with charts and real-time data",
+        ...         "description": (
+        ...             "Build React dashboard with charts and real-time data"
+        ...         ),
         ...         "priority": "medium",
         ...         "estimated_hours": 16,
         ...         "required_skills": ["react", "css", "responsive_design", "charts"],
@@ -898,7 +938,9 @@ class ConversationLogger:
         ...     worker_id="worker_devops_1",
         ...     task_details={
         ...         "title": "Database cleanup and optimization",
-        ...         "description": "Clean up old data and optimize database performance",
+        ...         "description": (
+        ...             "Clean up old data and optimize database performance"
+        ...         ),
         ...         "priority": "low",
         ...         "estimated_hours": 8,
         ...         "required_skills": ["database", "sql", "performance_tuning"],
@@ -1002,7 +1044,10 @@ class ConversationLogger:
         ...     task_id="TASK-API-USERS",
         ...     progress=65,
         ...     status="in_progress",
-        ...     message="User CRUD endpoints implemented, working on authentication middleware",
+        ...     message=(
+        ...         "User CRUD endpoints implemented, working on authentication "
+        ...         "middleware"
+        ...     ),
         ...     metrics={
         ...         "time_spent_hours": 12,
         ...         "estimated_remaining_hours": 6,
@@ -1021,7 +1066,10 @@ class ConversationLogger:
         ...     task_id="TASK-DB-OPTIMIZATION",
         ...     progress=100,
         ...     status="completed",
-        ...     message="Database queries optimized, 40% performance improvement achieved",
+        ...     message=(
+        ...         "Database queries optimized, 40% performance improvement "
+        ...         "achieved"
+        ...     ),
         ...     metrics={
         ...         "time_spent_hours": 16,
         ...         "queries_optimized": 12,
@@ -1040,7 +1088,10 @@ class ConversationLogger:
         ...     task_id="TASK-UI-INTEGRATION",
         ...     progress=35,
         ...     status="blocked",
-        ...     message="Waiting for API endpoints to be deployed to staging environment",
+        ...     message=(
+        ...         "Waiting for API endpoints to be deployed to staging "
+        ...         "environment"
+        ...     ),
         ...     metrics={
         ...         "time_spent_hours": 8,
         ...         "estimated_remaining_hours": 12,
@@ -1151,7 +1202,11 @@ class ConversationLogger:
         >>> logger.log_blocker(
         ...     worker_id="worker_backend_2",
         ...     task_id="TASK-PAYMENT-INTEGRATION",
-        ...     blocker_description="Third-party payment API is returning 500 errors consistently since 2PM. Cannot test or complete payment processing implementation.",
+        ...     blocker_description=(
+        ...         "Third-party payment API is returning 500 errors "
+        ...         "consistently since 2PM. Cannot test or complete payment "
+        ...         "processing implementation."
+        ...     ),
         ...     severity="high",
         ...     suggested_solutions=[
         ...         "Contact payment provider support team",
@@ -1172,7 +1227,9 @@ class ConversationLogger:
         ...             "timestamp": "2024-01-15T15:00:00Z",
         ...             "outcome": "Same errors across all endpoints",
         ...             "time_spent": 1.0,
-        ...             "lessons_learned": "Issue is service-wide, not credential specific"
+        ...             "lessons_learned": (
+        ...                 "Issue is service-wide, not credential specific"
+        ...             )
         ...         }
         ...     ]
         ... )
@@ -1182,11 +1239,17 @@ class ConversationLogger:
         >>> logger.log_blocker(
         ...     worker_id="worker_frontend_1",
         ...     task_id="TASK-MOBILE-RESPONSIVE",
-        ...     blocker_description="CSS Grid layout breaking on iOS Safari versions < 14. Affects 15% of mobile users according to analytics.",
+        ...     blocker_description=(
+        ...         "CSS Grid layout breaking on iOS Safari versions < 14. "
+        ...         "Affects 15% of mobile users according to analytics."
+        ...     ),
         ...     severity="medium",
         ...     suggested_solutions=[
         ...         "Implement CSS Grid fallback using Flexbox",
-        ...         "Use CSS feature queries (@supports) for progressive enhancement",
+        ...         (
+        ...             "Use CSS feature queries (@supports) for progressive "
+        ...             "enhancement"
+        ...         ),
         ...         "Add polyfill for older Safari versions",
         ...         "Consider dropping support for Safari < 14"
         ...     ],
@@ -1196,7 +1259,9 @@ class ConversationLogger:
         ...             "timestamp": "2024-01-15T10:00:00Z",
         ...             "outcome": "Confirmed issue specific to Safari < 14",
         ...             "time_spent": 2.0,
-        ...             "lessons_learned": "Need systematic browser compatibility testing"
+        ...             "lessons_learned": (
+        ...                 "Need systematic browser compatibility testing"
+        ...             )
         ...         }
         ...     ]
         ... )
@@ -1206,21 +1271,33 @@ class ConversationLogger:
         >>> logger.log_blocker(
         ...     worker_id="worker_devops_3",
         ...     task_id="TASK-LOAD-TESTING",
-        ...     blocker_description="Staging environment insufficient for realistic load testing. Current setup can only simulate 100 concurrent users, need 1000+ for meaningful results.",
+        ...     blocker_description=(
+        ...         "Staging environment insufficient for realistic load testing. "
+        ...         "Current setup can only simulate 100 concurrent users, need "
+        ...         "1000+ for meaningful results."
+        ...     ),
         ...     severity="medium",
         ...     suggested_solutions=[
         ...         "Request additional staging environment resources",
         ...         "Use cloud-based load testing service",
         ...         "Scale testing approach to use multiple smaller tests",
-        ...         "Partner with infrastructure team for production-like environment"
+        ...         (
+        ...             "Partner with infrastructure team for production-like "
+        ...             "environment"
+        ...         )
         ...     ],
         ...     resolution_attempts=[
         ...         {
-        ...             "attempt": "Optimized existing staging environment configuration",
+        ...             "attempt": (
+        ...                 "Optimized existing staging environment configuration"
+        ...             ),
         ...             "timestamp": "2024-01-15T09:00:00Z",
         ...             "outcome": "Achieved 200 concurrent users, still insufficient",
         ...             "time_spent": 3.0,
-        ...             "lessons_learned": "Hardware limits cannot be overcome with optimization alone"
+        ...             "lessons_learned": (
+        ...                 "Hardware limits cannot be overcome with optimization "
+        ...                 "alone"
+        ...             )
         ...         }
         ...     ]
         ... )
@@ -1230,7 +1307,11 @@ class ConversationLogger:
         >>> logger.log_blocker(
         ...     worker_id="worker_security_1",
         ...     task_id="TASK-SECURITY-AUDIT",
-        ...     blocker_description="Discovered critical security vulnerability in authentication system during audit. Production system at risk, requires immediate attention.",
+        ...     blocker_description=(
+        ...         "Discovered critical security vulnerability in authentication "
+        ...         "system during audit. Production system at risk, requires "
+        ...         "immediate attention."
+        ...     ),
         ...     severity="critical",
         ...     suggested_solutions=[
         ...         "Implement immediate hotfix to production",
@@ -1242,9 +1323,14 @@ class ConversationLogger:
         ...         {
         ...             "attempt": "Verified vulnerability and assessed impact scope",
         ...             "timestamp": "2024-01-15T16:00:00Z",
-        ...             "outcome": "Confirmed critical vulnerability affects all user sessions",
+        ...             "outcome": (
+        ...                 "Confirmed critical vulnerability affects all user "
+        ...                 "sessions"
+        ...             ),
         ...             "time_spent": 1.0,
-        ...             "lessons_learned": "Need automated security scanning in CI pipeline"
+        ...             "lessons_learned": (
+        ...                 "Need automated security scanning in CI pipeline"
+        ...             )
         ...         }
         ...     ]
         ... )
@@ -1655,7 +1741,10 @@ def log_conversation(
     ...     sender="worker_backend_1",
     ...     receiver="marcus",
     ...     message="Task TASK-123 completed successfully",
-    ...     metadata={"task_id": "TASK-123", "completion_time": "2024-01-15T16:30:00Z"}
+    ...     metadata={
+    ...         "task_id": "TASK-123",
+    ...         "completion_time": "2024-01-15T16:30:00Z"
+    ...     }
     ... )
 
     Marcus communicating with worker:
@@ -1664,7 +1753,11 @@ def log_conversation(
     ...     sender="marcus",
     ...     receiver="worker_frontend_2",
     ...     message="New high-priority UI task assigned",
-    ...     metadata={"task_id": "TASK-456", "priority": "high", "deadline": "2024-01-18"}
+    ...     metadata={
+    ...         "task_id": "TASK-456",
+    ...         "priority": "high",
+    ...         "deadline": "2024-01-18"
+    ...     }
     ... )
 
     Marcus updating Kanban board:
@@ -1673,7 +1766,11 @@ def log_conversation(
     ...     sender="marcus",
     ...     receiver="kanban",
     ...     message="Updating task status to completed",
-    ...     metadata={"action": "update_task", "task_id": "TASK-789", "new_status": "Done"}
+    ...     metadata={
+    ...         "action": "update_task",
+    ...         "task_id": "TASK-789",
+    ...         "new_status": "Done"
+    ...     }
     ... )
 
     Kanban board notifying Marcus:
@@ -1682,7 +1779,11 @@ def log_conversation(
     ...     sender="kanban",
     ...     receiver="marcus",
     ...     message="Board state synchronized, 3 new tasks added",
-    ...     metadata={"action": "sync_complete", "new_tasks": 3, "total_tasks": 47}
+    ...     metadata={
+    ...         "action": "sync_complete",
+    ...         "new_tasks": 3,
+    ...         "total_tasks": 47
+    ...     }
     ... )
 
     Notes
@@ -1754,11 +1855,21 @@ def log_thinking(
 
     >>> log_thinking(
     ...     component="marcus",
-    ...     thought="Evaluating worker capacity and skills for urgent security task",
+    ...     thought=(
+    ...         "Evaluating worker capacity and skills for urgent security task"
+    ...     ),
     ...     context={
     ...         "available_workers": 5,
-    ...         "task_requirements": ["security", "nodejs", "immediate_availability"],
-    ...         "worker_scores": {"worker_1": 0.9, "worker_2": 0.7, "worker_3": 0.8},
+    ...         "task_requirements": [
+    ...             "security",
+    ...             "nodejs",
+    ...             "immediate_availability"
+    ...         ],
+    ...         "worker_scores": {
+    ...             "worker_1": 0.9,
+    ...             "worker_2": 0.7,
+    ...             "worker_3": 0.8
+    ...         },
     ...         "decision_factors": ["expertise", "availability", "current_load"],
     ...         "confidence_level": 0.85
     ...     }
@@ -1768,13 +1879,26 @@ def log_thinking(
 
     >>> log_thinking(
     ...     component="worker_backend_1",
-    ...     thought="Analyzing database performance issue, considering indexing strategies",
+    ...     thought=(
+    ...         "Analyzing database performance issue, considering indexing "
+    ...         "strategies"
+    ...     ),
     ...     context={
     ...         "query_performance": "slow",
     ...         "affected_tables": ["users", "orders", "products"],
-    ...         "potential_solutions": ["add_indexes", "optimize_queries", "partition_tables"],
-    ...         "estimated_impact": {"add_indexes": "high", "optimize_queries": "medium"},
-    ...         "implementation_complexity": {"add_indexes": "low", "optimize_queries": "medium"}
+    ...         "potential_solutions": [
+    ...             "add_indexes",
+    ...             "optimize_queries",
+    ...             "partition_tables"
+    ...         ],
+    ...         "estimated_impact": {
+    ...             "add_indexes": "high",
+    ...             "optimize_queries": "medium"
+    ...         },
+    ...         "implementation_complexity": {
+    ...             "add_indexes": "low",
+    ...             "optimize_queries": "medium"
+    ...         }
     ...     }
     ... )
 

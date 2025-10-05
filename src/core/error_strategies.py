@@ -120,8 +120,11 @@ class CircuitBreaker:
                     operation="circuit_breaker_open",
                     context=ErrorContext(operation=f"circuit_breaker_{self.name}"),
                     remediation={
-                        "immediate_action": f"Wait for circuit breaker to close (next attempt: {self.state.next_attempt_time})",
-                        "fallback_strategy": "Use cached data or alternative service",
+                        "immediate_action": (
+                            f"Wait for circuit breaker to close "
+                            f"(next attempt: {self.state.next_attempt_time})"
+                        ),
+                        "fallback_strategy": ("Use cached data or alternative service"),
                         "long_term_solution": "Fix underlying service issues",
                     },
                     severity=ErrorSeverity.MEDIUM,
@@ -202,7 +205,8 @@ class CircuitBreaker:
             self.state.state = CircuitBreakerState.OPEN
             self.state.next_attempt_time = now + timedelta(seconds=self.config.timeout)
             logger.warning(
-                f"Circuit breaker {self.name} OPENED due to {self.state.failure_count} failures"
+                f"Circuit breaker {self.name} OPENED due to "
+                f"{self.state.failure_count} failures"
             )
 
         elif self.state.state == CircuitBreakerState.HALF_OPEN:

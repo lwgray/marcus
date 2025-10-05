@@ -91,7 +91,8 @@ class AIAnalysisEngine:
             )
             if not api_key:
                 print(
-                    "⚠️  Anthropic API key not found - AI features will use fallback mode",
+                    "⚠️  Anthropic API key not found - "
+                    "AI features will use fallback mode",
                     file=sys.stderr,
                 )
                 self.client = None
@@ -111,7 +112,8 @@ class AIAnalysisEngine:
                         raise te
 
         except Exception:
-            # Failed to initialize Anthropic client - AI features will use fallback responses
+            # Failed to initialize Anthropic client
+            # AI features will use fallback responses
             # Don't print to stderr as it interferes with MCP stdio protocol
             self.client = None
 
@@ -123,7 +125,8 @@ class AIAnalysisEngine:
 
         # Analysis prompts
         self.prompts: Dict[str, str] = {
-            "task_assignment": """You are an AI Project Manager analyzing task assignments.
+            "task_assignment": """You are an AI Project Manager \
+analyzing task assignments.
 
 Given:
 - Available tasks: {tasks}
@@ -142,12 +145,14 @@ Return JSON:
     "confidence_score": 0.0-1.0,
     "reasoning": "explanation"
 }}""",
-            "task_instructions": """You are generating detailed task instructions for a developer.
+            "task_instructions": """You are generating detailed task \
+instructions for a developer.
 
 Task: {task}
 Assigned to: {agent}
 
-IMPORTANT: Look at the task data to determine the task type (check the 'type' field). Generate instructions appropriate for the task type:
+IMPORTANT: Look at the task data to determine the task type \
+(check the 'type' field). Generate instructions appropriate for the task type:
 
 For DESIGN tasks:
 - Focus on planning, architecture, and specifications
@@ -182,14 +187,19 @@ Severity: {severity}
 {agent_context}
 {task_context}
 
-Consider the agent's skills, experience level, and current workload when providing suggestions.
-Tailor resolution steps to their capabilities and provide learning opportunities if appropriate.
+Consider the agent's skills, experience level, and current workload \
+when providing suggestions.
+Tailor resolution steps to their capabilities and provide learning \
+opportunities if appropriate.
 
 Provide JSON response:
 {{
     "root_cause": "analysis",
     "impact_assessment": "description",
-    "resolution_steps": ["step1 tailored to agent skills", "step2"],
+    "resolution_steps": [
+        "step1 tailored to agent skills",
+        "step2"
+    ],
     "required_resources": ["resource1"],
     "estimated_hours": number,
     "escalation_needed": boolean,
@@ -259,9 +269,6 @@ Identify risks and provide JSON:
         agent: WorkerStatus,
         project_state: ProjectState,
     ) -> Optional[Task]:
-        # Set project context for token tracking
-        self.current_project_id = project_state.project_name or project_state.board_id
-        self.current_agent_id = agent.worker_id
         """
         Find the optimal task for an agent using AI analysis.
 
@@ -291,6 +298,9 @@ Identify risks and provide JSON:
         Falls back to skill-based matching if AI is unavailable.
         Considers up to 10 tasks to avoid context limits.
         """
+        # Set project context for token tracking
+        self.current_project_id = project_state.project_name or project_state.board_id
+        self.current_agent_id = agent.worker_id
         if not available_tasks:
             return None
 
@@ -369,7 +379,7 @@ Identify risks and provide JSON:
         self, tasks: List[Task], agent: WorkerStatus
     ) -> Optional[Task]:
         """
-        Simple skill-based task matching without AI.
+        Match tasks to agent using skill-based scoring without AI.
 
         Parameters
         ----------
@@ -571,7 +581,8 @@ Identify risks and provide JSON:
 1. **Review Requirements**
    - Read the task description carefully
    - Check any linked documentation
-   - Identify dependencies: {', '.join(task.dependencies) if task.dependencies else 'None'}
+   - Identify dependencies: \
+{', '.join(task.dependencies) if task.dependencies else 'None'}
 
 {implementation_steps}
 
@@ -955,7 +966,9 @@ Provide a helpful clarification that guides the developer."""
                     severity=RiskLevel.HIGH,
                     probability=0.7,
                     impact="Potential delays in delivery",
-                    mitigation_strategy="Review task priorities and resource allocation",
+                    mitigation_strategy=(
+                        "Review task priorities and resource allocation"
+                    ),
                     identified_at=datetime.now(),
                 )
             )
@@ -1027,7 +1040,8 @@ Provide a helpful clarification that guides the developer."""
             team_status_data = team_status
 
         # Create project health analysis prompt
-        prompt = f"""Analyze the health of this software project and provide comprehensive insights.
+        prompt = f"""Analyze the health of this software project \
+and provide comprehensive insights.
 
 Project State:
 {json.dumps(project_state_data, indent=2)}
@@ -1127,7 +1141,9 @@ Return JSON in this format:
             risk_factors.append(
                 {
                     "type": "resource",
-                    "description": f"{project_state.blocked_tasks} tasks are currently blocked",
+                    "description": (
+                        f"{project_state.blocked_tasks} tasks are " "currently blocked"
+                    ),
                     "severity": "high" if project_state.blocked_tasks > 2 else "medium",
                     "mitigation": "Review and resolve blockers urgently",
                 }
@@ -1138,7 +1154,9 @@ Return JSON in this format:
             risk_factors.append(
                 {
                     "type": "timeline",
-                    "description": f"{len(project_state.overdue_tasks)} tasks are overdue",
+                    "description": (
+                        f"{len(project_state.overdue_tasks)} tasks are " "overdue"
+                    ),
                     "severity": "high",
                     "mitigation": "Reassign or reprioritize overdue tasks",
                 }
@@ -1208,7 +1226,8 @@ Return JSON in this format:
             return self._analyze_feature_request_fallback(feature_description)
 
         try:
-            prompt = f"""Analyze this feature request and generate a comprehensive task breakdown.
+            prompt = f"""Analyze this feature request and generate a \
+comprehensive task breakdown.
 
 Feature Request: {feature_description}
 
@@ -1231,15 +1250,21 @@ Return JSON with this exact format:
             "estimated_hours": integer,
             "labels": ["appropriate", "labels"],
             "critical": true/false,
-            "task_type": "design|backend|frontend|database|testing|documentation|security"
+            "task_type": \
+"design|backend|frontend|database|testing|documentation|security"
         }}
     ],
     "feature_complexity": "simple|moderate|complex",
     "technical_requirements": ["list", "of", "technical", "needs"],
-    "dependencies_on_existing": ["authentication", "api", "database"] // existing systems this feature depends on
+    "dependencies_on_existing": [
+        "authentication",
+        "api",
+        "database"
+    ] // existing systems this feature depends on
 }}
 
-Be specific and actionable. Each task should be self-contained and assignable to a developer."""
+Be specific and actionable. Each task should be self-contained \
+and assignable to a developer."""
 
             response = await self._call_claude(prompt)
 
@@ -1270,7 +1295,10 @@ Be specific and actionable. Each task should be self-contained and assignable to
         tasks.append(
             {
                 "name": f"Design {feature_description}",
-                "description": f"Create technical design and architecture for {feature_description}",
+                "description": (
+                    f"Create technical design and architecture "
+                    f"for {feature_description}"
+                ),
                 "estimated_hours": 4,
                 "labels": ["design", "planning"],
                 "critical": False,
@@ -1352,7 +1380,9 @@ Be specific and actionable. Each task should be self-contained and assignable to
 
         Examples
         --------
-        >>> integration = await engine.analyze_integration_points(new_tasks, project_tasks)
+        >>> integration = await engine.analyze_integration_points(
+        ...     new_tasks, project_tasks
+        ... )
         >>> phase = integration["suggested_phase"]
         """
         # Fallback for when Claude is unavailable
@@ -1385,7 +1415,8 @@ Be specific and actionable. Each task should be self-contained and assignable to
                 for t in existing_tasks
             ]
 
-            prompt = f"""Analyze how these new feature tasks should integrate with the existing project.
+            prompt = f"""Analyze how these new feature tasks should \
+integrate with the existing project.
 
 New Feature Tasks:
 {json.dumps(feature_summary, indent=2)}

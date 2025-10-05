@@ -43,7 +43,9 @@ async def get_project_status(state: Any) -> Any:
             if not kanban_client:
                 return {
                     "success": False,
-                    "error": "No active project. Use switch_project to select a project.",
+                    "error": (
+                        "No active project. Use switch_project to " "select a project."
+                    ),
                 }
             state.kanban_client = kanban_client
         else:
@@ -54,7 +56,10 @@ async def get_project_status(state: Any) -> Any:
             if not hasattr(state, "kanban_client") or state.kanban_client is None:
                 return {
                     "success": False,
-                    "error": "Failed to initialize kanban client. Check your kanban configuration.",
+                    "error": (
+                        "Failed to initialize kanban client. Check your "
+                        "kanban configuration."
+                    ),
                 }
 
         # Refresh state - use the server's own refresh method
@@ -79,7 +84,8 @@ async def get_project_status(state: Any) -> Any:
                 [t for t in state.project_tasks if t.status == TaskStatus.BLOCKED]
             )
 
-            # Worker metrics - create snapshot to avoid dictionary mutation during iteration
+            # Worker metrics - create snapshot to avoid dictionary
+            # mutation during iteration
             active_workers = len(
                 [
                     w
@@ -118,7 +124,11 @@ async def get_project_status(state: Any) -> Any:
         else:
             return {
                 "success": False,
-                "error": "No project state available. This might mean no tasks exist on the kanban board or the board is not accessible.",
+                "error": (
+                    "No project state available. This might mean no "
+                    "tasks exist on the kanban board or the board is "
+                    "not accessible."
+                ),
             }
 
     except Exception as e:

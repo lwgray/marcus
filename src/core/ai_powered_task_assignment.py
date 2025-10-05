@@ -55,7 +55,8 @@ class AITaskAssignmentEngine:
             return None
 
         logger.info(
-            f"Finding optimal task for agent {agent_id} from {len(available_tasks)} tasks"
+            f"Finding optimal task for agent {agent_id} "
+            f"from {len(available_tasks)} tasks"
         )
 
         # Step 1: Safety filtering (Phase 1)
@@ -95,7 +96,8 @@ class AITaskAssignmentEngine:
                 # Check if dependencies are complete
                 if not await self._are_dependencies_complete(task):
                     logger.warning(
-                        f"Filtering out unsafe task: {task.name} - dependencies incomplete"
+                        f"Filtering out unsafe task: {task.name} - "
+                        f"dependencies incomplete"
                     )
                     continue
 
@@ -106,7 +108,8 @@ class AITaskAssignmentEngine:
                     )
                     if not safety_check.get("safe", False):
                         logger.warning(
-                            f"AI safety check failed for: {task.name} - {safety_check.get('reason')}"
+                            f"AI safety check failed for: {task.name} - "
+                            f"{safety_check.get('reason')}"
                         )
                         continue
 
@@ -144,7 +147,8 @@ class AITaskAssignmentEngine:
 
             dependency_scores[task.id] = score
             logger.debug(
-                f"Task {task.name}: unblocks {unblocked_count}, critical: {is_critical}, score: {score}"
+                f"Task {task.name}: unblocks {unblocked_count}, "
+                f"critical: {is_critical}, score: {score}"
             )
 
         return dependency_scores
@@ -186,7 +190,8 @@ class AITaskAssignmentEngine:
 
             ai_scores[task.id] = score
             logger.debug(
-                f"AI score for {task.name}: {score} (confidence: {ai_analysis.get('confidence')})"
+                f"AI score for {task.name}: {score} "
+                f"(confidence: {ai_analysis.get('confidence')})"
             )
 
         return ai_scores
@@ -196,7 +201,8 @@ class AITaskAssignmentEngine:
         impact_scores = {}
 
         for task in tasks:
-            # Predict how completing this task affects project timeline (if method exists)
+            # Predict how completing this task affects project timeline
+            # (if method exists)
             if hasattr(self.ai_engine, "predict_task_impact"):
                 impact_analysis = await self.ai_engine.predict_task_impact(
                     task,
@@ -220,7 +226,8 @@ class AITaskAssignmentEngine:
             impact_scores[task.id] = min(score, 1.0)  # Cap at 1.0
 
             logger.debug(
-                f"Impact score for {task.name}: {score} (timeline: {timeline_impact}, risk: {risk_reduction})"
+                f"Impact score for {task.name}: {score} "
+                f"(timeline: {timeline_impact}, risk: {risk_reduction})"
             )
 
         return impact_scores
@@ -277,8 +284,8 @@ class AITaskAssignmentEngine:
             logger.debug(
                 f"Task {task.name} scores - "
                 f"skill: {skill_score:.2f}, priority: {priority_score:.2f}, "
-                f"deps: {dep_score:.2f}, ai: {ai_score:.2f}, impact: {impact_score:.2f}, "
-                f"combined: {combined_score:.2f}"
+                f"deps: {dep_score:.2f}, ai: {ai_score:.2f}, "
+                f"impact: {impact_score:.2f}, combined: {combined_score:.2f}"
             )
 
             if combined_score > best_combined_score:

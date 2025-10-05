@@ -1,5 +1,4 @@
-"""
-Context Detection for Marcus Hybrid Approach
+"""Context Detection for Marcus Hybrid Approach.
 
 Determines which Marcus mode would be most helpful based on board state,
 user interactions, and explicit preferences.
@@ -19,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 class MarcusMode(Enum):
-    """Available Marcus operating modes"""
+    """Available Marcus operating modes."""
 
     CREATOR = "creator"  # Generate project structure from requirements
     ENRICHER = "enricher"  # Add metadata and organization to existing tasks
@@ -27,7 +26,7 @@ class MarcusMode(Enum):
 
 
 class UserIntent(Enum):
-    """Detected user intents from messages"""
+    """Detected user intents from messages."""
 
     CREATE = "create"  # Want to create new project/tasks
     ORGANIZE = "organize"  # Want to organize existing tasks
@@ -38,7 +37,7 @@ class UserIntent(Enum):
 
 @dataclass
 class ModeRecommendation:
-    """Recommendation for which mode to use"""
+    """Recommendation for which mode to use."""
 
     recommended_mode: MarcusMode
     confidence: float
@@ -48,7 +47,7 @@ class ModeRecommendation:
 
 @dataclass
 class UserContext:
-    """Context about the user's recent interactions"""
+    """Context about the user's recent interactions."""
 
     recent_messages: List[str]
     last_mode_switch: Optional[datetime]
@@ -57,7 +56,7 @@ class UserContext:
 
 
 class ContextDetector:
-    """Determines which Marcus mode would be most helpful"""
+    """Determines which Marcus mode would be most helpful."""
 
     # Intent patterns for parsing user messages
     INTENT_PATTERNS = {
@@ -102,21 +101,28 @@ class ContextDetector:
         tasks: List[Task],
         recent_message: Optional[str] = None,
     ) -> ModeRecommendation:
-        """
-        Decision tree for mode selection:
+        """Decision tree for mode selection.
+
         1. Check board state
         2. Check recent user interactions
         3. Check explicit preferences
         4. Make recommendation
 
-        Args:
-            user_id: User making the request
-            board_id: Board to analyze
-            tasks: Current tasks on the board
-            recent_message: Most recent user message (if any)
+        Parameters
+        ----------
+        user_id : str
+            User making the request.
+        board_id : str
+            Board to analyze.
+        tasks : List[Task]
+            Current tasks on the board.
+        recent_message : Optional[str], optional
+            Most recent user message (if any).
 
-        Returns:
-            Mode recommendation with confidence
+        Returns
+        -------
+        ModeRecommendation
+            Mode recommendation with confidence.
         """
         # Get or create user context
         user_context = self._get_user_context(user_id)
@@ -143,14 +149,17 @@ class ContextDetector:
         return recommendation
 
     async def detect_user_intent(self, message: str) -> UserIntent:
-        """
-        Parse user messages for intent
+        """Parse user messages for intent.
 
-        Args:
-            message: User's message
+        Parameters
+        ----------
+        message : str
+            User's message.
 
-        Returns:
-            Detected intent
+        Returns
+        -------
+        UserIntent
+            Detected intent.
         """
         message_lower = message.lower()
 
@@ -169,8 +178,7 @@ class ContextDetector:
         user_intent: UserIntent,
         user_context: UserContext,
     ) -> ModeRecommendation:
-        """
-        Make mode recommendation based on all factors
+        """Make mode recommendation based on all factors.
 
         Priority order:
         1. Explicit user intent (if clear)
@@ -188,7 +196,10 @@ class ContextDetector:
             return ModeRecommendation(
                 recommended_mode=MarcusMode.CREATOR,
                 confidence=0.95,
-                reasoning="Empty board detected - Creator mode can help structure your project",
+                reasoning=(
+                    "Empty board detected - Creator mode can help structure "
+                    "your project"
+                ),
                 alternative_modes=[MarcusMode.ADAPTIVE],
             )
 
@@ -197,7 +208,11 @@ class ContextDetector:
             return ModeRecommendation(
                 recommended_mode=MarcusMode.ENRICHER,
                 confidence=0.85,
-                reasoning=f"Board has {board_state.task_count} tasks but low structure score ({board_state.structure_score:.2f}) - Enricher mode can help organize",
+                reasoning=(
+                    f"Board has {board_state.task_count} tasks but low "
+                    f"structure score ({board_state.structure_score:.2f}) - "
+                    f"Enricher mode can help organize"
+                ),
                 alternative_modes=[MarcusMode.ADAPTIVE, MarcusMode.CREATOR],
             )
 
@@ -206,7 +221,11 @@ class ContextDetector:
             return ModeRecommendation(
                 recommended_mode=MarcusMode.ADAPTIVE,
                 confidence=0.90,
-                reasoning=f"Board is well-structured (score: {board_state.structure_score:.2f}) - Adaptive mode can coordinate work efficiently",
+                reasoning=(
+                    f"Board is well-structured (score: "
+                    f"{board_state.structure_score:.2f}) - Adaptive mode can "
+                    f"coordinate work efficiently"
+                ),
                 alternative_modes=[MarcusMode.ENRICHER],
             )
 
@@ -222,14 +241,18 @@ class ContextDetector:
         return ModeRecommendation(
             recommended_mode=recommended,
             confidence=0.70,
-            reasoning=f"Based on board analysis: {board_state.task_count} tasks with {board_state.metadata_completeness:.0%} metadata completeness",
+            reasoning=(
+                f"Based on board analysis: {board_state.task_count} tasks "
+                f"with {board_state.metadata_completeness:.0%} metadata "
+                f"completeness"
+            ),
             alternative_modes=self._get_alternative_modes(recommended),
         )
 
     def _recommend_from_intent(
         self, intent: UserIntent
     ) -> Optional[ModeRecommendation]:
-        """Get mode recommendation from user intent"""
+        """Get mode recommendation from user intent."""
         intent_mode_map = {
             UserIntent.CREATE: ModeRecommendation(
                 recommended_mode=MarcusMode.CREATOR,
@@ -254,7 +277,7 @@ class ContextDetector:
         return intent_mode_map.get(intent)
 
     def _get_alternative_modes(self, recommended: MarcusMode) -> List[MarcusMode]:
-        """Get alternative modes for a recommendation"""
+        """Get alternative modes for a recommendation."""
         alternatives = {
             MarcusMode.CREATOR: [MarcusMode.ENRICHER, MarcusMode.ADAPTIVE],
             MarcusMode.ENRICHER: [MarcusMode.ADAPTIVE, MarcusMode.CREATOR],
@@ -264,7 +287,7 @@ class ContextDetector:
         return alternatives.get(recommended, [])[0:2]  # Return top 2 alternatives
 
     def _get_user_context(self, user_id: str) -> UserContext:
-        """Get or create user context"""
+        """Get or create user context."""
         if user_id not in self.user_contexts:
             self.user_contexts[user_id] = UserContext(
                 recent_messages=[],
@@ -280,7 +303,7 @@ class ContextDetector:
         return self.user_contexts[user_id]
 
     def record_mode_switch(self, user_id: str, new_mode: MarcusMode) -> None:
-        """Record when a user switches modes"""
+        """Record when a user switches modes."""
         context = self._get_user_context(user_id)
         context.last_mode_switch = datetime.now()
         context.current_mode = new_mode

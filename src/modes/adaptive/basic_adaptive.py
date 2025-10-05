@@ -15,7 +15,12 @@ logger = logging.getLogger(__name__)
 
 
 class BasicAdaptiveMode:
-    """Basic Adaptive Mode that coordinates within existing structure."""
+    """
+    Basic Adaptive Mode that coordinates within existing structure.
+
+    This mode implements task assignment logic that respects dependencies
+    and prevents illogical task assignments.
+    """
 
     def __init__(self) -> None:
         self.state: Dict[str, Any] = {"assignment_preferences": {}, "blocked_tasks": []}
@@ -58,7 +63,14 @@ class BasicAdaptiveMode:
         ]
 
     async def initialize(self, saved_state: Dict[str, Any]) -> None:
-        """Initialize mode with saved state."""
+        """
+        Initialize mode with saved state.
+
+        Parameters
+        ----------
+        saved_state : Dict[str, Any]
+            Previously saved state to restore, or empty dict for fresh start.
+        """
         if saved_state:
             self.state.update(saved_state)
             logger.info("Adaptive mode initialized with saved state")
@@ -66,11 +78,26 @@ class BasicAdaptiveMode:
             logger.info("Adaptive mode initialized with default state")
 
     async def get_state(self) -> Dict[str, Any]:
-        """Get current mode state for saving."""
+        """
+        Get current mode state for saving.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Current state dictionary containing preferences and blocked tasks.
+        """
         return self.state.copy()
 
     async def get_status(self) -> Dict[str, Any]:
-        """Get current mode status."""
+        """
+        Get current mode status.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Status dictionary with mode name, preference count, and blocked
+            task count.
+        """
         return {
             "mode": "adaptive",
             "assignment_preferences": len(self.state.get("assignment_preferences", {})),
@@ -144,8 +171,20 @@ class BasicAdaptiveMode:
         """
         Filter tasks to only include those not blocked by dependencies.
 
-        This is the core logic that prevents "Deploy to production" from being
-        assigned before development is complete.
+        This is the core logic that prevents "Deploy to production" from
+        being assigned before development is complete.
+
+        Parameters
+        ----------
+        tasks : List[Task]
+            List of tasks to filter.
+        assigned_tasks : Dict[str, Task]
+            Currently assigned tasks (agent_id -> task).
+
+        Returns
+        -------
+        List[Task]
+            List of tasks that are not blocked by dependencies.
         """
         unblocked_tasks: List[Task] = []
 
@@ -163,7 +202,22 @@ class BasicAdaptiveMode:
         """
         Check if a task is unblocked and ready for assignment.
 
-        Returns False for illogical assignments like deployment before development.
+        Returns False for illogical assignments like deployment before
+        development.
+
+        Parameters
+        ----------
+        task : Task
+            The task to check.
+        all_tasks : List[Task]
+            All available tasks to check for dependencies.
+        assigned_tasks : Dict[str, Task]
+            Currently assigned tasks (agent_id -> task).
+
+        Returns
+        -------
+        bool
+            True if task is unblocked and ready, False otherwise.
         """
         # Check explicit dependencies first
         if task.dependencies:
@@ -215,6 +269,18 @@ class BasicAdaptiveMode:
         Check for obviously illogical task assignments.
 
         This prevents the core problem: deploying before building.
+
+        Parameters
+        ----------
+        task : Task
+            The task to check.
+        all_tasks : List[Task]
+            All available tasks to check against.
+
+        Returns
+        -------
+        bool
+            True if assignment would be illogical, False otherwise.
         """
         task_lower = task.name.lower()
 
@@ -241,7 +307,8 @@ class BasicAdaptiveMode:
 
         # Testing tasks
         if any(word in task_lower for word in ["test", "qa", "quality"]):
-            # Check if there are any incomplete implementation tasks for the same component
+            # Check if there are any incomplete implementation tasks for
+            # the same component
             for other_task in all_tasks:
                 other_lower = other_task.name.lower()
                 if (
@@ -260,7 +327,21 @@ class BasicAdaptiveMode:
         return False
 
     def _tasks_related(self, task1: Task, task2: Task) -> bool:
-        """Check if two tasks are related (same component/feature)."""
+        """
+        Check if two tasks are related (same component/feature).
+
+        Parameters
+        ----------
+        task1 : Task
+            First task to compare.
+        task2 : Task
+            Second task to compare.
+
+        Returns
+        -------
+        bool
+            True if tasks share significant common words, False otherwise.
+        """
         # Simple heuristic: check for common words in task names
         words1 = set(task1.name.lower().split())
         words2 = set(task2.name.lower().split())
@@ -303,6 +384,22 @@ class BasicAdaptiveMode:
         Calculate a score for how well a task matches an agent.
 
         Higher score = better match.
+
+        Parameters
+        ----------
+        task : Task
+            The task to score.
+        agent_id : str
+            ID of the agent.
+        agent_skills : List[str]
+            Skills/capabilities of the agent.
+        available_tasks : List[Task]
+            All available tasks for context.
+
+        Returns
+        -------
+        float
+            Score between 0 and 1, where higher is better match.
         """
         score = 0.0
 
@@ -330,7 +427,21 @@ class BasicAdaptiveMode:
         return score
 
     def _calculate_skill_match(self, task: Task, agent_skills: List[str]) -> float:
-        """Calculate how well agent skills match task requirements."""
+        """
+        Calculate how well agent skills match task requirements.
+
+        Parameters
+        ----------
+        task : Task
+            The task to evaluate.
+        agent_skills : List[str]
+            Skills/capabilities of the agent.
+
+        Returns
+        -------
+        float
+            Skill match score between 0 and 1.
+        """
         if not agent_skills:
             return 0.5  # Neutral score if no skills known
 
@@ -375,7 +486,21 @@ class BasicAdaptiveMode:
     def _calculate_unblocking_value(
         self, task: Task, available_tasks: List[Task]
     ) -> float:
-        """Calculate how many other tasks this task would unblock."""
+        """
+        Calculate how many other tasks this task would unblock.
+
+        Parameters
+        ----------
+        task : Task
+            The task to evaluate.
+        available_tasks : List[Task]
+            All available tasks to check for dependencies.
+
+        Returns
+        -------
+        float
+            Normalized unblocking value between 0 and 1.
+        """
         if not task.id:
             return 0.0
 
@@ -392,7 +517,21 @@ class BasicAdaptiveMode:
         return 0.0
 
     def _get_agent_preference_score(self, agent_id: str, task: Task) -> float:
-        """Get preference score based on agent's history."""
+        """
+        Get preference score based on agent's history.
+
+        Parameters
+        ----------
+        agent_id : str
+            ID of the agent.
+        task : Task
+            The task to score.
+
+        Returns
+        -------
+        float
+            Preference score between 0 and 1.
+        """
         assignment_prefs = self.state.get("assignment_preferences", {})
         if isinstance(assignment_prefs, dict):
             preferences = assignment_prefs.get(agent_id, {})

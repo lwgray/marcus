@@ -1,5 +1,5 @@
 """
-Pipeline Comparison Engine - Compare multiple pipeline executions
+Pipeline Comparison Engine - Compare multiple pipeline executions.
 
 This module enables comparison of multiple project creations to identify
 patterns, best practices, and optimization opportunities.
@@ -27,9 +27,7 @@ class ComparisonReport:
 
 
 class PipelineComparator:
-    """
-    Compare multiple pipeline flows to identify patterns and best practices.
-    """
+    """Compare multiple pipeline flows to identify patterns and best practices."""
 
     def __init__(self) -> None:
         """Initialize the pipeline comparator."""

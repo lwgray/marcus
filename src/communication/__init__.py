@@ -1,6 +1,5 @@
 """
-Communication Module for Marcus
-==================================
+Communication Module for Marcus.
 
 This module provides multi-channel communication capabilities for the Marcus system.
 It enables coordinated notifications and messaging across different platforms to keep

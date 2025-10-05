@@ -330,7 +330,8 @@ class WorkspaceManager:
             for forbidden in self.forbidden_paths:
                 if workspace.startswith(forbidden) or forbidden.startswith(workspace):
                     raise WorkspaceSecurityError(
-                        f"Workspace {workspace} overlaps with forbidden path {forbidden}"
+                        f"Workspace {workspace} overlaps with "
+                        f"forbidden path {forbidden}"
                     )
 
     def assign_agent_workspace(
@@ -360,7 +361,9 @@ class WorkspaceManager:
 
         Examples
         --------
-        >>> workspace = manager.assign_agent_workspace("agent-001", "/home/user/project")
+        >>> workspace = manager.assign_agent_workspace(
+        ...     "agent-001", "/home/user/project"
+        ... )
         >>> print(workspace.workspace_id)  # "agent-001_workspace"
 
         Notes

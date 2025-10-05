@@ -1,5 +1,5 @@
 """
-Documentation Task Generation for Marcus
+Documentation Task Generation for Marcus.
 
 Adds a final documentation task to projects that:
 1. Reviews all logged decisions
@@ -18,24 +18,33 @@ logger = logging.getLogger(__name__)
 
 
 class DocumentationTaskGenerator:
-    """Generates documentation tasks for projects"""
+    """Generates documentation tasks for projects."""
 
     @staticmethod
     def create_documentation_task(
         existing_tasks: List[Task], project_name: str = "Project"
     ) -> Optional[Task]:
         """
-        Create a final documentation task that depends on all major implementation tasks
+        Create a final documentation task.
 
-        Args:
-            existing_tasks: List of all project tasks
-            project_name: Name of the project
+        Depends on all major implementation tasks.
 
-        Returns:
+        Parameters
+        ----------
+        existing_tasks : List[Task]
+            List of all project tasks
+        project_name : str
+            Name of the project
+
+        Returns
+        -------
+        Optional[Task]
             Documentation task or None if no implementation tasks exist
         """
-        # Find all implementation, testing, and deployment tasks using actual label format
-        # Labels are generated with prefixes like "component:backend", "type:feature", etc.
+        # Find all implementation, testing, and deployment tasks using
+        # actual label format
+        # Labels are generated with prefixes like "component:backend",
+        # "type:feature", etc.
         implementation_tasks = [
             t
             for t in existing_tasks
@@ -75,7 +84,8 @@ class DocumentationTaskGenerator:
             return None
 
         # PROJECT_SUCCESS depends on ALL non-documentation tasks
-        # This ensures it's only available when the entire project is complete
+        # This ensures it's only available when the entire project is
+        # complete
         dependencies = [
             t.id
             for t in existing_tasks
@@ -92,8 +102,11 @@ class DocumentationTaskGenerator:
         doc_task = Task(
             id=f"doc_final_{uuid.uuid4().hex[:8]}",
             name=f"Create {project_name} PROJECT_SUCCESS documentation",
-            description=DocumentationTaskGenerator._generate_documentation_description(
-                has_tests=bool(test_tasks), has_deployment=bool(deploy_tasks)
+            description=(
+                DocumentationTaskGenerator._generate_documentation_description(
+                    has_tests=bool(test_tasks),
+                    has_deployment=bool(deploy_tasks),
+                )
             ),
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
@@ -106,8 +119,9 @@ class DocumentationTaskGenerator:
             due_date=None,
         )
 
-        # Note: acceptance_criteria and subtasks would be stored in metadata if needed
-        # These are implicit in the task description above
+        # Note: acceptance_criteria and subtasks would be stored in
+        # metadata if needed. These are implicit in the task description
+        # above
 
         return doc_task
 
@@ -115,28 +129,35 @@ class DocumentationTaskGenerator:
     def _generate_documentation_description(
         has_tests: bool = True, has_deployment: bool = False
     ) -> str:
-        """Generate detailed description for documentation task"""
-
+        """Generate detailed description for documentation task."""
         base_description = """Create comprehensive PROJECT_SUCCESS.md documentation by:
 
-⚠️ **IMPORTANT**: Work in the current directory (./) where Claude is running.
-Create all files in the current working directory, NOT in the Marcus installation directory.
+⚠️ **IMPORTANT**: Work in the current directory (./) where Claude is
+running. Create all files in the current working directory, NOT in the
+Marcus installation directory.
 
 1. **Gather Information**:
-   - Review all logged decisions using `get_task_context` for each completed task
+   - Review all logged decisions using `get_task_context` for each
+     completed task
    - Examine the final codebase structure
    - Identify key architectural decisions and implementation details
 
 2. **Document Core Sections**:
-   - **How It Works**: System architecture, component interactions, data flow
-   - **How to Run It**: Prerequisites, setup steps, configuration, startup commands
-   - **How to Test It**: Test commands, expected output, coverage reports
+   - **How It Works**: System architecture, component interactions,
+     data flow
+   - **How to Run It**: Prerequisites, setup steps, configuration,
+     startup commands
+   - **How to Test It**: Test commands, expected output, coverage
+     reports
 """
 
         if has_deployment:
-            base_description += """   - **How to Deploy It**: Production setup, environment variables, deployment steps
+            base_description += (
+                """   - **How to Deploy It**: Production setup, """
+                """environment variables, deployment steps
 
 """
+            )
 
         base_description += """3. **Verify Everything**:
    - Test each command in the documentation
@@ -150,7 +171,9 @@ Create all files in the current working directory, NOT in the Marcus installatio
    - Document any prerequisites or dependencies
    - Include troubleshooting for common issues
 
-The documentation should be written so someone unfamiliar with the project can successfully set up, run, and test the application by following the instructions."""
+The documentation should be written so someone unfamiliar with the
+project can successfully set up, run, and test the application by
+following the instructions."""
 
         return base_description
 
@@ -159,13 +182,18 @@ The documentation should be written so someone unfamiliar with the project can s
         project_description: str, task_count: int
     ) -> bool:
         """
-        Determine if a documentation task should be added
+        Determine if a documentation task should be added.
 
-        Args:
-            project_description: Natural language description
-            task_count: Number of tasks in project
+        Parameters
+        ----------
+        project_description : str
+            Natural language description
+        task_count : int
+            Number of tasks in project
 
-        Returns:
+        Returns
+        -------
+        bool
             True if documentation should be added
         """
         # Skip for tiny projects
@@ -193,14 +221,20 @@ def enhance_project_with_documentation(
     tasks: List[Task], project_description: str, project_name: str = "Project"
 ) -> List[Task]:
     """
-    Add documentation task to project if appropriate
+    Add documentation task to project if appropriate.
 
-    Args:
-        tasks: Original project tasks
-        project_description: Project description
-        project_name: Name of the project
+    Parameters
+    ----------
+    tasks : List[Task]
+        Original project tasks
+    project_description : str
+        Project description
+    project_name : str
+        Name of the project
 
-    Returns:
+    Returns
+    -------
+    List[Task]
         Task list with documentation task added if appropriate
     """
     # Import here to avoid circular imports

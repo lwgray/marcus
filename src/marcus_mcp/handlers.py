@@ -258,24 +258,31 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
         # System Health Tools
         types.Tool(
             name="ping",
-            description="""Check Marcus status and connectivity with special diagnostic commands.
-
-Special commands:
-- 'health': Get detailed system health including lease statistics and assignment state
-- 'cleanup': Force cleanup of stuck task assignments (safe recovery operation)
-- 'reset': Clear ALL assignment state - WARNING: use only when system is stuck!
-
-Examples:
-- ping("hello") - Simple connectivity check
-- ping("health") - Full system health report
-- ping("cleanup") - Clean stuck assignments after interruption
-- ping("reset") - Complete assignment reset""",
+            description=(
+                "Check Marcus status and connectivity with special "
+                "diagnostic commands.\n\n"
+                "Special commands:\n"
+                "- 'health': Get detailed system health including lease "
+                "statistics and assignment state\n"
+                "- 'cleanup': Force cleanup of stuck task assignments "
+                "(safe recovery operation)\n"
+                "- 'reset': Clear ALL assignment state - WARNING: "
+                "use only when system is stuck!\n\n"
+                "Examples:\n"
+                '- ping("hello") - Simple connectivity check\n'
+                '- ping("health") - Full system health report\n'
+                '- ping("cleanup") - Clean stuck assignments after '
+                "interruption\n"
+                '- ping("reset") - Complete assignment reset'
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "echo": {
                         "type": "string",
-                        "description": "Message to echo or command: 'health'|'cleanup'|'reset'",
+                        "description": (
+                            "Message to echo or command: " "'health'|'cleanup'|'reset'"
+                        ),
                         "default": "",
                     }
                 },
@@ -285,7 +292,9 @@ Examples:
         # Context Tools (for agents to log decisions)
         types.Tool(
             name="log_decision",
-            description="Log an architectural decision that might affect other tasks",
+            description=(
+                "Log an architectural decision that might affect " "other tasks"
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -293,7 +302,10 @@ Examples:
                         "type": "string",
                         "description": "Agent making the decision",
                     },
-                    "task_id": {"type": "string", "description": "Current task ID"},
+                    "task_id": {
+                        "type": "string",
+                        "description": "Current task ID",
+                    },
                     "decision": {
                         "type": "string",
                         "description": (
@@ -309,7 +321,8 @@ Examples:
             name="get_task_context",
             description=(
                 "Get the full context for a specific task including "
-                "dependencies, decisions, and artifacts stored in the repository"
+                "dependencies, decisions, and artifacts stored in "
+                "the repository"
             ),
             inputSchema={
                 "type": "object",
@@ -321,9 +334,12 @@ Examples:
                     "project_root": {
                         "type": "string",
                         "description": (
-                            "Absolute path to the project root directory. "
-                            "Used to discover artifacts created in the project workspace. "
-                            "All agents working on this project should pass the same path "
+                            "Absolute path to the project root "
+                            "directory. "
+                            "Used to discover artifacts created in "
+                            "the project workspace. "
+                            "All agents working on this project "
+                            "should pass the same path "
                             "to see each other's artifacts."
                         ),
                     },
@@ -335,9 +351,11 @@ Examples:
             name="log_artifact",
             description=(
                 "Store an artifact with smart location management. "
-                "Artifacts are automatically stored in organized directories based on type "
+                "Artifacts are automatically stored in organized "
+                "directories based on type "
                 "(e.g., API specs → docs/api/, designs → docs/design/). "
-                "You can optionally override the location for special cases."
+                "You can optionally override the location for "
+                "special cases."
             ),
             inputSchema={
                 "type": "object",
@@ -367,11 +385,17 @@ Examples:
                     "project_root": {
                         "type": "string",
                         "description": (
-                            "Absolute path to the project root directory where artifacts should be created. "
-                            "All agents working on this project should pass the same path. "
-                            "Artifacts will be created relative to this path based on their type "
-                            "(e.g., an 'api' artifact will go in {project_root}/docs/api/). "
-                            "Typically this is os.getcwd() when the agent is running from the project root."
+                            "Absolute path to the project root "
+                            "directory where artifacts should be "
+                            "created. "
+                            "All agents working on this project "
+                            "should pass the same path. "
+                            "Artifacts will be created relative to "
+                            "this path based on their type "
+                            "(e.g., an 'api' artifact will go in "
+                            "{project_root}/docs/api/). "
+                            "Typically this is os.getcwd() when the "
+                            "agent is running from the project root."
                         ),
                     },
                     "description": {
@@ -381,7 +405,9 @@ Examples:
                     },
                     "location": {
                         "type": "string",
-                        "description": "Optional override for storage location (relative path)",
+                        "description": (
+                            "Optional override for storage location " "(relative path)"
+                        ),
                         "default": None,
                     },
                 },
@@ -398,9 +424,12 @@ Examples:
         types.Tool(
             name="create_project",
             description=(
-                "Create a complete project from natural language description. "
-                "Automatically generates tasks, assigns priorities, and creates "
-                "kanban board structure based on project complexity and deployment needs."
+                "Create a complete project from natural language "
+                "description. "
+                "Automatically generates tasks, assigns priorities, "
+                "and creates "
+                "kanban board structure based on project complexity "
+                "and deployment needs."
             ),
             inputSchema={
                 "type": "object",
@@ -408,34 +437,46 @@ Examples:
                     "description": {
                         "type": "string",
                         "description": (
-                            "Natural language description of what you want to build. "
-                            "Be specific about features and functionality. "
-                            "Example: 'Create a todo app with user authentication, "
+                            "Natural language description of what "
+                            "you want to build. "
+                            "Be specific about features and "
+                            "functionality. "
+                            "Example: 'Create a todo app with user "
+                            "authentication, "
                             "task categories, and email reminders'"
                         ),
                     },
                     "project_name": {
                         "type": "string",
                         "description": (
-                            "A short, memorable name for your project. "
-                            "This will be used as the kanban board title. "
-                            "Example: 'TodoMaster' or 'Task Tracker Pro'"
+                            "A short, memorable name for your "
+                            "project. "
+                            "This will be used as the kanban board "
+                            "title. "
+                            "Example: 'TodoMaster' or "
+                            "'Task Tracker Pro'"
                         ),
                     },
                     "options": {
                         "type": "object",
                         "description": (
-                            "Optional configuration to control project scope and complexity. "
-                            "All fields are optional - sensible defaults will be used."
+                            "Optional configuration to control "
+                            "project scope and complexity. "
+                            "All fields are optional - sensible "
+                            "defaults will be used."
                         ),
                         "properties": {
                             "complexity": {
                                 "type": "string",
                                 "description": (
-                                    "Project complexity level (default: 'standard'). "
-                                    "- 'prototype': Quick MVP with minimal features (3-8 tasks) "
-                                    "- 'standard': Full-featured project (10-20 tasks) "
-                                    "- 'enterprise': Production-ready with all features (25+ tasks)"
+                                    "Project complexity level "
+                                    "(default: 'standard'). "
+                                    "- 'prototype': Quick MVP with "
+                                    "minimal features (3-8 tasks) "
+                                    "- 'standard': Full-featured "
+                                    "project (10-20 tasks) "
+                                    "- 'enterprise': Production-ready "
+                                    "with all features (25+ tasks)"
                                 ),
                                 "enum": ["prototype", "standard", "enterprise"],
                                 "default": "standard",
@@ -443,10 +484,14 @@ Examples:
                             "deployment": {
                                 "type": "string",
                                 "description": (
-                                    "Deployment scope (default: 'none'). "
-                                    "- 'none': Local development only, no deployment tasks "
-                                    "- 'internal': Include staging/team deployment tasks "
-                                    "- 'production': Full production deployment with monitoring"
+                                    "Deployment scope "
+                                    "(default: 'none'). "
+                                    "- 'none': Local development only, "
+                                    "no deployment tasks "
+                                    "- 'internal': Include staging/team "
+                                    "deployment tasks "
+                                    "- 'production': Full production "
+                                    "deployment with monitoring"
                                 ),
                                 "enum": ["none", "internal", "production"],
                                 "default": "none",
@@ -455,8 +500,11 @@ Examples:
                                 "type": "integer",
                                 "description": (
                                     "Number of developers (1-20). "
-                                    "Defaults based on complexity: prototype=1, standard=3, enterprise=5. "
-                                    "Affects task parallelization and estimates."
+                                    "Defaults based on complexity: "
+                                    "prototype=1, standard=3, "
+                                    "enterprise=5. "
+                                    "Affects task parallelization "
+                                    "and estimates."
                                 ),
                                 "minimum": 1,
                                 "maximum": 20,
@@ -466,17 +514,21 @@ Examples:
                                 "items": {"type": "string"},
                                 "description": (
                                     "Technologies/frameworks to use. "
-                                    "Example: ['Python', 'React', 'PostgreSQL', 'Docker']. "
-                                    "Helps generate appropriate setup and configuration tasks."
+                                    "Example: ['Python', 'React', "
+                                    "'PostgreSQL', 'Docker']. "
+                                    "Helps generate appropriate setup "
+                                    "and configuration tasks."
                                 ),
                             },
                             "deadline": {
                                 "type": "string",
                                 "format": "date",
                                 "description": (
-                                    "Project deadline in ISO format (YYYY-MM-DD). "
+                                    "Project deadline in ISO format "
+                                    "(YYYY-MM-DD). "
                                     "Example: '2024-12-31'. "
-                                    "Used to assess timeline risks and adjust priorities."
+                                    "Used to assess timeline risks and "
+                                    "adjust priorities."
                                 ),
                             },
                         },
@@ -506,35 +558,39 @@ Examples:
         ),
         types.Tool(
             name="check_board_health",
-            description="""Analyze overall board health and detect systemic issues.
-
-Detects:
-- Skill mismatches: Tasks no agent can handle
-- Circular dependencies: Task cycles that block progress
-- Bottlenecks: Tasks blocking many others
-- Chain blocks: Long sequential dependency chains
-- Stale tasks: In-progress tasks not updated recently
-- Workload issues: Overloaded or idle agents
-
-Returns health score (0-100) with detailed issue analysis and recommendations.
-
-Usage: check_board_health()""",
+            description=(
+                "Analyze overall board health and detect systemic "
+                "issues.\n\n"
+                "Detects:\n"
+                "- Skill mismatches: Tasks no agent can handle\n"
+                "- Circular dependencies: Task cycles that block "
+                "progress\n"
+                "- Bottlenecks: Tasks blocking many others\n"
+                "- Chain blocks: Long sequential dependency chains\n"
+                "- Stale tasks: In-progress tasks not updated "
+                "recently\n"
+                "- Workload issues: Overloaded or idle agents\n\n"
+                "Returns health score (0-100) with detailed issue "
+                "analysis and recommendations.\n\n"
+                "Usage: check_board_health()"
+            ),
             inputSchema={"type": "object", "properties": {}, "required": []},
         ),
         types.Tool(
             name="check_task_dependencies",
-            description="""Check dependencies for a specific task and analyze its position in the workflow.
-
-Shows:
-- What this task depends on (upstream dependencies)
-- What depends on this task (downstream impact)
-- Whether task is part of circular dependencies
-- If task is a bottleneck (blocking 3+ tasks)
-- Recommended completion order
-
-Helps identify critical path tasks and dependency issues.
-
-Usage: check_task_dependencies("task-123")""",
+            description=(
+                "Check dependencies for a specific task and analyze "
+                "its position in the workflow.\n\n"
+                "Shows:\n"
+                "- What this task depends on (upstream dependencies)\n"
+                "- What depends on this task (downstream impact)\n"
+                "- Whether task is part of circular dependencies\n"
+                "- If task is a bottleneck (blocking 3+ tasks)\n"
+                "- Recommended completion order\n\n"
+                "Helps identify critical path tasks and dependency "
+                "issues.\n\n"
+                'Usage: check_task_dependencies("task-123")'
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -667,9 +723,12 @@ Usage: check_task_dependencies("task-123")""",
         types.Tool(
             name="create_project",
             description=(
-                "Create a complete project from natural language description. "
-                "Automatically generates tasks, assigns priorities, and creates "
-                "kanban board structure based on project complexity and deployment needs."
+                "Create a complete project from natural language "
+                "description. "
+                "Automatically generates tasks, assigns priorities, "
+                "and creates "
+                "kanban board structure based on project complexity "
+                "and deployment needs."
             ),
             inputSchema={
                 "type": "object",
@@ -677,34 +736,46 @@ Usage: check_task_dependencies("task-123")""",
                     "description": {
                         "type": "string",
                         "description": (
-                            "Natural language description of what you want to build. "
-                            "Be specific about features and functionality. "
-                            "Example: 'Create a todo app with user authentication, "
+                            "Natural language description of what "
+                            "you want to build. "
+                            "Be specific about features and "
+                            "functionality. "
+                            "Example: 'Create a todo app with user "
+                            "authentication, "
                             "task categories, and email reminders'"
                         ),
                     },
                     "project_name": {
                         "type": "string",
                         "description": (
-                            "A short, memorable name for your project. "
-                            "This will be used as the kanban board title. "
-                            "Example: 'TodoMaster' or 'Task Tracker Pro'"
+                            "A short, memorable name for your "
+                            "project. "
+                            "This will be used as the kanban board "
+                            "title. "
+                            "Example: 'TodoMaster' or "
+                            "'Task Tracker Pro'"
                         ),
                     },
                     "options": {
                         "type": "object",
                         "description": (
-                            "Optional configuration to control project scope and complexity. "
-                            "All fields are optional - sensible defaults will be used."
+                            "Optional configuration to control "
+                            "project scope and complexity. "
+                            "All fields are optional - sensible "
+                            "defaults will be used."
                         ),
                         "properties": {
                             "complexity": {
                                 "type": "string",
                                 "description": (
-                                    "Project complexity level (default: 'standard'). "
-                                    "- 'prototype': Quick MVP with minimal features (3-8 tasks) "
-                                    "- 'standard': Full-featured project (10-20 tasks) "
-                                    "- 'enterprise': Production-ready with all features (25+ tasks)"
+                                    "Project complexity level "
+                                    "(default: 'standard'). "
+                                    "- 'prototype': Quick MVP with "
+                                    "minimal features (3-8 tasks) "
+                                    "- 'standard': Full-featured "
+                                    "project (10-20 tasks) "
+                                    "- 'enterprise': Production-ready "
+                                    "with all features (25+ tasks)"
                                 ),
                                 "enum": ["prototype", "standard", "enterprise"],
                                 "default": "standard",
@@ -712,10 +783,14 @@ Usage: check_task_dependencies("task-123")""",
                             "deployment": {
                                 "type": "string",
                                 "description": (
-                                    "Deployment scope (default: 'none'). "
-                                    "- 'none': Local development only, no deployment tasks "
-                                    "- 'internal': Include staging/team deployment tasks "
-                                    "- 'production': Full production deployment with monitoring"
+                                    "Deployment scope "
+                                    "(default: 'none'). "
+                                    "- 'none': Local development only, "
+                                    "no deployment tasks "
+                                    "- 'internal': Include staging/team "
+                                    "deployment tasks "
+                                    "- 'production': Full production "
+                                    "deployment with monitoring"
                                 ),
                                 "enum": ["none", "internal", "production"],
                                 "default": "none",
@@ -724,8 +799,11 @@ Usage: check_task_dependencies("task-123")""",
                                 "type": "integer",
                                 "description": (
                                     "Number of developers (1-20). "
-                                    "Defaults based on complexity: prototype=1, standard=3, enterprise=5. "
-                                    "Affects task parallelization and estimates."
+                                    "Defaults based on complexity: "
+                                    "prototype=1, standard=3, "
+                                    "enterprise=5. "
+                                    "Affects task parallelization "
+                                    "and estimates."
                                 ),
                                 "minimum": 1,
                                 "maximum": 20,
@@ -735,17 +813,21 @@ Usage: check_task_dependencies("task-123")""",
                                 "items": {"type": "string"},
                                 "description": (
                                     "Technologies/frameworks to use. "
-                                    "Example: ['Python', 'React', 'PostgreSQL', 'Docker']. "
-                                    "Helps generate appropriate setup and configuration tasks."
+                                    "Example: ['Python', 'React', "
+                                    "'PostgreSQL', 'Docker']. "
+                                    "Helps generate appropriate setup "
+                                    "and configuration tasks."
                                 ),
                             },
                             "deadline": {
                                 "type": "string",
                                 "format": "date",
                                 "description": (
-                                    "Project deadline in ISO format (YYYY-MM-DD). "
+                                    "Project deadline in ISO format "
+                                    "(YYYY-MM-DD). "
                                     "Example: '2024-12-31'. "
-                                    "Used to assess timeline risks and adjust priorities."
+                                    "Used to assess timeline risks and "
+                                    "adjust priorities."
                                 ),
                             },
                         },
@@ -994,7 +1076,10 @@ async def handle_tool_call(
             client_id=client_id,
             client_type=client_type,
             tool_name=name,
-            reason=f"Tool '{name}' not allowed for client type '{client_type or 'unregistered'}'",
+            reason=(
+                f"Tool '{name}' not allowed for client type "
+                f"'{client_type or 'unregistered'}'"
+            ),
         )
 
         return [
@@ -1002,7 +1087,10 @@ async def handle_tool_call(
                 type="text",
                 text=json.dumps(
                     {
-                        "error": f"Access denied: Tool '{name}' not available for your client type",
+                        "error": (
+                            f"Access denied: Tool '{name}' not "
+                            f"available for your client type"
+                        ),
                         "client_type": client_type or "unregistered",
                         "allowed_tools": allowed_tools,
                     },
@@ -1026,7 +1114,11 @@ async def handle_tool_call(
                 return [
                     types.TextContent(
                         type="text",
-                        text='{"success": false, "error": "Missing required arguments: client_id, client_type, role"}',
+                        text=(
+                            '{"success": false, "error": "Missing '
+                            "required arguments: client_id, "
+                            'client_type, role"}'
+                        ),
                     )
                 ]
 
@@ -1102,7 +1194,9 @@ async def handle_tool_call(
 
             if not agent_id or not task_id or not blocker_description:
                 result = {
-                    "error": "agent_id, task_id, and blocker_description are required"
+                    "error": (
+                        "agent_id, task_id, and " "blocker_description are required"
+                    )
                 }
             else:
                 result = await report_blocker(
@@ -1222,7 +1316,9 @@ async def handle_tool_call(
 
             if not task_id or not filename or not content or not artifact_type:
                 result = {
-                    "error": "task_id, filename, content, and artifact_type are required"
+                    "error": (
+                        "task_id, filename, content, and " "artifact_type are required"
+                    )
                 }
             else:
                 result = await log_artifact(

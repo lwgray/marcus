@@ -57,7 +57,8 @@ class PipelineReportGenerator:
     <title>{{ flow.project_name }} - Pipeline Analysis Report</title>
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI',
+                Roboto, sans-serif;
             line-height: 1.6;
             color: #333;
             max-width: 1200px;
@@ -205,15 +206,21 @@ class PipelineReportGenerator:
                 <div class="metric-label">Total Tasks</div>
             </div>
             <div class="metric-card">
-                <div class="metric-value">${{ flow.metrics.total_cost | round(2) }}</div>
+                <div class="metric-value">
+                    ${{ flow.metrics.total_cost | round(2) }}
+                </div>
                 <div class="metric-label">Total Cost</div>
             </div>
             <div class="metric-card">
-                <div class="metric-value">{{ (flow.metrics.quality_score * 100) | round(0) }}%</div>
+                <div class="metric-value">
+                    {{ (flow.metrics.quality_score * 100) | round(0) }}%
+                </div>
                 <div class="metric-label">Quality Score</div>
             </div>
             <div class="metric-card">
-                <div class="metric-value">{{ (flow.metrics.confidence_avg * 100) | round(0) }}%</div>
+                <div class="metric-value">
+                    {{ (flow.metrics.confidence_avg * 100) | round(0) }}%
+                </div>
                 <div class="metric-label">Avg Confidence</div>
             </div>
         </div>
@@ -225,7 +232,8 @@ class PipelineReportGenerator:
         {% for decision in insights.key_decisions %}
         <div class="decision-item">
             <strong>{{ decision.decision }}</strong>
-            {% set conf_class = 'high' if decision.confidence > 0.8 else ('medium' if decision.confidence > 0.6 else 'low') %}
+            {% set conf_class = 'high' if decision.confidence > 0.8
+                else ('medium' if decision.confidence > 0.6 else 'low') %}
             <span class="confidence-badge confidence-{{ conf_class }}">
                 {{ (decision.confidence * 100) | round(0) }}% confidence
             </span>
@@ -526,10 +534,14 @@ class PipelineReportGenerator:
         data = event.get("data", {})
 
         summaries = {
-            "ai_prd_analysis": f"AI Analysis ({data.get('confidence', 0) * 100:.0f}% confidence)",
+            "ai_prd_analysis": (
+                f"AI Analysis " f"({data.get('confidence', 0) * 100:.0f}% confidence)"
+            ),
             "tasks_generated": f"Generated {data.get('task_count', 0)} tasks",
-            "decision_point": f"Decision: {data.get('decision', 'Unknown')[:50]}",
-            "quality_metrics": f"Quality Score: {data.get('overall_quality_score', 0) * 100:.0f}%",
+            "decision_point": (f"Decision: {data.get('decision', 'Unknown')[:50]}"),
+            "quality_metrics": (
+                f"Quality Score: " f"{data.get('overall_quality_score', 0) * 100:.0f}%"
+            ),
         }
 
         # Ensure we always return a string

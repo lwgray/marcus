@@ -1,8 +1,9 @@
 """
 Project Registry for Marcus Multi-Project Support.
 
-Manages multiple project configurations across different providers (Planka, Linear, GitHub).
-Provides CRUD operations and persistence for project definitions.
+Manages multiple project configurations across different providers
+(Planka, Linear, GitHub). Provides CRUD operations and persistence
+for project definitions.
 """
 
 import uuid

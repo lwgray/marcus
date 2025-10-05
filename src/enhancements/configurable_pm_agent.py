@@ -142,7 +142,8 @@ class ConfigurablePMAgent(MarcusMVP):  # type: ignore[misc]
         if config.get("project_id"):
             self.kanban_client.project_id = config["project_id"]
             print(
-                f"🎯 Configured for project: {config.get('project_name', config['project_id'])}",
+                f"🎯 Configured for project: "
+                f"{config.get('project_name', config['project_id'])}",
                 file=sys.stderr,
             )
 
@@ -195,7 +196,10 @@ class ConfigurablePMAgent(MarcusMVP):  # type: ignore[misc]
                         file=sys.stderr,
                     )
                 else:
-                    print("⚠️  No board found, will need to create one", file=sys.stderr)
+                    print(
+                        "⚠️  No board found, will need to create one",
+                        file=sys.stderr,
+                    )
 
         # Continue with normal startup
         await super().start()

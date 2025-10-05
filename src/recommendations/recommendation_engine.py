@@ -1,8 +1,8 @@
 """
-Pipeline Recommendation Engine - Learn from past executions to provide recommendations
+Pipeline Recommendation Engine.
 
-This module builds an intelligent system that learns from past pipeline executions
-to provide actionable recommendations for future projects.
+This module builds an intelligent system that learns from past pipeline
+executions to provide actionable recommendations for future projects.
 """
 
 import difflib
@@ -20,7 +20,24 @@ from src.visualization.shared_pipeline_events import SharedPipelineEvents
 
 @dataclass
 class Recommendation:
-    """Individual recommendation with context."""
+    """
+    Individual recommendation with context.
+
+    Attributes
+    ----------
+    type : str
+        Type of recommendation
+    confidence : float
+        Confidence score for this recommendation
+    message : str
+        Human-readable recommendation message
+    impact : str
+        Expected impact of following this recommendation
+    action : Optional[Callable[[], Any]], optional
+        Callable action to apply this recommendation
+    supporting_data : Optional[Dict[str, Any]], optional
+        Additional data supporting this recommendation
+    """
 
     type: str
     confidence: float
@@ -32,7 +49,22 @@ class Recommendation:
 
 @dataclass
 class ProjectOutcome:
-    """Outcome of a project execution."""
+    """
+    Outcome of a project execution.
+
+    Attributes
+    ----------
+    successful : bool
+        Whether the project completed successfully
+    completion_time_days : float
+        Time taken to complete in days
+    quality_score : float
+        Quality score of the deliverable
+    cost : float
+        Total cost of the project
+    failure_reasons : Optional[List[str]], optional
+        Reasons for failure if unsuccessful
+    """
 
     successful: bool
     completion_time_days: float
@@ -45,7 +77,14 @@ class PatternDatabase:
     """Database of successful and failure patterns."""
 
     def __init__(self, db_path: Optional[str] = None):
-        """Initialize pattern database."""
+        """
+        Initialize pattern database.
+
+        Parameters
+        ----------
+        db_path : Optional[str], optional
+            Path to pattern database file. If None, uses default location
+        """
         if db_path is None:
             # Use absolute path to ensure it works regardless of working directory
             marcus_root = Path(__file__).parent.parent.parent
@@ -55,7 +94,14 @@ class PatternDatabase:
         self.patterns = self._load_patterns()
 
     def _load_patterns(self) -> Dict[str, Any]:
-        """Load patterns from disk."""
+        """
+        Load patterns from disk.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Loaded patterns or default structure
+        """
         if self.db_path.exists() and self.db_path.stat().st_size > 0:
             try:
                 with open(self.db_path, "r") as f:
@@ -78,7 +124,14 @@ class PatternDatabase:
             json.dump(self.patterns, f, indent=2, default=str)
 
     def add_success_pattern(self, flow_data: Dict[str, Any]) -> None:
-        """Add a successful flow pattern."""
+        """
+        Add a successful flow pattern.
+
+        Parameters
+        ----------
+        flow_data : Dict[str, Any]
+            Flow data from successful execution
+        """
         pattern = self._extract_pattern(flow_data)
         self.patterns["success_patterns"].append(pattern)
         self.save_patterns()
@@ -86,14 +139,35 @@ class PatternDatabase:
     def add_failure_pattern(
         self, flow_data: Dict[str, Any], reasons: List[str]
     ) -> None:
-        """Add a failure pattern with reasons."""
+        """
+        Add a failure pattern with reasons.
+
+        Parameters
+        ----------
+        flow_data : Dict[str, Any]
+            Flow data from failed execution
+        reasons : List[str]
+            Reasons for failure
+        """
         pattern = self._extract_pattern(flow_data)
         pattern["failure_reasons"] = reasons
         self.patterns["failure_patterns"].append(pattern)
         self.save_patterns()
 
     def _extract_pattern(self, flow_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Extract reusable pattern from flow data."""
+        """
+        Extract reusable pattern from flow data.
+
+        Parameters
+        ----------
+        flow_data : Dict[str, Any]
+            Flow data to extract pattern from
+
+        Returns
+        -------
+        Dict[str, Any]
+            Extracted pattern
+        """
         return {
             "project_type": self._infer_project_type(flow_data),
             "task_count": flow_data["metrics"]["task_count"],
@@ -115,7 +189,19 @@ class PatternDatabase:
         }
 
     def _infer_project_type(self, flow_data: Dict[str, Any]) -> str:
-        """Infer project type from requirements and tasks."""
+        """
+        Infer project type from requirements and tasks.
+
+        Parameters
+        ----------
+        flow_data : Dict[str, Any]
+            Flow data to analyze
+
+        Returns
+        -------
+        str
+            Inferred project type
+        """
         keywords = []
 
         # Extract keywords from requirements
@@ -149,7 +235,19 @@ class PatternDatabase:
         return "general"
 
     def _categorize_tasks(self, tasks: List[Dict[str, Any]]) -> Dict[str, int]:
-        """Categorize tasks by type."""
+        """
+        Categorize tasks by type.
+
+        Parameters
+        ----------
+        tasks : List[Dict[str, Any]]
+            List of tasks to categorize
+
+        Returns
+        -------
+        Dict[str, int]
+            Task categories with counts
+        """
         categories: Dict[str, int] = defaultdict(int)
 
         for task in tasks:
@@ -175,7 +273,19 @@ class PatternDatabase:
     def _summarize_requirements(
         self, requirements: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
-        """Summarize requirements."""
+        """
+        Summarize requirements.
+
+        Parameters
+        ----------
+        requirements : List[Dict[str, Any]]
+            List of requirements to summarize
+
+        Returns
+        -------
+        Dict[str, Any]
+            Requirements summary
+        """
         return {
             "total": len(requirements),
             "functional": len(
@@ -196,11 +306,25 @@ class SuccessAnalyzer:
     """Analyze what makes projects successful."""
 
     def __init__(self, pattern_db: PatternDatabase):
-        """Initialize success analyzer."""
+        """
+        Initialize success analyzer.
+
+        Parameters
+        ----------
+        pattern_db : PatternDatabase
+            Pattern database to analyze
+        """
         self.pattern_db = pattern_db
 
     def analyze_success_factors(self) -> Dict[str, Any]:
-        """Analyze common factors in successful projects."""
+        """
+        Analyze common factors in successful projects.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Analysis of success factors
+        """
         success_patterns = self.pattern_db.patterns["success_patterns"]
 
         if not success_patterns:
@@ -267,12 +391,17 @@ class SuccessAnalyzer:
 
 
 class PipelineRecommendationEngine:
-    """
-    Main recommendation engine that provides actionable recommendations.
-    """
+    """Main recommendation engine that provides actionable recommendations."""
 
     def __init__(self, pattern_learner: Optional[Any] = None) -> None:
-        """Initialize recommendation engine."""
+        """
+        Initialize recommendation engine.
+
+        Parameters
+        ----------
+        pattern_learner : Optional[Any], optional
+            Pattern learner instance for advanced recommendations
+        """
         self.shared_events = SharedPipelineEvents()
         self.comparator = PipelineComparator()
         self.pattern_db = PatternDatabase()
@@ -332,11 +461,35 @@ class PipelineRecommendationEngine:
         return recommendations[:10]  # Top 10 recommendations
 
     def _load_flow_data(self, flow_id: str) -> Optional[Dict[str, Any]]:
-        """Load complete flow data."""
+        """
+        Load complete flow data.
+
+        Parameters
+        ----------
+        flow_id : str
+            Flow ID to load
+
+        Returns
+        -------
+        Optional[Dict[str, Any]]
+            Flow data or None if not found
+        """
         return self.comparator._load_flow_with_metadata(flow_id)
 
     def find_similar_flows(self, current_flow: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Find similar past projects."""
+        """
+        Find similar past projects.
+
+        Parameters
+        ----------
+        current_flow : Dict[str, Any]
+            Current flow to compare
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of similar flows with similarity scores
+        """
         similar_flows = []
 
         # Get all completed flows
@@ -370,12 +523,28 @@ class PipelineRecommendationEngine:
     def _calculate_similarity(
         self, flow1: Dict[str, Any], flow2: Dict[str, Any]
     ) -> float:
-        """Calculate similarity between two flows."""
+        """
+        Calculate similarity between two flows.
+
+        Parameters
+        ----------
+        flow1 : Dict[str, Any]
+            First flow to compare
+        flow2 : Dict[str, Any]
+            Second flow to compare
+
+        Returns
+        -------
+        float
+            Similarity score between 0 and 1
+        """
         scores = []
 
         # Project name similarity
         name_similarity = difflib.SequenceMatcher(
-            None, flow1["project_name"].lower(), flow2["project_name"].lower()
+            None,
+            flow1["project_name"].lower(),
+            flow2["project_name"].lower(),
         ).ratio()
         scores.append(name_similarity)
 
@@ -383,7 +552,10 @@ class PipelineRecommendationEngine:
         task_diff = abs(flow1["metrics"]["task_count"] - flow2["metrics"]["task_count"])
         task_similarity = 1.0 - (
             task_diff
-            / max(flow1["metrics"]["task_count"], flow2["metrics"]["task_count"])
+            / max(
+                flow1["metrics"]["task_count"],
+                flow2["metrics"]["task_count"],
+            )
         )
         scores.append(task_similarity)
 
@@ -398,7 +570,21 @@ class PipelineRecommendationEngine:
     def should_use_template(
         self, current_flow: Dict[str, Any], similar_flows: List[Dict[str, Any]]
     ) -> bool:
-        """Determine if a template should be used."""
+        """
+        Determine if a template should be used.
+
+        Parameters
+        ----------
+        current_flow : Dict[str, Any]
+            Current flow
+        similar_flows : List[Dict[str, Any]]
+            List of similar flows
+
+        Returns
+        -------
+        bool
+            True if template should be used
+        """
         if not similar_flows:
             return False
 
@@ -410,7 +596,21 @@ class PipelineRecommendationEngine:
     def _check_template_usage(
         self, current_flow: Dict[str, Any], similar_flows: List[Dict[str, Any]]
     ) -> Optional[Recommendation]:
-        """Check if a template should be used."""
+        """
+        Check if a template should be used.
+
+        Parameters
+        ----------
+        current_flow : Dict[str, Any]
+            Current flow
+        similar_flows : List[Dict[str, Any]]
+            List of similar flows
+
+        Returns
+        -------
+        Optional[Recommendation]
+            Template usage recommendation or None
+        """
         if not self.should_use_template(current_flow, similar_flows):
             return None
 
@@ -419,7 +619,10 @@ class PipelineRecommendationEngine:
         return Recommendation(
             type="use_template",
             confidence=0.9,
-            message=f"Similar to '{best_match['project_name']}' - consider using as template",
+            message=(
+                f"Similar to '{best_match['project_name']}' - "
+                "consider using as template"
+            ),
             impact="Save 30-40% of task generation time",
             action=lambda: self.apply_template(best_match),
             supporting_data={
@@ -429,7 +632,19 @@ class PipelineRecommendationEngine:
         )
 
     def detect_high_complexity(self, current_flow: Dict[str, Any]) -> bool:
-        """Detect if project has high complexity."""
+        """
+        Detect if project has high complexity.
+
+        Parameters
+        ----------
+        current_flow : Dict[str, Any]
+            Current flow to analyze
+
+        Returns
+        -------
+        bool
+            True if complexity is high
+        """
         metrics = current_flow["metrics"]
         if not isinstance(metrics, dict):
             return False
@@ -446,7 +661,19 @@ class PipelineRecommendationEngine:
     def _analyze_complexity(
         self, current_flow: Dict[str, Any]
     ) -> Optional[Recommendation]:
-        """Analyze project complexity."""
+        """
+        Analyze project complexity.
+
+        Parameters
+        ----------
+        current_flow : Dict[str, Any]
+            Current flow to analyze
+
+        Returns
+        -------
+        Optional[Recommendation]
+            Complexity recommendation or None
+        """
         if not self.detect_high_complexity(current_flow):
             return None
 
@@ -465,7 +692,19 @@ class PipelineRecommendationEngine:
     def _check_task_distribution(
         self, current_flow: Dict[str, Any]
     ) -> List[Recommendation]:
-        """Check task distribution for missing categories."""
+        """
+        Check task distribution for missing categories.
+
+        Parameters
+        ----------
+        current_flow : Dict[str, Any]
+            Current flow to analyze
+
+        Returns
+        -------
+        List[Recommendation]
+            List of task distribution recommendations
+        """
         recommendations = []
 
         # Categorize current tasks
@@ -489,8 +728,9 @@ class PipelineRecommendationEngine:
                 Recommendation(
                     type="add_testing",
                     confidence=0.9,
-                    message="Low test coverage - only {:.0%} of tasks are tests".format(
-                        testing_ratio
+                    message=(
+                        "Low test coverage - only "
+                        f"{testing_ratio:.0%} of tasks are tests"
                     ),
                     impact="Improve quality, reduce bugs by 30-50%",
                     action=lambda: self.suggest_testing_tasks(current_flow),
@@ -515,7 +755,19 @@ class PipelineRecommendationEngine:
         return recommendations
 
     def _analyze_decisions(self, current_flow: Dict[str, Any]) -> List[Recommendation]:
-        """Analyze decisions for improvements."""
+        """
+        Analyze decisions for improvements.
+
+        Parameters
+        ----------
+        current_flow : Dict[str, Any]
+            Current flow to analyze
+
+        Returns
+        -------
+        List[Recommendation]
+            List of decision-related recommendations
+        """
         recommendations = []
         success_factors = self.success_analyzer.analyze_success_factors()
 
@@ -529,7 +781,10 @@ class PipelineRecommendationEngine:
                 Recommendation(
                     type="review_decisions",
                     confidence=0.75,
-                    message=f"{len(low_confidence_decisions)} decisions have low confidence",
+                    message=(
+                        f"{len(low_confidence_decisions)} decisions have "
+                        "low confidence"
+                    ),
                     impact="Reduce uncertainty, improve success rate",
                     supporting_data={"decisions": low_confidence_decisions},
                 )
@@ -549,7 +804,10 @@ class PipelineRecommendationEngine:
                 Recommendation(
                     type="consider_proven_approaches",
                     confidence=0.7,
-                    message="Consider proven approaches used in similar successful projects",
+                    message=(
+                        "Consider proven approaches used in similar "
+                        "successful projects"
+                    ),
                     impact="Increase success likelihood by 20%",
                     supporting_data={"proven_approaches": missing_proven},
                 )
@@ -560,7 +818,19 @@ class PipelineRecommendationEngine:
     def _suggest_performance_optimizations(
         self, current_flow: Dict[str, Any]
     ) -> List[Recommendation]:
-        """Suggest performance optimizations."""
+        """
+        Suggest performance optimizations.
+
+        Parameters
+        ----------
+        current_flow : Dict[str, Any]
+            Current flow to analyze
+
+        Returns
+        -------
+        List[Recommendation]
+            List of performance recommendations
+        """
         recommendations = []
         metrics = current_flow["metrics"]
 
@@ -570,7 +840,10 @@ class PipelineRecommendationEngine:
                 Recommendation(
                     type="optimize_cost",
                     confidence=0.8,
-                    message=f"Cost is ${metrics['total_cost']:.2f} - consider optimization",
+                    message=(
+                        f"Cost is ${metrics['total_cost']:.2f} - "
+                        "consider optimization"
+                    ),
                     impact=f"Save up to ${metrics['total_cost'] * 0.3:.2f}",
                     supporting_data={
                         "current_cost": metrics["total_cost"],
@@ -585,12 +858,13 @@ class PipelineRecommendationEngine:
 
         # Speed optimization
         if metrics["total_duration_ms"] > 30000:  # 30 seconds
+            duration_s = metrics["total_duration_ms"] / 1000
             recommendations.append(
                 Recommendation(
                     type="optimize_speed",
                     confidence=0.7,
-                    message="Pipeline taking {:.1f}s - can be optimized".format(
-                        metrics["total_duration_ms"] / 1000
+                    message=(
+                        f"Pipeline taking {duration_s:.1f}s - " "can be optimized"
                     ),
                     impact="Reduce execution time by 30-40%",
                     supporting_data={
@@ -607,7 +881,19 @@ class PipelineRecommendationEngine:
         return recommendations
 
     def apply_template(self, template_flow: Dict[str, Any]) -> Dict[str, Any]:
-        """Apply a template from a successful flow."""
+        """
+        Apply a template from a successful flow.
+
+        Parameters
+        ----------
+        template_flow : Dict[str, Any]
+            Template flow to apply
+
+        Returns
+        -------
+        Dict[str, Any]
+            Applied template structure
+        """
         # In production, this would modify the current flow
         # For now, return template structure
         return {
@@ -618,7 +904,19 @@ class PipelineRecommendationEngine:
         }
 
     def suggest_phases(self, current_flow: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Suggest project phases."""
+        """
+        Suggest project phases.
+
+        Parameters
+        ----------
+        current_flow : Dict[str, Any]
+            Current flow to analyze
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            Suggested project phases
+        """
         tasks = current_flow["tasks"]
         task_count = len(tasks)
 
@@ -666,7 +964,19 @@ class PipelineRecommendationEngine:
     def suggest_testing_tasks(
         self, current_flow: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
-        """Suggest testing tasks to add."""
+        """
+        Suggest testing tasks to add.
+
+        Parameters
+        ----------
+        current_flow : Dict[str, Any]
+            Current flow to analyze
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            Suggested testing tasks
+        """
         testing_tasks = []
 
         # Analyze existing tasks to suggest tests
@@ -682,7 +992,7 @@ class PipelineRecommendationEngine:
             elif "database" in task["name"].lower():
                 testing_tasks.append(
                     {
-                        "name": f"Test database operations for {task['name']}",
+                        "name": (f"Test database operations for {task['name']}"),
                         "type": "testing",
                         "priority": "medium",
                     }
@@ -691,8 +1001,16 @@ class PipelineRecommendationEngine:
         # Add general testing tasks
         testing_tasks.extend(
             [
-                {"name": "Unit test coverage", "type": "testing", "priority": "high"},
-                {"name": "Integration testing", "type": "testing", "priority": "high"},
+                {
+                    "name": "Unit test coverage",
+                    "type": "testing",
+                    "priority": "high",
+                },
+                {
+                    "name": "Integration testing",
+                    "type": "testing",
+                    "priority": "high",
+                },
                 {
                     "name": "Performance testing",
                     "type": "testing",
@@ -706,9 +1024,25 @@ class PipelineRecommendationEngine:
     def suggest_documentation_tasks(
         self, current_flow: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
-        """Suggest documentation tasks."""
+        """
+        Suggest documentation tasks.
+
+        Parameters
+        ----------
+        current_flow : Dict[str, Any]
+            Current flow to analyze
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            Suggested documentation tasks
+        """
         return [
-            {"name": "API documentation", "type": "documentation", "priority": "high"},
+            {
+                "name": "API documentation",
+                "type": "documentation",
+                "priority": "high",
+            },
             {
                 "name": "Setup and deployment guide",
                 "type": "documentation",
@@ -719,7 +1053,11 @@ class PipelineRecommendationEngine:
                 "type": "documentation",
                 "priority": "medium",
             },
-            {"name": "User guide", "type": "documentation", "priority": "medium"},
+            {
+                "name": "User guide",
+                "type": "documentation",
+                "priority": "medium",
+            },
         ]
 
     def learn_from_outcome(self, flow_id: str, outcome: ProjectOutcome) -> None:
@@ -750,7 +1088,16 @@ class PipelineRecommendationEngine:
     def update_recommendation_weights(
         self, flow_data: Dict[str, Any], outcome: ProjectOutcome
     ) -> None:
-        """Update recommendation confidence based on outcomes."""
+        """
+        Update recommendation confidence based on outcomes.
+
+        Parameters
+        ----------
+        flow_data : Dict[str, Any]
+            Flow data
+        outcome : ProjectOutcome
+            Project outcome
+        """
         # In production, this would update ML model weights
         # For now, track in pattern database
 
@@ -769,7 +1116,19 @@ class PipelineRecommendationEngine:
     def export_recommendations_report(
         self, recommendations: List[Recommendation]
     ) -> str:
-        """Export recommendations as formatted report."""
+        """
+        Export recommendations as formatted report.
+
+        Parameters
+        ----------
+        recommendations : List[Recommendation]
+            List of recommendations to export
+
+        Returns
+        -------
+        str
+            Formatted report
+        """
         report = f"""
 # Pipeline Recommendations Report
 
@@ -858,7 +1217,21 @@ class PipelineRecommendationEngine:
     def _get_team_composition_recommendation(
         self, context: Dict[str, Any], patterns: List[Any]
     ) -> Optional[Recommendation]:
-        """Get team composition recommendation based on successful patterns."""
+        """
+        Get team composition recommendation based on successful patterns.
+
+        Parameters
+        ----------
+        context : Dict[str, Any]
+            Current project context
+        patterns : List[Any]
+            Successful patterns to analyze
+
+        Returns
+        -------
+        Optional[Recommendation]
+            Team composition recommendation or None
+        """
         current_team_size = context.get("team_size", 0)
 
         # Get optimal team sizes from successful projects
@@ -873,11 +1246,15 @@ class PipelineRecommendationEngine:
             return Recommendation(
                 type="team_optimization",
                 confidence=0.8,
-                message=f"Consider adjusting team size to {int(avg_optimal)} members",
-                impact="Improved productivity and reduced coordination overhead",
+                message=(
+                    f"Consider adjusting team size to " f"{int(avg_optimal)} members"
+                ),
+                impact=("Improved productivity and reduced coordination overhead"),
                 supporting_data={
                     "current_size": current_team_size,
-                    "optimal_range": f"{int(min(optimal_sizes))}-{int(max(optimal_sizes))}",
+                    "optimal_range": (
+                        f"{int(min(optimal_sizes))}-" f"{int(max(optimal_sizes))}"
+                    ),
                     "successful_projects": len(patterns),
                 },
             )
@@ -887,7 +1264,21 @@ class PipelineRecommendationEngine:
     def _get_velocity_recommendation(
         self, context: Dict[str, Any], patterns: List[Any]
     ) -> Optional[Recommendation]:
-        """Get velocity recommendation based on successful patterns."""
+        """
+        Get velocity recommendation based on successful patterns.
+
+        Parameters
+        ----------
+        context : Dict[str, Any]
+            Current project context
+        patterns : List[Any]
+            Successful patterns to analyze
+
+        Returns
+        -------
+        Optional[Recommendation]
+            Velocity recommendation or None
+        """
         current_velocity = context.get("velocity", 0)
 
         # Get velocity patterns from successful projects
@@ -902,15 +1293,19 @@ class PipelineRecommendationEngine:
         avg_target = statistics.mean(target_velocities)
 
         if current_velocity < avg_target * 0.7:
+            improvement_pct = (avg_target - current_velocity) / current_velocity * 100
             return Recommendation(
                 type="velocity_improvement",
                 confidence=0.75,
-                message=f"Team velocity ({current_velocity:.1f} tasks/week) below successful project average",
+                message=(
+                    f"Team velocity ({current_velocity:.1f} tasks/week) "
+                    "below successful project average"
+                ),
                 impact="Faster delivery and improved project momentum",
                 supporting_data={
                     "current_velocity": current_velocity,
                     "target_velocity": f"{avg_target:.1f}",
-                    "improvement_needed": f"{((avg_target - current_velocity) / current_velocity * 100):.0f}%",
+                    "improvement_needed": f"{improvement_pct:.0f}%",
                 },
             )
 
@@ -919,7 +1314,21 @@ class PipelineRecommendationEngine:
     def _get_quality_recommendation(
         self, context: Dict[str, Any], patterns: List[Any]
     ) -> Optional[Recommendation]:
-        """Get quality recommendation based on successful patterns."""
+        """
+        Get quality recommendation based on successful patterns.
+
+        Parameters
+        ----------
+        context : Dict[str, Any]
+            Current project context
+        patterns : List[Any]
+            Successful patterns to analyze
+
+        Returns
+        -------
+        Optional[Recommendation]
+            Quality recommendation or None
+        """
         # Extract quality metrics from successful patterns
         quality_scores = [p.outcome.quality_score for p in patterns]
         avg_quality = statistics.mean(quality_scores)
@@ -940,7 +1349,10 @@ class PipelineRecommendationEngine:
             return Recommendation(
                 type="quality_assurance",
                 confidence=0.85,
-                message=f"Focus on {most_common[0][0]} to achieve {avg_quality:.0%} quality score",
+                message=(
+                    f"Focus on {most_common[0][0]} to achieve "
+                    f"{avg_quality:.0%} quality score"
+                ),
                 impact="Higher project success rate and maintainability",
                 supporting_data={
                     "success_factors": [f[0] for f in most_common],
@@ -954,7 +1366,21 @@ class PipelineRecommendationEngine:
     def _get_risk_mitigation_recommendations(
         self, context: Dict[str, Any], all_patterns: List[Any]
     ) -> List[Recommendation]:
-        """Get risk mitigation recommendations from failed patterns."""
+        """
+        Get risk mitigation recommendations from failed patterns.
+
+        Parameters
+        ----------
+        context : Dict[str, Any]
+            Current project context
+        all_patterns : List[Any]
+            All patterns including failed ones
+
+        Returns
+        -------
+        List[Recommendation]
+            List of risk mitigation recommendations
+        """
         recommendations: List[Recommendation] = []
 
         # Find failed patterns
@@ -971,7 +1397,9 @@ class PipelineRecommendationEngine:
         common_risks = Counter(failure_reasons).most_common(3)
 
         for risk, count in common_risks:
-            if count > len(failed_patterns) * 0.3:  # Risk appears in >30% of failures
+            # Risk appears in >30% of failures
+            if count > len(failed_patterns) * 0.3:
+                occurrence_rate = count / len(failed_patterns)
                 recommendations.append(
                     Recommendation(
                         type="risk_mitigation",
@@ -979,7 +1407,7 @@ class PipelineRecommendationEngine:
                         message=f"Proactively address: {risk}",
                         impact="Reduced project failure risk",
                         supporting_data={
-                            "occurrence_rate": f"{count / len(failed_patterns):.0%}",
+                            "occurrence_rate": f"{occurrence_rate:.0%}",
                             "failed_projects": count,
                         },
                     )

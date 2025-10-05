@@ -325,13 +325,17 @@ class IntelligentTaskGenerator:
         basic_setup = [
             {
                 "name": "Initialize project repository",
-                "description": "Create Git repository with proper .gitignore and README",
+                "description": (
+                    "Create Git repository with proper .gitignore and README"
+                ),
                 "hours": 1,
                 "dependencies": [],
             },
             {
                 "name": "Set up development environment",
-                "description": "Configure development tools, linters, and IDE settings",
+                "description": (
+                    "Configure development tools, linters, and IDE settings"
+                ),
                 "hours": 3,
                 "dependencies": ["Initialize project repository"],
             },
@@ -370,19 +374,28 @@ class IntelligentTaskGenerator:
         design_tasks = [
             {
                 "name": "Create system architecture diagram",
-                "description": "Design high-level system architecture and component relationships",
+                "description": (
+                    "Design high-level system architecture and "
+                    "component relationships"
+                ),
                 "hours": 6,
                 "dependencies": ["Set up development environment"],
             },
             {
                 "name": "Design database schema",
-                "description": "Create comprehensive database schema with relationships and constraints",
+                "description": (
+                    "Create comprehensive database schema with relationships "
+                    "and constraints"
+                ),
                 "hours": 8,
                 "dependencies": ["Create system architecture diagram"],
             },
             {
                 "name": "Define API contracts",
-                "description": "Specify API endpoints, request/response formats, and error handling",
+                "description": (
+                    "Specify API endpoints, request/response formats, "
+                    "and error handling"
+                ),
                 "hours": 6,
                 "dependencies": ["Design database schema"],
             },
@@ -394,13 +407,17 @@ class IntelligentTaskGenerator:
                 [
                     {
                         "name": "Create UI wireframes",
-                        "description": "Design user interface wireframes and user flow diagrams",
+                        "description": (
+                            "Design user interface wireframes and " "user flow diagrams"
+                        ),
                         "hours": 8,
                         "dependencies": ["Define API contracts"],
                     },
                     {
                         "name": "Design component library",
-                        "description": "Define reusable UI components and design system",
+                        "description": (
+                            "Define reusable UI components and design system"
+                        ),
                         "hours": 6,
                         "dependencies": ["Create UI wireframes"],
                     },
@@ -465,7 +482,9 @@ class IntelligentTaskGenerator:
         integration_tasks = [
             {
                 "name": "Integrate frontend and backend",
-                "description": "Connect frontend components to backend APIs and test data flow",
+                "description": (
+                    "Connect frontend components to backend APIs and " "test data flow"
+                ),
                 "hours": 12,
                 "dependencies": ["Implement CRUD operations", "Build data entry forms"],
             },
@@ -483,7 +502,10 @@ class IntelligentTaskGenerator:
                 integration_tasks.append(
                     {
                         "name": f"Integrate {service}",
-                        "description": f"Implement {service} integration with proper error handling",
+                        "description": (
+                            f"Implement {service} integration with "
+                            f"proper error handling"
+                        ),
                         "hours": 6,
                         "dependencies": ["Implement error handling"],
                     }
@@ -543,7 +565,9 @@ class IntelligentTaskGenerator:
         deployment_tasks = [
             {
                 "name": "Set up production environment",
-                "description": "Configure production servers, databases, and infrastructure",
+                "description": (
+                    "Configure production servers, databases, and infrastructure"
+                ),
                 "hours": 8,
                 "dependencies": ["Fix identified bugs"],
             },
@@ -555,7 +579,9 @@ class IntelligentTaskGenerator:
             },
             {
                 "name": "Deploy to staging",
-                "description": "Deploy application to staging environment for final testing",
+                "description": (
+                    "Deploy application to staging environment for final testing"
+                ),
                 "hours": 4,
                 "dependencies": ["Configure CI/CD pipeline"],
             },
@@ -567,7 +593,9 @@ class IntelligentTaskGenerator:
             },
             {
                 "name": "Monitor production deployment",
-                "description": "Monitor application performance and fix any deployment issues",
+                "description": (
+                    "Monitor application performance and fix any deployment issues"
+                ),
                 "hours": 6,
                 "dependencies": ["Deploy to production"],
             },
@@ -745,7 +773,8 @@ class IntelligentTaskGenerator:
         task_name_to_id = {task.name: task.id for task in tasks}
 
         for task in tasks:
-            # Safely extract dependency names from source_context or metadata (for backward compatibility)
+            # Safely extract dependency names from source_context or metadata
+            # (for backward compatibility)
             dep_names = []
 
             # Try source_context first (preferred)

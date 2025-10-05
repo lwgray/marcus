@@ -94,9 +94,15 @@ class NaturalLanguageTaskCreator(ABC):
                     integration_name="natural_language_tools",
                     custom_context={
                         "client_type": type(self.kanban_client).__name__,
-                        "details": f"Kanban client {type(self.kanban_client).__name__} does not support task creation. "
-                        f"Expected KanbanClientWithCreate or compatible implementation. "
-                        f"Current client type: {type(self.kanban_client).__module__}.{type(self.kanban_client).__name__}",
+                        "details": (
+                            f"Kanban client "
+                            f"{type(self.kanban_client).__name__} does not "
+                            f"support task creation. Expected "
+                            f"KanbanClientWithCreate or compatible "
+                            f"implementation. Current client type: "
+                            f"{type(self.kanban_client).__module__}."
+                            f"{type(self.kanban_client).__name__}"
+                        ),
                     },
                 ),
             )
@@ -164,8 +170,12 @@ class NaturalLanguageTaskCreator(ABC):
                     custom_context={
                         "total_tasks": len(tasks),
                         "failed_tasks": len(failed_tasks),
-                        "details": f"Failed to create any of {len(tasks)} tasks. All task creation attempts failed. "
-                        f"This indicates a fundamental issue with the kanban integration or board configuration.",
+                        "details": (
+                            f"Failed to create any of {len(tasks)} tasks. "
+                            f"All task creation attempts failed. This "
+                            f"indicates a fundamental issue with the kanban "
+                            f"integration or board configuration."
+                        ),
                     },
                 ),
             )

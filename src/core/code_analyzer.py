@@ -546,7 +546,10 @@ class CodeAnalyzer:
         # If tests were added
         if findings.get("implementations", {}).get("tests"):
             tests = findings["implementations"]["tests"]
-            rec = f"Tests were added in {len(tests)} files. Ensure new features include tests."
+            rec = (
+                f"Tests were added in {len(tests)} files. "
+                f"Ensure new features include tests."
+            )
             recommendations.append(rec)
 
         # Based on task type

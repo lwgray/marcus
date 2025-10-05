@@ -1,8 +1,8 @@
 """
 Artifact management tools with prescriptive storage locations.
 
-These tools help agents store and track design artifacts in organized
-locations while allowing flexibility when needed.
+This module provides tools to help agents store and track design
+artifacts in organized locations while allowing flexibility when needed.
 """
 
 import logging
@@ -36,7 +36,8 @@ async def log_artifact(
     """
     Store an artifact with prescriptive location management.
 
-    By default, artifacts are stored in standard locations based on their type:
+    By default, artifacts are stored in standard locations based on
+    their type:
     - specifications → docs/specifications/
     - api → docs/api/
     - design → docs/design/
@@ -45,16 +46,25 @@ async def log_artifact(
     - reference → docs/references/
     - temporary → tmp/artifacts/
 
-    Args:
-        task_id: The current task ID
-        filename: Name for the artifact file
-        content: The artifact content to store
-        artifact_type: Type of artifact (determines default location)
-        project_root: Absolute path to the project root directory where artifacts
-                      will be created. All agents should use the same path.
-        description: Optional description of the artifact
-        location: Optional override for storage location (relative path)
-        state: MCP state object
+    Parameters
+    ----------
+    task_id : str
+        The current task ID
+    filename : str
+        Name for the artifact file
+    content : str
+        The artifact content to store
+    artifact_type : str
+        Type of artifact (determines default location)
+    project_root : Optional[str], optional
+        Absolute path to the project root directory where artifacts
+        will be created. All agents should use the same path.
+    description : Optional[str], optional
+        Optional description of the artifact
+    location : Optional[str], optional
+        Optional override for storage location (relative path)
+    state : Any, optional
+        MCP state object
 
     Returns
     -------
@@ -155,19 +165,23 @@ async def log_artifact(
                 if task:
                     card_id = getattr(task, "kanban_card_id", None) or task.id
                     location_type = "default" if location is None else "custom"
+                    comment_text = (
+                        f"📄 Created {artifact_type} artifact: {filename}\n"
+                        f"Location: {artifact_path} ({location_type})\n\n"
+                        f"{description}"
+                    )
                     await state.kanban_client.add_comment(
                         task_id=card_id,
-                        comment=(
-                            f"📄 Created {artifact_type} artifact: {filename}\n"
-                            f"Location: {artifact_path} ({location_type})\n\n{description}"
-                        ),
+                        comment=comment_text,
                     )
             except Exception as e:
                 logger.warning(f"Could not add comment: {e}")
 
-        logger.info(
-            f"Stored {artifact_type} artifact {filename} for task {task_id} at {artifact_path}"
+        log_msg = (
+            f"Stored {artifact_type} artifact {filename} for task "
+            f"{task_id} at {artifact_path}"
         )
+        logger.info(log_msg)
 
         return {
             "success": True,
@@ -200,21 +214,30 @@ async def get_task_context(
     state: Any = None,
 ) -> Dict[str, Any]:
     """
-    Get comprehensive context for a task including dependencies and artifacts.
+    Get comprehensive context for a task including dependencies.
 
-    This tool provides agents with all relevant context about a task including:
+    This tool provides agents with all relevant context about a task
+    including:
     - Task details and current status
     - Dependencies (tasks that must be completed before this one)
     - Blockers (current issues preventing progress)
     - Artifacts (design documents with their storage locations)
 
-    Args:
-        task_id: The task ID to get context for
-        project_root: Absolute path to the project root directory for artifact discovery
-        include_dependencies: Whether to include dependency information
-        include_blockers: Whether to include blocker information
-        include_artifacts: Whether to include artifact information
-        state: MCP state object
+    Parameters
+    ----------
+    task_id : str
+        The task ID to get context for
+    project_root : Optional[str], optional
+        Absolute path to the project root directory for artifact
+        discovery
+    include_dependencies : bool, optional
+        Whether to include dependency information, default is True
+    include_blockers : bool, optional
+        Whether to include blocker information, default is True
+    include_artifacts : bool, optional
+        Whether to include artifact information, default is True
+    state : Any, optional
+        MCP state object
 
     Returns
     -------
@@ -322,10 +345,13 @@ async def get_task_context(
 async def _discover_artifacts_in_standard_locations(
     working_dir: Path,
 ) -> List[Dict[str, Any]]:
-    """Scan standard artifact directories for files in the specified project directory.
+    """
+    Scan standard artifact directories for files in project directory.
 
-    Args:
-        working_dir: The project root directory to scan for artifacts
+    Parameters
+    ----------
+    working_dir : Path
+        The project root directory to scan for artifacts
 
     Returns
     -------

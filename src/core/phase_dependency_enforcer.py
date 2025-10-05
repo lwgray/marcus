@@ -124,7 +124,8 @@ class PhaseDependencyEnforcer:
         # Apply phase dependencies within each feature
         for feature_name, feature_group in feature_groups.items():
             logger.debug(
-                f"Processing feature: {feature_name} with {len(feature_group.tasks)} tasks"
+                f"Processing feature: {feature_name} with "
+                f"{len(feature_group.tasks)} tasks"
             )
             self._apply_phase_dependencies_to_feature(feature_group)
 
@@ -136,7 +137,8 @@ class PhaseDependencyEnforcer:
             and task._phase_dependencies_added
         )
         logger.info(
-            f"Phase dependency enforcement complete. Added {total_dependencies_added} dependencies"
+            f"Phase dependency enforcement complete. "
+            f"Added {total_dependencies_added} dependencies"
         )
 
         return tasks
@@ -236,7 +238,8 @@ class PhaseDependencyEnforcer:
         import re
 
         patterns = [
-            r"(?:design|implement|test|document)\s+(\w+)\s+(?:system|feature|service|component)",
+            r"(?:design|implement|test|document)\s+(\w+)\s+"
+            r"(?:system|feature|service|component)",
             r"(?:create|build|develop)\s+(\w+)\s+(?:api|interface|module)",
         ]
 
@@ -305,7 +308,8 @@ class PhaseDependencyEnforcer:
 
         if violations_corrected > 0:
             logger.warning(
-                f"Corrected {violations_corrected} phase ordering violations in feature '{feature_group.feature_name}'"
+                f"Corrected {violations_corrected} phase ordering violations "
+                f"in feature '{feature_group.feature_name}'"
             )
 
     def _add_phase_dependencies(

@@ -613,9 +613,7 @@ class LeaseMonitor:
 
                 # Recover expired leases
                 for lease in expired_leases:
-                    success = await self.lease_manager.recover_expired_lease(
-                        lease
-                    )
+                    success = await self.lease_manager.recover_expired_lease(lease)
                     if success:
                         logger.info(
                             f"Successfully recovered expired lease for "

@@ -249,7 +249,8 @@ class SafetyChecker:
                 if impl_task.id not in deploy_task.dependencies:
                     deploy_task.dependencies.append(impl_task.id)
                     logger.debug(
-                        f"Added dependency: {deploy_task.name} depends on {impl_task.name}"
+                        f"Added dependency: {deploy_task.name} depends on "
+                        f"{impl_task.name}"
                     )
 
             # Ensure deployment depends on ALL testing tasks
@@ -257,7 +258,8 @@ class SafetyChecker:
                 if test_task.id not in deploy_task.dependencies:
                     deploy_task.dependencies.append(test_task.id)
                     logger.debug(
-                        f"Added dependency: {deploy_task.name} depends on {test_task.name}"
+                        f"Added dependency: {deploy_task.name} depends on "
+                        f"{test_task.name}"
                     )
 
         return tasks
@@ -289,19 +291,21 @@ class SafetyChecker:
 
             if not related_impl_tasks:
                 logger.warning(
-                    f"No related implementation tasks found for test task '{test_task.name}' "
-                    f"with labels: {test_task.labels}"
+                    f"No related implementation tasks found for test task "
+                    f"'{test_task.name}' with labels: {test_task.labels}"
                 )
             else:
                 logger.info(
-                    f"Found {len(related_impl_tasks)} related implementation tasks for '{test_task.name}'"
+                    f"Found {len(related_impl_tasks)} related implementation "
+                    f"tasks for '{test_task.name}'"
                 )
 
             for impl_task in related_impl_tasks:
                 if impl_task.id not in test_task.dependencies:
                     test_task.dependencies.append(impl_task.id)
                     logger.info(
-                        f"Added dependency: {test_task.name} depends on {impl_task.name}"
+                        f"Added dependency: {test_task.name} depends on "
+                        f"{impl_task.name}"
                     )
 
         return tasks
@@ -333,19 +337,21 @@ class SafetyChecker:
 
             if not related_design_tasks:
                 logger.warning(
-                    f"No related design tasks found for implementation task '{impl_task.name}' "
-                    f"with labels: {impl_task.labels}"
+                    f"No related design tasks found for implementation task "
+                    f"'{impl_task.name}' with labels: {impl_task.labels}"
                 )
             else:
                 logger.info(
-                    f"Found {len(related_design_tasks)} related design tasks for '{impl_task.name}'"
+                    f"Found {len(related_design_tasks)} related design tasks "
+                    f"for '{impl_task.name}'"
                 )
 
             for design_task in related_design_tasks:
                 if design_task.id not in impl_task.dependencies:
                     impl_task.dependencies.append(design_task.id)
                     logger.info(
-                        f"Added dependency: {impl_task.name} depends on {design_task.name}"
+                        f"Added dependency: {impl_task.name} depends on "
+                        f"{design_task.name}"
                     )
 
         return tasks

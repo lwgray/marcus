@@ -1,5 +1,5 @@
 """
-What-If Analysis Engine - Explore alternative pipeline execution paths
+What-If Analysis Engine - Explore alternative pipeline execution paths.
 
 This module enables users to modify parameters and see how different choices
 would affect the outcome, learning optimal approaches through experimentation.

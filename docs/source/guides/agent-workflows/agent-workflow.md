@@ -1,5 +1,12 @@
 # The Complete Agent-Marcus Interaction Flow
 
+## 0. User Project Board Setup
+Options:
+
+1. Ask Marcus to create a new project from your description - This will create a complete board with tasks
+
+2. Ask Marcus to list and select an existing board to work on or set this up in the config_marcus.json file
+
 ## 1. Agent Lifecycle & Core Loop
 
 ```

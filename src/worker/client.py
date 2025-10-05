@@ -155,7 +155,8 @@ def retry_with_backoff(
                     if attempt == max_attempts - 1:
                         # Last attempt failed
                         print(
-                            f"❌ {func.__name__} failed after {max_attempts} attempts: {e}"
+                            f"❌ {func.__name__} failed after "
+                            f"{max_attempts} attempts: {e}"
                         )
                         raise
 
@@ -169,7 +170,8 @@ def retry_with_backoff(
                         delay = delay * (0.5 + secure_random.random())
 
                     print(
-                        f"⚠️  {func.__name__} failed (attempt {attempt + 1}/{max_attempts}), "
+                        f"⚠️  {func.__name__} failed "
+                        f"(attempt {attempt + 1}/{max_attempts}), "
                         f"retrying in {delay:.1f}s: {e}"
                     )
 
@@ -429,7 +431,8 @@ class WorkerMCPClient:
 
         Connect to specific port:
 
-        >>> async with client.connect_to_marcus_http("http://localhost:4300/mcp") as session:
+        >>> url = "http://localhost:4300/mcp"
+        >>> async with client.connect_to_marcus_http(url) as session:
         ...     # Session is active and connected to analytics instance
         ...     await client.get_agent_status("worker-1")
 
@@ -451,8 +454,10 @@ class WorkerMCPClient:
                     tools = tools_response.tools
                 else:
                     tools = cast(List[Any], tools_response)
+                tool_names = [t.name for t in tools]
                 print(
-                    f"Connected to Marcus HTTP server at {url}. Available tools: {[t.name for t in tools]}"
+                    f"Connected to Marcus HTTP server at {url}. "
+                    f"Available tools: {tool_names}"
                 )
 
                 yield session
@@ -647,7 +652,9 @@ class WorkerMCPClient:
         >>> client = WorkerMCPClient()
         >>> async with client.connect_to_marcus() as session:
         ...     # Register first
-        ...     await client.register_agent("dev-001", "Developer", "Engineer", ["python"])
+        ...     result = await client.register_agent(
+        ...         "dev-001", "Developer", "Engineer", ["python"]
+        ...     )
         ...
         ...     # Request task
         ...     response = await client.request_next_task("dev-001")
@@ -1119,7 +1126,8 @@ class WorkerMCPClient:
         >>> status = await client.get_project_status()
         >>> perf = status['performance_metrics']
         >>>
-        >>> print(f"Average task completion: {perf['avg_task_completion_time']:.1f} hours")
+        >>> avg_time = perf['avg_task_completion_time']
+        >>> print(f"Average task completion: {avg_time:.1f} hours")
         >>> print(f"Daily throughput: {perf['throughput']:.1f} tasks/day")
         >>> print(f"Efficiency score: {perf['efficiency_score']:.2f}")
 

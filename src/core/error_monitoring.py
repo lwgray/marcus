@@ -361,7 +361,10 @@ class ErrorMonitor:
                 pattern = ErrorPattern(
                     pattern_id=pattern_id,
                     pattern_type="frequency",
-                    description=f"High frequency of {error_type} errors ({recent_count} in 10 minutes)",
+                    description=(
+                        f"High frequency of {error_type} errors "
+                        f"({recent_count} in 10 minutes)"
+                    ),
                     frequency=recent_count,
                     first_seen=now,
                     last_seen=now,
@@ -398,7 +401,9 @@ class ErrorMonitor:
                 pattern = ErrorPattern(
                     pattern_id=pattern_id,
                     pattern_type="burst",
-                    description=f"Error burst detected ({burst_count} errors in 5 minutes)",
+                    description=(
+                        f"Error burst detected " f"({burst_count} errors in 5 minutes)"
+                    ),
                     frequency=burst_count,
                     first_seen=now,
                     last_seen=now,
@@ -437,7 +442,10 @@ class ErrorMonitor:
                 pattern = ErrorPattern(
                     pattern_id=pattern_id,
                     pattern_type="agent_specific",
-                    description=f"High error rate from agent {agent_id} ({agent_errors} errors in 30 minutes)",
+                    description=(
+                        f"High error rate from agent {agent_id} "
+                        f"({agent_errors} errors in 30 minutes)"
+                    ),
                     frequency=agent_errors,
                     first_seen=now,
                     last_seen=now,
@@ -470,7 +478,10 @@ class ErrorMonitor:
             pattern = ErrorPattern(
                 pattern_id=pattern_id,
                 pattern_type="cascade",
-                description=f"Cascade pattern detected ({len(similar_errors)} related errors)",
+                description=(
+                    f"Cascade pattern detected "
+                    f"({len(similar_errors)} related errors)"
+                ),
                 frequency=len(similar_errors),
                 first_seen=now,
                 last_seen=now,
@@ -510,7 +521,11 @@ class ErrorMonitor:
         correlation_id = error_record["correlation_id"]
 
         # Find correlation key (operation + agent + integration)
-        correlation_key = f"{error_record.get('operation', 'unknown')}_{error_record.get('agent_id', 'unknown')}_{error_record.get('integration_name', 'unknown')}"
+        correlation_key = (
+            f"{error_record.get('operation', 'unknown')}_"
+            f"{error_record.get('agent_id', 'unknown')}_"
+            f"{error_record.get('integration_name', 'unknown')}"
+        )
 
         # Find or create correlation group
         group_id = None
@@ -711,7 +726,8 @@ class ErrorMonitor:
         for agent_id, error_count in top_error_agents:
             if error_count > 10:
                 recommendations.append(
-                    f"Agent {agent_id} has high error count ({error_count}) - review agent configuration"
+                    f"Agent {agent_id} has high error count "
+                    f"({error_count}) - review agent configuration"
                 )
 
         # Integration-specific recommendations
@@ -729,7 +745,8 @@ class ErrorMonitor:
         for integration, count in integration_errors.items():
             if count > 20:
                 recommendations.append(
-                    f"Integration {integration} has high error count - check service health"
+                    f"Integration {integration} has high error count - "
+                    f"check service health"
                 )
 
         if not recommendations:

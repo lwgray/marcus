@@ -701,9 +701,13 @@ class ProjectMonitor:
             if task.status == TaskStatus.IN_PROGRESS:
                 if now - task.updated_at > stall_threshold:
                     # Task is stalled, create a risk
+                    hours_stalled = stall_threshold.total_seconds() / 3600
                     risk = ProjectRisk(
                         risk_type="stalled_task",
-                        description=f"Task '{task.name}' has been in progress for over {stall_threshold.total_seconds()/3600} hours",
+                        description=(
+                            f"Task '{task.name}' has been in progress for "
+                            f"over {hours_stalled} hours"
+                        ),
                         severity=RiskLevel.MEDIUM,
                         probability=1.0,
                         impact="Delays project timeline",
@@ -780,15 +784,19 @@ class ProjectMonitor:
         # Find blocked tasks with many dependents
         for task in tasks:
             if task.status == TaskStatus.BLOCKED:
-                # For now, skip dependency analysis since get_dependent_tasks is not implemented
-                # TODO: Implement dependency analysis when the method is available
-                dependents: List[Task] = (
-                    []
-                )  # Would call self.kanban_client.get_dependent_tasks(task.id)
+                # For now, skip dependency analysis since
+                # get_dependent_tasks is not implemented
+                # TODO: Implement dependency analysis when method available
+                dependents: List[Task] = []
+                # Would call self.kanban_client.get_dependent_tasks(task.id)
                 if len(dependents) > 2:
+                    num_blocked = len(dependents)
                     risk = ProjectRisk(
                         risk_type="dependency",
-                        description=f"Task '{task.name}' is blocking {len(dependents)} other tasks",
+                        description=(
+                            f"Task '{task.name}' is blocking "
+                            f"{num_blocked} other tasks"
+                        ),
                         severity=RiskLevel.HIGH,
                         probability=1.0,
                         impact="Multiple tasks cannot proceed",
@@ -1184,10 +1192,13 @@ class ProjectMonitor:
             file=sys.stderr,
         )
         print(
-            f"   Progress: {self.current_state.progress_percent:.1f}%", file=sys.stderr
+            f"   Progress: {self.current_state.progress_percent:.1f}%",
+            file=sys.stderr,
         )
+        completed = self.current_state.completed_tasks
+        total = self.current_state.total_tasks
         print(
-            f"   Completed Tasks: {self.current_state.completed_tasks}/{self.current_state.total_tasks}",
+            f"   Completed Tasks: {completed}/{total}",
             file=sys.stderr,
         )
 

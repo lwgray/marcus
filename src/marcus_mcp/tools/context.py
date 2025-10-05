@@ -198,7 +198,8 @@ async def _collect_task_artifacts(
                         artifact["dependency_task_id"] = dep_id
                         artifact["dependency_task_name"] = dep_task.name
                         artifact["description"] = (
-                            f"{artifact['description']} (from dependency: {dep_task.name})"
+                            f"{artifact['description']} "
+                            f"(from dependency: {dep_task.name})"
                         )
                     artifacts.extend(dep_repo_artifacts)
 
@@ -228,15 +229,18 @@ async def _collect_task_artifacts(
                                             "dependency_task_id": dep_id,
                                             "dependency_task_name": dep_task.name,
                                             "description": (
-                                                f"Attachment from dependency: {dep_task.name}"
+                                                f"Attachment from dependency: "
+                                                f"{dep_task.name}"
                                             ),
                                         }
                                     )
                         except Exception as e:
                             # Don't fail if kanban is unavailable
-                            # Log the error for debugging but continue with artifact collection
+                            # Log the error for debugging but continue
+                            # with artifact collection
                             print(
-                                f"Warning: Failed to get kanban attachments for dependency {dep_id}: {e}"
+                                f"Warning: Failed to get kanban attachments "
+                                f"for dependency {dep_id}: {e}"
                             )
 
     except Exception as e:
@@ -277,7 +281,9 @@ def _scan_repository_artifacts(task_id: str) -> List[Dict[str, Any]]:
                             "location": str(file_path),
                             "storage_type": "repository",
                             "artifact_type": artifact_type,
-                            "description": f"{artifact_type.title()} file in repository",
+                            "description": (
+                                f"{artifact_type.title()} file in repository"
+                            ),
                         }
                     )
 

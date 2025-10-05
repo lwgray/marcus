@@ -207,7 +207,8 @@ class Memory:
                 self.semantic["agent_profiles"][data["agent_id"]] = AgentProfile(**data)
 
             logger.info(
-                f"Loaded {len(self.episodic['outcomes'])} outcomes and {len(self.semantic['agent_profiles'])} profiles from memory"
+                f"Loaded {len(self.episodic['outcomes'])} outcomes and "
+                f"{len(self.semantic['agent_profiles'])} profiles from memory"
             )
 
         except Exception as e:
@@ -487,7 +488,8 @@ class Memory:
         profile = self.semantic["agent_profiles"].get(agent_id)
         if profile and profile.average_estimation_accuracy < 0.8:
             factors.append(
-                f"Agent tends to underestimate ({profile.average_estimation_accuracy:.0%} accuracy)"
+                f"Agent tends to underestimate "
+                f"({profile.average_estimation_accuracy:.0%} accuracy)"
             )
 
         # Time of day factor
@@ -635,7 +637,8 @@ class Memory:
                 all_tasks = task_data
             except Exception as e:
                 logger.warning(
-                    "Failed to retrieve tasks from persistence for dependency analysis: %s",
+                    "Failed to retrieve tasks from persistence for "
+                    "dependency analysis: %s",
                     str(e),
                 )
                 all_tasks = []
@@ -817,13 +820,15 @@ class Memory:
         # For improving skills
         for skill, improvement in improving_skills.items():
             recommendations.append(
-                f"Continue building on {skill} skills - showing {improvement:.0%} improvement"
+                f"Continue building on {skill} skills - "
+                f"showing {improvement:.0%} improvement"
             )
 
         # For struggling skills
         for skill, decline in struggling_skills.items():
             recommendations.append(
-                f"Provide additional support for {skill} tasks - performance declining"
+                f"Provide additional support for {skill} tasks - "
+                f"performance declining"
             )
 
         # For consistent high performers

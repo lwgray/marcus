@@ -63,7 +63,11 @@ class FilePersistence(PersistenceBackend):
         self._lock_managers: Dict[str, EventLoopLockManager] = {}
 
     def _get_lock(self, collection: str) -> asyncio.Lock:
-        """Get or create a lock for a collection, ensuring correct event loop binding."""
+        """
+        Get or create a lock for a collection.
+
+        Ensures correct event loop binding.
+        """
         if collection not in self._lock_managers:
             self._lock_managers[collection] = EventLoopLockManager()
         return self._lock_managers[collection].get_lock()
@@ -501,7 +505,11 @@ class MemoryPersistence(PersistenceBackend):
         self._lock_managers: Dict[str, EventLoopLockManager] = {}
 
     def _get_lock(self, collection: str) -> asyncio.Lock:
-        """Get or create a lock for a collection, ensuring correct event loop binding."""
+        """
+        Get or create a lock for a collection.
+
+        Ensures correct event loop binding.
+        """
         if collection not in self._lock_managers:
             self._lock_managers[collection] = EventLoopLockManager()
         return self._lock_managers[collection].get_lock()

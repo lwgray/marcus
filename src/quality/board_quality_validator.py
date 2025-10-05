@@ -123,6 +123,11 @@ class BoardQualityValidator:
         """
         Validate individual task quality.
 
+        Parameters
+        ----------
+        task : Task
+            Task to validate
+
         Returns
         -------
         Tuple[float, List[QualityIssue]]
@@ -157,7 +162,19 @@ class BoardQualityValidator:
         return task_score, issues
 
     def _validate_description(self, task: Task) -> Tuple[float, List[QualityIssue]]:
-        """Validate task description."""
+        """
+        Validate task description.
+
+        Parameters
+        ----------
+        task : Task
+            Task to validate
+
+        Returns
+        -------
+        Tuple[float, List[QualityIssue]]
+            Tuple of (score, list of issues)
+        """
         issues = []
 
         if not task.description:
@@ -167,7 +184,9 @@ class BoardQualityValidator:
                     issue_type="missing_description",
                     severity="error",
                     message=f"Task '{task.name}' has no description",
-                    suggestion="Add a description explaining what needs to be done and why",
+                    suggestion=(
+                        "Add a description explaining what needs to be " "done and why"
+                    ),
                 )
             )
             return 0.0, issues
@@ -178,8 +197,15 @@ class BoardQualityValidator:
                     task_id=task.id,
                     issue_type="short_description",
                     severity="warning",
-                    message=f"Task '{task.name}' has a very short description ({len(task.description)} chars)",
-                    suggestion=f"Expand description to at least {self.MIN_DESCRIPTION_LENGTH} characters with context",
+                    message=(
+                        f"Task '{task.name}' has a very short description "
+                        f"({len(task.description)} chars)"
+                    ),
+                    suggestion=(
+                        f"Expand description to at least "
+                        f"{self.MIN_DESCRIPTION_LENGTH} characters with "
+                        f"context"
+                    ),
                 )
             )
             return 0.5, issues
@@ -203,7 +229,19 @@ class BoardQualityValidator:
         return 1.0, issues
 
     def _validate_labels(self, task: Task) -> Tuple[float, List[QualityIssue]]:
-        """Validate task labels."""
+        """
+        Validate task labels.
+
+        Parameters
+        ----------
+        task : Task
+            Task to validate
+
+        Returns
+        -------
+        Tuple[float, List[QualityIssue]]
+            Tuple of (score, list of issues)
+        """
         issues = []
 
         if not task.labels:
@@ -224,8 +262,13 @@ class BoardQualityValidator:
                     task_id=task.id,
                     issue_type="insufficient_labels",
                     severity="warning",
-                    message=f"Task '{task.name}' has only {len(task.labels)} label(s)",
-                    suggestion=f"Add at least {self.MIN_LABELS_PER_TASK} labels for better categorization",
+                    message=(
+                        f"Task '{task.name}' has only {len(task.labels)} " f"label(s)"
+                    ),
+                    suggestion=(
+                        f"Add at least {self.MIN_LABELS_PER_TASK} labels "
+                        f"for better categorization"
+                    ),
                 )
             )
             return 0.5, issues
@@ -242,7 +285,10 @@ class BoardQualityValidator:
                     task_id=task.id,
                     issue_type="missing_label_categories",
                     severity="info",
-                    message=f"Task '{task.name}' missing label categories: {', '.join(missing_categories)}",
+                    message=(
+                        f"Task '{task.name}' missing label categories: "
+                        f"{', '.join(missing_categories)}"
+                    ),
                     suggestion=f"Add labels for: {', '.join(missing_categories)}",
                 )
             )
@@ -251,7 +297,19 @@ class BoardQualityValidator:
         return 1.0, issues
 
     def _validate_estimates(self, task: Task) -> Tuple[float, List[QualityIssue]]:
-        """Validate task time estimates."""
+        """
+        Validate task time estimates.
+
+        Parameters
+        ----------
+        task : Task
+            Task to validate
+
+        Returns
+        -------
+        Tuple[float, List[QualityIssue]]
+            Tuple of (score, list of issues)
+        """
         issues = []
 
         if not hasattr(task, "estimated_hours") or not task.estimated_hours:
@@ -273,7 +331,10 @@ class BoardQualityValidator:
                     task_id=task.id,
                     issue_type="large_estimate",
                     severity="warning",
-                    message=f"Task '{task.name}' estimated at {task.estimated_hours} hours",
+                    message=(
+                        f"Task '{task.name}' estimated at "
+                        f"{task.estimated_hours} hours"
+                    ),
                     suggestion="Consider breaking into smaller sub-tasks",
                 )
             )
@@ -285,8 +346,13 @@ class BoardQualityValidator:
                     task_id=task.id,
                     issue_type="tiny_estimate",
                     severity="info",
-                    message=f"Task '{task.name}' estimated at {task.estimated_hours} hours",
-                    suggestion="Verify if task is too granular or estimate is realistic",
+                    message=(
+                        f"Task '{task.name}' estimated at "
+                        f"{task.estimated_hours} hours"
+                    ),
+                    suggestion=(
+                        "Verify if task is too granular or estimate is " "realistic"
+                    ),
                 )
             )
             return 0.9, issues
@@ -294,7 +360,19 @@ class BoardQualityValidator:
         return 1.0, issues
 
     def _validate_priority(self, task: Task) -> Tuple[float, List[QualityIssue]]:
-        """Validate task priority."""
+        """
+        Validate task priority.
+
+        Parameters
+        ----------
+        task : Task
+            Task to validate
+
+        Returns
+        -------
+        Tuple[float, List[QualityIssue]]
+            Tuple of (score, list of issues)
+        """
         issues: List[QualityIssue] = []
 
         # Task.priority is always a Priority enum, never None
@@ -302,7 +380,19 @@ class BoardQualityValidator:
         return 1.0, issues
 
     def _calculate_board_metrics(self, tasks: List[Task]) -> Dict[str, Any]:
-        """Calculate board-level metrics."""
+        """
+        Calculate board-level metrics.
+
+        Parameters
+        ----------
+        tasks : List[Task]
+            List of tasks to analyze
+
+        Returns
+        -------
+        Dict[str, Any]
+            Dictionary of board metrics
+        """
         total_tasks = len(tasks)
 
         metrics = {
@@ -351,7 +441,21 @@ class BoardQualityValidator:
     def _calculate_overall_score(
         self, tasks: List[Task], metrics: Dict[str, Any]
     ) -> float:
-        """Calculate weighted overall score."""
+        """
+        Calculate weighted overall score.
+
+        Parameters
+        ----------
+        tasks : List[Task]
+            List of tasks on the board
+        metrics : Dict[str, Any]
+            Board metrics dictionary
+
+        Returns
+        -------
+        float
+            Weighted overall quality score
+        """
         scores = {
             "descriptions": metrics["description_coverage"],
             "labels": min(
@@ -370,7 +474,19 @@ class BoardQualityValidator:
         return float(round(weighted_score, 2))
 
     def _determine_quality_level(self, score: float) -> QualityLevel:
-        """Determine quality level from score."""
+        """
+        Determine quality level from score.
+
+        Parameters
+        ----------
+        score : float
+            Quality score (0.0 to 1.0)
+
+        Returns
+        -------
+        QualityLevel
+            Quality level enum
+        """
         if score >= 0.8:
             return QualityLevel.EXCELLENT
         elif score >= 0.6:
@@ -383,7 +499,21 @@ class BoardQualityValidator:
     def _generate_board_suggestions(
         self, metrics: Dict[str, Any], issues: List[QualityIssue]
     ) -> List[str]:
-        """Generate board-level improvement suggestions."""
+        """
+        Generate board-level improvement suggestions.
+
+        Parameters
+        ----------
+        metrics : Dict[str, Any]
+            Board metrics dictionary
+        issues : List[QualityIssue]
+            List of all quality issues
+
+        Returns
+        -------
+        List[str]
+            List of improvement suggestions
+        """
         suggestions = []
 
         # Based on metrics
@@ -392,7 +522,8 @@ class BoardQualityValidator:
 
         if metrics["average_labels_per_task"] < self.MIN_LABELS_PER_TASK:
             suggestions.append(
-                f"Increase labeling - aim for {self.MIN_LABELS_PER_TASK}+ labels per task"
+                f"Increase labeling - aim for "
+                f"{self.MIN_LABELS_PER_TASK}+ labels per task"
             )
 
         if metrics["estimate_coverage"] < 0.9:
@@ -416,7 +547,19 @@ class BoardQualityValidator:
         return suggestions
 
     def _get_priority_distribution(self, tasks: List[Task]) -> Dict[str, int]:
-        """Get distribution of priorities."""
+        """
+        Get distribution of priorities.
+
+        Parameters
+        ----------
+        tasks : List[Task]
+            List of tasks to analyze
+
+        Returns
+        -------
+        Dict[str, int]
+            Priority distribution counts
+        """
         distribution: Dict[str, int] = {}
         for task in tasks:
             if task.priority:
@@ -429,7 +572,19 @@ class BoardQualityValidator:
         return distribution
 
     def _get_label_categories(self, tasks: List[Task]) -> Dict[str, int]:
-        """Get distribution of label categories."""
+        """
+        Get distribution of label categories.
+
+        Parameters
+        ----------
+        tasks : List[Task]
+            List of tasks to analyze
+
+        Returns
+        -------
+        Dict[str, int]
+            Label category distribution counts
+        """
         categories: Dict[str, int] = {}
         for task in tasks:
             for label in task.labels:
@@ -439,7 +594,19 @@ class BoardQualityValidator:
         return categories
 
     def _get_phase_distribution(self, tasks: List[Task]) -> Dict[str, int]:
-        """Get distribution of tasks by phase."""
+        """
+        Get distribution of tasks by phase.
+
+        Parameters
+        ----------
+        tasks : List[Task]
+            List of tasks to analyze
+
+        Returns
+        -------
+        Dict[str, int]
+            Phase distribution counts
+        """
         phases: Dict[str, int] = {}
         for task in tasks:
             phase_labels = [

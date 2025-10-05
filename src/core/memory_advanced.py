@@ -345,7 +345,10 @@ class MemoryAdvanced(Memory):
                             {
                                 "type": "low_skill_match",
                                 "severity": "medium",
-                                "description": f"Low success rate with {label}: {success_rate:.0%}",
+                                "description": (
+                                    f"Low success rate with {label}: "
+                                    f"{success_rate:.0%}"
+                                ),
                                 "skill": label,
                                 "success_rate": success_rate,
                             }
@@ -358,7 +361,9 @@ class MemoryAdvanced(Memory):
                 {
                     "type": "high_complexity",
                     "severity": "medium",
-                    "description": f"Task is {complexity_factor:.1f}x more complex than usual",
+                    "description": (
+                        f"Task is {complexity_factor:.1f}x more complex " f"than usual"
+                    ),
                     "complexity_factor": str(complexity_factor),
                 }
             )
@@ -385,7 +390,8 @@ class MemoryAdvanced(Memory):
         for risk in risk_factors:
             if risk["type"] == "recurring_blocker":
                 suggestions.append(
-                    f"Proactively address '{risk['description']}' before it blocks progress"
+                    f"Proactively address '{risk['description']}' "
+                    f"before it blocks progress"
                 )
             elif risk["type"] == "low_skill_match":
                 suggestions.append(

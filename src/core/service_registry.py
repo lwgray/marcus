@@ -166,7 +166,8 @@ class MarcusServiceRegistry:
 
                         logger = logging.getLogger(__name__)
                         logger.warning(
-                            f"Unexpected error removing stale service file {service_file}: {e}"
+                            f"Unexpected error removing stale service file "
+                            f"{service_file}: {e}"
                         )
 
             except (json.JSONDecodeError, FileNotFoundError):

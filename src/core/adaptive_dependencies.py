@@ -112,7 +112,8 @@ class AdaptiveDependencyInferer:
         self.workflow_patterns: Dict[str, WorkflowPattern] = {}
         self.user_preferences = {
             "auto_infer": True,  # Whether to automatically infer dependencies
-            "require_confirmation_below": 0.7,  # Confidence threshold for user confirmation
+            # Confidence threshold for user confirmation
+            "require_confirmation_below": 0.7,
             "respect_explicit_only": False,  # Only use user-defined dependencies
         }
 
@@ -379,7 +380,10 @@ class AdaptiveDependencyInferer:
                 return DependencySignal(
                     signal_type="label_overlap",
                     strength=0.6,
-                    reason=f"Complementary labels: {labels_b & set_before} → {labels_a & set_after}",
+                    reason=(
+                        f"Complementary labels: "
+                        f"{labels_b & set_before} → {labels_a & set_after}"
+                    ),
                 )
 
         # Simple overlap check
@@ -416,7 +420,10 @@ class AdaptiveDependencyInferer:
             return DependencySignal(
                 signal_type="learned_pattern",
                 strength=best_score * best_match.confidence,
-                reason=f"Matches learned pattern (confidence: {best_match.confidence:.0%})",
+                reason=(
+                    f"Matches learned pattern "
+                    f"(confidence: {best_match.confidence:.0%})"
+                ),
             )
         return None
 
@@ -510,9 +517,11 @@ class AdaptiveDependencyInferer:
         if user_confirmed and is_dependency:
             self._learn_pattern_from_feedback(task_a_id, task_b_id)
 
+        dep_status = "depends on" if is_dependency else "independent of"
         logger.info(
-            f"Recorded feedback: {task_a_id} {'depends on' if is_dependency else 'independent of'} {task_b_id} "
-            f"(confidence: {original_confidence:.2f}, confirmed: {user_confirmed})"
+            f"Recorded feedback: {task_a_id} {dep_status} {task_b_id} "
+            f"(confidence: {original_confidence:.2f}, "
+            f"confirmed: {user_confirmed})"
         )
 
     def _adjust_weights_from_feedback(
@@ -663,7 +672,8 @@ class AdaptiveDependencyInferer:
             pattern.last_seen = datetime.now()
 
         logger.info(
-            f"Learned from confirmed dependency: {dependent.name} depends on {dependency.name}"
+            f"Learned from confirmed dependency: "
+            f"{dependent.name} depends on {dependency.name}"
         )
 
     def _generate_pattern_key(self, features: Dict[str, float]) -> str:

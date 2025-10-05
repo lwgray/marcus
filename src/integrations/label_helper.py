@@ -167,7 +167,8 @@ class LabelManagerHelper:
             if cached_label["color"] != expected_color:
                 # Update the label color
                 logger.info(
-                    f"Updating label '{name}' color from {cached_label['color']} to {expected_color}"
+                    f"Updating label '{name}' color from "
+                    f"{cached_label['color']} to {expected_color}"
                 )
                 try:
                     update_result = await self.session.call_tool(
@@ -201,7 +202,8 @@ class LabelManagerHelper:
             if cached_label["color"] != expected_color:
                 # Update the label color
                 logger.info(
-                    f"Updating label '{name}' color from {cached_label['color']} to {expected_color}"
+                    f"Updating label '{name}' color from "
+                    f"{cached_label['color']} to {expected_color}"
                 )
                 try:
                     update_result = await self.session.call_tool(
@@ -234,7 +236,8 @@ class LabelManagerHelper:
         # Validate color
         if color not in self.VALID_COLORS:
             raise ValueError(
-                f"Invalid color '{color}'. Must be one of: {', '.join(self.VALID_COLORS)}"
+                f"Invalid color '{color}'. Must be one of: "
+                f"{', '.join(self.VALID_COLORS)}"
             )
 
         # Create the label with required position parameter
@@ -319,7 +322,8 @@ class LabelManagerHelper:
             # Try exact suffix match first
             color = cls.DEFAULT_LABEL_COLORS.get(suffix, None)
 
-            # If not found, try to find a matching key in suffix (e.g., "python" in "python-255887")
+            # If not found, try to find a matching key in suffix
+            # (e.g., "python" in "python-255887")
             if not color:
                 for key in cls.DEFAULT_LABEL_COLORS:
                     if key in suffix:

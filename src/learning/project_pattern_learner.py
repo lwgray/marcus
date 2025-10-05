@@ -463,8 +463,8 @@ class ProjectPatternLearner:
                 quality_metrics, team_metrics, outcome
             )
 
-        prompt = f"""Analyze this completed project and identify key success factors and \
-risk factors.
+        prompt = f"""Analyze this completed project and identify key success \
+factors and risk factors.
 
 Project Outcome:
 - Success: {outcome.successful}
@@ -1047,23 +1047,25 @@ Return JSON:
 
             # Team composition recommendations
             if pattern.team_composition["team_size"] > 0:
+                team_size = pattern.team_composition["team_size"]
+                roles = ", ".join(pattern.team_composition["roles"].keys())
                 recommendations_list.append(
                     {
                         "category": "team",
                         "suggestion": (
-                            f"Consider team size of {pattern.team_composition['team_size']} "
-                            f"with roles: {', '.join(pattern.team_composition['roles'].keys())}"
+                            f"Consider team size of {team_size} " f"with roles: {roles}"
                         ),
                     }
                 )
 
             # Task organization recommendations
             if pattern.task_patterns.get("parallel_work_ratio", 0) > 0.3:
+                parallel_ratio = pattern.task_patterns["parallel_work_ratio"]
                 recommendations_list.append(
                     {
                         "category": "planning",
                         "suggestion": (
-                            f"Structure {pattern.task_patterns['parallel_work_ratio']:.0%} "
+                            f"Structure {parallel_ratio:.0%} "
                             "of tasks for parallel execution"
                         ),
                     }
@@ -1075,8 +1077,8 @@ Return JSON:
                     {
                         "category": "quality",
                         "suggestion": (
-                            "Maintain high task definition quality with detailed descriptions "
-                            "and clear acceptance criteria"
+                            "Maintain high task definition quality with "
+                            "detailed descriptions and clear acceptance criteria"
                         ),
                     }
                 )

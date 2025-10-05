@@ -30,7 +30,13 @@ async def handle_tool_call_fixed(
             # Try different response formats:
 
             # Option 1: Return the dict as a formatted string (not JSON)
-            text = f"Success: {result['success']}\nStatus: {result['status']}\nProvider: {result['provider']}\nEcho: {result['echo']}\nTimestamp: {result['timestamp']}"
+            text = (
+                f"Success: {result['success']}\n"
+                f"Status: {result['status']}\n"
+                f"Provider: {result['provider']}\n"
+                f"Echo: {result['echo']}\n"
+                f"Timestamp: {result['timestamp']}"
+            )
 
             return [types.TextContent(type="text", text=text)]
 

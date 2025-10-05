@@ -1,5 +1,5 @@
 """
-AI Usage Middleware for Token Tracking
+AI Usage Middleware for Token Tracking.
 
 Intercepts all AI provider calls to track token usage per project.
 """
@@ -51,7 +51,7 @@ class AIUsageMiddleware:
 
     def track_ai_usage(self, func: Callable[..., Any]) -> Callable[..., Any]:
         """
-        Decorator to track AI usage for any AI provider method.
+        Decorate AI provider methods to track token usage.
 
         This wraps AI provider methods to capture token usage.
         """

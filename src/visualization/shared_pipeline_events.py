@@ -1,5 +1,5 @@
 """
-Minimal stubs for pipeline event tracking
+Minimal stubs for pipeline event tracking.
 
 These are lightweight stubs to maintain Marcus core functionality
 without the full visualization system. The actual visualization
@@ -11,13 +11,22 @@ from typing import Any, Dict, List, Optional
 
 
 class SharedPipelineEvents:
-    """Minimal stub for pipeline event tracking"""
+    """Minimal stub for pipeline event tracking."""
 
     def __init__(self) -> None:
         self.events: List[Dict[str, Any]] = []
 
     def log_event(self, event_type: str, data: Dict[str, Any]) -> None:
-        """Log a pipeline event"""
+        """
+        Log a pipeline event.
+
+        Parameters
+        ----------
+        event_type : str
+            The type of event.
+        data : Dict[str, Any]
+            Event data.
+        """
         event = {
             "timestamp": datetime.now().isoformat(),
             "event_type": event_type,
@@ -26,42 +35,99 @@ class SharedPipelineEvents:
         self.events.append(event)
 
     def get_events(self) -> List[Dict[str, Any]]:
-        """Get all logged events"""
+        """
+        Get all logged events.
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            Copy of all logged events.
+        """
         return self.events.copy()
 
     def _read_events(self) -> Dict[str, Any]:
-        """Internal method to read events (for backwards compatibility)"""
+        """
+        Read events for backwards compatibility.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Dictionary containing flows and events.
+        """
         return {"flows": {}, "events": self.get_events()}
 
 
 class SharedPipelineVisualizer:
-    """Minimal stub for pipeline visualization"""
+    """Minimal stub for pipeline visualization."""
 
     def __init__(self) -> None:
         self.pipeline_events = SharedPipelineEvents()
 
     def log_event(self, event_type: str, data: Dict[str, Any]) -> None:
-        """Log an event to the pipeline"""
+        """
+        Log an event to the pipeline.
+
+        Parameters
+        ----------
+        event_type : str
+            The type of event.
+        data : Dict[str, Any]
+            Event data.
+        """
         self.pipeline_events.log_event(event_type, data)
 
     def get_flow_state(self) -> Dict[str, Any]:
-        """Get current flow state"""
+        """
+        Get current flow state.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Current flow state with event count and status.
+        """
         return {"events": len(self.pipeline_events.events), "status": "running"}
 
     def start_flow(
         self, flow_id: str, metadata: Optional[Dict[str, Any]] = None
     ) -> None:
-        """Start a new pipeline flow"""
+        """
+        Start a new pipeline flow.
+
+        Parameters
+        ----------
+        flow_id : str
+            The flow identifier.
+        metadata : Optional[Dict[str, Any]], optional
+            Flow metadata.
+        """
         self.log_event("flow_start", {"flow_id": flow_id, "metadata": metadata or {}})
 
     def end_flow(self, flow_id: str, result: Optional[Dict[str, Any]] = None) -> None:
-        """End a pipeline flow"""
+        """
+        End a pipeline flow.
+
+        Parameters
+        ----------
+        flow_id : str
+            The flow identifier.
+        result : Optional[Dict[str, Any]], optional
+            Flow result data.
+        """
         self.log_event("flow_end", {"flow_id": flow_id, "result": result or {}})
 
     def complete_flow(
         self, flow_id: str, result: Optional[Dict[str, Any]] = None
     ) -> None:
-        """Complete a pipeline flow (alias for end_flow for compatibility)"""
+        """
+        Complete a pipeline flow (alias for end_flow for compatibility).
+
+        Parameters
+        ----------
+        flow_id : str
+            The flow identifier.
+        result : Optional[Dict[str, Any]], optional
+            Flow result data.
+        """
         self.end_flow(flow_id, result)
 
     def add_event(
@@ -75,7 +141,28 @@ class SharedPipelineVisualizer:
         error: Optional[str] = None,
         **kwargs: Any,
     ) -> None:
-        """Add an event to the pipeline flow (compatibility method)"""
+        """
+        Add an event to the pipeline flow (compatibility method).
+
+        Parameters
+        ----------
+        flow_id : str
+            The flow identifier.
+        stage : Any
+            The pipeline stage.
+        event_type : str, optional
+            Type of event, defaults to "info".
+        data : Optional[Dict[str, Any]], optional
+            Event data.
+        duration_ms : Optional[int], optional
+            Event duration in milliseconds.
+        status : Optional[str], optional
+            Event status.
+        error : Optional[str], optional
+            Error message if applicable.
+        **kwargs : Any
+            Additional event parameters.
+        """
         event_data = {
             "flow_id": flow_id,
             "stage": getattr(stage, "name", str(stage)),
@@ -95,7 +182,7 @@ class SharedPipelineVisualizer:
 
 
 class PipelineStage:
-    """Minimal stub for pipeline stage representation"""
+    """Minimal stub for pipeline stage representation."""
 
     # Stage constants for compatibility
     MCP_REQUEST = "mcp_request"
@@ -112,22 +199,43 @@ class PipelineStage:
         self.metadata: Dict[str, Any] = {}
 
     def start(self) -> None:
-        """Mark stage as started"""
+        """Mark stage as started."""
         self.status = "running"
 
     def complete(self, result: Any = None) -> None:
-        """Mark stage as completed"""
+        """
+        Mark stage as completed.
+
+        Parameters
+        ----------
+        result : Any, optional
+            The stage result.
+        """
         self.status = "completed"
         if result is not None:
             self.metadata["result"] = result
 
     def fail(self, error: str) -> None:
-        """Mark stage as failed"""
+        """
+        Mark stage as failed.
+
+        Parameters
+        ----------
+        error : str
+            The error message.
+        """
         self.status = "failed"
         self.metadata["error"] = error
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary"""
+        """
+        Convert to dictionary.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Dictionary representation of the stage.
+        """
         return {
             "name": self.name,
             "stage_type": self.stage_type,

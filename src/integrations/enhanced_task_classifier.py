@@ -647,20 +647,23 @@ class EnhancedTaskClassifier:
                         and "comment" in text
                     ):
                         score += 4.0  # Very high score for adding comments
-                    # Reduce setup/configure scoring for database connections to avoid infrastructure classification
+                    # Reduce setup/configure scoring for database connections
+                    # to avoid infrastructure classification
                     elif (
                         task_type == TaskType.INFRASTRUCTURE
                         and verb in ["setup", "configure"]
                         and ("database" in text and "connection" in text)
                     ):
-                        score += 0.3  # Much lower score to prefer IMPLEMENTATION for database setup
+                        # Much lower score to prefer IMPLEMENTATION
+                        score += 0.3
                     # Boost implementation scoring for database connections
                     elif (
                         task_type == TaskType.IMPLEMENTATION
                         and verb in ["setup", "configure"]
                         and ("database" in text and "connection" in text)
                     ):
-                        score += 3.0  # Higher score to prefer IMPLEMENTATION for database setup
+                        # Higher score to prefer IMPLEMENTATION
+                        score += 3.0
                     else:
                         score += 1.5
                 if verb not in matched_keywords:
@@ -670,13 +673,15 @@ class EnhancedTaskClassifier:
         for regex_pattern in self._compiled_patterns.get(task_type, []):
             match = regex_pattern.search(text)
             if match:
-                # Special case: database setup patterns get lower score for infrastructure
+                # Special case: database setup patterns get lower score
+                # for infrastructure
                 if (
                     task_type == TaskType.INFRASTRUCTURE
                     and "database" in text
                     and "connection" in text
                 ):
-                    score += 1.0  # Much lower score to prefer IMPLEMENTATION
+                    # Much lower score to prefer IMPLEMENTATION
+                    score += 1.0
                 else:
                     score += 3.0
                 matched_patterns.append(regex_pattern.pattern)
@@ -737,7 +742,8 @@ class EnhancedTaskClassifier:
             # For OTHER tasks, provide general suggestions
             if result.task_type == TaskType.OTHER:
                 suggestions["improve_clarity"] = [
-                    "Consider starting with action words like: design, implement, test, document, deploy",
+                    "Consider starting with action words like: design, "
+                    "implement, test, document, deploy",
                     "Be more specific about the task type",
                     "Avoid ambiguous terms that could match multiple types",
                 ]

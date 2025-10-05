@@ -15,7 +15,26 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class EnrichmentPlan:
-    """Plan for enriching a task."""
+    """
+    Plan for enriching a task.
+
+    Attributes
+    ----------
+    missing_description : bool
+        Whether task description is missing or inadequate.
+    missing_labels : bool
+        Whether task labels are missing or insufficient.
+    missing_estimates : bool
+        Whether time estimates are missing.
+    missing_dependencies : bool
+        Whether dependencies are not defined.
+    missing_acceptance_criteria : bool
+        Whether acceptance criteria are not defined.
+    suggested_improvements : List[str]
+        List of improvement suggestions.
+    confidence_score : float
+        Confidence score for the enrichment plan.
+    """
 
     missing_description: bool
     missing_labels: bool
@@ -28,7 +47,22 @@ class EnrichmentPlan:
 
 @dataclass
 class BoardContext:
-    """Context about the board for enrichment."""
+    """
+    Context about the board for enrichment.
+
+    Attributes
+    ----------
+    project_type : str
+        Type of project (e.g., 'web', 'api', 'mobile').
+    detected_phases : List[str]
+        Phases detected in the project workflow.
+    detected_components : List[str]
+        Components identified in the project.
+    common_labels : List[str]
+        Common labels used across tasks.
+    workflow_pattern : str
+        Detected workflow pattern.
+    """
 
     project_type: str
     detected_phases: List[str]
@@ -39,7 +73,28 @@ class BoardContext:
 
 @dataclass
 class EnrichedTask:
-    """Task with enrichments applied."""
+    """
+    Task with enrichments applied.
+
+    Attributes
+    ----------
+    original_task : Task
+        The original task before enrichment.
+    enriched_description : str
+        Enhanced task description.
+    suggested_labels : List[str]
+        Suggested labels for the task.
+    estimated_hours : int
+        Estimated hours to complete the task.
+    suggested_dependencies : List[str]
+        Suggested task dependencies.
+    acceptance_criteria : List[str]
+        Generated acceptance criteria.
+    confidence_score : float
+        Confidence score for the enrichments.
+    enrichment_reasoning : str
+        Explanation of the enrichment decisions.
+    """
 
     original_task: Task
     enriched_description: str
@@ -52,7 +107,13 @@ class EnrichedTask:
 
 
 class TaskEnricher:
-    """Enriches existing tasks with metadata and structure."""
+    """
+    Enriches existing tasks with metadata and structure.
+
+    This class analyzes tasks and generates missing information such as
+    descriptions, labels, time estimates, dependencies, and acceptance
+    criteria to help organize chaotic project boards.
+    """
 
     def __init__(self) -> None:
         # Common task patterns and their typical estimates
@@ -343,7 +404,19 @@ class TaskEnricher:
         return enriched_tasks
 
     def _classify_task_type(self, task: Task) -> str:
-        """Classify task type based on name and description."""
+        """
+        Classify task type based on name and description.
+
+        Parameters
+        ----------
+        task : Task
+            Task to classify.
+
+        Returns
+        -------
+        str
+            Task type classification.
+        """
         task_text = f"{task.name} {task.description or ''}".lower()
 
         # Check each pattern
@@ -357,7 +430,23 @@ class TaskEnricher:
     def _generate_description(
         self, task: Task, task_type: str, board_context: BoardContext
     ) -> str:
-        """Generate detailed description for a task."""
+        """
+        Generate detailed description for a task.
+
+        Parameters
+        ----------
+        task : Task
+            Task to generate description for.
+        task_type : str
+            Type of task.
+        board_context : BoardContext
+            Context about the board.
+
+        Returns
+        -------
+        str
+            Enhanced task description.
+        """
         base_description = task.description or ""
 
         # Enhance based on task type
@@ -404,14 +493,33 @@ class TaskEnricher:
             enhanced += "- Rollback procedures\n"
 
         else:
-            enhanced = f"{base_description}\n\nThis task requires careful implementation with proper testing and documentation."
+            enhanced = (
+                f"{base_description}\n\nThis task requires careful "
+                "implementation with proper testing and documentation."
+            )
 
         return enhanced.strip()
 
     def _generate_labels(
         self, task: Task, task_type: str, board_context: BoardContext
     ) -> List[str]:
-        """Generate appropriate labels for a task."""
+        """
+        Generate appropriate labels for a task.
+
+        Parameters
+        ----------
+        task : Task
+            Task to generate labels for.
+        task_type : str
+            Type of task.
+        board_context : BoardContext
+            Context about the board.
+
+        Returns
+        -------
+        List[str]
+            List of suggested labels.
+        """
         labels = set(task.labels)  # Start with existing labels
 
         # Add task type label
@@ -449,7 +557,21 @@ class TaskEnricher:
         return sorted(list(labels))
 
     def _estimate_hours(self, task: Task, task_type: str) -> int:
-        """Estimate hours for a task."""
+        """
+        Estimate hours for a task.
+
+        Parameters
+        ----------
+        task : Task
+            Task to estimate hours for.
+        task_type : str
+            Type of task.
+
+        Returns
+        -------
+        int
+            Estimated hours.
+        """
         if task.estimated_hours and task.estimated_hours > 0:
             return int(task.estimated_hours)
 
@@ -488,7 +610,23 @@ class TaskEnricher:
     async def _suggest_dependencies(
         self, task: Task, task_type: str, board_context: BoardContext
     ) -> List[str]:
-        """Suggest dependencies for a task."""
+        """
+        Suggest dependencies for a task.
+
+        Parameters
+        ----------
+        task : Task
+            Task to suggest dependencies for.
+        task_type : str
+            Type of task.
+        board_context : BoardContext
+            Context about the board.
+
+        Returns
+        -------
+        List[str]
+            List of suggested dependency descriptions.
+        """
         suggestions = []
 
         # Get typical dependencies for task type
@@ -521,7 +659,21 @@ class TaskEnricher:
         return suggestions
 
     def _generate_acceptance_criteria(self, task: Task, task_type: str) -> List[str]:
-        """Generate acceptance criteria for a task."""
+        """
+        Generate acceptance criteria for a task.
+
+        Parameters
+        ----------
+        task : Task
+            Task to generate acceptance criteria for.
+        task_type : str
+            Type of task.
+
+        Returns
+        -------
+        List[str]
+            List of acceptance criteria.
+        """
         # Get template criteria for task type
         template_criteria = self.acceptance_criteria_templates.get(task_type, [])
 
@@ -560,7 +712,21 @@ class TaskEnricher:
         return customized_criteria
 
     def _calculate_enrichment_confidence(self, task: Task, task_type: str) -> float:
-        """Calculate confidence in enrichment suggestions."""
+        """
+        Calculate confidence in enrichment suggestions.
+
+        Parameters
+        ----------
+        task : Task
+            Task being enriched.
+        task_type : str
+            Type of task.
+
+        Returns
+        -------
+        float
+            Confidence score between 0.3 and 0.95.
+        """
         confidence = 0.7  # Base confidence
 
         # Increase confidence for well-known task types
@@ -583,7 +749,23 @@ class TaskEnricher:
     def _generate_enrichment_reasoning(
         self, task: Task, task_type: str, enrichments: Dict[str, Any]
     ) -> str:
-        """Generate reasoning for enrichment suggestions."""
+        """
+        Generate reasoning for enrichment suggestions.
+
+        Parameters
+        ----------
+        task : Task
+            Task being enriched.
+        task_type : str
+            Type of task.
+        enrichments : Dict[str, Any]
+            Dictionary of enrichment suggestions.
+
+        Returns
+        -------
+        str
+            Human-readable reasoning for the enrichments.
+        """
         reasoning_parts = []
 
         if task_type != "general":
@@ -593,7 +775,8 @@ class TaskEnricher:
 
         if enrichments.get("estimated_hours"):
             reasoning_parts.append(
-                f"Estimated {enrichments['estimated_hours']} hours based on typical {task_type} complexity"
+                f"Estimated {enrichments['estimated_hours']} hours based on "
+                f"typical {task_type} complexity"
             )
 
         if enrichments.get("labels"):

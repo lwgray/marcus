@@ -14,9 +14,12 @@ def init_pattern_learning_components(
     """
     Stub for pattern learning component initialization.
 
-    Args:
-        kanban_client: Kanban client instance (ignored)
-        ai_engine: AI engine instance (ignored)
+    Parameters
+    ----------
+    kanban_client : Optional[Any], optional
+        Kanban client instance (ignored), by default None
+    ai_engine : Optional[Any], optional
+        AI engine instance (ignored), by default None
     """
     # No-op stub - pattern learning functionality moved to Seneca
     pass

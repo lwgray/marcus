@@ -180,21 +180,25 @@ class HybridDependencyInferer(DependencyInferer):
                 reverse_key = (task2.id, task1.id)
 
                 # Case 1: No pattern match but potential relationship
-                # Only consider if we don't already have high-confidence patterns covering the workflow
+                # Only consider if we don't already have high-confidence
+                # patterns covering the workflow
                 if (
                     key not in pattern_dependencies
                     and reverse_key not in pattern_dependencies
                 ):
-                    # Be more conservative: only add if tasks are very likely related and
-                    # we don't already have good pattern coverage
+                    # Be more conservative: only add if tasks are very
+                    # likely related and we don't already have good pattern
+                    # coverage
                     if self._might_be_related(task1, task2) and self._needs_ai_analysis(
                         task1, task2, pattern_dependencies
                     ):
                         ambiguous_pairs.append((task1, task2))
 
-                # Case 2: Pattern match that could benefit from AI validation
+                # Case 2: Pattern match that could benefit from AI
+                # validation
                 elif key in pattern_dependencies or reverse_key in pattern_dependencies:
-                    # Use the pattern dependency that exists (either key or reverse_key)
+                    # Use the pattern dependency that exists (either key
+                    # or reverse_key)
                     pattern_dep = pattern_dependencies.get(
                         key, pattern_dependencies.get(reverse_key)
                     )
@@ -202,28 +206,28 @@ class HybridDependencyInferer(DependencyInferer):
                         pattern_conf = pattern_dep.confidence
                         # Call AI if:
                         # 1. Pattern confidence is below threshold, OR
-                        # 2. Confidence boost is enabled and pattern isn't extremely confident
-                        should_use_ai = (
-                            pattern_conf < self.config.pattern_confidence_threshold
-                            or (
-                                self.config.combined_confidence_boost > 0
-                                and pattern_conf < 0.98
-                            )
+                        # 2. Confidence boost is enabled and pattern
+                        # isn't extremely confident
+                        pattern_thresh = self.config.pattern_confidence_threshold
+                        boost = self.config.combined_confidence_boost
+                        should_use_ai = pattern_conf < pattern_thresh or (
+                            boost > 0 and pattern_conf < 0.98
                         )
 
-                        # However, be more conservative when we already have very high confidence patterns
-                        # to avoid unnecessary AI calls in the "high confidence" test scenario
+                        # However, be more conservative when we already
+                        # have very high confidence patterns to avoid
+                        # unnecessary AI calls in the "high confidence"
+                        # test scenario
                         if (
                             should_use_ai
-                            and pattern_conf >= self.config.pattern_confidence_threshold
+                            and pattern_conf >= pattern_thresh
                             and pattern_conf >= 0.9
                         ):
-                            # Only use AI if this specific test configuration suggests it
-                            # (low threshold with boost enabled suggests testing the boost feature)
-                            if (
-                                self.config.pattern_confidence_threshold <= 0.7
-                                and self.config.combined_confidence_boost > 0
-                            ):
+                            # Only use AI if this specific test
+                            # configuration suggests it (low threshold
+                            # with boost enabled suggests testing the
+                            # boost feature)
+                            if pattern_thresh <= 0.7 and boost > 0:
                                 should_use_ai = True
                             else:
                                 should_use_ai = False
@@ -255,10 +259,11 @@ class HybridDependencyInferer(DependencyInferer):
         pattern_dependencies: Dict[Tuple[str, str], HybridDependency],
     ) -> bool:
         """
-        Check if we need AI analysis for this pair, considering existing pattern coverage.
+        Check if we need AI analysis for this pair.
 
-        More conservative approach: if we already have good pattern coverage
-        for the main workflow, don't trigger AI for every potential relationship.
+        Considering existing pattern coverage. More conservative
+        approach: if we already have good pattern coverage for the main
+        workflow, don't trigger AI for every potential relationship.
         """
         # Count high-confidence pattern dependencies
         high_confidence_patterns = sum(
@@ -270,13 +275,15 @@ class HybridDependencyInferer(DependencyInferer):
         # If we already have several high-confidence patterns, be more selective
         # about what needs AI analysis
         if high_confidence_patterns >= 3:
-            # Only analyze if tasks have very strong similarity (more shared keywords)
+            # Only analyze if tasks have very strong similarity (more
+            # shared keywords)
             words1 = set(self._extract_keywords(task1))
             words2 = set(self._extract_keywords(task2))
             shared = words1.intersection(words2)
             return len(shared) >= self.config.min_shared_keywords + 1
 
-        return True  # If we don't have good pattern coverage, analyze more liberally
+        # If we don't have good pattern coverage, analyze more liberally
+        return True
 
     def _might_be_related(self, task1: Task, task2: Task) -> bool:
         """Check if tasks might be related based on shared context."""
@@ -287,7 +294,8 @@ class HybridDependencyInferer(DependencyInferer):
         # Check for shared components/features
         shared = words1.intersection(words2)
 
-        # Also consider task phases - tasks in different phases of same feature are related
+        # Also consider task phases - tasks in different phases of same
+        # feature are related
         if len(shared) >= self.config.min_shared_keywords:
             return True
 
@@ -305,7 +313,9 @@ class HybridDependencyInferer(DependencyInferer):
 
     def _extract_keywords(self, task: Task) -> List[str]:
         """Extract meaningful keywords from task."""
-        text = f"{task.name} {task.description or ''} {' '.join(task.labels or [])}".lower()
+        desc = task.description or ""
+        labels = " ".join(task.labels or [])
+        text = f"{task.name} {desc} {labels}".lower()
 
         # Remove stop words and common verbs
         stop_words = {
@@ -399,6 +409,7 @@ class HybridDependencyInferer(DependencyInferer):
         }
 
         # Prepare pairs for analysis
+        max_pairs = self.config.max_ai_pairs_per_batch
         pairs_to_analyze = [
             {
                 "task1_id": t1.id,
@@ -406,11 +417,14 @@ class HybridDependencyInferer(DependencyInferer):
                 "task1_name": t1.name,
                 "task2_name": t2.name,
             }
-            for t1, t2 in ambiguous_pairs[: self.config.max_ai_pairs_per_batch]
+            for t1, t2 in ambiguous_pairs[:max_pairs]
         ]
 
-        prompt = f"""Analyze these task pairs and determine if there are dependencies between them.
-A dependency exists if one task must be completed before another can reasonably begin.
+        prompt = (
+            f"""Analyze these task pairs and determine if there are """
+            f"""dependencies between them.
+A dependency exists if one task must be completed before another can """
+            f"""reasonably begin.
 
 All tasks in the project:
 {json.dumps(task_info, indent=2)}
@@ -419,7 +433,8 @@ Task pairs to analyze:
 {json.dumps(pairs_to_analyze, indent=2)}
 
 For each pair, determine:
-1. Is there a dependency? (task1 depends on task2, task2 depends on task1, or no dependency)
+1. Is there a dependency? (task1 depends on task2, task2 depends on """
+            f"""task1, or no dependency)
 2. How confident are you? (0.0-1.0)
 3. What's the reasoning?
 
@@ -441,6 +456,7 @@ Focus on logical dependencies based on:
 - User workflow (authentication before authorization)
 - Architecture layers (database before API before UI)
 """
+        )
 
         try:
             if self.ai_engine is None:
@@ -584,13 +600,16 @@ Focus on logical dependencies based on:
         reverse_adjacency = defaultdict(list)
 
         for dep in dependencies:
-            adjacency_list[dep.dependency_task_id].append(dep.dependent_task_id)
-            reverse_adjacency[dep.dependent_task_id].append(dep.dependency_task_id)
+            dep_task_id = dep.dependency_task_id
+            dependent_task_id = dep.dependent_task_id
+            adjacency_list[dep_task_id].append(dependent_task_id)
+            reverse_adjacency[dependent_task_id].append(dep_task_id)
 
-        # Use HybridDependency objects directly since they inherit from InferredDependency
+        # Use HybridDependency objects directly since they inherit
+        # from InferredDependency
         graph = DependencyGraph(
             nodes=nodes,
-            edges=dependencies,  # type: ignore[arg-type]  # HybridDependency is a subclass of InferredDependency
+            edges=dependencies,  # type: ignore[arg-type]
             adjacency_list=dict(adjacency_list),
             reverse_adjacency=dict(reverse_adjacency),
         )
@@ -623,6 +642,12 @@ Focus on logical dependencies based on:
         pattern_only = sum(1 for d in final_deps if d.inference_method == "pattern")
         ai_only = sum(1 for d in final_deps if d.inference_method == "ai")
 
+        avg_conf = (
+            sum(d.confidence for d in final_deps) / final_count
+            if final_count > 0
+            else 0
+        )
+
         logger.info(
             f"""
 Dependency Inference Statistics:
@@ -632,7 +657,7 @@ Dependency Inference Statistics:
   - Both methods: {both_count}
   - Pattern only: {pattern_only}
   - AI only: {ai_only}
-- Average confidence: {sum(d.confidence for d in final_deps) / final_count if final_count > 0 else 0:.2f}
+- Average confidence: {avg_conf:.2f}
 """
         )
 
@@ -651,13 +676,22 @@ Dependency Inference Statistics:
                 and dep.dependency_task_id == dependency_id
             ):
                 if isinstance(dep, HybridDependency):
-                    explanation = f"Dependency identified by: {dep.inference_method}\n"
+                    method = dep.inference_method
+                    explanation = f"Dependency identified by: {method}\n"
 
                     if dep.pattern_confidence > 0:
-                        explanation += f"Pattern match ({dep.pattern_confidence:.0%} confidence): {dep.reasoning}\n"
+                        pattern_conf = dep.pattern_confidence
+                        explanation += (
+                            f"Pattern match ({pattern_conf:.0%} "
+                            f"confidence): {dep.reasoning}\n"
+                        )
 
                     if dep.ai_reasoning:
-                        explanation += f"AI analysis ({dep.ai_confidence:.0%} confidence): {dep.ai_reasoning}\n"
+                        ai_conf = dep.ai_confidence
+                        ai_reason = dep.ai_reasoning
+                        explanation += (
+                            f"AI analysis ({ai_conf:.0%} " f"confidence): {ai_reason}\n"
+                        )
 
                     explanation += f"Overall confidence: {dep.confidence:.0%}"
                     return explanation

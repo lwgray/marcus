@@ -156,7 +156,11 @@ class ProjectContextManager:
 
             # Log the project switch decision
             conversation_logger.log_pm_decision(
-                decision=f"Switching project from '{previous_project.name if previous_project else 'None'}' to '{project.name}'",
+                decision=(
+                    f"Switching project from "
+                    f"'{previous_project.name if previous_project else 'None'}' "
+                    f"to '{project.name}'"
+                ),
                 rationale="User requested project switch",
                 confidence_score=1.0,
                 decision_factors={
@@ -271,7 +275,10 @@ class ProjectContextManager:
 
         # Log context creation
         conversation_logger.log_pm_thinking(
-            thought=f"Creating new context for project '{project.name}' - No existing context found for project {project.id}",
+            thought=(
+                f"Creating new context for project '{project.name}' - "
+                f"No existing context found for project {project.id}"
+            ),
             context={"project_id": project.id, "provider": project.provider},
         )
 
