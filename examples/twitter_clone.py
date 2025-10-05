@@ -384,12 +384,12 @@ async def calculator_workflow() -> None:
     6. Generate task report and conversation log
     """
     print("\n" + "=" * 70)
-    print("🐦 Twitter Project - SWARM MODE")
+    print("🐦 Twitter Project - SWARM MODE (50 AGENTS)")
     print("=" * 70)
     print("\nThis swarm will:")
     print("1. Connect to Marcus via HTTP")
     print("2. Create a 'Twitter' project")
-    print("3. Deploy 5 specialized agents in parallel")
+    print("3. Deploy 50 specialized agents in parallel (10 of each type)")
     print("4. Agents work concurrently on assigned tasks")
     print("5. Generate consolidated report and logs")
     print("\n" + "=" * 70)
@@ -400,34 +400,45 @@ async def calculator_workflow() -> None:
     task_counter = {"count": 0}  # Shared task counter
     url = "http://localhost:4298/mcp"
 
-    # Define swarm agents with different specializations
-    swarm_agents = [
+    # Define agent templates with different specializations
+    agent_templates = [
         {
-            "agent_id": "backend-dev",
+            "type": "backend-dev",
             "name": "Backend Developer",
             "skills": ["python", "api", "database", "fastapi", "backend"],
         },
         {
-            "agent_id": "frontend-dev",
+            "type": "frontend-dev",
             "name": "Frontend Developer",
             "skills": ["javascript", "react", "ui", "frontend", "css"],
         },
         {
-            "agent_id": "database-expert",
+            "type": "database-expert",
             "name": "Database Specialist",
             "skills": ["database", "sql", "postgresql", "schema", "migration"],
         },
         {
-            "agent_id": "testing-engineer",
+            "type": "testing-engineer",
             "name": "Testing Engineer",
             "skills": ["testing", "pytest", "qa", "integration-tests", "python"],
         },
         {
-            "agent_id": "devops-engineer",
+            "type": "devops-engineer",
             "name": "DevOps Engineer",
             "skills": ["docker", "deployment", "ci-cd", "infrastructure", "monitoring"],
         },
     ]
+
+    # Create 50 agents (10 of each type)
+    swarm_agents = []
+    agents_per_type = 10
+    for i in range(agents_per_type):
+        for template in agent_templates:
+            swarm_agents.append({
+                "agent_id": f"{template['type']}-{i+1:02d}",
+                "name": f"{template['name']} #{i+1}",
+                "skills": template["skills"],
+            })
 
     client = Inspector(connection_type="http")
     tracker = TaskTracker()
@@ -638,15 +649,20 @@ async def calculator_workflow() -> None:
 
 
 async def main() -> None:
-    """Run the Twitter swarm project workflow."""
-    print("\n🚀 Starting Twitter Swarm Project Workflow Demo")
+    """Run the Twitter swarm project workflow with 50 agents."""
+    print("\n🚀 Starting Twitter Swarm Project Workflow Demo (50 AGENTS)")
     print("=" * 70)
-    print("\nThis demo demonstrates a multi-agent swarm workflow:")
+    print("\nThis demo demonstrates a large-scale multi-agent swarm workflow:")
     print("- Connects to Marcus via HTTP using streamablehttp_client")
     print("- Creates a Twitter clone project with detailed requirements")
-    print("- Deploys 5 specialized agents working in parallel")
+    print("- Deploys 50 specialized agents working in parallel")
+    print("  * 10 Backend Developers")
+    print("  * 10 Frontend Developers")
+    print("  * 10 Database Specialists")
+    print("  * 10 Testing Engineers")
+    print("  * 10 DevOps Engineers")
     print("- Each agent pulls and completes tasks based on their skills")
-    print("- Tests Marcus's ability to handle concurrent agents")
+    print("- Tests Marcus's ability to handle high concurrency")
     print("- Generates detailed reports and logs")
     print("\nPrerequisites:")
     print("- Marcus server running in HTTP mode")
