@@ -75,7 +75,14 @@ class KanbanClient:
         # Load config first - this may set environment variables
         self._load_config()
 
-        # If config didn't have IDs, try loading from workspace state
+        # If config didn't have IDs, try loading from environment variables
+        # (set by Planka provider when switching projects)
+        if self.project_id is None:
+            self.project_id = os.environ.get("PLANKA_PROJECT_ID")
+        if self.board_id is None:
+            self.board_id = os.environ.get("PLANKA_BOARD_ID")
+
+        # If still not set, try loading from workspace state
         workspace_state = None
         if self.project_id is None:
             workspace_state = self._load_workspace_state()

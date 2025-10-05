@@ -52,7 +52,8 @@ async def list_projects(server: Any, arguments: Dict[str, Any]) -> List[Dict[str
                 "id": project.id,
                 "name": project.name,
                 "provider": project.provider,
-                "provider_config": project.provider_config,  # includes project_id, board_id
+                # includes project_id, board_id
+                "provider_config": project.provider_config,
                 "tags": project.tags,
                 "is_active": project.id == active_id,
                 "last_used": project.last_used.isoformat(),
@@ -540,7 +541,10 @@ async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
             "success": True,
             "action": "selected_existing",
             "project": project_info,
-            "message": f"Selected project '{discovery_result['project']['name']}' - ready to work",
+            "message": (
+                f"Selected project '{discovery_result['project']['name']}' "
+                "- ready to work"
+            ),
         }
 
     elif discovery_result["action"] == "found_similar":
@@ -561,11 +565,15 @@ async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
         if auto_sync_enabled:
             hint = (
                 f"Project '{project_name}' not found in Marcus registry. "
-                "Since auto_sync_projects is enabled, you may need to run sync_projects "
-                "to import projects from Planka. Use list_projects to see currently registered projects."
+                "Since auto_sync_projects is enabled, you may need to run "
+                "sync_projects to import projects from Planka. Use "
+                "list_projects to see currently registered projects."
             )
         else:
-            hint = "Use list_projects to see available projects, or create_project to create a new one"
+            hint = (
+                "Use list_projects to see available projects, or "
+                "create_project to create a new one"
+            )
 
         return {
             "success": False,
@@ -644,13 +652,21 @@ async def discover_planka_projects(
                 logger.info(f"Project '{project_name}' has {len(boards)} board(s)")
 
                 for board in boards:
+                    board_id = board.get("id")
+                    board_name = board.get("name", "Unnamed Board")
+
+                    # Include board name in project name for clarity
+                    full_name = f"{project_name} - {board_name}"
+
                     projects_to_sync.append(
                         {
-                            "name": f"{project_name}",
+                            "name": full_name,
                             "provider": "planka",
                             "config": {
                                 "project_id": project_id,
-                                "board_id": board.get("id"),
+                                "project_name": project_name,
+                                "board_id": board_id,
+                                "board_name": board_name,
                             },
                             "tags": ["discovered", "planka"],
                         }
@@ -742,7 +758,10 @@ async def sync_projects(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any
     if not projects_to_sync:
         return {
             "success": False,
-            "error": "No projects provided. Provide 'projects' array with project definitions.",
+            "error": (
+                "No projects provided. Provide 'projects' array with "
+                "project definitions."
+            ),
         }
 
     added = []
@@ -786,7 +805,10 @@ async def sync_projects(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any
 
     # Log the sync operation
     conversation_logger.log_pm_decision(
-        decision=f"Synced {len(added)} new projects, updated {len(updated)}, skipped {len(skipped)}",
+        decision=(
+            f"Synced {len(added)} new projects, updated {len(updated)}, "
+            f"skipped {len(skipped)}"
+        ),
         rationale="User requested project sync from provider",
         decision_factors={
             "added_count": len(added),
