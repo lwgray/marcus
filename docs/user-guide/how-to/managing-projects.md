@@ -119,9 +119,38 @@ else:
     print(f"Error: {result['error']}")
 ```
 
+## System Behavior: Automatic Project Synchronization
+
+Marcus automatically synchronizes projects from your Kanban provider (Planka, GitHub, etc.) on every startup. This is a transparent system behavior that keeps your project registry up-to-date.
+
+### How It Works
+
+1. **On Startup:** Marcus queries your Kanban provider for all accessible boards/projects
+2. **Discovery:** New projects are automatically added to the registry
+3. **Updates:** Existing projects have their metadata refreshed (names, board IDs, etc.)
+4. **Preservation:** Projects are never automatically deleted from the registry
+
+### What This Means for You
+
+- **No manual registration needed:** New boards appear in `list_projects()` automatically
+- **Always current:** Project names and metadata stay synchronized
+- **Safe:** Your registry data is preserved even if boards are temporarily unavailable
+
+### Startup Log Example
+
+```
+INFO: Auto-syncing projects from Kanban provider...
+INFO: Auto-synced projects: 3 added, 5 updated, 0 skipped
+INFO: Switching to active project: UserAuthAPI
+```
+
+**Note:** Auto-sync runs quickly (typically <1 second) and requires no configuration. It's designed to be invisible during normal operation.
+
+---
+
 ## Adding Existing Projects
 
-If you have a Planka board that was created outside Marcus, you can register it:
+If you need to manually register a project (e.g., for testing or special configurations), you can do so explicitly:
 
 ### Planka Project
 

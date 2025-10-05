@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""
-Clear all cards from specified board
-"""
+"""Clear all cards from specified board."""
 
 import asyncio
 import json
@@ -19,7 +17,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
 
-from src.core.error_framework import (
+from src.core.error_framework import (  # noqa: E402
     ErrorContext,
     KanbanIntegrationError,
     RemediationSuggestion,
@@ -29,9 +27,7 @@ from src.core.error_framework import (
 # Set environment - demo credentials for local development only
 os.environ["PLANKA_BASE_URL"] = "http://localhost:3333"
 os.environ["PLANKA_AGENT_EMAIL"] = "demo@demo.demo"
-os.environ["PLANKA_AGENT_PASSWORD"] = (
-    "demo"  # nosec B105 - demo password for local test environment
-)
+os.environ["PLANKA_AGENT_PASSWORD"] = "demo"  # nosec B105  # pragma: allowlist secret
 
 
 def _extract_text_from_result(result: Any) -> str:
@@ -44,7 +40,7 @@ def _extract_text_from_result(result: Any) -> str:
 
 
 async def check_board_availability() -> bool:
-    """Check if the Kanban board service is running"""
+    """Check if the Kanban board service is running."""
     base_url = os.environ.get("PLANKA_BASE_URL", "http://localhost:3333")
 
     try:
@@ -58,8 +54,7 @@ async def check_board_availability() -> bool:
 
 
 async def clear_board(board: str) -> None:
-    """Clear all cards from the board"""
-
+    """Clear all cards from the board."""
     server_params = StdioServerParameters(
         command="node",
         args=["/Users/lwgray/dev/kanban-mcp/dist/index.js"],
@@ -264,8 +259,7 @@ async def clear_board(board: str) -> None:
 
 
 async def clear_board_silent(board: str) -> Tuple[bool, str]:
-    """Clear board without prompts (for use by menu)"""
-
+    """Clear board without prompts (for use by menu)."""
     server_params = StdioServerParameters(
         command="node",
         args=["/Users/lwgray/dev/kanban-mcp/dist/index.js"],
@@ -341,7 +335,7 @@ async def clear_board_silent(board: str) -> Tuple[bool, str]:
 def display_marcus_error(
     error: Union[ServiceUnavailableError, KanbanIntegrationError],
 ) -> None:
-    """Display Marcus error in a user-friendly format"""
+    """Display Marcus error in a user-friendly format."""
     print("\n❌ ERROR DETECTED")
     print("=" * 50)
     print(f"Error: {error.message}")

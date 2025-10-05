@@ -439,8 +439,9 @@ class AssignmentLeaseManager:
                     lease.task_id, TaskStatus.TODO
                 )
 
-                # Note: KanbanInterface.update_task doesn't support additional parameters
-                # Skip the update_task call to avoid interface limitations
+                # Note: KanbanInterface.update_task doesn't support
+                # additional parameters. Skip the update_task call to
+                # avoid interface limitations
                 pass
 
             # Track in history
@@ -612,10 +613,13 @@ class LeaseMonitor:
 
                 # Recover expired leases
                 for lease in expired_leases:
-                    success = await self.lease_manager.recover_expired_lease(lease)
+                    success = await self.lease_manager.recover_expired_lease(
+                        lease
+                    )
                     if success:
                         logger.info(
-                            f"Successfully recovered expired lease for task {lease.task_id}"
+                            f"Successfully recovered expired lease for "
+                            f"task {lease.task_id}"
                         )
                     else:
                         logger.error(

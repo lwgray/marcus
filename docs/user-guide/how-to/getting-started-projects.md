@@ -234,27 +234,19 @@ sync_projects(
 - ✅ Setting up Marcus with existing Planka boards
 - ✅ Recovering from registry corruption
 
-**Configuration Option:**
+**Automatic Synchronization:**
 
-Enable `auto_sync_projects` in `config_marcus.json` to get helpful hints:
+Marcus automatically synchronizes projects from your Kanban provider on startup. This means:
 
-```json
-{
-    "auto_sync_projects": true,
-    "default_project_name": "MainProject",
-    "planka": {...}
-}
-```
+- New boards in Planka/GitHub appear automatically in Marcus
+- Project metadata stays up-to-date
+- No manual sync needed in most cases
 
-With this enabled, when `select_project` can't find a project, it will suggest running `sync_projects`:
+If `select_project` can't find a project, you can manually sync:
 
-```json
-{
-    "success": false,
-    "action": "not_found",
-    "message": "Project '1st Project' not found in Marcus registry",
-    "hint": "Since auto_sync_projects is enabled, you may need to run sync_projects to import projects from Planka."
-}
+```python
+# Force a sync to check for new projects
+sync_projects()
 ```
 
 ### Scenario 7: Handling Fuzzy Matches

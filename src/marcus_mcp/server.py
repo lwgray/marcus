@@ -413,44 +413,37 @@ class MarcusServer:
         # Initialize AI engine
         await self.ai_engine.initialize()
 
-        # Check if auto-sync is enabled - we need to sync BEFORE switching to a project
-        auto_sync = self.config.get("auto_sync_projects", False)
+        # Initialize project management (skip auto-switch, we do it after sync)
+        await self.project_manager.initialize(auto_switch=False)
 
-        # Initialize project management (skip auto-switch if we're doing auto-sync)
-        await self.project_manager.initialize(auto_switch=not auto_sync)
+        # Auto-sync projects from provider (ALWAYS runs - keeps registry in sync)
+        logger.info("Auto-syncing projects from Kanban provider...")
+        try:
+            from src.marcus_mcp.tools.project_management import (
+                discover_planka_projects,
+            )
 
-        # Auto-sync projects from Planka if configured
-        # (BEFORE switching to active project)
-        if auto_sync:
-            logger.info("Auto-syncing projects from Planka...")
-            try:
-                from src.marcus_mcp.tools.project_management import (
-                    discover_planka_projects,
+            result = await discover_planka_projects(self, {"auto_sync": True})
+            if result.get("success"):
+                sync_result = result.get("sync_result", {})
+                summary = sync_result.get("summary", {})
+                logger.info(
+                    f"Auto-synced projects: {summary.get('added', 0)} added, "
+                    f"{summary.get('updated', 0)} updated, "
+                    f"{summary.get('skipped', 0)} skipped"
                 )
 
-                result = await discover_planka_projects(self, {"auto_sync": True})
-                if result.get("success"):
-                    sync_result = result.get("sync_result", {})
-                    summary = sync_result.get("summary", {})
-                    logger.info(
-                        f"Auto-synced projects: {summary.get('added', 0)} added, "
-                        f"{summary.get('updated', 0)} updated, "
-                        f"{summary.get('skipped', 0)} skipped"
-                    )
-
-                    # Now switch to active project AFTER auto-sync
-                    active_project = (
-                        await self.project_manager.registry.get_active_project()
-                    )
-                    if active_project:
-                        logger.info(
-                            f"Switching to active project: {active_project.name}"
-                        )
-                        await self.project_manager.switch_project(active_project.id)
-                else:
-                    logger.warning(f"Auto-sync failed: {result.get('error')}")
-            except Exception as e:
-                logger.warning(f"Failed to auto-sync projects: {e}")
+                # Now switch to active project AFTER auto-sync
+                active_project = (
+                    await self.project_manager.registry.get_active_project()
+                )
+                if active_project:
+                    logger.info(f"Switching to active project: {active_project.name}")
+                    await self.project_manager.switch_project(active_project.id)
+            else:
+                logger.warning(f"Auto-sync failed: {result.get('error')}")
+        except Exception as e:
+            logger.warning(f"Failed to auto-sync projects: {e}")
 
         # Auto-select default project if configured
         default_project_name = self.config.get("default_project_name")
@@ -560,7 +553,13 @@ class MarcusServer:
         # Don't print during initialization - it interferes with MCP stdio
 
     async def _migrate_to_multi_project(self) -> None:
-        """Migrate legacy configuration to multi-project format."""
+        """
+        Migrate legacy configuration to multi-project format.
+
+        Note: With auto-sync always enabled, this migration is rarely needed.
+        Auto-sync discovers real projects from the Kanban provider on startup,
+        so Default Project creation is skipped in most cases.
+        """
         if self.kanban_client and not self.config.is_multi_project_mode():
             # Check if we've already migrated (have projects in registry)
             existing_projects = await self.project_registry.list_projects()
@@ -571,31 +570,13 @@ class MarcusServer:
                 )
                 return
 
-            # If auto_sync is enabled, skip creating Default Project
-            # Auto-sync will discover real projects from the Kanban provider
-            config_data = getattr(self.config, "_config", None)
-            if config_data and config_data.get("auto_sync_projects"):
-                logger.info(
-                    "Skipping Default Project creation - "
-                    "auto_sync_projects is enabled"
-                )
-                return
-
-            # Create a project from the legacy config
-            project_id = None
-            if config_data is not None:
-                project_id = await self.project_registry.create_from_legacy_config(
-                    config_data
-                )
-
-            # Set it as active only if we have a valid project_id
-            if project_id:
-                await self.project_registry.set_active_project(project_id)
-
-                # Initialize project context with existing client
-                await self.project_manager.switch_project(project_id)
-
-            # Successfully migrated to multi-project mode
+            # Auto-sync always runs and discovers real projects
+            # Skip creating a placeholder Default Project
+            logger.info(
+                "Skipping Default Project creation - "
+                "auto-sync will discover real projects from Kanban provider"
+            )
+            return
 
     async def _initialize_monitoring_systems(self) -> None:
         """Initialize assignment monitor and lease manager for current kanban client."""
