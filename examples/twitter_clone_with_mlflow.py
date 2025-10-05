@@ -49,6 +49,8 @@ class MLflowTaskTracker:
     def __init__(self, experiment: MarcusExperiment):
         self.experiment = experiment
         self.task_start_times: Dict[str, float] = {}
+        self.completed_tasks: List[tuple] = []  # (task_id, completion_time)
+        self.start_time = asyncio.get_event_loop().time()
 
     def start_task(self, task_id: str) -> None:
         """Record task start time."""
@@ -58,12 +60,43 @@ class MLflowTaskTracker:
         """Log task completion to MLflow."""
         if task_id in self.task_start_times:
             duration = asyncio.get_event_loop().time() - self.task_start_times[task_id]
+            completion_time = asyncio.get_event_loop().time()
+
             self.experiment.log_task_completion(
                 task_id=task_id,
                 duration_seconds=duration,
                 agent_id=agent_id
             )
+
+            self.completed_tasks.append((task_id, completion_time))
             del self.task_start_times[task_id]
+
+    def calculate_velocity(self) -> float:
+        """Calculate simple velocity as tasks per hour."""
+        if not self.completed_tasks:
+            return 0.0
+
+        current_time = asyncio.get_event_loop().time()
+        elapsed_hours = (current_time - self.start_time) / 3600
+
+        if elapsed_hours < 0.01:  # Avoid division by zero
+            return 0.0
+
+        return len(self.completed_tasks) / elapsed_hours
+
+    def get_avg_completion_time(self) -> float:
+        """Get average task completion time in seconds."""
+        if not self.completed_tasks or len(self.completed_tasks) < 2:
+            return 0.0
+
+        # Calculate time between consecutive completions
+        completion_times = [t[1] for t in self.completed_tasks]
+        intervals = [
+            completion_times[i] - completion_times[i-1]
+            for i in range(1, len(completion_times))
+        ]
+
+        return sum(intervals) / len(intervals) if intervals else 0.0
 
 
 async def agent_worker(
@@ -449,10 +482,96 @@ async def twitter_mlflow_workflow(
             print(f"✅ All {len(swarm_agents)} agents deployed!")
             print("⏳ Agents working in parallel...")
 
-            # Wait for all agents
+            # Background task to monitor and log metrics periodically
+            async def monitor_metrics():
+                """Periodically log project metrics to MLflow."""
+                step = 0
+                try:
+                    from src.monitoring.project_monitor import ProjectMonitor
+                    from src.integrations.kanban_client import KanbanClient
+
+                    kanban_client = KanbanClient()
+                    await kanban_client.initialize()
+                    monitor = ProjectMonitor(kanban_client)
+
+                    while True:
+                        await asyncio.sleep(30)  # Log every 30 seconds
+                        try:
+                            state = await monitor.get_project_state()
+                            experiment.log_project_state(
+                                total_tasks=state.total_tasks,
+                                completed_tasks=state.completed_tasks,
+                                in_progress_tasks=state.in_progress_tasks,
+                                blocked_tasks=state.blocked_tasks,
+                                progress_percent=state.progress_percent,
+                                velocity=state.team_velocity,
+                                step=step
+                            )
+                            step += 1
+                        except Exception as e:
+                            logger.log("monitoring_error", f"Failed to log metrics: {e}")
+                except Exception as e:
+                    logger.log("monitoring_error", f"Monitor initialization failed: {e}")
+
+            # Start monitoring task
+            monitor_task = asyncio.create_task(monitor_metrics())
+
+            # Wait for all agents (monitoring will continue in background)
             await asyncio.gather(*agent_tasks, return_exceptions=True)
 
+            # Cancel monitoring task
+            monitor_task.cancel()
+            try:
+                await monitor_task
+            except asyncio.CancelledError:
+                pass
+
             print("\n✅ All agents completed!")
+
+            # Get final project state and metrics from Marcus
+            try:
+                from src.monitoring.project_monitor import ProjectMonitor
+                from src.integrations.kanban_client import KanbanClient
+
+                # Initialize monitoring to get velocity
+                kanban_client = KanbanClient()
+                await kanban_client.initialize()
+
+                monitor = ProjectMonitor(kanban_client)
+                project_state = await monitor.get_project_state()
+
+                # Log final project metrics to MLflow
+                experiment.log_project_state(
+                    total_tasks=project_state.total_tasks,
+                    completed_tasks=project_state.completed_tasks,
+                    in_progress_tasks=project_state.in_progress_tasks,
+                    blocked_tasks=project_state.blocked_tasks,
+                    progress_percent=project_state.progress_percent,
+                    velocity=project_state.team_velocity,
+                )
+
+                # Also log velocity separately for easier viewing
+                experiment.log_velocity(project_state.team_velocity)
+
+                print(f"\n📊 Final Metrics:")
+                print(f"  Velocity: {project_state.team_velocity:.2f} tasks/week")
+                print(f"  Progress: {project_state.progress_percent:.1f}%")
+                print(f"  Completed: {project_state.completed_tasks}/{project_state.total_tasks}")
+
+            except Exception as e:
+                print(f"⚠️  Could not fetch project state from Marcus: {e}")
+                # Log what we can calculate from task tracker as fallback
+                calculated_velocity = task_tracker.calculate_velocity()
+                avg_completion_time = task_tracker.get_avg_completion_time()
+
+                experiment.log_velocity(calculated_velocity)
+                experiment.log_metric("tasks_completed_total", len(task_tracker.completed_tasks))
+                experiment.log_metric("avg_completion_time_seconds", avg_completion_time)
+
+                print(f"\n📊 Calculated Metrics (Fallback):")
+                print(f"  Velocity: {calculated_velocity:.2f} tasks/hour")
+                print(f"  Avg Completion Time: {avg_completion_time:.2f} seconds")
+                print(f"  Completed: {len(task_tracker.completed_tasks)}")
 
             # Generate final summary
             summary = f"""
