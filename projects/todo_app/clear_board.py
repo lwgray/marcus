@@ -7,11 +7,10 @@ import asyncio
 import json
 import os
 import sys
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Tuple, Union
 
 import httpx
 from mcp.client.stdio import stdio_client
-from mcp.types import TextContent
 
 from mcp import ClientSession, StdioServerParameters
 
@@ -27,10 +26,12 @@ from src.core.error_framework import (
     ServiceUnavailableError,
 )
 
-# Set environment
+# Set environment - demo credentials for local development only
 os.environ["PLANKA_BASE_URL"] = "http://localhost:3333"
 os.environ["PLANKA_AGENT_EMAIL"] = "demo@demo.demo"
-os.environ["PLANKA_AGENT_PASSWORD"] = "demo"
+os.environ["PLANKA_AGENT_PASSWORD"] = (
+    "demo"  # nosec B105 - demo password for local test environment
+)
 
 
 def _extract_text_from_result(result: Any) -> str:
@@ -48,7 +49,7 @@ async def check_board_availability() -> bool:
 
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(base_url, timeout=5.0)
+            await client.get(base_url, timeout=5.0)
             return True
     except (httpx.ConnectError, httpx.TimeoutException):
         return False
@@ -82,10 +83,18 @@ async def clear_board(board: str) -> None:
                 integration_state={"url": base_url, "status": "unreachable"},
             ),
             remediation=RemediationSuggestion(
-                immediate_action=f"Start the Planka Kanban board service on {base_url}",
-                long_term_solution="Add health checks to verify board is running before operations",
-                fallback_strategy="Check if Docker containers are running with 'docker ps'",
-                escalation_path="Run 'docker-compose up -d' in the Kanban board directory",
+                immediate_action=(
+                    f"Start the Planka Kanban board service on {base_url}"
+                ),
+                long_term_solution=(
+                    "Add health checks to verify board is running " "before operations"
+                ),
+                fallback_strategy=(
+                    "Check if Docker containers are running with 'docker ps'"
+                ),
+                escalation_path=(
+                    "Run 'docker-compose up -d' in the Kanban board directory"
+                ),
             ),
         )
 
@@ -113,8 +122,10 @@ async def clear_board(board: str) -> None:
                         ),
                         remediation=RemediationSuggestion(
                             immediate_action="Check MCP server logs for errors",
-                            long_term_solution="Ensure MCP server is properly configured",
-                            fallback_strategy="Restart the MCP server and retry",
+                            long_term_solution=(
+                                "Ensure MCP server is properly configured"
+                            ),
+                            fallback_strategy=("Restart the MCP server and retry"),
                         ),
                     )
 
@@ -306,6 +317,7 @@ async def clear_board_silent(board: str) -> Tuple[bool, str]:
 
             total_cards = 0
             deleted = 0
+            failed = 0
 
             for lst in summary.get("lists", []):
                 for card in lst.get("cards", []):
@@ -316,10 +328,14 @@ async def clear_board_silent(board: str) -> Tuple[bool, str]:
                             {"action": "delete", "id": card["id"]},
                         )
                         deleted += 1
-                    except:
-                        pass
+                    except Exception:
+                        # Track failures but continue - this is a bulk cleanup operation
+                        failed += 1
 
-            return True, f"Deleted {deleted} of {total_cards} cards"
+            message = f"Deleted {deleted} of {total_cards} cards"
+            if failed > 0:
+                message += f" ({failed} failed)"
+            return True, message
 
 
 def display_marcus_error(

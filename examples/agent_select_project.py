@@ -22,7 +22,7 @@ from typing import Any
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.worker.client import WorkerMCPClient
+from src.worker.client import WorkerMCPClient  # noqa: E402
 
 
 def pretty_print(label: str, result: Any) -> None:

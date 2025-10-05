@@ -10,15 +10,16 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.worker.client import WorkerMCPClient
+from src.worker.client import WorkerMCPClient  # noqa: E402
 
 
-def pretty_print_result(label: str, result):
+def pretty_print_result(label: str, result: Any) -> None:
     """Pretty print MCP tool results."""
     print(f"\n{label}")
     if hasattr(result, "content") and result.content:
@@ -34,7 +35,7 @@ def pretty_print_result(label: str, result):
         print(result)
 
 
-async def main():
+async def main() -> None:
     """
     Demo: Connect via HTTP to a running Marcus instance.
 
@@ -67,7 +68,7 @@ async def main():
         async with client.connect_to_marcus_http(url) as session:
             # First authenticate as admin to get access to ALL MCP tools
             print("🔐 Authenticating as admin...")
-            auth_result = await session.call_tool(
+            await session.call_tool(
                 "authenticate",
                 arguments={
                     "client_id": "http-test-worker",
@@ -76,7 +77,7 @@ async def main():
                     "metadata": {"test_mode": True, "connection": "http"},
                 },
             )
-            print("✅ Authenticated as admin (full access to all MCP tools)")
+            print("✅ Authenticated as admin (full access)")
 
             # List available projects
             print("\n" + "=" * 70)

@@ -13,15 +13,16 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.worker.client import WorkerMCPClient
+from src.worker.client import WorkerMCPClient  # noqa: E402
 
 
-def pretty_print_result(label: str, result):
+def pretty_print_result(label: str, result: Any) -> None:
     """Pretty print MCP tool results."""
     print(f"\n{label}")
     if hasattr(result, "content") and result.content:
@@ -37,7 +38,7 @@ def pretty_print_result(label: str, result):
         print(result)
 
 
-async def demo_stdio_connection():
+async def demo_stdio_connection() -> None:
     """
     Demo: Connect via stdio (spawns a separate Marcus instance).
 
@@ -59,18 +60,18 @@ async def demo_stdio_connection():
         print("\n📡 Starting separate Marcus instance for testing...")
         async with client.connect_to_marcus() as session:
             # First authenticate as admin to get access to ALL MCP tools
-            # Options: "observer" (read-only), "developer" (project mgmt), "agent" (worker only), "admin" (ALL tools)
+            # Options: "observer", "developer", "agent", "admin"
             print("\n🔐 Authenticating as admin...")
-            auth_result = await session.call_tool(
+            await session.call_tool(
                 "authenticate",
                 arguments={
                     "client_id": "stdio-worker-1",
-                    "client_type": "admin",  # Admin has access to ALL tools
+                    "client_type": "admin",  # Admin access
                     "role": "admin",
                     "metadata": {"test_mode": True},
                 },
             )
-            print(f"✅ Authenticated as admin (full access to all MCP tools)")
+            print("✅ Authenticated as admin (full access)")
 
             # List available projects
             print("\n📂 Listing available projects...")
@@ -106,7 +107,7 @@ async def demo_stdio_connection():
         traceback.print_exc()
 
 
-async def demo_http_connection():
+async def demo_http_connection() -> None:
     """
     Demo: Connect via HTTP to a running Marcus instance.
 
@@ -127,9 +128,7 @@ async def demo_http_connection():
 
     try:
         # Connect to the worker agent port (4299)
-        async with client.connect_to_marcus_http(
-            "http://localhost:4299/mcp"
-        ) as session:
+        async with client.connect_to_marcus_http("http://localhost:4299/mcp"):
             # Register agent
             result = await client.register_agent(
                 agent_id="http-worker-1",
@@ -143,9 +142,9 @@ async def demo_http_connection():
             task = await client.request_next_task("http-worker-1")
             print(f"\n📋 Task received: {task}")
 
-            # Get agent status
-            status = await client.get_agent_status("http-worker-1")
-            print(f"\n📊 Agent status: {status}")
+            # Get project status
+            status = await client.get_project_status()
+            print(f"\n📊 Project status: {status}")
 
     except Exception as e:
         print(f"\n❌ Error: {e}")
@@ -153,7 +152,7 @@ async def demo_http_connection():
         print("   Start it with: python -m src.marcus_mcp.server --http")
 
 
-async def main():
+async def main() -> None:
     """Run the stdio demo."""
     print("\n🚀 WorkerMCPClient Connection Demo")
     print("=" * 60)
