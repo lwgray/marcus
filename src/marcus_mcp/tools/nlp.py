@@ -25,7 +25,9 @@ async def create_project(
     description: str, project_name: str, options: Optional[Dict[str, Any]], state: Any
 ) -> Dict[str, Any]:
     """
-    Create a complete project from natural language description with smart project discovery.
+    Create a complete project from natural language description.
+
+    Includes smart project discovery.
 
     Uses AI to parse natural language project requirements and automatically:
     - Discovers existing projects by name (exact and fuzzy matching)
@@ -58,8 +60,10 @@ async def create_project(
 
         Provider Config:
         - provider (str): Kanban provider - "planka" (default), "github", "linear"
-        - planka_project_name (str): Custom Planka project name (defaults to project_name)
-        - planka_board_name (str): Custom Planka board name (defaults to "Main Board")
+        - planka_project_name (str): Custom Planka project name
+          (defaults to project_name)
+        - planka_board_name (str): Custom Planka board name
+          (defaults to "Main Board")
 
         Project Settings:
         - complexity (str): "prototype", "standard" (default), "enterprise"
@@ -455,3 +459,203 @@ async def add_feature(
         integration_point=integration_point,
         state=state,
     )
+
+
+async def create_tasks(
+    task_description: str,
+    board_name: Optional[str] = None,
+    project_name: Optional[str] = None,
+    options: Optional[Dict[str, Any]] = None,
+    state: Any = None,
+) -> Dict[str, Any]:
+    """
+    Create tasks on an existing project and board using natural language.
+
+    This tool is similar to create_project but works on existing projects.
+    It can either use an existing board or create a new board within the project.
+
+    Parameters
+    ----------
+    task_description : str
+        Natural language description of the tasks to create
+    board_name : Optional[str]
+        Board name to use. If not provided, uses the active project's board.
+        If the board doesn't exist, it will be created.
+    project_name : Optional[str]
+        Project name to use. If not provided, uses the active project.
+    options : Optional[Dict[str, Any]]
+        Optional configuration:
+        - complexity: "prototype", "standard" (default), "enterprise"
+        - team_size: 1-20 for estimation (default: 1)
+        - create_board: bool - Force create new board (default: False)
+    state : Any
+        Marcus server state instance
+
+    Returns
+    -------
+    Dict[str, Any]
+        On success:
+        {
+            "success": True,
+            "tasks_created": int,
+            "board": {
+                "project_id": str,
+                "board_id": str,
+                "board_name": str
+            }
+        }
+
+        On error:
+        {
+            "success": False,
+            "error": str
+        }
+
+    Examples
+    --------
+    Create tasks on active project's active board:
+        >>> create_tasks(
+        ...     task_description="Add user authentication with OAuth2"
+        ... )
+
+    Create tasks on specific project and board:
+        >>> create_tasks(
+        ...     task_description="Implement payment processing",
+        ...     project_name="E-commerce",
+        ...     board_name="Sprint 2"
+        ... )
+
+    Create tasks on new board:
+        >>> create_tasks(
+        ...     task_description="Add admin dashboard",
+        ...     board_name="Admin Features",
+        ...     options={"create_board": True}
+        ... )
+    """
+    if not task_description or not task_description.strip():
+        return {
+            "success": False,
+            "error": "Please provide a task description",
+            "hint": "Describe the tasks you want to create in natural language",
+        }
+
+    options = options or {}
+
+    # Get or validate project
+    if project_name:
+        # Select the specified project
+        from .project_management import select_project
+
+        select_result = await select_project(
+            state, {"project_name": project_name, "board_name": board_name}
+        )
+        if not select_result.get("success"):
+            return select_result
+    else:
+        # Use active project
+        active_project = await state.project_registry.get_active_project()
+        if not active_project:
+            return {
+                "success": False,
+                "error": "No active project. Please select a project first.",
+                "hint": "Use select_project or provide project_name parameter",
+            }
+
+    # Get current project info
+    current_project = await state.project_registry.get_active_project()
+    if not current_project:
+        return {
+            "success": False,
+            "error": "Failed to get current project",
+        }
+
+    # Handle board selection/creation
+    kanban_client = await state.project_manager.get_kanban_client()
+    if not kanban_client:
+        return {
+            "success": False,
+            "error": "No kanban client available",
+        }
+
+    project_id = current_project.provider_config.get("project_id")
+    board_id = current_project.provider_config.get("board_id")
+    current_board_name = current_project.provider_config.get("board_name")
+
+    # Check if we need to use a different board or create one
+    if board_name and board_name != current_board_name:
+        # Need to switch to or create the specified board
+        if options.get("create_board", False):
+            # Create new board
+            try:
+                new_board = await kanban_client.create_board(
+                    project_id=project_id, name=board_name
+                )
+                board_id = new_board.get("id")
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": f"Failed to create board: {str(e)}",
+                }
+        else:
+            # Try to find existing board by name
+            try:
+                boards = await kanban_client.list_boards(project_id=project_id)
+                matching_board = next(
+                    (b for b in boards if b.get("name") == board_name), None
+                )
+                if matching_board:
+                    board_id = matching_board.get("id")
+                else:
+                    return {
+                        "success": False,
+                        "error": (
+                            f"Board '{board_name}' not found in project "
+                            f"'{current_project.name}'"
+                        ),
+                        "hint": "Set options.create_board=True to create a new board",
+                    }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": f"Failed to list boards: {str(e)}",
+                }
+
+    if not board_id:
+        return {
+            "success": False,
+            "error": "No board_id available",
+        }
+
+    # For now, create a simple task with the description
+    # TODO: Integrate with AI task parsing in the future
+    try:
+        # Create a single task with the description
+        task = await kanban_client.create_task(
+            board_id=board_id,
+            name=task_description[:100],  # Use first 100 chars as name
+            description=task_description,
+            priority="medium",
+            labels=[],
+        )
+
+        return {
+            "success": True,
+            "tasks_created": 1,
+            "board": {
+                "project_id": project_id,
+                "board_id": board_id,
+                "board_name": board_name or current_board_name,
+            },
+            "tasks": [task],
+            "note": (
+                "Created a single task with your description. "
+                "For AI-powered multi-task generation from descriptions, "
+                "use create_project or add_feature instead."
+            ),
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Failed to create task: {str(e)}",
+        }

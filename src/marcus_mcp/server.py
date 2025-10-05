@@ -1197,6 +1197,53 @@ class MarcusServer:
                     state=server,
                 )
 
+        if "create_tasks" in allowed_tools:
+
+            @app.tool()  # type: ignore[misc]
+            async def create_tasks(
+                task_description: str,
+                board_name: Optional[str] = None,
+                project_name: Optional[str] = None,
+                options: Optional[Dict[str, Any]] = None,
+            ) -> Dict[str, Any]:
+                """
+                Create tasks on an existing project and board using natural language.
+
+                This tool is similar to create_project but works on existing
+                projects. It can either use an existing board or create a new
+                board within the project.
+
+                Parameters
+                ----------
+                task_description : str
+                    Natural language description of the tasks to create
+                board_name : Optional[str]
+                    Board name to use. If not provided, uses the active project's board.
+                    If the board doesn't exist, it will be created.
+                project_name : Optional[str]
+                    Project name to use. If not provided, uses the active project.
+                options : Optional[Dict[str, Any]]
+                    Optional configuration:
+                    - complexity: "prototype", "standard" (default), "enterprise"
+                    - team_size: 1-20 for estimation (default: 1)
+                    - create_board: bool - Force create new board (default: False)
+
+                Returns
+                -------
+                Dict[str, Any]
+                    On success: {success, tasks_created, board: {project_id,
+                    board_id, board_name}}. On error: {success: False, error: str}
+                """
+                from .tools.nlp import create_tasks as impl
+
+                return await impl(
+                    task_description=task_description,
+                    board_name=board_name,
+                    project_name=project_name,
+                    options=options,
+                    state=server,
+                )
+
         if "list_projects" in allowed_tools:
 
             @app.tool()  # type: ignore[misc]

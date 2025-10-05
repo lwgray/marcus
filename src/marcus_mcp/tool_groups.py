@@ -21,6 +21,7 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "switch_project",
         "get_current_project",
         "create_project",  # NLP project creation
+        "create_tasks",  # Create tasks on existing project/board
         "add_feature",  # NLP feature addition
         "get_usage_report",
     },
@@ -39,6 +40,7 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "list_projects",  # List available projects
         "select_project",  # Select project to work on
         "create_project",  # NLP project creation for autonomous agents
+        "create_tasks",  # Create tasks on existing project/board
     },
     "analytics": {
         # All tools for comprehensive analytics (Seneca)
@@ -72,6 +74,7 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "log_artifact",
         # NLP tools
         "create_project",
+        "create_tasks",
         "add_feature",
         # System health
         "check_assignment_health",

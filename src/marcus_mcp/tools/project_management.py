@@ -469,6 +469,7 @@ async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
         MarcusServer instance
     arguments : Dict[str, Any]
         - project_name: Name to search for (optional if project_id provided)
+        - board_name: Board name to filter by (optional, used with project_name)
         - project_id: Exact project ID (optional if project_name provided)
 
     Returns
@@ -481,10 +482,17 @@ async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
     >>> # Select by name
     >>> result = await select_project(server, {"project_name": "MyAPI"})
 
+    >>> # Select by project and board name
+    >>> result = await select_project(server, {
+    ...     "project_name": "Engineering",
+    ...     "board_name": "Sprint 1"
+    ... })
+
     >>> # Select by ID
     >>> result = await select_project(server, {"project_id": "proj-123"})
     """
     project_name = arguments.get("project_name")
+    board_name = arguments.get("board_name")
     project_id = arguments.get("project_id")
 
     if not project_name and not project_id:
@@ -518,6 +526,67 @@ async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
             }
         except Exception as e:
             return {"success": False, "error": f"Failed to select project: {str(e)}"}
+
+    # If board_name is provided, search by both project and board name
+    if board_name:
+        # Get all projects and filter by provider_config
+        all_projects = await server.project_registry.list_projects()
+        matching_projects = [
+            p
+            for p in all_projects
+            if p.provider_config.get("project_name") == project_name
+            and p.provider_config.get("board_name") == board_name
+        ]
+
+        if len(matching_projects) == 0:
+            return {
+                "success": False,
+                "error": (
+                    f"No project found with project_name='{project_name}' "
+                    f"and board_name='{board_name}'"
+                ),
+                "hint": (
+                    "Use list_projects to see available projects and boards, "
+                    "or run discover_planka_projects to sync from Planka"
+                ),
+            }
+        elif len(matching_projects) > 1:
+            return {
+                "success": False,
+                "error": (
+                    f"Multiple projects found with project_name='{project_name}' "
+                    f"and board_name='{board_name}'"
+                ),
+                "matches": [
+                    {"id": p.id, "name": p.name, "provider": p.provider}
+                    for p in matching_projects
+                ],
+                "hint": "Use project_id to select a specific project",
+            }
+        else:
+            # Exactly one match - select it
+            selected_project = matching_projects[0]
+            await server.project_manager.switch_project(selected_project.id)
+            server.kanban_client = await server.project_manager.get_kanban_client()
+
+            task_count = (
+                len(server.project_tasks) if hasattr(server, "project_tasks") else 0
+            )
+
+            return {
+                "success": True,
+                "action": "selected_existing",
+                "project": {
+                    "id": selected_project.id,
+                    "name": selected_project.name,
+                    "provider": selected_project.provider,
+                    "provider_config": selected_project.provider_config,
+                    "task_count": task_count,
+                },
+                "message": (
+                    f"Selected project '{selected_project.name}' - ready to work"
+                ),
+            }
 
     # Otherwise, search by name using find_or_create_project
     discovery_result = await find_or_create_project(
