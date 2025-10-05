@@ -335,15 +335,19 @@ class PlankaKanban(KanbanInterface):
             await self.connect()
 
         # Map column names to Planka lists
+        # For blocked status, support both "On Hold" and "Blocked"
         column_map = {
             "backlog": "Backlog",
             "ready": "Ready",
             "in progress": "In Progress",
-            "blocked": "Blocked",
+            "blocked": ["On Hold", "Blocked"],  # Try On Hold first, then Blocked
             "done": "Done",
         }
 
-        target_list_name = column_map.get(column_name.lower(), column_name)
+        target_list_names = column_map.get(column_name.lower(), column_name)
+        # Convert to list if it's a single string
+        if isinstance(target_list_names, str):
+            target_list_names = [target_list_names]
 
         # Find target list using MCP call
         async with stdio_client(self._server_params) as (read, write):
@@ -368,19 +372,25 @@ class PlankaKanban(KanbanInterface):
 
                 # Debug logging
                 logger.info(
-                    f"Looking for list: '{target_list_name}' "
+                    f"Looking for list: {target_list_names} "
                     f"(from column_name: '{column_name}')"
                 )
                 logger.info(f"Available lists: {[lst['name'] for lst in lists]}")
 
                 target_list = None
-                for list_data in lists:
-                    if target_list_name.lower() in list_data["name"].lower():
-                        target_list = list_data
+                # Try each possible list name in order
+                for target_list_name in target_list_names:
+                    for list_data in lists:
+                        if target_list_name.lower() in list_data["name"].lower():
+                            target_list = list_data
+                            break
+                    if target_list:
                         break
 
                 if not target_list:
-                    logger.error(f"Could not find list matching '{target_list_name}'")
+                    logger.error(
+                        f"Could not find list matching any of {target_list_names}"
+                    )
                     return False
 
                 # Move card

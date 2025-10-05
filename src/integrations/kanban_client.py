@@ -824,7 +824,7 @@ class KanbanClient:
             status = TaskStatus.DONE
         elif "PROGRESS" in list_name:
             status = TaskStatus.IN_PROGRESS
-        elif "BLOCKED" in list_name:
+        elif "BLOCKED" in list_name or "ON HOLD" in list_name:
             status = TaskStatus.BLOCKED
         else:
             status = TaskStatus.TODO
@@ -1024,7 +1024,7 @@ class KanbanClient:
         For example, "blocked" matches any list with "blocked" in the name.
         """
         status_to_keywords = {
-            "blocked": ["blocked"],
+            "blocked": ["on hold", "blocked"],  # Try "on hold" first, then "blocked"
             "in_progress": ["progress", "in progress"],
             "todo": ["todo", "to do", "backlog"],
             "done": ["done", "completed"],

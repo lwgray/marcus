@@ -315,6 +315,7 @@ class KanbanInterface(ABC):
             "in progress": TaskStatus.IN_PROGRESS,
             "in_progress": TaskStatus.IN_PROGRESS,
             "blocked": TaskStatus.BLOCKED,
+            "on hold": TaskStatus.BLOCKED,  # Treat "On Hold" same as "Blocked"
             "done": TaskStatus.DONE,
             "completed": TaskStatus.DONE,
             "closed": TaskStatus.DONE,
