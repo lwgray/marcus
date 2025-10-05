@@ -16,8 +16,8 @@
     "_stored_at": "2025-10-04T19:36:00.905626"
   },
   "active_project": {
-    "project_id": "87eadc12-2949-4f67-9ed7-010979d52f10",
-    "_stored_at": "2025-10-05T04:51:22.265355"
+    "project_id": "7481a562-393c-4edb-94b1-0a7a1a184fe9",
+    "_stored_at": "2025-10-05T05:48:41.409411"
   },
   "8cf382e2-b7c2-4767-93b4-7f245799d35c": {
     "id": "8cf382e2-b7c2-4767-93b4-7f245799d35c",
@@ -108,11 +108,251 @@
       "board_id": null
     },
     "created_at": "2025-10-05T04:51:22.262179",
-    "last_used": "2025-10-05T04:51:22.264559",
+    "last_used": "2025-10-05T05:36:50.029681",
     "tags": [
       "migrated",
       "default"
     ],
-    "_stored_at": "2025-10-05T04:51:22.264799"
+    "_stored_at": "2025-10-05T05:36:50.029993"
+  },
+  "b0315eaa-c3ce-457b-9a97-67123f86ca07": {
+    "id": "b0315eaa-c3ce-457b-9a97-67123f86ca07",
+    "name": "Default Project",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": null,
+      "board_id": null
+    },
+    "created_at": "2025-10-05T05:36:50.083609",
+    "last_used": "2025-10-05T05:43:58.955835",
+    "tags": [
+      "migrated",
+      "default"
+    ],
+    "_stored_at": "2025-10-05T05:43:58.956129"
+  },
+  "5fd5d1f8-a4a1-4eea-a932-2dd353ab57f2": {
+    "id": "5fd5d1f8-a4a1-4eea-a932-2dd353ab57f2",
+    "name": "Default Project",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": null,
+      "board_id": null
+    },
+    "created_at": "2025-10-05T05:43:59.005653",
+    "last_used": "2025-10-05T05:43:59.008645",
+    "tags": [
+      "migrated",
+      "default"
+    ],
+    "_stored_at": "2025-10-05T05:43:59.008936"
+  },
+  "1342b62f-9c0a-48fc-be1d-8051ecd6e94e": {
+    "id": "1342b62f-9c0a-48fc-be1d-8051ecd6e94e",
+    "name": "Default Project",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": null,
+      "board_id": null
+    },
+    "created_at": "2025-10-05T05:45:32.231285",
+    "last_used": "2025-10-05T05:45:32.234867",
+    "tags": [
+      "migrated",
+      "default"
+    ],
+    "_stored_at": "2025-10-05T05:45:32.235120"
+  },
+  "7e8b0675-b70d-47c2-8c0f-f6af60daa02d": {
+    "id": "7e8b0675-b70d-47c2-8c0f-f6af60daa02d",
+    "name": "Default Project",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": null,
+      "board_id": null
+    },
+    "created_at": "2025-10-05T05:45:57.918581",
+    "last_used": "2025-10-05T05:45:57.922027",
+    "tags": [
+      "migrated",
+      "default"
+    ],
+    "_stored_at": "2025-10-05T05:45:57.922252"
+  },
+  "12dad63a-9c03-44ec-9e36-d9a391d43efe": {
+    "id": "12dad63a-9c03-44ec-9e36-d9a391d43efe",
+    "name": "Default Project",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": null,
+      "board_id": null
+    },
+    "created_at": "2025-10-05T05:46:24.338308",
+    "last_used": "2025-10-05T05:46:24.341516",
+    "tags": [
+      "migrated",
+      "default"
+    ],
+    "_stored_at": "2025-10-05T05:46:24.341788"
+  },
+  "0bea40a9-e3f5-4bfd-9367-d39b53fec232": {
+    "id": "0bea40a9-e3f5-4bfd-9367-d39b53fec232",
+    "name": "Default Project",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": null,
+      "board_id": null
+    },
+    "created_at": "2025-10-05T05:46:48.820109",
+    "last_used": "2025-10-05T05:46:48.823464",
+    "tags": [
+      "migrated",
+      "default"
+    ],
+    "_stored_at": "2025-10-05T05:46:48.823733"
+  },
+  "64908c30-5365-4ab6-822c-eef25ab28ed4": {
+    "id": "64908c30-5365-4ab6-822c-eef25ab28ed4",
+    "name": "Default Project",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": null,
+      "board_id": null
+    },
+    "created_at": "2025-10-05T05:47:08.106153",
+    "last_used": "2025-10-05T05:47:37.219035",
+    "tags": [
+      "migrated",
+      "default"
+    ],
+    "_stored_at": "2025-10-05T05:47:37.219547"
+  },
+  "577c14b8-ad74-4f50-a154-58544c65a852": {
+    "id": "577c14b8-ad74-4f50-a154-58544c65a852",
+    "name": "Default Project",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": null,
+      "board_id": null
+    },
+    "created_at": "2025-10-05T05:47:37.223968",
+    "last_used": "2025-10-05T05:48:41.401199",
+    "tags": [
+      "migrated",
+      "default"
+    ],
+    "_stored_at": "2025-10-05T05:48:41.401507"
+  },
+  "488c44dd-978a-4c3d-abd7-dad274e9dd04": {
+    "id": "488c44dd-978a-4c3d-abd7-dad274e9dd04",
+    "name": "1st Project",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": "1612478574885864456",
+      "board_id": "1612478920202912778"
+    },
+    "created_at": "2025-10-05T05:48:41.393839",
+    "last_used": "2025-10-05T05:48:41.393851",
+    "tags": [
+      "discovered",
+      "planka"
+    ],
+    "_stored_at": "2025-10-05T05:48:41.394550"
+  },
+  "5fb0051d-bb7e-4347-9c10-7421cb959709": {
+    "id": "5fb0051d-bb7e-4347-9c10-7421cb959709",
+    "name": "test",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": "1612725664018859025",
+      "board_id": "1612727100878357523"
+    },
+    "created_at": "2025-10-05T05:48:41.395342",
+    "last_used": "2025-10-05T05:48:41.395344",
+    "tags": [
+      "discovered",
+      "planka"
+    ],
+    "_stored_at": "2025-10-05T05:48:41.395685"
+  },
+  "3074cfb4-3f3d-4a79-b2a6-d1bede56274f": {
+    "id": "3074cfb4-3f3d-4a79-b2a6-d1bede56274f",
+    "name": "Test Project 1759473511727",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": "1612977583782102526",
+      "board_id": "1612977583882765824"
+    },
+    "created_at": "2025-10-05T05:48:41.396289",
+    "last_used": "2025-10-05T05:48:41.396290",
+    "tags": [
+      "discovered",
+      "planka"
+    ],
+    "_stored_at": "2025-10-05T05:48:41.396617"
+  },
+  "5e240ee3-a263-4cd7-89d7-9c431657a997": {
+    "id": "5e240ee3-a263-4cd7-89d7-9c431657a997",
+    "name": "Marcus Test 68967",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": "1612979598876739095",
+      "board_id": "1612979599010956825"
+    },
+    "created_at": "2025-10-05T05:48:41.397189",
+    "last_used": "2025-10-05T05:48:41.397191",
+    "tags": [
+      "discovered",
+      "planka"
+    ],
+    "_stored_at": "2025-10-05T05:48:41.397509"
+  },
+  "1f2051b2-b6c4-4184-94dd-4dc9773a91b0": {
+    "id": "1f2051b2-b6c4-4184-94dd-4dc9773a91b0",
+    "name": "Marcus E2E Test 72204",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": "1612984214901229150",
+      "board_id": "1612984215069001312"
+    },
+    "created_at": "2025-10-05T05:48:41.398124",
+    "last_used": "2025-10-05T05:48:41.398125",
+    "tags": [
+      "discovered",
+      "planka"
+    ],
+    "_stored_at": "2025-10-05T05:48:41.398411"
+  },
+  "c1478dc5-f3c3-46a9-9189-e40ab5310b89": {
+    "id": "c1478dc5-f3c3-46a9-9189-e40ab5310b89",
+    "name": "Test Auto Project",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": "1612990042869859959",
+      "board_id": "1612990043087963769"
+    },
+    "created_at": "2025-10-05T05:48:41.398968",
+    "last_used": "2025-10-05T05:48:41.398968",
+    "tags": [
+      "discovered",
+      "planka"
+    ],
+    "_stored_at": "2025-10-05T05:48:41.399242"
+  },
+  "7481a562-393c-4edb-94b1-0a7a1a184fe9": {
+    "id": "7481a562-393c-4edb-94b1-0a7a1a184fe9",
+    "name": "Default Project",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": null,
+      "board_id": null
+    },
+    "created_at": "2025-10-05T05:48:41.405331",
+    "last_used": "2025-10-05T05:48:41.408420",
+    "tags": [
+      "migrated",
+      "default"
+    ],
+    "_stored_at": "2025-10-05T05:48:41.408672"
   }
 }
