@@ -769,13 +769,12 @@ async def create_project_from_natural_language(
         if options is None:
             options = {}
 
-        # Validate required parameters (skip description for select_project mode)
-        if options.get("mode") != "select_project":
-            if not description or not description.strip():
-                return {
-                    "success": False,
-                    "error": "Description is required and cannot be empty",
-                }
+        # Validate required parameters
+        if not description or not description.strip():
+            return {
+                "success": False,
+                "error": "Description is required and cannot be empty",
+            }
 
         if not project_name or not project_name.strip():
             return {
@@ -788,110 +787,8 @@ async def create_project_from_natural_language(
             raise ValueError("State parameter is required")
 
         # PHASE 1: PROJECT DISCOVERY
-        # Check if mode is "select_project" → just switch context, no task creation
-        if options.get("mode") == "select_project":
-            logger.info(f"Mode 'select_project' - selecting project '{project_name}'")
-
-            # If explicit project_id provided, use it
-            if "project_id" in options and options["project_id"]:
-                try:
-                    await state.project_manager.switch_project(options["project_id"])
-                    state.kanban_client = (
-                        await state.project_manager.get_kanban_client()
-                    )
-
-                    # Get project details
-                    current = await state.project_registry.get_active_project()
-                    task_count = (
-                        len(state.project_tasks)
-                        if hasattr(state, "project_tasks")
-                        else 0
-                    )
-
-                    return {
-                        "success": True,
-                        "action": "selected_existing",
-                        "project": {
-                            "id": current.id,
-                            "name": current.name,
-                            "provider": current.provider,
-                            "task_count": task_count,
-                        },
-                        "message": f"Selected project '{current.name}' - ready to work",
-                    }
-                except Exception as e:
-                    return {
-                        "success": False,
-                        "error": f"Failed to select project: {str(e)}",
-                    }
-
-            # Otherwise, search by name
-            elif hasattr(state, "project_registry"):
-                discovery_result = await find_or_create_project(
-                    server=state,
-                    arguments={
-                        "project_name": project_name,
-                        "create_if_missing": False,
-                    },
-                )
-
-                if discovery_result["action"] == "found_existing":
-                    # Switch to the found project
-                    await state.project_manager.switch_project(
-                        discovery_result["project"]["id"]
-                    )
-                    state.kanban_client = (
-                        await state.project_manager.get_kanban_client()
-                    )
-
-                    # Add task count
-                    project_info = discovery_result["project"].copy()
-                    task_count = (
-                        len(state.project_tasks)
-                        if hasattr(state, "project_tasks")
-                        else 0
-                    )
-                    project_info["task_count"] = task_count
-
-                    return {
-                        "success": True,
-                        "action": "selected_existing",
-                        "project": project_info,
-                        "message": (
-                            f"Selected project '{discovery_result['project']['name']}' - "
-                            "ready to work"
-                        ),
-                    }
-
-                elif discovery_result["action"] == "found_similar":
-                    # Return suggestions
-                    return {
-                        "success": False,
-                        "action": "found_similar",
-                        "message": discovery_result["suggestion"],
-                        "matches": discovery_result["matches"],
-                        "next_steps": discovery_result["next_steps"],
-                        "hint": "To select: specify exact project_id in options",
-                    }
-
-                else:  # not_found
-                    return {
-                        "success": False,
-                        "action": "not_found",
-                        "message": f"Project '{project_name}' not found",
-                        "hint": (
-                            "Use list_projects to see available projects, or "
-                            "create_project with mode='new_project'"
-                        ),
-                    }
-            else:
-                return {
-                    "success": False,
-                    "error": "ProjectRegistry not available",
-                }
-
         # Check if user explicitly provided project_id → use existing project
-        elif "project_id" in options and options["project_id"]:
+        if "project_id" in options and options["project_id"]:
             logger.info(f"Using existing project: {options['project_id']}")
             try:
                 # Switch to the specified project

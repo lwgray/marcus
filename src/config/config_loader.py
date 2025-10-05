@@ -318,6 +318,29 @@ class ConfigLoader:
                 f"Migration complete. Created default project with ID: {default_project_id}"
             )
 
+        # Clean up stale fields from root config (applies to all configs)
+        if self._config:
+            # Migrate project_name to default_project_name if it exists
+            if (
+                "project_name" in self._config
+                and "default_project_name" not in self._config
+            ):
+                self._config["default_project_name"] = self._config["project_name"]
+                logger.info(
+                    f"Migrated project_name to default_project_name: {self._config['project_name']}"
+                )
+
+            # Remove stale runtime state fields
+            stale_fields = ["project_id", "board_id", "project_name", "board_name"]
+            removed_fields = []
+            for field in stale_fields:
+                if field in self._config:
+                    del self._config[field]
+                    removed_fields.append(field)
+
+            if removed_fields:
+                logger.info(f"Removed stale config fields: {', '.join(removed_fields)}")
+
     def is_multi_project_mode(self) -> bool:
         """Check if config is in multi-project mode"""
         return bool(self._config is not None and "projects" in self._config)

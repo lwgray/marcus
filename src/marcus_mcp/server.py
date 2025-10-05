@@ -417,6 +417,29 @@ class MarcusServer:
         # Initialize project management
         await self.project_manager.initialize()
 
+        # Auto-select default project if configured
+        default_project_name = self.config.get("default_project_name")
+        if default_project_name:
+            logger.info(f"Auto-selecting default project: {default_project_name}")
+            try:
+                from .tools.project_management import select_project
+
+                result = await select_project(
+                    self, {"project_name": default_project_name}
+                )
+                if result.get("success"):
+                    logger.info(
+                        f"Successfully selected default project: {default_project_name}"
+                    )
+                else:
+                    logger.warning(
+                        f"Could not select default project '{default_project_name}': {result.get('error', result.get('message'))}"
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to auto-select default project '{default_project_name}': {e}"
+                )
+
         # CRITICAL: Force creation of all locks in the current event loop
         # This prevents "lock is bound to a different event loop" errors
         _ = self.assignment_lock  # Force lock creation
@@ -1139,6 +1162,19 @@ class MarcusServer:
                 from .tools.project_management import list_projects as impl
 
                 return await impl(server, {})
+
+        if "select_project" in allowed_tools:
+
+            @app.tool()  # type: ignore[misc]
+            async def select_project(
+                project_name: Optional[str] = None, project_id: Optional[str] = None
+            ) -> Dict[str, Any]:
+                """Select an existing project to work on."""
+                from .tools.project_management import select_project as impl
+
+                return await impl(
+                    server, {"project_name": project_name, "project_id": project_id}
+                )
 
         if "switch_project" in allowed_tools:
 

@@ -90,20 +90,18 @@ create_project(
 3. Registers it as a separate project
 4. Switches to the new project context
 
-### Scenario 4: Agents Working on Existing Projects (Select Project Mode)
+### Scenario 4: Working on Existing Projects Without Creating Tasks
 
-**For Autonomous Agents:** If you're an AI agent or worker that wants to work on an existing project's backlog without creating new tasks:
+**Two Workflows:**
+
+#### Workflow A: Work on Existing Project (List → Select)
 
 ```python
 # Step 1: List available projects
 projects = list_projects()
 
 # Step 2: Select a project to work on (NO task creation)
-result = create_project(
-    description="",  # Not required in select_project mode
-    project_name="UserAuthAPI",
-    options={"mode": "select_project"}
-)
+result = select_project(project_name="UserAuthAPI")
 
 # Result:
 {
@@ -122,34 +120,56 @@ result = create_project(
 task = request_next_task(agent_id="my-agent")
 ```
 
-**What happens:**
-1. Marcus searches for "UserAuthAPI"
-2. Finds it and switches context
-3. **Does NOT create any new tasks**
-4. Returns project info with existing task count
-5. Agent can now request tasks from the backlog
-
-**Why use `select_project` mode?**
-- ✅ Agents working on existing backlogs
-- ✅ No task creation needed
-- ✅ Just switch context and start working
-- ✅ Simpler than `switch_project` (includes discovery)
-
-**Alternative: Select by ID (most reliable for agents)**
+**Alternative: Select by ID (most reliable)**
 ```python
-result = create_project(
-    description="",
-    project_name="",  # Can be empty when using project_id
-    options={
-        "mode": "select_project",
-        "project_id": "proj-123"  # Exact ID
-    }
+result = select_project(project_id="proj-123")
+```
+
+#### Workflow B: Create New Project (Just Create)
+
+```python
+# No list/select needed - just create
+create_project(
+    description="Build a REST API for user authentication",
+    project_name="UserAuthAPI"
 )
 ```
 
-See [examples/agent_select_project.py](../../examples/agent_select_project.py) for complete agent workflow.
+**Why use `select_project`?**
+- ✅ Work on existing backlogs
+- ✅ No task creation
+- ✅ Clear intent (selection vs creation)
+- ✅ Includes fuzzy matching and suggestions
 
-### Scenario 5: Handling Fuzzy Matches
+### Scenario 5: Auto-Selecting Projects at Startup (Multi-Agent Deployments)
+
+**For teams running 50+ agents:** Configure a default project in `config_marcus.json` to auto-select on startup:
+
+```json
+{
+  "default_project_name": "MainProject",
+  "planka": {
+    "base_url": "http://localhost:3333",
+    "email": "user@example.com",
+    "password": "password"  # pragma: allowlist secret
+  },
+  "ai": {...}
+}
+```
+
+**What happens:**
+1. Marcus starts
+2. Auto-runs `select_project(project_name="MainProject")`
+3. All agents immediately have the right project context
+4. No manual selection needed
+
+**Benefits:**
+- ✅ One config for all agents
+- ✅ Consistent project context
+- ✅ Optional (won't break existing setups)
+- ✅ Clean separation: settings vs runtime state
+
+### Scenario 6: Handling Fuzzy Matches
 
 If Marcus finds similar (but not exact) project names, it will ask for clarification:
 

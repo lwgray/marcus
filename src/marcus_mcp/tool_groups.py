@@ -15,6 +15,7 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "authenticate",
         "get_project_status",
         "list_projects",
+        "select_project",
         "switch_project",
         "get_current_project",
         "create_project",  # NLP project creation
@@ -44,6 +45,7 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         # Project management
         "get_project_status",
         "list_projects",
+        "select_project",
         "switch_project",
         "get_current_project",
         "add_project",

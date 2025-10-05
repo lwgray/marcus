@@ -453,6 +453,114 @@ def calculate_similarity(query: str, target: str) -> float:
     return len(common_words) / len(query_words)
 
 
+async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Select an existing project to work on.
+
+    This is the primary tool for choosing which project to work on.
+    It searches for projects by name or ID and switches context.
+
+    Parameters
+    ----------
+    server : Any
+        MarcusServer instance
+    arguments : Dict[str, Any]
+        - project_name: Name to search for (optional if project_id provided)
+        - project_id: Exact project ID (optional if project_name provided)
+
+    Returns
+    -------
+    Dict[str, Any]
+        Success status and project details with task count
+
+    Examples
+    --------
+    >>> # Select by name
+    >>> result = await select_project(server, {"project_name": "MyAPI"})
+
+    >>> # Select by ID
+    >>> result = await select_project(server, {"project_id": "proj-123"})
+    """
+    project_name = arguments.get("project_name")
+    project_id = arguments.get("project_id")
+
+    if not project_name and not project_id:
+        return {
+            "success": False,
+            "error": "Either project_name or project_id must be provided",
+        }
+
+    # If project_id provided, use it directly
+    if project_id:
+        try:
+            await server.project_manager.switch_project(project_id)
+            server.kanban_client = await server.project_manager.get_kanban_client()
+
+            # Get project details
+            current = await server.project_registry.get_active_project()
+            task_count = (
+                len(server.project_tasks) if hasattr(server, "project_tasks") else 0
+            )
+
+            return {
+                "success": True,
+                "action": "selected_existing",
+                "project": {
+                    "id": current.id,
+                    "name": current.name,
+                    "provider": current.provider,
+                    "task_count": task_count,
+                },
+                "message": f"Selected project '{current.name}' - ready to work",
+            }
+        except Exception as e:
+            return {"success": False, "error": f"Failed to select project: {str(e)}"}
+
+    # Otherwise, search by name using find_or_create_project
+    discovery_result = await find_or_create_project(
+        server=server,
+        arguments={"project_name": project_name, "create_if_missing": False},
+    )
+
+    if discovery_result["action"] == "found_existing":
+        # Switch to the found project
+        await server.project_manager.switch_project(discovery_result["project"]["id"])
+        server.kanban_client = await server.project_manager.get_kanban_client()
+
+        # Add task count
+        project_info = discovery_result["project"].copy()
+        task_count = (
+            len(server.project_tasks) if hasattr(server, "project_tasks") else 0
+        )
+        project_info["task_count"] = task_count
+
+        return {
+            "success": True,
+            "action": "selected_existing",
+            "project": project_info,
+            "message": f"Selected project '{discovery_result['project']['name']}' - ready to work",
+        }
+
+    elif discovery_result["action"] == "found_similar":
+        # Return suggestions
+        return {
+            "success": False,
+            "action": "found_similar",
+            "message": discovery_result["suggestion"],
+            "matches": discovery_result["matches"],
+            "next_steps": discovery_result["next_steps"],
+            "hint": "To select: use exact project_name or provide project_id",
+        }
+
+    else:  # not_found
+        return {
+            "success": False,
+            "action": "not_found",
+            "message": f"Project '{project_name}' not found",
+            "hint": "Use list_projects to see available projects, or create_project to create a new one",
+        }
+
+
 async def find_or_create_project(
     server: Any, arguments: Dict[str, Any]
 ) -> Dict[str, Any]:

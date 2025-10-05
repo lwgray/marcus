@@ -49,7 +49,7 @@ async def create_project(
 
             Project Selection:
             - project_id (str): Explicit project ID to use (skips discovery)
-            - mode (str): Creation mode - "auto" (default), "new_project", "add_feature"
+            - mode (str): Creation mode - "auto" (default), "new_project"
 
             Provider Config:
             - provider (str): Kanban provider - "planka" (default), "github", "linear"
