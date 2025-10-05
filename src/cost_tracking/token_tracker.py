@@ -1,5 +1,5 @@
 """
-Token-based Cost Tracking for Marcus AI Usage
+Token-based Cost Tracking for Marcus AI Usage.
 
 Tracks real-time AI token consumption, spend rates, and project costs
 based on actual usage rather than naive hourly estimates.
@@ -29,8 +29,10 @@ class TokenTracker:
         """
         Initialize token tracker.
 
-        Args:
-            cost_per_1k_tokens: Cost per 1000 tokens (default $0.03 for Claude)
+        Parameters
+        ----------
+        cost_per_1k_tokens : float
+            Cost per 1000 tokens (default $0.03 for Claude)
         """
         self.cost_per_1k_tokens = cost_per_1k_tokens
 
@@ -94,14 +96,22 @@ class TokenTracker:
         """
         Track token usage for a project.
 
-        Args:
-            project_id: Project identifier
-            input_tokens: Number of input tokens
-            output_tokens: Number of output tokens
-            model: AI model used
-            metadata: Additional context (task_id, agent_id, etc.)
+        Parameters
+        ----------
+        project_id : str
+            Project identifier
+        input_tokens : int
+            Number of input tokens
+        output_tokens : int
+            Number of output tokens
+        model : str
+            AI model used
+        metadata : Optional[Dict[str, Any]]
+            Additional context (task_id, agent_id, etc.)
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Dict with usage stats and cost info
         """
         total_tokens = input_tokens + output_tokens
@@ -140,7 +150,14 @@ class TokenTracker:
         """
         Get comprehensive stats for a project.
 
-        Returns:
+        Parameters
+        ----------
+        project_id : str
+            Project identifier
+
+        Returns
+        -------
+        Dict[str, Any]
             Dict containing:
             - total_tokens: Total tokens used
             - total_cost: Total cost incurred
@@ -310,10 +327,11 @@ class TokenTracker:
                         avg_rate = sum(self.spend_rates[project_id][-10:]) / 10
                         if current_rate > avg_rate * 2 and current_rate > 10000:
                             # Alert: Spending spike detected
-                            print(
-                                f"⚠️ Token spend spike for {project_id}: {current_rate:.0f} tokens/hour",
-                                file=sys.stderr,
+                            msg = (
+                                f"⚠️ Token spend spike for {project_id}: "
+                                f"{current_rate:.0f} tokens/hour"
                             )
+                            print(msg, file=sys.stderr)
 
                 # Periodic save
                 self.save_data()

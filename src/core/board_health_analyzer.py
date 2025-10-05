@@ -204,7 +204,10 @@ class BoardHealthAnalyzer:
             issue = HealthIssue(
                 type=HealthIssueType.SKILL_MISMATCH,
                 severity=severity,
-                description=f"{len(unmatchable_tasks)} tasks cannot be assigned due to skill mismatches",
+                description=(
+                    f"{len(unmatchable_tasks)} tasks cannot be assigned "
+                    f"due to skill mismatches"
+                ),
                 affected_tasks=[t.id for t in unmatchable_tasks],
                 affected_agents=[],
                 recommendations=[
@@ -267,7 +270,10 @@ class BoardHealthAnalyzer:
             issue = HealthIssue(
                 type=HealthIssueType.CIRCULAR_DEPENDENCY,
                 severity=IssueSeverity.CRITICAL,
-                description=f"Circular dependency detected: {' -> '.join(cycle)} -> {cycle[0]}",
+                description=(
+                    f"Circular dependency detected: "
+                    f"{' -> '.join(cycle)} -> {cycle[0]}"
+                ),
                 affected_tasks=cycle,
                 affected_agents=[],
                 recommendations=[
@@ -441,7 +447,10 @@ class BoardHealthAnalyzer:
                 severity=(
                     IssueSeverity.HIGH if len(stale_tasks) > 5 else IssueSeverity.MEDIUM
                 ),
-                description=f"{len(stale_tasks)} tasks haven't progressed in over {self.stale_task_days} days",
+                description=(
+                    f"{len(stale_tasks)} tasks haven't progressed in over "
+                    f"{self.stale_task_days} days"
+                ),
                 affected_tasks=[str(t["task_id"]) for t in stale_tasks],
                 affected_agents=list(
                     set(str(t["assigned_to"]) for t in stale_tasks if t["assigned_to"])
