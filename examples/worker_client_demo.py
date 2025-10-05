@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Demo script showing how to use WorkerMCPClient with stdio connections.
+Demo script showing how to use Inspector with stdio connections.
 
 This demonstrates:
 1. Connecting via stdio (spawns separate Marcus instance for isolated testing)
 
-Note: HTTP connections are available via connect_to_marcus_http() but require
+Note: HTTP connections are available via Inspector(connection_type='http') but require
       a Marcus server configured for external HTTP access with proper CORS settings.
 """
 
@@ -19,7 +19,7 @@ from typing import Any
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.worker.client import WorkerMCPClient  # noqa: E402
+from src.worker.new_client import Inspector  # noqa: E402
 
 
 def pretty_print_result(label: str, result: Any) -> None:
@@ -48,17 +48,17 @@ async def demo_stdio_connection() -> None:
     - You want to test without affecting the main Marcus server
     - You're running automated tests or development workflows
 
-    This is the RECOMMENDED way to test WorkerMCPClient!
+    This is the RECOMMENDED way to test Inspector!
     """
     print("\n" + "=" * 60)
     print("DEMO: STDIO Connection (Separate Test Instance)")
     print("=" * 60)
 
-    client = WorkerMCPClient()
+    client = Inspector(connection_type="stdio")
 
     try:
         print("\n📡 Starting separate Marcus instance for testing...")
-        async with client.connect_to_marcus() as session:
+        async with client.connect() as session:
             # First authenticate as admin to get access to ALL MCP tools
             # Options: "observer", "developer", "agent", "admin"
             print("\n🔐 Authenticating as admin...")
@@ -124,11 +124,11 @@ async def demo_http_connection() -> None:
     print("DEMO 2: HTTP Connection (Running Instance)")
     print("=" * 60)
 
-    client = WorkerMCPClient()
+    client = Inspector(connection_type="http")
 
     try:
-        # Connect to the worker agent port (4299)
-        async with client.connect_to_marcus_http("http://localhost:4299/mcp"):
+        # Connect to the main endpoint (4298 - recommended)
+        async with client.connect(url="http://localhost:4298/mcp"):
             # Register agent
             result = await client.register_agent(
                 agent_id="http-worker-1",
@@ -154,7 +154,7 @@ async def demo_http_connection() -> None:
 
 async def main() -> None:
     """Run the stdio demo."""
-    print("\n🚀 WorkerMCPClient Connection Demo")
+    print("\n🚀 Inspector Connection Demo")
     print("=" * 60)
     print("\nThis demo shows how to programmatically test Marcus")
     print("by spawning a separate instance via stdio.")
@@ -164,7 +164,7 @@ async def main() -> None:
 
     print("\n" + "=" * 60)
     print("✅ Demo complete!")
-    print("\n💡 Tip: For HTTP connections, use connect_to_marcus_http()")
+    print("\n💡 Tip: For HTTP connections, use Inspector(connection_type='http')")
     print("   But you'll need a Marcus server with external HTTP access configured.")
     print("=" * 60)
 

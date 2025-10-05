@@ -22,7 +22,7 @@ from typing import Any
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.worker.client import WorkerMCPClient  # noqa: E402
+from src.worker.new_client import Inspector  # noqa: E402
 
 
 def pretty_print(label: str, result: Any) -> None:
@@ -54,10 +54,10 @@ async def agent_workflow() -> None:
     print("AGENT WORKFLOW: Select Existing Project")
     print("=" * 60)
 
-    client = WorkerMCPClient()
+    client = Inspector(connection_type="stdio")
 
     try:
-        async with client.connect_to_marcus() as session:
+        async with client.connect() as session:
             # Step 1: Authenticate as admin for full access
             print("\n🔐 Step 1: Authenticating as admin...")
             await session.call_tool(
@@ -164,7 +164,7 @@ async def agent_workflow() -> None:
 
 async def select_project_by_id_example() -> None:
     """
-    Example: Select project using explicit project ID.
+    Select project using explicit project ID.
 
     Use this when you know the exact project ID you want to work on.
     This is the most reliable method for agents.
@@ -173,10 +173,10 @@ async def select_project_by_id_example() -> None:
     print("EXAMPLE: Select Project by ID")
     print("=" * 60)
 
-    client = WorkerMCPClient()
+    client = Inspector(connection_type="stdio")
 
     try:
-        async with client.connect_to_marcus() as session:
+        async with client.connect() as session:
             # Authenticate
             await session.call_tool(
                 "authenticate",

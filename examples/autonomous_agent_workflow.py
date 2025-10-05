@@ -15,15 +15,15 @@ This simulates task completion without actually implementing the work.
 import asyncio
 import json
 import sys
-from pathlib import Path
-from typing import Any, Dict, List
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.worker.client import WorkerMCPClient  # noqa: E402
+from src.worker.new_client import Inspector  # noqa: E402
 
 
 def pretty_print(label: str, result: Any) -> None:
@@ -43,19 +43,21 @@ def pretty_print(label: str, result: Any) -> None:
 class TaskTracker:
     """Track completed and remaining tasks for final report."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.completed_tasks: List[Dict[str, Any]] = []
         self.start_time = datetime.now()
-        self.end_time = None
+        self.end_time: Optional[datetime] = None
 
     def add_completed_task(self, task_id: str, title: str, order: int) -> None:
         """Record a completed task."""
-        self.completed_tasks.append({
-            "order": order,
-            "task_id": task_id,
-            "title": title,
-            "completed_at": datetime.now().isoformat(),
-        })
+        self.completed_tasks.append(
+            {
+                "order": order,
+                "task_id": task_id,
+                "title": title,
+                "completed_at": datetime.now().isoformat(),
+            }
+        )
 
     def finalize(self, remaining_count: int) -> None:
         """Mark the workflow as complete."""
@@ -63,6 +65,8 @@ class TaskTracker:
 
     def generate_report(self, remaining_count: int) -> str:
         """Generate a final report of the agent's work."""
+        if self.end_time is None:
+            raise ValueError("Cannot generate report before workflow is finalized")
         duration = (self.end_time - self.start_time).total_seconds()
 
         report = "\n" + "=" * 70 + "\n"
@@ -119,12 +123,12 @@ async def autonomous_workflow() -> None:
     print("4. Generate a final report")
     print("\n" + "=" * 70)
 
-    client = WorkerMCPClient()
+    client = Inspector(connection_type="stdio")
     tracker = TaskTracker()
     agent_id = "autonomous-agent-1"
 
     try:
-        async with client.connect_to_marcus() as session:
+        async with client.connect() as session:
             # Step 1: Authenticate as admin
             print("\n🔐 Step 1: Authenticating as admin...")
             await session.call_tool(
@@ -159,7 +163,14 @@ async def autonomous_workflow() -> None:
             pretty_print("✅ Project created:", create_result)
 
             # Parse project creation result
-            create_data = json.loads(create_result.content[0].text)
+            if not create_result.content:
+                print("\n❌ Failed to create project: No response content")
+                return
+            content_item = create_result.content[0]
+            if not hasattr(content_item, "text"):
+                print("\n❌ Failed to create project: Invalid response format")
+                return
+            create_data = json.loads(content_item.text)
             if not create_data.get("success"):
                 print(f"\n❌ Failed to create project: {create_data.get('error')}")
                 return
@@ -195,11 +206,7 @@ async def autonomous_workflow() -> None:
             while True:
                 # Request next task
                 print(f"\n📋 Requesting task #{task_count + 1}...")
-                task_result = await client.request_next_task(agent_id)
-
-                # Check if we got a task
-                task_text = task_result.content[0].text
-                task_data = json.loads(task_text)
+                task_data = await client.request_next_task(agent_id)
 
                 if not task_data.get("task"):
                     print("\n✅ No more tasks available!")

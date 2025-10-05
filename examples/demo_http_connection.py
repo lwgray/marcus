@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Demo: WorkerMCPClient with HTTP connection (connects to running Marcus instance).
+Demo: Inspector with HTTP connection (connects to running Marcus instance).
 
 This demonstrates how to connect to an existing Marcus HTTP server,
 allowing multiple clients to share the same server instance.
@@ -16,7 +16,7 @@ from typing import Any
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.worker.client import WorkerMCPClient  # noqa: E402
+from src.worker.new_client import Inspector  # noqa: E402
 
 
 def pretty_print_result(label: str, result: Any) -> None:
@@ -52,20 +52,20 @@ async def main() -> None:
       - http://localhost:4300/mcp (analytics endpoint)
     """
     print("\n" + "=" * 70)
-    print("🚀 WorkerMCPClient HTTP Connection Demo")
+    print("🚀 Inspector HTTP Connection Demo")
     print("=" * 70)
     print("\nConnecting to running Marcus HTTP server...")
     print("Note: Make sure Marcus server is running in HTTP mode!\n")
 
-    client = WorkerMCPClient()
+    client = Inspector(connection_type="http")
 
     # You can customize the URL here
-    url = "http://localhost:4299/mcp"  # Agent endpoint
-    # url = "http://localhost:4298/mcp"  # Main/human endpoint
+    url = "http://localhost:4298/mcp"  # Main endpoint (recommended)
+    # url = "http://localhost:4299/mcp"  # Agent endpoint (deprecated)
     # url = "http://localhost:4300/mcp"  # Analytics endpoint
 
     try:
-        async with client.connect_to_marcus_http(url) as session:
+        async with client.connect(url=url) as session:
             # First authenticate as admin to get access to ALL MCP tools
             print("🔐 Authenticating as admin...")
             await session.call_tool(

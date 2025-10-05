@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Demo: WorkerMCPClient with STDIO connection (spawns separate Marcus instance).
+Demo: Inspector with STDIO connection (spawns separate Marcus instance).
 
 This demonstrates how to programmatically test Marcus by spawning an isolated
 instance via stdio for testing without affecting the main Marcus server.
@@ -16,7 +16,7 @@ from typing import Any
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.worker.client import WorkerMCPClient  # noqa: E402
+from src.worker.new_client import Inspector  # noqa: E402
 
 
 def pretty_print_result(label: str, result: Any) -> None:
@@ -45,18 +45,18 @@ async def main() -> None:
     - You want to test without affecting the main Marcus server
     - You're running automated tests or development workflows
 
-    This is the RECOMMENDED way to test WorkerMCPClient!
+    This is the RECOMMENDED way to test Inspector!
     """
     print("\n" + "=" * 70)
-    print("🚀 WorkerMCPClient STDIO Connection Demo")
+    print("🚀 Inspector STDIO Connection Demo")
     print("=" * 70)
     print("\nSpawning separate Marcus instance for isolated testing...")
     print("Note: This may take 10-15 seconds to initialize...\n")
 
-    client = WorkerMCPClient()
+    client = Inspector(connection_type="stdio")
 
     try:
-        async with client.connect_to_marcus() as session:
+        async with client.connect() as session:
             # First authenticate as admin to get access to ALL tools
             # Options: "observer", "developer", "agent", "admin"
             print("🔐 Authenticating as admin...")
