@@ -11,6 +11,9 @@ python-dotenv>=1.0.0
 # Data handling (required by MCP)
 pydantic>=2.0.0
 
+# Experiment tracking
+mlflow>=2.10.0
+
 # Development tools
 pytest>=7.4.0
 pytest-asyncio>=0.21.0

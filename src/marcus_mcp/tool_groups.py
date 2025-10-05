@@ -33,6 +33,7 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "report_task_progress",
         "report_blocker",
         "get_task_context",
+        "get_all_board_tasks",  # Fetch all tasks from a board for validation
         "log_decision",
         "log_artifact",
         "check_task_dependencies",
@@ -68,6 +69,7 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "report_task_progress",
         "report_blocker",
         "get_task_context",
+        "get_all_board_tasks",
         "check_task_dependencies",
         # Context and artifacts
         "log_decision",

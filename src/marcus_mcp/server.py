@@ -1001,6 +1001,20 @@ class MarcusServer:
             )
 
         @self._fastmcp.tool()  # type: ignore[misc]
+        async def get_all_board_tasks(
+            board_id: str,
+            project_id: str
+        ) -> Dict[str, Any]:
+            """Get all tasks from a specific Planka board for validation/inspection."""
+            from .tools.task import get_all_board_tasks as impl
+
+            return await impl(
+                board_id=board_id,
+                project_id=project_id,
+                state=server,
+            )
+
+        @self._fastmcp.tool()  # type: ignore[misc]
         async def get_project_status() -> Dict[str, Any]:
             """Get current project status and metrics."""
             from .tools.project import get_project_status as impl

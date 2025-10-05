@@ -174,9 +174,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                             project_name=project_name,
                             options=options,
                         )
-                        proj_id = project_config.provider_config.get(
-                            "project_id"
-                        )
+                        proj_id = project_config.provider_config.get("project_id")
                         bd_id = project_config.provider_config.get("board_id")
                         logger.info(
                             f"Created new Planka project: "

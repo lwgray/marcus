@@ -1351,3 +1351,59 @@ async def find_optimal_task_basic(
             state._active_operations.add(f"task_assignment_{best_task.id}")
 
     return best_task
+
+
+async def get_all_board_tasks(
+    board_id: str,
+    project_id: str,
+    state: Any
+) -> Dict[str, Any]:
+    """
+    Get all tasks from a specific Planka board.
+
+    This tool fetches all tasks directly from a Planka board,
+    useful for validation and inspection purposes.
+
+    Parameters
+    ----------
+    board_id : str
+        The Planka board ID to fetch tasks from
+    project_id : str
+        The Planka project ID
+    state : Any
+        Marcus server state instance
+
+    Returns
+    -------
+    Dict[str, Any]
+        Dictionary containing:
+        - success: bool
+        - tasks: List of task dictionaries from Planka
+        - count: Number of tasks retrieved
+    """
+    try:
+        from src.integrations.providers.planka import PlankaKanbanProvider
+
+        provider = PlankaKanbanProvider(
+            board_id=board_id,
+            project_id=project_id
+        )
+
+        tasks = await provider.get_all_tasks()
+
+        return {
+            "success": True,
+            "tasks": tasks,
+            "count": len(tasks),
+            "board_id": board_id,
+            "project_id": project_id
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching board tasks: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "tasks": [],
+            "count": 0
+        }
