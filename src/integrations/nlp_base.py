@@ -1,5 +1,4 @@
-"""
-Base class for Natural Language task creation
+"""Base class for Natural Language task creation.
 
 Provides shared functionality for create_project and add_feature tools.
 """
@@ -34,9 +33,12 @@ class NaturalLanguageTaskCreator(ABC):
         """
         Initialize the base task creator.
 
-        Args:
-            kanban_client: Kanban board client with create_task method
-            ai_engine: Optional AI engine for enhanced processing
+        Parameters
+        ----------
+        kanban_client : Any
+            Kanban board client with create_task method
+        ai_engine : Any, optional
+            Optional AI engine for enhanced processing
         """
         self.kanban_client = kanban_client
         self.ai_engine = ai_engine
@@ -55,16 +57,24 @@ class NaturalLanguageTaskCreator(ABC):
 
         This is the main shared functionality between create_project and add_feature.
 
-        Args:
-            tasks: List of tasks to create
-            skip_validation: Skip dependency validation if True
-            update_dependencies: Update task dependencies with new IDs after creation
+        Parameters
+        ----------
+        tasks : List[Task]
+            List of tasks to create
+        skip_validation : bool
+            Skip dependency validation if True
+        update_dependencies : bool
+            Update task dependencies with new IDs after creation
 
-        Returns:
+        Returns
+        -------
+        List[Task]
             List of created tasks
 
-        Raises:
-            RuntimeError: If kanban client doesn't support task creation
+        Raises
+        ------
+        RuntimeError
+            If kanban client doesn't support task creation
         """
         # Validate dependencies if requested
         if not skip_validation:
@@ -168,10 +178,14 @@ class NaturalLanguageTaskCreator(ABC):
 
         This method can be overridden by subclasses for custom safety logic.
 
-        Args:
-            tasks: List of tasks to check
+        Parameters
+        ----------
+        tasks : List[Task]
+            List of tasks to check
 
-        Returns:
+        Returns
+        -------
+        List[Task]
             List of tasks with updated dependencies
         """
         # Import phase dependency enforcer
@@ -199,10 +213,14 @@ class NaturalLanguageTaskCreator(ABC):
         """
         Classify tasks by their type.
 
-        Args:
-            tasks: List of tasks to classify
+        Parameters
+        ----------
+        tasks : List[Task]
+            List of tasks to classify
 
-        Returns:
+        Returns
+        -------
+        Dict[TaskType, List[Task]]
             Dictionary mapping task types to lists of tasks
         """
         classified: Dict[TaskType, List[Task]] = {
@@ -221,10 +239,14 @@ class NaturalLanguageTaskCreator(ABC):
         """
         Classify tasks and return detailed classification info per task.
 
-        Args:
-            tasks: List of tasks to classify
+        Parameters
+        ----------
+        tasks : List[Task]
+            List of tasks to classify
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Dict[str, Any]]
             Dictionary mapping task IDs to classification details
         """
         from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
@@ -243,19 +265,19 @@ class NaturalLanguageTaskCreator(ABC):
         return results
 
     def get_tasks_by_type(self, tasks: List[Task], task_type: TaskType) -> List[Task]:
-        """Get all tasks of a specific type"""
+        """Get all tasks of a specific type."""
         return self.task_classifier.filter_by_type(tasks, task_type)
 
     def is_deployment_task(self, task: Task) -> bool:
-        """Check if task is deployment-related"""
+        """Check if task is deployment-related."""
         return self.task_classifier.is_type(task, TaskType.DEPLOYMENT)
 
     def is_implementation_task(self, task: Task) -> bool:
-        """Check if task is implementation-related"""
+        """Check if task is implementation-related."""
         return self.task_classifier.is_type(task, TaskType.IMPLEMENTATION)
 
     def is_testing_task(self, task: Task) -> bool:
-        """Check if task is testing-related"""
+        """Check if task is testing-related."""
         return self.task_classifier.is_type(task, TaskType.TESTING)
 
     @abstractmethod
@@ -267,11 +289,16 @@ class NaturalLanguageTaskCreator(ABC):
 
         This method must be implemented by subclasses.
 
-        Args:
-            description: Natural language description
-            **kwargs: Additional parameters specific to the implementation
+        Parameters
+        ----------
+        description : str
+            Natural language description
+        **kwargs : Any
+            Additional parameters specific to the implementation
 
-        Returns:
+        Returns
+        -------
+        List[Task]
             List of generated tasks
         """
         pass
@@ -280,14 +307,20 @@ class NaturalLanguageTaskCreator(ABC):
         self, description: str, apply_safety: bool = True, **kwargs: Any
     ) -> Dict[str, Any]:
         """
-        Main entry point for natural language task creation.
+        Create tasks from natural language description.
 
-        Args:
-            description: Natural language description
-            apply_safety: Whether to apply safety checks
-            **kwargs: Additional parameters for processing
+        Parameters
+        ----------
+        description : str
+            Natural language description
+        apply_safety : bool
+            Whether to apply safety checks
+        **kwargs : Any
+            Additional parameters for processing
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Dictionary with creation results
         """
         try:

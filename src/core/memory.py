@@ -1,5 +1,5 @@
 """
-Memory System for Marcus
+Memory System for Marcus.
 
 Multi-tier memory system that enables learning from past experiences and
 predictive task assignment. Inspired by cognitive memory models with working,
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TaskOutcome:
-    """Record of a task execution outcome"""
+    """Record of a task execution outcome."""
 
     task_id: str
     agent_id: str
@@ -36,7 +36,7 @@ class TaskOutcome:
 
     @property
     def estimation_accuracy(self) -> float:
-        """Calculate how accurate the time estimate was"""
+        """Calculate how accurate the time estimate was."""
         if self.estimated_hours == 0:
             return 0.0
         return min(self.estimated_hours, self.actual_hours) / max(
@@ -44,7 +44,7 @@ class TaskOutcome:
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for storage"""
+        """Convert to dictionary for storage."""
         return {
             "task_id": self.task_id,
             "agent_id": self.agent_id,
@@ -63,7 +63,7 @@ class TaskOutcome:
 
 @dataclass
 class AgentProfile:
-    """Learned profile of an agent's capabilities"""
+    """Learned profile of an agent's capabilities."""
 
     agent_id: str
     total_tasks: int = 0
@@ -77,14 +77,14 @@ class AgentProfile:
 
     @property
     def success_rate(self) -> float:
-        """Overall success rate"""
+        """Overall success rate."""
         if self.total_tasks == 0:
             return 0.0
         return self.successful_tasks / self.total_tasks
 
     @property
     def blockage_rate(self) -> float:
-        """Rate of encountering blockers"""
+        """Rate of encountering blockers."""
         if self.total_tasks == 0:
             return 0.0
         return self.blocked_tasks / self.total_tasks
@@ -92,7 +92,7 @@ class AgentProfile:
 
 @dataclass
 class TaskPattern:
-    """Learned pattern about task types"""
+    """Learned pattern about task types."""
 
     pattern_type: str
     task_labels: List[str]
@@ -120,9 +120,12 @@ class Memory:
         """
         Initialize the Memory system.
 
-        Args:
-            events: Optional Events system for integration
-            persistence: Optional Persistence for long-term storage
+        Parameters
+        ----------
+            events
+                Optional Events system for integration.
+            persistence
+                Optional Persistence for long-term storage.
         """
         self.events = events
         self.persistence = persistence
@@ -163,7 +166,7 @@ class Memory:
             asyncio.create_task(self._load_persisted_memory())
 
     async def _load_persisted_memory(self) -> None:
-        """Load memory from persistence"""
+        """Load memory from persistence."""
         try:
             # Load recent outcomes
             if self.persistence:
@@ -211,7 +214,7 @@ class Memory:
             logger.error(f"Failed to load persisted memory: {e}")
 
     async def record_task_start(self, agent_id: str, task: Task) -> None:
-        """Record that an agent started a task"""
+        """Record that an agent started a task."""
         # Update working memory
         self.working["active_tasks"][agent_id] = {
             "task": task,
@@ -239,7 +242,7 @@ class Memory:
         actual_hours: float,
         blockers: Optional[List[str]] = None,
     ) -> Optional[TaskOutcome]:
-        """Record task completion and learn from it"""
+        """Record task completion and learn from it."""
         # Get task info from working memory
         active_task = self.working["active_tasks"].get(agent_id, {})
         if not active_task or active_task["task"].id != task_id:
@@ -294,7 +297,7 @@ class Memory:
     async def _update_agent_profile(
         self, agent_id: str, outcome: TaskOutcome, task: Task
     ) -> None:
-        """Update agent's learned profile"""
+        """Update agent's learned profile."""
         if agent_id not in self.semantic["agent_profiles"]:
             self.semantic["agent_profiles"][agent_id] = AgentProfile(agent_id=agent_id)
 
@@ -339,7 +342,7 @@ class Memory:
             await self.persistence.store("agent_profiles", agent_id, profile.__dict__)
 
     async def _learn_task_patterns(self, outcome: TaskOutcome, task: Task) -> None:
-        """Learn patterns from task execution"""
+        """Learn patterns from task execution."""
         # Pattern key based on task labels
         if task.labels:
             pattern_key = "_".join(sorted(task.labels))
@@ -375,7 +378,8 @@ class Memory:
         """
         Predict likely outcome for agent-task combination.
 
-        Returns:
+        Returns
+        -------
             Dictionary with predictions:
             - success_probability: 0-1
             - estimated_duration: hours
@@ -436,7 +440,8 @@ class Memory:
         """
         Predict task completion time with confidence intervals.
 
-        Returns:
+        Returns
+        -------
             Dictionary with:
             - expected_hours: Most likely duration
             - confidence_interval: {lower, upper} bounds
@@ -508,7 +513,8 @@ class Memory:
         """
         Predict likelihood and types of blockages.
 
-        Returns:
+        Returns
+        -------
             Dictionary with:
             - overall_risk: 0-1 probability
             - risk_breakdown: Dict of blockage type to probability
@@ -608,7 +614,8 @@ class Memory:
         """
         Predict impact of task delay on dependent tasks.
 
-        Returns:
+        Returns
+        -------
             Dictionary with:
             - affected_tasks: List of tasks that will be impacted
             - total_delay: Cumulative delay across all tasks
@@ -714,7 +721,8 @@ class Memory:
         """
         Calculate agent's skill development trajectory.
 
-        Returns:
+        Returns
+        -------
             Dictionary with:
             - current_skills: Current skill levels
             - improving_skills: Skills showing improvement
@@ -837,7 +845,7 @@ class Memory:
     async def find_similar_outcomes(
         self, task: Task, limit: int = 5
     ) -> List[TaskOutcome]:
-        """Find similar past task executions"""
+        """Find similar past task executions."""
         similar = []
 
         for outcome in reversed(self.episodic["outcomes"]):  # Recent first
@@ -859,7 +867,7 @@ class Memory:
         return [outcome for _, outcome in similar[:limit]]
 
     def get_working_memory_summary(self) -> Dict[str, Any]:
-        """Get current working memory state"""
+        """Get current working memory state."""
         return {
             "active_agents": len(self.working["active_tasks"]),
             "active_tasks": [
@@ -874,12 +882,12 @@ class Memory:
         }
 
     def update_project_tasks(self, tasks: List[Task]) -> None:
-        """Update working memory with current project tasks for cascade analysis"""
+        """Update working memory with current project tasks for cascade analysis."""
         self.working["all_tasks"] = tasks
         logger.info(f"Updated working memory with {len(tasks)} project tasks")
 
     def get_memory_stats(self) -> Dict[str, Any]:
-        """Get memory system statistics"""
+        """Get memory system statistics."""
         return {
             "working_memory": {
                 "active_tasks": len(self.working["active_tasks"]),

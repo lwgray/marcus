@@ -1,5 +1,5 @@
 """
-Adaptive Dependency Inference System for Marcus
+Adaptive Dependency Inference System for Marcus.
 
 Enhances Marcus's template-based dependency system with adaptive learning.
 Works alongside existing templates to:
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class DependencySignal:
-    """A signal indicating potential dependency"""
+    """A signal indicating potential dependency."""
 
     signal_type: str
     strength: float  # 0.0 to 1.0
@@ -29,7 +29,7 @@ class DependencySignal:
 
 @dataclass
 class RelationshipPattern:
-    """A learned pattern of task relationships"""
+    """A learned pattern of task relationships."""
 
     pattern_id: str
     feature_weights: Dict[str, float] = field(default_factory=dict)
@@ -40,7 +40,7 @@ class RelationshipPattern:
 
 @dataclass
 class DependencyFeedback:
-    """User feedback on a dependency inference"""
+    """User feedback on a dependency inference."""
 
     task_a_id: str
     task_b_id: str
@@ -53,7 +53,7 @@ class DependencyFeedback:
 
 @dataclass
 class UserRelationship:
-    """User-defined relationship between tasks"""
+    """User-defined relationship between tasks."""
 
     task_a_id: str
     task_b_id: str
@@ -66,7 +66,7 @@ class UserRelationship:
 
 @dataclass
 class WorkflowPattern:
-    """User-defined workflow pattern"""
+    """User-defined workflow pattern."""
 
     pattern_id: str
     name: str
@@ -81,7 +81,7 @@ class WorkflowPattern:
 
 @dataclass
 class DependencyInterface:
-    """Defines what a task produces and what dependents need"""
+    """Defines what a task produces and what dependents need."""
 
     task_id: str
     produces: List[str]  # What this task outputs
@@ -91,17 +91,19 @@ class DependencyInterface:
 
 
 class AdaptiveDependencyInferer:
-    """
-    Adaptive system for inferring task dependencies based on multiple signals
-    and learned patterns rather than hard-coded rules.
+    """Adaptive system for inferring task dependencies.
+
+    Based on multiple signals and learned patterns rather than hard-coded rules.
     """
 
     def __init__(self, initial_confidence_threshold: float = 0.6):
         """
         Initialize the adaptive dependency inferer.
 
-        Args:
-            initial_confidence_threshold: Minimum confidence to suggest dependency
+        Parameters
+        ----------
+            initial_confidence_threshold
+                Minimum confidence to suggest dependency.
         """
         self.confidence_threshold = initial_confidence_threshold
         self.patterns: Dict[str, RelationshipPattern] = {}
@@ -144,7 +146,8 @@ class AdaptiveDependencyInferer:
         """
         Infer if task_a depends on task_b using multiple signals.
 
-        Returns:
+        Returns
+        -------
             Tuple of (is_dependency, confidence, signals)
         """
         signals = []
@@ -203,7 +206,7 @@ class AdaptiveDependencyInferer:
     def _check_temporal_order(
         self, task_a: Task, task_b: Task
     ) -> Optional[DependencySignal]:
-        """Check if temporal ordering suggests dependency"""
+        """Check if temporal ordering suggests dependency."""
         if task_a.created_at and task_b.created_at:
             # Task A created after Task B suggests potential dependency
             if task_a.created_at > task_b.created_at:
@@ -229,7 +232,7 @@ class AdaptiveDependencyInferer:
     def _check_naming_similarity(
         self, task_a: Task, task_b: Task
     ) -> Optional[DependencySignal]:
-        """Check if task names share significant words"""
+        """Check if task names share significant words."""
         # Extract meaningful words (ignore common words)
         stop_words = {
             "the",
@@ -268,7 +271,7 @@ class AdaptiveDependencyInferer:
     def _check_shared_entities(
         self, task_a: Task, task_b: Task
     ) -> Optional[DependencySignal]:
-        """Check for shared entities (nouns) between tasks"""
+        """Check for shared entities (nouns) between tasks."""
         # Simple noun detection (words that are likely entities)
         # In production, you'd use NLP libraries
 
@@ -303,7 +306,7 @@ class AdaptiveDependencyInferer:
     def _check_action_sequence(
         self, task_a: Task, task_b: Task
     ) -> Optional[DependencySignal]:
-        """Check if actions suggest a natural sequence"""
+        """Check if actions suggest a natural sequence."""
 
         def extract_action(task_name: str) -> Optional[str]:
             words = task_name.lower().split()
@@ -355,7 +358,7 @@ class AdaptiveDependencyInferer:
     def _check_label_relationships(
         self, task_a: Task, task_b: Task
     ) -> Optional[DependencySignal]:
-        """Check if labels suggest relationship (without being prescriptive)"""
+        """Check if labels suggest relationship (without being prescriptive)."""
         if not task_a.labels or not task_b.labels:
             return None
 
@@ -392,7 +395,7 @@ class AdaptiveDependencyInferer:
     def _check_learned_patterns(
         self, task_a: Task, task_b: Task
     ) -> Optional[DependencySignal]:
-        """Check against learned patterns from user feedback"""
+        """Check against learned patterns from user feedback."""
         if not self.patterns:
             return None
 
@@ -418,7 +421,7 @@ class AdaptiveDependencyInferer:
         return None
 
     def _extract_features(self, task_a: Task, task_b: Task) -> Dict[str, float]:
-        """Extract features from a task pair for pattern matching"""
+        """Extract features from a task pair for pattern matching."""
         features = {}
 
         # Word overlap ratio
@@ -455,7 +458,7 @@ class AdaptiveDependencyInferer:
     def _calculate_pattern_match(
         self, features: Dict[str, float], pattern: RelationshipPattern
     ) -> float:
-        """Calculate how well features match a learned pattern"""
+        """Calculate how well features match a learned pattern."""
         if not pattern.feature_weights:
             return 0.0
 
@@ -515,7 +518,7 @@ class AdaptiveDependencyInferer:
     def _adjust_weights_from_feedback(
         self, feedback: DependencyFeedback, decrease: bool
     ) -> None:
-        """Adjust feature weights based on feedback"""
+        """Adjust feature weights based on feedback."""
         # Simple weight adjustment (in production, use more sophisticated ML)
         adjustment = 0.05 if not decrease else -0.05
 
@@ -530,7 +533,7 @@ class AdaptiveDependencyInferer:
         self.feature_weights = {k: v / total for k, v in self.feature_weights.items()}
 
     def _learn_pattern_from_feedback(self, task_a_id: str, task_b_id: str) -> None:
-        """Learn a new pattern from confirmed dependency"""
+        """Learn a new pattern from confirmed dependency."""
         # In a real implementation, this would extract features from the actual tasks
         # and create/update a pattern
         pattern_id = f"learned_{len(self.patterns)}"
@@ -545,7 +548,7 @@ class AdaptiveDependencyInferer:
         self.patterns[pattern_id] = pattern
 
     def get_confidence_explanation(self, signals: List[DependencySignal]) -> str:
-        """Generate human-readable explanation of confidence calculation"""
+        """Generate human-readable explanation of confidence calculation."""
         if not signals:
             return "No dependency signals detected."
 
@@ -561,7 +564,8 @@ class AdaptiveDependencyInferer:
         """
         Suggest potential dependencies for a task.
 
-        Returns:
+        Returns
+        -------
             List of (dependent_task, confidence, explanation) tuples
         """
         suggestions = []
@@ -592,8 +596,10 @@ class AdaptiveDependencyInferer:
         2. Task ordering and column placement
         3. Task completion patterns
 
-        Args:
-            tasks: All tasks from the kanban board with their dependencies
+        Parameters
+        ----------
+            tasks
+                All tasks from the kanban board with their dependencies.
         """
         # Track explicit dependencies as ground truth
         for task in tasks:
@@ -626,7 +632,7 @@ class AdaptiveDependencyInferer:
     def _learn_from_confirmed_dependency(
         self, dependent: Task, dependency: Task
     ) -> None:
-        """Learn patterns from a user-confirmed dependency"""
+        """Learn patterns from a user-confirmed dependency."""
         # Extract features from this confirmed relationship
         features = self._extract_features(dependent, dependency)
 
@@ -661,7 +667,7 @@ class AdaptiveDependencyInferer:
         )
 
     def _generate_pattern_key(self, features: Dict[str, float]) -> str:
-        """Generate a key for a pattern based on its features"""
+        """Generate a key for a pattern based on its features."""
         # Simple key based on feature presence
         key_parts = []
         for feature, value in sorted(features.items()):
@@ -674,7 +680,7 @@ class AdaptiveDependencyInferer:
     def _update_pattern_weights(
         self, features: Dict[str, float], strength: float = 1.0
     ) -> None:
-        """Update pattern weights based on observed features"""
+        """Update pattern weights based on observed features."""
         for feature, value in features.items():
             if feature in self.feature_weights:
                 # Slightly adjust weight based on observation
@@ -684,7 +690,7 @@ class AdaptiveDependencyInferer:
                 )
 
     def get_inference_mode(self) -> str:
-        """Get current inference mode based on user preferences"""
+        """Get current inference mode based on user preferences."""
         if self.user_preferences.get("respect_explicit_only"):
             return "explicit_only"
         elif not self.user_preferences.get("auto_infer"):
@@ -693,6 +699,6 @@ class AdaptiveDependencyInferer:
             return "adaptive"
 
     def should_require_confirmation(self, confidence: float) -> bool:
-        """Check if user confirmation is needed for this confidence level"""
+        """Check if user confirmation is needed for this confidence level."""
         threshold = self.user_preferences.get("require_confirmation_below", 0.7)
         return confidence < threshold

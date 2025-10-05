@@ -1,7 +1,6 @@
-"""
-Fixed MCP Tool Handlers - Testing different response format
+"""Fixed MCP Tool Handlers - Testing different response format.
 
-This version tries returning the raw dict instead of JSON string
+This version tries returning the raw dict instead of JSON string.
 """
 
 from typing import Any, Dict, List, Optional

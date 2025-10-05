@@ -1,4 +1,4 @@
-"""AI Enrichment Components"""
+"""AI Enrichment Components."""
 
 from .intelligent_enricher import EnhancementResult, IntelligentTaskEnricher
 

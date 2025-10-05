@@ -1,5 +1,5 @@
 """
-Project Registry for Marcus Multi-Project Support
+Project Registry for Marcus Multi-Project Support.
 
 Manages multiple project configurations across different providers (Planka, Linear, GitHub).
 Provides CRUD operations and persistence for project definitions.
@@ -15,7 +15,7 @@ from src.core.persistence import Persistence
 
 @dataclass
 class ProjectConfig:
-    """Configuration for a single project"""
+    """Configuration for a single project."""
 
     id: str
     name: str
@@ -26,7 +26,7 @@ class ProjectConfig:
     tags: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for persistence"""
+        """Convert to dictionary for persistence."""
         data = asdict(self)
         data["created_at"] = self.created_at.isoformat()
         data["last_used"] = self.last_used.isoformat()
@@ -34,7 +34,7 @@ class ProjectConfig:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ProjectConfig":
-        """Create from dictionary"""
+        """Create from dictionary."""
         # Only keep fields that ProjectConfig expects
         expected_fields = {
             "id",
@@ -58,7 +58,7 @@ class ProjectConfig:
 
 class ProjectRegistry:
     """
-    Registry for managing multiple projects
+    Registry for managing multiple projects.
 
     Provides CRUD operations and persistence for project configurations.
     Uses the existing Persistence layer for storage.
@@ -69,10 +69,12 @@ class ProjectRegistry:
 
     def __init__(self, persistence: Optional[Persistence] = None):
         """
-        Initialize the project registry
+        Initialize the project registry.
 
-        Args:
-            persistence: Optional persistence instance. If not provided,
+        Parameters
+        ----------
+            persistence
+                Optional persistence instance. If not provided,.
                         creates a new one with file backend.
         """
         self.persistence = persistence or Persistence()
@@ -80,7 +82,7 @@ class ProjectRegistry:
         self._active_project_id: Optional[str] = None
 
     async def initialize(self) -> None:
-        """Initialize the registry and load active project"""
+        """Initialize the registry and load active project."""
         # Load active project ID
         active_data = await self.persistence.retrieve(
             self.COLLECTION, self.ACTIVE_PROJECT_KEY
@@ -97,12 +99,15 @@ class ProjectRegistry:
 
     async def add_project(self, config: ProjectConfig) -> str:
         """
-        Add a new project to the registry
+        Add a new project to the registry.
 
-        Args:
-            config: Project configuration
+        Parameters
+        ----------
+            config
+                Project configuration.
 
-        Returns:
+        Returns
+        -------
             Project ID
         """
         # Generate ID if not provided
@@ -123,12 +128,15 @@ class ProjectRegistry:
 
     async def get_project(self, project_id: str) -> Optional[ProjectConfig]:
         """
-        Get a project by ID
+        Get a project by ID.
 
-        Args:
-            project_id: Project ID
+        Parameters
+        ----------
+            project_id
+                Project ID.
 
-        Returns:
+        Returns
+        -------
             Project configuration or None if not found
         """
         # Check cache first
@@ -148,13 +156,17 @@ class ProjectRegistry:
         self, filter_tags: Optional[List[str]] = None, provider: Optional[str] = None
     ) -> List[ProjectConfig]:
         """
-        List all projects with optional filtering
+        List all projects with optional filtering.
 
-        Args:
-            filter_tags: Only return projects with these tags
-            provider: Only return projects using this provider
+        Parameters
+        ----------
+            filter_tags
+                Only return projects with these tags.
+            provider
+                Only return projects using this provider.
 
-        Returns:
+        Returns
+        -------
             List of project configurations
         """
         projects = list(self._cache.values())
@@ -175,13 +187,17 @@ class ProjectRegistry:
 
     async def update_project(self, project_id: str, updates: Dict[str, Any]) -> bool:
         """
-        Update a project configuration
+        Update a project configuration.
 
-        Args:
-            project_id: Project ID
-            updates: Fields to update
+        Parameters
+        ----------
+            project_id
+                Project ID.
+            updates
+                Fields to update.
 
-        Returns:
+        Returns
+        -------
             True if successful
         """
         project = await self.get_project(project_id)
@@ -206,12 +222,15 @@ class ProjectRegistry:
 
     async def delete_project(self, project_id: str) -> bool:
         """
-        Delete a project from the registry
+        Delete a project from the registry.
 
-        Args:
-            project_id: Project ID
+        Parameters
+        ----------
+            project_id
+                Project ID.
 
-        Returns:
+        Returns
+        -------
             True if successful
         """
         if project_id not in self._cache:
@@ -235,12 +254,15 @@ class ProjectRegistry:
 
     async def set_active_project(self, project_id: str) -> bool:
         """
-        Set the active project
+        Set the active project.
 
-        Args:
-            project_id: Project ID to make active
+        Parameters
+        ----------
+            project_id
+                Project ID to make active.
 
-        Returns:
+        Returns
+        -------
             True if successful
         """
         project = await self.get_project(project_id)
@@ -261,9 +283,10 @@ class ProjectRegistry:
 
     async def get_active_project(self) -> Optional[ProjectConfig]:
         """
-        Get the currently active project
+        Get the currently active project.
 
-        Returns:
+        Returns
+        -------
             Active project configuration or None
         """
         if self._active_project_id:
@@ -272,12 +295,15 @@ class ProjectRegistry:
 
     async def create_from_legacy_config(self, legacy_config: Dict[str, Any]) -> str:
         """
-        Create a project from legacy single-project configuration
+        Create a project from legacy single-project configuration.
 
-        Args:
-            legacy_config: Legacy configuration dictionary
+        Parameters
+        ----------
+            legacy_config
+                Legacy configuration dictionary.
 
-        Returns:
+        Returns
+        -------
             Created project ID
         """
         # Determine provider from config

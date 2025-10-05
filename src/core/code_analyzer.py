@@ -1,5 +1,5 @@
 """
-Code Analyzer for GitHub Integration
+Code Analyzer for GitHub Integration.
 
 This module analyzes code changes, PRs, and repository state to provide
 context-aware information to workers about implemented features.

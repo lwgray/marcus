@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RetryConfig:
-    """Configuration for retry behavior"""
+    """Configuration for retry behavior."""
 
     max_attempts: int = 3
     base_delay: float = 1.0
@@ -30,7 +30,7 @@ class RetryConfig:
 
 @dataclass
 class CircuitBreakerConfig:
-    """Configuration for circuit breaker behavior"""
+    """Configuration for circuit breaker behavior."""
 
     failure_threshold: int = 5
     recovery_timeout: float = 60.0
@@ -38,7 +38,7 @@ class CircuitBreakerConfig:
 
 
 class CircuitBreaker:
-    """Circuit breaker pattern implementation"""
+    """Circuit breaker pattern implementation."""
 
     def __init__(self, name: str, config: CircuitBreakerConfig):
         self.name = name
@@ -48,7 +48,7 @@ class CircuitBreaker:
         self.state = "closed"  # closed, open, half-open
 
     def is_open(self) -> bool:
-        """Check if circuit is open (failing)"""
+        """Check if circuit is open (failing)."""
         if self.state == "open":
             # Check if we should try half-open
             if self.last_failure_time:
@@ -60,12 +60,12 @@ class CircuitBreaker:
         return False
 
     def record_success(self) -> None:
-        """Record successful call"""
+        """Record successful call."""
         self.failure_count = 0
         self.state = "closed"
 
     def record_failure(self) -> None:
-        """Record failed call"""
+        """Record failed call."""
         self.failure_count += 1
         self.last_failure_time = datetime.now()
 
@@ -83,13 +83,13 @@ _circuit_breakers: Dict[str, CircuitBreaker] = {}
 def with_fallback(
     fallback_func: Callable[..., Any], log_errors: bool = True
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """
-    Decorator for graceful degradation with fallback function.
+    """Add graceful degradation with fallback function.
 
-    Example:
-        @with_fallback(use_memory_storage)
-        async def store_to_database(data):
-            await db.store(data)
+    Example
+    -------
+    @with_fallback(use_memory_storage)
+    async def store_to_database(data):
+        await db.store(data)
     """
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -123,13 +123,13 @@ def with_fallback(
 def with_retry(
     config: Optional[RetryConfig] = None,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """
-    Decorator for retry logic with exponential backoff.
+    """Add retry logic with exponential backoff.
 
-    Example:
-        @with_retry(RetryConfig(max_attempts=5))
-        async def call_external_api():
-            return await api.call()
+    Example
+    -------
+    @with_retry(RetryConfig(max_attempts=5))
+    async def call_external_api():
+        return await api.call()
     """
     if config is None:
         config = RetryConfig()
@@ -214,13 +214,13 @@ def with_retry(
 def with_circuit_breaker(
     name: str, config: Optional[CircuitBreakerConfig] = None
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """
-    Decorator for circuit breaker pattern.
+    """Add circuit breaker pattern.
 
-    Example:
-        @with_circuit_breaker("external_api")
-        async def call_external_api():
-            return await api.call()
+    Example
+    -------
+    @with_circuit_breaker("external_api")
+    async def call_external_api():
+        return await api.call()
     """
     if config is None:
         config = CircuitBreakerConfig()
@@ -267,14 +267,14 @@ def with_circuit_breaker(
 
 
 class GracefulDegradation:
-    """
-    Context manager for graceful degradation.
+    """Context manager for graceful degradation.
 
-    Example:
-        async with GracefulDegradation(fallback=use_cache) as gd:
-            result = await gd.try_primary(fetch_from_database)
-            if not result:
-                result = await gd.fallback()
+    Example
+    -------
+    async with GracefulDegradation(fallback=use_cache) as gd:
+        result = await gd.try_primary(fetch_from_database)
+        if not result:
+            result = await gd.fallback()
     """
 
     def __init__(
@@ -290,15 +290,17 @@ class GracefulDegradation:
         self._primary_exception: Optional[Exception] = None
 
     async def __aenter__(self) -> "GracefulDegradation":
+        """Enter async context manager."""
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
+        """Exit async context manager."""
         return False
 
     async def try_primary(
         self, func: Optional[Callable[..., Any]] = None, *args: Any, **kwargs: Any
     ) -> Any:
-        """Try the primary function"""
+        """Try the primary function."""
         if func is None:
             func = self.primary
 
@@ -317,7 +319,7 @@ class GracefulDegradation:
             return None
 
     async def use_fallback(self, *args: Any, **kwargs: Any) -> Any:
-        """Use the fallback function"""
+        """Use the fallback function."""
         if self.fallback is None:
             raise ValueError("No fallback function provided")
 

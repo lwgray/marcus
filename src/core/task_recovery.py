@@ -46,12 +46,18 @@ class TaskRecoveryManager:
         """
         Initialize the Task Recovery Manager.
 
-        Args:
-            kanban_client: Interface to the kanban board
-            assignment_persistence: Persistence layer for assignments
-            agent_timeout_minutes: Minutes before considering agent timed out
-            task_stuck_hours: Hours before considering task stuck
-            max_recovery_attempts: Maximum recovery attempts before escalation
+        Parameters
+        ----------
+            kanban_client
+                Interface to the kanban board.
+            assignment_persistence
+                Persistence layer for assignments.
+            agent_timeout_minutes
+                Minutes before considering agent timed out.
+            task_stuck_hours
+                Hours before considering task stuck.
+            max_recovery_attempts
+                Maximum recovery attempts before escalation.
         """
         self.kanban_client = kanban_client
         self.assignment_persistence = assignment_persistence
@@ -80,7 +86,8 @@ class TaskRecoveryManager:
         """
         Check if an agent is healthy based on heartbeat.
 
-        Returns:
+        Returns
+        -------
             True if agent is healthy, False if timed out
         """
         if agent_id not in self.agent_heartbeats:
@@ -97,7 +104,8 @@ class TaskRecoveryManager:
         """
         Find tasks that need recovery.
 
-        Returns:
+        Returns
+        -------
             List of tuples (task, agent_id, reason) for tasks needing recovery
         """
         abandoned_tasks = []
@@ -201,13 +209,19 @@ class TaskRecoveryManager:
         """
         Recover an abandoned task.
 
-        Args:
-            task: The task to recover
-            agent_id: The agent who was working on the task
-            reason: Reason for recovery
-            new_status: Status to set the task to (default: TODO)
+        Parameters
+        ----------
+            task
+                The task to recover.
+            agent_id
+                The agent who was working on the task.
+            reason
+                Reason for recovery.
+            new_status
+                Status to set the task to (default: TODO).
 
-        Returns:
+        Returns
+        -------
             True if recovery successful, False otherwise
         """
         if task.id in self.tasks_being_recovered:
@@ -276,7 +290,8 @@ class TaskRecoveryManager:
         """
         Find and recover all abandoned tasks.
 
-        Returns:
+        Returns
+        -------
             Dictionary with recovery results by reason
         """
         results: Dict[str, Any] = {"recovered": [], "failed": [], "by_reason": {}}
@@ -339,10 +354,13 @@ class TaskRecoveryManager:
         """
         Manually trigger recovery for a specific task.
 
-        Args:
-            task_id: ID of the task to recover
+        Parameters
+        ----------
+            task_id
+                ID of the task to recover.
 
-        Returns:
+        Returns
+        -------
             True if recovery successful
         """
         try:
@@ -393,9 +411,12 @@ class TaskRecoveryMonitor:
         """
         Initialize the recovery monitor.
 
-        Args:
-            recovery_manager: The task recovery manager
-            check_interval_minutes: How often to check for abandoned tasks
+        Parameters
+        ----------
+            recovery_manager
+                The task recovery manager.
+            check_interval_minutes
+                How often to check for abandoned tasks.
         """
         self.recovery_manager = recovery_manager
         self.check_interval = check_interval_minutes * 60  # Convert to seconds
@@ -424,7 +445,7 @@ class TaskRecoveryMonitor:
         logger.info("Task recovery monitor stopped")
 
     async def _monitor_loop(self) -> None:
-        """Main monitoring loop for task recovery."""
+        """Monitor for task recovery."""
         while self._running:
             try:
                 # Check and recover abandoned tasks

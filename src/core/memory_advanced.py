@@ -1,5 +1,5 @@
 """
-Enhanced Memory System for Marcus
+Enhanced Memory System for Marcus.
 
 Extends the base Memory system with advanced prediction capabilities including
 confidence intervals, complexity adjustments, and time-based relevance weighting.
@@ -18,12 +18,10 @@ logger = logging.getLogger(__name__)
 
 
 class MemoryAdvanced(Memory):
-    """
-    Advanced memory system with improved predictions and learning algorithms.
-    """
+    """Advanced memory system with improved predictions and learning algorithms."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """Initialize enhanced memory system"""
+        """Initialize enhanced memory system."""
         super().__init__(*args, **kwargs)
 
         # Enhanced configuration
@@ -113,7 +111,7 @@ class MemoryAdvanced(Memory):
         return enhanced_predictions
 
     def _get_agent_task_history(self, agent_id: str) -> List[TaskOutcome]:
-        """Get all task outcomes for an agent"""
+        """Get all task outcomes for an agent."""
         return [
             outcome
             for outcome in self.episodic["outcomes"]
@@ -220,9 +218,7 @@ class MemoryAdvanced(Memory):
         agent_history: List[TaskOutcome],
         complexity_factor: float,
     ) -> float:
-        """
-        Calculate enhanced duration estimate considering multiple factors.
-        """
+        """Calculate enhanced duration estimate considering multiple factors."""
         base_duration = task.estimated_hours
 
         if not agent_history:
@@ -265,7 +261,7 @@ class MemoryAdvanced(Memory):
     def _find_similar_tasks(
         self, task: Task, history: List[TaskOutcome], similarity_threshold: float = 0.3
     ) -> List[TaskOutcome]:
-        """Find tasks similar to the given task in the history"""
+        """Find tasks similar to the given task in the history."""
         similar = []
 
         set(task.labels) if task.labels else set()
@@ -309,7 +305,7 @@ class MemoryAdvanced(Memory):
     def _analyze_risk_factors(
         self, agent_id: str, task: Task, agent_history: List[TaskOutcome]
     ) -> List[Dict[str, Any]]:
-        """Analyze potential risk factors for this task assignment"""
+        """Analyze potential risk factors for this task assignment."""
         risk_factors = []
 
         profile = self.semantic["agent_profiles"].get(agent_id)
@@ -383,7 +379,7 @@ class MemoryAdvanced(Memory):
     def _get_mitigation_suggestions(
         self, risk_factors: List[Dict[str, Any]]
     ) -> List[str]:
-        """Suggest mitigations for identified risks"""
+        """Suggest mitigations for identified risks."""
         suggestions = []
 
         for risk in risk_factors:
@@ -412,9 +408,7 @@ class MemoryAdvanced(Memory):
 
     @with_fallback(lambda self, *args: {"error": "Prediction service unavailable"})
     async def predict_with_ml(self, agent_id: str, task: Task) -> Dict[str, Any]:
-        """
-        Future: Use ML model for predictions (placeholder for now)
-        """
+        """Future: Use ML model for predictions (placeholder for now)."""
         # This would integrate with a trained model
         # For now, returns enhanced predictions
         return await self.predict_task_outcome_v2(agent_id, task)

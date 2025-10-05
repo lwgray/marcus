@@ -1,5 +1,5 @@
 """
-Event Distribution System for Marcus
+Event Distribution System for Marcus.
 
 Simple event system that allows components to publish and subscribe to events
 without complex dependencies. Events enable loose coupling between systems.
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Event:
-    """Base event structure for all Marcus events"""
+    """Base event structure for all Marcus events."""
 
     event_id: str
     timestamp: datetime
@@ -29,13 +29,13 @@ class Event:
     metadata: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert event to dictionary"""
+        """Convert event to dictionary."""
         result = asdict(self)
         result["timestamp"] = self.timestamp.isoformat()
         return result
 
     def to_json(self) -> str:
-        """Convert event to JSON string"""
+        """Convert event to JSON string."""
         return json.dumps(self.to_dict())
 
 
@@ -55,9 +55,12 @@ class Events:
         """
         Initialize the event system.
 
-        Args:
-            store_history: Whether to keep event history in memory
-            persistence: Optional Persistence instance for storing events
+        Parameters
+        ----------
+            store_history
+                Whether to keep event history in memory.
+            persistence
+                Optional Persistence instance for storing events.
         """
         self.subscribers: Dict[str, List[Callable[..., Any]]] = {}
         self.store_history = store_history
@@ -69,9 +72,12 @@ class Events:
         """
         Subscribe to an event type.
 
-        Args:
-            event_type: Type of event to subscribe to ('*' for all events)
-            handler: Async function to call when event occurs
+        Parameters
+        ----------
+            event_type
+                Type of event to subscribe to ('*' for all events).
+            handler
+                Async function to call when event occurs.
         """
         if event_type not in self.subscribers:
             self.subscribers[event_type] = []
@@ -82,9 +88,12 @@ class Events:
         """
         Unsubscribe from an event type.
 
-        Args:
-            event_type: Type of event to unsubscribe from
-            handler: Handler function to remove
+        Parameters
+        ----------
+            event_type
+                Type of event to unsubscribe from.
+            handler
+                Handler function to remove.
         """
         if event_type in self.subscribers:
             self.subscribers[event_type] = [
@@ -102,14 +111,21 @@ class Events:
         """
         Publish an event to all subscribers.
 
-        Args:
-            event_type: Type of event (e.g., 'task_assigned', 'progress_updated')
-            source: Source of the event (e.g., 'marcus', 'agent_123')
-            data: Event data
-            metadata: Optional metadata (confidence scores, etc.)
-            wait_for_handlers: If False, handlers run asynchronously without waiting (default: True)
+        Parameters
+        ----------
+            event_type
+                Type of event (e.g., 'task_assigned', 'progress_updated').
+            source
+                Source of the event (e.g., 'marcus', 'agent_123').
+            data
+                Event data.
+            metadata
+                Optional metadata (confidence scores, etc.).
+            wait_for_handlers
+                If False, handlers run asynchronously without waiting (default: True).
 
-        Returns:
+        Returns
+        -------
             The published Event object
         """
         # Create event
@@ -170,7 +186,7 @@ class Events:
         lambda self, event: logger.warning(f"Event {event.event_id} not persisted")
     )
     async def _persist_event_safe(self, event: Event) -> None:
-        """Persist event with graceful degradation"""
+        """Persist event with graceful degradation."""
         if self.persistence:
             await self.persistence.store_event(event)
 
@@ -183,12 +199,17 @@ class Events:
         """
         Get event history with optional filtering.
 
-        Args:
-            event_type: Filter by event type
-            source: Filter by source
-            limit: Maximum number of events to return
+        Parameters
+        ----------
+            event_type
+                Filter by event type.
+            source
+                Filter by source.
+            limit
+                Maximum number of events to return.
 
-        Returns:
+        Returns
+        -------
             List of events matching the criteria
         """
         # Try persistence first if available
@@ -216,7 +237,7 @@ class Events:
         return filtered[-limit:]
 
     def clear_history(self) -> None:
-        """Clear event history"""
+        """Clear event history."""
         self.history = []
 
     async def publish_nowait(
@@ -232,13 +253,19 @@ class Events:
         This is useful for non-critical events like logging or monitoring where
         you don't need to wait for handlers to complete.
 
-        Args:
-            event_type: Type of event
-            source: Source of the event
-            data: Event data
-            metadata: Optional metadata
+        Parameters
+        ----------
+            event_type
+                Type of event.
+            source
+                Source of the event.
+            data
+                Event data.
+            metadata
+                Optional metadata.
 
-        Returns:
+        Returns
+        -------
             The published Event object
         """
         return await self.publish(
@@ -251,11 +278,15 @@ class Events:
         """
         Wait for a specific event type to occur.
 
-        Args:
-            event_type: Event type to wait for
-            timeout: Maximum time to wait (seconds)
+        Parameters
+        ----------
+            event_type
+                Event type to wait for.
+            timeout
+                Maximum time to wait (seconds).
 
-        Returns:
+        Returns
+        -------
             The event if it occurs, None if timeout
         """
         received_event = None
@@ -282,7 +313,7 @@ class Events:
 
 # Common event types for Marcus
 class EventTypes:
-    """Standard event types used in Marcus"""
+    """Standard event types used in Marcus."""
 
     # Task events
     TASK_REQUESTED = "task_requested"

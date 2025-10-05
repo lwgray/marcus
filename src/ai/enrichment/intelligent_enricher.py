@@ -1,5 +1,5 @@
 """
-Intelligent Task Enricher for Marcus Phase 3
+Intelligent Task Enricher for Marcus Phase 3.
 
 AI-powered task enrichment that goes beyond pattern matching to provide
 semantic understanding and intelligent enhancement of task metadata.
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class EnhancementResult:
-    """Result of AI-powered task enrichment"""
+    """Result of AI-powered task enrichment."""
 
     original_task: Task
     enhanced_description: str
@@ -36,6 +36,7 @@ class EnhancementResult:
     enhancement_timestamp: Optional[datetime] = None
 
     def __post_init__(self) -> None:
+        """Initialize post-creation."""
         if (
             not hasattr(self, "enhancement_timestamp")
             or self.enhancement_timestamp is None
@@ -45,7 +46,7 @@ class EnhancementResult:
 
 @dataclass
 class ProjectContext:
-    """Extended project context for intelligent enrichment"""
+    """Extended project context for intelligent enrichment."""
 
     project_type: str
     tech_stack: List[str]
@@ -58,7 +59,8 @@ class ProjectContext:
 
 class IntelligentTaskEnricher:
     """
-    AI-enhanced task enricher that provides semantic understanding
+
+    AI-enhanced task enricher that provides semantic understanding.
 
     Goes beyond the pattern-based enrichment from Phase 2 to use
     AI for semantic understanding and intelligent enhancement.
@@ -107,13 +109,15 @@ class IntelligentTaskEnricher:
         self, task: Task, project_context: ProjectContext
     ) -> EnhancementResult:
         """
-        Enrich a task using AI-powered semantic analysis
+        Enrich a task using AI-powered semantic analysis.
 
-        Args:
+        Args
+        ----
             task: Task to enrich
             project_context: Project context for intelligent enhancement
 
-        Returns:
+        Returns
+        -------
             Enhanced task with AI-generated improvements
         """
         logger.debug(f"Enriching task with AI: {task.name}")
@@ -175,13 +179,15 @@ class IntelligentTaskEnricher:
         self, tasks: List[Task], project_context: ProjectContext
     ) -> List[EnhancementResult]:
         """
-        Enrich multiple tasks with intelligent batching
+        Enrich multiple tasks with intelligent batching.
 
-        Args:
+        Args
+        ----
             tasks: List of tasks to enrich
             project_context: Project context
 
-        Returns:
+        Returns
+        -------
             List of enrichment results
         """
         logger.info(f"Enriching batch of {len(tasks)} tasks")
@@ -214,7 +220,7 @@ class IntelligentTaskEnricher:
     async def _get_semantic_analysis(
         self, task: Task, project_context: ProjectContext
     ) -> SemanticAnalysis:
-        """Get AI semantic analysis of the task"""
+        """Get AI semantic analysis of the task."""
         context_dict = {
             "project_type": project_context.project_type,
             "tech_stack": project_context.tech_stack,
@@ -233,7 +239,7 @@ class IntelligentTaskEnricher:
         project_context: ProjectContext,
         semantic_analysis: SemanticAnalysis,
     ) -> str:
-        """Generate AI-enhanced task description"""
+        """Generate AI-enhanced task description."""
         context_dict = {
             "project_type": project_context.project_type,
             "tech_stack": project_context.tech_stack,
@@ -262,7 +268,7 @@ class IntelligentTaskEnricher:
         project_context: ProjectContext,
         semantic_analysis: SemanticAnalysis,
     ) -> List[str]:
-        """Generate intelligent labels using AI understanding"""
+        """Generate intelligent labels using AI understanding."""
         labels = set(task.labels)  # Start with existing labels
 
         # Add labels based on semantic analysis
@@ -315,7 +321,7 @@ class IntelligentTaskEnricher:
         project_context: ProjectContext,
         semantic_analysis: SemanticAnalysis,
     ) -> Optional[EffortEstimate]:
-        """Use AI to estimate task effort"""
+        """Use AI to estimate task effort."""
         context_dict = {
             "project_type": project_context.project_type,
             "tech_stack": project_context.tech_stack,
@@ -341,7 +347,7 @@ class IntelligentTaskEnricher:
         project_context: ProjectContext,
         semantic_analysis: SemanticAnalysis,
     ) -> List[str]:
-        """Generate acceptance criteria using AI understanding"""
+        """Generate acceptance criteria using AI understanding."""
         # This would use a specialized AI prompt to generate acceptance criteria
         # For now, generate basic criteria based on semantic analysis
 
@@ -385,7 +391,7 @@ class IntelligentTaskEnricher:
         project_context: ProjectContext,
         semantic_analysis: SemanticAnalysis,
     ) -> List[str]:
-        """Suggest task dependencies using AI understanding"""
+        """Suggest task dependencies using AI understanding."""
         suggestions = []
 
         # Use semantic dependencies from analysis
@@ -406,7 +412,7 @@ class IntelligentTaskEnricher:
         estimated_hours: Optional[float],
         acceptance_criteria: List[str],
     ) -> Dict[str, Any]:
-        """Track what changes were made during enrichment"""
+        """Track what changes were made during enrichment."""
         changes = {}
 
         # Description changes
@@ -444,7 +450,7 @@ class IntelligentTaskEnricher:
         return changes
 
     def _create_fallback_result(self, task: Task) -> EnhancementResult:
-        """Create minimal enrichment result when AI fails"""
+        """Create minimal enrichment result when AI fails."""
         return EnhancementResult(
             original_task=task,
             enhanced_description=task.description or task.name,
@@ -462,7 +468,7 @@ class IntelligentTaskEnricher:
     async def get_enrichment_statistics(
         self, results: List[EnhancementResult]
     ) -> Dict[str, Any]:
-        """Get statistics about enrichment results"""
+        """Get statistics about enrichment results."""
         if not results:
             return {}
 

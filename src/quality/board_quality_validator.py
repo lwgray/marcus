@@ -1,5 +1,4 @@
-"""
-Board Quality Validator
+"""Board Quality Validator.
 
 Validates boards against Marcus quality standards and provides
 actionable feedback for improvement.
@@ -13,7 +12,7 @@ from src.core.models import Task
 
 
 class QualityLevel(Enum):
-    """Board quality levels"""
+    """Board quality levels."""
 
     POOR = "poor"
     BASIC = "basic"
@@ -23,7 +22,7 @@ class QualityLevel(Enum):
 
 @dataclass
 class QualityIssue:
-    """Represents a quality issue found in board/task"""
+    """Represents a quality issue found in board/task."""
 
     task_id: Optional[str]
     issue_type: str
@@ -34,7 +33,7 @@ class QualityIssue:
 
 @dataclass
 class QualityReport:
-    """Complete quality assessment report"""
+    """Complete quality assessment report."""
 
     score: float
     level: QualityLevel
@@ -44,7 +43,7 @@ class QualityReport:
 
 
 class BoardQualityValidator:
-    """Validates board quality against Marcus standards"""
+    """Validates board quality against Marcus standards."""
 
     # Minimum requirements
     MIN_DESCRIPTION_LENGTH = 50
@@ -62,12 +61,16 @@ class BoardQualityValidator:
 
     def validate_board(self, tasks: List[Task]) -> QualityReport:
         """
-        Validate entire board quality
+        Validate entire board quality.
 
-        Args:
-            tasks: List of tasks on the board
+        Parameters
+        ----------
+        tasks : List[Task]
+            List of tasks on the board
 
-        Returns:
+        Returns
+        -------
+        QualityReport
             QualityReport with score, issues, and suggestions
         """
         if not tasks:
@@ -118,9 +121,11 @@ class BoardQualityValidator:
 
     def validate_task(self, task: Task) -> Tuple[float, List[QualityIssue]]:
         """
-        Validate individual task quality
+        Validate individual task quality.
 
-        Returns:
+        Returns
+        -------
+        Tuple[float, List[QualityIssue]]
             Tuple of (score, list of issues)
         """
         issues = []
@@ -152,7 +157,7 @@ class BoardQualityValidator:
         return task_score, issues
 
     def _validate_description(self, task: Task) -> Tuple[float, List[QualityIssue]]:
-        """Validate task description"""
+        """Validate task description."""
         issues = []
 
         if not task.description:
@@ -198,7 +203,7 @@ class BoardQualityValidator:
         return 1.0, issues
 
     def _validate_labels(self, task: Task) -> Tuple[float, List[QualityIssue]]:
-        """Validate task labels"""
+        """Validate task labels."""
         issues = []
 
         if not task.labels:
@@ -246,7 +251,7 @@ class BoardQualityValidator:
         return 1.0, issues
 
     def _validate_estimates(self, task: Task) -> Tuple[float, List[QualityIssue]]:
-        """Validate task time estimates"""
+        """Validate task time estimates."""
         issues = []
 
         if not hasattr(task, "estimated_hours") or not task.estimated_hours:
@@ -289,7 +294,7 @@ class BoardQualityValidator:
         return 1.0, issues
 
     def _validate_priority(self, task: Task) -> Tuple[float, List[QualityIssue]]:
-        """Validate task priority"""
+        """Validate task priority."""
         issues: List[QualityIssue] = []
 
         # Task.priority is always a Priority enum, never None
@@ -297,7 +302,7 @@ class BoardQualityValidator:
         return 1.0, issues
 
     def _calculate_board_metrics(self, tasks: List[Task]) -> Dict[str, Any]:
-        """Calculate board-level metrics"""
+        """Calculate board-level metrics."""
         total_tasks = len(tasks)
 
         metrics = {
@@ -346,7 +351,7 @@ class BoardQualityValidator:
     def _calculate_overall_score(
         self, tasks: List[Task], metrics: Dict[str, Any]
     ) -> float:
-        """Calculate weighted overall score"""
+        """Calculate weighted overall score."""
         scores = {
             "descriptions": metrics["description_coverage"],
             "labels": min(
@@ -365,7 +370,7 @@ class BoardQualityValidator:
         return float(round(weighted_score, 2))
 
     def _determine_quality_level(self, score: float) -> QualityLevel:
-        """Determine quality level from score"""
+        """Determine quality level from score."""
         if score >= 0.8:
             return QualityLevel.EXCELLENT
         elif score >= 0.6:
@@ -378,7 +383,7 @@ class BoardQualityValidator:
     def _generate_board_suggestions(
         self, metrics: Dict[str, Any], issues: List[QualityIssue]
     ) -> List[str]:
-        """Generate board-level improvement suggestions"""
+        """Generate board-level improvement suggestions."""
         suggestions = []
 
         # Based on metrics
@@ -411,7 +416,7 @@ class BoardQualityValidator:
         return suggestions
 
     def _get_priority_distribution(self, tasks: List[Task]) -> Dict[str, int]:
-        """Get distribution of priorities"""
+        """Get distribution of priorities."""
         distribution: Dict[str, int] = {}
         for task in tasks:
             if task.priority:
@@ -424,7 +429,7 @@ class BoardQualityValidator:
         return distribution
 
     def _get_label_categories(self, tasks: List[Task]) -> Dict[str, int]:
-        """Get distribution of label categories"""
+        """Get distribution of label categories."""
         categories: Dict[str, int] = {}
         for task in tasks:
             for label in task.labels:
@@ -434,7 +439,7 @@ class BoardQualityValidator:
         return categories
 
     def _get_phase_distribution(self, tasks: List[Task]) -> Dict[str, int]:
-        """Get distribution of tasks by phase"""
+        """Get distribution of tasks by phase."""
         phases: Dict[str, int] = {}
         for task in tasks:
             phase_labels = [
@@ -449,12 +454,16 @@ class BoardQualityValidator:
 # Convenience function
 def validate_board_quality(tasks: List[Task]) -> QualityReport:
     """
-    Validate board quality and return report
+    Validate board quality and return report.
 
-    Args:
-        tasks: List of tasks on the board
+    Parameters
+    ----------
+    tasks : List[Task]
+        List of tasks on the board
 
-    Returns:
+    Returns
+    -------
+    QualityReport
         QualityReport with score, issues, and suggestions
     """
     validator = BoardQualityValidator()

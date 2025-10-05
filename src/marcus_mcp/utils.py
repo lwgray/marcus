@@ -1,6 +1,4 @@
-"""
-Utility functions for Marcus MCP server
-"""
+"""Utility functions for Marcus MCP server."""
 
 import json
 from datetime import datetime
@@ -9,9 +7,10 @@ from typing import Any, Dict, Optional
 
 
 class MarcusJSONEncoder(json.JSONEncoder):
-    """Custom JSON encoder for Marcus objects that handles enums and datetimes"""
+    """Custom JSON encoder for Marcus objects that handles enums and datetimes."""
 
     def default(self, obj: Any) -> Any:
+        """Encode Marcus objects to JSON-serializable format."""
         if isinstance(obj, Enum):
             return obj.value
         elif isinstance(obj, datetime):
@@ -33,7 +32,7 @@ def serialize_for_mcp(data: Any) -> Any:
 
 
 def safe_serialize_task(task: Any) -> Optional[Dict[str, Any]]:
-    """Safely serialize a Task object for MCP response"""
+    """Safely serialize a Task object for MCP response."""
     if not task:
         return None
 

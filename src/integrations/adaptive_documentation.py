@@ -1,5 +1,4 @@
-"""
-Adaptive Documentation Generator for Marcus
+"""Adaptive Documentation Generator for Marcus.
 
 Provides context-aware documentation task generation that adapts to different
 project sources and work types. Supports evolution from project creation to
@@ -62,10 +61,14 @@ class AdaptiveDocumentationGenerator:
         """
         Create appropriate documentation tasks based on context.
 
-        Args:
-            context: Documentation context including source type and work performed
+        Parameters
+        ----------
+        context : DocumentationContext
+            Documentation context including source type and work performed
 
-        Returns:
+        Returns
+        -------
+        List[Task]
             List of documentation tasks appropriate for the context
         """
         doc_tasks = []
@@ -127,7 +130,6 @@ class AdaptiveDocumentationGenerator:
         self, doc_type: DocumentationType, context: DocumentationContext
     ) -> Optional[Task]:
         """Create a specific documentation task."""
-
         # Get template for documentation type
         template = self._get_documentation_template(doc_type)
 
@@ -202,7 +204,6 @@ class AdaptiveDocumentationGenerator:
         self, doc_type: DocumentationType, context: DocumentationContext
     ) -> str:
         """Generate appropriate description for documentation type."""
-
         if doc_type == DocumentationType.PROJECT_SUCCESS:
             # Use legacy generator for PROJECT_SUCCESS
             return DocumentationTaskGenerator._generate_documentation_description(
@@ -384,15 +385,22 @@ def create_documentation_context(
     metadata: Optional[Dict[str, Any]] = None,
 ) -> DocumentationContext:
     """
-    Helper to create DocumentationContext from existing data.
+    Create DocumentationContext from existing data.
 
-    Args:
-        tasks: All project tasks
-        project_name: Name of the project
-        source_type: Source of tasks (nlp_project, github_issue, etc)
-        metadata: Additional context metadata
+    Parameters
+    ----------
+    tasks : List[Task]
+        All project tasks
+    project_name : str
+        Name of the project
+    source_type : str
+        Source of tasks (nlp_project, github_issue, etc)
+    metadata : Optional[Dict[str, Any]]
+        Additional context metadata
 
-    Returns:
+    Returns
+    -------
+    DocumentationContext
         DocumentationContext configured for the project
     """
     # Analyze work type

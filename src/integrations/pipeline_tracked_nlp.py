@@ -1,5 +1,4 @@
-"""
-Pipeline-tracked Natural Language Processing
+"""Pipeline-tracked Natural Language Processing.
 
 Wraps the NLP tools with comprehensive pipeline flow tracking
 for visualization of the entire processing pipeline.
@@ -17,6 +16,8 @@ try:
 except ImportError:
     # Fallback if PipelineStage is not available
     class PipelineStage:  # type: ignore[no-redef]
+        """Fallback pipeline stage definitions."""
+
         MCP_REQUEST = "mcp_request"
         TASK_COMPLETION = "task_completion"
 
@@ -27,9 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 class PipelineTrackedProjectCreator:
-    """
-    Wrapper for NaturalLanguageProjectCreator that adds pipeline tracking
-    """
+    """Wrapper for NaturalLanguageProjectCreator that adds pipeline tracking."""
 
     def __init__(
         self,
@@ -52,7 +51,7 @@ class PipelineTrackedProjectCreator:
         self._wrap_prd_parser()
 
     def _wrap_prd_parser(self) -> None:
-        """Wrap PRD parser methods to track pipeline events"""
+        """Wrap PRD parser methods to track pipeline events."""
         # Store original methods only if they exist
         original_analyze = getattr(self.prd_parser, "analyze_prd_deeply", None)
         original_parse = getattr(self.prd_parser, "parse_prd_to_tasks", None)
@@ -240,7 +239,7 @@ class PipelineTrackedProjectCreator:
         options: Optional[Dict[str, Any]] = None,
         flow_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Create project with pipeline tracking"""
+        """Create project with pipeline tracking."""
         # Store flow ID for wrapped methods
         self.current_flow_id = flow_id
 
@@ -285,9 +284,7 @@ async def create_project_from_natural_language_tracked(
     options: Optional[Dict[str, Any]] = None,
     flow_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """
-    Create project with full pipeline tracking
-    """
+    """Create project with full pipeline tracking."""
     if not hasattr(state, "pipeline_visualizer"):
         # Fallback to untracked version
         from src.integrations.nlp_tools import create_project_from_natural_language

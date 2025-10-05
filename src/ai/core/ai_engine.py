@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 
 class RuleBasedEngine:
     """
+
     Rule-based analysis engine using existing Phase 1-2 logic.
 
     Provides deterministic validation using established rules and patterns.
@@ -221,6 +222,7 @@ class RuleBasedEngine:
 
 class MarcusAIEngine:
     """
+
     Central AI coordination engine implementing hybrid intelligence.
 
     Combines rule-based safety guarantees with AI-powered semantic understanding

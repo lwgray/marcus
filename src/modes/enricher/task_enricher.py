@@ -1,5 +1,4 @@
-"""
-Task Enricher for Marcus Phase 2
+"""Task Enricher for Marcus Phase 2.
 
 Enriches existing tasks with metadata and structure to organize chaotic boards.
 """
@@ -16,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class EnrichmentPlan:
-    """Plan for enriching a task"""
+    """Plan for enriching a task."""
 
     missing_description: bool
     missing_labels: bool
@@ -29,7 +28,7 @@ class EnrichmentPlan:
 
 @dataclass
 class BoardContext:
-    """Context about the board for enrichment"""
+    """Context about the board for enrichment."""
 
     project_type: str
     detected_phases: List[str]
@@ -40,7 +39,7 @@ class BoardContext:
 
 @dataclass
 class EnrichedTask:
-    """Task with enrichments applied"""
+    """Task with enrichments applied."""
 
     original_task: Task
     enriched_description: str
@@ -53,7 +52,7 @@ class EnrichedTask:
 
 
 class TaskEnricher:
-    """Enriches existing tasks with metadata and structure"""
+    """Enriches existing tasks with metadata and structure."""
 
     def __init__(self) -> None:
         # Common task patterns and their typical estimates
@@ -176,15 +175,19 @@ class TaskEnricher:
     async def analyze_task(
         self, task: Task, board_context: BoardContext
     ) -> EnrichmentPlan:
-        """
-        Analyze what's missing from a task
+        """Analyze what's missing from a task.
 
-        Args:
-            task: Task to analyze
-            board_context: Context about the board
+        Parameters
+        ----------
+        task : Task
+            Task to analyze.
+        board_context : BoardContext
+            Context about the board.
 
-        Returns:
-            Plan for enriching the task
+        Returns
+        -------
+        EnrichmentPlan
+            Plan for enriching the task.
         """
         missing_description = not task.description or len(task.description) < 20
         missing_labels = len(task.labels) < 2
@@ -241,15 +244,19 @@ class TaskEnricher:
     async def generate_enrichments(
         self, task: Task, board_context: BoardContext
     ) -> Dict[str, Any]:
-        """
-        Generate missing information for a task
+        """Generate missing information for a task.
 
-        Args:
-            task: Task to enrich
-            board_context: Context about the board
+        Parameters
+        ----------
+        task : Task
+            Task to enrich.
+        board_context : BoardContext
+            Context about the board.
 
-        Returns:
-            Dictionary with enrichment suggestions
+        Returns
+        -------
+        Dict[str, Any]
+            Dictionary with enrichment suggestions.
         """
         enrichments: Dict[str, Any] = {}
 
@@ -293,15 +300,19 @@ class TaskEnricher:
     async def enrich_task_batch(
         self, tasks: List[Task], board_context: BoardContext
     ) -> List[EnrichedTask]:
-        """
-        Enrich multiple tasks efficiently
+        """Enrich multiple tasks efficiently.
 
-        Args:
-            tasks: List of tasks to enrich
-            board_context: Context about the board
+        Parameters
+        ----------
+        tasks : List[Task]
+            List of tasks to enrich.
+        board_context : BoardContext
+            Context about the board.
 
-        Returns:
-            List of enriched tasks
+        Returns
+        -------
+        List[EnrichedTask]
+            List of enriched tasks.
         """
         enriched_tasks = []
 
@@ -332,7 +343,7 @@ class TaskEnricher:
         return enriched_tasks
 
     def _classify_task_type(self, task: Task) -> str:
-        """Classify task type based on name and description"""
+        """Classify task type based on name and description."""
         task_text = f"{task.name} {task.description or ''}".lower()
 
         # Check each pattern
@@ -346,7 +357,7 @@ class TaskEnricher:
     def _generate_description(
         self, task: Task, task_type: str, board_context: BoardContext
     ) -> str:
-        """Generate detailed description for a task"""
+        """Generate detailed description for a task."""
         base_description = task.description or ""
 
         # Enhance based on task type
@@ -400,7 +411,7 @@ class TaskEnricher:
     def _generate_labels(
         self, task: Task, task_type: str, board_context: BoardContext
     ) -> List[str]:
-        """Generate appropriate labels for a task"""
+        """Generate appropriate labels for a task."""
         labels = set(task.labels)  # Start with existing labels
 
         # Add task type label
@@ -438,7 +449,7 @@ class TaskEnricher:
         return sorted(list(labels))
 
     def _estimate_hours(self, task: Task, task_type: str) -> int:
-        """Estimate hours for a task"""
+        """Estimate hours for a task."""
         if task.estimated_hours and task.estimated_hours > 0:
             return int(task.estimated_hours)
 
@@ -477,7 +488,7 @@ class TaskEnricher:
     async def _suggest_dependencies(
         self, task: Task, task_type: str, board_context: BoardContext
     ) -> List[str]:
-        """Suggest dependencies for a task"""
+        """Suggest dependencies for a task."""
         suggestions = []
 
         # Get typical dependencies for task type
@@ -510,7 +521,7 @@ class TaskEnricher:
         return suggestions
 
     def _generate_acceptance_criteria(self, task: Task, task_type: str) -> List[str]:
-        """Generate acceptance criteria for a task"""
+        """Generate acceptance criteria for a task."""
         # Get template criteria for task type
         template_criteria = self.acceptance_criteria_templates.get(task_type, [])
 
@@ -549,7 +560,7 @@ class TaskEnricher:
         return customized_criteria
 
     def _calculate_enrichment_confidence(self, task: Task, task_type: str) -> float:
-        """Calculate confidence in enrichment suggestions"""
+        """Calculate confidence in enrichment suggestions."""
         confidence = 0.7  # Base confidence
 
         # Increase confidence for well-known task types
@@ -572,7 +583,7 @@ class TaskEnricher:
     def _generate_enrichment_reasoning(
         self, task: Task, task_type: str, enrichments: Dict[str, Any]
     ) -> str:
-        """Generate reasoning for enrichment suggestions"""
+        """Generate reasoning for enrichment suggestions."""
         reasoning_parts = []
 
         if task_type != "general":

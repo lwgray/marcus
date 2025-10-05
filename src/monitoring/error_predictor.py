@@ -1,5 +1,5 @@
 """
-Pipeline Error Predictor - Predict and prevent pipeline failures
+Pipeline Error Predictor - Predict and prevent pipeline failures.
 
 This module analyzes pipeline patterns to predict potential failures
 and suggest preventive actions.
@@ -152,9 +152,7 @@ class PatternAnalyzer:
 
 
 class PipelineErrorPredictor:
-    """
-    Predict likelihood of pipeline failures based on patterns.
-    """
+    """Predict likelihood of pipeline failures based on patterns."""
 
     def __init__(self) -> None:
         """Initialize the error predictor."""

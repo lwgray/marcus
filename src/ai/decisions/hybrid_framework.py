@@ -1,5 +1,5 @@
 """
-Hybrid Decision Framework for Marcus AI
+Hybrid Decision Framework for Marcus AI.
 
 Merges rule-based safety constraints with AI intelligence to make
 optimal task assignment decisions while never compromising safety.
@@ -25,19 +25,22 @@ logger = logging.getLogger(__name__)
 
 
 class AIEngine:
-    """Mock AI engine interface for hybrid framework"""
+    """Mock AI engine interface for hybrid framework."""
 
     async def analyze_assignment_optimality(
         self, task: Task, context: AssignmentContext
     ) -> AIOptimizationResult:
         """
-        Analyze assignment optimality using AI
 
-        Args:
+        Analyze assignment optimality using AI.
+
+        Args
+        ----
             task: Task to analyze
             context: Assignment context
 
-        Returns:
+        Returns
+        -------
             AI optimization result
         """
         # This would be implemented by the actual AI engine
@@ -99,7 +102,8 @@ class AIEngine:
 
 class HybridDecisionFramework:
     """
-    Hybrid decision framework that merges rule-based safety with AI optimization
+
+    Hybrid decision framework that merges rule-based safety with AI optimization.
 
     Core principle: Rules provide mandatory safety constraints that AI cannot override.
     AI provides optimization and enhancement when rules allow the assignment.
@@ -124,13 +128,15 @@ class HybridDecisionFramework:
         self, task: Task, context: AssignmentContext
     ) -> AssignmentDecision:
         """
-        Make hybrid assignment decision combining rule-based safety with AI optimization
+        Make hybrid assignment decision combining rule-based safety with AI optimization.
 
-        Args:
+        Args
+        ----
             task: Task to assign
             context: Assignment context
 
-        Returns:
+        Returns
+        -------
             Assignment decision with reasoning and AI enhancements
         """
         logger.debug(f"Making assignment decision for task: {task.name}")
@@ -198,13 +204,15 @@ class HybridDecisionFramework:
         self, task: Task, context: AssignmentContext
     ) -> RuleBasedResult:
         """
-        Validate assignment using rule-based logic
+        Validate assignment using rule-based logic.
 
-        Args:
+        Args
+        ----
             task: Task to validate
             context: Assignment context
 
-        Returns:
+        Returns
+        -------
             Rule-based validation result
         """
         # Initialize rule engine lazily
@@ -233,16 +241,18 @@ class HybridDecisionFramework:
         self, rule_confidence: float, ai_confidence: Optional[float]
     ) -> float:
         """
-        Calculate hybrid confidence score
+        Calculate hybrid confidence score.
 
         Rule confidence is weighted higher to prioritize safety.
         AI confidence provides enhancement when available.
 
-        Args:
+        Args
+        ----
             rule_confidence: Confidence from rule-based analysis
             ai_confidence: Confidence from AI analysis (optional)
 
-        Returns:
+        Returns
+        -------
             Weighted confidence score
         """
         if ai_confidence is None:
@@ -260,14 +270,16 @@ class HybridDecisionFramework:
         self, task: Task, agent_id: str, assignment_outcome: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Evaluate the quality of a completed assignment for learning
+        Evaluate the quality of a completed assignment for learning.
 
-        Args:
+        Args
+        ----
             task: Completed task
             agent_id: Agent who completed the task
             assignment_outcome: Outcome data (success, time, quality, etc.)
 
-        Returns:
+        Returns
+        -------
             Assignment quality evaluation
         """
         evaluation = {
@@ -321,7 +333,7 @@ class HybridDecisionFramework:
         return evaluation
 
     async def get_framework_stats(self) -> Dict[str, Any]:
-        """Get framework performance statistics"""
+        """Get framework performance statistics."""
         return {
             "rule_weight": self.rule_weight,
             "ai_weight": self.ai_weight,
@@ -334,13 +346,15 @@ class HybridDecisionFramework:
 
     async def adjust_weights(self, rule_weight: float, ai_weight: float) -> bool:
         """
-        Adjust confidence weights (with safety constraints)
+        Adjust confidence weights (with safety constraints).
 
-        Args:
+        Args
+        ----
             rule_weight: New rule weight
             ai_weight: New AI weight
 
-        Returns:
+        Returns
+        -------
             True if weights were adjusted, False if rejected for safety
         """
         # Safety constraint: Rule weight must be >= 0.5 for safety

@@ -1,5 +1,4 @@
-"""
-System Health and Diagnostics Tools for Marcus MCP
+"""System Health and Diagnostics Tools for Marcus MCP.
 
 This module contains tools for system monitoring and health checks:
 - ping: Check Marcus connectivity and status
@@ -28,14 +27,18 @@ async def ping(echo: str, state: Any) -> Dict[str, Any]:
     - "cleanup": Force cleanup of stuck task assignments
     - "reset": Clear all pending assignments (use with caution)
 
-    Args:
-        echo: Optional message to echo back or special command
-        state: Marcus server state instance
+    Parameters
+    ----------
+    echo : str
+        Optional message to echo back or special command
+    state : Any
+        Marcus server state instance
 
-    Returns:
+    Returns
+    -------
+    Dict[str, Any]
         Dict with status, provider info, timestamp, and optional health data
     """
-
     # Determine client type from echo
     client_type = "unknown"
     if echo:
@@ -211,10 +214,14 @@ async def check_assignment_health(state: Any) -> Dict[str, Any]:
     - Assignment monitor status
     - In-memory state consistency
 
-    Args:
-        state: Marcus server state instance
+    Parameters
+    ----------
+    state : Any
+        Marcus server state instance
 
-    Returns:
+    Returns
+    -------
+    Dict[str, Any]
         Dict with detailed health status and metrics
     """
     try:

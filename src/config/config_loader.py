@@ -1,5 +1,4 @@
-"""
-Centralized configuration loader for Marcus
+"""Centralized configuration loader for Marcus.
 
 This module provides a single source of truth for loading configuration
 from marcus.config.json with support for environment variable overrides.
@@ -17,24 +16,25 @@ logger = logging.getLogger(__name__)
 
 
 class ConfigLoader:
-    """Singleton configuration loader for Marcus"""
+    """Singleton configuration loader for Marcus."""
 
     _instance = None
     _config = None
     _config_path = None
 
     def __new__(cls) -> "ConfigLoader":
+        """Create or return singleton instance."""
         if cls._instance is None:
             cls._instance = super(ConfigLoader, cls).__new__(cls)
         return cls._instance
 
     def __init__(self) -> None:
-        """Initialize the config loader"""
+        """Initialize the config loader."""
         if self._config is None:
             self._load_config()
 
     def _load_config(self) -> None:
-        """Load configuration from marcus.config.json"""
+        """Load configuration from marcus.config.json."""
         # Find config file
         # Try multiple locations in order of preference
         possible_paths = []
@@ -76,7 +76,7 @@ class ConfigLoader:
         self._apply_env_overrides()
 
     def _apply_env_overrides(self) -> None:
-        """Apply environment variable overrides to config"""
+        """Apply environment variable overrides to config."""
         # Map of environment variables to config paths
         env_mappings = {
             # Kanban provider
@@ -119,7 +119,7 @@ class ConfigLoader:
                 self._set_nested_value(config_path, os.environ[env_var])
 
     def _set_nested_value(self, path: str, value: str) -> None:
-        """Set a nested value in the config using dot notation"""
+        """Set a nested value in the config using dot notation."""
         keys = path.split(".")
         config = self._config
 
@@ -150,14 +150,18 @@ class ConfigLoader:
             config[final_key] = value
 
     def get(self, path: str, default: Any = None) -> Any:
-        """
-        Get a configuration value using dot notation
+        """Get a configuration value using dot notation.
 
-        Args:
-            path: Dot-separated path to the config value (e.g., 'kanban.provider')
-            default: Default value if path doesn't exist
+        Parameters
+        ----------
+        path : str
+            Dot-separated path to the config value (e.g., 'kanban.provider')
+        default : Any
+            Default value if path doesn't exist
 
-        Returns:
+        Returns
+        -------
+        Any
             The configuration value or default
         """
         keys = path.split(".")
@@ -172,17 +176,20 @@ class ConfigLoader:
         return value
 
     def get_feature_config(self, feature: str) -> Dict[str, Any]:
-        """
-        Get feature configuration with backward compatibility.
+        """Get feature configuration with backward compatibility.
 
         Supports both old boolean format and new object format:
         - Old: "events": true
         - New: "events": {"enabled": true, "store_history": true}
 
-        Args:
-            feature: Feature name (events, context, memory, visibility)
+        Parameters
+        ----------
+        feature : str
+            Feature name (events, context, memory, visibility)
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Feature configuration dictionary
         """
         config = self.get(f"features.{feature}")
@@ -203,28 +210,28 @@ class ConfigLoader:
             return {"enabled": False}
 
     def get_kanban_config(self) -> Dict[str, Any]:
-        """Get the complete kanban configuration for the selected provider"""
+        """Get the complete kanban configuration for the selected provider."""
         provider = self.get("kanban.provider", "planka")
         base_config = {"provider": provider, **self.get(f"kanban.{provider}", {})}
         return base_config
 
     def get_ai_config(self) -> Dict[str, Any]:
-        """Get the complete AI configuration"""
+        """Get the complete AI configuration."""
         result = self.get("ai", {})
         return result if isinstance(result, dict) else {}
 
     def get_monitoring_config(self) -> Dict[str, Any]:
-        """Get the complete monitoring configuration"""
+        """Get the complete monitoring configuration."""
         result = self.get("monitoring", {})
         return result if isinstance(result, dict) else {}
 
     def get_communication_config(self) -> Dict[str, Any]:
-        """Get the complete communication configuration"""
+        """Get the complete communication configuration."""
         result = self.get("communication", {})
         return result if isinstance(result, dict) else {}
 
     def get_hybrid_inference_config(self) -> Any:
-        """Get the hybrid inference configuration"""
+        """Get the hybrid inference configuration."""
         from src.config.hybrid_inference_config import HybridInferenceConfig
 
         config_dict = self.get("hybrid_inference", {})
@@ -241,7 +248,7 @@ class ConfigLoader:
             return HybridInferenceConfig()
 
     def _migrate_legacy_config(self) -> None:
-        """Migrate legacy single-project config to multi-project format"""
+        """Migrate legacy single-project config to multi-project format."""
         # Check if this is a legacy config (has project_id but no projects section)
         if (
             self._config is not None
@@ -342,25 +349,25 @@ class ConfigLoader:
                 logger.info(f"Removed stale config fields: {', '.join(removed_fields)}")
 
     def is_multi_project_mode(self) -> bool:
-        """Check if config is in multi-project mode"""
+        """Check if config is in multi-project mode."""
         return bool(self._config is not None and "projects" in self._config)
 
     def get_projects_config(self) -> Dict[str, Any]:
-        """Get all project configurations"""
+        """Get all project configurations."""
         if self._config is None:
             return {}
         result = self._config.get("projects", {})
         return result if isinstance(result, dict) else {}
 
     def get_active_project_id(self) -> Optional[str]:
-        """Get the active project ID"""
+        """Get the active project ID."""
         if self._config is None:
             return None
         result = self._config.get("active_project")
         return result if isinstance(result, str) or result is None else None
 
     def get_provider_credentials(self, provider: str) -> Dict[str, Any]:
-        """Get credentials for a specific provider"""
+        """Get credentials for a specific provider."""
         if self._config is None:
             return {}
         providers = self._config.get("providers", {})
@@ -370,18 +377,19 @@ class ConfigLoader:
         return result if isinstance(result, dict) else {}
 
     def reload(self) -> None:
-        """Reload the configuration from disk"""
+        """Reload the configuration from disk."""
         self._config = None
         self._load_config()
 
     @property
     def config_path(self) -> Path:
-        """Get the path to the loaded config file"""
+        """Get the path to the loaded config file."""
         if self._config_path is None:
             raise RuntimeError("Config not loaded yet")
         return self._config_path
 
     def __repr__(self) -> str:
+        """Return string representation of ConfigLoader."""
         return f"ConfigLoader(config_path={self._config_path})"
 
 
@@ -390,7 +398,7 @@ _config_loader = None
 
 
 def get_config() -> ConfigLoader:
-    """Get the global config loader instance"""
+    """Get the global config loader instance."""
     global _config_loader
     if _config_loader is None:
         _config_loader = ConfigLoader()
@@ -399,23 +407,23 @@ def get_config() -> ConfigLoader:
 
 # Convenience functions for common access patterns
 def get_config_value(path: str, default: Any = None) -> Any:
-    """Get a configuration value using dot notation"""
+    """Get a configuration value using dot notation."""
     return get_config().get(path, default)
 
 
 def get_kanban_provider() -> str:
-    """Get the configured kanban provider"""
+    """Get the configured kanban provider."""
     result = get_config().get("kanban.provider", "planka")
     return result if isinstance(result, str) else "planka"
 
 
 def get_anthropic_api_key() -> Optional[str]:
-    """Get the Anthropic API key"""
+    """Get the Anthropic API key."""
     result = get_config().get("ai.anthropic_api_key")
     return result if isinstance(result, str) or result is None else None
 
 
 def get_planka_config() -> Dict[str, Any]:
-    """Get Planka configuration"""
+    """Get Planka configuration."""
     result = get_config().get("kanban.planka", {})
     return result if isinstance(result, dict) else {}

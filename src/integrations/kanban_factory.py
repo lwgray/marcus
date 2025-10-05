@@ -1,5 +1,4 @@
-"""
-Factory for creating kanban provider instances
+"""Factory for creating kanban provider instances.
 
 Simplifies the process of creating the right kanban provider
 based on configuration.
@@ -14,24 +13,31 @@ from src.integrations.providers import GitHubKanban, LinearKanban, Planka
 
 
 class KanbanFactory:
-    """Factory for creating kanban provider instances"""
+    """Factory for creating kanban provider instances."""
 
     @staticmethod
     def create(
         provider: str, config: Optional[Dict[str, Any]] = None
     ) -> KanbanInterface:
         """
-        Create a kanban provider instance
+        Create a kanban provider instance.
 
-        Args:
-            provider: Provider name ('planka', 'linear', 'github')
-            config: Optional configuration override
+        Parameters
+        ----------
+        provider : str
+            Provider name ('planka', 'linear', 'github')
+        config : Optional[Dict[str, Any]]
+            Optional configuration override
 
-        Returns:
+        Returns
+        -------
+        KanbanInterface
             KanbanInterface implementation
 
-        Raises:
-            ValueError: If provider is not supported
+        Raises
+        ------
+        ValueError
+            If provider is not supported
         """
         # Config is already loaded - just use it
         get_config()
@@ -72,11 +78,11 @@ class KanbanFactory:
 
     @staticmethod
     def get_default_provider() -> str:
-        """Get the default provider from environment"""
+        """Get the default provider from environment."""
         return os.getenv("KANBAN_PROVIDER", "planka")
 
     @staticmethod
     def create_default(config: Optional[Dict[str, Any]] = None) -> KanbanInterface:
-        """Create the default kanban provider"""
+        """Create the default kanban provider."""
         provider = KanbanFactory.get_default_provider()
         return KanbanFactory.create(provider, config)

@@ -1,5 +1,4 @@
-"""
-Marcus AI Integration Package
+"""Marcus AI Integration Package.
 
 Provides AI-enhanced intelligence while preserving rule-based safety guarantees.
 Implements hybrid decision making that combines deterministic logic with

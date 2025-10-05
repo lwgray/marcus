@@ -1,5 +1,4 @@
-"""
-Configuration for Hybrid Dependency Inference
+"""Configuration for Hybrid Dependency Inference.
 
 Allows tuning of thresholds to optimize the balance between
 accuracy and API call costs.
@@ -11,7 +10,7 @@ from typing import Any
 
 @dataclass
 class HybridInferenceConfig:
-    """Configuration for hybrid dependency inference thresholds"""
+    """Configuration for hybrid dependency inference thresholds."""
 
     # Pattern matching thresholds
     pattern_confidence_threshold: float = 0.8
@@ -75,11 +74,11 @@ class HybridInferenceConfig:
 
     @classmethod
     def from_dict(cls, config_dict: dict[str, Any]) -> "HybridInferenceConfig":
-        """Create config from dictionary"""
+        """Create config from dictionary."""
         return cls(**{k: v for k, v in config_dict.items() if hasattr(cls, k)})
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for serialization"""
+        """Convert to dictionary for serialization."""
         return {
             "pattern_confidence_threshold": self.pattern_confidence_threshold,
             "ai_confidence_threshold": self.ai_confidence_threshold,
@@ -93,7 +92,7 @@ class HybridInferenceConfig:
         }
 
     def validate(self) -> None:
-        """Validate configuration values"""
+        """Validate configuration values."""
         if not 0.0 <= self.pattern_confidence_threshold <= 1.0:
             raise ValueError("pattern_confidence_threshold must be between 0.0 and 1.0")
 
@@ -146,7 +145,7 @@ PRESETS = {
 
 
 def get_preset_config(preset_name: str) -> HybridInferenceConfig:
-    """Get a preset configuration by name"""
+    """Get a preset configuration by name."""
     if preset_name not in PRESETS:
         raise ValueError(
             f"Unknown preset: {preset_name}. Available: {list(PRESETS.keys())}"

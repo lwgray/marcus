@@ -1,5 +1,4 @@
-"""
-Natural Language Processing Tools for Marcus MCP
+"""Natural Language Processing Tools for Marcus MCP.
 
 This module contains tools for natural language project/task creation:
 - create_project: Create complete project from natural language description
@@ -16,6 +15,8 @@ try:
 except ImportError:
     # Fallback if PipelineStage is not available
     class PipelineStage:  # type: ignore[no-redef]
+        """Fallback for PipelineStage when not available."""
+
         MCP_REQUEST = "mcp_request"
         TASK_COMPLETION = "task_completion"
 
@@ -42,35 +43,41 @@ async def create_project(
        - Similar matches found → return suggestions, require clarification
        - No matches → create and register new project
 
-    Args:
-        description: Natural language project description
-        project_name: Name for the project (used for discovery and creation)
-        options: Optional configuration dictionary with the following keys:
+    Parameters
+    ----------
+    description : str
+        Natural language project description
+    project_name : str
+        Name for the project (used for discovery and creation)
+    options : Optional[Dict[str, Any]]
+        Optional configuration dictionary with the following keys:
 
-            Project Selection:
-            - project_id (str): Explicit project ID to use (skips discovery)
-            - mode (str): Creation mode - "auto" (default), "new_project"
+        Project Selection:
+        - project_id (str): Explicit project ID to use (skips discovery)
+        - mode (str): Creation mode - "auto" (default), "new_project"
 
-            Provider Config:
-            - provider (str): Kanban provider - "planka" (default), "github", "linear"
-            - planka_project_name (str): Custom Planka project name (defaults to project_name)
-            - planka_board_name (str): Custom Planka board name (defaults to "Main Board")
+        Provider Config:
+        - provider (str): Kanban provider - "planka" (default), "github", "linear"
+        - planka_project_name (str): Custom Planka project name (defaults to project_name)
+        - planka_board_name (str): Custom Planka board name (defaults to "Main Board")
 
-            Project Settings:
-            - complexity (str): "prototype", "standard" (default), "enterprise"
-            - deployment (str): "none" (default), "internal", "production"
-            - team_size (int): Team size 1-20 for estimation (default: 1)
-            - tech_stack (List[str]): Technologies to use (e.g., ["React", "Python"])
-            - deadline (str): Project deadline in YYYY-MM-DD format
-            - tags (List[str]): Tags for project organization
+        Project Settings:
+        - complexity (str): "prototype", "standard" (default), "enterprise"
+        - deployment (str): "none" (default), "internal", "production"
+        - team_size (int): Team size 1-20 for estimation (default: 1)
+        - tech_stack (List[str]): Technologies to use (e.g., ["React", "Python"])
+        - deadline (str): Project deadline in YYYY-MM-DD format
+        - tags (List[str]): Tags for project organization
 
-            Legacy Options:
-            - deployment_target (str): "local", "dev", "prod", "remote"
-              (mapped to deployment setting for backwards compatibility)
+        Legacy Options:
+        - deployment_target (str): "local", "dev", "prod", "remote"
+          (mapped to deployment setting for backwards compatibility)
+    state : Any
+        Marcus server state instance
 
-        state: Marcus server state instance
-
-    Returns:
+    Returns
+    -------
+    Dict[str, Any]
         On success:
         {
             "success": True,
@@ -102,39 +109,40 @@ async def create_project(
             "error": str
         }
 
-    Examples:
-        # Auto-discover or create
-        create_project(
-            description="Build a REST API",
-            project_name="MyAPI"
-        )
+    Examples
+    --------
+    Auto-discover or create:
+        >>> create_project(
+        ...     description="Build a REST API",
+        ...     project_name="MyAPI"
+        ... )
 
-        # Force new project creation
-        create_project(
-            description="Build OAuth 2.0 system",
-            project_name="MyAPI-v2",
-            options={"mode": "new_project"}
-        )
+    Force new project creation:
+        >>> create_project(
+        ...     description="Build OAuth 2.0 system",
+        ...     project_name="MyAPI-v2",
+        ...     options={"mode": "new_project"}
+        ... )
 
-        # Use specific existing project
-        create_project(
-            description="Add password reset",
-            project_name="MyAPI",
-            options={"project_id": "proj-123"}
-        )
+    Use specific existing project:
+        >>> create_project(
+        ...     description="Add password reset",
+        ...     project_name="MyAPI",
+        ...     options={"project_id": "proj-123"}
+        ... )
 
-        # Advanced configuration
-        create_project(
-            description="E-commerce platform",
-            project_name="ShopFlow",
-            options={
-                "complexity": "enterprise",
-                "deployment": "production",
-                "team_size": 5,
-                "tech_stack": ["React", "Node.js", "PostgreSQL"],
-                "tags": ["client:acme", "priority:high"]
-            }
-        )
+    Advanced configuration:
+        >>> create_project(
+        ...     description="E-commerce platform",
+        ...     project_name="ShopFlow",
+        ...     options={
+        ...         "complexity": "enterprise",
+        ...         "deployment": "production",
+        ...         "team_size": 5,
+        ...         "tech_stack": ["React", "Node.js", "PostgreSQL"],
+        ...         "tags": ["client:acme", "priority:high"]
+        ...     }
+        ... )
     """
     import uuid
     from datetime import datetime
@@ -427,13 +435,18 @@ async def add_feature(
     - Sets dependencies and priorities
     - Updates project timeline
 
-    Args:
-        feature_description: Natural language description of the feature
-        integration_point: How to integrate (auto_detect, after_current,
-                           parallel, new_phase)
-        state: Marcus server state instance
+    Parameters
+    ----------
+    feature_description : str
+        Natural language description of the feature
+    integration_point : str
+        How to integrate (auto_detect, after_current, parallel, new_phase)
+    state : Any
+        Marcus server state instance
 
-    Returns:
+    Returns
+    -------
+    Dict[str, Any]
         Dict with created feature tasks and integration details
     """
     # Add feature using natural language processing

@@ -1,5 +1,5 @@
 """
-Live Pipeline Monitor - Real-time monitoring of pipeline executions
+Live Pipeline Monitor - Real-time monitoring of pipeline executions.
 
 This module provides live visibility into ongoing pipeline executions with
 predictive capabilities to identify potential issues before they occur.
@@ -106,7 +106,7 @@ class LivePipelineMonitor:
             self.monitoring_task = None
 
     async def _monitoring_loop(self) -> None:
-        """Main monitoring loop."""
+        """Run the main monitoring loop."""
         while True:
             try:
                 # Update all active flows

@@ -1,5 +1,5 @@
 """
-Dependency Inference Engine for Marcus Phase 2
+Dependency Inference Engine for Marcus Phase 2.
 
 Smart dependency detection to prevent illogical task assignments like
 "Deploy to production" before development is complete.
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class DependencyPattern:
-    """Pattern for inferring dependencies"""
+    """Pattern for inferring dependencies."""
 
     name: str
     description: str
@@ -30,7 +30,7 @@ class DependencyPattern:
 
 @dataclass
 class InferredDependency:
-    """Inferred dependency between tasks"""
+    """Inferred dependency between tasks."""
 
     dependent_task_id: str
     dependency_task_id: str
@@ -41,7 +41,7 @@ class InferredDependency:
 
 @dataclass
 class DependencyGraph:
-    """Graph representation of task dependencies"""
+    """Graph representation of task dependencies."""
 
     nodes: Dict[str, Task]
     edges: List[InferredDependency]
@@ -49,7 +49,7 @@ class DependencyGraph:
     reverse_adjacency: Dict[str, List[str]]
 
     def has_cycle(self) -> bool:
-        """Check if the dependency graph has cycles"""
+        """Check if the dependency graph has cycles."""
         visited = set()
         rec_stack = set()
 
@@ -77,7 +77,7 @@ class DependencyGraph:
         return False
 
     def get_critical_path(self) -> List[str]:
-        """Get the critical path (longest dependency chain)"""
+        """Get the critical path (longest dependency chain)."""
         # Topological sort to find longest path
         in_degree: Dict[str, int] = defaultdict(int)
         for node_id in self.nodes:
@@ -127,7 +127,7 @@ class DependencyGraph:
 
 
 class DependencyInferer:
-    """Infers dependencies between tasks to prevent illogical assignments"""
+    """Infers dependencies between tasks to prevent illogical assignments."""
 
     def __init__(self) -> None:
         # Core dependency patterns that prevent illogical assignments
@@ -235,12 +235,16 @@ class DependencyInferer:
 
     async def infer_dependencies(self, tasks: List[Task]) -> DependencyGraph:
         """
-        Infer dependencies from task names and descriptions
+        Infer dependencies from task names and descriptions.
 
-        Args:
-            tasks: List of tasks to analyze
+        Parameters
+        ----------
+        tasks : List[Task]
+            List of tasks to analyze
 
-        Returns:
+        Returns
+        -------
+        DependencyGraph
             Dependency graph with inferred dependencies
         """
         logger.info(f"Inferring dependencies for {len(tasks)} tasks")
@@ -295,8 +299,7 @@ class DependencyInferer:
     def _check_pattern(
         self, dependent_task: Task, dependency_task: Task, pattern: DependencyPattern
     ) -> Optional[InferredDependency]:
-        """Check if a dependency pattern matches between two tasks"""
-
+        """Check if a dependency pattern matches between two tasks."""
         # Get task text for analysis
         dependent_text = (
             f"{dependent_task.name} {dependent_task.description or ''}".lower()
@@ -331,8 +334,7 @@ class DependencyInferer:
     def _is_logical_dependency(
         self, dependent_task: Task, dependency_task: Task, pattern: DependencyPattern
     ) -> bool:
-        """Perform additional logical checks for dependency validity"""
-
+        """Perform additional logical checks for dependency validity."""
         # Don't create dependencies between completed tasks and new tasks
         if (
             dependency_task.status == TaskStatus.DONE
@@ -453,8 +455,7 @@ class DependencyInferer:
     def _clean_dependencies(
         self, dependencies: List[InferredDependency]
     ) -> List[InferredDependency]:
-        """Remove duplicate and conflicting dependencies"""
-
+        """Remove duplicate and conflicting dependencies."""
         # Group by task pair
         dependency_groups = defaultdict(list)
         for dep in dependencies:
@@ -568,8 +569,7 @@ class DependencyInferer:
     def _remove_transitive_dependencies(
         self, dependencies: List[InferredDependency]
     ) -> List[InferredDependency]:
-        """Remove dependencies that are implied by transitive relationships"""
-
+        """Remove dependencies that are implied by transitive relationships."""
         # Build adjacency map
         adjacency = defaultdict(set)
         dep_map = {}
@@ -620,8 +620,7 @@ class DependencyInferer:
         return filtered
 
     def _resolve_cycles(self, graph: DependencyGraph) -> DependencyGraph:
-        """Resolve cycles in dependency graph by removing lowest confidence edges"""
-
+        """Resolve cycles in dependency graph by removing lowest confidence edges."""
         while graph.has_cycle():
             # Find cycles using DFS
             cycles = self._find_cycles(graph)
@@ -674,7 +673,7 @@ class DependencyInferer:
         return graph
 
     def _find_cycles(self, graph: DependencyGraph) -> List[List[str]]:
-        """Find all cycles in the dependency graph"""
+        """Find all cycles in the dependency graph."""
         cycles = []
         visited = set()
 
@@ -704,9 +703,11 @@ class DependencyInferer:
 
     async def validate_dependencies(self, graph: DependencyGraph) -> Dict[str, Any]:
         """
-        Validate dependency graph for correctness
+        Validate dependency graph for correctness.
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Validation results with any issues found
         """
         issues = []

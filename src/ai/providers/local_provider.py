@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 
 class LocalLLMProvider(BaseLLMProvider):
     """
+
     Local LLM provider for semantic AI analysis.
 
     Supports Ollama and other OpenAI-compatible local inference servers.
@@ -210,7 +211,6 @@ Generate a clear, actionable description that includes:
 3. Success criteria
 
 Enhanced description:"""
-
         try:
             response = await self._call_local_llm(prompt, max_tokens=500)
             return response.strip()
@@ -286,7 +286,6 @@ Analyze this blocker and provide 3-5 specific, actionable solutions.
 Focus on practical steps the developer can take immediately.
 
 Solutions:"""
-
         try:
             response = await self._call_local_llm(prompt)
             # Parse numbered list
@@ -432,7 +431,8 @@ Solutions:"""
 
     def _build_task_analysis_prompt(self, task: Task, context: Dict[str, Any]) -> str:
         """Build prompt for task analysis."""
-        return f"""Analyze this software development task:
+        return f"""Analyze this software development task:.
+
 
 Task: {task.name}
 Description: {task.description or 'No description provided'}
@@ -494,7 +494,7 @@ Provide a JSON response with:
             ]  # Limit for context
         )
 
-        return f"""Analyze these tasks and identify logical dependencies:
+        return f"""Analyze these tasks and identify logical dependencies:.
 
 {task_list}
 
@@ -550,7 +550,8 @@ Focus on clear dependencies like:
         self, task: Task, context: Dict[str, Any]
     ) -> str:
         """Build prompt for effort estimation."""
-        return f"""Estimate effort for this task:
+        return f"""Estimate effort for this task:.
+
 
 Task: {task.name}
 Description: {task.description or 'No description'}

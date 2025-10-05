@@ -26,8 +26,10 @@ class AssignmentPersistence:
         """
         Initialize the assignment persistence layer.
 
-        Args:
-            storage_dir: Directory for storing assignment data.
+        Parameters
+        ----------
+            storage_dir
+                Directory for storing assignment data.
                         Defaults to ./data/assignments/
         """
         if storage_dir is None:
@@ -55,10 +57,14 @@ class AssignmentPersistence:
         """
         Save a task assignment persistently.
 
-        Args:
-            worker_id: ID of the worker assigned to the task
-            task_id: ID of the task being assigned
-            task_data: Additional task information to store
+        Parameters
+        ----------
+            worker_id
+                ID of the worker assigned to the task.
+            task_id
+                ID of the task being assigned.
+            task_data
+                Additional task information to store.
         """
         async with self.lock:
             # Update cache
@@ -75,8 +81,10 @@ class AssignmentPersistence:
         """
         Remove a task assignment (e.g., when task is completed).
 
-        Args:
-            worker_id: ID of the worker to remove assignment for
+        Parameters
+        ----------
+            worker_id
+                ID of the worker to remove assignment for.
         """
         async with self.lock:
             if worker_id in self._assignments_cache:
@@ -87,10 +95,13 @@ class AssignmentPersistence:
         """
         Get the current assignment for a worker.
 
-        Args:
-            worker_id: ID of the worker
+        Parameters
+        ----------
+            worker_id
+                ID of the worker.
 
-        Returns:
+        Returns
+        -------
             Assignment data or None if no assignment exists
         """
         async with self.lock:
@@ -100,7 +111,8 @@ class AssignmentPersistence:
         """
         Get all currently assigned task IDs.
 
-        Returns:
+        Returns
+        -------
             Set of task IDs that are currently assigned
         """
         async with self.lock:
@@ -112,7 +124,8 @@ class AssignmentPersistence:
         """
         Load assignments from persistent storage.
 
-        Returns:
+        Returns
+        -------
             Dictionary of worker_id -> assignment data
         """
         async with self.lock:
@@ -150,10 +163,13 @@ class AssignmentPersistence:
         """
         Check if a task is currently assigned to any worker.
 
-        Args:
-            task_id: ID of the task to check
+        Parameters
+        ----------
+            task_id
+                ID of the task to check.
 
-        Returns:
+        Returns
+        -------
             True if the task is assigned, False otherwise
         """
         async with self.lock:
@@ -166,10 +182,13 @@ class AssignmentPersistence:
         """
         Get the worker ID assigned to a specific task.
 
-        Args:
-            task_id: ID of the task
+        Parameters
+        ----------
+            task_id
+                ID of the task.
 
-        Returns:
+        Returns
+        -------
             Worker ID or None if task is not assigned
         """
         async with self.lock:
@@ -179,7 +198,7 @@ class AssignmentPersistence:
             return None
 
     async def cleanup(self) -> None:
-        """Clean up any resources and persist final state"""
+        """Clean up any resources and persist final state."""
         try:
             # Persist any cached data one final time
             if self._assignments_cache:

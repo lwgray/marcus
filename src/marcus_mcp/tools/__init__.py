@@ -1,5 +1,4 @@
-"""
-MCP Tools Package
+"""MCP Tools Package.
 
 This package contains all MCP tool implementations organized by domain:
 - agent: Agent management (register, status, list)

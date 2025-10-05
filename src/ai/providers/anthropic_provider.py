@@ -1,5 +1,5 @@
 """
-Anthropic Claude Provider for Marcus AI
+Anthropic Claude Provider for Marcus AI.
 
 Implements semantic task analysis, dependency inference, and intelligent
 enhancement using Anthropic's Claude models.
@@ -27,7 +27,8 @@ logger = logging.getLogger(__name__)
 
 class AnthropicProvider(BaseLLMProvider):
     """
-    Anthropic Claude provider for semantic AI analysis
+
+    Anthropic Claude provider for semantic AI analysis.
 
     Uses Claude to provide intelligent task analysis, dependency inference,
     and project understanding while maintaining safety and reliability.
@@ -69,13 +70,15 @@ class AnthropicProvider(BaseLLMProvider):
         self, task: Task, context: Dict[str, Any]
     ) -> SemanticAnalysis:
         """
-        Analyze task semantics using Claude
+        Analyze task semantics using Claude.
 
-        Args:
+        Args
+        ----
             task: Task to analyze
             context: Project context
 
-        Returns:
+        Returns
+        -------
             Semantic analysis with intent, dependencies, and risks
         """
         prompt = self._build_task_analysis_prompt(task, context)
@@ -99,12 +102,14 @@ class AnthropicProvider(BaseLLMProvider):
 
     async def infer_dependencies(self, tasks: List[Task]) -> List[SemanticDependency]:
         """
-        Infer semantic dependencies between tasks using Claude
+        Infer semantic dependencies between tasks using Claude.
 
-        Args:
+        Args
+        ----
             tasks: List of tasks to analyze
 
-        Returns:
+        Returns
+        -------
             List of inferred semantic dependencies
         """
         if len(tasks) < 2:
@@ -124,13 +129,15 @@ class AnthropicProvider(BaseLLMProvider):
         self, task: Task, context: Dict[str, Any]
     ) -> str:
         """
-        Generate enhanced task description using Claude
+        Generate enhanced task description using Claude.
 
-        Args:
+        Args
+        ----
             task: Task to enhance
             context: Project context
 
-        Returns:
+        Returns
+        -------
             Enhanced description
         """
         prompt = self._build_enhancement_prompt(task, context)
@@ -147,13 +154,15 @@ class AnthropicProvider(BaseLLMProvider):
         self, task: Task, context: Dict[str, Any]
     ) -> EffortEstimate:
         """
-        Estimate task effort using Claude
+        Estimate task effort using Claude.
 
-        Args:
+        Args
+        ----
             task: Task to estimate
             context: Project context with historical data
 
-        Returns:
+        Returns
+        -------
             Effort estimate with confidence and factors
         """
         prompt = self._build_estimation_prompt(task, context)
@@ -176,14 +185,16 @@ class AnthropicProvider(BaseLLMProvider):
         self, task: Task, blocker: str, context: Dict[str, Any]
     ) -> List[str]:
         """
-        Analyze blocker and suggest solutions using Claude
+        Analyze blocker and suggest solutions using Claude.
 
-        Args:
+        Args
+        ----
             task: Blocked task
             blocker: Blocker description
             context: Additional context
 
-        Returns:
+        Returns
+        -------
             List of suggested solutions
         """
         prompt = self._build_blocker_analysis_prompt(task, blocker, context)
@@ -201,7 +212,7 @@ class AnthropicProvider(BaseLLMProvider):
             ]
 
     def _build_task_analysis_prompt(self, task: Task, context: Dict[str, Any]) -> str:
-        """Build prompt for task semantic analysis"""
+        """Build prompt for task semantic analysis."""
         project_type = context.get("project_type", "general")
         tech_stack = context.get("tech_stack", [])
 
@@ -243,7 +254,7 @@ Focus on:
 Respond only with valid JSON."""
 
     def _build_dependency_inference_prompt(self, tasks: List[Task]) -> str:
-        """Build prompt for dependency inference"""
+        """Build prompt for dependency inference."""
         task_list = "\n".join(
             [
                 f"- {task.id}: {task.name} | {task.description or 'No description'}"
@@ -278,7 +289,7 @@ Guidelines:
 Respond only with valid JSON array."""
 
     def _build_enhancement_prompt(self, task: Task, context: Dict[str, Any]) -> str:
-        """Build prompt for task description enhancement"""
+        """Build prompt for task description enhancement."""
         project_type = context.get("project_type", "general")
 
         return f"""
@@ -303,7 +314,7 @@ Keep it concise but comprehensive. Focus on what a developer needs to know to co
 Enhanced Description:"""
 
     def _build_estimation_prompt(self, task: Task, context: Dict[str, Any]) -> str:
-        """Build prompt for effort estimation"""
+        """Build prompt for effort estimation."""
         historical_data = context.get("historical_data", [])
         similar_tasks = [
             h
@@ -350,7 +361,7 @@ Respond only with valid JSON."""
     def _build_blocker_analysis_prompt(
         self, task: Task, blocker: str, context: Dict[str, Any]
     ) -> str:
-        """Build prompt for blocker analysis"""
+        """Build prompt for blocker analysis."""
         agent_info = context.get("agent", {})
         severity = context.get("severity", "unknown")
 
@@ -379,13 +390,15 @@ Respond only with valid JSON array."""
 
     async def complete(self, prompt: str, max_tokens: int = 2000) -> str:
         """
-        Generate a completion for the given prompt
+        Generate a completion for the given prompt.
 
-        Args:
+        Args
+        ----
             prompt: The prompt to complete
             max_tokens: Maximum tokens in response
 
-        Returns:
+        Returns
+        -------
             The completion text
         """
         self.max_tokens = max_tokens
@@ -393,12 +406,14 @@ Respond only with valid JSON array."""
 
     async def _call_claude(self, prompt: str) -> str:
         """
-        Make API call to Claude
+        Make API call to Claude.
 
-        Args:
+        Args
+        ----
             prompt: Prompt to send to Claude
 
-        Returns:
+        Returns
+        -------
             Claude's response text
         """
         payload = {
@@ -424,7 +439,7 @@ Respond only with valid JSON array."""
             raise Exception(f"Claude API call failed: {str(e)}")
 
     def _parse_task_analysis_response(self, response: str) -> SemanticAnalysis:
-        """Parse Claude's task analysis response"""
+        """Parse Claude's task analysis response."""
         try:
             data = parse_ai_json_response(response)
             return SemanticAnalysis(
@@ -451,7 +466,7 @@ Respond only with valid JSON array."""
     def _parse_dependency_response(
         self, response: str, tasks: List[Task]
     ) -> List[SemanticDependency]:
-        """Parse Claude's dependency inference response"""
+        """Parse Claude's dependency inference response."""
         try:
             data = parse_json_response(response)
             dependencies = []
@@ -491,7 +506,7 @@ Respond only with valid JSON array."""
             return []
 
     def _parse_enhancement_response(self, response: str, task: Task) -> str:
-        """Parse Claude's description enhancement response"""
+        """Parse Claude's description enhancement response."""
         # Claude returns enhancement directly as text
         enhanced = response.strip()
 
@@ -502,7 +517,7 @@ Respond only with valid JSON array."""
         return enhanced
 
     def _parse_estimation_response(self, response: str) -> EffortEstimate:
-        """Parse Claude's effort estimation response"""
+        """Parse Claude's effort estimation response."""
         try:
             data = parse_ai_json_response(response)
             return EffortEstimate(
@@ -523,7 +538,7 @@ Respond only with valid JSON array."""
             )
 
     def _parse_blocker_response(self, response: str) -> List[str]:
-        """Parse Claude's blocker analysis response"""
+        """Parse Claude's blocker analysis response."""
         try:
             data = parse_json_response(response)
             if isinstance(data, list):
@@ -547,7 +562,7 @@ Respond only with valid JSON array."""
             )
 
     def _classify_task_type(self, task: Task) -> str:
-        """Classify task type for historical comparison"""
+        """Classify task type for historical comparison."""
         task_text = f"{task.name} {task.description or ''}".lower()
 
         if any(word in task_text for word in ["test", "qa", "verify"]):
@@ -564,5 +579,5 @@ Respond only with valid JSON array."""
             return "development"
 
     async def close(self) -> None:
-        """Close the HTTP client"""
+        """Close the HTTP client."""
         await self.client.aclose()

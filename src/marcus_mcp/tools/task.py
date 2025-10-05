@@ -873,8 +873,10 @@ async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Tas
     """
     Find the best task for an agent using AI-powered analysis.
 
-    Returns:
-        Optional[Task]: The best task for the agent, or None if no suitable task found
+    Returns
+    -------
+    Optional[Task]
+        The best task for the agent, or None if no suitable task found
     """
     # Get lock with proper event loop binding
     lock = state.assignment_lock  # This property creates lock if needed

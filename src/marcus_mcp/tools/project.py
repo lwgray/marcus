@@ -1,5 +1,4 @@
-"""
-Project Monitoring Tools for Marcus MCP
+"""Project Monitoring Tools for Marcus MCP.
 
 This module contains tools for monitoring project progress and metrics:
 - get_project_status: Get comprehensive project metrics and status
@@ -22,10 +21,14 @@ async def get_project_status(state: Any) -> Any:
     - Kanban provider information
     - Active project context (for agents)
 
-    Args:
-        state: Marcus server state instance
+    Parameters
+    ----------
+    state : Any
+        Marcus server state instance
 
-    Returns:
+    Returns
+    -------
+    Dict[str, Any]
         Dict with project metrics and status
     """
     try:
@@ -130,8 +133,10 @@ async def refresh_project_state(state: Any) -> None:
     Updates the internal project state with latest data from
     the connected kanban provider.
 
-    Args:
-        state: Marcus server state instance
+    Parameters
+    ----------
+    state : Any
+        Marcus server state instance
     """
     try:
         # Log refresh attempt

@@ -45,9 +45,12 @@ class AssignmentReconciler:
         """
         Initialize the reconciler.
 
-        Args:
-            persistence: Assignment persistence layer
-            kanban_client: Kanban board interface
+        Parameters
+        ----------
+            persistence
+                Assignment persistence layer.
+            kanban_client
+                Kanban board interface.
         """
         self.persistence = persistence
         self.kanban_client = kanban_client
@@ -56,7 +59,8 @@ class AssignmentReconciler:
         """
         Reconcile persisted assignments with kanban board state.
 
-        Returns:
+        Returns
+        -------
             Dictionary with reconciliation results
         """
         results: ReconciliationResults = {
@@ -164,7 +168,8 @@ class AssignmentReconciler:
         """
         Get health status of assignment tracking.
 
-        Returns:
+        Returns
+        -------
             Dictionary with health metrics
         """
         health: AssignmentHealth = {

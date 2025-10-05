@@ -1,5 +1,4 @@
-"""
-Basic Enricher for Marcus Phase 2
+"""Basic Enricher for Marcus Phase 2.
 
 Simple task enrichment without requiring board context.
 """
@@ -11,7 +10,7 @@ from src.core.models import Priority, Task
 
 
 class BasicEnricher:
-    """Basic task enricher that improves poorly defined tasks"""
+    """Basic task enricher that improves poorly defined tasks."""
 
     def __init__(self) -> None:
         # Keywords for priority detection
@@ -33,7 +32,7 @@ class BasicEnricher:
         }
 
     def enrich_task(self, task: Task) -> Task:
-        """Enrich a single task with better information"""
+        """Enrich a single task with better information."""
         # Create a copy to avoid modifying the original
         enriched = Task(
             id=task.id,
@@ -53,7 +52,7 @@ class BasicEnricher:
         return enriched
 
     def _improve_name(self, name: str) -> str:
-        """Improve vague task names"""
+        """Improve vague task names."""
         # Capitalize first letter of each word
         improved = name.title()
 
@@ -68,7 +67,7 @@ class BasicEnricher:
         return vague_improvements.get(improved, improved)
 
     def _generate_description(self, task: Task) -> str:
-        """Generate helpful description if missing"""
+        """Generate helpful description if missing."""
         if task.description and len(task.description) > 10:
             return task.description
 
@@ -87,7 +86,7 @@ class BasicEnricher:
             return f"Complete the task: {task.name}. Ensure quality standards are met."
 
     def _suggest_labels(self, task: Task) -> List[str]:
-        """Suggest relevant labels based on task content"""
+        """Suggest relevant labels based on task content."""
         labels = list(task.labels)  # Start with existing labels
         name_lower = task.name.lower()
 
@@ -117,7 +116,7 @@ class BasicEnricher:
         return labels
 
     def _adjust_priority(self, task: Task) -> Priority:
-        """Adjust priority based on keywords"""
+        """Adjust priority based on keywords."""
         name_lower = task.name.lower()
         desc_lower = (task.description or "").lower()
         combined = f"{name_lower} {desc_lower}"
@@ -134,7 +133,7 @@ class BasicEnricher:
         return task.priority
 
     def _estimate_hours(self, task: Task) -> float:
-        """Estimate effort hours based on task type"""
+        """Estimate effort hours based on task type."""
         if task.estimated_hours:
             return task.estimated_hours
 

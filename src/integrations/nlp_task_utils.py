@@ -1,5 +1,4 @@
-"""
-Natural Language Task Processing Utilities
+"""Natural Language Task Processing Utilities.
 
 Shared utilities for natural language task creation tools.
 Eliminates code duplication between create_project and add_feature.

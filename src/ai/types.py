@@ -39,6 +39,7 @@ from src.core.models import Task
 @dataclass
 class AnalysisContext:
     """
+
     Context for AI analysis operations.
 
     Provides all necessary information for making intelligent
@@ -76,6 +77,7 @@ class AnalysisContext:
 @dataclass
 class AIInsights:
     """
+
     AI-generated insights about a task or decision.
 
     Contains semantic understanding and risk analysis from AI models.
@@ -114,6 +116,7 @@ class AIInsights:
 @dataclass
 class HybridAnalysis:
     """
+
     Result of hybrid rule-based + AI analysis.
 
     Combines deterministic rules with AI enhancement for optimal decisions.
@@ -162,6 +165,7 @@ class HybridAnalysis:
 @dataclass
 class RuleBasedResult:
     """
+
     Result from rule-based analysis.
 
     Represents deterministic validation results that provide safety guarantees.
@@ -194,6 +198,7 @@ class RuleBasedResult:
 @dataclass
 class AIOptimizationResult:
     """
+
     Result of AI optimization analysis.
 
     Contains AI-powered suggestions for optimizing task execution.
@@ -225,6 +230,7 @@ class AIOptimizationResult:
 @dataclass
 class AssignmentDecision:
     """
+
     Final decision on task assignment.
 
     Represents the complete decision including rule validation,
@@ -293,6 +299,7 @@ class AssignmentDecision:
 @dataclass
 class AssignmentContext:
     """
+
     Context for assignment decision.
 
     Complete context needed to make informed assignment decisions.

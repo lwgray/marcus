@@ -81,10 +81,13 @@ class AssignmentLease:
         """
         Calculate renewal duration based on progress and history.
 
-        Args:
-            lease_manager: Optional reference to lease manager for config
+        Parameters
+        ----------
+            lease_manager
+                Optional reference to lease manager for config.
 
-        Returns:
+        Returns
+        -------
             Renewal duration (adaptive based on multiple factors)
         """
         base_hours = 4.0
@@ -145,20 +148,34 @@ class AssignmentLeaseManager:
         """
         Initialize the lease manager.
 
-        Args:
-            kanban_client: Interface to kanban board
-            assignment_persistence: Assignment persistence layer
-            default_lease_hours: Default lease duration in hours
-            max_renewals: Maximum allowed renewals before escalation
-            warning_threshold_hours: Hours before expiry to warn
-            priority_multipliers: Lease duration multipliers by priority
-            complexity_multipliers: Lease duration multipliers by label/type
-            grace_period_minutes: Grace period after expiry before recovery
-            renewal_decay_factor: Factor to reduce renewal duration over time
-            min_lease_hours: Minimum allowed lease duration
-            max_lease_hours: Maximum allowed lease duration
-            stuck_task_threshold_renewals: Renewals before considering task stuck
-            enable_adaptive_leases: Enable smart lease duration adjustments
+        Parameters
+        ----------
+            kanban_client
+                Interface to kanban board.
+            assignment_persistence
+                Assignment persistence layer.
+            default_lease_hours
+                Default lease duration in hours.
+            max_renewals
+                Maximum allowed renewals before escalation.
+            warning_threshold_hours
+                Hours before expiry to warn.
+            priority_multipliers
+                Lease duration multipliers by priority.
+            complexity_multipliers
+                Lease duration multipliers by label/type.
+            grace_period_minutes
+                Grace period after expiry before recovery.
+            renewal_decay_factor
+                Factor to reduce renewal duration over time.
+            min_lease_hours
+                Minimum allowed lease duration.
+            max_lease_hours
+                Maximum allowed lease duration.
+            stuck_task_threshold_renewals
+                Renewals before considering task stuck.
+            enable_adaptive_leases
+                Enable smart lease duration adjustments.
         """
         self.kanban_client = kanban_client
         self.assignment_persistence = assignment_persistence
@@ -206,12 +223,17 @@ class AssignmentLeaseManager:
         """
         Create a new assignment lease.
 
-        Args:
-            task_id: ID of the task being assigned
-            agent_id: ID of the agent receiving assignment
-            task: Optional task object for additional context
+        Parameters
+        ----------
+            task_id
+                ID of the task being assigned.
+            agent_id
+                ID of the agent receiving assignment.
+            task
+                Optional task object for additional context.
 
-        Returns:
+        Returns
+        -------
             Created assignment lease
         """
         async with self.lease_lock:
@@ -287,12 +309,17 @@ class AssignmentLeaseManager:
         """
         Renew an existing lease based on progress report.
 
-        Args:
-            task_id: ID of the task
-            progress: Current progress percentage
-            message: Progress message
+        Parameters
+        ----------
+            task_id
+                ID of the task.
+            progress
+                Current progress percentage.
+            message
+                Progress message.
 
-        Returns:
+        Returns
+        -------
             Renewed lease or None if not found/expired
         """
         async with self.lease_lock:
@@ -351,7 +378,8 @@ class AssignmentLeaseManager:
         """
         Check for expired leases that need recovery.
 
-        Returns:
+        Returns
+        -------
             List of expired leases (considering grace period)
         """
         expired_leases = []
@@ -382,10 +410,13 @@ class AssignmentLeaseManager:
         """
         Recover a task with an expired lease.
 
-        Args:
-            lease: The expired lease to recover
+        Parameters
+        ----------
+            lease
+                The expired lease to recover.
 
-        Returns:
+        Returns
+        -------
             True if recovery successful
         """
         try:
@@ -434,7 +465,8 @@ class AssignmentLeaseManager:
         """
         Get leases that are expiring soon.
 
-        Returns:
+        Returns
+        -------
             List of leases expiring within warning threshold
         """
         expiring = []
@@ -535,9 +567,12 @@ class LeaseMonitor:
         """
         Initialize the lease monitor.
 
-        Args:
-            lease_manager: The lease manager instance
-            check_interval_seconds: How often to check for expired leases
+        Parameters
+        ----------
+            lease_manager
+                The lease manager instance.
+            check_interval_seconds
+                How often to check for expired leases.
         """
         self.lease_manager = lease_manager
         self.check_interval = check_interval_seconds
@@ -569,7 +604,7 @@ class LeaseMonitor:
         logger.info("Lease monitor stopped")
 
     async def _monitor_loop(self) -> None:
-        """Main monitoring loop."""
+        """Monitor lease."""
         while self._running:
             try:
                 # Check for expired leases

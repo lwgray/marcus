@@ -1,5 +1,5 @@
 """
-Marcus Error Handling Framework
+Marcus Error Handling Framework.
 
 Comprehensive error handling system designed for autonomous agent environments.
 Provides structured error types, rich context, and intelligent recovery strategies.

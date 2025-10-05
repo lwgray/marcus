@@ -1,5 +1,4 @@
-"""
-Simple Marcus MCP Client
+"""Simple Marcus MCP Client.
 
 A wrapper around the MCP protocol for calling Marcus tools.
 """

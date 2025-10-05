@@ -1,5 +1,4 @@
-"""
-Basic Creator Mode for Marcus Hybrid Approach
+"""Basic Creator Mode for Marcus Hybrid Approach.
 
 Implements the Creator Mode that generates project structures from requirements
 to prevent illogical task assignments like "Deploy to production" first.
@@ -22,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class BasicCreatorMode:
-    """Basic Creator Mode implementation"""
+    """Basic Creator Mode implementation."""
 
     def __init__(self) -> None:
         self.templates = {
@@ -34,7 +33,7 @@ class BasicCreatorMode:
         self.state: Dict[str, Any] = {"active_project": None, "generated_tasks": []}
 
     async def initialize(self, saved_state: Dict[str, Any]) -> None:
-        """Initialize mode with saved state"""
+        """Initialize mode with saved state."""
         if saved_state:
             self.state.update(saved_state)
             logger.info("Creator mode initialized with saved state")
@@ -42,11 +41,11 @@ class BasicCreatorMode:
             logger.info("Creator mode initialized with default state")
 
     async def get_state(self) -> Dict[str, Any]:
-        """Get current mode state for saving"""
+        """Get current mode state for saving."""
         return self.state.copy()
 
     async def get_status(self) -> Dict[str, Any]:
-        """Get current mode status"""
+        """Get current mode status."""
         return {
             "mode": "creator",
             "active_project": self.state.get("active_project"),
@@ -60,16 +59,21 @@ class BasicCreatorMode:
         project_name: str,
         customizations: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """
-        Create a new project from a template
+        """Create a new project from a template.
 
-        Args:
-            template_name: Name of template to use ('web', 'api', 'mobile')
-            project_name: Name for the new project
-            customizations: Custom parameters (size, excluded_phases, etc.)
+        Parameters
+        ----------
+        template_name : str
+            Name of template to use ('web', 'api', 'mobile').
+        project_name : str
+            Name for the new project.
+        customizations : Optional[Dict[str, Any]]
+            Custom parameters (size, excluded_phases, etc.).
 
-        Returns:
-            Result containing generated tasks
+        Returns
+        -------
+        Dict[str, Any]
+            Result containing generated tasks.
         """
         if template_name not in self.templates:
             return {
@@ -120,14 +124,17 @@ class BasicCreatorMode:
             return {"success": False, "error": str(e)}
 
     async def customize_project(self, adjustments: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Customize the currently active project
+        """Customize the currently active project.
 
-        Args:
-            adjustments: Adjustments to make (add/remove phases, change size, etc.)
+        Parameters
+        ----------
+        adjustments : Dict[str, Any]
+            Adjustments to make (add/remove phases, change size, etc.).
 
-        Returns:
-            Updated project information
+        Returns
+        -------
+        Dict[str, Any]
+            Updated project information.
         """
         if not self.state.get("active_project"):
             return {"success": False, "error": "No active project to customize"}
@@ -172,7 +179,7 @@ class BasicCreatorMode:
             return {"success": False, "error": str(e)}
 
     async def get_available_templates(self) -> Dict[str, Any]:
-        """Get list of available project templates"""
+        """Get list of available project templates."""
         templates_info = {}
 
         for name, template in self.templates.items():
@@ -205,15 +212,19 @@ class BasicCreatorMode:
     async def preview_template(
         self, template_name: str, size: Optional[str] = None
     ) -> Dict[str, Any]:
-        """
-        Preview what a template would generate
+        """Preview what a template would generate.
 
-        Args:
-            template_name: Template to preview
-            size: Project size to preview
+        Parameters
+        ----------
+        template_name : str
+            Template to preview.
+        size : Optional[str]
+            Project size to preview.
 
-        Returns:
-            Preview of tasks that would be generated
+        Returns
+        -------
+        Dict[str, Any]
+            Preview of tasks that would be generated.
         """
         if template_name not in self.templates:
             return {"success": False, "error": f"Template '{template_name}' not found"}
@@ -255,17 +266,21 @@ class BasicCreatorMode:
     async def create_from_description(
         self, description: str, project_name: str
     ) -> Dict[str, Any]:
-        """
-        Create project from natural language description
+        """Create project from natural language description.
 
-        This is a simplified version - Phase 2 will add AI-powered analysis
+        This is a simplified version - Phase 2 will add AI-powered analysis.
 
-        Args:
-            description: Project description
-            project_name: Name for the project
+        Parameters
+        ----------
+        description : str
+            Project description.
+        project_name : str
+            Name for the project.
 
-        Returns:
-            Generated project or template recommendation
+        Returns
+        -------
+        Dict[str, Any]
+            Generated project or template recommendation.
         """
         description_lower = description.lower()
 
@@ -318,7 +333,7 @@ class BasicCreatorMode:
         return result
 
     def _task_to_dict(self, task: Task) -> Dict[str, Any]:
-        """Convert Task object to dictionary"""
+        """Convert Task object to dictionary."""
         return {
             "id": task.id,
             "name": task.name,
@@ -340,7 +355,7 @@ class BasicCreatorMode:
         }
 
     def _get_phases_summary(self, tasks: List[Task]) -> Dict[str, Any]:
-        """Get summary of phases in the generated tasks"""
+        """Get summary of phases in the generated tasks."""
         phases: Dict[str, Dict[str, Any]] = {}
 
         for task in tasks:

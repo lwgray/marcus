@@ -1,5 +1,5 @@
 """
-Marcus Error Response System
+Marcus Error Response System.
 
 Standardized error response formatting for different contexts:
 - MCP protocol responses
@@ -80,12 +80,17 @@ class ErrorResponseFormatter:
         """
         Format error for specified response type.
 
-        Args:
-            error: The error to format
-            format_type: Target format for the response
-            additional_context: Additional context to include
+        Parameters
+        ----------
+            error
+                The error to format.
+            format_type
+                Target format for the response.
+            additional_context
+                Additional context to include.
 
-        Returns:
+        Returns
+        -------
             Formatted error response dictionary
         """
         # Convert regular exceptions to Marcus errors for consistent handling
@@ -460,7 +465,6 @@ class BatchErrorResponseFormatter:
         format_type: ResponseFormat = ResponseFormat.JSON_API,
     ) -> Dict[str, Any]:
         """Format response for batch operation with multiple errors."""
-
         # Calculate statistics
         error_count = len(errors)
         success_rate = successes / total_operations if total_operations > 0 else 0
@@ -596,7 +600,7 @@ def create_error_response(
 def handle_mcp_tool_error(
     error: Exception, tool_name: str, arguments: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
-    """Helper for handling errors in MCP tool calls."""
+    """Handle errors in MCP tool calls."""
     from .error_framework import ErrorContext
 
     context = ErrorContext(

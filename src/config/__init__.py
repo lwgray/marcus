@@ -1,6 +1,5 @@
 """
-Configuration Module for Marcus
-==================================
+Configuration Module for Marcus.
 
 This module provides comprehensive configuration management for the Marcus system.
 It handles loading, validation, and management of settings from multiple sources

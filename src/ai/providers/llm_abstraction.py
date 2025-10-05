@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 
 class LLMAbstraction:
     """
+
     Multi-provider LLM abstraction with intelligent fallback.
 
     Supports multiple LLM providers with automatic fallback when primary fails.
@@ -486,13 +487,15 @@ class LLMAbstraction:
 
     async def analyze(self, prompt: str, context: Any) -> str:
         """
-        Analyze content using LLM
+        Analyze content using LLM.
 
-        Args:
+        Args
+        ----
             prompt: The prompt to analyze
             context: Analysis context
 
-        Returns:
+        Returns
+        -------
             Analysis result as string
         """
         # Ensure providers are initialized before trying to use them
@@ -507,12 +510,14 @@ class LLMAbstraction:
 
     async def switch_provider(self, provider_name: str) -> bool:
         """
-        Switch to a different provider
+        Switch to a different provider.
 
-        Args:
+        Args
+        ----
             provider_name: Name of provider to switch to
 
-        Returns:
+        Returns
+        -------
             True if switch successful, False otherwise
         """
         if provider_name not in self.providers:
@@ -526,7 +531,7 @@ class LLMAbstraction:
         return True
 
     def get_provider_stats(self) -> Dict[str, Any]:
-        """Get performance statistics for all providers"""
+        """Get performance statistics for all providers."""
         return {
             "current_provider": self.current_provider,
             "available_providers": list(self.providers.keys()),
@@ -535,9 +540,10 @@ class LLMAbstraction:
 
     def get_best_provider(self) -> str:
         """
-        Determine the best performing provider based on success rate
+        Determine the best performing provider based on success rate.
 
-        Returns:
+        Returns
+        -------
             Name of best performing provider
         """
         best_provider = self.current_provider
@@ -561,9 +567,10 @@ class LLMAbstraction:
 
     async def health_check(self) -> Dict[str, Any]:
         """
-        Check health of all providers
+        Check health of all providers.
 
-        Returns:
+        Returns
+        -------
             Health status for each provider
         """
         health_status = {}

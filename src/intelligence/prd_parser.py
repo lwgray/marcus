@@ -1,5 +1,5 @@
 """
-PRD Parser for Marcus Phase 2 Intelligence
+PRD Parser for Marcus Phase 2 Intelligence.
 
 Extracts structured requirements from various PRD formats using AI.
 """
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class PRDFormat(Enum):
-    """Supported PRD formats"""
+    """Supported PRD formats."""
 
     PLAIN_TEXT = "plain_text"
     MARKDOWN = "markdown"
@@ -24,7 +24,7 @@ class PRDFormat(Enum):
 
 @dataclass
 class Feature:
-    """Represents a feature extracted from PRD"""
+    """Represents a feature extracted from PRD."""
 
     name: str
     description: str
@@ -37,7 +37,7 @@ class Feature:
 
 @dataclass
 class TechStack:
-    """Technology stack requirements"""
+    """Technology stack requirements."""
 
     frontend: List[str]
     backend: List[str]
@@ -49,7 +49,7 @@ class TechStack:
 
 @dataclass
 class ProjectConstraints:
-    """Project constraints and requirements"""
+    """Project constraints and requirements."""
 
     timeline: Optional[str]
     budget: Optional[str]
@@ -61,7 +61,7 @@ class ProjectConstraints:
 
 @dataclass
 class ParsedPRD:
-    """Complete parsed PRD structure"""
+    """Complete parsed PRD structure."""
 
     title: str
     overview: str
@@ -76,7 +76,7 @@ class ParsedPRD:
 
 
 class PRDParser:
-    """Extracts structured requirements from various PRD formats"""
+    """Extracts structured requirements from various PRD formats."""
 
     def __init__(self) -> None:
         # Patterns for extracting different types of information
@@ -101,13 +101,18 @@ class PRDParser:
 
     async def parse_prd(self, content: str, format_hint: str = "auto") -> ParsedPRD:
         """
-        Parse PRD from various formats
+        Parse PRD from various formats.
 
-        Args:
-            content: PRD text content
-            format_hint: Format hint ("auto", "markdown", "plain_text", etc.)
+        Parameters
+        ----------
+        content : str
+            PRD text content
+        format_hint : str, optional
+            Format hint ("auto", "markdown", "plain_text", etc.)
 
-        Returns:
+        Returns
+        -------
+        ParsedPRD
             Parsed PRD structure
         """
         # Detect format if auto
@@ -146,7 +151,7 @@ class PRDParser:
         )
 
     def _detect_format(self, content: str) -> PRDFormat:
-        """Detect PRD format from content"""
+        """Detect PRD format from content."""
         content_lower = content.lower()
 
         # Check for markdown indicators
@@ -167,7 +172,7 @@ class PRDParser:
         return PRDFormat.PLAIN_TEXT
 
     def _extract_title(self, content: str) -> str:
-        """Extract project title"""
+        """Extract project title."""
         lines = content.split("\n")
 
         # Look for markdown heading
@@ -196,7 +201,7 @@ class PRDParser:
         return "Untitled Project"
 
     def _extract_overview(self, content: str) -> str:
-        """Extract project overview/description"""
+        """Extract project overview/description."""
         overview_patterns = [
             r"(?i)overview[:\n](.*?)(?=\n\n|\n#|\ngoals?|\nfeatures?|$)",
             r"(?i)description[:\n](.*?)(?=\n\n|\n#|\ngoals?|\nfeatures?|$)",
@@ -216,7 +221,7 @@ class PRDParser:
         return "No overview provided"
 
     def _extract_goals(self, content: str) -> List[str]:
-        """Extract project goals"""
+        """Extract project goals."""
         goals = []
 
         # Look for goals section
@@ -240,7 +245,7 @@ class PRDParser:
         return goals
 
     async def _extract_features(self, content: str) -> List[Feature]:
-        """Extract features from PRD"""
+        """Extract features from PRD."""
         features = []
 
         # Look for features section
@@ -260,7 +265,7 @@ class PRDParser:
         return features
 
     async def _parse_feature_block(self, block: str) -> Optional[Feature]:
-        """Parse an individual feature block"""
+        """Parse an individual feature block."""
         lines = block.strip().split("\n")
         if not lines:
             return None
@@ -329,7 +334,7 @@ class PRDParser:
         )
 
     def _split_features(self, features_text: str) -> List[str]:
-        """Split features section into individual feature blocks"""
+        """Split features section into individual feature blocks."""
         # Split by markdown headers or bullet points
 
         # Try splitting by headers first
@@ -351,7 +356,7 @@ class PRDParser:
         return [features_text.strip()]
 
     def _extract_tech_stack(self, content: str) -> TechStack:
-        """Extract technology stack from content"""
+        """Extract technology stack from content."""
         tech_stack = TechStack(
             frontend=[],
             backend=[],
@@ -393,7 +398,7 @@ class PRDParser:
         return tech_stack
 
     def _extract_constraints(self, content: str) -> ProjectConstraints:
-        """Extract project constraints"""
+        """Extract project constraints."""
         timeline = self._extract_timeline(content)
         budget = self._extract_budget(content)
         team_size = self._extract_team_size(content)
@@ -419,7 +424,7 @@ class PRDParser:
         )
 
     def _extract_timeline(self, content: str) -> Optional[str]:
-        """Extract timeline from content"""
+        """Extract timeline from content."""
         timeline_patterns = [
             r"(?i)timeline[:\s]*(.+?)(?=\n|$)",
             r"(?i)deadline[:\s]*(.+?)(?=\n|$)",
@@ -436,7 +441,7 @@ class PRDParser:
         return None
 
     def _extract_budget(self, content: str) -> Optional[str]:
-        """Extract budget information"""
+        """Extract budget information."""
         budget_patterns = [
             r"(?i)budget[:\s]*(.+?)(?=\n|$)",
             r"(?i)\$[\d,]+",
@@ -451,7 +456,7 @@ class PRDParser:
         return None
 
     def _extract_team_size(self, content: str) -> Optional[int]:
-        """Extract team size"""
+        """Extract team size."""
         team_patterns = [
             r"(?i)team\s+size[:\s]*(\d+)",
             r"(?i)(\d+)\s+developers?",
@@ -469,7 +474,7 @@ class PRDParser:
         return None
 
     def _extract_requirements(self, content: str, keywords: List[str]) -> List[str]:
-        """Extract requirements based on keywords"""
+        """Extract requirements based on keywords."""
         requirements = []
 
         for keyword in keywords:
@@ -480,19 +485,19 @@ class PRDParser:
         return list(set(requirements))  # Remove duplicates
 
     def _extract_assumptions(self, content: str) -> List[str]:
-        """Extract project assumptions"""
+        """Extract project assumptions."""
         return self._extract_list_section(content, ["assumptions?", "assume"])
 
     def _extract_risks(self, content: str) -> List[str]:
-        """Extract project risks"""
+        """Extract project risks."""
         return self._extract_list_section(
             content, ["risks?", "challenges?", "concerns?"]
         )
 
     def _extract_success_metrics(self, content: str) -> List[str]:
-        """Extract success metrics"""
+        """Extract success metrics."""
         return self._extract_list_section(
-            content, ["success\s+metrics?", "kpis?", "measurements?"]
+            content, [r"success\s+metrics?", "kpis?", "measurements?"]
         )
 
     def _extract_section(self, content: str, section_names: List[str]) -> Optional[str]:
@@ -511,7 +516,7 @@ class PRDParser:
     def _extract_list_section(
         self, content: str, section_names: List[str]
     ) -> List[str]:
-        """Extract a list from a section"""
+        """Extract a list from a section."""
         section_text = self._extract_section(content, section_names)
         if not section_text:
             return []
@@ -527,7 +532,7 @@ class PRDParser:
         ]
 
     def _estimate_feature_complexity(self, text: str) -> str:
-        """Estimate feature complexity based on text"""
+        """Estimate feature complexity based on text."""
         text_lower = text.lower()
 
         high_complexity_indicators = [
@@ -568,7 +573,7 @@ class PRDParser:
             return "medium"
 
     def _clean_text(self, text: str) -> str:
-        """Clean and normalize text"""
+        """Clean and normalize text."""
         if not text:
             return ""
 

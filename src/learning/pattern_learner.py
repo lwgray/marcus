@@ -1,5 +1,5 @@
 """
-Pattern Learner for Marcus Phase 2
+Pattern Learner for Marcus Phase 2.
 
 Learns patterns from completed projects to improve future recommendations.
 """
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class CompletedProject:
-    """Data from a completed project"""
+    """Data from a completed project."""
 
     project_id: str
     name: str
@@ -31,7 +31,7 @@ class CompletedProject:
 
 @dataclass
 class ProjectLearnings:
-    """Extracted learnings from a project"""
+    """Extracted learnings from a project."""
 
     estimation_accuracy: Dict[str, float]  # task_type -> accuracy ratio
     dependency_patterns: List[Dict[str, Any]]
@@ -43,7 +43,7 @@ class ProjectLearnings:
 
 @dataclass
 class Pattern:
-    """A learned pattern"""
+    """A learned pattern."""
 
     pattern_id: str
     pattern_type: str  # 'estimation', 'dependency', 'workflow', etc.
@@ -56,7 +56,7 @@ class Pattern:
 
 
 class PatternLearner:
-    """Learns patterns from completed projects"""
+    """Learns patterns from completed projects."""
 
     def __init__(self) -> None:
         self.patterns: Dict[str, Pattern] = {}
@@ -76,10 +76,13 @@ class PatternLearner:
 
     async def learn_from_project(self, project: CompletedProject) -> None:
         """
-        Extract learnings from a completed project
+        Extract learnings from a completed project.
 
-        Args:
-            project: Completed project data
+        Parameters
+        ----------
+        project : CompletedProject
+            Completed project data
+
         """
         logger.info(f"Learning from completed project: {project.name}")
 
@@ -103,10 +106,13 @@ class PatternLearner:
 
     async def update_patterns(self, learnings: ProjectLearnings) -> None:
         """
-        Update pattern library based on new learnings
+        Update pattern library based on new learnings.
 
-        Args:
-            learnings: Extracted learnings from a project
+        Parameters
+        ----------
+        learnings : ProjectLearnings
+            Extracted learnings from a project
+
         """
         # Update estimation patterns
         await self._update_estimation_patterns(learnings.estimation_accuracy)
@@ -128,7 +134,7 @@ class PatternLearner:
     async def _analyze_estimation_accuracy(
         self, project: CompletedProject
     ) -> Dict[str, float]:
-        """Analyze how accurate task estimates were"""
+        """Analyze how accurate task estimates were."""
         accuracy_by_type: Dict[str, List[float]] = {}
 
         for task in project.tasks:
@@ -155,7 +161,7 @@ class PatternLearner:
     async def _analyze_dependency_patterns(
         self, project: CompletedProject
     ) -> List[Dict[str, Any]]:
-        """Analyze dependency patterns that worked well"""
+        """Analyze dependency patterns that worked well."""
         patterns = []
 
         # Analyze task completion order
@@ -188,7 +194,7 @@ class PatternLearner:
     async def _analyze_workflow_patterns(
         self, project: CompletedProject
     ) -> Dict[str, Any]:
-        """Analyze workflow patterns"""
+        """Analyze workflow patterns."""
         patterns: Dict[str, Any] = {}
 
         # Analyze parallelism
@@ -217,7 +223,7 @@ class PatternLearner:
         return patterns
 
     async def _identify_success_factors(self, project: CompletedProject) -> List[str]:
-        """Identify factors that contributed to project success"""
+        """Identify factors that contributed to project success."""
         factors = []
 
         # Check if project completed on time
@@ -253,7 +259,7 @@ class PatternLearner:
         return factors
 
     async def _identify_failure_points(self, project: CompletedProject) -> List[str]:
-        """Identify points where the project struggled"""
+        """Identify points where the project struggled."""
         failure_points = []
 
         # Check for blocked tasks
@@ -288,7 +294,7 @@ class PatternLearner:
     async def _analyze_team_performance(
         self, project: CompletedProject
     ) -> Dict[str, Any]:
-        """Analyze team performance metrics"""
+        """Analyze team performance metrics."""
         performance: Dict[str, Any] = {}
 
         # Calculate velocity (tasks per day)
@@ -314,7 +320,7 @@ class PatternLearner:
     async def _update_estimation_patterns(
         self, accuracy_data: Dict[str, float]
     ) -> None:
-        """Update estimation accuracy patterns"""
+        """Update estimation accuracy patterns."""
         for task_type, accuracy in accuracy_data.items():
             pattern_id = f"estimation_{task_type}"
 
@@ -346,7 +352,7 @@ class PatternLearner:
     async def _update_dependency_patterns(
         self, dependency_patterns: List[Dict[str, Any]]
     ) -> None:
-        """Update dependency patterns"""
+        """Update dependency patterns."""
         for pattern_data in dependency_patterns:
             pattern_id = f"dependency_{pattern_data['pattern']}"
 
@@ -368,7 +374,7 @@ class PatternLearner:
                 )
 
     async def _update_workflow_patterns(self, workflow_data: Dict[str, Any]) -> None:
-        """Update workflow patterns"""
+        """Update workflow patterns."""
         pattern_id = "workflow_characteristics"
 
         if pattern_id in self.patterns:
@@ -399,7 +405,7 @@ class PatternLearner:
     async def _update_outcome_patterns(
         self, success_factors: List[str], failure_points: List[str]
     ) -> None:
-        """Update success and failure patterns"""
+        """Update success and failure patterns."""
         # Update success patterns
         for factor in success_factors:
             pattern_id = f"success_{factor}"
@@ -443,7 +449,7 @@ class PatternLearner:
                 )
 
     async def _prune_patterns(self) -> None:
-        """Remove old or low-confidence patterns"""
+        """Remove old or low-confidence patterns."""
         cutoff_date = datetime.now() - timedelta(days=180)  # 6 months old
         min_confidence = 0.3
         min_evidence = 2
@@ -468,13 +474,18 @@ class PatternLearner:
 
     async def calculate_confidence(self, pattern: Pattern) -> float:
         """
-        Calculate pattern confidence based on evidence
+        Calculate pattern confidence based on evidence.
 
-        Args:
-            pattern: Pattern to calculate confidence for
+        Parameters
+        ----------
+        pattern : Pattern
+            Pattern to calculate confidence for
 
-        Returns:
+        Returns
+        -------
+        float
             Confidence score between 0 and 1
+
         """
         base_confidence = pattern.confidence
 
@@ -489,7 +500,7 @@ class PatternLearner:
         return max(0.1, min(0.95, final_confidence))
 
     def _classify_task_type(self, task: Task) -> str:
-        """Classify task type for pattern learning"""
+        """Classify task type for pattern learning."""
         task_text = f"{task.name} {task.description or ''}".lower()
 
         import re
@@ -502,13 +513,18 @@ class PatternLearner:
 
     async def get_patterns_for_context(self, context: Dict[str, Any]) -> List[Pattern]:
         """
-        Get patterns relevant to a specific context
+        Get patterns relevant to a specific context.
 
-        Args:
-            context: Context information (project type, team size, etc.)
+        Parameters
+        ----------
+        context : Dict[str, Any]
+            Context information (project type, team size, etc.)
 
-        Returns:
+        Returns
+        -------
+        List[Pattern]
             List of relevant patterns
+
         """
         relevant_patterns = []
 
@@ -535,7 +551,7 @@ class PatternLearner:
         return relevant_patterns
 
     async def export_patterns(self) -> Dict[str, Any]:
-        """Export patterns for persistence"""
+        """Export patterns for persistence."""
         return {
             "patterns": {
                 pattern_id: asdict(pattern)
@@ -546,7 +562,7 @@ class PatternLearner:
         }
 
     async def import_patterns(self, pattern_data: Dict[str, Any]) -> None:
-        """Import patterns from persistence"""
+        """Import patterns from persistence."""
         for pattern_id, pattern_dict in pattern_data.get("patterns", {}).items():
             # Convert datetime strings back to datetime objects
             if "last_updated" in pattern_dict:

@@ -1,4 +1,4 @@
-"""AI Learning Components"""
+"""AI Learning Components."""
 
 from .contextual_learner import (
     ContextualLearningSystem,

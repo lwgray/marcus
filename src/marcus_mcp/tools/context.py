@@ -1,5 +1,4 @@
-"""
-Context Tools for Marcus MCP
+"""Context Tools for Marcus MCP.
 
 This module contains tools for context management:
 - log_decision: Log architectural decisions
@@ -20,13 +19,20 @@ async def log_decision(
     affect other tasks. Decisions are automatically cross-referenced
     to dependent tasks.
 
-    Args:
-        agent_id: The agent making the decision
-        task_id: Current task ID
-        decision: Natural language description of the decision
-        state: Marcus server state instance
+    Parameters
+    ----------
+    agent_id : str
+        The agent making the decision
+    task_id : str
+        Current task ID
+    decision : str
+        Natural language description of the decision
+    state : Any
+        Marcus server state instance
 
-    Returns:
+    Returns
+    -------
+    Dict[str, Any]
         Dict with success status and decision details
     """
     try:
@@ -91,11 +97,16 @@ async def get_task_context(task_id: str, state: Any) -> Dict[str, Any]:
     This is useful for agents who want to understand the broader
     context of their work or review decisions made on dependencies.
 
-    Args:
-        task_id: The task to get context for
-        state: Marcus server state instance
+    Parameters
+    ----------
+    task_id : str
+        The task to get context for
+    state : Any
+        Marcus server state instance
 
-    Returns:
+    Returns
+    -------
+    Dict[str, Any]
         Dict with task context including implementations, dependencies, and decisions
     """
     try:

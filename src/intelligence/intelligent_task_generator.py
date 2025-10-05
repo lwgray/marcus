@@ -1,5 +1,5 @@
 """
-Intelligent Task Generator for Marcus Phase 2
+Intelligent Task Generator for Marcus Phase 2.
 
 AI-powered task generation from PRD requirements.
 """
@@ -8,7 +8,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, TypedDict, Union
+from typing import Any, Dict, List, Optional, TypedDict
 
 try:
     from typing import NotRequired  # Python 3.11+
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class TaskTemplate(TypedDict):
-    """Type definition for task template"""
+    """Type definition for task template."""
 
     name: str
     description: NotRequired[str]
@@ -31,7 +31,7 @@ class TaskTemplate(TypedDict):
 
 
 class FeatureTaskTemplate(TypedDict):
-    """Type definition for feature task template"""
+    """Type definition for feature task template."""
 
     name: str
     description: NotRequired[str]
@@ -41,7 +41,7 @@ class FeatureTaskTemplate(TypedDict):
 
 
 class TechStackTaskTemplate(TypedDict):
-    """Type definition for tech stack task template"""
+    """Type definition for tech stack task template."""
 
     name: str
     description: NotRequired[str]
@@ -52,7 +52,7 @@ class TechStackTaskTemplate(TypedDict):
 
 @dataclass
 class ProjectStructure:
-    """Generated project structure from PRD"""
+    """Generated project structure from PRD."""
 
     phases: List[str]
     tasks: List[Task]
@@ -63,7 +63,7 @@ class ProjectStructure:
 
 @dataclass
 class ProjectContext:
-    """Context for task generation"""
+    """Context for task generation."""
 
     tech_stack: TechStack
     team_size: int
@@ -73,7 +73,7 @@ class ProjectContext:
 
 @dataclass
 class TaskDescription:
-    """Detailed task description"""
+    """Detailed task description."""
 
     name: str
     description: str
@@ -86,7 +86,7 @@ class TaskDescription:
 
 
 class IntelligentTaskGenerator:
-    """AI-powered task generation from requirements"""
+    """AI-powered task generation from requirements."""
 
     def __init__(self) -> None:
         # Task templates for different types of features
@@ -240,12 +240,16 @@ class IntelligentTaskGenerator:
 
     async def generate_tasks_from_prd(self, prd: ParsedPRD) -> ProjectStructure:
         """
-        Generate complete project structure from parsed PRD
+        Generate complete project structure from parsed PRD.
 
-        Args:
-            prd: Parsed PRD with features and requirements
+        Parameters
+        ----------
+        prd : ParsedPRD
+            Parsed PRD with features and requirements
 
-        Returns:
+        Returns
+        -------
+        ProjectStructure
             Complete project structure with tasks and dependencies
         """
         logger.info(f"Generating tasks for project: {prd.title}")
@@ -314,7 +318,7 @@ class IntelligentTaskGenerator:
     async def _generate_setup_tasks(
         self, tech_stack: TechStack, context: ProjectContext
     ) -> List[Task]:
-        """Generate setup and configuration tasks"""
+        """Generate setup and configuration tasks."""
         tasks = []
 
         # Basic setup tasks
@@ -359,7 +363,7 @@ class IntelligentTaskGenerator:
     async def _generate_design_tasks(
         self, features: List[Feature], context: ProjectContext
     ) -> List[Task]:
-        """Generate design and architecture tasks"""
+        """Generate design and architecture tasks."""
         tasks = []
 
         # Basic design tasks
@@ -412,7 +416,7 @@ class IntelligentTaskGenerator:
     async def _generate_feature_tasks(
         self, features: List[Feature], context: ProjectContext
     ) -> List[Task]:
-        """Generate tasks for implementing features"""
+        """Generate tasks for implementing features."""
         tasks = []
 
         for feature in features:
@@ -424,7 +428,7 @@ class IntelligentTaskGenerator:
     async def _generate_tasks_for_feature(
         self, feature: Feature, context: ProjectContext
     ) -> List[Task]:
-        """Generate tasks for a specific feature"""
+        """Generate tasks for a specific feature."""
         tasks = []
 
         # Categorize feature type
@@ -455,7 +459,7 @@ class IntelligentTaskGenerator:
     async def _generate_integration_tasks(
         self, features: List[Feature], context: ProjectContext
     ) -> List[Task]:
-        """Generate integration tasks"""
+        """Generate integration tasks."""
         tasks = []
 
         integration_tasks = [
@@ -494,7 +498,7 @@ class IntelligentTaskGenerator:
     async def _generate_testing_tasks(
         self, features: List[Feature], context: ProjectContext
     ) -> List[Task]:
-        """Generate testing tasks"""
+        """Generate testing tasks."""
         tasks = []
 
         testing_tasks = [
@@ -533,7 +537,7 @@ class IntelligentTaskGenerator:
     async def _generate_deployment_tasks(
         self, tech_stack: TechStack, context: ProjectContext
     ) -> List[Task]:
-        """Generate deployment tasks"""
+        """Generate deployment tasks."""
         tasks = []
 
         deployment_tasks = [
@@ -576,7 +580,7 @@ class IntelligentTaskGenerator:
         return tasks
 
     def _analyze_project_context(self, prd: ParsedPRD) -> ProjectContext:
-        """Analyze PRD to determine project context"""
+        """Analyze PRD to determine project context."""
         # Determine team size
         team_size = prd.constraints.team_size or self._estimate_team_size(prd)
 
@@ -594,7 +598,7 @@ class IntelligentTaskGenerator:
         )
 
     def _categorize_feature(self, feature: Feature) -> str:
-        """Categorize feature to determine task template"""
+        """Categorize feature to determine task template."""
         feature_text = f"{feature.name} {feature.description}".lower()
 
         if any(word in feature_text for word in ["auth", "login", "register", "user"]):
@@ -609,7 +613,7 @@ class IntelligentTaskGenerator:
             return "generic"
 
     def _generate_generic_feature_tasks(self, feature: Feature) -> List[Dict[str, Any]]:
-        """Generate generic tasks for unknown feature types"""
+        """Generate generic tasks for unknown feature types."""
         feature.name.replace(" ", "_").lower()
 
         return [
@@ -642,7 +646,7 @@ class IntelligentTaskGenerator:
     def _customize_template_for_feature(
         self, template: Dict[str, Any], feature: Feature, context: ProjectContext
     ) -> Dict[str, Any]:
-        """Customize task template for specific feature"""
+        """Customize task template for specific feature."""
         customized = template.copy()
 
         # Replace generic names with feature-specific names
@@ -674,7 +678,7 @@ class IntelligentTaskGenerator:
     def _create_task_from_template(
         self, template: Dict[str, Any], phase: str, context: ProjectContext
     ) -> Task:
-        """Create Task object from template"""
+        """Create Task object from template."""
         # Generate unique ID
         task_id = str(uuid.uuid4())
 
@@ -736,7 +740,7 @@ class IntelligentTaskGenerator:
         return task
 
     def _extract_dependencies(self, tasks: List[Task]) -> Dict[str, List[str]]:
-        """Extract dependencies between tasks"""
+        """Extract dependencies between tasks."""
         dependencies = {}
         task_name_to_id = {task.name: task.id for task in tasks}
 
@@ -779,7 +783,7 @@ class IntelligentTaskGenerator:
         return dependencies
 
     def _estimate_team_size(self, prd: ParsedPRD) -> int:
-        """Estimate recommended team size based on PRD"""
+        """Estimate recommended team size based on PRD."""
         feature_count = len(prd.features)
         tech_complexity = len(
             prd.tech_stack.frontend + prd.tech_stack.backend + prd.tech_stack.database
@@ -795,7 +799,7 @@ class IntelligentTaskGenerator:
             return 5
 
     def _parse_timeline(self, timeline_str: Optional[str]) -> Optional[int]:
-        """Parse timeline string to weeks"""
+        """Parse timeline string to weeks."""
         if not timeline_str:
             return None
 
@@ -821,7 +825,7 @@ class IntelligentTaskGenerator:
         return None
 
     def _assess_project_complexity(self, prd: ParsedPRD) -> str:
-        """Assess overall project complexity"""
+        """Assess overall project complexity."""
         complexity_score = 0
 
         # Feature complexity
@@ -854,7 +858,7 @@ class IntelligentTaskGenerator:
             return "high"
 
     def _calculate_project_duration(self, tasks: List[Task], team_size: int) -> int:
-        """Calculate estimated project duration in days"""
+        """Calculate estimated project duration in days."""
         total_hours = sum(task.estimated_hours for task in tasks)
 
         # Assume 6 productive hours per person per day
@@ -866,7 +870,7 @@ class IntelligentTaskGenerator:
         return max(duration_days, 1)
 
     def _recommend_team_size(self, tasks: List[Task], timeline_weeks: int) -> int:
-        """Recommend team size based on tasks and timeline"""
+        """Recommend team size based on tasks and timeline."""
         total_hours = sum(task.estimated_hours for task in tasks)
         available_hours = timeline_weeks * 5 * 6  # 5 days/week * 6 hours/day
 

@@ -1,5 +1,5 @@
 """
-Marcus Service Registry
+Marcus Service Registry.
 
 Manages service advertisement and discovery for Marcus instances.
 Allows multiple clients (Seneca, Claude Desktop, etc.) to discover
@@ -19,7 +19,7 @@ import psutil
 
 class MarcusServiceRegistry:
     """
-    Manages Marcus service advertisement and discovery
+    Manages Marcus service advertisement and discovery.
 
     When Marcus starts, it registers itself in a discoverable location.
     Clients like Seneca can find running Marcus instances automatically.
@@ -27,7 +27,7 @@ class MarcusServiceRegistry:
 
     def __init__(self, instance_id: Optional[str] = None):
         """
-        Initialize service registry
+        Initialize service registry.
 
         Parameters
         ----------
@@ -39,7 +39,7 @@ class MarcusServiceRegistry:
         self.registry_file = self.registry_dir / f"{self.instance_id}.json"
 
     def _get_registry_dir(self) -> Path:
-        """Get the directory for service registry files"""
+        """Get the directory for service registry files."""
         if platform.system() == "Windows":
             base_dir = Path(os.environ.get("APPDATA", tempfile.gettempdir()))
         else:
@@ -58,7 +58,7 @@ class MarcusServiceRegistry:
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """
-        Register this Marcus instance as available service
+        Register this Marcus instance as available service.
 
         Parameters
         ----------
@@ -101,7 +101,7 @@ class MarcusServiceRegistry:
         return service_info
 
     def update_heartbeat(self, **updates: Any) -> None:
-        """Update service heartbeat and optional fields"""
+        """Update service heartbeat and optional fields."""
         if not self.registry_file.exists():
             return
 
@@ -119,14 +119,14 @@ class MarcusServiceRegistry:
             pass
 
     def unregister_service(self) -> None:
-        """Remove service registration"""
+        """Remove service registration."""
         if self.registry_file.exists():
             self.registry_file.unlink()
 
     @classmethod
     def discover_services(cls) -> List[Dict[str, Any]]:
         """
-        Discover all running Marcus services
+        Discover all running Marcus services.
 
         Returns
         -------
@@ -195,7 +195,7 @@ class MarcusServiceRegistry:
     @classmethod
     def get_preferred_service(cls) -> Optional[Dict[str, Any]]:
         """
-        Get the preferred Marcus service to connect to
+        Get the preferred Marcus service to connect to.
 
         Returns most recently started service, or None if none available.
 
@@ -209,7 +209,7 @@ class MarcusServiceRegistry:
 
     @staticmethod
     def _is_process_running(pid: int) -> bool:
-        """Check if a process is running by PID"""
+        """Check if a process is running by PID."""
         if not pid:
             return False
 
@@ -224,7 +224,7 @@ _service_registry = None
 
 
 def get_service_registry(instance_id: Optional[str] = None) -> MarcusServiceRegistry:
-    """Get or create global service registry instance"""
+    """Get or create global service registry instance."""
     global _service_registry
     if _service_registry is None:
         _service_registry = MarcusServiceRegistry(instance_id)
@@ -232,12 +232,12 @@ def get_service_registry(instance_id: Optional[str] = None) -> MarcusServiceRegi
 
 
 def register_marcus_service(**kwargs: Any) -> Dict[str, Any]:
-    """Convenience function to register Marcus service"""
+    """Register Marcus service."""
     registry = get_service_registry()
     return registry.register_service(**kwargs)
 
 
 def unregister_marcus_service() -> None:
-    """Convenience function to unregister Marcus service"""
+    """Unregister Marcus service."""
     registry = get_service_registry()
     registry.unregister_service()

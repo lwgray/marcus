@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class BasicAdaptiveMode:
-    """Basic Adaptive Mode that coordinates within existing structure"""
+    """Basic Adaptive Mode that coordinates within existing structure."""
 
     def __init__(self) -> None:
         self.state: Dict[str, Any] = {"assignment_preferences": {}, "blocked_tasks": []}
@@ -58,7 +58,7 @@ class BasicAdaptiveMode:
         ]
 
     async def initialize(self, saved_state: Dict[str, Any]) -> None:
-        """Initialize mode with saved state"""
+        """Initialize mode with saved state."""
         if saved_state:
             self.state.update(saved_state)
             logger.info("Adaptive mode initialized with saved state")
@@ -66,11 +66,11 @@ class BasicAdaptiveMode:
             logger.info("Adaptive mode initialized with default state")
 
     async def get_state(self) -> Dict[str, Any]:
-        """Get current mode state for saving"""
+        """Get current mode state for saving."""
         return self.state.copy()
 
     async def get_status(self) -> Dict[str, Any]:
-        """Get current mode status"""
+        """Get current mode status."""
         return {
             "mode": "adaptive",
             "assignment_preferences": len(self.state.get("assignment_preferences", {})),

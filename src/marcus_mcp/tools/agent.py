@@ -1,5 +1,4 @@
-"""
-Agent Management Tools for Marcus MCP
+"""Agent Management Tools for Marcus MCP.
 
 This module contains tools for managing AI agents in the Marcus system:
 - register_agent: Register a new agent with skills and role
@@ -20,14 +19,22 @@ async def register_agent(
     """
     Register a new agent with the Marcus system.
 
-    Args:
-        agent_id: Unique identifier for the agent
-        name: Display name for the agent
-        role: Agent's role (e.g., 'Backend Developer')
-        skills: List of agent's technical skills
-        state: Marcus server state instance
+    Parameters
+    ----------
+    agent_id : str
+        Unique identifier for the agent
+    name : str
+        Display name for the agent
+    role : str
+        Agent's role (e.g., 'Backend Developer')
+    skills : List[str]
+        List of agent's technical skills
+    state : Any
+        Marcus server state instance
 
-    Returns:
+    Returns
+    -------
+    Dict[str, Any]
         Dict with success status and registration details
     """
     # Log incoming registration request
@@ -126,11 +133,16 @@ async def get_agent_status(agent_id: str, state: Any) -> Dict[str, Any]:
     """
     Get status and current assignment for an agent.
 
-    Args:
-        agent_id: The agent's unique identifier
-        state: Marcus server state instance
+    Parameters
+    ----------
+    agent_id : str
+        The agent's unique identifier
+    state : Any
+        Marcus server state instance
 
-    Returns:
+    Returns
+    -------
+    Dict[str, Any]
         Dict with agent status, current tasks, and assignment details
     """
     try:
@@ -174,10 +186,14 @@ async def list_registered_agents(state: Any) -> Dict[str, Any]:
     """
     List all registered agents and their current status.
 
-    Args:
-        state: Marcus server state instance
+    Parameters
+    ----------
+    state : Any
+        Marcus server state instance
 
-    Returns:
+    Returns
+    -------
+    Dict[str, Any]
         Dict with list of all agents and their details
     """
     try:

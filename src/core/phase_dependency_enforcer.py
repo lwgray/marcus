@@ -106,10 +106,13 @@ class PhaseDependencyEnforcer:
         """
         Apply phase-based dependencies to tasks.
 
-        Args:
-            tasks: List of tasks to process
+        Parameters
+        ----------
+            tasks
+                List of tasks to process.
 
-        Returns:
+        Returns
+        -------
             List of tasks with phase dependencies added
         """
         logger.info(f"Enforcing phase dependencies for {len(tasks)} tasks")
@@ -311,11 +314,15 @@ class PhaseDependencyEnforcer:
         """
         Add phase-based dependencies to a task.
 
-        Args:
-            dependent_task: Task that will depend on others
-            dependency_tasks: Tasks that must complete first
+        Parameters
+        ----------
+            dependent_task
+                Task that will depend on others.
+            dependency_tasks
+                Tasks that must complete first.
 
-        Returns:
+        Returns
+        -------
             Number of violations corrected
         """
         if not dependency_tasks:
@@ -378,7 +385,8 @@ class PhaseDependencyEnforcer:
         """
         Validate that tasks follow proper phase ordering.
 
-        Returns:
+        Returns
+        -------
             Tuple of (is_valid, list_of_errors)
         """
         errors = []
@@ -439,7 +447,8 @@ class PhaseDependencyEnforcer:
         """
         Get statistics about phase distribution and dependencies.
 
-        Returns:
+        Returns
+        -------
             Dictionary with phase statistics
         """
         stats: Dict[str, Any] = {

@@ -561,7 +561,7 @@ class ErrorAggregator:
 def with_retry(
     config: Optional[RetryConfig] = None,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """Decorator for adding retry logic to functions."""
+    """Add retry logic to functions."""
     retry_config = config or RetryConfig()
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -586,7 +586,7 @@ def with_retry(
 def with_circuit_breaker(
     name: str, config: Optional[CircuitBreakerConfig] = None
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """Decorator for adding circuit breaker protection to functions."""
+    """Add circuit breaker protection to functions."""
     circuit_breaker = CircuitBreaker(name, config)
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -609,7 +609,7 @@ def with_circuit_breaker(
 def with_fallback(
     *fallback_functions: Callable[..., Any]
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """Decorator for adding fallback functions."""
+    """Add fallback functions."""
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)

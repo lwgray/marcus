@@ -8,7 +8,7 @@ to prevent workers from being stuck with reverted tasks.
 import asyncio
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from src.core.assignment_persistence import AssignmentPersistence
 from src.core.assignment_reconciliation import AssignmentReconciler
@@ -30,10 +30,14 @@ class AssignmentMonitor:
         """
         Initialize the assignment monitor.
 
-        Args:
-            persistence: Assignment persistence layer
-            kanban_client: Kanban board interface
-            check_interval: How often to check for reversions (seconds)
+        Parameters
+        ----------
+        persistence : AssignmentPersistence
+            Assignment persistence layer
+        kanban_client : KanbanInterface
+            Kanban board interface
+        check_interval : int
+            How often to check for reversions (seconds)
         """
         self.persistence = persistence
         self.kanban_client = kanban_client
@@ -70,7 +74,7 @@ class AssignmentMonitor:
         logger.info("Assignment monitor stopped")
 
     async def _monitor_loop(self) -> None:
-        """Main monitoring loop."""
+        """Run the main monitoring loop."""
         while self._running:
             try:
                 await self._check_for_reversions()
@@ -140,7 +144,9 @@ class AssignmentMonitor:
         """
         Detect if a task has been reverted.
 
-        Returns:
+        Returns
+        -------
+        bool
             True if the task was reverted, False otherwise
         """
         task_id = task.id
@@ -249,7 +255,9 @@ class AssignmentHealthChecker:
         """
         Comprehensive health check of assignment system.
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Dictionary with health status and any issues found
         """
         health: Dict[str, Any] = {

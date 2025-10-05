@@ -1,5 +1,5 @@
 """
-Advanced PRD Parser for Marcus Phase 4
+Advanced PRD Parser for Marcus Phase 4.
 
 Transform natural language requirements into actionable tasks with
 deep understanding, intelligent task breakdown, and risk assessment.
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class PRDAnalysis:
-    """Deep analysis of a PRD document"""
+    """Deep analysis of a PRD document."""
 
     functional_requirements: List[Dict[str, Any]]
     non_functional_requirements: List[Dict[str, Any]]
@@ -39,7 +39,7 @@ class PRDAnalysis:
 
 @dataclass
 class TaskGenerationResult:
-    """Result of PRD-to-tasks conversion"""
+    """Result of PRD-to-tasks conversion."""
 
     tasks: List[Task]
     task_hierarchy: Dict[str, List[str]]  # parent_id -> [child_ids]
@@ -53,7 +53,7 @@ class TaskGenerationResult:
 
 @dataclass
 class ProjectConstraints:
-    """Constraints for task generation"""
+    """Constraints for task generation."""
 
     deadline: Optional[datetime] = None
     budget_limit: Optional[float] = None
@@ -64,6 +64,7 @@ class ProjectConstraints:
     deployment_target: str = "local"  # local, dev, prod, remote
 
     def __post_init__(self) -> None:
+        """Initialize post-creation."""
         if self.available_skills is None:
             self.available_skills = []
         if self.technology_constraints is None:
@@ -77,8 +78,10 @@ class ProjectConstraints:
 
 class AdvancedPRDParser:
     """
-    Advanced PRD parser that converts natural language requirements
-    into complete task breakdown with intelligent dependencies and risk assessment
+    Advanced PRD parser that converts natural language requirements.
+
+    Converts requirements into complete task breakdown with intelligent
+    dependencies and risk assessment.
     """
 
     def __init__(self, hybrid_config: Optional[HybridInferenceConfig] = None):
@@ -126,13 +129,15 @@ class AdvancedPRDParser:
         self, prd_content: str, constraints: ProjectConstraints
     ) -> TaskGenerationResult:
         """
-        Convert PRD into complete task breakdown with dependencies
+        Convert PRD into complete task breakdown with dependencies.
 
-        Args:
+        Args
+        ----
             prd_content: Full PRD document content
             constraints: Project constraints and limitations
 
-        Returns:
+        Returns
+        -------
             Complete task generation result with breakdown and analysis
         """
         logger.info("Starting advanced PRD parsing and task generation")
@@ -141,9 +146,8 @@ class AdvancedPRDParser:
         prd_analysis = await self._analyze_prd_deeply(prd_content)
 
         # Step 2: Generate task hierarchy
-        logger.info(
-            f"PRD analysis found {len(prd_analysis.functional_requirements)} functional requirements"
-        )
+        req_count = len(prd_analysis.functional_requirements)
+        logger.info(f"PRD analysis found {req_count} functional requirements")
         task_hierarchy = await self._generate_task_hierarchy(prd_analysis, constraints)
 
         # Step 3: Create detailed tasks
@@ -188,7 +192,7 @@ class AdvancedPRDParser:
         )
 
     async def _analyze_prd_deeply(self, prd_content: str) -> PRDAnalysis:
-        """Perform deep analysis of PRD using AI"""
+        """Perform deep analysis of PRD using AI."""
         analysis_prompt = f"""
         Analyze this Product Requirements Document in detail:
 
@@ -239,12 +243,15 @@ class AdvancedPRDParser:
         }}
 
         IMPORTANT:
-        - For functionalRequirements, use "id", "name", "description", and "priority" fields
-        - For nonFunctionalRequirements, use "id", "name", "description", and "category" fields
-        - Generate meaningful IDs based on the feature name (e.g., "crud_operations", "user_auth")
-        - Focus on extracting actionable, specific requirements that can be converted into development tasks
+        - For functionalRequirements, use "id", "name", "description",
+          and "priority" fields
+        - For nonFunctionalRequirements, use "id", "name", "description",
+          and "category" fields
+        - Generate meaningful IDs based on the feature name
+          (e.g., "crud_operations", "user_auth")
+        - Focus on extracting actionable, specific requirements that can
+          be converted into development tasks
         """
-
         try:
             # Use AI to analyze PRD
             # Create a simple context object that has max_tokens
@@ -277,9 +284,8 @@ class AdvancedPRDParser:
                 prompt=analysis_prompt, context=context
             )
 
-            logger.info(
-                f"LLM response received: {len(analysis_result) if analysis_result else 0} chars"
-            )
+            result_len = len(analysis_result) if analysis_result else 0
+            logger.info(f"LLM response received: {result_len} chars")
 
             # Parse the AI response using our JSON parser utility
             from src.utils.json_parser import parse_ai_json_response
@@ -308,7 +314,14 @@ class AdvancedPRDParser:
                             "response_preview": (
                                 analysis_result[:200] if analysis_result else "None"
                             ),
-                            "details": "AI returned malformed JSON response. This indicates an issue with the AI provider configuration or the response format. Please check your AI provider settings and try again with a clearer project description.",
+                            "details": (
+                                "AI returned malformed JSON response. "
+                                "This indicates an issue with the AI "
+                                "provider configuration or the response "
+                                "format. Please check your AI provider "
+                                "settings and try again with a clearer "
+                                "project description."
+                            ),
                         },
                     ),
                 )
@@ -317,7 +330,7 @@ class AdvancedPRDParser:
             def get_key(
                 data: Dict[str, Any], snake_key: str, camel_key: Optional[str] = None
             ) -> Any:
-                """Get value from dict using either snake_case or camelCase key"""
+                """Get value from dict using either snake_case or camelCase key."""
                 if camel_key is None:
                     # Convert snake_case to camelCase
                     parts = snake_key.split("_")
@@ -330,7 +343,8 @@ class AdvancedPRDParser:
                     return data[camel_key]
                 elif snake_key in data:
                     logger.debug(
-                        f"AI used snake_case '{snake_key}' instead of expected camelCase '{camel_key}'"
+                        f"AI used snake_case '{snake_key}' instead of "
+                        f"expected camelCase '{camel_key}'"
                     )
                     return data[snake_key]
                 else:
@@ -355,7 +369,8 @@ class AdvancedPRDParser:
                 success_metrics=get_key(
                     analysis_data, "success_metrics", "successMetrics"
                 ),
-                # Note: template uses 'implementationApproach', but old responses might use 'recommendedImplementation'
+                # Note: template uses 'implementationApproach',
+                # but old responses might use 'recommendedImplementation'
                 implementation_approach=(
                     analysis_data.get("implementationApproach")
                     or analysis_data.get("implementation_approach")
@@ -391,15 +406,26 @@ class AdvancedPRDParser:
                         "error_type": type(e).__name__,
                         "original_error": str(e),
                         "troubleshooting_steps": [
-                            "Check AI provider API credentials and configuration",
+                            ("Check AI provider API credentials and " "configuration"),
                             "Verify network connectivity to AI provider",
                             "Try simplifying the project description",
                             "Check AI provider service status",
-                            "Ensure project description is in English and well-structured",
+                            (
+                                "Ensure project description is in English "
+                                "and well-structured"
+                            ),
                         ],
-                        "details": f"AI analysis of project requirements failed. This prevents automatic task generation from your project description. "
-                        f"The AI provider ({self.llm_client.__class__.__name__}) encountered an error: {str(e)}. "
-                        f"Please check your AI configuration and try again. If the problem persists, contact support with this error context.",
+                        "details": (
+                            f"AI analysis of project requirements failed. "
+                            f"This prevents automatic task generation from "
+                            f"your project description. "
+                            f"The AI provider "
+                            f"({self.llm_client.__class__.__name__}) "
+                            f"encountered an error: {str(e)}. "
+                            f"Please check your AI configuration and try "
+                            f"again. If the problem persists, contact "
+                            f"support with this error context."
+                        ),
                     },
                 ),
             )
@@ -414,7 +440,7 @@ class AdvancedPRDParser:
     async def _generate_task_hierarchy(
         self, analysis: PRDAnalysis, constraints: ProjectConstraints
     ) -> Dict[str, List[str]]:
-        """Generate hierarchical task structure"""
+        """Generate hierarchical task structure."""
         hierarchy: Dict[str, List[str]] = {}
 
         # Store task metadata for later use
@@ -465,7 +491,8 @@ class AdvancedPRDParser:
 
                 req_id = feature_id
                 logger.debug(
-                    f"Generated fallback ID '{req_id}' for requirement without 'id' field"
+                    f"Generated fallback ID '{req_id}' for requirement "
+                    f"without 'id' field"
                 )
 
             epic_id = f"epic_{req_id}"
@@ -535,15 +562,16 @@ class AdvancedPRDParser:
         analysis: PRDAnalysis,
         constraints: ProjectConstraints,
     ) -> List[Task]:
-        """Create detailed Task objects with rich metadata"""
+        """Create detailed Task objects with rich metadata."""
         tasks = []
         task_counter = 1
 
         for epic_id, task_ids in list(task_hierarchy.items()):
             # Skip deployment-related epics based on deployment_target
-            if self._should_skip_epic(epic_id, constraints.deployment_target):
+            deploy_target = constraints.deployment_target
+            if self._should_skip_epic(epic_id, deploy_target):
                 logger.info(
-                    f"Skipping {epic_id} for deployment_target={constraints.deployment_target}"
+                    f"Skipping {epic_id} for " f"deployment_target={deploy_target}"
                 )
                 continue
 
@@ -553,7 +581,8 @@ class AdvancedPRDParser:
                     task_id, epic_id, constraints.deployment_target
                 ):
                     logger.info(
-                        f"Skipping task {task_id} for deployment_target={constraints.deployment_target}"
+                        f"Skipping task {task_id} for "
+                        f"deployment_target={constraints.deployment_target}"
                     )
                     continue
 
@@ -574,8 +603,7 @@ class AdvancedPRDParser:
         constraints: ProjectConstraints,
         sequence: int,
     ) -> Task:
-        """Generate a detailed task with AI-enhanced metadata"""
-
+        """Generate a detailed task with AI-enhanced metadata."""
         # Extract task information from analysis
         task_info = self._extract_task_info(task_id, epic_id, analysis)
 
@@ -611,10 +639,12 @@ class AdvancedPRDParser:
             },
         )
 
-        # Note: acceptance_criteria and subtasks would need to be added to Task model
-        # For now, we store them in labels or use a different approach
+        # Note: acceptance_criteria and subtasks would need to be added
+        # to Task model. For now, we store them in labels or use a
+        # different approach
         if enhanced_details.get("acceptance_criteria"):
-            # task.acceptance_criteria = enhanced_details["acceptance_criteria"]  # type: ignore
+            # task.acceptance_criteria =
+            # enhanced_details["acceptance_criteria"]  # type: ignore
             pass
 
         if enhanced_details.get("subtasks"):
@@ -626,8 +656,7 @@ class AdvancedPRDParser:
     async def _infer_smart_dependencies(
         self, tasks: List[Task], analysis: PRDAnalysis
     ) -> List[Dict[str, Any]]:
-        """Use AI to infer intelligent dependencies"""
-
+        """Use AI to infer intelligent dependencies."""
         # Use the existing dependency inferer with AI enhancement
         dependency_graph = await self.dependency_inferer.infer_dependencies(tasks)
 
@@ -653,9 +682,8 @@ class AdvancedPRDParser:
     async def _assess_implementation_risks(
         self, tasks: List[Task], analysis: PRDAnalysis, constraints: ProjectConstraints
     ) -> Dict[str, Any]:
-        """Assess implementation risks with AI analysis"""
-
-        risk_assessment = {
+        """Assess implementation risks with AI analysis."""
+        risk_assessment: Dict[str, Any] = {
             "overall_risk_level": "medium",
             "risk_factors": [],
             "mitigation_strategies": [],
@@ -666,23 +694,19 @@ class AdvancedPRDParser:
 
         # Analyze complexity risks
         complexity_risks = await self._analyze_complexity_risks(tasks, analysis)
-        risk_factors_list = risk_assessment["risk_factors"]
-        if isinstance(risk_factors_list, list):
-            risk_factors_list.extend(complexity_risks)
-        else:
-            risk_assessment["risk_factors"] = complexity_risks  # type: ignore[assignment]
-            risk_factors_list = complexity_risks  # type: ignore[assignment]
+        risk_factors_list: List[Dict[str, Any]] = risk_assessment["risk_factors"]
+        risk_factors_list.extend(complexity_risks)
 
         # Analyze constraint risks
         constraint_risks = await self._analyze_constraint_risks(tasks, constraints)
-        risk_assessment["timeline_risks"] = constraint_risks  # type: ignore[assignment]
+        timeline_risks_list: List[Dict[str, Any]] = risk_assessment["timeline_risks"]
+        timeline_risks_list.extend(constraint_risks)
 
-        # Generate mitigation strategies (cast to expected type)
-        risk_assessment[
-            "mitigation_strategies"
-        ] = await self._generate_mitigation_strategies(
-            risk_factors_list, tasks, analysis  # type: ignore[arg-type]
+        # Generate mitigation strategies
+        mitigation = await self._generate_mitigation_strategies(
+            risk_factors_list, tasks, analysis
         )
+        risk_assessment["mitigation_strategies"] = mitigation
 
         # Calculate overall risk level
         risk_count = len(risk_assessment["risk_factors"])
@@ -699,8 +723,7 @@ class AdvancedPRDParser:
         dependencies: List[Dict[str, Any]],
         constraints: ProjectConstraints,
     ) -> Dict[str, Any]:
-        """Predict project timeline with AI-enhanced estimation"""
-
+        """Predict project timeline with AI-enhanced estimation."""
         # Calculate critical path
         total_effort = sum(task.estimated_hours or 8 for task in tasks)
 
@@ -745,8 +768,7 @@ class AdvancedPRDParser:
     async def _analyze_resource_requirements(
         self, tasks: List[Task], analysis: PRDAnalysis, constraints: ProjectConstraints
     ) -> Dict[str, Any]:
-        """Analyze resource requirements"""
-
+        """Analyze resource requirements."""
         # Skill requirements analysis
         skill_requirements = await self._analyze_skill_requirements(tasks, analysis)
 
@@ -771,7 +793,7 @@ class AdvancedPRDParser:
     async def _generate_success_criteria(
         self, analysis: PRDAnalysis, tasks: List[Task]
     ) -> List[str]:
-        """Generate project success criteria"""
+        """Generate project success criteria."""
         criteria = []
 
         # Add criteria from business objectives
@@ -795,7 +817,7 @@ class AdvancedPRDParser:
     def _calculate_generation_confidence(
         self, analysis: PRDAnalysis, tasks: List[Task]
     ) -> float:
-        """Calculate confidence in task generation quality"""
+        """Calculate confidence in task generation quality."""
         factors = []
 
         # PRD analysis confidence
@@ -812,15 +834,15 @@ class AdvancedPRDParser:
         req_count = len(analysis.functional_requirements) + len(
             analysis.non_functional_requirements
         )
-        coverage_score = min(
-            len(tasks) / max(req_count * 3, 1), 1.0
-        )  # Expect 3 tasks per requirement
+        # Expect 3 tasks per requirement
+        coverage_score = min(len(tasks) / max(req_count * 3, 1), 1.0)
         factors.append(coverage_score)
 
         return sum(factors) / len(factors) if factors else 0.5
 
-    # Removed fallback simulation methods - now uses proper Marcus Error Framework
-    # When AI analysis fails, the system will raise appropriate errors with actionable feedback
+    # Removed fallback simulation methods - now uses proper Marcus
+    # Error Framework. When AI analysis fails, the system will raise
+    # appropriate errors with actionable feedback
 
     # Additional helper methods would be implemented here...
     async def _break_down_epic(
@@ -829,7 +851,7 @@ class AdvancedPRDParser:
         analysis: PRDAnalysis,
         constraints: ProjectConstraints,
     ) -> List[Dict[str, Any]]:
-        """Break down epic into smaller tasks"""
+        """Break down epic into smaller tasks."""
         # First try to use standardized fields (from our template)
         req_id = req.get("id")
         feature_name = req.get("name")
@@ -838,7 +860,8 @@ class AdvancedPRDParser:
         if not feature_name:
             feature_name = req.get("feature") or req.get("description") or "feature"
             logger.warning(
-                f"AI deviated from template format. Expected 'name' field but got: {list(req.keys())}"
+                f"AI deviated from template format. Expected 'name' "
+                f"field but got: {list(req.keys())}"
             )
 
         if not req_id:
@@ -856,7 +879,8 @@ class AdvancedPRDParser:
                 c if c.isalnum() or c == "_" else "" for c in feature_id
             )
 
-            # If we still don't have a good ID, use the index from functional requirements
+            # If we still don't have a good ID, use the index from
+            # functional requirements
             if not feature_id or feature_id == "feature":
                 req_index = (
                     analysis.functional_requirements.index(req)
@@ -867,7 +891,8 @@ class AdvancedPRDParser:
 
             req_id = feature_id
             logger.warning(
-                f"AI deviated from template format. Expected 'id' field, generated: {req_id}"
+                f"AI deviated from template format. Expected 'id' "
+                f"field, generated: {req_id}"
             )
 
         return [
@@ -891,7 +916,7 @@ class AdvancedPRDParser:
     async def _create_nfr_tasks(
         self, nfrs: List[Dict[str, Any]], constraints: ProjectConstraints
     ) -> List[Dict[str, Any]]:
-        """Create non-functional requirement tasks"""
+        """Create non-functional requirement tasks."""
         tasks = []
         for i, nfr in enumerate(nfrs):
             # Prefer standardized fields from template
@@ -905,7 +930,8 @@ class AdvancedPRDParser:
                 )
                 if nfr.get("requirement") or nfr.get("description"):
                     logger.warning(
-                        f"NFR deviated from template format. Expected 'name' field but got: {list(nfr.keys())}"
+                        f"NFR deviated from template format. Expected "
+                        f"'name' field but got: {list(nfr.keys())}"
                     )
 
             if not nfr_id:
@@ -914,7 +940,8 @@ class AdvancedPRDParser:
                 req_id = "".join(c if c.isalnum() or c == "_" else "" for c in req_id)
                 nfr_id = req_id or str(i)
                 logger.warning(
-                    f"NFR deviated from template format. Expected 'id' field, generated: {nfr_id}"
+                    f"NFR deviated from template format. Expected 'id' "
+                    f"field, generated: {nfr_id}"
                 )
 
             # Get the description from the NFR data
@@ -937,7 +964,7 @@ class AdvancedPRDParser:
         constraints: ProjectConstraints,
         project_size: str = "medium",
     ) -> List[Dict[str, Any]]:
-        """Create infrastructure and setup tasks"""
+        """Create infrastructure and setup tasks."""
         tasks = []
 
         # Always include basic setup for all project sizes
@@ -974,7 +1001,7 @@ class AdvancedPRDParser:
     def _extract_task_info(
         self, task_id: str, epic_id: str, analysis: PRDAnalysis
     ) -> Dict[str, Any]:
-        """Extract task information from analysis"""
+        """Extract task information from analysis."""
         return {
             "id": task_id,
             "epic_id": epic_id,
@@ -988,7 +1015,7 @@ class AdvancedPRDParser:
         analysis: PRDAnalysis,
         constraints: ProjectConstraints,
     ) -> Dict[str, Any]:
-        """Enhance task with PRD-aware details following board quality standards"""
+        """Enhance task with PRD-aware details following board quality standards."""
         task_id = task_info.get("id", "unknown")
         epic_id = task_info.get("epic_id", "unknown")
 
@@ -1035,7 +1062,8 @@ class AdvancedPRDParser:
         labels = self._generate_labels(task_type, project_context, constraints)
 
         # Add feature label based on epic_id to group related tasks
-        # This ensures tasks from the same feature share a common label for phase enforcement
+        # This ensures tasks from the same feature share a common label
+        # for phase enforcement
         if epic_id and epic_id.startswith("epic_"):
             feature_name = epic_id.replace("epic_", "").replace("_", "-")
             labels.append(f"feature:{feature_name}")
@@ -1061,7 +1089,7 @@ class AdvancedPRDParser:
     def _determine_priority(
         self, task_info: Dict[str, Any], analysis: PRDAnalysis
     ) -> Priority:
-        """Determine task priority"""
+        """Determine task priority."""
         task_type = task_info.get("type", "development")
 
         if task_type in ["setup", "infrastructure"]:
@@ -1077,13 +1105,13 @@ class AdvancedPRDParser:
     async def _add_prd_specific_dependencies(
         self, tasks: List[Task], analysis: PRDAnalysis
     ) -> List[Dict[str, Any]]:
-        """Add PRD-specific dependencies"""
+        """Add PRD-specific dependencies."""
         return []  # Simplified for now
 
     async def _analyze_complexity_risks(
         self, tasks: List[Task], analysis: PRDAnalysis
     ) -> List[Dict[str, Any]]:
-        """Analyze complexity-related risks"""
+        """Analyze complexity-related risks."""
         return [
             {
                 "type": "technical_complexity",
@@ -1095,7 +1123,7 @@ class AdvancedPRDParser:
     async def _analyze_constraint_risks(
         self, tasks: List[Task], constraints: ProjectConstraints
     ) -> List[Dict[str, Any]]:
-        """Analyze constraint-related risks"""
+        """Analyze constraint-related risks."""
         risks = []
         if constraints.deadline:
             total_effort = sum(task.estimated_hours or 8 for task in tasks)
@@ -1115,7 +1143,7 @@ class AdvancedPRDParser:
     async def _generate_mitigation_strategies(
         self, risks: List[Dict[str, Any]], tasks: List[Task], analysis: PRDAnalysis
     ) -> List[str]:
-        """Generate risk mitigation strategies"""
+        """Generate risk mitigation strategies."""
         return [
             "Regular risk assessment reviews",
             "Maintain project buffer time",
@@ -1125,7 +1153,7 @@ class AdvancedPRDParser:
     async def _identify_critical_path_tasks(
         self, tasks: List[Task], dependencies: List[Dict[str, Any]]
     ) -> List[str]:
-        """Identify tasks on the critical path"""
+        """Identify tasks on the critical path."""
         # Simplified - return setup and deployment tasks as critical
         return [
             task.id
@@ -1136,7 +1164,7 @@ class AdvancedPRDParser:
     async def _calculate_milestone_dates(
         self, start_date: datetime, duration_days: float
     ) -> Dict[str, str]:
-        """Calculate key milestone dates"""
+        """Calculate key milestone dates."""
         milestones = {}
         milestones["design_complete"] = (
             start_date + timedelta(days=duration_days * 0.25)
@@ -1152,7 +1180,7 @@ class AdvancedPRDParser:
     async def _analyze_skill_requirements(
         self, tasks: List[Task], analysis: PRDAnalysis
     ) -> List[str]:
-        """Analyze required skills"""
+        """Analyze required skills."""
         skills = set()
         for constraint in analysis.technical_constraints:
             if "react" in constraint.lower():
@@ -1166,17 +1194,17 @@ class AdvancedPRDParser:
     async def _analyze_tech_requirements(
         self, analysis: PRDAnalysis, constraints: ProjectConstraints
     ) -> List[str]:
-        """Analyze technology requirements"""
+        """Analyze technology requirements."""
         return analysis.technical_constraints
 
     async def _analyze_external_dependencies(self, analysis: PRDAnalysis) -> List[str]:
-        """Analyze external dependencies"""
+        """Analyze external dependencies."""
         return ["Third-party API integrations", "External service providers"]
 
     def _calculate_optimal_team_size(
         self, tasks: List[Task], constraints: ProjectConstraints
     ) -> int:
-        """Calculate optimal team size"""
+        """Calculate optimal team size."""
         task_complexity = len(tasks)
         if task_complexity < 10:
             return min(2, constraints.team_size)
@@ -1188,7 +1216,7 @@ class AdvancedPRDParser:
     async def _identify_specialized_roles(
         self, tasks: List[Task], analysis: PRDAnalysis
     ) -> List[str]:
-        """Identify specialized roles needed"""
+        """Identify specialized roles needed."""
         roles = ["Full-stack Developer"]
 
         # Check for UI/UX needs
@@ -1207,7 +1235,7 @@ class AdvancedPRDParser:
     def _extract_project_context(
         self, analysis: PRDAnalysis, task_id: str, epic_id: str
     ) -> Dict[str, Any]:
-        """Extract meaningful project context from PRD analysis"""
+        """Extract meaningful project context from PRD analysis."""
         context = {
             "business_objectives": (
                 analysis.business_objectives[:3]
@@ -1232,7 +1260,8 @@ class AdvancedPRDParser:
         task_specific_domain = None
         task_specific_type = None
 
-        # Extract the feature from task_id (e.g., task_crud_operations_design -> crud_operations)
+        # Extract the feature from task_id
+        # (e.g., task_crud_operations_design -> crud_operations)
         if "task_" in task_id:
             parts = task_id.split("_")
             if len(parts) >= 3:
@@ -1243,13 +1272,13 @@ class AdvancedPRDParser:
                 for req in analysis.functional_requirements:
                     req_feature = req.get("feature", "").lower().replace(" ", "_")
                     if req_feature == feature_id:
-                        # Determine domain based on this specific requirement
-                        req_text = f"{req.get('feature', '')} {req.get('description', '')}".lower()
+                        # Determine domain based on requirement
+                        feature_val = req.get("feature", "")
+                        desc_val = req.get("description", "")
+                        req_text = f"{feature_val} {desc_val}".lower()
 
-                        if any(
-                            word in req_text
-                            for word in ["crud", "create", "read", "update", "delete"]
-                        ):
+                        crud_keywords = ["crud", "create", "read", "update", "delete"]
+                        if any(word in req_text for word in crud_keywords):
                             task_specific_domain = "crud_operations"
                             task_specific_type = "REST API"
                         elif any(
@@ -1329,48 +1358,111 @@ class AdvancedPRDParser:
     def _generate_design_task(
         self, context: Dict[str, Any], task_id: str, original_name: str = ""
     ) -> Tuple[str, str]:
-        """Generate design task name and description using PRD context"""
+        """Generate design task name and description using PRD context."""
         domain = context["domain"]
         project_type = context["project_type"]
         objectives = context["business_objectives"]
 
-        # Extract feature name from original name (e.g., "Design CRUD Operations" -> "CRUD Operations")
+        # Extract feature name from original name
+        # (e.g., "Design CRUD Operations" -> "CRUD Operations")
         feature_name = original_name.replace("Design ", "") if original_name else ""
 
         if domain == "crud_operations":
             # Use original feature name if available, otherwise use generic
             name = original_name if original_name else "Design CRUD API Architecture"
-            description = f"Create architectural design and documentation for CRUD operations in {project_type}. Define API endpoints, document request/response formats, plan error handling strategies, and design pagination approach. Deliverables: API specification document, data flow diagrams, and architectural decisions. Goal: {objectives[0] if objectives else 'efficient data management'}."
+            description = (
+                f"Create architectural design and documentation for CRUD "
+                f"operations in {project_type}. Define API endpoints, "
+                f"document request/response formats, plan error handling "
+                f"strategies, and design pagination approach. Deliverables: "
+                f"API specification document, data flow diagrams, and "
+                f"architectural decisions. Goal: "
+                f"{objectives[0] if objectives else 'efficient data management'}."
+            )
         elif domain == "data_modeling":
             name = original_name if original_name else "Design Data Model and Schema"
-            description = f"Design data architecture and create documentation for {project_type}. Research data requirements, create entity relationship diagrams, document field specifications and constraints. Plan migration strategy and define validation rules. Deliverables: ER diagrams, schema documentation, and data dictionary. Focus on: {objectives[0] if objectives else 'scalable data architecture'}."
+            description = (
+                f"Design data architecture and create documentation for "
+                f"{project_type}. Research data requirements, create entity "
+                f"relationship diagrams, document field specifications and "
+                f"constraints. Plan migration strategy and define validation "
+                f"rules. Deliverables: ER diagrams, schema documentation, and "
+                f"data dictionary. Focus on: "
+                f"{objectives[0] if objectives else 'scalable data architecture'}."
+            )
         elif domain == "validation":
             name = original_name if original_name else "Design Input Validation System"
-            description = f"Design validation strategy and create documentation for {project_type}. Research validation requirements, define validation rules and patterns, plan error handling approach. Document security considerations and sanitization procedures. Deliverables: validation specification document, error message catalog, and security guidelines. Goal: {objectives[0] if objectives else 'data integrity and security'}."
+            description = (
+                f"Design validation strategy and create documentation for "
+                f"{project_type}. Research validation requirements, define "
+                f"validation rules and patterns, plan error handling approach. "
+                f"Document security considerations and sanitization procedures. "
+                f"Deliverables: validation specification document, error "
+                f"message catalog, and security guidelines. Goal: "
+                f"{objectives[0] if objectives else 'data integrity and security'}."
+            )
         elif domain == "user_management":
             name = original_name if original_name else "Design User Authentication Flow"
-            description = f"Design authentication architecture and create documentation for {project_type}. Research security requirements, create user flow diagrams, document authentication patterns and session management approach. Plan security protocols and define user account lifecycle. Deliverables: authentication flow diagrams, security documentation, and API specifications. Goal: {objectives[0] if objectives else 'secure user access'}."
+            description = (
+                f"Design authentication architecture and create documentation "
+                f"for {project_type}. Research security requirements, create "
+                f"user flow diagrams, document authentication patterns and "
+                f"session management approach. Plan security protocols and "
+                f"define user account lifecycle. Deliverables: authentication "
+                f"flow diagrams, security documentation, and API specifications. "
+                f"Goal: {objectives[0] if objectives else 'secure user access'}."
+            )
         elif domain == "frontend":
             name = (
                 original_name if original_name else "Design User Interface Architecture"
             )
-            description = f"Create detailed UI/UX design for {project_type}. Include component hierarchy, design system, responsive layouts, and user interaction patterns. Focus on achieving: {objectives[0] if objectives else 'excellent user experience'}. Define accessibility standards and usability requirements."
+            description = (
+                f"Create detailed UI/UX design for {project_type}. Include "
+                f"component hierarchy, design system, responsive layouts, and "
+                f"user interaction patterns. Focus on achieving: "
+                f"{objectives[0] if objectives else 'excellent user experience'}. "
+                f"Define accessibility standards and usability requirements."
+            )
         elif domain == "backend_services":
             name = original_name if original_name else "Design API Architecture"
-            description = f"Design API architecture for {project_type}. Research requirements, document API specifications, define endpoint patterns and data contracts. Create architectural diagrams and technical documentation. Deliverables: API documentation, architectural decisions, and interface specifications. Focus on: {objectives[0] if objectives else 'scalable API design'}."
+            description = (
+                f"Design API architecture for {project_type}. Research "
+                f"requirements, document API specifications, define endpoint "
+                f"patterns and data contracts. Create architectural diagrams "
+                f"and technical documentation. Deliverables: API documentation, "
+                f"architectural decisions, and interface specifications. "
+                f"Focus on: {objectives[0] if objectives else 'scalable API design'}."
+            )
         elif domain == "ecommerce":
             name = (
                 original_name if original_name else "Design E-commerce User Experience"
             )
-            description = f"Design comprehensive e-commerce user experience for {project_type}. Include product catalog, shopping cart, checkout flow, user accounts, and order management. Optimize for: {objectives[0] if objectives else 'seamless shopping experience'}."
+            description = (
+                f"Design comprehensive e-commerce user experience for "
+                f"{project_type}. Include product catalog, shopping cart, "
+                f"checkout flow, user accounts, and order management. "
+                f"Optimize for: "
+                f"{objectives[0] if objectives else 'seamless shopping experience'}."
+            )
         else:
-            # For any other domain, use original name or create one from feature
+            # For any other domain, use original name or create one from
+            # feature
             name = (
                 original_name
                 if original_name
-                else f"Design {feature_name if feature_name else project_type.title()} Architecture"
+                else (
+                    f"Design {feature_name if feature_name else project_type.title()} "
+                    f"Architecture"
+                )
             )
-            description = f"Research and design architecture for {project_type}. Create documentation defining approach, patterns, and specifications. Plan component structure and integration points. Deliverables: design documentation, architectural diagrams, and technical specifications. Goal: {objectives[0] if objectives else 'effective solution delivery'}."
+            description = (
+                f"Research and design architecture for {project_type}. Create "
+                f"documentation defining approach, patterns, and specifications. "
+                f"Plan component structure and integration points. Deliverables: "
+                f"design documentation, architectural diagrams, and technical "
+                f"specifications. Goal: "
+                f"{objectives[0] if objectives else 'effective solution delivery'}."
+            )
 
         # Add specific requirements if available
         if context["relevant_requirements"]:
@@ -1384,7 +1476,7 @@ class AdvancedPRDParser:
     def _generate_implementation_task(
         self, context: Dict[str, Any], task_id: str, original_name: str = ""
     ) -> Tuple[str, str]:
-        """Generate implementation task name and description using PRD context"""
+        """Generate implementation task name and description using PRD context."""
         domain = context["domain"]
         project_type = context["project_type"]
         tech_constraints = context["technical_constraints"]
@@ -1395,34 +1487,79 @@ class AdvancedPRDParser:
                 if original_name
                 else "Implement User Authentication Service"
             )
-            description = f"Build secure user authentication service for {project_type}. Implement user registration, login, JWT token management, password hashing with bcrypt, and session handling. Technology stack: {', '.join(tech_constraints)}. Include rate limiting, email verification, and comprehensive error handling."
+            description = (
+                f"Build secure user authentication service for {project_type}. "
+                f"Implement user registration, login, JWT token management, "
+                f"password hashing with bcrypt, and session handling. "
+                f"Technology stack: {', '.join(tech_constraints)}. Include "
+                f"rate limiting, email verification, and comprehensive error "
+                f"handling."
+            )
         elif domain == "frontend":
             name = original_name if original_name else "Build User Interface Components"
-            description = f"Develop responsive UI components for {project_type}. Create reusable component library, implement state management, handle user interactions, and ensure accessibility compliance. Using: {', '.join(tech_constraints)}. Include loading states, error boundaries, and responsive design."
+            description = (
+                f"Develop responsive UI components for {project_type}. Create "
+                f"reusable component library, implement state management, handle "
+                f"user interactions, and ensure accessibility compliance. Using: "
+                f"{', '.join(tech_constraints)}. Include loading states, error "
+                f"boundaries, and responsive design."
+            )
         elif domain == "backend_services":
             name = original_name if original_name else "Develop Backend API Services"
             objectives = context.get("business_objectives", [])
-            description = f"Implement backend API services for {project_type} following the design specifications. Build endpoints, business logic, data validation, and error handling. Include appropriate tests and logging. Technology: {', '.join(tech_constraints)}. Goal: {objectives[0] if objectives else 'working implementation'}."
+            description = (
+                f"Implement backend API services for {project_type} following "
+                f"the design specifications. Build endpoints, business logic, "
+                f"data validation, and error handling. Include appropriate tests "
+                f"and logging. Technology: {', '.join(tech_constraints)}. Goal: "
+                f"{objectives[0] if objectives else 'working implementation'}."
+            )
         elif domain == "ecommerce":
             name = original_name if original_name else "Build E-commerce Core Features"
-            description = f"Implement core e-commerce functionality for {project_type}. Build product catalog, shopping cart, checkout process, payment integration, and order management. Stack: {', '.join(tech_constraints)}. Include inventory management and order tracking."
+            description = (
+                f"Implement core e-commerce functionality for {project_type}. "
+                f"Build product catalog, shopping cart, checkout process, "
+                f"payment integration, and order management. Stack: "
+                f"{', '.join(tech_constraints)}. Include inventory management "
+                f"and order tracking."
+            )
         elif domain == "crud_operations":
             name = original_name if original_name else "Implement CRUD API Endpoints"
-            description = f"Build complete CRUD (Create, Read, Update, Delete) functionality for {project_type}. Implement RESTful endpoints with proper HTTP methods, request/response handling, data validation, and error responses. Technology: {', '.join(tech_constraints)}. Include pagination, filtering, and sorting capabilities."
+            description = (
+                f"Build complete CRUD (Create, Read, Update, Delete) "
+                f"functionality for {project_type}. Implement RESTful endpoints "
+                f"with proper HTTP methods, request/response handling, data "
+                f"validation, and error responses. Technology: "
+                f"{', '.join(tech_constraints)}. Include pagination, filtering, "
+                f"and sorting capabilities."
+            )
         elif domain == "data_modeling":
             name = (
                 original_name
                 if original_name
                 else "Implement Data Models and Database Layer"
             )
-            description = f"Create data models and database integration for {project_type}. Define schemas, implement ORM/ODM models, set up migrations, add indexes for performance, and implement data validation. Stack: {', '.join(tech_constraints)}. Include relationships, constraints, and data integrity rules."
+            description = (
+                f"Create data models and database integration for "
+                f"{project_type}. Define schemas, implement ORM/ODM models, "
+                f"set up migrations, add indexes for performance, and implement "
+                f"data validation. Stack: {', '.join(tech_constraints)}. Include "
+                f"relationships, constraints, and data integrity rules."
+            )
         elif domain == "validation":
             name = (
                 original_name
                 if original_name
                 else "Implement Input Validation and Sanitization"
             )
-            description = f"Build comprehensive validation layer for {project_type}. Implement input validation rules, data sanitization, type checking, business rule validation, and error message formatting. Technology: {', '.join(tech_constraints)}. Include XSS prevention, SQL injection protection, and data format validation."
+            description = (
+                f"Build comprehensive validation layer for {project_type}. "
+                f"Implement input validation rules, data sanitization, type "
+                f"checking, business rule validation, and error message "
+                f"formatting. Technology: {', '.join(tech_constraints)}. Include "
+                f"XSS prevention, SQL injection protection, and data format "
+                f"validation."
+            )
         else:
             # Extract feature name from original name
             feature_name = (
@@ -1431,9 +1568,18 @@ class AdvancedPRDParser:
             name = (
                 original_name
                 if original_name
-                else f"Implement {feature_name if feature_name else project_type.title()} Core Features"
+                else (
+                    f"Implement "
+                    f"{feature_name if feature_name else project_type.title()} "
+                    f"Core Features"
+                )
             )
-            description = f"Build core functionality for {project_type}. Implement business logic, data processing, user interfaces, and system integrations. Using: {', '.join(tech_constraints)}. Include proper error handling, logging, and performance optimization."
+            description = (
+                f"Build core functionality for {project_type}. Implement "
+                f"business logic, data processing, user interfaces, and system "
+                f"integrations. Using: {', '.join(tech_constraints)}. Include "
+                f"proper error handling, logging, and performance optimization."
+            )
 
         # Add specific requirements if available
         if context["relevant_requirements"]:
@@ -1447,7 +1593,7 @@ class AdvancedPRDParser:
     def _generate_testing_task(
         self, context: Dict[str, Any], task_id: str, original_name: str = ""
     ) -> Tuple[str, str]:
-        """Generate testing task name and description using PRD context"""
+        """Generate testing task name and description using PRD context."""
         domain = context["domain"]
         project_type = context["project_type"]
 
@@ -1457,79 +1603,148 @@ class AdvancedPRDParser:
                 if original_name
                 else "Test Authentication Security Features"
             )
-            description = f"Create comprehensive test suite for user authentication in {project_type}. Include unit tests for login/registration, integration tests for JWT flows, security testing for password policies, and end-to-end user journey tests. Achieve >80% code coverage."
+            description = (
+                f"Create comprehensive test suite for user authentication in "
+                f"{project_type}. Include unit tests for login/registration, "
+                f"integration tests for JWT flows, security testing for password "
+                f"policies, and end-to-end user journey tests. Achieve >80% code "
+                f"coverage."
+            )
         elif domain == "frontend":
             name = original_name if original_name else "Test User Interface Components"
-            description = f"Develop UI testing suite for {project_type}. Include component unit tests, user interaction tests, accessibility testing, responsive design validation, and cross-browser compatibility tests. Test all user flows and error states."
+            description = (
+                f"Develop UI testing suite for {project_type}. Include component "
+                f"unit tests, user interaction tests, accessibility testing, "
+                f"responsive design validation, and cross-browser compatibility "
+                f"tests. Test all user flows and error states."
+            )
         elif domain == "backend_services":
             name = (
                 original_name
                 if original_name
                 else "Test API Functionality and Performance"
             )
-            description = f"Create API testing suite for {project_type}. Include endpoint unit tests, integration tests, load testing, security testing, and error handling validation. Test data validation, authentication, and business logic. Achieve >80% coverage."
+            description = (
+                f"Create API testing suite for {project_type}. Include endpoint "
+                f"unit tests, integration tests, load testing, security testing, "
+                f"and error handling validation. Test data validation, "
+                f"authentication, and business logic. Achieve >80% coverage."
+            )
         elif domain == "ecommerce":
             name = (
                 original_name if original_name else "Test E-commerce Transaction Flows"
             )
-            description = f"Develop comprehensive testing for {project_type}. Test shopping cart functionality, checkout process, payment integration, order management, and inventory updates. Include security testing for payment processing and fraud prevention."
+            description = (
+                f"Develop comprehensive testing for {project_type}. Test "
+                f"shopping cart functionality, checkout process, payment "
+                f"integration, order management, and inventory updates. Include "
+                f"security testing for payment processing and fraud prevention."
+            )
         elif domain == "crud_operations":
             name = (
                 original_name
                 if original_name
                 else "Test CRUD Operations and API Endpoints"
             )
-            description = f"Create comprehensive test suite for CRUD operations in {project_type}. Test all HTTP methods (GET, POST, PUT, DELETE), validate request/response formats, test error handling, pagination, filtering, and edge cases. Include load testing for concurrent operations. Achieve >80% coverage."
+            description = (
+                f"Create comprehensive test suite for CRUD operations in "
+                f"{project_type}. Test all HTTP methods (GET, POST, PUT, DELETE), "
+                f"validate request/response formats, test error handling, "
+                f"pagination, filtering, and edge cases. Include load testing for "
+                f"concurrent operations. Achieve >80% coverage."
+            )
         elif domain == "data_modeling":
             name = (
                 original_name
                 if original_name
                 else "Test Data Models and Database Operations"
             )
-            description = f"Develop database testing suite for {project_type}. Test model validations, database constraints, migrations, relationships, data integrity, and transaction handling. Include performance testing for queries and indexes. Validate data consistency and error scenarios."
+            description = (
+                f"Develop database testing suite for {project_type}. Test model "
+                f"validations, database constraints, migrations, relationships, "
+                f"data integrity, and transaction handling. Include performance "
+                f"testing for queries and indexes. Validate data consistency and "
+                f"error scenarios."
+            )
         elif domain == "validation":
             name = (
                 original_name if original_name else "Test Input Validation and Security"
             )
-            description = f"Create validation testing suite for {project_type}. Test all validation rules, boundary conditions, invalid inputs, injection attempts, XSS prevention, and error message accuracy. Include fuzz testing and security vulnerability scanning. Ensure comprehensive input sanitization coverage."
+            description = (
+                f"Create validation testing suite for {project_type}. Test all "
+                f"validation rules, boundary conditions, invalid inputs, injection "
+                f"attempts, XSS prevention, and error message accuracy. Include "
+                f"fuzz testing and security vulnerability scanning. Ensure "
+                f"comprehensive input sanitization coverage."
+            )
         else:
             # Extract feature name from original name
             feature_name = original_name.replace("Test ", "") if original_name else ""
             name = (
                 original_name
                 if original_name
-                else f"Test {feature_name if feature_name else project_type.title()} Functionality"
+                else (
+                    f"Test {feature_name if feature_name else project_type.title()} "
+                    f"Functionality"
+                )
             )
-            description = f"Create comprehensive test suite for {project_type}. Include unit tests, integration tests, and end-to-end testing. Validate business logic, user workflows, and system reliability. Achieve >80% code coverage."
+            description = (
+                f"Create comprehensive test suite for {project_type}. Include "
+                f"unit tests, integration tests, and end-to-end testing. Validate "
+                f"business logic, user workflows, and system reliability. Achieve "
+                f">80% code coverage."
+            )
 
         return name, description
 
     def _generate_infrastructure_task(
         self, context: Dict[str, Any], task_id: str, original_name: str = ""
     ) -> Tuple[str, str]:
-        """Generate infrastructure task name and description using PRD context"""
+        """Generate infrastructure task name and description using PRD context."""
         project_type = context["project_type"]
         tech_constraints = context["technical_constraints"]
 
         if "setup" in task_id.lower():
             name = original_name if original_name else "Setup Development Environment"
-            description = f"Configure complete development environment for {project_type}. Set up local development stack, database, environment variables, development tools, and project dependencies. Technology: {', '.join(tech_constraints)}. Include Docker containers, hot reloading, and debugging tools."
+            description = (
+                f"Configure complete development environment for {project_type}. "
+                f"Set up local development stack, database, environment variables, "
+                f"development tools, and project dependencies. Technology: "
+                f"{', '.join(tech_constraints)}. Include Docker containers, hot "
+                f"reloading, and debugging tools."
+            )
         elif "ci" in task_id.lower() or "cd" in task_id.lower():
             name = original_name if original_name else "Configure CI/CD Pipeline"
-            description = f"Set up continuous integration and deployment for {project_type}. Configure automated testing, code quality checks, building, and deployment to staging/production. Using: {', '.join(tech_constraints)}. Include security scanning and performance monitoring."
+            description = (
+                f"Set up continuous integration and deployment for {project_type}. "
+                f"Configure automated testing, code quality checks, building, and "
+                f"deployment to staging/production. Using: "
+                f"{', '.join(tech_constraints)}. Include security scanning and "
+                f"performance monitoring."
+            )
         elif "deploy" in task_id.lower():
             name = original_name if original_name else "Setup Production Deployment"
-            description = f"Configure production infrastructure for {project_type}. Set up hosting, load balancing, monitoring, logging, backup systems, and security measures. Technology: {', '.join(tech_constraints)}. Include scaling strategy and disaster recovery."
+            description = (
+                f"Configure production infrastructure for {project_type}. Set up "
+                f"hosting, load balancing, monitoring, logging, backup systems, "
+                f"and security measures. Technology: {', '.join(tech_constraints)}. "
+                f"Include scaling strategy and disaster recovery."
+            )
         else:
             name = original_name if original_name else "Configure System Infrastructure"
-            description = f"Set up core infrastructure for {project_type}. Configure servers, databases, caching, monitoring, and security systems. Stack: {', '.join(tech_constraints)}. Include performance optimization and maintenance procedures."
+            description = (
+                f"Set up core infrastructure for {project_type}. Configure "
+                f"servers, databases, caching, monitoring, and security systems. "
+                f"Stack: {', '.join(tech_constraints)}. Include performance "
+                f"optimization and maintenance procedures."
+            )
 
         return name, description
 
     def _generate_generic_task(
         self, context: Dict[str, Any], task_id: str, original_name: str = ""
     ) -> Tuple[str, str]:
-        """Generate generic task name and description using PRD context"""
+        """Generate generic task name and description using PRD context."""
         project_type = context["project_type"]
         objectives = context["business_objectives"]
 
@@ -1552,7 +1767,13 @@ class AdvancedPRDParser:
                 description = stored_description
             else:
                 # Fallback to generic description
-                description = f"Address performance, security, and scalability requirements for {project_type}. Implement caching, optimize database queries, add security headers, and ensure system reliability. Target: {objectives[0] if objectives else 'system performance'}."
+                description = (
+                    f"Address performance, security, and scalability "
+                    f"requirements for {project_type}. Implement caching, "
+                    f"optimize database queries, add security headers, and ensure "
+                    f"system reliability. Target: "
+                    f"{objectives[0] if objectives else 'system performance'}."
+                )
         elif any(keyword in task_id.lower() for keyword in ["req_0", "req_1", "req_2"]):
             req_index = next(
                 (
@@ -1566,20 +1787,34 @@ class AdvancedPRDParser:
                 req = context["functional_requirements"][req_index]
                 req_desc = req.get("description", "feature requirement")
                 name = f"Implement {req_desc[:30]}..."
-                description = f"Complete implementation of: {req_desc}. For {project_type} to achieve: {objectives[0] if objectives else 'project goals'}."
+                description = (
+                    f"Complete implementation of: {req_desc}. For {project_type} "
+                    f"to achieve: "
+                    f"{objectives[0] if objectives else 'project goals'}."
+                )
             else:
                 name = f"Implement Core {project_type.title()} Feature"
-                description = f"Build essential functionality for {project_type}. Implement core business logic, user interactions, and system integrations to achieve: {objectives[0] if objectives else 'project success'}."
+                description = (
+                    f"Build essential functionality for {project_type}. "
+                    f"Implement core business logic, user interactions, and "
+                    f"system integrations to achieve: "
+                    f"{objectives[0] if objectives else 'project success'}."
+                )
         else:
             name = f"Develop {project_type.title()} Component"
-            description = f"Build and integrate component for {project_type}. Implement required functionality, ensure proper testing, and maintain code quality standards. Supports: {objectives[0] if objectives else 'project objectives'}."
+            description = (
+                f"Build and integrate component for {project_type}. Implement "
+                f"required functionality, ensure proper testing, and maintain "
+                f"code quality standards. Supports: "
+                f"{objectives[0] if objectives else 'project objectives'}."
+            )
 
         return name, description
 
     def _generate_labels(
         self, task_type: str, context: Dict[str, Any], constraints: ProjectConstraints
     ) -> List[str]:
-        """Generate appropriate labels following Board Quality Standards taxonomy"""
+        """Generate appropriate labels following Board Quality Standards taxonomy."""
         labels = []
 
         # Component labels
@@ -1646,7 +1881,7 @@ class AdvancedPRDParser:
     def _generate_acceptance_criteria(
         self, task_type: str, context: Dict[str, Any], task_name: str
     ) -> List[str]:
-        """Generate acceptance criteria based on task type and context"""
+        """Generate acceptance criteria based on task type and context."""
         criteria = []
 
         if task_type == "design":
@@ -1718,7 +1953,7 @@ class AdvancedPRDParser:
     def _generate_subtasks(
         self, task_type: str, context: Dict[str, Any], task_name: str
     ) -> List[str]:
-        """Generate subtasks to break down the work"""
+        """Generate subtasks to break down the work."""
         subtasks = []
 
         if task_type == "design":
@@ -1835,8 +2070,7 @@ class AdvancedPRDParser:
         return subtasks[:7]  # Return top 7 most relevant subtasks
 
     def _should_skip_epic(self, epic_id: str, deployment_target: str) -> bool:
-        """Determine if an epic should be skipped based on deployment target"""
-
+        """Determine if an epic should be skipped based on deployment target."""
         # Skip deployment and production epics for local development
         if deployment_target == "local":
             skip_keywords = [
@@ -1866,7 +2100,7 @@ class AdvancedPRDParser:
     def _should_skip_task(
         self, task_id: str, epic_id: str, deployment_target: str
     ) -> bool:
-        """Determine if a task should be skipped based on deployment target"""
+        """Determine if a task should be skipped based on deployment target."""
         task_lower = task_id.lower()
 
         # Skip deployment tasks for local development
@@ -1915,7 +2149,7 @@ class AdvancedPRDParser:
     def _filter_requirements_by_size(
         self, requirements: List[Dict[str, Any]], project_size: str, team_size: int
     ) -> List[Dict[str, Any]]:
-        """Filter functional requirements based on project size and team capacity"""
+        """Filter functional requirements based on project size and team capacity."""
         # Map to new 3-option system (with legacy support)
         if project_size in ["prototype", "mvp"]:
             # Prototype: only keep the most essential 1-2 requirements
@@ -1931,7 +2165,7 @@ class AdvancedPRDParser:
     def _filter_nfrs_by_size(
         self, nfrs: List[Dict[str, Any]], project_size: str
     ) -> List[Dict[str, Any]]:
-        """Filter non-functional requirements based on project size"""
+        """Filter non-functional requirements based on project size."""
         if project_size in ["prototype", "mvp", "small"]:
             # Prototype: Skip NFRs entirely or just basic auth
             essential_nfrs = []

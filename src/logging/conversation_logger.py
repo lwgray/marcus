@@ -277,7 +277,7 @@ class ConversationLogger:
 
     def _setup_file_handlers(self) -> None:
         """
-        Setup file handlers for different log types with automatic rotation.
+        Set up file handlers for different log types with automatic rotation.
 
         Creates separate file handlers for conversations and decisions with
         timestamp-based naming for automatic organization and rotation.
@@ -1620,7 +1620,7 @@ def log_conversation(
     sender: str, receiver: str, message: str, metadata: Optional[Dict[str, Any]] = None
 ) -> None:
     """
-    Convenience function for quick conversation logging between system components.
+    Log conversations quickly between system components.
 
     Provides a simplified interface for logging conversations without needing
     to directly interact with the ConversationLogger class. Automatically
@@ -1720,7 +1720,7 @@ def log_thinking(
     component: str, thought: str, context: Optional[Dict[str, Any]] = None
 ) -> None:
     """
-    Convenience function for logging internal reasoning and decision processes.
+    Log internal reasoning and decision processes.
 
     Provides a simplified interface for capturing internal thought processes,
     analysis steps, and reasoning chains across different system components.

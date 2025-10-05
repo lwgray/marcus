@@ -1,5 +1,4 @@
-"""
-Board Organizer for Marcus Phase 2 Enricher Mode
+"""Board Organizer for Marcus Phase 2 Enricher Mode.
 
 Organizes chaotic boards into logical structures with multiple strategies.
 """
@@ -17,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class OrganizationStrategy:
-    """Strategy for organizing a board"""
+    """Strategy for organizing a board."""
 
     name: str
     description: str
@@ -28,7 +27,7 @@ class OrganizationStrategy:
 
 @dataclass
 class PhasedStructure:
-    """Board organized by development phases"""
+    """Board organized by development phases."""
 
     phases: Dict[str, List[Task]]
     phase_order: List[str]
@@ -37,7 +36,7 @@ class PhasedStructure:
 
 @dataclass
 class ComponentStructure:
-    """Board organized by system components"""
+    """Board organized by system components."""
 
     components: Dict[str, List[Task]]
     integration_tasks: List[Task]
@@ -46,7 +45,7 @@ class ComponentStructure:
 
 @dataclass
 class LabelingPlan:
-    """Plan for consistent labeling"""
+    """Plan for consistent labeling."""
 
     label_hierarchy: Dict[str, List[str]]
     task_label_assignments: Dict[str, List[str]]
@@ -54,7 +53,7 @@ class LabelingPlan:
 
 
 class BoardOrganizer:
-    """Organizes boards into logical structures"""
+    """Organizes boards into logical structures."""
 
     def __init__(self) -> None:
         # Development phase definitions
@@ -156,14 +155,17 @@ class BoardOrganizer:
     async def analyze_organization_options(
         self, tasks: List[Task]
     ) -> List[OrganizationStrategy]:
-        """
-        Suggest organization strategies for the board
+        """Suggest organization strategies for the board.
 
-        Args:
-            tasks: List of tasks to analyze
+        Parameters
+        ----------
+        tasks : List[Task]
+            List of tasks to analyze.
 
-        Returns:
-            List of possible organization strategies with confidence scores
+        Returns
+        -------
+        List[OrganizationStrategy]
+            List of possible organization strategies with confidence scores.
         """
         strategies = []
 
@@ -195,7 +197,7 @@ class BoardOrganizer:
     async def _analyze_phase_organization(
         self, tasks: List[Task]
     ) -> Optional[OrganizationStrategy]:
-        """Analyze viability of phase-based organization"""
+        """Analyze viability of phase-based organization."""
         phase_distribution: defaultdict[str, int] = defaultdict(int)
         phase_tasks = defaultdict(list)
 
@@ -251,7 +253,7 @@ class BoardOrganizer:
     async def _analyze_component_organization(
         self, tasks: List[Task]
     ) -> Optional[OrganizationStrategy]:
-        """Analyze viability of component-based organization"""
+        """Analyze viability of component-based organization."""
         component_distribution: defaultdict[str, int] = defaultdict(int)
         component_tasks = defaultdict(list)
 
@@ -315,7 +317,7 @@ class BoardOrganizer:
     async def _analyze_feature_organization(
         self, tasks: List[Task]
     ) -> Optional[OrganizationStrategy]:
-        """Analyze viability of feature-based organization"""
+        """Analyze viability of feature-based organization."""
         # Extract potential features from task names
         feature_keywords = set()
 
@@ -403,7 +405,7 @@ class BoardOrganizer:
     async def _analyze_priority_organization(
         self, tasks: List[Task]
     ) -> Optional[OrganizationStrategy]:
-        """Analyze viability of priority-based organization"""
+        """Analyze viability of priority-based organization."""
         priority_distribution: defaultdict[str, int] = defaultdict(int)
         priority_tasks = defaultdict(list)
 
@@ -441,14 +443,17 @@ class BoardOrganizer:
         )
 
     async def organize_by_phase(self, tasks: List[Task]) -> PhasedStructure:
-        """
-        Organize tasks into development phases
+        """Organize tasks into development phases.
 
-        Args:
-            tasks: Tasks to organize
+        Parameters
+        ----------
+        tasks : List[Task]
+            Tasks to organize.
 
-        Returns:
-            Phased structure with tasks organized by development phases
+        Returns
+        -------
+        PhasedStructure
+            Phased structure with tasks organized by development phases.
         """
         phases: Dict[str, List[Task]] = {}
         phase_order = []
@@ -512,14 +517,17 @@ class BoardOrganizer:
         )
 
     async def organize_by_component(self, tasks: List[Task]) -> ComponentStructure:
-        """
-        Organize tasks by system components
+        """Organize tasks by system components.
 
-        Args:
-            tasks: Tasks to organize
+        Parameters
+        ----------
+        tasks : List[Task]
+            Tasks to organize.
 
-        Returns:
-            Component structure with tasks organized by components
+        Returns
+        -------
+        ComponentStructure
+            Component structure with tasks organized by components.
         """
         components: Dict[str, List[Task]] = {}
         integration_tasks = []
@@ -563,14 +571,17 @@ class BoardOrganizer:
     async def create_labels_and_groups(
         self, strategy: OrganizationStrategy
     ) -> LabelingPlan:
-        """
-        Create consistent labeling plan
+        """Create consistent labeling plan.
 
-        Args:
-            strategy: Organization strategy to implement
+        Parameters
+        ----------
+        strategy : OrganizationStrategy
+            Organization strategy to implement.
 
-        Returns:
-            Labeling plan with hierarchy and assignments
+        Returns
+        -------
+        LabelingPlan
+            Labeling plan with hierarchy and assignments.
         """
         label_hierarchy = {}
         task_label_assignments: Dict[str, List[str]] = {}

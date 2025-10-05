@@ -1,5 +1,4 @@
-"""
-Project Quality Assessor
+"""Project Quality Assessor.
 
 Comprehensive quality assessment system that analyzes completed projects
 using multiple data sources including GitHub, task metrics, and AI analysis.

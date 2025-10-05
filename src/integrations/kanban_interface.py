@@ -1,5 +1,4 @@
-"""
-Common interface for all Kanban board integrations
+"""Common interface for all Kanban board integrations.
 
 This abstract base class defines the standard interface that all kanban
 integrations (Planka, Linear, GitHub Projects) must implement.
@@ -13,7 +12,7 @@ from src.core.models import Priority, Task, TaskStatus
 
 
 class KanbanProvider(Enum):
-    """Supported kanban providers"""
+    """Supported kanban providers."""
 
     PLANKA = "planka"
     LINEAR = "linear"
@@ -22,7 +21,7 @@ class KanbanProvider(Enum):
 
 class KanbanInterface(ABC):
     """
-    Abstract base class for kanban board integrations
+    Abstract base class for kanban board integrations.
 
     All kanban providers must implement these methods to ensure
     consistent behavior across different platforms.
@@ -30,13 +29,15 @@ class KanbanInterface(ABC):
 
     def __init__(self, config: Dict[str, Any]):
         """
-        Initialize kanban provider with configuration
+        Initialize kanban provider with configuration.
 
-        Args:
-            config: Provider-specific configuration
-                - For Planka: url, username, password
-                - For Linear: api_key, team_id
-                - For GitHub: token, owner, repo, project_number
+        Parameters
+        ----------
+        config : Dict[str, Any]
+            Provider-specific configuration
+            - For Planka: url, username, password
+            - For Linear: api_key, team_id
+            - For GitHub: token, owner, repo, project_number
         """
         self.config = config
         self.provider: Optional[KanbanProvider] = None
@@ -44,24 +45,28 @@ class KanbanInterface(ABC):
     @abstractmethod
     async def connect(self) -> bool:
         """
-        Establish connection to the kanban service
+        Establish connection to the kanban service.
 
-        Returns:
-            bool: True if connection successful
+        Returns
+        -------
+        bool
+            True if connection successful
         """
         pass
 
     @abstractmethod
     async def disconnect(self) -> None:
-        """Close connection to the kanban service"""
+        """Close connection to the kanban service."""
         pass
 
     @abstractmethod
     async def get_available_tasks(self) -> List[Task]:
         """
-        Get all unassigned tasks from backlog/ready columns
+        Get all unassigned tasks from backlog/ready columns.
 
-        Returns:
+        Returns
+        -------
+        List[Task]
             List of Task objects that are available for assignment
         """
         pass
@@ -69,9 +74,11 @@ class KanbanInterface(ABC):
     @abstractmethod
     async def get_all_tasks(self) -> List[Task]:
         """
-        Get all tasks from the board regardless of status or assignment
+        Get all tasks from the board regardless of status or assignment.
 
-        Returns:
+        Returns
+        -------
+        List[Task]
             List of all Task objects on the board
         """
         pass
@@ -79,12 +86,16 @@ class KanbanInterface(ABC):
     @abstractmethod
     async def get_task_by_id(self, task_id: str) -> Optional[Task]:
         """
-        Get a specific task by its ID
+        Get a specific task by its ID.
 
-        Args:
-            task_id: The task identifier
+        Parameters
+        ----------
+        task_id : str
+            The task identifier
 
-        Returns:
+        Returns
+        -------
+        Optional[Task]
             Task object or None if not found
         """
         pass
@@ -92,17 +103,21 @@ class KanbanInterface(ABC):
     @abstractmethod
     async def create_task(self, task_data: Dict[str, Any]) -> Task:
         """
-        Create a new task on the board
+        Create a new task on the board.
 
-        Args:
-            task_data: Dictionary containing:
+        Parameters
+        ----------
+        task_data : Dict[str, Any]
+            Dictionary containing:
                 - name: Task title
                 - description: Task description
                 - priority: Priority level
                 - labels: List of labels/tags
                 - estimated_hours: Time estimate
 
-        Returns:
+        Returns
+        -------
+        Task
             Created Task object
         """
         pass
@@ -112,13 +127,18 @@ class KanbanInterface(ABC):
         self, task_id: str, updates: Dict[str, Any]
     ) -> Optional[Task]:
         """
-        Update an existing task
+        Update an existing task.
 
-        Args:
-            task_id: The task identifier
-            updates: Dictionary of fields to update
+        Parameters
+        ----------
+        task_id : str
+            The task identifier
+        updates : Dict[str, Any]
+            Dictionary of fields to update
 
-        Returns:
+        Returns
+        -------
+        Optional[Task]
             Updated Task object
         """
         pass
@@ -126,51 +146,68 @@ class KanbanInterface(ABC):
     @abstractmethod
     async def assign_task(self, task_id: str, assignee_id: str) -> bool:
         """
-        Assign a task to a worker
+        Assign a task to a worker.
 
-        Args:
-            task_id: The task identifier
-            assignee_id: The worker/user identifier
+        Parameters
+        ----------
+        task_id : str
+            The task identifier
+        assignee_id : str
+            The worker/user identifier
 
-        Returns:
-            bool: True if assignment successful
+        Returns
+        -------
+        bool
+            True if assignment successful
         """
         pass
 
     @abstractmethod
     async def move_task_to_column(self, task_id: str, column_name: str) -> bool:
         """
-        Move task to a specific column/status
+        Move task to a specific column/status.
 
-        Args:
-            task_id: The task identifier
-            column_name: Target column (e.g., "In Progress", "Done")
+        Parameters
+        ----------
+        task_id : str
+            The task identifier
+        column_name : str
+            Target column (e.g., "In Progress", "Done")
 
-        Returns:
-            bool: True if move successful
+        Returns
+        -------
+        bool
+            True if move successful
         """
         pass
 
     @abstractmethod
     async def add_comment(self, task_id: str, comment: str) -> bool:
         """
-        Add a comment to a task
+        Add a comment to a task.
 
-        Args:
-            task_id: The task identifier
-            comment: Comment text
+        Parameters
+        ----------
+        task_id : str
+            The task identifier
+        comment : str
+            Comment text
 
-        Returns:
-            bool: True if comment added successfully
+        Returns
+        -------
+        bool
+            True if comment added successfully
         """
         pass
 
     @abstractmethod
     async def get_project_metrics(self) -> Dict[str, Any]:
         """
-        Get project metrics and statistics
+        Get project metrics and statistics.
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Dictionary containing:
                 - total_tasks: Total number of tasks
                 - backlog_tasks: Tasks in backlog
@@ -185,15 +222,21 @@ class KanbanInterface(ABC):
         self, task_id: str, blocker_description: str, severity: str = "medium"
     ) -> bool:
         """
-        Report a blocker on a task
+        Report a blocker on a task.
 
-        Args:
-            task_id: The task identifier
-            blocker_description: Description of the blocker
-            severity: Blocker severity (low, medium, high)
+        Parameters
+        ----------
+        task_id : str
+            The task identifier
+        blocker_description : str
+            Description of the blocker
+        severity : str
+            Blocker severity (low, medium, high)
 
-        Returns:
-            bool: True if blocker reported successfully
+        Returns
+        -------
+        bool
+            True if blocker reported successfully
         """
         pass
 
@@ -202,17 +245,22 @@ class KanbanInterface(ABC):
         self, task_id: str, progress_data: Dict[str, Any]
     ) -> bool:
         """
-        Update task progress
+        Update task progress.
 
-        Args:
-            task_id: The task identifier
-            progress_data: Dictionary containing:
+        Parameters
+        ----------
+        task_id : str
+            The task identifier
+        progress_data : Dict[str, Any]
+            Dictionary containing:
                 - progress: Percentage complete (0-100)
                 - status: Current status
                 - message: Progress message
 
-        Returns:
-            bool: True if update successful
+        Returns
+        -------
+        bool
+            True if update successful
         """
         pass
 
@@ -220,12 +268,16 @@ class KanbanInterface(ABC):
 
     def normalize_priority(self, provider_priority: Any) -> Priority:
         """
-        Normalize provider-specific priority to standard Priority enum
+        Normalize provider-specific priority to standard Priority enum.
 
-        Args:
-            provider_priority: Provider's priority representation
+        Parameters
+        ----------
+        provider_priority : Any
+            Provider's priority representation
 
-        Returns:
+        Returns
+        -------
+        Priority
             Standardized Priority enum value
         """
         # Default implementation - override in specific providers
@@ -243,12 +295,16 @@ class KanbanInterface(ABC):
 
     def normalize_status(self, provider_status: Any) -> TaskStatus:
         """
-        Normalize provider-specific status to standard TaskStatus enum
+        Normalize provider-specific status to standard TaskStatus enum.
 
-        Args:
-            provider_status: Provider's status representation
+        Parameters
+        ----------
+        provider_status : Any
+            Provider's status representation
 
-        Returns:
+        Returns
+        -------
+        TaskStatus
             Standardized TaskStatus enum value
         """
         # Default implementation - override in specific providers
@@ -285,13 +341,20 @@ class KanbanInterface(ABC):
         This method provides a generic interface for uploading design artifacts,
         documentation, and other files to tasks across different kanban providers.
 
-        Args:
-            task_id: The task identifier (provider-specific format)
-            filename: Name for the attachment
-            content: File content (base64 string or bytes)
-            content_type: MIME type (e.g., 'application/json', 'text/markdown')
+        Parameters
+        ----------
+        task_id : str
+            The task identifier (provider-specific format)
+        filename : str
+            Name for the attachment
+        content : Union[str, bytes]
+            File content (base64 string or bytes)
+        content_type : Optional[str]
+            MIME type (e.g., 'application/json', 'text/markdown')
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Dict with attachment details including:
             - success: bool indicating if upload was successful
             - data: Dict containing:
@@ -308,10 +371,14 @@ class KanbanInterface(ABC):
         """
         Get all attachments for a task.
 
-        Args:
-            task_id: The task identifier
+        Parameters
+        ----------
+        task_id : str
+            The task identifier
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Dict containing:
             - success: bool
             - data: List of attachment objects with:
@@ -331,12 +398,18 @@ class KanbanInterface(ABC):
         """
         Download an attachment.
 
-        Args:
-            attachment_id: The attachment ID
-            filename: The filename (required by some providers)
-            task_id: Optional task ID (required by some providers)
+        Parameters
+        ----------
+        attachment_id : str
+            The attachment ID
+        filename : str
+            The filename (required by some providers)
+        task_id : Optional[str]
+            Optional task ID (required by some providers)
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Dict containing:
             - success: bool
             - data: Dict with:
@@ -353,11 +426,16 @@ class KanbanInterface(ABC):
         """
         Delete an attachment (optional - not all providers support this).
 
-        Args:
-            attachment_id: The attachment ID
-            task_id: Optional task ID (required by some providers)
+        Parameters
+        ----------
+        attachment_id : str
+            The attachment ID
+        task_id : Optional[str]
+            Optional task ID (required by some providers)
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Dict containing:
             - success: bool
             - error: Error message if not supported or failed
@@ -376,12 +454,18 @@ class KanbanInterface(ABC):
         """
         Update attachment metadata (optional - not all providers support this).
 
-        Args:
-            attachment_id: The attachment ID
-            filename: New filename
-            task_id: Optional task ID (required by some providers)
+        Parameters
+        ----------
+        attachment_id : str
+            The attachment ID
+        filename : Optional[str]
+            New filename
+        task_id : Optional[str]
+            Optional task ID (required by some providers)
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Dict containing:
             - success: bool
             - data: Updated attachment info if successful

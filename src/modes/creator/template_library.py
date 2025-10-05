@@ -1,5 +1,4 @@
-"""
-Template Library for Marcus Creator Mode
+"""Template Library for Marcus Creator Mode.
 
 Provides project templates to prevent illogical task assignments like
 "Deploy to production" before any code exists.
@@ -13,7 +12,7 @@ from src.core.models import Priority
 
 
 class ProjectSize(Enum):
-    """Project size categories"""
+    """Project size categories."""
 
     MVP = "mvp"
     SMALL = "small"
@@ -24,7 +23,7 @@ class ProjectSize(Enum):
 
 @dataclass
 class TaskTemplate:
-    """Template for a single task"""
+    """Template for a single task."""
 
     name: str
     description: str
@@ -39,7 +38,7 @@ class TaskTemplate:
 
 @dataclass
 class PhaseTemplate:
-    """Template for a project phase"""
+    """Template for a project phase."""
 
     name: str
     description: str
@@ -47,13 +46,13 @@ class PhaseTemplate:
     tasks: List[TaskTemplate]
 
     def get_required_tasks(self) -> List[TaskTemplate]:
-        """Get only required tasks"""
+        """Get only required tasks."""
         return [t for t in self.tasks if not t.optional]
 
 
 @dataclass
 class ProjectTemplate:
-    """Base class for project templates"""
+    """Base class for project templates."""
 
     name: str
     description: str
@@ -62,7 +61,7 @@ class ProjectTemplate:
     default_size: ProjectSize = ProjectSize.MEDIUM
 
     def get_all_tasks(self, size: Optional[ProjectSize] = None) -> List[TaskTemplate]:
-        """Get all tasks adjusted for project size"""
+        """Get all tasks adjusted for project size."""
         tasks = []
         target_size = size if size is not None else self.default_size
 
@@ -81,7 +80,7 @@ class ProjectTemplate:
     def _adjust_task_for_size(
         self, task: TaskTemplate, size: ProjectSize
     ) -> TaskTemplate:
-        """Adjust task estimates based on project size"""
+        """Adjust task estimates based on project size."""
         size_multipliers = {
             ProjectSize.MVP: 0.5,
             ProjectSize.SMALL: 0.7,
@@ -112,7 +111,7 @@ class ProjectTemplate:
 
 
 class WebAppTemplate(ProjectTemplate):
-    """Template for full-stack web applications"""
+    """Template for full-stack web applications."""
 
     def __init__(self) -> None:
         phases = [
@@ -463,7 +462,7 @@ class WebAppTemplate(ProjectTemplate):
 
 
 class APIServiceTemplate(ProjectTemplate):
-    """Template for API-only services"""
+    """Template for API-only services."""
 
     def __init__(self) -> None:
         phases = [
@@ -629,7 +628,7 @@ class APIServiceTemplate(ProjectTemplate):
 
 
 class MobileAppTemplate(ProjectTemplate):
-    """Template for mobile applications"""
+    """Template for mobile applications."""
 
     def __init__(self) -> None:
         phases = [

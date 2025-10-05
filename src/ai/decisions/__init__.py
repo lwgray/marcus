@@ -1,4 +1,4 @@
-"""AI Decision Components"""
+"""AI Decision Components."""
 
 from ..types import AssignmentDecision
 from .hybrid_framework import HybridDecisionFramework

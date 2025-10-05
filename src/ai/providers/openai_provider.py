@@ -43,6 +43,7 @@ logger = logging.getLogger(__name__)
 
 class OpenAIProvider(BaseLLMProvider):
     """
+
     OpenAI GPT provider for semantic AI analysis.
 
     Provides fallback capability when Anthropic is unavailable
@@ -180,7 +181,7 @@ class OpenAIProvider(BaseLLMProvider):
     async def generate_enhanced_description(
         self, task: Task, context: Dict[str, Any]
     ) -> str:
-        """Generate enhanced description using GPT"""
+        """Generate enhanced description using GPT."""
         messages = [
             {
                 "role": "system",
@@ -200,7 +201,7 @@ class OpenAIProvider(BaseLLMProvider):
     async def estimate_effort(
         self, task: Task, context: Dict[str, Any]
     ) -> EffortEstimate:
-        """Estimate effort using GPT"""
+        """Estimate effort using GPT."""
         messages = [
             {
                 "role": "system",
@@ -226,7 +227,7 @@ class OpenAIProvider(BaseLLMProvider):
     async def analyze_blocker(
         self, task: Task, blocker: str, context: Dict[str, Any]
     ) -> List[str]:
-        """Analyze blocker using GPT"""
+        """Analyze blocker using GPT."""
         messages = [
             {
                 "role": "system",
@@ -251,7 +252,7 @@ class OpenAIProvider(BaseLLMProvider):
             ]
 
     def _build_task_analysis_prompt(self, task: Task, context: Dict[str, Any]) -> str:
-        """Build task analysis prompt for GPT"""
+        """Build task analysis prompt for GPT."""
         return f"""
 Analyze this software development task:
 
@@ -277,7 +278,7 @@ Provide JSON response:
 }}"""
 
     def _build_dependency_inference_prompt(self, tasks: List[Task]) -> str:
-        """Build dependency inference prompt"""
+        """Build dependency inference prompt."""
         task_list = "\n".join(
             [
                 f"{task.id}: {task.name} - {task.description or 'No description'}"
@@ -304,7 +305,7 @@ Return JSON array:
 Only include necessary dependencies."""
 
     def _build_enhancement_prompt(self, task: Task, context: Dict[str, Any]) -> str:
-        """Build enhancement prompt"""
+        """Build enhancement prompt."""
         return f"""
 Enhance this task description:
 
@@ -321,7 +322,7 @@ Provide enhanced description with:
 Enhanced Description:"""
 
     def _build_estimation_prompt(self, task: Task, context: Dict[str, Any]) -> str:
-        """Build estimation prompt"""
+        """Build estimation prompt."""
         return f"""
 Estimate effort for this task:
 
@@ -341,7 +342,7 @@ JSON response:
     def _build_blocker_analysis_prompt(
         self, task: Task, blocker: str, context: Dict[str, Any]
     ) -> str:
-        """Build blocker analysis prompt"""
+        """Build blocker analysis prompt."""
         return f"""
 Help resolve this development blocker:
 
@@ -353,7 +354,7 @@ Provide JSON array of 3-5 specific solutions:
 ["solution1", "solution2", "solution3"]"""
 
     async def _call_openai(self, messages: List[Dict[str, str]]) -> str:
-        """Make API call to OpenAI"""
+        """Make API call to OpenAI."""
         payload = {
             "model": self.model,
             "messages": messages,
@@ -378,7 +379,7 @@ Provide JSON array of 3-5 specific solutions:
             raise Exception(f"OpenAI API call failed: {str(e)}")
 
     def _parse_task_analysis_response(self, response: str) -> SemanticAnalysis:
-        """Parse GPT task analysis response"""
+        """Parse GPT task analysis response."""
         try:
             data = json.loads(response)
             return SemanticAnalysis(
@@ -405,7 +406,7 @@ Provide JSON array of 3-5 specific solutions:
     def _parse_dependency_response(
         self, response: str, tasks: List[Task]
     ) -> List[SemanticDependency]:
-        """Parse dependency inference response"""
+        """Parse dependency inference response."""
         try:
             data = json.loads(response)
             dependencies = []
@@ -431,7 +432,7 @@ Provide JSON array of 3-5 specific solutions:
             return []
 
     def _parse_estimation_response(self, response: str) -> EffortEstimate:
-        """Parse effort estimation response"""
+        """Parse effort estimation response."""
         try:
             data = json.loads(response)
             return EffortEstimate(
@@ -451,7 +452,7 @@ Provide JSON array of 3-5 specific solutions:
             )
 
     def _parse_blocker_response(self, response: str) -> List[str]:
-        """Parse blocker analysis response"""
+        """Parse blocker analysis response."""
         try:
             suggestions = json.loads(response)
             if isinstance(suggestions, list):
@@ -469,13 +470,15 @@ Provide JSON array of 3-5 specific solutions:
 
     async def complete(self, prompt: str, max_tokens: int = 2000) -> str:
         """
-        Generate a completion for the given prompt
+        Generate a completion for the given prompt.
 
-        Args:
+        Args
+        ----
             prompt: The prompt to complete
             max_tokens: Maximum tokens in response
 
-        Returns:
+        Returns
+        -------
             The completion text
         """
         messages = [{"role": "user", "content": prompt}]
@@ -490,5 +493,5 @@ Provide JSON array of 3-5 specific solutions:
             raise
 
     async def close(self) -> None:
-        """Close HTTP client"""
+        """Close HTTP client."""
         await self.client.aclose()

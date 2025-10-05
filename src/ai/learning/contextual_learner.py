@@ -1,5 +1,5 @@
 """
-Contextual Learning System for Marcus Phase 3
+Contextual Learning System for Marcus Phase 3.
 
 Learns patterns specific to teams, technologies, and project types
 to provide intelligent, context-aware recommendations.
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TeamLearnings:
-    """Learnings specific to a team"""
+    """Learnings specific to a team."""
 
     team_id: str
     velocity_patterns: Dict[str, float]  # task_type -> avg completion time
@@ -30,7 +30,7 @@ class TeamLearnings:
 
 @dataclass
 class TechnologyLearnings:
-    """Learnings specific to technology stacks"""
+    """Learnings specific to technology stacks."""
 
     tech_stack: str
     typical_patterns: Dict[str, Any]
@@ -43,7 +43,7 @@ class TechnologyLearnings:
 
 @dataclass
 class ProjectTypeLearnings:
-    """Learnings specific to project types"""
+    """Learnings specific to project types."""
 
     project_type: str
     typical_phases: List[str]
@@ -56,7 +56,7 @@ class ProjectTypeLearnings:
 
 @dataclass
 class AdaptedTemplate:
-    """Template adapted based on learnings"""
+    """Template adapted based on learnings."""
 
     template_id: str
     original_template: Dict[str, Any]
@@ -70,7 +70,8 @@ class AdaptedTemplate:
 
 class ContextualLearningSystem:
     """
-    Learns patterns specific to teams, technologies, and project types
+
+    Learns patterns specific to teams, technologies, and project types.
 
     Provides intelligent adaptation based on context-specific learnings
     rather than generic patterns.
@@ -97,13 +98,15 @@ class ContextualLearningSystem:
         self, team_id: str, completed_projects: List[Dict[str, Any]]
     ) -> TeamLearnings:
         """
-        Learn team-specific patterns from completed projects
+        Learn team-specific patterns from completed projects.
 
-        Args:
+        Args
+        ----
             team_id: Unique team identifier
             completed_projects: List of completed project data
 
-        Returns:
+        Returns
+        -------
             Team learnings with patterns and preferences
         """
         logger.info(f"Learning patterns for team: {team_id}")
@@ -152,13 +155,15 @@ class ContextualLearningSystem:
         self, tech_stack: str, project_outcomes: List[Dict[str, Any]]
     ) -> TechnologyLearnings:
         """
-        Learn technology-specific patterns from project outcomes
+        Learn technology-specific patterns from project outcomes.
 
-        Args:
+        Args
+        ----
             tech_stack: Technology stack identifier (e.g., "react-python-postgres")
             project_outcomes: List of project outcome data
 
-        Returns:
+        Returns
+        -------
             Technology learnings with patterns and multipliers
         """
         logger.info(f"Learning patterns for tech stack: {tech_stack}")
@@ -206,12 +211,14 @@ class ContextualLearningSystem:
         self, project_context: Dict[str, Any]
     ) -> Dict[str, AdaptedTemplate]:
         """
-        Adapt templates based on learned patterns
+        Adapt templates based on learned patterns.
 
-        Args:
+        Args
+        ----
             project_context: Current project context
 
-        Returns:
+        Returns
+        -------
             Dictionary of adapted templates
         """
         team_id = project_context.get("team_id")
@@ -255,13 +262,15 @@ class ContextualLearningSystem:
         self, project_context: Dict[str, Any], current_state: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Get contextual recommendations based on learnings
+        Get contextual recommendations based on learnings.
 
-        Args:
+        Args
+        ----
             project_context: Project context information
             current_state: Current project state
 
-        Returns:
+        Returns
+        -------
             Context-specific recommendations
         """
         recommendations: Dict[str, List[str]] = {
@@ -300,7 +309,7 @@ class ContextualLearningSystem:
     def _analyze_team_velocity(
         self, projects: List[Dict[str, Any]]
     ) -> Dict[str, float]:
-        """Analyze team velocity by task type"""
+        """Analyze team velocity by task type."""
         velocity_data = defaultdict(list)
 
         for project in projects:
@@ -329,7 +338,7 @@ class ContextualLearningSystem:
         return velocity_patterns
 
     def _analyze_team_skills(self, projects: List[Dict[str, Any]]) -> Dict[str, float]:
-        """Analyze team skill strengths"""
+        """Analyze team skill strengths."""
         skill_performance = defaultdict(list)
 
         for project in projects:
@@ -352,7 +361,7 @@ class ContextualLearningSystem:
     def _analyze_task_preferences(
         self, projects: List[Dict[str, Any]]
     ) -> Dict[str, float]:
-        """Analyze team preferences for task types"""
+        """Analyze team preferences for task types."""
         task_type_performance = defaultdict(list)
 
         for project in projects:
@@ -376,7 +385,7 @@ class ContextualLearningSystem:
     def _analyze_collaboration_patterns(
         self, projects: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
-        """Analyze team collaboration patterns"""
+        """Analyze team collaboration patterns."""
         patterns = {
             "avg_team_size": 0,
             "parallel_task_preference": 0.5,
@@ -409,7 +418,7 @@ class ContextualLearningSystem:
         return patterns
 
     def _analyze_team_quality(self, projects: List[Dict[str, Any]]) -> Dict[str, float]:
-        """Analyze team quality metrics"""
+        """Analyze team quality metrics."""
         quality_metrics = {}
 
         all_quality_scores = []
@@ -438,7 +447,7 @@ class ContextualLearningSystem:
         return quality_metrics
 
     def _analyze_tech_patterns(self, outcomes: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Analyze technology-specific patterns"""
+        """Analyze technology-specific patterns."""
         patterns = {}
 
         # Analyze common project structures
@@ -465,7 +474,7 @@ class ContextualLearningSystem:
     def _calculate_estimation_multipliers(
         self, outcomes: List[Dict[str, Any]]
     ) -> Dict[str, float]:
-        """Calculate estimation multipliers for different task types"""
+        """Calculate estimation multipliers for different task types."""
         multipliers = {}
         task_type_ratios = defaultdict(list)
 
@@ -489,7 +498,7 @@ class ContextualLearningSystem:
     def _identify_tech_dependencies(
         self, outcomes: List[Dict[str, Any]]
     ) -> List[Tuple[str, str]]:
-        """Identify common technology dependencies"""
+        """Identify common technology dependencies."""
         dependencies = []
         dependency_counter: Counter[Tuple[str, str]] = Counter()
 
@@ -512,7 +521,7 @@ class ContextualLearningSystem:
         return dependencies
 
     def _analyze_tech_risks(self, outcomes: List[Dict[str, Any]]) -> Dict[str, float]:
-        """Analyze technology-specific risks"""
+        """Analyze technology-specific risks."""
         risks: defaultdict[str, int] = defaultdict(int)
         total_projects = len(outcomes)
 
@@ -530,7 +539,7 @@ class ContextualLearningSystem:
         return risk_probabilities
 
     def _extract_best_practices(self, outcomes: List[Dict[str, Any]]) -> List[str]:
-        """Extract best practices from successful projects"""
+        """Extract best practices from successful projects."""
         practices: Counter[str] = Counter()
 
         for outcome in outcomes:
@@ -546,7 +555,7 @@ class ContextualLearningSystem:
         return [practice for practice, count in practices.most_common(10) if count >= 2]
 
     def _create_default_team_learnings(self, team_id: str) -> TeamLearnings:
-        """Create default team learnings when insufficient data"""
+        """Create default team learnings when insufficient data."""
         return TeamLearnings(
             team_id=team_id,
             velocity_patterns={"general": 1.2},  # Assume 20% overrun by default
@@ -561,7 +570,7 @@ class ContextualLearningSystem:
         )
 
     def _create_default_tech_learnings(self, tech_stack: str) -> TechnologyLearnings:
-        """Create default technology learnings when insufficient data"""
+        """Create default technology learnings when insufficient data."""
         return TechnologyLearnings(
             tech_stack=tech_stack,
             typical_patterns={"typical_duration": {"mean": 30, "median": 28}},
@@ -578,7 +587,7 @@ class ContextualLearningSystem:
         tech_learning: TechnologyLearnings,
         context: Dict[str, Any],
     ) -> AdaptedTemplate:
-        """Adapt estimation template based on learnings"""
+        """Adapt estimation template based on learnings."""
         adaptations = {}
 
         # Combine team velocity and tech multipliers
@@ -607,7 +616,7 @@ class ContextualLearningSystem:
         team_learning: TeamLearnings,
         context: Dict[str, Any],
     ) -> AdaptedTemplate:
-        """Adapt task generation template based on learnings"""
+        """Adapt task generation template based on learnings."""
         adaptations = {
             "preferred_task_types": list(team_learning.preferred_task_types.keys()),
             "typical_phases": project_learning.typical_phases,
@@ -630,7 +639,7 @@ class ContextualLearningSystem:
     async def _adapt_dependency_template(
         self, tech_learning: TechnologyLearnings, context: Dict[str, Any]
     ) -> AdaptedTemplate:
-        """Adapt dependency template based on technology learnings"""
+        """Adapt dependency template based on technology learnings."""
         adaptations = {
             "common_dependencies": tech_learning.common_dependencies,
             "risk_factors": tech_learning.risk_factors,
@@ -650,7 +659,7 @@ class ContextualLearningSystem:
     async def _get_team_recommendations(
         self, team_learning: TeamLearnings, current_state: Dict[str, Any]
     ) -> List[str]:
-        """Get team-specific recommendations"""
+        """Get team-specific recommendations."""
         recommendations = []
 
         # Velocity recommendations
@@ -676,7 +685,7 @@ class ContextualLearningSystem:
     async def _get_technology_recommendations(
         self, tech_learning: TechnologyLearnings, current_state: Dict[str, Any]
     ) -> List[str]:
-        """Get technology-specific recommendations"""
+        """Get technology-specific recommendations."""
         recommendations = []
 
         # Risk mitigation
@@ -699,7 +708,7 @@ class ContextualLearningSystem:
     async def _get_process_recommendations(
         self, project_learning: ProjectTypeLearnings, current_state: Dict[str, Any]
     ) -> List[str]:
-        """Get process recommendations based on project type"""
+        """Get process recommendations based on project type."""
         recommendations = []
 
         # Phase recommendations

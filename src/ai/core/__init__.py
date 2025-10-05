@@ -1,4 +1,4 @@
-"""AI Core Components"""
+"""AI Core Components."""
 
 from ..types import AnalysisContext, HybridAnalysis
 from .ai_engine import MarcusAIEngine

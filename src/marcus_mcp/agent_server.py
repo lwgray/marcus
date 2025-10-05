@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Marcus Agent MCP Server
+"""Marcus Agent MCP Server.
 
 A restricted MCP server for coding agents with limited tool access.
 This server only exposes the tools necessary for agents to perform their tasks.
@@ -16,19 +15,19 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import mcp.types as types  # noqa: E402
 
-from src.marcus_mcp.handlers import get_tool_definitions
-from src.marcus_mcp.server import MarcusServer
+from src.marcus_mcp.handlers import get_tool_definitions  # noqa: E402
+from src.marcus_mcp.server import MarcusServer  # noqa: E402
 
 
 class AgentMarcusServer(MarcusServer):
-    """Marcus MCP Server configured specifically for coding agents"""
+    """Marcus MCP Server configured specifically for coding agents."""
 
     def _register_handlers(self) -> None:
-        """Register MCP tool handlers with agent restrictions"""
+        """Register MCP tool handlers with agent restrictions."""
 
         @self.server.list_tools()  # type: ignore[misc]
         async def handle_list_tools() -> List[types.Tool]:
-            """Return list of available tools for agents"""
+            """Return list of available tools for agents."""
             # Force "agent" role to restrict tool access
             return get_tool_definitions(role="agent")
 
@@ -37,7 +36,7 @@ class AgentMarcusServer(MarcusServer):
         async def handle_call_tool(
             name: str, arguments: Optional[Dict[str, Any]]
         ) -> List[types.TextContent | types.ImageContent | types.EmbeddedResource]:
-            """Handle tool calls"""
+            """Handle tool calls."""
             # Check if this is an allowed agent tool
             allowed_tools = [
                 "register_agent",
@@ -69,7 +68,7 @@ class AgentMarcusServer(MarcusServer):
 
 
 async def main() -> None:
-    """Main entry point for agent server."""
+    """Run the agent server."""
     server = AgentMarcusServer()
     # Run server silently
     await server.run()

@@ -381,7 +381,7 @@ class LabelManagerHelper:
 # Example usage function
 async def example_usage(session: Any, board_id: str, card_id: str) -> None:
     """
-    Example of how to use the LabelManagerHelper.
+    Demonstrate how to use the LabelManagerHelper.
 
     Parameters
     ----------

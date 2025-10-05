@@ -1,5 +1,5 @@
 """
-Marcus Error Monitoring and Correlation System
+Marcus Error Monitoring and Correlation System.
 
 Provides comprehensive error tracking, pattern analysis, and correlation
 capabilities for autonomous agent environments.
@@ -838,7 +838,7 @@ def setup_error_monitoring(
 
 
 def record_error_for_monitoring(error: MarcusBaseError) -> None:
-    """Convenience function to record error in global monitor."""
+    """Record error in global monitor."""
     error_monitor.record_error(error)
 
 

@@ -1,5 +1,5 @@
 """
-Context System for Marcus
+Context System for Marcus.
 
 Provides rich context for task assignments including previous implementations,
 dependency awareness, and relevant patterns. Enhances agent effectiveness by
@@ -32,7 +32,7 @@ except ImportError:
 
 @dataclass
 class TaskContext:
-    """Complete context for a task assignment"""
+    """Complete context for a task assignment."""
 
     task_id: str
     previous_implementations: Dict[str, Any] = field(default_factory=dict)
@@ -41,7 +41,7 @@ class TaskContext:
     architectural_decisions: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for serialization"""
+        """Convert to dictionary for serialization."""
         return {
             "task_id": self.task_id,
             "previous_implementations": self.previous_implementations,
@@ -53,7 +53,7 @@ class TaskContext:
 
 @dataclass
 class DependentTask:
-    """Information about a task that depends on another"""
+    """Information about a task that depends on another."""
 
     task_id: str
     task_name: str
@@ -63,7 +63,7 @@ class DependentTask:
 
 @dataclass
 class Decision:
-    """An architectural decision made during development"""
+    """An architectural decision made during development."""
 
     decision_id: str
     task_id: str
@@ -74,7 +74,7 @@ class Decision:
     impact: str  # Impact on other components
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for storage"""
+        """Convert to dictionary for storage."""
         return {
             "decision_id": self.decision_id,
             "task_id": self.task_id,
@@ -105,14 +105,18 @@ class Context:
         use_hybrid_inference: bool = True,
         ai_engine: Optional[Any] = None,
     ):
-        """
-        Initialize the Context system.
+        """Initialize the Context system.
 
-        Args:
-            events: Optional Events system for integration
-            persistence: Optional Persistence instance for storing context
-            use_hybrid_inference: Whether to use hybrid dependency inference if available
-            ai_engine: Optional AI engine for hybrid inference
+        Parameters
+        ----------
+        events : Optional[Events]
+            Optional Events system for integration.
+        persistence : Optional[Any]
+            Optional Persistence instance for storing context.
+        use_hybrid_inference : bool
+            Whether to use hybrid dependency inference if available.
+        ai_engine : Optional[Any]
+            Optional AI engine for hybrid inference.
         """
         self.events = events
         self.persistence = persistence
@@ -139,13 +143,13 @@ class Context:
         self._persisted_data_loaded = False
 
     async def _ensure_persisted_data_loaded(self) -> None:
-        """Ensure persisted data is loaded, loading if necessary"""
+        """Ensure persisted data is loaded, loading if necessary."""
         if not self._persisted_data_loaded and self.persistence:
             await self._load_persisted_data()
             self._persisted_data_loaded = True
 
     async def _load_persisted_data(self) -> None:
-        """Load persisted decisions from storage"""
+        """Load persisted decisions from storage."""
         try:
             # Load recent decisions
             if self.persistence:
@@ -166,12 +170,14 @@ class Context:
     async def add_implementation(
         self, task_id: str, implementation: Dict[str, Any]
     ) -> None:
-        """
-        Add implementation details from a completed task.
+        """Add implementation details from a completed task.
 
-        Args:
-            task_id: ID of the completed task
-            implementation: Details about the implementation (APIs, models, patterns)
+        Parameters
+        ----------
+        task_id : str
+            ID of the completed task.
+        implementation : Dict[str, Any]
+            Details about the implementation (APIs, models, patterns).
         """
         self.implementations[task_id] = {
             "task_id": task_id,
@@ -204,12 +210,14 @@ class Context:
         logger.debug(f"Added implementation context for task {task_id}")
 
     def add_dependency(self, task_id: str, dependent_task: DependentTask) -> None:
-        """
-        Record that one task depends on another.
+        """Record that one task depends on another.
 
-        Args:
-            task_id: The task being depended upon
-            dependent_task: Information about the dependent task
+        Parameters
+        ----------
+        task_id : str
+            The task being depended upon.
+        dependent_task : DependentTask
+            Information about the dependent task.
         """
         if task_id not in self.dependencies:
             self.dependencies[task_id] = []
@@ -222,18 +230,25 @@ class Context:
     async def log_decision(
         self, agent_id: str, task_id: str, what: str, why: str, impact: str
     ) -> Decision:
-        """
-        Log an architectural decision made by an agent.
+        """Log an architectural decision made by an agent.
 
-        Args:
-            agent_id: ID of the agent making the decision
-            task_id: Current task ID
-            what: What was decided
-            why: Reasoning behind the decision
-            impact: Expected impact on other components
+        Parameters
+        ----------
+        agent_id : str
+            ID of the agent making the decision.
+        task_id : str
+            Current task ID.
+        what : str
+            What was decided.
+        why : str
+            Reasoning behind the decision.
+        impact : str
+            Expected impact on other components.
 
-        Returns:
-            The logged Decision object
+        Returns
+        -------
+        Decision
+            The logged Decision object.
         """
         self._decision_counter += 1
         decision = Decision(
@@ -268,15 +283,19 @@ class Context:
     async def get_context(
         self, task_id: str, task_dependencies: List[str]
     ) -> TaskContext:
-        """
-        Get complete context for a task assignment.
+        """Get complete context for a task assignment.
 
-        Args:
-            task_id: The task being assigned
-            task_dependencies: IDs of tasks this task depends on
+        Parameters
+        ----------
+        task_id : str
+            The task being assigned.
+        task_dependencies : List[str]
+            IDs of tasks this task depends on.
 
-        Returns:
-            Complete context for the task
+        Returns
+        -------
+        TaskContext
+            Complete context for the task.
         """
         context = TaskContext(task_id=task_id)
 
@@ -340,11 +359,15 @@ class Context:
         """
         Analyze task list to identify dependencies (both explicit and implicit).
 
-        Args:
-            tasks: List of all tasks
-            infer_implicit: Whether to infer implicit dependencies (default: True)
+        Parameters
+        ----------
+            tasks
+                List of all tasks.
+            infer_implicit
+                Whether to infer implicit dependencies (default: True).
 
-        Returns:
+        Returns
+        -------
             Mapping of task_id to list of dependent task IDs
         """
         # Use hybrid inferer if available for better accuracy with fewer API calls
@@ -411,11 +434,15 @@ class Context:
         """
         Infer if task depends on potential_dependency using multiple strategies.
 
-        Args:
-            task: The task to check
-            potential_dependency: The potential dependency
+        Parameters
+        ----------
+            task
+                The task to check.
+            potential_dependency
+                The potential dependency.
 
-        Returns:
+        Returns
+        -------
             True if dependency is likely
         """
         # Extract task information
@@ -658,7 +685,7 @@ class Context:
         return False
 
     def _extract_action(self, task_name: str) -> Optional[str]:
-        """Extract the primary action verb from a task name"""
+        """Extract the primary action verb from a task name."""
         words = task_name.lower().split()
         common_actions = {
             "create",
@@ -686,7 +713,7 @@ class Context:
         return None
 
     def _extract_entity(self, task_name: str) -> Optional[str]:
-        """Extract the primary entity/component from a task name"""
+        """Extract the primary entity/component from a task name."""
         # Remove common actions to find entity
         words = task_name.lower().split()
         action_words = {
@@ -740,11 +767,15 @@ class Context:
         """
         Detect circular dependencies using depth-first search.
 
-        Args:
-            dependency_map: Mapping of task_id to dependent task_ids
-            tasks: List of all tasks
+        Parameters
+        ----------
+            dependency_map
+                Mapping of task_id to dependent task_ids.
+            tasks
+                List of all tasks.
 
-        Returns:
+        Returns
+        -------
             List of circular dependency chains
         """
         # Build task lookup for names
@@ -756,7 +787,7 @@ class Context:
         cycles = []
 
         def dfs(task_id: str, path: List[str]) -> None:
-            """Depth-first search to find cycles"""
+            """Depth-first search to find cycles."""
             visited.add(task_id)
             rec_stack.add(task_id)
             path.append(task_id)
@@ -790,11 +821,15 @@ class Context:
         """
         Infer what interface or functionality a dependent task needs from its dependency.
 
-        Args:
-            dependent_task: The task that depends on another
-            dependency_task_id: The ID of the task it depends on
+        Parameters
+        ----------
+            dependent_task
+                The task that depends on another.
+            dependency_task_id
+                The ID of the task it depends on.
 
-        Returns:
+        Returns
+        -------
             String describing the expected interface/functionality
         """
         # Extract task information for dependent task
@@ -986,10 +1021,13 @@ class Context:
 
         Uses topological sort with priority consideration.
 
-        Args:
-            tasks: List of tasks to order
+        Parameters
+        ----------
+            tasks
+                List of tasks to order.
 
-        Returns:
+        Returns
+        -------
             Ordered list of tasks
         """
         # Build dependency graph
@@ -1075,10 +1113,13 @@ class Context:
         """
         Get all decisions related to a specific task.
 
-        Args:
-            task_id: The task ID
+        Parameters
+        ----------
+            task_id
+                The task ID.
 
-        Returns:
+        Returns
+        -------
             List of related decisions
         """
         await self._ensure_persisted_data_loaded()
@@ -1090,7 +1131,7 @@ class Context:
         )
     )
     async def _persist_implementation_safe(self, task_id: str) -> None:
-        """Persist implementation with graceful degradation"""
+        """Persist implementation with graceful degradation."""
         if self.persistence:
             await self.persistence.store(
                 "implementations", task_id, self.implementations[task_id]
@@ -1102,7 +1143,7 @@ class Context:
         )
     )
     async def _persist_decision_safe(self, decision: Decision) -> None:
-        """Persist decision with graceful degradation"""
+        """Persist decision with graceful degradation."""
         if self.persistence:
             await self.persistence.store(
                 "decisions", decision.decision_id, decision.__dict__
@@ -1112,7 +1153,8 @@ class Context:
         """
         Get a summary of all tracked implementations.
 
-        Returns:
+        Returns
+        -------
             Summary statistics and recent implementations
         """
         await self._ensure_persisted_data_loaded()
@@ -1128,8 +1170,10 @@ class Context:
         """
         Clear context data older than specified days.
 
-        Args:
-            days: Number of days to retain
+        Parameters
+        ----------
+            days
+                Number of days to retain.
         """
         await self._ensure_persisted_data_loaded()
         cutoff = datetime.now().timestamp() - (days * 24 * 60 * 60)

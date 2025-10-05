@@ -77,13 +77,12 @@ from typing import (
     List,
     Optional,
     TypeVar,
-    Union,
     cast,
 )
 
 from mcp.client.sse import sse_client
 from mcp.client.stdio import stdio_client
-from mcp.types import CallToolResult, ListToolsResult, TextContent
+from mcp.types import CallToolResult, TextContent
 
 from mcp import ClientSession, StdioServerParameters
 
@@ -94,11 +93,15 @@ T = TypeVar("T")
 def _extract_text_from_result(result: CallToolResult) -> str:
     """Extract text content from MCP tool call result.
 
-    Args:
-        result: The CallToolResult from MCP tool call
+    Parameters
+    ----------
+    result : CallToolResult
+        The CallToolResult from MCP tool call
 
-    Returns:
-        str: The text content if available, empty string otherwise
+    Returns
+    -------
+    str
+        The text content if available, empty string otherwise
     """
     if not result.content:
         return ""
@@ -118,17 +121,24 @@ def retry_with_backoff(
     exponential_base: float = 2.0,
     jitter: bool = True,
 ) -> Callable[[Callable[..., Awaitable[T]]], Callable[..., Awaitable[T]]]:
-    """
-    Decorator for retrying operations with exponential backoff.
+    """Decorate operations with exponential backoff retry logic.
 
-    Args:
-        max_attempts: Maximum number of retry attempts
-        initial_delay: Initial delay in seconds
-        max_delay: Maximum delay between retries
-        exponential_base: Base for exponential backoff
-        jitter: Whether to add random jitter to delays
+    Parameters
+    ----------
+    max_attempts : int, optional
+        Maximum number of retry attempts, by default 3
+    initial_delay : float, optional
+        Initial delay in seconds, by default 1.0
+    max_delay : float, optional
+        Maximum delay between retries, by default 60.0
+    exponential_base : float, optional
+        Base for exponential backoff, by default 2.0
+    jitter : bool, optional
+        Whether to add random jitter to delays, by default True
 
-    Returns:
+    Returns
+    -------
+    Callable[[Callable[..., Awaitable[T]]], Callable[..., Awaitable[T]]]
         Decorated function that retries on failure
     """
 
@@ -448,7 +458,7 @@ class WorkerMCPClient:
                 yield session
 
     def _should_attempt_reconnect(self) -> bool:
-        """Check if we should attempt to reconnect based on recent attempts"""
+        """Check if we should attempt to reconnect based on recent attempts."""
         current_time = time.time()
 
         # Reset attempt counter if it's been more than 5 minutes
@@ -459,7 +469,7 @@ class WorkerMCPClient:
         return self._connection_attempts < 5
 
     async def ensure_connected(self) -> bool:
-        """Ensure we have an active connection, attempt reconnect if needed"""
+        """Ensure we have an active connection, attempt reconnect if needed."""
         if self.session and not getattr(self.session, "_closed", True):
             return True
 

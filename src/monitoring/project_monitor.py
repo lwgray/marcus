@@ -60,7 +60,7 @@ Risk and blocker management:
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from src.config.settings import Settings
 from src.core.models import (

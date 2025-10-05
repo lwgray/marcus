@@ -36,6 +36,7 @@ from src.core.models import Task
 @dataclass
 class SemanticAnalysis:
     """
+
     Result of semantic task analysis.
 
     Contains LLM's understanding of task meaning and implications.
@@ -73,6 +74,7 @@ class SemanticAnalysis:
 @dataclass
 class SemanticDependency:
     """
+
     Semantic dependency relationship between tasks.
 
     Represents LLM-inferred dependencies based on task meaning.
@@ -111,6 +113,7 @@ class SemanticDependency:
 @dataclass
 class EffortEstimate:
     """
+
     AI-powered effort estimation.
 
     Provides intelligent time estimates based on task analysis.
@@ -142,6 +145,7 @@ class EffortEstimate:
 
 class BaseLLMProvider(ABC):
     """
+
     Base class for LLM providers.
 
     Defines the interface that all LLM providers must implement

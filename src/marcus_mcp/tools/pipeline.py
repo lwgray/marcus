@@ -1,5 +1,4 @@
-"""
-Pipeline Enhancement Tools for Marcus MCP
+"""Pipeline Enhancement Tools for Marcus MCP.
 
 Provides tools for pipeline replay, what-if analysis, comparison,
 monitoring, error prediction, and recommendations.

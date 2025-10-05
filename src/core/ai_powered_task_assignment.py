@@ -1,5 +1,5 @@
 """
-AI-Powered Task Assignment for Marcus
+AI-Powered Task Assignment for Marcus.
 
 This module upgrades the basic task assignment logic to use
 Phase 1-4 AI capabilities for intelligent task selection.
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class AITaskAssignmentEngine:
     """
-    Intelligent task assignment using Phase 1-4 capabilities
+    Intelligent task assignment using Phase 1-4 capabilities.
 
     Features:
     - Phase 1: Safety checks (no deploy before implement)
@@ -47,7 +47,7 @@ class AITaskAssignmentEngine:
         assigned_task_ids: Set[str],
     ) -> Optional[Task]:
         """
-        Find the best task for an agent using AI capabilities
+        Find the best task for an agent using AI capabilities.
 
         This replaces the basic skill/priority matching with intelligent analysis.
         """
@@ -86,9 +86,7 @@ class AITaskAssignmentEngine:
         return best_task
 
     async def _filter_safe_tasks(self, tasks: List[Task]) -> List[Task]:
-        """
-        Phase 1: Filter out unsafe tasks (e.g., deployment before implementation)
-        """
+        """Phase 1: Filter out unsafe tasks (e.g., deployment before implementation)."""
         safe_tasks = []
 
         for task in tasks:
@@ -117,9 +115,7 @@ class AITaskAssignmentEngine:
         return safe_tasks
 
     async def _analyze_dependencies(self, tasks: List[Task]) -> Dict[str, float]:
-        """
-        Phase 2: Analyze task dependencies and prioritize unblocking tasks
-        """
+        """Phase 2: Analyze task dependencies and prioritize unblocking tasks."""
         dependency_scores = {}
 
         # Build dependency graph
@@ -156,9 +152,7 @@ class AITaskAssignmentEngine:
     async def _get_ai_recommendations(
         self, tasks: List[Task], agent_info: Dict[str, Any]
     ) -> Dict[str, float]:
-        """
-        Phase 3: Get AI-powered recommendations for agent-task matching
-        """
+        """Phase 3: Get AI-powered recommendations for agent-task matching."""
         ai_scores = {}
 
         # Get AI recommendations for each task
@@ -198,9 +192,7 @@ class AITaskAssignmentEngine:
         return ai_scores
 
     async def _predict_task_impact(self, tasks: List[Task]) -> Dict[str, float]:
-        """
-        Phase 4: Predict the impact of completing each task
-        """
+        """Phase 4: Predict the impact of completing each task."""
         impact_scores = {}
 
         for task in tasks:
@@ -241,9 +233,7 @@ class AITaskAssignmentEngine:
         impact_scores: Dict[str, float],
         agent_info: Dict[str, Any],
     ) -> Optional[Task]:
-        """
-        Combine all scores to select the best task
-        """
+        """Combine all scores to select the best task."""
         best_task = None
         best_combined_score = -1.0
 
@@ -298,13 +288,13 @@ class AITaskAssignmentEngine:
         return best_task
 
     def _is_deployment_task(self, task: Task) -> bool:
-        """Check if task is deployment-related"""
+        """Check if task is deployment-related."""
         keywords = ["deploy", "release", "production", "launch", "rollout"]
         task_lower = task.name.lower()
         return any(keyword in task_lower for keyword in keywords)
 
     async def _are_dependencies_complete(self, task: Task) -> bool:
-        """Check if all task dependencies are complete"""
+        """Check if all task dependencies are complete."""
         if not task.dependencies:
             return True
 
@@ -316,7 +306,7 @@ class AITaskAssignmentEngine:
         return True
 
     def _detect_project_phase(self) -> str:
-        """Detect current project phase based on task completion"""
+        """Detect current project phase based on task completion."""
         total_tasks = len(self.project_tasks)
         if total_tasks == 0:
             return "initialization"
@@ -338,7 +328,7 @@ class AITaskAssignmentEngine:
             return "deployment"
 
     def _calculate_velocity(self) -> float:
-        """Calculate team velocity (tasks per day)"""
+        """Calculate team velocity (tasks per day)."""
         # Simplified - in reality would track completion times
         completed_tasks = [t for t in self.project_tasks if t.status == TaskStatus.DONE]
         if not completed_tasks:
@@ -349,7 +339,7 @@ class AITaskAssignmentEngine:
         return len(completed_tasks) / days_elapsed
 
     def _calculate_skill_match(self, task: Task, agent_skills: List[str]) -> float:
-        """Calculate skill match between agent and task"""
+        """Calculate skill match between agent and task."""
         if not agent_skills or not task.labels:
             return 0.5  # Neutral score
 
@@ -367,7 +357,7 @@ async def find_optimal_task_for_agent_ai_powered(
     ai_engine: MarcusAIEngine,
 ) -> Optional[Task]:
     """
-    AI-powered task assignment to replace the basic version
+    AI-powered task assignment to replace the basic version.
 
     This should be called from request_next_task in marcus_mcp_server.py
     """

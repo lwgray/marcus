@@ -78,10 +78,14 @@ class BoardHealthAnalyzer:
         """
         Initialize the board health analyzer.
 
-        Args:
-            kanban_client: Interface to kanban board
-            stale_task_days: Days before considering a task stale
-            max_tasks_per_agent: Maximum recommended tasks per agent
+        Parameters
+        ----------
+            kanban_client
+                Interface to kanban board.
+            stale_task_days
+                Days before considering a task stale.
+            max_tasks_per_agent
+                Maximum recommended tasks per agent.
         """
         self.kanban_client = kanban_client
         self.stale_task_days = stale_task_days
@@ -95,11 +99,15 @@ class BoardHealthAnalyzer:
         """
         Perform comprehensive board health analysis.
 
-        Args:
-            agents: Dictionary of active agents
-            active_assignments: Current task assignments
+        Parameters
+        ----------
+            agents
+                Dictionary of active agents.
+            active_assignments
+                Current task assignments.
 
-        Returns:
+        Returns
+        -------
             BoardHealth object with analysis results
         """
         logger.info("Starting board health analysis")

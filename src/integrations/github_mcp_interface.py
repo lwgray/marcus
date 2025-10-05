@@ -1,5 +1,5 @@
 """
-GitHub MCP Interface
+GitHub MCP Interface.
 
 Wrapper for GitHub MCP tools to provide a clean interface for the quality assessor
 and other components that need GitHub data.

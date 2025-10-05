@@ -26,10 +26,14 @@ async def check_board_health(state: Any) -> Dict[str, Any]:
     - Chain block analysis
     - Agent workload analysis
 
-    Args:
-        state: Marcus server state instance
+    Parameters
+    ----------
+    state : Any
+        Marcus server state instance
 
-    Returns:
+    Returns
+    -------
+    Dict[str, Any]
         Dict with board health analysis results
     """
     try:
@@ -126,11 +130,16 @@ async def check_task_dependencies(task_id: str, state: Any) -> Dict[str, Any]:
     - Whether dependencies form any cycles
     - Recommended completion order
 
-    Args:
-        task_id: ID of the task to analyze
-        state: Marcus server state instance
+    Parameters
+    ----------
+    task_id : str
+        ID of the task to analyze
+    state : Any
+        Marcus server state instance
 
-    Returns:
+    Returns
+    -------
+    Dict[str, Any]
         Dict with dependency analysis
     """
     try:

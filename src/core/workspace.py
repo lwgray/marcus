@@ -100,9 +100,7 @@ class ProjectWorkspaces:
     agent_workspaces: Dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """
-        Expand all workspace paths to absolute paths.
-        """
+        """Expand all workspace paths to absolute paths."""
         self.main_workspace = os.path.abspath(os.path.expanduser(self.main_workspace))
         self.agent_workspaces = {
             agent_id: os.path.abspath(os.path.expanduser(path))

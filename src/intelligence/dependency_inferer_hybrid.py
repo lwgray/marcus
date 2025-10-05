@@ -1,5 +1,5 @@
 """
-Hybrid Dependency Inference Engine
+Hybrid Dependency Inference Engine.
 
 Combines pattern-based rules with AI intelligence for robust and flexible
 dependency detection. Uses patterns for common cases and AI for complex scenarios.
@@ -11,7 +11,7 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from src.config.hybrid_inference_config import HybridInferenceConfig
 from src.core.models import Task
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class HybridDependency(InferredDependency):
-    """Extended dependency with hybrid inference metadata"""
+    """Extended dependency with hybrid inference metadata."""
 
     inference_method: str  # 'pattern', 'ai', 'both'
     pattern_confidence: float = 0.0
@@ -119,7 +119,7 @@ class HybridDependencyInferer(DependencyInferer):
     async def _get_pattern_dependencies(
         self, tasks: List[Task]
     ) -> Dict[Tuple[str, str], HybridDependency]:
-        """Get dependencies using pattern matching"""
+        """Get dependencies using pattern matching."""
         dependencies: Dict[Tuple[str, str], HybridDependency] = {}
 
         for dependent_task in tasks:
@@ -279,7 +279,7 @@ class HybridDependencyInferer(DependencyInferer):
         return True  # If we don't have good pattern coverage, analyze more liberally
 
     def _might_be_related(self, task1: Task, task2: Task) -> bool:
-        """Check if tasks might be related based on shared context"""
+        """Check if tasks might be related based on shared context."""
         # Extract meaningful words
         words1 = set(self._extract_keywords(task1))
         words2 = set(self._extract_keywords(task2))
@@ -304,7 +304,7 @@ class HybridDependencyInferer(DependencyInferer):
         return False
 
     def _extract_keywords(self, task: Task) -> List[str]:
-        """Extract meaningful keywords from task"""
+        """Extract meaningful keywords from task."""
         text = f"{task.name} {task.description or ''} {' '.join(task.labels or [])}".lower()
 
         # Remove stop words and common verbs
@@ -341,7 +341,7 @@ class HybridDependencyInferer(DependencyInferer):
         return [w for w in words if w not in stop_words and len(w) > 2]
 
     def _identify_workflow_groups(self, tasks: List[Task]) -> List[List[Task]]:
-        """Group tasks that might be part of the same workflow"""
+        """Group tasks that might be part of the same workflow."""
         groups = []
         used = set()
 
@@ -370,8 +370,7 @@ class HybridDependencyInferer(DependencyInferer):
     async def _get_ai_dependencies(
         self, tasks: List[Task], ambiguous_pairs: List[Tuple[Task, Task]]
     ) -> Dict[Tuple[str, str], HybridDependency]:
-        """Use AI to analyze ambiguous dependency cases"""
-
+        """Use AI to analyze ambiguous dependency cases."""
         # Check cache first
         cache_key = self._get_cache_key(tasks, ambiguous_pairs)
         if cache_key in self.inference_cache:
@@ -577,7 +576,7 @@ Focus on logical dependencies based on:
     def _build_dependency_graph(
         self, tasks: List[Task], dependencies: List[HybridDependency]
     ) -> DependencyGraph:
-        """Build dependency graph from hybrid dependencies"""
+        """Build dependency graph from hybrid dependencies."""
         nodes = {task.id: task for task in tasks}
 
         # Build adjacency lists
@@ -604,7 +603,7 @@ Focus on logical dependencies based on:
         return graph
 
     def _get_cache_key(self, tasks: List[Task], pairs: List[Tuple[Task, Task]]) -> str:
-        """Generate cache key for AI inference results"""
+        """Generate cache key for AI inference results."""
         task_ids = sorted([t.id for t in tasks])
         pair_ids = sorted([(t1.id, t2.id) for t1, t2 in pairs])
         return f"{','.join(task_ids)}|{pair_ids}"
@@ -615,7 +614,7 @@ Focus on logical dependencies based on:
         ai_deps: Dict[Tuple[str, str], HybridDependency],
         final_deps: List[HybridDependency],
     ) -> None:
-        """Log statistics about inference process"""
+        """Log statistics about inference process."""
         pattern_count = len(pattern_deps)
         ai_count = len(ai_deps)
         final_count = len(final_deps)

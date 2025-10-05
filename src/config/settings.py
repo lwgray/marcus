@@ -591,7 +591,6 @@ class Settings:
         ... else:
         ...     fix_configuration()
         """
-
         # Check for API key if AI is being used
         if not os.environ.get("ANTHROPIC_API_KEY"):
             # Don't print to stdout - corrupts MCP protocol

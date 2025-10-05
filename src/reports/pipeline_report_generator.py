@@ -1,5 +1,4 @@
-"""
-Pipeline Report Generator - Generate comprehensive reports for analysis
+"""Pipeline Report Generator - Generate comprehensive reports for analysis.
 
 This module generates detailed reports from pipeline executions for
 offline analysis, team reviews, and documentation.
@@ -17,9 +16,7 @@ from src.visualization.shared_pipeline_events import SharedPipelineEvents
 
 
 class PipelineReportGenerator:
-    """
-    Generate comprehensive reports from pipeline executions.
-    """
+    """Generate comprehensive reports from pipeline executions."""
 
     def __init__(self, template_dir: Optional[str] = None):
         """
