@@ -6,6 +6,7 @@ Usage:
     marcus start [--http] [--port PORT] [--stdio] [--multi] [--all-tools]
     marcus start --multi [--human-port PORT] [--agent-port PORT] [--analytics-port PORT]
     marcus stop
+    marcus restart
     marcus status
     marcus logs [--tail N]
     marcus config [--show | --edit]
@@ -19,6 +20,7 @@ Examples:
     marcus start --multi      # Start multi-endpoint mode (default ports)
     marcus start --multi --human-port 5001 --agent-port 5002
     marcus start --port 5000  # Start HTTP on custom port
+    marcus restart            # Restart with previous configuration
     marcus status            # Check if Marcus is running
     marcus logs --tail 50    # View recent logs
 """
@@ -314,6 +316,37 @@ class MarcusCLI:
 
         return 1  # Should not reach here, but mypy needs a return
 
+    def restart(self, args: argparse.Namespace) -> int:
+        """Restart Marcus server"""
+        # Stop if running
+        if self._is_running():
+            print("🔄 Restarting Marcus...")
+            stop_result = self.stop(args)
+            if stop_result != 0:
+                print("❌ Failed to stop Marcus")
+                return 1
+
+            # Wait a moment for cleanup
+            import time
+
+            time.sleep(1)
+        else:
+            print("🚀 Marcus not running, starting...")
+
+        # Start with default configuration from config file
+        start_args = argparse.Namespace()
+        start_args.foreground = False
+        start_args.stdio = False
+        start_args.http = False
+        start_args.multi = False
+        start_args.all_tools = False
+        start_args.port = None
+        start_args.human_port = None
+        start_args.agent_port = None
+        start_args.analytics_port = None
+
+        return self.start(start_args)
+
     def status(self, args: argparse.Namespace) -> int:
         """Check Marcus status"""
         if self._is_running():
@@ -482,6 +515,7 @@ Examples:
   marcus start --stdio      Start with stdio transport
   marcus start --multi      Start multi-endpoint mode (default ports)
   marcus start --multi --human-port 5001 --agent-port 5002
+  marcus restart            Restart with previous configuration
   marcus status            Check if running
   marcus logs --tail 20    View recent logs
   marcus stop              Stop the server
@@ -533,6 +567,9 @@ Examples:
     # Stop command
     subparsers.add_parser("stop", help="Stop Marcus server")
 
+    # Restart command
+    subparsers.add_parser("restart", help="Restart Marcus server")
+
     # Status command
     subparsers.add_parser("status", help="Check Marcus status")
 
@@ -556,6 +593,8 @@ Examples:
         return cli.start(args)
     elif args.command == "stop":
         return cli.stop(args)
+    elif args.command == "restart":
+        return cli.restart(args)
     elif args.command == "status":
         return cli.status(args)
     elif args.command == "logs":
