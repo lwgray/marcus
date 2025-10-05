@@ -1,7 +1,7 @@
 """
-Planka implementation of KanbanInterface
+Planka implementation of KanbanInterface.
 
-Adapts the existing MCP Kanban client to work with the common interface
+Adapts the existing MCP Kanban client to work with the common interface.
 """
 
 import json
@@ -21,7 +21,19 @@ logger = logging.getLogger(__name__)
 
 
 def _extract_text_content(result: Any) -> Optional[str]:
-    """Safely extract text content from MCP result"""
+    """
+    Safely extract text content from MCP result.
+
+    Parameters
+    ----------
+    result : Any
+        The MCP result object to extract text from.
+
+    Returns
+    -------
+    Optional[str]
+        Extracted text content, or None if not available.
+    """
     if not result or not hasattr(result, "content") or not result.content:
         return None
 
@@ -32,14 +44,16 @@ def _extract_text_content(result: Any) -> Optional[str]:
 
 
 class PlankaKanban(KanbanInterface):
-    """Planka kanban board implementation"""
+    """Planka kanban board implementation."""
 
     def __init__(self, config: Dict[str, Any]):
         """
-        Initialize Planka connection
+        Initialize Planka connection.
 
-        Args:
-            config: Dictionary containing:
+        Parameters
+        ----------
+        config : Dict[str, Any]
+            Dictionary containing:
                 - project_name: Name of the project in Planka
         """
         super().__init__(config)
@@ -56,7 +70,14 @@ class PlankaKanban(KanbanInterface):
         )
 
     async def connect(self) -> bool:
-        """Connect to Planka via MCP"""
+        """
+        Connect to Planka via MCP.
+
+        Returns
+        -------
+        bool
+            True if connection successful, raises exception otherwise.
+        """
         try:
             # Test connection by trying to get board summary
             summary = await self.client.get_board_summary()
@@ -68,11 +89,18 @@ class PlankaKanban(KanbanInterface):
             raise
 
     async def disconnect(self) -> None:
-        """Disconnect from Planka"""
+        """Disconnect from Planka."""
         self.connected = False
 
     async def get_available_tasks(self) -> List[Task]:
-        """Get unassigned tasks from backlog"""
+        """
+        Get unassigned tasks from backlog.
+
+        Returns
+        -------
+        List[Task]
+            List of available tasks from the backlog.
+        """
         if not self.connected:
             await self.connect()
 
@@ -80,7 +108,14 @@ class PlankaKanban(KanbanInterface):
         return tasks
 
     async def get_all_tasks(self) -> List[Task]:
-        """Get all tasks from the board"""
+        """
+        Get all tasks from the board.
+
+        Returns
+        -------
+        List[Task]
+            List of all tasks on the board.
+        """
         if not self.connected:
             await self.connect()
 
@@ -88,7 +123,19 @@ class PlankaKanban(KanbanInterface):
         return tasks
 
     async def get_task_by_id(self, task_id: str) -> Optional[Task]:
-        """Get specific task by ID"""
+        """
+        Get specific task by ID.
+
+        Parameters
+        ----------
+        task_id : str
+            The ID of the task to retrieve.
+
+        Returns
+        -------
+        Optional[Task]
+            The task if found, None otherwise.
+        """
         if not self.connected:
             await self.connect()
 
@@ -100,7 +147,19 @@ class PlankaKanban(KanbanInterface):
         return None
 
     async def create_task(self, task_data: Dict[str, Any]) -> Task:
-        """Create new task in Planka"""
+        """
+        Create new task in Planka.
+
+        Parameters
+        ----------
+        task_data : Dict[str, Any]
+            Dictionary containing task data (name, description, due_date).
+
+        Returns
+        -------
+        Task
+            The newly created task object.
+        """
         if not self.connected:
             await self.connect()
 
@@ -167,12 +226,26 @@ class PlankaKanban(KanbanInterface):
     async def update_task(
         self, task_id: str, updates: Dict[str, Any]
     ) -> Optional[Task]:
-        """Update existing task"""
+        """
+        Update existing task.
+
+        Parameters
+        ----------
+        task_id : str
+            The ID of the task to update.
+        updates : Dict[str, Any]
+            Dictionary containing fields to update.
+
+        Returns
+        -------
+        Optional[Task]
+            The updated task object.
+        """
         if not self.connected:
             await self.connect()
 
         # Debug logging
-        logger.info(f"update_task called with task_id={task_id}, updates={updates}")
+        logger.info(f"update_task called with task_id={task_id}, " f"updates={updates}")
 
         # Check if status is being updated
         if "status" in updates:
@@ -192,7 +265,9 @@ class PlankaKanban(KanbanInterface):
                 logger.info(f"Moving task to column: {status_to_column[status]}")
                 await self.move_task_to_column(task_id, status_to_column[status])
             else:
-                logger.warning(f"Status {status} not found in status_to_column mapping")
+                logger.warning(
+                    f"Status {status} not found in status_to_column " f"mapping"
+                )
 
         # Update card details using direct MCP calls for other fields
         if any(key in updates for key in ["name", "description", "due_date"]):
@@ -217,16 +292,45 @@ class PlankaKanban(KanbanInterface):
         return updated_task
 
     async def assign_task(self, task_id: str, assignee_id: str) -> bool:
-        """Assign task to worker"""
+        """
+        Assign task to worker.
+
+        Parameters
+        ----------
+        task_id : str
+            The ID of the task to assign.
+        assignee_id : str
+            The ID of the worker to assign the task to.
+
+        Returns
+        -------
+        bool
+            True if assignment successful.
+        """
         if not self.connected:
             await self.connect()
 
-        # Use the client's assign_task method which handles both comment and move
+        # Use the client's assign_task method which handles both
+        # comment and move
         await self.client.assign_task(task_id, assignee_id)
         return True
 
     async def move_task_to_column(self, task_id: str, column_name: str) -> bool:
-        """Move task to specific column"""
+        """
+        Move task to specific column.
+
+        Parameters
+        ----------
+        task_id : str
+            The ID of the task to move.
+        column_name : str
+            The name of the target column.
+
+        Returns
+        -------
+        bool
+            True if move successful.
+        """
         if not self.connected:
             await self.connect()
 
@@ -293,7 +397,21 @@ class PlankaKanban(KanbanInterface):
                 return bool(move_result)
 
     async def add_comment(self, task_id: str, comment: str) -> bool:
-        """Add comment to task"""
+        """
+        Add comment to task.
+
+        Parameters
+        ----------
+        task_id : str
+            The ID of the task to comment on.
+        comment : str
+            The comment text to add.
+
+        Returns
+        -------
+        bool
+            True if comment added successfully.
+        """
         if not self.connected:
             await self.connect()
 
@@ -305,7 +423,14 @@ class PlankaKanban(KanbanInterface):
             return False
 
     async def get_project_metrics(self) -> Dict[str, Any]:
-        """Get project metrics"""
+        """
+        Get project metrics.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Dictionary containing task counts by status.
+        """
         if not self.connected:
             await self.connect()
 
@@ -336,7 +461,23 @@ class PlankaKanban(KanbanInterface):
     async def report_blocker(
         self, task_id: str, blocker_description: str, severity: str = "medium"
     ) -> bool:
-        """Report blocker on task"""
+        """
+        Report blocker on task.
+
+        Parameters
+        ----------
+        task_id : str
+            The ID of the task to report blocker for.
+        blocker_description : str
+            Description of the blocker.
+        severity : str, optional
+            Severity level (default is "medium").
+
+        Returns
+        -------
+        bool
+            True if blocker reported successfully.
+        """
         if not self.connected:
             await self.connect()
 
@@ -353,7 +494,21 @@ class PlankaKanban(KanbanInterface):
     async def update_task_progress(
         self, task_id: str, progress_data: Dict[str, Any]
     ) -> bool:
-        """Update task progress"""
+        """
+        Update task progress.
+
+        Parameters
+        ----------
+        task_id : str
+            The ID of the task to update progress for.
+        progress_data : Dict[str, Any]
+            Dictionary containing progress, status, and message.
+
+        Returns
+        -------
+        bool
+            True if progress updated successfully.
+        """
         if not self.connected:
             await self.connect()
 
@@ -383,7 +538,16 @@ class PlankaKanban(KanbanInterface):
         return True
 
     async def _update_checklist_progress(self, task_id: str, progress: int) -> None:
-        """Update checklist items based on progress percentage"""
+        """
+        Update checklist items based on progress percentage.
+
+        Parameters
+        ----------
+        task_id : str
+            The ID of the task to update checklist for.
+        progress : int
+            The progress percentage (0-100).
+        """
         try:
             # Use MCP to get and update checklist items
             async with stdio_client(self._server_params) as (read, write):
@@ -452,6 +616,22 @@ class PlankaKanban(KanbanInterface):
         Upload an attachment to a Planka card.
 
         Uses the kanban-mcp attachment manager to upload files.
+
+        Parameters
+        ----------
+        task_id : str
+            The ID of the task to attach the file to.
+        filename : str
+            Name of the file to upload.
+        content : Union[str, bytes]
+            The file content (string or bytes).
+        content_type : Optional[str], optional
+            MIME type of the content.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Result dictionary with success status and attachment data.
         """
         if not self.connected:
             await self.connect()
@@ -489,18 +669,36 @@ class PlankaKanban(KanbanInterface):
                         "id": result.get("id"),
                         "filename": result.get("filename", filename),
                         "url": result.get("url"),
-                        "size": len(content) if isinstance(content, str) else 0,
+                        "size": (len(content) if isinstance(content, str) else 0),
                     },
                 }
             else:
-                return {"success": False, "error": "Failed to upload attachment"}
+                return {
+                    "success": False,
+                    "error": "Failed to upload attachment",
+                }
 
         except Exception as e:
             logger.error(f"Error uploading attachment: {str(e)}")
-            return {"success": False, "error": f"Failed to upload attachment: {str(e)}"}
+            return {
+                "success": False,
+                "error": f"Failed to upload attachment: {str(e)}",
+            }
 
     async def get_attachments(self, task_id: str) -> Dict[str, Any]:
-        """Get all attachments for a Planka card."""
+        """
+        Get all attachments for a Planka card.
+
+        Parameters
+        ----------
+        task_id : str
+            The ID of the task to get attachments for.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Result dictionary with success status and attachments list.
+        """
         if not self.connected:
             await self.connect()
 
@@ -540,12 +738,31 @@ class PlankaKanban(KanbanInterface):
 
         except Exception as e:
             logger.error(f"Error getting attachments: {str(e)}")
-            return {"success": False, "error": f"Failed to get attachments: {str(e)}"}
+            return {
+                "success": False,
+                "error": f"Failed to get attachments: {str(e)}",
+            }
 
     async def download_attachment(
         self, attachment_id: str, filename: str, task_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Download an attachment from Planka."""
+        """
+        Download an attachment from Planka.
+
+        Parameters
+        ----------
+        attachment_id : str
+            The ID of the attachment to download.
+        filename : str
+            The filename to use for the downloaded attachment.
+        task_id : Optional[str], optional
+            The task ID (not used for Planka).
+
+        Returns
+        -------
+        Dict[str, Any]
+            Result dictionary with success status and attachment content.
+        """
         if not self.connected:
             await self.connect()
 
@@ -576,7 +793,10 @@ class PlankaKanban(KanbanInterface):
                     },
                 }
             else:
-                return {"success": False, "error": "Failed to download attachment"}
+                return {
+                    "success": False,
+                    "error": "Failed to download attachment",
+                }
 
         except Exception as e:
             logger.error(f"Error downloading attachment: {str(e)}")
@@ -588,7 +808,21 @@ class PlankaKanban(KanbanInterface):
     async def delete_attachment(
         self, attachment_id: str, task_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Delete an attachment from Planka."""
+        """
+        Delete an attachment from Planka.
+
+        Parameters
+        ----------
+        attachment_id : str
+            The ID of the attachment to delete.
+        task_id : Optional[str], optional
+            The task ID (not used for Planka).
+
+        Returns
+        -------
+        Dict[str, Any]
+            Result dictionary with success status.
+        """
         if not self.connected:
             await self.connect()
 
@@ -619,7 +853,10 @@ class PlankaKanban(KanbanInterface):
 
         except Exception as e:
             logger.error(f"Error deleting attachment: {str(e)}")
-            return {"success": False, "error": f"Failed to delete attachment: {str(e)}"}
+            return {
+                "success": False,
+                "error": f"Failed to delete attachment: {str(e)}",
+            }
 
     async def update_attachment(
         self,
@@ -627,7 +864,23 @@ class PlankaKanban(KanbanInterface):
         filename: Optional[str] = None,
         task_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Update attachment metadata in Planka."""
+        """
+        Update attachment metadata in Planka.
+
+        Parameters
+        ----------
+        attachment_id : str
+            The ID of the attachment to update.
+        filename : Optional[str], optional
+            New filename for the attachment.
+        task_id : Optional[str], optional
+            The task ID (not used for Planka).
+
+        Returns
+        -------
+        Dict[str, Any]
+            Result dictionary with success status and updated data.
+        """
         if not self.connected:
             await self.connect()
 
@@ -664,8 +917,14 @@ class PlankaKanban(KanbanInterface):
                     },
                 }
             else:
-                return {"success": False, "error": "Failed to update attachment"}
+                return {
+                    "success": False,
+                    "error": "Failed to update attachment",
+                }
 
         except Exception as e:
             logger.error(f"Error updating attachment: {str(e)}")
-            return {"success": False, "error": f"Failed to update attachment: {str(e)}"}
+            return {
+                "success": False,
+                "error": f"Failed to update attachment: {str(e)}",
+            }
