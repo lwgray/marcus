@@ -29,7 +29,7 @@ import argparse
 import json
 import os
 import signal
-import subprocess
+import subprocess  # nosec B404 - subprocess required for CLI daemon management
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -139,7 +139,9 @@ class MarcusCLI:
         if args.foreground:
             # Run in foreground
             try:
-                subprocess.run(cmd)
+                subprocess.run(
+                    cmd, check=False
+                )  # nosec B603 - cmd is internally constructed
             except KeyboardInterrupt:
                 print("\n✅ Marcus stopped")
                 return 0
@@ -158,13 +160,15 @@ class MarcusCLI:
                 stdin_r, stdin_w = os.pipe()
 
                 with open(log_file, "w") as f:
-                    process = subprocess.Popen(
-                        cmd,
-                        stdin=stdin_r,
-                        stdout=f,
-                        stderr=subprocess.STDOUT,
-                        start_new_session=True,
-                        cwd=str(MARCUS_ROOT),
+                    process = (
+                        subprocess.Popen(  # nosec B603 - cmd is internally constructed
+                            cmd,
+                            stdin=stdin_r,
+                            stdout=f,
+                            stderr=subprocess.STDOUT,
+                            start_new_session=True,
+                            cwd=str(MARCUS_ROOT),
+                        )
                     )
                     # Close the read end in parent process
                     os.close(stdin_r)
@@ -173,12 +177,14 @@ class MarcusCLI:
             else:
                 # HTTP mode doesn't need stdin
                 with open(log_file, "w") as f:
-                    process = subprocess.Popen(
-                        cmd,
-                        stdout=f,
-                        stderr=subprocess.STDOUT,
-                        start_new_session=True,
-                        cwd=str(MARCUS_ROOT),
+                    process = (
+                        subprocess.Popen(  # nosec B603 - cmd is internally constructed
+                            cmd,
+                            stdout=f,
+                            stderr=subprocess.STDOUT,
+                            start_new_session=True,
+                            cwd=str(MARCUS_ROOT),
+                        )
                     )
 
             # Save PID
@@ -268,7 +274,8 @@ class MarcusCLI:
                             try:
                                 pipe_fd = int(pipe_file.read_text().strip())
                                 os.close(pipe_fd)
-                            except Exception:
+                            except (OSError, ValueError):
+                                # Pipe already closed or invalid fd - safe to ignore
                                 pass
                             pipe_file.unlink(missing_ok=True)
                         # Clean up config files
@@ -293,7 +300,8 @@ class MarcusCLI:
                     try:
                         pipe_fd = int(pipe_file.read_text().strip())
                         os.close(pipe_fd)
-                    except Exception:
+                    except (OSError, ValueError):
+                        # Pipe already closed or invalid fd - safe to ignore
                         pass
                     pipe_file.unlink(missing_ok=True)
                 # Clean up config files
@@ -361,7 +369,8 @@ class MarcusCLI:
                 print(f"   Memory: {process.memory_info().rss / 1024 / 1024:.1f} MB")
                 uptime = datetime.now() - datetime.fromtimestamp(process.create_time())
                 print(f"   Uptime: {uptime}")
-            except Exception:
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                # Process info not accessible - not critical for status check
                 pass
 
             # Show transport info
@@ -432,26 +441,32 @@ class MarcusCLI:
         print("-" * 60)
 
         if args.tail:
-            # Show last N lines
-            subprocess.run(["tail", f"-n{args.tail}", str(log_file)])
+            # Show last N lines - log_file is user's own logs, tail is standard Unix tool
+            subprocess.run(
+                ["/usr/bin/tail", f"-n{args.tail}", str(log_file)], check=False
+            )  # nosec B603 B607
         elif args.follow:
-            # Follow log in real-time
+            # Follow log in real-time - log_file is user's own logs, tail is standard Unix tool
             try:
-                subprocess.run(["tail", "-f", str(log_file)])
+                subprocess.run(
+                    ["/usr/bin/tail", "-f", str(log_file)], check=False
+                )  # nosec B603 B607
             except KeyboardInterrupt:
                 print("\n✅ Stopped following logs")
         else:
-            # Show all
-            subprocess.run(["cat", str(log_file)])
+            # Show all - log_file is user's own logs, cat is standard Unix tool
+            subprocess.run(
+                ["/usr/bin/cat", str(log_file)], check=False
+            )  # nosec B603 B607
 
         return 0
 
     def config(self, args: argparse.Namespace) -> int:
         """Manage Marcus configuration"""
         if args.edit:
-            # Open in editor
+            # Open in editor - config_file is known safe path
             editor = os.environ.get("EDITOR", "vi")
-            subprocess.run([editor, str(self.config_file)])
+            subprocess.run([editor, str(self.config_file)], check=False)  # nosec B603
         else:
             # Show config
             if self.config_file.exists():
@@ -482,7 +497,8 @@ class MarcusCLI:
         if self.pid_file.exists():
             try:
                 return int(self.pid_file.read_text().strip())
-            except Exception:
+            except (ValueError, OSError):
+                # PID file corrupted or not readable - treat as not running
                 pass
         return None
 
