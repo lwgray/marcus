@@ -1,5 +1,4 @@
-"""
-Project Context Manager for Marcus Multi-Project Support
+"""Project Context Manager for Marcus Multi-Project Support.
 
 Manages project switching, state isolation, and kanban client lifecycle
 for multiple concurrent projects.
@@ -10,10 +9,7 @@ import logging
 from collections import OrderedDict
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional
-
-if TYPE_CHECKING:
-    import asyncio
+from typing import Any, Dict, Optional
 
 from src.config.config_loader import get_config
 from src.core.assignment_persistence import AssignmentPersistence
@@ -31,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 class ProjectContext:
-    """Container for project-specific state and services"""
+    """Container for project-specific state and services."""
 
     def __init__(self, project_id: str):
         self.project_id = project_id
@@ -45,8 +41,7 @@ class ProjectContext:
 
 
 class ProjectContextManager:
-    """
-    Manages multiple project contexts with state isolation
+    """Manages multiple project contexts with state isolation.
 
     Handles:
     - Project switching
@@ -59,11 +54,12 @@ class ProjectContextManager:
     IDLE_TIMEOUT_MINUTES = 30
 
     def __init__(self, registry: Optional[ProjectRegistry] = None):
-        """
-        Initialize the project context manager
+        """Initialize the project context manager.
 
-        Args:
-            registry: Optional project registry instance
+        Parameters
+        ----------
+        registry : Optional[ProjectRegistry]
+            Optional project registry instance.
         """
         self.registry = registry or ProjectRegistry()
         self.persistence = Persistence()
@@ -84,20 +80,29 @@ class ProjectContextManager:
         """Get context lock for the current event loop."""
         return self._lock_manager.get_lock()
 
-    async def initialize(self) -> None:
-        """Initialize the context manager"""
+    async def initialize(self, auto_switch: bool = True) -> None:
+        """
+        Initialize the context manager.
+
+        Parameters
+        ----------
+        auto_switch : bool
+            If True, automatically switch to the active project.
+            Set to False if you want to sync projects before switching.
+        """
         await self.registry.initialize()
 
-        # Load the active project
-        active_project = await self.registry.get_active_project()
-        if active_project:
-            await self.switch_project(active_project.id)
+        # Load the active project (only if auto_switch is enabled)
+        if auto_switch:
+            active_project = await self.registry.get_active_project()
+            if active_project:
+                await self.switch_project(active_project.id)
 
         # Start background cleanup task
         self._cleanup_task = asyncio.create_task(self._cleanup_loop())
 
     async def shutdown(self) -> None:
-        """Shutdown the context manager and cleanup resources"""
+        """Shutdown the context manager and cleanup resources."""
         # Cancel cleanup task
         if self._cleanup_task:
             self._cleanup_task.cancel()
@@ -115,14 +120,17 @@ class ProjectContextManager:
                     logger.error(f"Error disconnecting client: {e}")
 
     async def switch_project(self, project_id: str) -> bool:
-        """
-        Switch to a different project
+        """Switch to a different project.
 
-        Args:
-            project_id: Target project ID
+        Parameters
+        ----------
+        project_id : str
+            Target project ID.
 
-        Returns:
-            True if successful
+        Returns
+        -------
+        bool
+            True if successful.
         """
         async with self.lock:
             # Get project config
@@ -194,11 +202,12 @@ class ProjectContextManager:
             return True
 
     async def get_kanban_client(self) -> Optional[KanbanInterface]:
-        """
-        Get the kanban client for the active project
+        """Get the kanban client for the active project.
 
-        Returns:
-            Kanban client or None if no active project
+        Returns
+        -------
+        Optional[KanbanInterface]
+            Kanban client or None if no active project.
         """
         if not self.active_project_id:
             return None
@@ -213,7 +222,7 @@ class ProjectContextManager:
         return context.kanban_client
 
     async def get_active_context(self) -> Optional[Context]:
-        """Get the context for the active project"""
+        """Get the context for the active project."""
         if not self.active_project_id:
             return None
 
@@ -221,7 +230,7 @@ class ProjectContextManager:
         return context.context if context else None
 
     async def get_active_events(self) -> Optional[Events]:
-        """Get the events for the active project"""
+        """Get the events for the active project."""
         if not self.active_project_id:
             return None
 
@@ -229,7 +238,7 @@ class ProjectContextManager:
         return context.events if context else None
 
     async def get_active_project_state(self) -> Optional[ProjectState]:
-        """Get the project state for the active project"""
+        """Get the project state for the active project."""
         if not self.active_project_id:
             return None
 
@@ -239,7 +248,7 @@ class ProjectContextManager:
     async def get_active_assignment_persistence(
         self,
     ) -> Optional[AssignmentPersistence]:
-        """Get the assignment persistence for the active project"""
+        """Get the assignment persistence for the active project."""
         if not self.active_project_id:
             return None
 
@@ -247,7 +256,7 @@ class ProjectContextManager:
         return context.assignment_persistence if context else None
 
     async def _get_or_create_context(self, project: ProjectConfig) -> ProjectContext:
-        """Get existing context or create new one"""
+        """Get existing context or create new one."""
         if project.id in self.contexts:
             conversation_logger.log_kanban_interaction(
                 action="context_reused",
@@ -338,7 +347,7 @@ class ProjectContextManager:
         return context
 
     def _build_provider_config(self, project: ProjectConfig) -> Dict[str, Any]:
-        """Build provider configuration merging global and project configs"""
+        """Build provider configuration merging global and project configs."""
         config = {}
 
         # Get global provider credentials
@@ -364,7 +373,7 @@ class ProjectContextManager:
         return config
 
     async def _save_project_state(self, project_id: str) -> None:
-        """Save project state to persistence"""
+        """Save project state to persistence."""
         context = self.contexts.get(project_id)
         if not context or not context.project_state:
             return
@@ -380,7 +389,7 @@ class ProjectContextManager:
         )
 
     async def _load_project_state(self, project_id: str) -> Optional[ProjectState]:
-        """Load project state from persistence"""
+        """Load project state from persistence."""
         data = await self.persistence.retrieve("project_states", project_id)
         if data and "state" in data:
             # Convert back to ProjectState
@@ -389,7 +398,7 @@ class ProjectContextManager:
         return None
 
     async def _cleanup_old_contexts(self) -> None:
-        """Cleanup old contexts if exceeding cache limit"""
+        """Cleanup old contexts if exceeding cache limit."""
         if len(self.contexts) <= self.MAX_CACHED_PROJECTS:
             return
 
@@ -405,7 +414,7 @@ class ProjectContextManager:
             await self._remove_context(project_id)
 
     async def _remove_context(self, project_id: str) -> None:
-        """Remove and cleanup a project context"""
+        """Remove and cleanup a project context."""
         context = self.contexts.get(project_id)
         if not context:
             return
@@ -425,7 +434,7 @@ class ProjectContextManager:
         logger.info(f"Removed context for project {project_id}")
 
     async def _cleanup_loop(self) -> None:
-        """Background task to cleanup idle projects"""
+        """Background task to cleanup idle projects."""
         while True:
             try:
                 await asyncio.sleep(300)  # Check every 5 minutes

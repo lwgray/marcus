@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Marcus MCP Server - Modularized Version
+"""Marcus MCP Server - Modularized Version.
 
 A lean MCP server implementation that delegates all tool logic
 to specialized modules for better maintainability.
@@ -70,10 +69,10 @@ from src.visualization.shared_pipeline_events import (  # noqa: E402
 
 
 class MarcusServer:
-    """Marcus MCP Server with modularized architecture"""
+    """Marcus MCP Server with modularized architecture."""
 
     def __init__(self) -> None:
-        """Initialize Marcus server instance"""
+        """Initialize Marcus server instance."""
         # Config is already loaded by marcus.py, but ensure it's available
         self.config = get_config()
         self.settings = Settings()
@@ -257,11 +256,11 @@ class MarcusServer:
         return self._lock_manager.get_lock()
 
     def _register_handlers(self) -> None:
-        """Register MCP tool handlers"""
+        """Register MCP tool handlers."""
 
         @self.server.list_tools()  # type: ignore[misc]
         async def handle_list_tools() -> List[types.Tool]:
-            """Return list of available tools based on client role"""
+            """Return list of available tools based on client role."""
             # Import here to avoid circular dependency
             from src.marcus_mcp.tools.auth import get_tool_definitions_for_client
 
@@ -277,36 +276,36 @@ class MarcusServer:
         async def handle_call_tool(
             name: str, arguments: Optional[Dict[str, Any]]
         ) -> List[types.TextContent | types.ImageContent | types.EmbeddedResource]:
-            """Handle tool calls"""
+            """Handle tool calls."""
             return await handle_tool_call(name, arguments, self)
 
         @self.server.list_prompts()  # type: ignore[misc]
         async def handle_list_prompts() -> List[types.Prompt]:
-            """Return list of available prompts - not used by Marcus"""
+            """Return list of available prompts - not used by Marcus."""
             return []
 
         @self.server.list_resources()  # type: ignore[misc]
         async def handle_list_resources() -> List[types.Resource]:
-            """Return list of available resources - not used by Marcus"""
+            """Return list of available resources - not used by Marcus."""
             return []
 
         @self.server.read_resource()  # type: ignore[misc]
         async def handle_read_resource(uri: str) -> str:
-            """Read a resource - Marcus doesn't use resources currently"""
+            """Read a resource - Marcus doesn't use resources currently."""
             raise ValueError(f"Resource not found: {uri}")
 
         @self.server.get_prompt()  # type: ignore[misc]
         async def handle_get_prompt(
             name: str, arguments: Optional[Dict[str, str]] = None
         ) -> types.GetPromptResult:
-            """Get a prompt - Marcus doesn't use prompts currently"""
+            """Get a prompt - Marcus doesn't use prompts currently."""
             raise ValueError(f"Prompt not found: {name}")
 
     def _setup_signal_handlers(self) -> None:
-        """Setup signal handlers for graceful shutdown"""
+        """Set up signal handlers for graceful shutdown."""
 
         def signal_handler(signum: int, frame: Any) -> None:
-            """Handle interrupt signals gracefully"""
+            """Handle interrupt signals gracefully."""
             print(f"\n⚠️  Received signal {signum}, initiating graceful shutdown...")
             # Set shutdown event
             self._shutdown_event.set()
@@ -322,7 +321,7 @@ class MarcusServer:
         signal.signal(signal.SIGTERM, signal_handler)
 
     def _sync_cleanup(self) -> None:
-        """Synchronous cleanup for when event loop is not available"""
+        """Clean up resources synchronously when event loop is not available."""
         if self._cleanup_done:
             return
 
@@ -352,7 +351,7 @@ class MarcusServer:
         os._exit(0)
 
     async def _cleanup_on_shutdown(self) -> None:
-        """Clean up resources on shutdown"""
+        """Clean up resources on shutdown."""
         if self._cleanup_done:
             return
 
@@ -410,15 +409,17 @@ class MarcusServer:
         os._exit(0)
 
     async def initialize(self) -> None:
-        """Initialize all Marcus server components"""
+        """Initialize all Marcus server components."""
         # Initialize AI engine
         await self.ai_engine.initialize()
 
-        # Initialize project management
-        await self.project_manager.initialize()
-
-        # Auto-sync projects from Planka if configured
+        # Check if auto-sync is enabled - we need to sync BEFORE switching to a project
         auto_sync = self.config.get("auto_sync_projects", False)
+
+        # Initialize project management (skip auto-switch if we're doing auto-sync)
+        await self.project_manager.initialize(auto_switch=not auto_sync)
+
+        # Auto-sync projects from Planka if configured (BEFORE switching to active project)
         if auto_sync:
             logger.info("Auto-syncing projects from Planka...")
             try:
@@ -434,6 +435,16 @@ class MarcusServer:
                         f"Auto-synced projects: {summary.get('added', 0)} added, "
                         f"{summary.get('updated', 0)} updated, {summary.get('skipped', 0)} skipped"
                     )
+
+                    # Now switch to active project AFTER auto-sync
+                    active_project = (
+                        await self.project_manager.registry.get_active_project()
+                    )
+                    if active_project:
+                        logger.info(
+                            f"Switching to active project: {active_project.name}"
+                        )
+                        await self.project_manager.switch_project(active_project.id)
                 else:
                     logger.warning(f"Auto-sync failed: {result.get('error')}")
             except Exception as e:
@@ -544,7 +555,7 @@ class MarcusServer:
         # Don't print during initialization - it interferes with MCP stdio
 
     async def _migrate_to_multi_project(self) -> None:
-        """Migrate legacy configuration to multi-project format"""
+        """Migrate legacy configuration to multi-project format."""
         if self.kanban_client and not self.config.is_multi_project_mode():
             # Create a project from the legacy config
             config_data = getattr(self.config, "_config", None)
@@ -617,7 +628,7 @@ class MarcusServer:
             logger.info("Assignment lease system initialized")
 
     async def initialize_kanban(self) -> None:
-        """Initialize kanban client if not already done"""
+        """Initialize kanban client if not already done."""
         from src.core.error_framework import ErrorContext, KanbanIntegrationError
 
         if not self.kanban_client:
@@ -674,7 +685,7 @@ class MarcusServer:
                 ) from e
 
     def _ensure_environment_config(self) -> None:
-        """Ensure environment variables are set from config_marcus.json"""
+        """Ensure environment variables are set from config_marcus.json."""
         from src.core.error_framework import ConfigurationError, ErrorContext
 
         try:
@@ -757,7 +768,7 @@ class MarcusServer:
             ) from e
 
     def log_event(self, event_type: str, data: Dict[str, Any]) -> None:
-        """Log events immediately to realtime log and optionally to Events system"""
+        """Log events immediately to realtime log and optionally to Events system."""
         event = {"timestamp": datetime.now().isoformat(), "type": event_type, **data}
         self.realtime_log.write(json.dumps(event) + "\n")
 
@@ -767,7 +778,7 @@ class MarcusServer:
             asyncio.create_task(self._publish_event_async(event_type, data))
 
     async def _publish_event_async(self, event_type: str, data: Dict[str, Any]) -> None:
-        """Helper to publish events asynchronously"""
+        """Publish events asynchronously to the Events system."""
         try:
             source = data.get("source", "marcus")
             if self.events:
@@ -777,7 +788,7 @@ class MarcusServer:
             print(f"Error publishing event: {e}", file=sys.stderr)
 
     async def refresh_project_state(self) -> None:
-        """Refresh project state from kanban board"""
+        """Refresh project state from kanban board."""
         if not self.kanban_client:
             await self.initialize_kanban()
 
@@ -852,7 +863,7 @@ class MarcusServer:
             raise
 
     def _create_fastmcp(self) -> FastMCP:
-        """Create and configure FastMCP instance with agent tools by default"""
+        """Create and configure FastMCP instance with agent tools by default."""
         if self._fastmcp is None:
             # Check if we should use all tools or agent tools
             use_all_tools = "--all-tools" in sys.argv
@@ -903,7 +914,7 @@ class MarcusServer:
         return self._endpoint_apps[endpoint_type]
 
     def _register_fastmcp_tools(self) -> None:
-        """Register all tools with FastMCP instance"""
+        """Register all tools with FastMCP instance."""
         # Import only what we need for avoiding duplicates
         # Actual imports happen inside each function to avoid conflicts
 
@@ -1152,19 +1163,25 @@ class MarcusServer:
                 Automatically discovers existing projects by name or creates new ones.
                 Breaks down description into tasks with priorities and dependencies.
 
-                Args:
-                    description: Natural language project description
-                    project_name: Name for the project
-                    options: Optional settings:
-                        - mode: "auto" (default) | "new_project" | "select_project"
-                          - auto: Find existing or create new
-                          - new_project: Force create new (skip discovery)
-                          - select_project: Find and select existing (no task creation)
-                        - project_id: Use specific project ID (skips discovery)
-                        - complexity: "prototype" | "standard" | "enterprise"
-                        - provider: "planka" | "github" | "linear"
+                Parameters
+                ----------
+                description : str
+                    Natural language project description
+                project_name : str
+                    Name for the project
+                options : Optional[Dict[str, Any]]
+                    Optional settings:
+                    - mode: "auto" (default) | "new_project" | "select_project"
+                      - auto: Find existing or create new
+                      - new_project: Force create new (skip discovery)
+                      - select_project: Find and select existing (no task creation)
+                    - project_id: Use specific project ID (skips discovery)
+                    - complexity: "prototype" | "standard" | "enterprise"
+                    - provider: "planka" | "github" | "linear"
 
-                Returns:
+                Returns
+                -------
+                Dict[str, Any]
                     Dict with success, project_id, tasks_created, and board info.
                 """
                 from .tools.nlp import create_project as impl
@@ -2066,7 +2083,7 @@ if __name__ == "__main__":
     elif transport == "http":
         # For HTTP mode, run the async initialization first
         async def setup_http_server() -> MarcusServer:
-            """Setup HTTP server with async initialization."""
+            """Set up HTTP server with async initialization."""
             server = MarcusServer()
             await server.initialize()
 

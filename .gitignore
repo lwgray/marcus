@@ -66,8 +66,7 @@ logs/*.jsonl
 # Configuration files with sensitive data
 marcus.config.json
 config_marcus.json
+config_marcus.json.*
+!config_marcus.json.example
 
 knowledge_graph.html
-config_marcus.json
-config_marcus.json.anthropic
-config_marcus.json.github

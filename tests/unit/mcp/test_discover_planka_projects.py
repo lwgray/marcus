@@ -28,24 +28,32 @@ class TestDiscoverPlankaProjects:
 
     @pytest.fixture
     def mock_planka_projects(self):
-        """Sample Planka projects"""
+        """Sample Planka projects (without boards - boards fetched separately)"""
         return [
             {
                 "id": "proj-1",
                 "name": "1st Project",
-                "boards": [{"id": "board-1", "name": "Main Board"}],
             },
             {
                 "id": "proj-2",
                 "name": "Backend API",
-                "boards": [
-                    {"id": "board-2a", "name": "Sprint 1"},
-                    {"id": "board-2b", "name": "Sprint 2"},
-                ],
             },
         ]
 
-    async def test_discover_without_auto_sync(self, mock_server, mock_planka_projects):
+    @pytest.fixture
+    def mock_boards_responses(self):
+        """Mock board responses for each project"""
+        return {
+            "proj-1": [{"id": "board-1", "name": "Main Board"}],
+            "proj-2": [
+                {"id": "board-2a", "name": "Sprint 1"},
+                {"id": "board-2b", "name": "Sprint 2"},
+            ],
+        }
+
+    async def test_discover_without_auto_sync(
+        self, mock_server, mock_planka_projects, mock_boards_responses
+    ):
         """Test discovering projects without auto-syncing"""
         from src.marcus_mcp.tools.project_management import discover_planka_projects
 
@@ -54,6 +62,14 @@ class TestDiscoverPlankaProjects:
             mock_planka.client = Mock()
             mock_planka.client.get_projects = AsyncMock(
                 return_value=mock_planka_projects
+            )
+
+            # Mock get_boards_for_project to return boards for each project
+            async def get_boards_side_effect(project_id):
+                return mock_boards_responses.get(project_id, [])
+
+            mock_planka.client.get_boards_for_project = AsyncMock(
+                side_effect=get_boards_side_effect
             )
             mock_planka.connect = AsyncMock()
             mock_planka.disconnect = AsyncMock()
@@ -75,7 +91,9 @@ class TestDiscoverPlankaProjects:
             assert "project_id" in project["config"]
             assert "board_id" in project["config"]
 
-    async def test_discover_with_auto_sync(self, mock_server, mock_planka_projects):
+    async def test_discover_with_auto_sync(
+        self, mock_server, mock_planka_projects, mock_boards_responses
+    ):
         """Test discovering projects with auto-sync enabled"""
         from src.marcus_mcp.tools.project_management import discover_planka_projects
 
@@ -84,6 +102,14 @@ class TestDiscoverPlankaProjects:
             mock_planka.client = Mock()
             mock_planka.client.get_projects = AsyncMock(
                 return_value=mock_planka_projects
+            )
+
+            # Mock get_boards_for_project to return boards for each project
+            async def get_boards_side_effect(project_id):
+                return mock_boards_responses.get(project_id, [])
+
+            mock_planka.client.get_boards_for_project = AsyncMock(
+                side_effect=get_boards_side_effect
             )
             mock_planka.connect = AsyncMock()
             mock_planka.disconnect = AsyncMock()

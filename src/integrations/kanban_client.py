@@ -1,5 +1,4 @@
-"""
-Simple MCP Kanban Client for reliable task management.
+"""Simple MCP Kanban Client for reliable task management.
 
 This module provides a simplified client for interacting with the kanban-mcp server,
 focusing on reliability and following proven patterns that work consistently.
@@ -1225,10 +1224,10 @@ class KanbanClient:
             async with ClientSession(read, write) as session:
                 await session.initialize()
 
-                # Get all projects
+                # Get all projects (with pagination)
                 result = await session.call_tool(
                     "mcp_kanban_project_board_manager",
-                    {"action": "get_all_projects"},
+                    {"action": "get_projects", "page": 1, "perPage": 100},
                 )
 
                 if result and hasattr(result, "content"):
@@ -1240,6 +1239,48 @@ class KanbanClient:
                         return cast(List[Dict[str, Any]], projects_data)
                     elif isinstance(projects_data, dict) and "items" in projects_data:
                         return cast(List[Dict[str, Any]], projects_data["items"])
+
+                return []
+
+    async def get_boards_for_project(self, project_id: str) -> List[Dict[str, Any]]:
+        """
+        Get all boards for a specific Planka project.
+
+        Parameters
+        ----------
+        project_id : str
+            The Planka project ID
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of boards for the project
+        """
+        server_params = StdioServerParameters(
+            command="node",
+            args=[self.kanban_mcp_path],
+            env=os.environ.copy(),
+        )
+
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+
+                # Get boards for project
+                result = await session.call_tool(
+                    "mcp_kanban_project_board_manager",
+                    {"action": "get_boards", "projectId": project_id},
+                )
+
+                if result and hasattr(result, "content"):
+                    first_content = cast(TextContent, result.content[0])
+                    boards_data = json.loads(first_content.text)
+
+                    # Handle both list and dict responses
+                    if isinstance(boards_data, list):
+                        return cast(List[Dict[str, Any]], boards_data)
+                    elif isinstance(boards_data, dict) and "items" in boards_data:
+                        return cast(List[Dict[str, Any]], boards_data["items"])
 
                 return []
 

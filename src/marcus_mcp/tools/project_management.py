@@ -630,20 +630,36 @@ async def discover_planka_projects(
         # Convert to sync format
         projects_to_sync = []
         for proj in planka_projects:
-            # Each project in Planka has boards
-            boards = proj.get("boards", [])
-            for board in boards:
-                projects_to_sync.append(
-                    {
-                        "name": proj.get("name", "Unnamed Project"),
-                        "provider": "planka",
-                        "config": {
-                            "project_id": proj.get("id"),
-                            "board_id": board.get("id"),
-                        },
-                        "tags": ["discovered", "planka"],
-                    }
+            project_id = proj.get("id")
+            project_name = proj.get("name", "Unnamed Project")
+
+            # Skip projects without IDs
+            if not project_id:
+                logger.warning(f"Skipping project without ID: {project_name}")
+                continue
+
+            # Fetch boards for this project
+            try:
+                boards = await planka.client.get_boards_for_project(project_id)
+                logger.info(f"Project '{project_name}' has {len(boards)} board(s)")
+
+                for board in boards:
+                    projects_to_sync.append(
+                        {
+                            "name": f"{project_name}",
+                            "provider": "planka",
+                            "config": {
+                                "project_id": project_id,
+                                "board_id": board.get("id"),
+                            },
+                            "tags": ["discovered", "planka"],
+                        }
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to get boards for project '{project_name}': {e}"
                 )
+                continue
 
         result = {
             "success": True,
@@ -664,7 +680,10 @@ async def discover_planka_projects(
         return result
 
     except Exception as e:
+        import traceback
+
         logger.error(f"Failed to discover Planka projects: {e}")
+        logger.error(f"Full traceback:\n{traceback.format_exc()}")
         return {"success": False, "error": str(e)}
     finally:
         await planka.disconnect()
