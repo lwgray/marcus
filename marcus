@@ -441,23 +441,21 @@ class MarcusCLI:
         print("-" * 60)
 
         if args.tail:
-            # Show last N lines - log_file is user's own logs, tail is standard Unix tool
+            # Show last N lines - user's own logs, tail is standard tool
             subprocess.run(
-                ["/usr/bin/tail", f"-n{args.tail}", str(log_file)], check=False
+                ["tail", f"-n{args.tail}", str(log_file)], check=False
             )  # nosec B603 B607
         elif args.follow:
-            # Follow log in real-time - log_file is user's own logs, tail is standard Unix tool
+            # Follow log in real-time - user's own logs, tail is standard tool
             try:
                 subprocess.run(
-                    ["/usr/bin/tail", "-f", str(log_file)], check=False
+                    ["tail", "-f", str(log_file)], check=False
                 )  # nosec B603 B607
             except KeyboardInterrupt:
                 print("\n✅ Stopped following logs")
         else:
-            # Show all - log_file is user's own logs, cat is standard Unix tool
-            subprocess.run(
-                ["/usr/bin/cat", str(log_file)], check=False
-            )  # nosec B603 B607
+            # Show all - user's own logs, cat is standard tool
+            subprocess.run(["cat", str(log_file)], check=False)  # nosec B603 B607
 
         return 0
 
