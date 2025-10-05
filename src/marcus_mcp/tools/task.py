@@ -755,17 +755,28 @@ async def report_task_progress(
             update_data["status"] = TaskStatus.DONE
             update_data["completed_at"] = datetime.now().isoformat()
 
+            # Calculate actual hours for experiment tracking
+            task_assignment = state.agent_tasks.get(agent_id)
+            if task_assignment:
+                start_time = task_assignment.assigned_at
+                actual_hours = (datetime.now() - start_time).total_seconds() / 3600
+                duration_seconds = (datetime.now() - start_time).total_seconds()
+            else:
+                actual_hours = 1.0  # Default if no assignment found
+                duration_seconds = 3600.0  # 1 hour default
+
+            # Record in active experiment if one is running
+            from src.experiments.live_experiment_monitor import get_active_monitor
+            monitor = get_active_monitor()
+            if monitor and monitor.is_running:
+                monitor.record_task_completion(
+                    task_id=task_id,
+                    agent_id=agent_id,
+                    duration_seconds=duration_seconds
+                )
+
             # Record completion in Memory if available
             if hasattr(state, "memory") and state.memory:
-                # Calculate actual hours (simplified - in real system
-                # would track actual time)
-                task_assignment = state.agent_tasks.get(agent_id)
-                if task_assignment:
-                    start_time = task_assignment.assigned_at
-                    actual_hours = (datetime.now() - start_time).total_seconds() / 3600
-                else:
-                    actual_hours = 1.0  # Default if no assignment found
-
                 await state.memory.record_task_completion(
                     agent_id=agent_id,
                     task_id=task_id,
@@ -944,6 +955,17 @@ async def report_blocker(
         await state.kanban_client.update_task(
             task_id, {"status": TaskStatus.BLOCKED, "blocker": blocker_description}
         )
+
+        # Record in active experiment if one is running
+        from src.experiments.live_experiment_monitor import get_active_monitor
+        monitor = get_active_monitor()
+        if monitor and monitor.is_running:
+            monitor.record_blocker(
+                agent_id=agent_id,
+                task_id=task_id,
+                description=blocker_description,
+                severity=severity
+            )
 
         # Add detailed comment
         comment = f"🚫 BLOCKER ({severity.upper()})\n"

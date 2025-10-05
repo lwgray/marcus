@@ -1354,6 +1354,50 @@ class MarcusServer:
                     state=server,
                 )
 
+        # Experiment tracking tools
+        if "start_experiment" in allowed_tools:
+
+            @app.tool()  # type: ignore[misc]
+            async def start_experiment(
+                experiment_name: str,
+                board_id: str,
+                project_id: str,
+                run_name: Optional[str] = None,
+                tracking_interval: int = 30,
+                params: Optional[Dict[str, Any]] = None,
+                tags: Optional[Dict[str, str]] = None,
+            ) -> Dict[str, Any]:
+                """Start a live experiment with MLflow tracking."""
+                from .tools.experiments import start_experiment as impl
+
+                return await impl(
+                    experiment_name=experiment_name,
+                    board_id=board_id,
+                    project_id=project_id,
+                    run_name=run_name,
+                    tracking_interval=tracking_interval,
+                    params=params,
+                    tags=tags,
+                )
+
+        if "end_experiment" in allowed_tools:
+
+            @app.tool()  # type: ignore[misc]
+            async def end_experiment() -> Dict[str, Any]:
+                """End the current experiment and finalize results."""
+                from .tools.experiments import end_experiment as impl
+
+                return await impl()
+
+        if "get_experiment_status" in allowed_tools:
+
+            @app.tool()  # type: ignore[misc]
+            async def get_experiment_status() -> Dict[str, Any]:
+                """Get the status of the current experiment."""
+                from .tools.experiments import get_experiment_status as impl
+
+                return await impl()
+
         if "get_task_context" in allowed_tools:
 
             @app.tool()  # type: ignore[misc]

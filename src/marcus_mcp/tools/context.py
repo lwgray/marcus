@@ -80,6 +80,16 @@ async def log_decision(
                 "decision_logged", agent_id, logged_decision.to_dict()
             )
 
+        # Record in active experiment if one is running
+        from src.experiments.live_experiment_monitor import get_active_monitor
+        monitor = get_active_monitor()
+        if monitor and monitor.is_running:
+            monitor.record_decision(
+                agent_id=agent_id,
+                task_id=task_id,
+                decision=decision
+            )
+
         return {
             "success": True,
             "decision_id": logged_decision.decision_id,

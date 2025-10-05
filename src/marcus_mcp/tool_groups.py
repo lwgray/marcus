@@ -24,6 +24,10 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "create_tasks",  # Create tasks on existing project/board
         "add_feature",  # NLP feature addition
         "get_usage_report",
+        # Experiment tracking
+        "start_experiment",
+        "end_experiment",
+        "get_experiment_status",
     },
     "agent": {
         # Core workflow tools for autonomous agents
