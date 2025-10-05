@@ -419,7 +419,8 @@ class MarcusServer:
         # Initialize project management (skip auto-switch if we're doing auto-sync)
         await self.project_manager.initialize(auto_switch=not auto_sync)
 
-        # Auto-sync projects from Planka if configured (BEFORE switching to active project)
+        # Auto-sync projects from Planka if configured
+        # (BEFORE switching to active project)
         if auto_sync:
             logger.info("Auto-syncing projects from Planka...")
             try:
@@ -433,7 +434,8 @@ class MarcusServer:
                     summary = sync_result.get("summary", {})
                     logger.info(
                         f"Auto-synced projects: {summary.get('added', 0)} added, "
-                        f"{summary.get('updated', 0)} updated, {summary.get('skipped', 0)} skipped"
+                        f"{summary.get('updated', 0)} updated, "
+                        f"{summary.get('skipped', 0)} skipped"
                     )
 
                     # Now switch to active project AFTER auto-sync
@@ -466,11 +468,14 @@ class MarcusServer:
                     )
                 else:
                     logger.warning(
-                        f"Could not select default project '{default_project_name}': {result.get('error', result.get('message'))}"
+                        f"Could not select default project "
+                        f"'{default_project_name}': "
+                        f"{result.get('error', result.get('message'))}"
                     )
             except Exception as e:
                 logger.warning(
-                    f"Failed to auto-select default project '{default_project_name}': {e}"
+                    f"Failed to auto-select default project "
+                    f"'{default_project_name}': {e}"
                 )
 
         # CRITICAL: Force creation of all locks in the current event loop
@@ -566,8 +571,17 @@ class MarcusServer:
                 )
                 return
 
-            # Create a project from the legacy config
+            # If auto_sync is enabled, skip creating Default Project
+            # Auto-sync will discover real projects from the Kanban provider
             config_data = getattr(self.config, "_config", None)
+            if config_data and config_data.get("auto_sync_projects"):
+                logger.info(
+                    "Skipping Default Project creation - "
+                    "auto_sync_projects is enabled"
+                )
+                return
+
+            # Create a project from the legacy config
             project_id = None
             if config_data is not None:
                 project_id = await self.project_registry.create_from_legacy_config(

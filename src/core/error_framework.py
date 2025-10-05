@@ -213,7 +213,9 @@ class NetworkTimeoutError(TransientError):
             "remediation",
             RemediationSuggestion(
                 immediate_action=f"Retry connection to {service_name}",
-                long_term_solution="Check network connectivity and service availability",
+                long_term_solution=(
+                    "Check network connectivity and service availability"
+                ),
                 retry_strategy="Exponential backoff with max 3 attempts",
             ),
         )
@@ -453,7 +455,9 @@ class ValidationError(BusinessLogicError):
         kwargs.setdefault(
             "remediation",
             RemediationSuggestion(
-                immediate_action=f"Correct {field_name} to meet validation requirements",
+                immediate_action=(
+                    f"Correct {field_name} to meet validation requirements"
+                ),
                 long_term_solution="Improve input validation",
                 escalation_path="Review validation rules",
             ),

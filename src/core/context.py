@@ -185,7 +185,8 @@ class Context:
             **implementation,
         }
 
-        # Persist implementation if available (with graceful degradation)
+        # Persist implementation if available (with graceful
+        # degradation)
         if self.persistence:
             await self._persist_implementation_safe(task_id)
 
@@ -263,7 +264,8 @@ class Context:
 
         self.decisions.append(decision)
 
-        # Persist decision if persistence is available (with graceful degradation)
+        # Persist decision if persistence is available (with graceful
+        # degradation)
         if self.persistence:
             await self._persist_decision_safe(decision)
 
@@ -417,7 +419,8 @@ class Context:
                             fallback_dependency_map[other_task.id].append(task.id)
                             inferred_count += 1
                             logger.info(
-                                f"Inferred: '{task.name}' depends on '{other_task.name}'"
+                                f"Inferred: '{task.name}' depends on "
+                                f"'{other_task.name}'"
                             )
 
             if inferred_count > 0:
@@ -605,7 +608,8 @@ class Context:
             or "database" in dep_name_words
         ):
             logger.info(
-                f"Special rule matched: {task.name} depends on {potential_dependency.name}"
+                f"Special rule matched: {task.name} depends on "
+                f"{potential_dependency.name}"
             )
             return True
 
@@ -678,7 +682,8 @@ class Context:
                 "setup",
             ] and task_action in ["test", "use", "integrate", "deploy"]:
                 logger.info(
-                    f"Semantic similarity: '{task.name}' likely depends on '{potential_dependency.name}'"
+                    f"Semantic similarity: '{task.name}' likely depends "
+                    f"on '{potential_dependency.name}'"
                 )
                 return True
 
@@ -819,7 +824,7 @@ class Context:
         self, dependent_task: Task, dependency_task_id: str
     ) -> str:
         """
-        Infer what interface or functionality a dependent task needs from its dependency.
+        Infer what interface a dependent task needs from its dependency.
 
         Parameters
         ----------
@@ -860,10 +865,10 @@ class Context:
             # Frontend needs from backend
             ("frontend", "api"): "REST API endpoints with JSON responses",
             ("frontend", "backend"): "REST API endpoints with JSON responses",
-            (
-                "frontend",
-                "auth",
-            ): "Authentication endpoints (/login, /logout, /verify) and JWT token validation",
+            ("frontend", "auth"): (
+                "Authentication endpoints (/login, /logout, /verify) and JWT "
+                "token validation"
+            ),
             (
                 "ui",
                 "api",
@@ -963,7 +968,8 @@ class Context:
                     and ("testing" in dep_labels or "integration" in dep_labels)
                 )
             )
-            # Check if dependency task matches the prerequisite pattern (support variations)
+            # Check if dependency task matches the prerequisite pattern
+            # (support variations)
             prereq_match = (
                 prereq_type in dep_task_labels
                 or prereq_type in dep_task_name
@@ -991,7 +997,10 @@ class Context:
 
         # Specific keyword-based interfaces
         if "admin" in dep_name or "admin" in dep_labels:
-            return "User authentication with role-based access control (admin role required)"
+            return (
+                "User authentication with role-based access control "
+                "(admin role required)"
+            )
 
         if "payment" in dep_name or "payment" in dep_labels:
             return "Payment processing API with secure transaction handling"
