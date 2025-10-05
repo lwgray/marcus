@@ -848,13 +848,42 @@ async def sync_projects(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any
                 skipped.append({"error": "Missing name", "definition": proj_def})
                 continue
 
-            # Check if project already exists
+            # Check if project already exists by provider config (not just name)
+            # This prevents duplicates when project names change format
             existing_projects = await server.project_registry.list_projects()
-            existing = next((p for p in existing_projects if p.name == name), None)
+
+            # Find existing project by matching provider config
+            existing = None
+            for p in existing_projects:
+                if p.provider == provider:
+                    # For Planka, match by project_id and board_id
+                    if provider == "planka":
+                        if p.provider_config.get("project_id") == config.get(
+                            "project_id"
+                        ) and p.provider_config.get("board_id") == config.get(
+                            "board_id"
+                        ):
+                            existing = p
+                            break
+                    # For GitHub, match by owner and repo
+                    elif provider == "github":
+                        if p.provider_config.get("owner") == config.get(
+                            "owner"
+                        ) and p.provider_config.get("repo") == config.get("repo"):
+                            existing = p
+                            break
+                    # For Linear, match by team_id and project_id
+                    elif provider == "linear":
+                        if p.provider_config.get("project_id") == config.get(
+                            "project_id"
+                        ):
+                            existing = p
+                            break
 
             if existing:
-                # Update existing project config
+                # Update existing project: config, name, and tags
                 existing.provider_config.update(config)
+                existing.name = name  # Update name if it changed
                 existing.tags = list(set(existing.tags + tags))
                 # Save happens automatically via registry
                 updated.append({"id": existing.id, "name": name})

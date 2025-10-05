@@ -76,7 +76,12 @@ class TestSyncProjects:
         assert "Project Beta" in added_names
 
     async def test_sync_projects_updates_existing(self, mock_server, existing_project):
-        """Test updating existing project with new config"""
+        """
+        Test updating existing project with same provider_config.
+
+        Since duplicate detection now uses provider_config (project_id + board_id),
+        only projects with matching provider_config will be updated.
+        """
         from src.marcus_mcp.tools.project_management import sync_projects
 
         # Mock existing project in registry
@@ -84,12 +89,16 @@ class TestSyncProjects:
             return_value=[existing_project]
         )
 
-        # Sync with updated config
+        # Sync with SAME provider_config but potentially updated name/tags
         updated_definition = [
             {
-                "name": "Existing Project",
+                "name": "Existing Project - Updated Name",  # Name can change
                 "provider": "planka",
-                "config": {"project_id": "new-id", "board_id": "new-board"},
+                "config": {
+                    "project_id": "old-id",  # Same as existing
+                    "board_id": "old-board",  # Same as existing
+                },
+                "tags": ["updated"],
             }
         ]
 
@@ -100,7 +109,11 @@ class TestSyncProjects:
         assert result["summary"]["updated"] == 1
         assert result["summary"]["skipped"] == 0
         updated_names = [proj["name"] for proj in result["details"]["updated"]]
-        assert "Existing Project" in updated_names
+        assert "Existing Project - Updated Name" in updated_names
+
+        # Verify the project was actually updated
+        assert existing_project.name == "Existing Project - Updated Name"
+        assert "updated" in existing_project.tags
 
     async def test_sync_projects_skips_invalid(self, mock_server):
         """Test that projects without names are skipped"""
@@ -214,3 +227,164 @@ class TestSyncProjects:
             assert result["action"] == "not_found"
             assert "sync_projects" in result["hint"]
             assert "auto_sync_projects is enabled" in result["hint"]
+
+    async def test_sync_prevents_duplicates_by_provider_config(self, mock_server):
+        """
+        Test that syncing same Planka board with different name updates instead
+        of creating duplicates.
+
+        This verifies the fix for the autosync duplication issue where
+        projects were created with names like "Project - Board" and
+        duplicate detection by name failed.
+        """
+        from src.marcus_mcp.tools.project_management import sync_projects
+
+        # Create existing project with old name format
+        existing = ProjectConfig(
+            id="existing-123",
+            name="1st Project",  # Old format: just project name
+            provider="planka",
+            provider_config={
+                "project_id": "1612478574885864456",
+                "board_id": "1612478920202912778",
+            },
+            created_at=datetime.now(),
+            last_used=datetime.now(),
+        )
+
+        mock_server.project_registry.list_projects = AsyncMock(return_value=[existing])
+
+        # Sync same board with new name format
+        new_format_definition = [
+            {
+                "name": "1st Project - todo",  # New format: project - board
+                "provider": "planka",
+                "config": {
+                    "project_id": "1612478574885864456",
+                    "board_id": "1612478920202912778",
+                },
+                "tags": ["discovered", "planka"],
+            }
+        ]
+
+        result = await sync_projects(mock_server, {"projects": new_format_definition})
+
+        # Should update existing, not create duplicate
+        assert result["success"] is True
+        assert result["summary"]["added"] == 0
+        assert result["summary"]["updated"] == 1
+        assert result["summary"]["skipped"] == 0
+
+        # Verify the name was updated
+        assert existing.name == "1st Project - todo"
+
+    async def test_sync_creates_separate_entries_for_different_boards(
+        self, mock_server
+    ):
+        """
+        Test that different boards in same project create separate entries.
+
+        Verifies that the provider_config matching correctly identifies
+        different boards as separate projects.
+        """
+        from src.marcus_mcp.tools.project_management import sync_projects
+
+        # Create existing project for board 1
+        existing = ProjectConfig(
+            id="existing-123",
+            name="1st Project - Board A",
+            provider="planka",
+            provider_config={
+                "project_id": "1612478574885864456",
+                "board_id": "board-a-id",
+            },
+            created_at=datetime.now(),
+            last_used=datetime.now(),
+        )
+
+        mock_server.project_registry.list_projects = AsyncMock(return_value=[existing])
+
+        # Sync different board in same project
+        different_board = [
+            {
+                "name": "1st Project - Board B",
+                "provider": "planka",
+                "config": {
+                    "project_id": "1612478574885864456",  # Same project
+                    "board_id": "board-b-id",  # Different board
+                },
+            }
+        ]
+
+        result = await sync_projects(mock_server, {"projects": different_board})
+
+        # Should add as new, not update
+        assert result["success"] is True
+        assert result["summary"]["added"] == 1
+        assert result["summary"]["updated"] == 0
+
+    async def test_sync_github_matches_by_owner_and_repo(self, mock_server):
+        """Test GitHub projects match by owner and repo, not name"""
+        from src.marcus_mcp.tools.project_management import sync_projects
+
+        # Create existing GitHub project
+        existing = ProjectConfig(
+            id="github-123",
+            name="MyRepo",
+            provider="github",
+            provider_config={"owner": "myorg", "repo": "myrepo"},
+            created_at=datetime.now(),
+            last_used=datetime.now(),
+        )
+
+        mock_server.project_registry.list_projects = AsyncMock(return_value=[existing])
+
+        # Sync same repo with different name
+        updated_name = [
+            {
+                "name": "MyOrg - MyRepo",  # Different name format
+                "provider": "github",
+                "config": {"owner": "myorg", "repo": "myrepo"},
+            }
+        ]
+
+        result = await sync_projects(mock_server, {"projects": updated_name})
+
+        # Should update, not create duplicate
+        assert result["success"] is True
+        assert result["summary"]["updated"] == 1
+        assert result["summary"]["added"] == 0
+        assert existing.name == "MyOrg - MyRepo"
+
+    async def test_sync_linear_matches_by_project_id(self, mock_server):
+        """Test Linear projects match by project_id, not name"""
+        from src.marcus_mcp.tools.project_management import sync_projects
+
+        # Create existing Linear project
+        existing = ProjectConfig(
+            id="linear-123",
+            name="ENG Project",
+            provider="linear",
+            provider_config={"project_id": "lin-proj-456"},
+            created_at=datetime.now(),
+            last_used=datetime.now(),
+        )
+
+        mock_server.project_registry.list_projects = AsyncMock(return_value=[existing])
+
+        # Sync same project with different name
+        updated_name = [
+            {
+                "name": "Engineering - Q1 Project",  # Different name
+                "provider": "linear",
+                "config": {"project_id": "lin-proj-456"},
+            }
+        ]
+
+        result = await sync_projects(mock_server, {"projects": updated_name})
+
+        # Should update, not create duplicate
+        assert result["success"] is True
+        assert result["summary"]["updated"] == 1
+        assert result["summary"]["added"] == 0
+        assert existing.name == "Engineering - Q1 Project"
