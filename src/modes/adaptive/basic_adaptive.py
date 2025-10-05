@@ -85,16 +85,23 @@ class BasicAdaptiveMode:
         assigned_tasks: Dict[str, Task],
     ) -> Optional[Task]:
         """
-        Find optimal task respecting dependencies and preventing illogical assignments
+        Find optimal task respecting dependencies and preventing illogical assignments.
 
-        Args:
-            agent_id: ID of the agent requesting work
-            agent_skills: Skills/capabilities of the agent
-            available_tasks: Tasks available for assignment
-            assigned_tasks: Currently assigned tasks (agent_id -> task)
+        Parameters
+        ----------
+        agent_id : str
+            ID of the agent requesting work.
+        agent_skills : List[str]
+            Skills/capabilities of the agent.
+        available_tasks : List[Task]
+            Tasks available for assignment.
+        assigned_tasks : Dict[str, Task]
+            Currently assigned tasks (agent_id -> task).
 
-        Returns:
-            Best task for the agent or None
+        Returns
+        -------
+        Optional[Task]
+            Best task for the agent or None.
         """
         logger.info(
             f"Finding optimal task for agent {agent_id} with "
@@ -135,7 +142,7 @@ class BasicAdaptiveMode:
         self, tasks: List[Task], assigned_tasks: Dict[str, Task]
     ) -> List[Task]:
         """
-        Filter tasks to only include those not blocked by dependencies
+        Filter tasks to only include those not blocked by dependencies.
 
         This is the core logic that prevents "Deploy to production" from being
         assigned before development is complete.
@@ -154,9 +161,9 @@ class BasicAdaptiveMode:
         self, task: Task, all_tasks: List[Task], assigned_tasks: Dict[str, Task]
     ) -> bool:
         """
-        Check if a task is unblocked and ready for assignment
+        Check if a task is unblocked and ready for assignment.
 
-        Returns False for illogical assignments like deployment before development
+        Returns False for illogical assignments like deployment before development.
         """
         # Check explicit dependencies first
         if task.dependencies:
@@ -205,9 +212,9 @@ class BasicAdaptiveMode:
 
     async def _is_obviously_illogical(self, task: Task, all_tasks: List[Task]) -> bool:
         """
-        Check for obviously illogical task assignments
+        Check for obviously illogical task assignments.
 
-        This prevents the core problem: deploying before building
+        This prevents the core problem: deploying before building.
         """
         task_lower = task.name.lower()
 

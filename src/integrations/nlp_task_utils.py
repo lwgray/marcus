@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class TaskType(Enum):
-    """Task type classification"""
+    """Task type classification."""
 
     DESIGN = "design"
     DEPLOYMENT = "deployment"
@@ -26,7 +26,7 @@ class TaskType(Enum):
 
 
 class TaskClassifier:
-    """Classify tasks by their type based on keywords"""
+    """Classify tasks by their type based on keywords."""
 
     # Keyword mappings for task classification
     TASK_KEYWORDS = {
@@ -110,10 +110,14 @@ class TaskClassifier:
         """
         Classify a task based on its name and description.
 
-        Args:
-            task: Task to classify
+        Parameters
+        ----------
+        task : Task
+            Task to classify
 
-        Returns:
+        Returns
+        -------
+        TaskType
             TaskType enum value
         """
         # Combine name and description for better classification
@@ -139,12 +143,12 @@ class TaskClassifier:
 
     @classmethod
     def is_type(cls, task: Task, task_type: TaskType) -> bool:
-        """Check if a task is of a specific type"""
+        """Check if a task is of a specific type."""
         return cls.classify(task) == task_type
 
     @classmethod
     def filter_by_type(cls, tasks: List[Task], task_type: TaskType) -> List[Task]:
-        """Filter tasks by type"""
+        """Filter tasks by type."""
         return [task for task in tasks if cls.classify(task) == task_type]
 
 
