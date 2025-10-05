@@ -401,6 +401,24 @@ async def create_project(
         # No need to wait for background tasks
         # They are fire-and-forget for tracking purposes
 
+        # Auto-select the newly created project
+        if result.get("success") and result.get("project_id"):
+            from .project_management import select_project
+
+            select_result = await select_project(
+                state, {"project_id": result["project_id"]}
+            )
+            # Log if selection failed, but don't fail the whole operation
+            if not select_result.get("success"):
+                state.log_event(
+                    "create_project_auto_select_failed",
+                    {
+                        "project_name": project_name,
+                        "project_id": result["project_id"],
+                        "error": select_result.get("error"),
+                    },
+                )
+
         return result
 
     except Exception as exc:

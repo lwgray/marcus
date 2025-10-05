@@ -19,12 +19,13 @@ logger = logging.getLogger(__name__)
 
 async def start_experiment(
     experiment_name: str,
-    board_id: str,
-    project_id: str,
+    board_id: Optional[str] = None,
+    project_id: Optional[str] = None,
     run_name: Optional[str] = None,
     tracking_interval: int = 30,
     params: Optional[Dict[str, Any]] = None,
     tags: Optional[Dict[str, str]] = None,
+    state: Any = None,
 ) -> Dict[str, Any]:
     """
     Start a live experiment with MLflow tracking.
@@ -38,10 +39,10 @@ async def start_experiment(
     ----------
     experiment_name : str
         Name for the MLflow experiment
-    board_id : str
-        Board ID to monitor
-    project_id : str
-        Project ID to monitor
+    board_id : str, optional
+        Board ID to monitor. If not provided, uses the currently selected project's board.
+    project_id : str, optional
+        Project ID to monitor. If not provided, uses the currently selected project.
     run_name : str, optional
         Name for this specific run (auto-generated if not provided)
     tracking_interval : int, optional
@@ -50,6 +51,8 @@ async def start_experiment(
         Additional experiment parameters to log
     tags : Dict[str, str], optional
         Tags to add to the MLflow run
+    state : Any, optional
+        Marcus server state instance
 
     Returns
     -------
@@ -58,6 +61,13 @@ async def start_experiment(
 
     Examples
     --------
+    >>> # Use currently selected project
+    >>> result = await start_experiment(
+    ...     experiment_name="production-test",
+    ...     params={"num_agents": 50, "complexity": "enterprise"}
+    ... )
+
+    >>> # Or specify explicit IDs
     >>> result = await start_experiment(
     ...     experiment_name="production-test",
     ...     board_id="1234567890",
@@ -84,6 +94,45 @@ async def start_experiment(
             "current_experiment": existing_monitor.experiment_name,
             "current_run": existing_monitor.run_name
         }
+
+    # Get board_id and project_id from active project if not provided
+    if not board_id or not project_id:
+        if not state:
+            return {
+                "success": False,
+                "error": "board_id and project_id required when state is not available"
+            }
+
+        try:
+            active_project = await state.project_registry.get_active_project()
+            if not active_project:
+                return {
+                    "success": False,
+                    "error": "No active project selected. Use select_project first or provide board_id and project_id."
+                }
+
+            # Get board_id and project_id from active project
+            if not project_id:
+                project_id = active_project.provider_config.get("project_id")
+            if not board_id:
+                board_id = active_project.provider_config.get("board_id")
+
+            if not board_id or not project_id:
+                return {
+                    "success": False,
+                    "error": f"Active project missing board_id or project_id in config: {active_project.provider_config}"
+                }
+
+            logger.info(
+                f"Using active project: {active_project.name} "
+                f"(project_id={project_id}, board_id={board_id})"
+            )
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Failed to get active project: {str(e)}"
+            }
 
     try:
         # Create new monitor
@@ -227,11 +276,11 @@ EXPERIMENT_TOOLS = {
                 },
                 "board_id": {
                     "type": "string",
-                    "description": "Board ID to monitor"
+                    "description": "Board ID to monitor (optional, uses active project if not provided)"
                 },
                 "project_id": {
                     "type": "string",
-                    "description": "Project ID to monitor"
+                    "description": "Project ID to monitor (optional, uses active project if not provided)"
                 },
                 "run_name": {
                     "type": "string",
@@ -251,7 +300,7 @@ EXPERIMENT_TOOLS = {
                     "description": "Tags for the MLflow run"
                 }
             },
-            "required": ["experiment_name", "board_id", "project_id"]
+            "required": ["experiment_name"]
         }
     },
     "end_experiment": {

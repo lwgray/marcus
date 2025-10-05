@@ -1158,6 +1158,22 @@ class MarcusServer:
                     state=server,
                 )
 
+        if "get_all_board_tasks" in allowed_tools:
+
+            @app.tool()  # type: ignore[misc]
+            async def get_all_board_tasks(
+                board_id: str,
+                project_id: str
+            ) -> Dict[str, Any]:
+                """Get all tasks from a specific Planka board for validation/inspection."""
+                from .tools.task import get_all_board_tasks as impl
+
+                return await impl(
+                    board_id=board_id,
+                    project_id=project_id,
+                    state=server,
+                )
+
         if "get_project_status" in allowed_tools:
 
             @app.tool()  # type: ignore[misc]
@@ -1360,8 +1376,8 @@ class MarcusServer:
             @app.tool()  # type: ignore[misc]
             async def start_experiment(
                 experiment_name: str,
-                board_id: str,
-                project_id: str,
+                board_id: Optional[str] = None,
+                project_id: Optional[str] = None,
                 run_name: Optional[str] = None,
                 tracking_interval: int = 30,
                 params: Optional[Dict[str, Any]] = None,
@@ -1378,6 +1394,7 @@ class MarcusServer:
                     tracking_interval=tracking_interval,
                     params=params,
                     tags=tags,
+                    state=self,
                 )
 
         if "end_experiment" in allowed_tools:
