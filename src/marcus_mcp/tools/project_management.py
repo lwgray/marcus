@@ -52,9 +52,11 @@ async def list_projects(server: Any, arguments: Dict[str, Any]) -> List[Dict[str
                 "id": project.id,
                 "name": project.name,
                 "provider": project.provider,
+                "provider_config": project.provider_config,  # includes project_id, board_id
                 "tags": project.tags,
                 "is_active": project.id == active_id,
                 "last_used": project.last_used.isoformat(),
+                "created_at": project.created_at.isoformat(),
             }
         )
 
@@ -571,6 +573,101 @@ async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
             "message": f"Project '{project_name}' not found in Marcus registry",
             "hint": hint,
         }
+
+
+async def discover_planka_projects(
+    server: Any, arguments: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Discover all projects from Planka automatically.
+
+    This tool fetches all projects from your Planka instance and returns
+    them in a format ready to sync into Marcus's registry. Optionally,
+    you can auto-sync them immediately.
+
+    Parameters
+    ----------
+    server : Any
+        MarcusServer instance
+    arguments : Dict[str, Any]
+        - auto_sync: bool (optional) - If True, automatically syncs discovered projects
+
+    Returns
+    -------
+    Dict[str, Any]
+        Discovered projects and sync status
+
+    Examples
+    --------
+    >>> # Just discover (no sync)
+    >>> result = await discover_planka_projects(server, {})
+    >>> print(f"Found {len(result['projects'])} Planka projects")
+
+    >>> # Discover and auto-sync
+    >>> result = await discover_planka_projects(server, {"auto_sync": True})
+    """
+    from src.integrations.providers.planka import Planka
+
+    auto_sync = arguments.get("auto_sync", False)
+
+    # Get Planka config
+    planka_config = server.config.get("planka", {})
+    if not planka_config.get("base_url"):
+        return {
+            "success": False,
+            "error": "Planka not configured. Check config_marcus.json",
+        }
+
+    # Create temporary Planka client to fetch projects
+    planka = Planka(planka_config)
+
+    try:
+        await planka.connect()
+
+        # Get all projects from Planka
+        planka_projects = await planka.client.get_projects()
+
+        # Convert to sync format
+        projects_to_sync = []
+        for proj in planka_projects:
+            # Each project in Planka has boards
+            boards = proj.get("boards", [])
+            for board in boards:
+                projects_to_sync.append(
+                    {
+                        "name": proj.get("name", "Unnamed Project"),
+                        "provider": "planka",
+                        "config": {
+                            "project_id": proj.get("id"),
+                            "board_id": board.get("id"),
+                        },
+                        "tags": ["discovered", "planka"],
+                    }
+                )
+
+        result = {
+            "success": True,
+            "discovered_count": len(projects_to_sync),
+            "projects": projects_to_sync,
+        }
+
+        # Auto-sync if requested
+        if auto_sync and projects_to_sync:
+            sync_result = await sync_projects(server, {"projects": projects_to_sync})
+            result["sync_result"] = sync_result
+
+        conversation_logger.log_pm_thinking(
+            thought=f"Discovered {len(projects_to_sync)} projects from Planka",
+            context={"auto_sync": auto_sync, "project_count": len(projects_to_sync)},
+        )
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to discover Planka projects: {e}")
+        return {"success": False, "error": str(e)}
+    finally:
+        await planka.disconnect()
 
 
 async def sync_projects(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:

@@ -417,6 +417,28 @@ class MarcusServer:
         # Initialize project management
         await self.project_manager.initialize()
 
+        # Auto-sync projects from Planka if configured
+        auto_sync = self.config.get("auto_sync_projects", False)
+        if auto_sync:
+            logger.info("Auto-syncing projects from Planka...")
+            try:
+                from src.marcus_mcp.tools.project_management import (
+                    discover_planka_projects,
+                )
+
+                result = await discover_planka_projects(self, {"auto_sync": True})
+                if result.get("success"):
+                    sync_result = result.get("sync_result", {})
+                    summary = sync_result.get("summary", {})
+                    logger.info(
+                        f"Auto-synced projects: {summary.get('added', 0)} added, "
+                        f"{summary.get('updated', 0)} updated, {summary.get('skipped', 0)} skipped"
+                    )
+                else:
+                    logger.warning(f"Auto-sync failed: {result.get('error')}")
+            except Exception as e:
+                logger.warning(f"Failed to auto-sync projects: {e}")
+
         # Auto-select default project if configured
         default_project_name = self.config.get("default_project_name")
         if default_project_name:
@@ -1175,6 +1197,21 @@ class MarcusServer:
                 return await impl(
                     server, {"project_name": project_name, "project_id": project_id}
                 )
+
+        if "discover_planka_projects" in allowed_tools:
+
+            @app.tool()  # type: ignore[misc]
+            async def discover_planka_projects(
+                auto_sync: bool = False,
+            ) -> Dict[str, Any]:
+                """
+                Discover all projects from Planka automatically.
+
+                Optionally auto-sync them into Marcus's registry.
+                """
+                from .tools.project_management import discover_planka_projects as impl
+
+                return await impl(server, {"auto_sync": auto_sync})
 
         if "sync_projects" in allowed_tools:
 

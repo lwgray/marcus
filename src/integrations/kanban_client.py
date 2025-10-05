@@ -1191,6 +1191,58 @@ class KanbanClient:
 
                 return {"project_id": project_id, "board_id": board_id}
 
+    async def get_projects(self) -> List[Dict[str, Any]]:
+        """
+        Get all projects from Planka.
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of projects with their details including:
+            - id: Project ID
+            - name: Project name
+            - boards: List of boards in the project
+
+        Examples
+        --------
+        >>> client = KanbanClient()
+        >>> projects = await client.get_projects()
+        >>> for project in projects:
+        ...     print(f"Project: {project['name']} (ID: {project['id']})")
+
+        Notes
+        -----
+        This method creates a new MCP session for the operation.
+        Useful for discovering existing projects in Planka.
+        """
+        server_params = StdioServerParameters(
+            command="node",
+            args=[self.kanban_mcp_path],
+            env=os.environ.copy(),
+        )
+
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+
+                # Get all projects
+                result = await session.call_tool(
+                    "mcp_kanban_project_board_manager",
+                    {"action": "get_all_projects"},
+                )
+
+                if result and hasattr(result, "content"):
+                    first_content = cast(TextContent, result.content[0])
+                    projects_data = json.loads(first_content.text)
+
+                    # Handle both list and dict responses
+                    if isinstance(projects_data, list):
+                        return cast(List[Dict[str, Any]], projects_data)
+                    elif isinstance(projects_data, dict) and "items" in projects_data:
+                        return cast(List[Dict[str, Any]], projects_data["items"])
+
+                return []
+
     def _save_workspace_state(
         self, project_id: str, board_id: str, project_name: str, board_name: str
     ) -> None:
