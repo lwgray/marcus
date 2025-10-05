@@ -153,17 +153,21 @@ class TaskClassifier:
 
 
 class TaskBuilder:
-    """Build task data structures for kanban board creation"""
+    """Build task data structures for kanban board creation."""
 
     @staticmethod
     def build_task_data(task: Task) -> Dict[str, Any]:
         """
         Build a dictionary of task data for kanban board creation.
 
-        Args:
-            task: Task object to convert
+        Parameters
+        ----------
+        task : Task
+            Task object to convert
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Dictionary with task data ready for kanban API
         """
         return {
@@ -193,7 +197,7 @@ class TaskBuilder:
 
     @staticmethod
     def build_minimal_task_data(task: Task) -> Dict[str, Any]:
-        """Build minimal task data (for APIs with fewer fields)"""
+        """Build minimal task data (for APIs with fewer fields)."""
         return {
             "name": task.name,
             "description": task.description,
@@ -207,7 +211,7 @@ class TaskBuilder:
 
 
 class SafetyChecker:
-    """Apply safety checks to ensure logical task ordering"""
+    """Apply safety checks to ensure logical task ordering."""
 
     def __init__(self) -> None:
         """Initialize SafetyChecker with enhanced task classifier."""
@@ -221,10 +225,14 @@ class SafetyChecker:
 
         This prevents premature deployment by establishing proper dependencies.
 
-        Args:
-            tasks: List of tasks to check
+        Parameters
+        ----------
+        tasks : List[Task]
+            List of tasks to check
 
-        Returns:
+        Returns
+        -------
+        List[Task]
             List of tasks with updated dependencies
         """
         deployment_tasks = self.task_classifier.filter_by_type(
@@ -258,10 +266,14 @@ class SafetyChecker:
         """
         Ensure testing tasks depend on implementation tasks.
 
-        Args:
-            tasks: List of tasks to check
+        Parameters
+        ----------
+        tasks : List[Task]
+            List of tasks to check
 
-        Returns:
+        Returns
+        -------
+        List[Task]
             List of tasks with updated dependencies
         """
         testing_tasks = self.task_classifier.filter_by_type(tasks, TaskType.TESTING)
@@ -298,10 +310,14 @@ class SafetyChecker:
         """
         Ensure implementation tasks depend on design tasks.
 
-        Args:
-            tasks: List of tasks to check
+        Parameters
+        ----------
+        tasks : List[Task]
+            List of tasks to check
 
-        Returns:
+        Returns
+        -------
+        List[Task]
             List of tasks with updated dependencies
         """
         design_tasks = self.task_classifier.filter_by_type(tasks, TaskType.DESIGN)
@@ -336,7 +352,7 @@ class SafetyChecker:
 
     @staticmethod
     def _find_related_tasks(task: Task, candidate_tasks: List[Task]) -> List[Task]:
-        """Find tasks that are related based on labels and keywords"""
+        """Find tasks that are related based on labels and keywords."""
         related = []
 
         # Extract feature labels from task
@@ -410,7 +426,14 @@ class SafetyChecker:
         """
         Validate that all dependencies reference existing tasks.
 
-        Returns:
+        Parameters
+        ----------
+        tasks : List[Task]
+            List of tasks to validate
+
+        Returns
+        -------
+        List[str]
             List of validation errors (empty if valid)
         """
         errors = []

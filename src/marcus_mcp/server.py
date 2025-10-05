@@ -557,6 +557,15 @@ class MarcusServer:
     async def _migrate_to_multi_project(self) -> None:
         """Migrate legacy configuration to multi-project format."""
         if self.kanban_client and not self.config.is_multi_project_mode():
+            # Check if we've already migrated (have projects in registry)
+            existing_projects = await self.project_registry.list_projects()
+            if existing_projects:
+                logger.info(
+                    f"Skipping migration - {len(existing_projects)} "
+                    "projects already in registry"
+                )
+                return
+
             # Create a project from the legacy config
             config_data = getattr(self.config, "_config", None)
             project_id = None

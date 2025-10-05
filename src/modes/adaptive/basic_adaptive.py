@@ -1,5 +1,5 @@
 """
-Basic Adaptive Mode for Marcus Hybrid Approach
+Basic Adaptive Mode for Marcus Hybrid Approach.
 
 Implements Adaptive Mode that respects dependencies and prevents illogical
 task assignments like "Deploy to production" before development is complete.
@@ -260,7 +260,7 @@ class BasicAdaptiveMode:
         return False
 
     def _tasks_related(self, task1: Task, task2: Task) -> bool:
-        """Check if two tasks are related (same component/feature)"""
+        """Check if two tasks are related (same component/feature)."""
         # Simple heuristic: check for common words in task names
         words1 = set(task1.name.lower().split())
         words2 = set(task2.name.lower().split())
@@ -300,9 +300,9 @@ class BasicAdaptiveMode:
         available_tasks: List[Task],
     ) -> float:
         """
-        Calculate a score for how well a task matches an agent
+        Calculate a score for how well a task matches an agent.
 
-        Higher score = better match
+        Higher score = better match.
         """
         score = 0.0
 
@@ -330,7 +330,7 @@ class BasicAdaptiveMode:
         return score
 
     def _calculate_skill_match(self, task: Task, agent_skills: List[str]) -> float:
-        """Calculate how well agent skills match task requirements"""
+        """Calculate how well agent skills match task requirements."""
         if not agent_skills:
             return 0.5  # Neutral score if no skills known
 
@@ -375,7 +375,7 @@ class BasicAdaptiveMode:
     def _calculate_unblocking_value(
         self, task: Task, available_tasks: List[Task]
     ) -> float:
-        """Calculate how many other tasks this task would unblock"""
+        """Calculate how many other tasks this task would unblock."""
         if not task.id:
             return 0.0
 
@@ -392,7 +392,7 @@ class BasicAdaptiveMode:
         return 0.0
 
     def _get_agent_preference_score(self, agent_id: str, task: Task) -> float:
-        """Get preference score based on agent's history"""
+        """Get preference score based on agent's history."""
         assignment_prefs = self.state.get("assignment_preferences", {})
         if isinstance(assignment_prefs, dict):
             preferences = assignment_prefs.get(agent_id, {})
@@ -411,13 +411,18 @@ class BasicAdaptiveMode:
         self, agent_id: str, task: Task, outcome: str, feedback: Optional[str] = None
     ) -> None:
         """
-        Record the outcome of a task assignment for learning
+        Record the outcome of a task assignment for learning.
 
-        Args:
-            agent_id: Agent who worked on the task
-            task: Task that was assigned
-            outcome: 'completed', 'blocked', 'abandoned'
-            feedback: Optional feedback from agent
+        Parameters
+        ----------
+        agent_id : str
+            Agent who worked on the task.
+        task : Task
+            Task that was assigned.
+        outcome : str
+            'completed', 'blocked', 'abandoned'.
+        feedback : Optional[str]
+            Optional feedback from agent.
         """
         # Update agent preferences based on outcome
         assignment_prefs = self.state.get("assignment_preferences", {})
@@ -449,10 +454,17 @@ class BasicAdaptiveMode:
 
     async def get_blocking_analysis(self, tasks: List[Task]) -> Dict[str, Any]:
         """
-        Analyze what tasks are blocking others
+        Analyze what tasks are blocking others.
 
-        Returns:
-            Analysis of blocking relationships
+        Parameters
+        ----------
+        tasks : List[Task]
+            List of tasks to analyze.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Analysis of blocking relationships.
         """
         blocking_analysis: Dict[str, Any] = {
             "blocked_tasks": [],
