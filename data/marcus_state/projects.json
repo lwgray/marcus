@@ -16,8 +16,8 @@
     "_stored_at": "2025-10-04T19:36:00.905626"
   },
   "active_project": {
-    "project_id": "0052249c-6a37-450f-9c16-ca4449a3debc",
-    "_stored_at": "2025-10-04T19:40:27.760974"
+    "project_id": "16dc33dc-aa10-49a0-828a-91d8aaddb58c",
+    "_stored_at": "2025-10-04T19:45:50.003751"
   },
   "8cf382e2-b7c2-4767-93b4-7f245799d35c": {
     "id": "8cf382e2-b7c2-4767-93b4-7f245799d35c",
@@ -60,11 +60,27 @@
       "board_id": null
     },
     "created_at": "2025-10-04T19:40:27.757655",
-    "last_used": "2025-10-04T19:40:27.760161",
+    "last_used": "2025-10-04T19:45:49.997418",
     "tags": [
       "migrated",
       "default"
     ],
-    "_stored_at": "2025-10-04T19:40:27.760418"
+    "_stored_at": "2025-10-04T19:45:49.997724"
+  },
+  "16dc33dc-aa10-49a0-828a-91d8aaddb58c": {
+    "id": "16dc33dc-aa10-49a0-828a-91d8aaddb58c",
+    "name": "Default Project",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": null,
+      "board_id": null
+    },
+    "created_at": "2025-10-04T19:45:50.000638",
+    "last_used": "2025-10-04T19:45:50.002994",
+    "tags": [
+      "migrated",
+      "default"
+    ],
+    "_stored_at": "2025-10-04T19:45:50.003214"
   }
 }

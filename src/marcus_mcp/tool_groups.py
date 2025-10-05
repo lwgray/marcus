@@ -34,6 +34,8 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "log_artifact",
         "check_task_dependencies",
         "get_agent_status",
+        "list_projects",  # List available projects
+        "select_project",  # Select project to work on
         "create_project",  # NLP project creation for autonomous agents
     },
     "analytics": {
