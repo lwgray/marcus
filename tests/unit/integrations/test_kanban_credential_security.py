@@ -7,12 +7,30 @@ hardcoded defaults are properly justified.
 """
 
 import os
+from pathlib import Path
 from unittest.mock import Mock, mock_open, patch
 
 import pytest
 
 from src.integrations.kanban_client import KanbanClient
 from src.integrations.kanban_client_with_create import KanbanClientWithCreate
+
+
+def selective_path_exists_for_config(return_value=False):
+    """
+    Create a selective Path.exists mock that allows kanban-mcp path to work.
+
+    Parameters
+    ----------
+    return_value : bool
+        What to return for config_marcus.json (default False)
+    """
+    original_exists = Path.exists
+    def selective_exists(self):
+        if "config_marcus.json" in str(self):
+            return return_value
+        return original_exists(self)
+    return selective_exists
 
 
 class TestKanbanCredentialSecurity:
@@ -27,7 +45,7 @@ class TestKanbanCredentialSecurity:
         """Test that hardcoded defaults are only used when no other source is available."""
         # Mock no config file and empty environment
         with (
-            patch("pathlib.Path.exists", return_value=False),
+            patch("pathlib.Path.exists", selective_path_exists_for_config(False)),
             patch("src.integrations.kanban_client.os.environ", {}) as mock_env,
             patch("sys.stderr"),
         ):
@@ -49,7 +67,7 @@ class TestKanbanCredentialSecurity:
         }
 
         with (
-            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.exists", selective_path_exists_for_config(True)),
             patch(
                 "builtins.open",
                 mock_open(
@@ -75,7 +93,7 @@ class TestKanbanCredentialSecurity:
         }
 
         with (
-            patch("pathlib.Path.exists", return_value=False),
+            patch("pathlib.Path.exists", selective_path_exists_for_config(False)),
             patch(
                 "src.integrations.kanban_client.os.environ", existing_env.copy()
             ) as mock_env,
@@ -100,7 +118,7 @@ class TestKanbanCredentialSecurity:
         config_content = '{"planka": {"email": "config@company.com"}}'
 
         with (
-            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.exists", selective_path_exists_for_config(True)),
             patch("builtins.open", mock_open(read_data=config_content)),
             patch(
                 "src.integrations.kanban_client.os.environ", existing_env.copy()
@@ -119,7 +137,7 @@ class TestKanbanCredentialSecurity:
     def test_kanban_client_with_create_uses_same_security_pattern(self):
         """Test that KanbanClientWithCreate follows same credential security pattern."""
         with (
-            patch("pathlib.Path.exists", return_value=False),
+            patch("pathlib.Path.exists", selective_path_exists_for_config(False)),
             patch("src.integrations.kanban_client.os.environ", {}) as mock_env,
             patch("sys.stderr"),
         ):
@@ -139,7 +157,7 @@ class TestKanbanCredentialSecurity:
         config_content = '{"planka": {}, "project_id": "test"}'
 
         with (
-            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.exists", selective_path_exists_for_config(True)),
             patch("builtins.open", mock_open(read_data=config_content)),
             patch("src.integrations.kanban_client.os.environ", {}) as mock_env,
             patch("sys.stderr"),
@@ -156,7 +174,7 @@ class TestKanbanCredentialSecurity:
         config_content = '{"planka": {"password": null, "email": null}}'
 
         with (
-            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.exists", selective_path_exists_for_config(True)),
             patch("builtins.open", mock_open(read_data=config_content)),
             patch("src.integrations.kanban_client.os.environ", {}) as mock_env,
             patch("sys.stderr"),
@@ -172,7 +190,7 @@ class TestKanbanCredentialSecurity:
         # This test verifies our security assumption that "demo" credentials
         # are acceptable for development environments
         with (
-            patch("pathlib.Path.exists", return_value=False),
+            patch("pathlib.Path.exists", selective_path_exists_for_config(False)),
             patch("src.integrations.kanban_client.os.environ", {}) as mock_env,
             patch("sys.stderr"),
         ):
@@ -190,7 +208,7 @@ class TestKanbanCredentialSecurity:
         """Test that credential values are not exposed in error messages."""
         # This test ensures that even development defaults don't get logged
         with (
-            patch("pathlib.Path.exists", return_value=False),
+            patch("pathlib.Path.exists", selective_path_exists_for_config(False)),
             patch("src.integrations.kanban_client.os.environ", {}) as mock_env,
             patch("sys.stderr") as mock_stderr,
         ):

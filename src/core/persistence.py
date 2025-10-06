@@ -266,7 +266,7 @@ class SQLitePersistence(PersistenceBackend):
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute(
                     """
-                    INSERT OR REPLACE INTO persistence (collection, key, data).
+                    INSERT OR REPLACE INTO persistence (collection, key, data)
                     VALUES (?, ?, ?)
                 """,
                     (collection, key, json.dumps(data, default=str)),
@@ -282,7 +282,7 @@ class SQLitePersistence(PersistenceBackend):
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.execute(
                     """
-                    SELECT data FROM persistence.
+                    SELECT data FROM persistence
                     WHERE collection = ? AND key = ?
                 """,
                     (collection, key),
@@ -301,7 +301,7 @@ class SQLitePersistence(PersistenceBackend):
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.execute(
                     """
-                    SELECT key, data FROM persistence.
+                    SELECT key, data FROM persistence
                     WHERE collection = ?
                     ORDER BY stored_at DESC
                     LIMIT ?
@@ -330,7 +330,7 @@ class SQLitePersistence(PersistenceBackend):
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute(
                     """
-                    DELETE FROM persistence.
+                    DELETE FROM persistence
                     WHERE collection = ? AND key = ?
                 """,
                     (collection, key),
@@ -347,7 +347,7 @@ class SQLitePersistence(PersistenceBackend):
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.execute(
                     """
-                    DELETE FROM persistence.
+                    DELETE FROM persistence
                     WHERE collection = ? AND stored_at < ?
                 """,
                     (collection, cutoff.isoformat()),

@@ -22,7 +22,7 @@ from typing import Any
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.worker.new_client import Inspector  # noqa: E402
+from src.worker.inspector import Inspector  # noqa: E402
 
 
 def pretty_print(label: str, result: Any) -> None:
@@ -81,7 +81,7 @@ async def agent_workflow() -> None:
 
             if not projects_data:
                 print("\n⚠️  No projects found. Create one first:")
-                print("    python examples/worker_client_demo.py")
+                print("    python examples/inspector_demo.py")
                 return
 
             # Step 3: Select a project using mode='select_project'

@@ -19,7 +19,7 @@ Prerequisites
 
 Note
 ----
-- Uses the new Inspector client from src/worker/new_client.py
+- Uses the new Inspector client from src/worker/inspector.py
 - This unified client supports both stdio and HTTP connections
 - Uses streamablehttp_client for proper FastMCP compatibility
 """
@@ -35,7 +35,7 @@ from typing import Any, Dict, List, Optional
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.worker.new_client import Inspector  # noqa: E402
+from src.worker.inspector import Inspector  # noqa: E402
 
 
 class ConversationLogger:

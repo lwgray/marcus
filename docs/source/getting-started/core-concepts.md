@@ -56,7 +56,7 @@ Task
 - **Intelligently assigned** - Matched to agent skills and availability
 - **Predictable** - Marcus predicts completion time and risk
 
-Learn more: [Task Management Guide](../guides/project-management/managing-tasks.md)
+Learn more: [Hierarchical Task Decomposition](../concepts/hierarchical-task-decomposition.md)
 
 ### 3. **Projects**
 

@@ -15,6 +15,7 @@ import json
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from unittest.mock import AsyncMock, MagicMock, Mock, call, mock_open, patch
 
@@ -129,8 +130,16 @@ class TestKanbanClient:
         """Test client initialization when config file exists."""
         config_json = json.dumps(sample_config)
 
+        # Selective mock: config_marcus.json exists, others may not
+        original_exists = Path.exists
+        def selective_path_exists(self):
+            if "config_marcus.json" in str(self):
+                return True
+            return original_exists(self)
+
         with (
             patch("src.integrations.kanban_client.os.path.exists", return_value=True),
+            patch("pathlib.Path.exists", selective_path_exists),
             patch("builtins.open", mock_open(read_data=config_json)),
             patch("src.integrations.kanban_client.os.environ", {}) as mock_env,
             patch("sys.stderr"),
@@ -153,11 +162,19 @@ class TestKanbanClient:
         def mock_exists(path):
             return False  # Always return False for any path
 
+        # Selective mock: only block config_marcus.json, allow kanban-mcp path
+        original_exists = Path.exists
+        def selective_path_exists(self):
+            if "config_marcus.json" in str(self):
+                return False
+            return original_exists(self)
+
         with (
             patch("os.path.exists", side_effect=mock_exists),
-            patch("pathlib.Path.exists", return_value=False),
+            patch("pathlib.Path.exists", selective_path_exists),
             patch("src.integrations.kanban_client.os.environ", {}) as mock_env,
             patch("sys.stderr"),
+            patch.object(KanbanClient, '_load_workspace_state', return_value=None),
         ):
             client = KanbanClient()
 
@@ -178,13 +195,21 @@ class TestKanbanClient:
             "PLANKA_AGENT_PASSWORD": "existing-password",
         }
 
+        # Selective mock: only block config_marcus.json, allow kanban-mcp path
+        original_exists = Path.exists
+        def selective_path_exists(self):
+            if "config_marcus.json" in str(self):
+                return False
+            return original_exists(self)
+
         with (
             patch("os.path.exists", return_value=False),
-            patch("pathlib.Path.exists", return_value=False),
+            patch("pathlib.Path.exists", selective_path_exists),
             patch(
                 "src.integrations.kanban_client.os.environ", existing_env.copy()
             ) as mock_env,
             patch("sys.stderr"),
+            patch.object(KanbanClient, '_load_workspace_state', return_value=None),
         ):
             client = KanbanClient()
 
@@ -206,8 +231,16 @@ class TestKanbanClient:
 
         config_json = json.dumps(partial_config)
 
+        # Selective mock: config_marcus.json exists, others may not
+        original_exists = Path.exists
+        def selective_path_exists(self):
+            if "config_marcus.json" in str(self):
+                return True
+            return original_exists(self)
+
         with (
             patch("src.integrations.kanban_client.os.path.exists", return_value=True),
+            patch("pathlib.Path.exists", selective_path_exists),
             patch("builtins.open", mock_open(read_data=config_json)),
             patch("src.integrations.kanban_client.os.environ", {}) as mock_env,
             patch("sys.stderr"),
@@ -876,9 +909,17 @@ class TestKanbanClient:
 
     def test_config_file_read_error(self):
         """Test handling of config file read errors."""
+        # Selective mock: config_marcus.json exists, others may not
+        original_exists = Path.exists
+        def selective_path_exists(self):
+            if "config_marcus.json" in str(self):
+                return True
+            return original_exists(self)
+
         # The module doesn't handle file read errors, so we expect it to raise
         with (
             patch("src.integrations.kanban_client.os.path.exists", return_value=True),
+            patch("pathlib.Path.exists", selective_path_exists),
             patch("builtins.open", side_effect=IOError("Permission denied")),
             patch("src.integrations.kanban_client.os.environ", {}) as mock_env,
             patch("sys.stderr"),
@@ -889,9 +930,17 @@ class TestKanbanClient:
 
     def test_config_file_invalid_json(self):
         """Test handling of invalid JSON in config file."""
+        # Selective mock: config_marcus.json exists, others may not
+        original_exists = Path.exists
+        def selective_path_exists(self):
+            if "config_marcus.json" in str(self):
+                return True
+            return original_exists(self)
+
         # The module doesn't handle JSON errors, so we expect it to raise
         with (
             patch("src.integrations.kanban_client.os.path.exists", return_value=True),
+            patch("pathlib.Path.exists", selective_path_exists),
             patch("builtins.open", mock_open(read_data="invalid json {")),
             patch("src.integrations.kanban_client.os.environ", {}) as mock_env,
             patch("sys.stderr"),

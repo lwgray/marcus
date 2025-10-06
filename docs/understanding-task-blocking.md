@@ -83,7 +83,7 @@ tail -f /Users/lwgray/dev/marcus/logs/marcus_*.log
 ### 2. Check Task Dependencies (via MCP Tool)
 
 ```python
-from src.worker.new_client import Inspector
+from src.worker.inspector import Inspector
 
 client = Inspector(connection_type="http")
 async with client.connect(url="http://localhost:4298/mcp") as session:
@@ -135,7 +135,7 @@ python examples/calculator_project_workflow.py
 ### Using MCP Tools
 
 ```python
-from src.worker.new_client import Inspector
+from src.worker.inspector import Inspector
 
 async def create_and_visualize():
     client = Inspector(connection_type="http")

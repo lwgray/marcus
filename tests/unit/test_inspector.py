@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
-from src.worker.new_client import Inspector, create_inspector
+from src.worker.inspector import Inspector, create_inspector
 
 
 class MockTool:
@@ -247,8 +247,8 @@ class TestInspectorStdioConnection:
     """Test Inspector stdio connection functionality."""
 
     @pytest.mark.asyncio
-    @patch("src.worker.new_client.stdio_client")
-    @patch("src.worker.new_client.ClientSession")
+    @patch("src.worker.inspector.stdio_client")
+    @patch("src.worker.inspector.ClientSession")
     async def test_stdio_connect(self, mock_client_session, mock_stdio_client):
         """Test stdio connection establishes correctly."""
         # Setup mocks
@@ -291,8 +291,8 @@ class TestInspectorHttpConnection:
     """Test Inspector HTTP connection functionality."""
 
     @pytest.mark.asyncio
-    @patch("src.worker.new_client.streamablehttp_client")
-    @patch("src.worker.new_client.ClientSession")
+    @patch("src.worker.inspector.streamablehttp_client")
+    @patch("src.worker.inspector.ClientSession")
     async def test_http_connect_with_url(
         self, mock_client_session, mock_streamable_http
     ):
@@ -325,8 +325,8 @@ class TestInspectorHttpConnection:
             mock_session_instance.list_tools.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("src.worker.new_client.streamablehttp_client")
-    @patch("src.worker.new_client.ClientSession")
+    @patch("src.worker.inspector.streamablehttp_client")
+    @patch("src.worker.inspector.ClientSession")
     async def test_http_connect_default_url(
         self, mock_client_session, mock_streamable_http
     ):

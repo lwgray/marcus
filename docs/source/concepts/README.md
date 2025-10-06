@@ -21,6 +21,9 @@ Marcus's Stoic approach to multi-agent software development. Learn about BYOA (B
 ### **[Core Values](core-values.md)**
 The seven principles that guide Marcus's design: Sacred Repository, Guided Autonomy, Embrace Emergence, Relentless Focus, Radical Transparency, Context Compounds, and Fail Forward.
 
+### **[Hierarchical Task Decomposition](hierarchical-task-decomposition.md)**
+How Marcus intelligently breaks down large, complex tasks into manageable subtasks with clear interfaces, dependencies, and shared conventions for effective agent collaboration.
+
 ## Key Concepts
 
 For detailed concept explanations, see the [Getting Started - Core Concepts](../getting-started/core-concepts.md) guide, which covers:
@@ -33,6 +36,7 @@ For detailed concept explanations, see the [Getting Started - Core Concepts](../
 - **Dependencies** - Task relationships and ordering
 - **Memory & Learning** - Four-tier learning architecture
 - **AI Intelligence Engine** - Hybrid decision-making
+- **Hierarchical Task Decomposition** - Breaking complex tasks into subtasks
 
 ## Next Steps
 

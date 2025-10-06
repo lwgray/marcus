@@ -2,7 +2,7 @@
 """
 Test script for the Inspector client using HTTP connection.
 
-This demonstrates that the Inspector client (from new_client.py) works properly
+This demonstrates that the Inspector client (from inspector.py) works properly
 with FastMCP's streamable HTTP implementation.
 """
 
@@ -17,7 +17,7 @@ sys.path.insert(0, str(project_root))
 
 from typing import Any  # noqa: E402
 
-from src.worker.new_client import Inspector  # noqa: E402
+from src.worker.inspector import Inspector  # noqa: E402
 
 
 def pretty_print(label: str, result: Any) -> None:

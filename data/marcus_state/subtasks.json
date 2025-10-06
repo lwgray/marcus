@@ -8,7 +8,7 @@
       "status": "done",
       "priority": "medium",
       "assigned_to": "agent-1",
-      "created_at": "2025-10-05T20:17:56.449523",
+      "created_at": "2025-10-05T22:36:45.241064",
       "estimated_hours": 2.0,
       "dependencies": [],
       "file_artifacts": [
@@ -26,7 +26,7 @@
       "status": "done",
       "priority": "medium",
       "assigned_to": "agent-2",
-      "created_at": "2025-10-05T20:17:56.449527",
+      "created_at": "2025-10-05T22:36:45.241068",
       "estimated_hours": 2.5,
       "dependencies": [],
       "file_artifacts": [
@@ -44,7 +44,7 @@
       "status": "done",
       "priority": "medium",
       "assigned_to": "agent-3",
-      "created_at": "2025-10-05T20:17:56.449529",
+      "created_at": "2025-10-05T22:36:45.241070",
       "estimated_hours": 3.0,
       "dependencies": [
         "task-001_sub_1",
@@ -68,7 +68,7 @@
       "status": "done",
       "priority": "medium",
       "assigned_to": "agent-4",
-      "created_at": "2025-10-05T20:17:56.449530",
+      "created_at": "2025-10-05T22:36:45.241071",
       "estimated_hours": 2.0,
       "dependencies": [
         "task-001_sub_1",
@@ -89,7 +89,7 @@
       "status": "done",
       "priority": "medium",
       "assigned_to": "agent-5",
-      "created_at": "2025-10-05T20:17:56.449532",
+      "created_at": "2025-10-05T22:36:45.241073",
       "estimated_hours": 1.5,
       "dependencies": [
         "task-001_sub_1",
@@ -418,7 +418,7 @@
           "functions": "snake_case"
         }
       },
-      "decomposed_at": "2025-10-05T20:17:56.449520",
+      "decomposed_at": "2025-10-05T22:36:45.241060",
       "decomposed_by": "ai"
     },
     "parent-001": {

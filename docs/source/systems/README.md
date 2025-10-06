@@ -65,20 +65,23 @@ Message routing and communication infrastructure between agents and Marcus core.
 
 ## 📊 **Project Management Systems**
 
-### **[16 - Project Management](16-project-management.md)**
+### **[16 - Project Management](project-management/16-project-management.md)**
 High-level project creation, tracking, and completion management.
 
-### **[04 - Kanban Integration](04-kanban-integration.md)**
+### **[04 - Kanban Integration](project-management/04-kanban-integration.md)**
 Multi-provider Kanban board integration (Planka, Trello, GitHub Projects, Linear).
 
-### **[24 - Analysis Tools](24-analysis-tools.md)**
+### **[24 - Analysis Tools](project-management/24-analysis-tools.md)**
 Project analytics, performance metrics, and insight generation.
 
-### **[25 - Report Generation](25-report-generation.md)**
+### **[25 - Report Generation](project-management/25-report-generation.md)**
 Automated report creation for project status, agent performance, and system health.
 
-### **[53 - Workflow Management](53-workflow-management.md)**
+### **[53 - Workflow Management](project-management/53-workflow-management.md)**
 Multi-agent workflow orchestration, dependency resolution, and quality gate integration.
+
+### **[54 - Hierarchical Task Decomposition](project-management/54-hierarchical-task-decomposition.md)**
+AI-powered task breakdown into manageable subtasks with clear interfaces and shared conventions.
 
 ---
 
@@ -225,12 +228,12 @@ graph TD
 
 ## 📈 **System Metrics**
 
-- **53 Total Systems** documented
+- **54 Total Systems** documented
 - **6 Core Intelligence** systems for AI decision-making and classification
 - **4 Agent Coordination** systems for workflow management
 - **2 Development & Analysis** systems for code quality and API integration
 - **1 Security & Compliance** system for comprehensive security
-- **6 Project Management** systems including workflow orchestration
+- **7 Project Management** systems including workflow orchestration and task decomposition
 - **5 Infrastructure** systems for reliability and scalability
 - **4 Quality & Testing** systems for reliability
 - **Rest**: Data storage, operations, and visualization systems

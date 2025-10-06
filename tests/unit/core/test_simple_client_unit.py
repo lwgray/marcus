@@ -7,6 +7,7 @@ Tests the client logic without real MCP connections
 import os
 import sys
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from unittest.mock import Mock, mock_open, patch
 
@@ -75,12 +76,21 @@ class TestKanbanClient:
                 del os.environ[var]
 
         try:
-            with patch("pathlib.Path.exists", return_value=False):
-                client = KanbanClient()
+            # Selective mock: only block config_marcus.json, allow kanban-mcp path
+            original_exists = Path.exists
+            def selective_exists(self):
+                if "config_marcus.json" in str(self):
+                    return False
+                # Call the real exists() for other paths
+                return original_exists(self)
 
-                # Should have None values for project/board
-                assert client.project_id is None
-                assert client.board_id is None
+            with patch("pathlib.Path.exists", selective_exists):
+                with patch.object(KanbanClient, '_load_workspace_state', return_value=None):
+                    client = KanbanClient()
+
+                    # Should have None values for project/board
+                    assert client.project_id is None
+                    assert client.board_id is None
 
                 # Should use default environment variables
                 assert os.environ.get("PLANKA_BASE_URL") == "http://localhost:3333"
@@ -97,29 +107,50 @@ class TestKanbanClient:
     @pytest.mark.asyncio
     async def test_get_available_tasks_no_board_id(self):
         """Test getting available tasks when board_id is not set"""
-        with patch("pathlib.Path.exists", return_value=False):
-            client = KanbanClient()
+        original_exists = Path.exists
+        def selective_exists(self):
+            if "config_marcus.json" in str(self):
+                return False
+            return original_exists(self)
 
-            with pytest.raises(RuntimeError, match="Board ID not set"):
-                await client.get_available_tasks()
+        with patch("pathlib.Path.exists", selective_exists):
+            with patch.object(KanbanClient, '_load_workspace_state', return_value=None):
+                client = KanbanClient()
+
+                with pytest.raises(RuntimeError, match="Board ID not set"):
+                    await client.get_available_tasks()
 
     @pytest.mark.asyncio
     async def test_get_all_tasks_no_board_id(self):
         """Test getting all tasks when board_id is not set"""
-        with patch("pathlib.Path.exists", return_value=False):
-            client = KanbanClient()
+        original_exists = Path.exists
+        def selective_exists(self):
+            if "config_marcus.json" in str(self):
+                return False
+            return original_exists(self)
 
-            with pytest.raises(RuntimeError, match="Board ID not set"):
-                await client.get_all_tasks()
+        with patch("pathlib.Path.exists", selective_exists):
+            with patch.object(KanbanClient, '_load_workspace_state', return_value=None):
+                client = KanbanClient()
+
+                with pytest.raises(RuntimeError, match="Board ID not set"):
+                    await client.get_all_tasks()
 
     @pytest.mark.asyncio
     async def test_get_board_summary_no_board_id(self):
         """Test getting board summary when board_id is not set"""
-        with patch("pathlib.Path.exists", return_value=False):
-            client = KanbanClient()
+        original_exists = Path.exists
+        def selective_exists(self):
+            if "config_marcus.json" in str(self):
+                return False
+            return original_exists(self)
 
-            with pytest.raises(RuntimeError, match="Board ID not set"):
-                await client.get_board_summary()
+        with patch("pathlib.Path.exists", selective_exists):
+            with patch.object(KanbanClient, '_load_workspace_state', return_value=None):
+                client = KanbanClient()
+
+                with pytest.raises(RuntimeError, match="Board ID not set"):
+                    await client.get_board_summary()
 
     def test_card_to_task_conversion(self, client_with_config):
         """Test card to task conversion"""

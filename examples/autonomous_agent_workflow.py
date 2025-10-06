@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.worker.new_client import Inspector  # noqa: E402
+from src.worker.inspector import Inspector  # noqa: E402
 
 
 def pretty_print(label: str, result: Any) -> None:
