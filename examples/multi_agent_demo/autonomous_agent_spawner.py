@@ -280,7 +280,7 @@ START NOW!
 
     def spawn_worker(self, agent: AgentConfig) -> subprocess.Popen:
         """
-        Spawn a worker agent.
+        Spawn a worker agent using agent_runner.py.
 
         Parameters
         ----------
@@ -296,17 +296,21 @@ START NOW!
         print("-" * 60)
 
         branch_name = f"agent/{agent.agent_id}"
-        prompt = self.create_worker_prompt(agent, branch_name)
 
-        prompt_file = self.demo_root / "prompts" / f"{agent.agent_id}.txt"
-        prompt_file.parent.mkdir(exist_ok=True)
-
-        with open(prompt_file, "w") as f:
-            f.write(prompt)
-
-        # Spawn Claude Code in interactive mode (workers need continuous operation)
-        # Send prompt via stdin for autonomous operation
-        cmd = ["claude", "--dangerously-skip-permissions"]
+        # Use agent_runner.py for continuous autonomous operation
+        agent_runner_path = self.demo_root / "agent_runner.py"
+        cmd = [
+            "python3",
+            str(agent_runner_path),
+            "--agent-id", agent.agent_id,
+            "--name", agent.name,
+            "--role", agent.role,
+            "--skills", ",".join(agent.skills),
+            "--num-subagents", str(agent.num_subagents),
+            "--project-root", str(self.project_root),
+            "--demo-root", str(self.demo_root),
+            "--branch", branch_name,
+        ]
 
         log_file = self.demo_root / "logs" / f"{agent.agent_id}.log"
         log_file.parent.mkdir(exist_ok=True)
@@ -314,15 +318,10 @@ START NOW!
         with open(log_file, "w") as log:
             process = subprocess.Popen(
                 cmd,
-                cwd=self.project_root,
-                stdin=subprocess.PIPE,
                 stdout=log,
                 stderr=subprocess.STDOUT,
                 text=True,
             )
-            # Send the prompt to stdin
-            process.stdin.write(prompt + "\n")
-            process.stdin.flush()
 
         print(f"  ✓ Spawned (PID: {process.pid})")
         print(f"  Log: {log_file}")
