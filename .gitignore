@@ -70,3 +70,4 @@ config_marcus.json.*
 !config_marcus.json.example
 
 knowledge_graph.html
+data/
