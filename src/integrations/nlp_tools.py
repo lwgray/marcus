@@ -451,7 +451,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         return sorted(phases)
 
     def _estimate_duration(self, tasks: List[Task]) -> int:
-        """Estimate project duration in days"""
+        """Estimate project duration in days."""
         total_hours = sum(
             task.estimated_hours for task in tasks if task.estimated_hours
         )
@@ -459,11 +459,11 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         return int(total_hours / (8 * 2))  # 2 developers working in parallel
 
     def _count_dependencies(self, tasks: List[Task]) -> int:
-        """Count total dependencies"""
+        """Count total dependencies."""
         return sum(len(task.dependencies) for task in tasks)
 
     def _assess_risk(self, classified_tasks: Dict[TaskType, List[Task]]) -> str:
-        """Assess project risk level"""
+        """Assess project risk level."""
         # Create a list to avoid modification during iteration
         total_tasks = sum(len(tasks) for tasks in list(classified_tasks.values()))
 
@@ -475,7 +475,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             return "low"
 
     def _assess_risk_by_count(self, task_count: int) -> str:
-        """Assess project risk level by task count"""
+        """Assess project risk level by task count."""
         if task_count > 50:
             return "high"
         elif task_count > 20:
@@ -585,7 +585,7 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
             return {"success": False, "error": str(e)}
 
     async def _parse_feature_to_tasks(self, feature_description: str) -> List[Task]:
-        """Parse feature description into tasks using AI"""
+        """Parse feature description into tasks using AI."""
         try:
             # Use AI engine to analyze the feature request
             feature_analysis = await self.ai_engine.analyze_feature_request(
@@ -624,7 +624,7 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
     async def _detect_integration_points(
         self, feature_tasks: List[Task], existing_tasks: List[Task]
     ) -> Dict[str, Any]:
-        """Detect where feature should integrate with existing project"""
+        """Detect where feature should integrate with existing project."""
         try:
             # Use AI engine to analyze integration points
             integration_analysis = await self.ai_engine.analyze_integration_points(
@@ -658,7 +658,7 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
         }
 
     def _calculate_complexity(self, tasks: List[Task]) -> str:
-        """Calculate feature complexity based on tasks"""
+        """Calculate feature complexity based on tasks."""
         total_hours = sum(
             task.estimated_hours for task in tasks if task.estimated_hours
         )
@@ -673,7 +673,7 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
     def _analyze_integration_fallback(
         self, feature_tasks: List[Task], existing_tasks: List[Task]
     ) -> Dict[str, Any]:
-        """Analyze integration points without AI"""
+        """Analyze integration points without AI."""
         # Determine project phase based on existing tasks
         completed_tasks = [t for t in existing_tasks if t.status == TaskStatus.DONE]
         [t for t in existing_tasks if t.status == TaskStatus.IN_PROGRESS]
@@ -704,7 +704,7 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
         }
 
     def _generate_fallback_tasks(self, feature_description: str) -> Dict[str, Any]:
-        """Generate intelligent fallback tasks based on feature description keywords"""
+        """Generate intelligent fallback tasks based on feature description keywords."""
         feature_lower = feature_description.lower()
         tasks = []
 
@@ -819,7 +819,7 @@ async def create_project_from_natural_language(
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
-    MCP tool to create a project from natural language description
+    MCP tool to create a project from natural language description.
 
     This is the main entry point that Claude will call.
     """
@@ -1032,7 +1032,7 @@ async def add_feature_natural_language(
     feature_description: str, integration_point: str = "auto_detect", state: Any = None
 ) -> Dict[str, Any]:
     """
-    MCP tool to add a feature to existing project using natural language
+    MCP tool to add a feature to existing project using natural language.
 
     This is the main entry point that Claude will call.
     """

@@ -1,5 +1,5 @@
 """
-Lightweight agent event logging for Marcus
+Lightweight agent event logging for Marcus.
 
 This module provides basic event logging functionality without any dependencies
 on visualization libraries like NetworkX. It's designed to be fast and safe
@@ -19,9 +19,12 @@ def log_agent_event(event_type: str, event_data: Dict[str, Any]) -> None:
 
     This is a lightweight version that doesn't trigger NetworkX imports.
 
-    Args:
-        event_type: Type of event (e.g., "task_request", "worker_registration")
-        event_data: Event details as a dictionary
+    Parameters
+    ----------
+    event_type : str
+        Type of event (e.g., "task_request", "worker_registration")
+    event_data : Dict[str, Any]
+        Event details as a dictionary
     """
     try:
         # Create logs directory if it doesn't exist
@@ -49,5 +52,5 @@ def log_agent_event(event_type: str, event_data: Dict[str, Any]) -> None:
 
 # For compatibility, create an alias
 def log_conversation_event(event_type: str, event_data: Dict[str, Any]) -> None:
-    """Alias for log_agent_event for backward compatibility"""
+    """Alias for log_agent_event for backward compatibility."""
     log_agent_event(event_type, event_data)

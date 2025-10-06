@@ -136,9 +136,7 @@ class MarcusExperiment:
         logger.info(f"Started MLflow run: {run_name or self.current_run_id}")
         return run
 
-    def log_metric(
-        self, key: str, value: float, step: Optional[int] = None
-    ) -> None:
+    def log_metric(self, key: str, value: float, step: Optional[int] = None) -> None:
         """
         Log a metric to MLflow.
 
@@ -260,9 +258,7 @@ class MarcusExperiment:
         mlflow.log_metric("total_blockers", self.blocker_count)
         mlflow.log_metric(f"blocker_{severity}", 1)
 
-        logger.info(
-            f"Logged blocker: {agent_id} on {task_id} ({severity})"
-        )
+        logger.info(f"Logged blocker: {agent_id} on {task_id} ({severity})")
 
     def log_artifact_event(
         self,

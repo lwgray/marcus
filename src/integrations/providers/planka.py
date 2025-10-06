@@ -1,7 +1,7 @@
 """
-Planka implementation using KanbanClient
+Planka implementation using KanbanClient.
 
-Direct integration without the mcp_function_caller abstraction
+Direct integration without the mcp_function_caller abstraction.
 """
 
 import logging
@@ -16,14 +16,15 @@ logger = logging.getLogger(__name__)
 
 
 class Planka(KanbanInterface):
-    """Planka kanban board implementation using direct MCP client"""
+    """Planka kanban board implementation using direct MCP client."""
 
     def __init__(self, config: Dict[str, Any]):
         """
-        Initialize Planka connection
+        Initialize Planka connection.
 
-        Args:
-            config: Dictionary containing optional configuration
+        Args
+        ----
+            config: Dictionary containing optional configuration.
         """
         super().__init__(config)
         self.provider = KanbanProvider.PLANKA
@@ -52,16 +53,16 @@ class Planka(KanbanInterface):
 
     @property
     def board_id(self) -> Optional[str]:
-        """Get board ID from the client"""
+        """Get board ID from the client."""
         return self.client.board_id if self.client else None
 
     @property
     def project_id(self) -> Optional[str]:
-        """Get project ID from the client"""
+        """Get project ID from the client."""
         return self.client.project_id if self.client else None
 
     async def connect(self) -> bool:
-        """Connect to Planka via MCP"""
+        """Connect to Planka via MCP."""
         try:
             # KanbanClient loads config automatically
             self.connected = True
@@ -71,11 +72,11 @@ class Planka(KanbanInterface):
             return False
 
     async def disconnect(self) -> None:
-        """Disconnect from Planka"""
+        """Disconnect from Planka."""
         self.connected = False
 
     async def get_available_tasks(self) -> List[Task]:
-        """Get unassigned tasks from backlog"""
+        """Get unassigned tasks from backlog."""
         try:
             tasks = await self.client.get_available_tasks()
             return tasks
@@ -84,7 +85,7 @@ class Planka(KanbanInterface):
             return []
 
     async def get_all_tasks(self) -> List[Task]:
-        """Get all tasks from the board regardless of status or assignment"""
+        """Get all tasks from the board regardless of status or assignment."""
         try:
             tasks = await self.client.get_all_tasks()
             return tasks
@@ -93,7 +94,7 @@ class Planka(KanbanInterface):
             return []
 
     async def get_task_by_id(self, task_id: str) -> Optional[Task]:
-        """Get specific task by ID"""
+        """Get specific task by ID."""
         try:
             # KanbanClient doesn't have get_task_details
             # We need to get all tasks and find the one with matching ID
@@ -107,7 +108,7 @@ class Planka(KanbanInterface):
             return None
 
     async def create_task(self, task_data: Dict[str, Any]) -> Task:
-        """Create new task in Planka"""
+        """Create new task in Planka."""
         if not self.connected:
             await self.connect()
 
@@ -121,7 +122,7 @@ class Planka(KanbanInterface):
     async def update_task(
         self, task_id: str, updates: Dict[str, Any]
     ) -> Optional[Task]:
-        """Update task status or properties"""
+        """Update task status or properties."""
         try:
             logger.info(
                 f"[Planka] update_task called with task_id={task_id}, updates={updates}"
@@ -170,7 +171,7 @@ class Planka(KanbanInterface):
             return await self.get_task_by_id(task_id)
 
     async def add_comment(self, task_id: str, comment: str) -> bool:
-        """Add comment to task"""
+        """Add comment to task."""
         try:
             await self.client.add_comment(task_id, comment)
             return True
@@ -179,7 +180,7 @@ class Planka(KanbanInterface):
             return False
 
     async def get_agent_tasks(self, agent_id: str) -> List[Task]:
-        """Get all tasks assigned to a specific agent"""
+        """Get all tasks assigned to a specific agent."""
         try:
             # Get all tasks and filter by assignment
             await self.client.get_board_summary()
@@ -190,7 +191,7 @@ class Planka(KanbanInterface):
             return []
 
     async def get_board_summary(self) -> Dict[str, Any]:
-        """Get overall board statistics and summary"""
+        """Get overall board statistics and summary."""
         try:
             summary = await self.client.get_board_summary()
             return summary
@@ -199,7 +200,7 @@ class Planka(KanbanInterface):
             return {}
 
     async def assign_task(self, task_id: str, assignee_id: str) -> bool:
-        """Assign a task to a worker"""
+        """Assign a task to a worker."""
         try:
             # KanbanClient.assign_task already moves the task to "In Progress"
             await self.client.assign_task(task_id, assignee_id)
@@ -209,7 +210,7 @@ class Planka(KanbanInterface):
             return False
 
     async def move_task_to_column(self, task_id: str, column_name: str) -> bool:
-        """Move task to a specific column/status"""
+        """Move task to a specific column/status."""
         try:
             # Use KanbanClient's update_task_status for column movements
             # Map column names to status names that KanbanClient understands
@@ -230,7 +231,7 @@ class Planka(KanbanInterface):
             return False
 
     async def get_project_metrics(self) -> Dict[str, Any]:
-        """Get project metrics and statistics"""
+        """Get project metrics and statistics."""
         try:
             summary = await self.client.get_board_summary()
             # Extract metrics from summary
@@ -254,7 +255,7 @@ class Planka(KanbanInterface):
     async def report_blocker(
         self, task_id: str, blocker_description: str, severity: str = "medium"
     ) -> bool:
-        """Report a blocker on a task"""
+        """Report a blocker on a task."""
         try:
             # Add blocker as a comment
             comment = f"🚫 BLOCKER ({severity.upper()}): {blocker_description}"
@@ -267,7 +268,7 @@ class Planka(KanbanInterface):
     async def update_task_progress(
         self, task_id: str, progress_data: Dict[str, Any]
     ) -> bool:
-        """Update task progress"""
+        """Update task progress."""
         try:
             # Add progress as a comment
             progress = progress_data.get("progress", 0)
@@ -298,14 +299,16 @@ class Planka(KanbanInterface):
         Note: Attachment functionality not yet implemented for Planka integration.
         This is a placeholder to satisfy the abstract interface.
 
-        Args:
-            task_id: The task identifier
-            filename: Name for the attachment
-            content: File content
-            content_type: MIME type
+        Args
+        ----
+            task_id: The task identifier.
+            filename: Name for the attachment.
+            content: File content.
+            content_type: MIME type.
 
-        Returns:
-            Dict with success=False indicating not implemented
+        Returns
+        -------
+            Dict with success=False indicating not implemented.
         """
         return {
             "success": False,
@@ -319,11 +322,13 @@ class Planka(KanbanInterface):
         Note: Attachment functionality not yet implemented for Planka integration.
         This is a placeholder to satisfy the abstract interface.
 
-        Args:
-            task_id: The task identifier
+        Args
+        ----
+            task_id: The task identifier.
 
-        Returns:
-            Dict with empty attachments list
+        Returns
+        -------
+            Dict with empty attachments list.
         """
         return {
             "success": True,
@@ -340,13 +345,15 @@ class Planka(KanbanInterface):
         Note: Attachment functionality not yet implemented for Planka integration.
         This is a placeholder to satisfy the abstract interface.
 
-        Args:
-            attachment_id: The attachment ID
-            filename: The filename
-            task_id: Optional task ID
+        Args
+        ----
+            attachment_id: The attachment ID.
+            filename: The filename.
+            task_id: Optional task ID.
 
-        Returns:
-            Dict with success=False indicating not implemented
+        Returns
+        -------
+            Dict with success=False indicating not implemented.
         """
         return {
             "success": False,

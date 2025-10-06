@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Example: Complete Twitter Project Workflow
+Example: Complete Twitter Project Workflow.
 
 This demonstrates a complete autonomous agent lifecycle:
 1. Connect to Marcus via HTTP using streamablehttp_client
@@ -271,7 +271,9 @@ async def agent_worker(
                 role="Developer",
                 skills=skills,
             )
-            logger.log("agent_registration", f"{agent_id} registered with skills: {skills}")
+            logger.log(
+                "agent_registration", f"{agent_id} registered with skills: {skills}"
+            )
 
             # Task execution loop
             while True:
@@ -329,7 +331,9 @@ async def agent_worker(
                     progress=0,
                     message=f"[{agent_id}] Starting work on: {task_title}",
                 )
-                logger.log("progress_report", f"{agent_id} started task", {"task_id": task_id})
+                logger.log(
+                    "progress_report", f"{agent_id} started task", {"task_id": task_id}
+                )
 
                 # Simulate work
                 await simulate_task_work(task_title, task_id)
@@ -342,7 +346,9 @@ async def agent_worker(
                     progress=50,
                     message=f"[{agent_id}] Halfway through: {task_title}",
                 )
-                logger.log("progress_report", f"{agent_id} at 50%", {"task_id": task_id})
+                logger.log(
+                    "progress_report", f"{agent_id} at 50%", {"task_id": task_id}
+                )
 
                 await asyncio.sleep(0.5)
 
@@ -355,7 +361,9 @@ async def agent_worker(
                     message=f"[{agent_id}] Successfully completed: {task_title}",
                 )
                 logger.log(
-                    "progress_report", f"{agent_id} completed task", {"task_id": task_id}
+                    "progress_report",
+                    f"{agent_id} completed task",
+                    {"task_id": task_id},
                 )
 
                 # Track the completed task
@@ -368,6 +376,7 @@ async def agent_worker(
         print(f"\n❌ {error_msg}")
         logger.log("error", error_msg)
         import traceback
+
         traceback.print_exc()
 
 
@@ -434,11 +443,13 @@ async def calculator_workflow() -> None:
     agents_per_type = 10
     for i in range(agents_per_type):
         for template in agent_templates:
-            swarm_agents.append({
-                "agent_id": f"{template['type']}-{i+1:02d}",
-                "name": f"{template['name']} #{i+1}",
-                "skills": template["skills"],
-            })
+            swarm_agents.append(
+                {
+                    "agent_id": f"{template['type']}-{i+1:02d}",
+                    "name": f"{template['name']} #{i+1}",
+                    "skills": template["skills"],
+                }
+            )
 
     client = Inspector(connection_type="http")
     tracker = TaskTracker()
@@ -472,9 +483,7 @@ async def calculator_workflow() -> None:
             pretty_print("Available projects:", projects_result)
 
             projects_text = (
-                projects_result.content[0].text  # type: ignore[union-attr]
-                if projects_result.content
-                else "{}"
+                projects_result.content[0].text if projects_result.content else "{}"
             )
             projects_data = json.loads(projects_text)
             logger.log(

@@ -44,4 +44,4 @@ running Marcus server.
 
 from src.worker.inspector import Inspector, create_inspector
 
-__all__ = ['Inspector', 'create_inspector']
+__all__ = ["Inspector", "create_inspector"]

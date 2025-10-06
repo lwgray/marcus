@@ -176,7 +176,7 @@ class TaskDiagnosticCollector:
                 average_age_days = sum(ages_days) / len(ages_days)
 
         # Count tasks by priority
-        priority_counts = {}
+        priority_counts: Dict[str, int] = {}
         for task in self.project_tasks:
             priority_str = task.priority.value if task.priority else "unknown"
             priority_counts[priority_str] = priority_counts.get(priority_str, 0) + 1
@@ -225,23 +225,22 @@ class TaskDiagnosticCollector:
         Dict[str, Any]
             Detailed filtering statistics
         """
-        stats = {
-            "total_tasks": len(self.project_tasks),
-            "completed": len(completed_task_ids),
-            "assigned": len(assigned_task_ids),
-            "todo": 0,
-            "in_progress": 0,
-            "blocked_by_dependencies": [],
-            "blocked_by_assignment": [],
-            "available": [],
-        }
+        # Use typed variables for better type inference
+        total_tasks = len(self.project_tasks)
+        completed = len(completed_task_ids)
+        assigned = len(assigned_task_ids)
+        todo_count = 0
+        in_progress_count = 0
+        blocked_by_dependencies: List[Dict[str, Any]] = []
+        blocked_by_assignment: List[Dict[str, Any]] = []
+        available: List[Dict[str, Any]] = []
 
         for task in self.project_tasks:
             # Count by status
             if task.status == TaskStatus.TODO:
-                stats["todo"] += 1
+                todo_count += 1
             elif task.status == TaskStatus.IN_PROGRESS:
-                stats["in_progress"] += 1
+                in_progress_count += 1
 
             # Skip non-TODO tasks
             if task.status != TaskStatus.TODO:
@@ -249,7 +248,7 @@ class TaskDiagnosticCollector:
 
             # Check if already assigned
             if task.id in assigned_task_ids:
-                stats["blocked_by_assignment"].append(
+                blocked_by_assignment.append(
                     {
                         "id": task.id,
                         "name": task.name,
@@ -263,7 +262,7 @@ class TaskDiagnosticCollector:
             incomplete_deps = [d for d in deps if d not in completed_task_ids]
 
             if incomplete_deps:
-                stats["blocked_by_dependencies"].append(
+                blocked_by_dependencies.append(
                     {
                         "id": task.id,
                         "name": task.name,
@@ -276,9 +275,20 @@ class TaskDiagnosticCollector:
                     }
                 )
             else:
-                stats["available"].append(
+                available.append(
                     {"id": task.id, "name": task.name, "priority": task.priority.value}
                 )
+
+        stats = {
+            "total_tasks": total_tasks,
+            "completed": completed,
+            "assigned": assigned,
+            "todo": todo_count,
+            "in_progress": in_progress_count,
+            "blocked_by_dependencies": blocked_by_dependencies,
+            "blocked_by_assignment": blocked_by_assignment,
+            "available": available,
+        }
 
         return stats
 

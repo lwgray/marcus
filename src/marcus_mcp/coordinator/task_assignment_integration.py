@@ -6,7 +6,7 @@ task assignment workflow without modifying core task.py logic.
 """
 
 import logging
-from typing import Any, Optional
+from typing import Any, Awaitable, Callable, Optional
 
 from src.core.models import Task
 from src.marcus_mcp.coordinator.subtask_assignment import (
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 async def find_optimal_task_with_subtasks(
     agent_id: str,
     state: Any,
-    fallback_task_finder: Any,
+    fallback_task_finder: Callable[[str, Any], Awaitable[Optional[Task]]],
 ) -> Optional[Task]:
     """
     Find optimal task for agent, prioritizing subtasks.
@@ -34,7 +34,7 @@ async def find_optimal_task_with_subtasks(
         ID of the requesting agent
     state : Any
         Marcus server state instance
-    fallback_task_finder : Any
+    fallback_task_finder : Callable[[str, Any], Awaitable[Optional[Task]]]
         Original task finder function to use if no subtasks
 
     Returns

@@ -49,7 +49,7 @@ class MLflowTaskTracker:
     def __init__(self, experiment: MarcusExperiment):
         self.experiment = experiment
         self.task_start_times: Dict[str, float] = {}
-        self.completed_tasks: List[tuple] = []  # (task_id, completion_time)
+        self.completed_tasks: List[tuple[str, float]] = []  # (task_id, completion_time)
         self.start_time = asyncio.get_event_loop().time()
 
     def start_task(self, task_id: str) -> None:
@@ -63,9 +63,7 @@ class MLflowTaskTracker:
             completion_time = asyncio.get_event_loop().time()
 
             self.experiment.log_task_completion(
-                task_id=task_id,
-                duration_seconds=duration,
-                agent_id=agent_id
+                task_id=task_id, duration_seconds=duration, agent_id=agent_id
             )
 
             self.completed_tasks.append((task_id, completion_time))
@@ -92,7 +90,7 @@ class MLflowTaskTracker:
         # Calculate time between consecutive completions
         completion_times = [t[1] for t in self.completed_tasks]
         intervals = [
-            completion_times[i] - completion_times[i-1]
+            completion_times[i] - completion_times[i - 1]
             for i in range(1, len(completion_times))
         ]
 
@@ -158,7 +156,9 @@ async def agent_worker(
                 role="Developer",
                 skills=skills,
             )
-            logger.log("agent_registration", f"{agent_id} registered with skills: {skills}")
+            logger.log(
+                "agent_registration", f"{agent_id} registered with skills: {skills}"
+            )
 
             # Task execution loop
             while True:
@@ -166,14 +166,19 @@ async def agent_worker(
                 logger.log("task_request", f"{agent_id} requesting task")
 
                 # Simulate context request if enabled
-                if conditions.get("enable_context_requests") and random.random() < 0.3:
-                    experiment.log_context_request(agent_id, "pending-task", "task_context")
+                if (
+                    conditions.get("enable_context_requests")
+                    and random.random() < 0.3  # nosec B311
+                ):
+                    experiment.log_context_request(
+                        agent_id, "pending-task", "task_context"
+                    )
 
                 task_result = await client.request_next_task(agent_id)
 
                 # Handle different response formats
                 if hasattr(task_result, "content") and task_result.content:
-                    task_text = task_result.content[0].text  # type: ignore[union-attr]
+                    task_text = task_result.content[0].text
                     task_data = json.loads(task_text)
                 else:
                     task_data = task_result
@@ -215,15 +220,18 @@ async def agent_worker(
                 work_duration = random.uniform(0.5, 2.0)
 
                 # Simulate blocker if enabled
-                if conditions.get("enable_blockers") and random.random() < 0.15:
+                if (
+                    conditions.get("enable_blockers")
+                    and random.random() < 0.15  # nosec B311
+                ):
                     blocker_desc = f"Dependency on external service for {task_title}"
-                    severity = random.choice(["low", "medium", "high"])
+                    severity = random.choice(["low", "medium", "high"])  # nosec B311
 
                     experiment.log_blocker(
                         agent_id=agent_id,
                         task_id=task_id,
                         blocker_description=blocker_desc,
-                        severity=severity
+                        severity=severity,
                     )
                     print(f"⚠️  [{agent_id}] Blocker reported: {blocker_desc}")
                     work_duration += 1.0  # Blockers add delay
@@ -240,34 +248,38 @@ async def agent_worker(
                 )
 
                 # Simulate artifact creation if enabled
-                if conditions.get("enable_artifacts") and random.random() < 0.25:
+                if (
+                    conditions.get("enable_artifacts")
+                    and random.random() < 0.25  # nosec B311
+                ):
                     artifact_types = ["specification", "api", "design", "documentation"]
-                    artifact_type = random.choice(artifact_types)
+                    artifact_type = random.choice(artifact_types)  # nosec B311
 
                     experiment.log_artifact_event(
                         task_id=task_id,
                         artifact_type=artifact_type,
                         filename=f"{task_id}_{artifact_type}.md",
-                        description=f"Generated {artifact_type} for {task_title}"
+                        description=f"Generated {artifact_type} for {task_title}",
                     )
                     print(f"📄 [{agent_id}] Artifact created: {artifact_type}")
 
                 await asyncio.sleep(work_duration)
 
                 # Simulate decision logging if enabled
-                if conditions.get("enable_decisions") and random.random() < 0.20:
+                if (
+                    conditions.get("enable_decisions")
+                    and random.random() < 0.20  # nosec B311
+                ):
                     decisions = [
                         "Chose PostgreSQL for data persistence",
                         "Using JWT tokens for authentication",
                         "Implementing REST API with FastAPI",
-                        "Using Redis for caching layer"
+                        "Using Redis for caching layer",
                     ]
-                    decision = random.choice(decisions)
+                    decision = random.choice(decisions)  # nosec B311
 
                     experiment.log_decision(
-                        agent_id=agent_id,
-                        task_id=task_id,
-                        decision=decision
+                        agent_id=agent_id, task_id=task_id, decision=decision
                     )
                     print(f"💡 [{agent_id}] Decision logged: {decision}")
 
@@ -291,6 +303,7 @@ async def agent_worker(
         print(f"\n❌ {error_msg}")
         logger.log("error", error_msg)
         import traceback
+
         traceback.print_exc()
 
     finally:
@@ -302,7 +315,7 @@ async def agent_worker(
                 agent_id=agent_id,
                 tasks_completed=tasks_completed,
                 avg_task_duration=avg_duration,
-                success_rate=success_rate
+                success_rate=success_rate,
             )
 
 
@@ -347,13 +360,14 @@ async def twitter_mlflow_workflow(
     print(f"  🚫 Blockers: {'Enabled' if enable_blockers else 'Disabled'}")
     print(f"  📄 Artifacts: {'Enabled' if enable_artifacts else 'Disabled'}")
     print(f"  💡 Decisions: {'Enabled' if enable_decisions else 'Disabled'}")
-    print(f"  🔍 Context Requests: {'Enabled' if enable_context_requests else 'Disabled'}")
+    print(
+        f"  🔍 Context Requests: {'Enabled' if enable_context_requests else 'Disabled'}"
+    )
     print("=" * 70)
 
     # Initialize MLflow experiment
     experiment = MarcusExperiment(
-        experiment_name=experiment_name,
-        tracking_uri="./mlruns"
+        experiment_name=experiment_name, tracking_uri="./mlruns"
     )
 
     # Prepare experiment parameters
@@ -372,6 +386,7 @@ async def twitter_mlflow_workflow(
 
     # Import loggers
     from examples.twitter_clone import ConversationLogger
+
     logger = ConversationLogger()
     task_tracker = MLflowTaskTracker(experiment)
 
@@ -430,7 +445,7 @@ async def twitter_mlflow_workflow(
                     },
                 )
 
-                create_data = json.loads(create_result.content[0].text)  # type: ignore[union-attr]
+                create_data = json.loads(create_result.content[0].text)
                 total_tasks = create_data.get("tasks_created", 0)
 
                 print(f"✅ Project created with {total_tasks} tasks")
@@ -440,27 +455,56 @@ async def twitter_mlflow_workflow(
             print(f"\n🚀 Deploying {num_agents} specialized agents...")
 
             agent_templates = [
-                {"type": "backend-dev", "name": "Backend Developer",
-                 "skills": ["python", "api", "database", "fastapi", "backend"]},
-                {"type": "frontend-dev", "name": "Frontend Developer",
-                 "skills": ["javascript", "react", "ui", "frontend", "css"]},
-                {"type": "database-expert", "name": "Database Specialist",
-                 "skills": ["database", "sql", "postgresql", "schema", "migration"]},
-                {"type": "testing-engineer", "name": "Testing Engineer",
-                 "skills": ["testing", "pytest", "qa", "integration-tests", "python"]},
-                {"type": "devops-engineer", "name": "DevOps Engineer",
-                 "skills": ["docker", "deployment", "ci-cd", "infrastructure", "monitoring"]},
+                {
+                    "type": "backend-dev",
+                    "name": "Backend Developer",
+                    "skills": ["python", "api", "database", "fastapi", "backend"],
+                },
+                {
+                    "type": "frontend-dev",
+                    "name": "Frontend Developer",
+                    "skills": ["javascript", "react", "ui", "frontend", "css"],
+                },
+                {
+                    "type": "database-expert",
+                    "name": "Database Specialist",
+                    "skills": ["database", "sql", "postgresql", "schema", "migration"],
+                },
+                {
+                    "type": "testing-engineer",
+                    "name": "Testing Engineer",
+                    "skills": [
+                        "testing",
+                        "pytest",
+                        "qa",
+                        "integration-tests",
+                        "python",
+                    ],
+                },
+                {
+                    "type": "devops-engineer",
+                    "name": "DevOps Engineer",
+                    "skills": [
+                        "docker",
+                        "deployment",
+                        "ci-cd",
+                        "infrastructure",
+                        "monitoring",
+                    ],
+                },
             ]
 
             swarm_agents = []
             agents_per_type = num_agents // len(agent_templates)
             for i in range(agents_per_type):
                 for template in agent_templates:
-                    swarm_agents.append({
-                        "agent_id": f"{template['type']}-{i+1:02d}",
-                        "name": f"{template['name']} #{i+1}",
-                        "skills": template["skills"],
-                    })
+                    swarm_agents.append(
+                        {
+                            "agent_id": f"{template['type']}-{i+1:02d}",
+                            "name": f"{template['name']} #{i+1}",
+                            "skills": template["skills"],
+                        }
+                    )
 
             # Launch agents
             agent_tasks = []
@@ -483,16 +527,15 @@ async def twitter_mlflow_workflow(
             print("⏳ Agents working in parallel...")
 
             # Background task to monitor and log metrics periodically
-            async def monitor_metrics():
+            async def monitor_metrics() -> None:
                 """Periodically log project metrics to MLflow."""
                 step = 0
                 try:
-                    from src.monitoring.project_monitor import ProjectMonitor
                     from src.integrations.kanban_client import KanbanClient
+                    from src.monitoring.project_monitor import ProjectMonitor
 
                     kanban_client = KanbanClient()
-                    await kanban_client.initialize()
-                    monitor = ProjectMonitor(kanban_client)
+                    monitor = ProjectMonitor()
 
                     while True:
                         await asyncio.sleep(30)  # Log every 30 seconds
@@ -505,13 +548,17 @@ async def twitter_mlflow_workflow(
                                 blocked_tasks=state.blocked_tasks,
                                 progress_percent=state.progress_percent,
                                 velocity=state.team_velocity,
-                                step=step
+                                step=step,
                             )
                             step += 1
                         except Exception as e:
-                            logger.log("monitoring_error", f"Failed to log metrics: {e}")
+                            logger.log(
+                                "monitoring_error", f"Failed to log metrics: {e}"
+                            )
                 except Exception as e:
-                    logger.log("monitoring_error", f"Monitor initialization failed: {e}")
+                    logger.log(
+                        "monitoring_error", f"Monitor initialization failed: {e}"
+                    )
 
             # Start monitoring task
             monitor_task = asyncio.create_task(monitor_metrics())
@@ -530,14 +577,13 @@ async def twitter_mlflow_workflow(
 
             # Get final project state and metrics from Marcus
             try:
-                from src.monitoring.project_monitor import ProjectMonitor
                 from src.integrations.kanban_client import KanbanClient
+                from src.monitoring.project_monitor import ProjectMonitor
 
                 # Initialize monitoring to get velocity
                 kanban_client = KanbanClient()
-                await kanban_client.initialize()
 
-                monitor = ProjectMonitor(kanban_client)
+                monitor = ProjectMonitor()
                 project_state = await monitor.get_project_state()
 
                 # Log final project metrics to MLflow
@@ -556,7 +602,9 @@ async def twitter_mlflow_workflow(
                 print(f"\n📊 Final Metrics:")
                 print(f"  Velocity: {project_state.team_velocity:.2f} tasks/week")
                 print(f"  Progress: {project_state.progress_percent:.1f}%")
-                print(f"  Completed: {project_state.completed_tasks}/{project_state.total_tasks}")
+                print(
+                    f"  Completed: {project_state.completed_tasks}/{project_state.total_tasks}"
+                )
 
             except Exception as e:
                 print(f"⚠️  Could not fetch project state from Marcus: {e}")
@@ -565,8 +613,12 @@ async def twitter_mlflow_workflow(
                 avg_completion_time = task_tracker.get_avg_completion_time()
 
                 experiment.log_velocity(calculated_velocity)
-                experiment.log_metric("tasks_completed_total", len(task_tracker.completed_tasks))
-                experiment.log_metric("avg_completion_time_seconds", avg_completion_time)
+                experiment.log_metric(
+                    "tasks_completed_total", len(task_tracker.completed_tasks)
+                )
+                experiment.log_metric(
+                    "avg_completion_time_seconds", avg_completion_time
+                )
 
                 print(f"\n📊 Calculated Metrics (Fallback):")
                 print(f"  Velocity: {calculated_velocity:.2f} tasks/hour")
@@ -596,12 +648,13 @@ Use 'mlflow ui' to view detailed metrics and compare runs.
         except Exception as e:
             print(f"\n❌ Error: {e}")
             import traceback
+
             traceback.print_exc()
             experiment.end_run()
 
 
 async def main() -> None:
-    """Main entry point with CLI argument parsing."""
+    """Parse CLI arguments and run Twitter swarm workflow."""
     import argparse
 
     parser = argparse.ArgumentParser(
@@ -611,48 +664,33 @@ async def main() -> None:
         "--num-agents",
         type=int,
         default=50,
-        help="Number of agents to deploy (default: 50)"
+        help="Number of agents to deploy (default: 50)",
     )
     parser.add_argument(
         "--complexity",
         choices=["prototype", "standard", "enterprise"],
         default="enterprise",
-        help="Project complexity level"
+        help="Project complexity level",
     )
     parser.add_argument(
-        "--enable-blockers",
-        action="store_true",
-        help="Enable blocker reporting"
+        "--enable-blockers", action="store_true", help="Enable blocker reporting"
     )
     parser.add_argument(
-        "--enable-artifacts",
-        action="store_true",
-        help="Enable artifact logging"
+        "--enable-artifacts", action="store_true", help="Enable artifact logging"
     )
     parser.add_argument(
-        "--enable-decisions",
-        action="store_true",
-        help="Enable decision logging"
+        "--enable-decisions", action="store_true", help="Enable decision logging"
     )
     parser.add_argument(
-        "--enable-context-requests",
-        action="store_true",
-        help="Enable context requests"
+        "--enable-context-requests", action="store_true", help="Enable context requests"
     )
     parser.add_argument(
-        "--enable-all",
-        action="store_true",
-        help="Enable all experimental conditions"
+        "--enable-all", action="store_true", help="Enable all experimental conditions"
     )
     parser.add_argument(
-        "--experiment-name",
-        default="twitter-swarm-test",
-        help="MLflow experiment name"
+        "--experiment-name", default="twitter-swarm-test", help="MLflow experiment name"
     )
-    parser.add_argument(
-        "--run-name",
-        help="Specific MLflow run name"
-    )
+    parser.add_argument("--run-name", help="Specific MLflow run name")
 
     args = parser.parse_args()
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Project Generation Quality Validation Script
+Project Generation Quality Validation Script.
 
 This script validates the quality of project creation by:
 1. Creating a project from a natural language description
@@ -57,14 +57,14 @@ class ValidationReport:
         Parameters
         ----------
         description : str
-            The natural language project description
+            The natural language project description.
 
         Returns
         -------
         Set[str]
-            Set of extracted feature keywords
+            Set of extracted feature keywords.
         """
-        features = set()
+        features: Set[str] = set()
 
         # Common feature patterns
         patterns = [
@@ -129,17 +129,29 @@ class ValidationReport:
             comparison = {
                 "task_id": task_id,
                 "created_name": created_task.get("name", ""),
-                "received_name": received_task.get("name", "") if received_task else "NOT RECEIVED",
-                "name_match": created_task.get("name") == received_task.get("name") if received_task else False,
+                "received_name": (
+                    received_task.get("name", "") if received_task else "NOT RECEIVED"
+                ),
+                "name_match": (
+                    created_task.get("name") == received_task.get("name")
+                    if received_task
+                    else False
+                ),
                 "created_description": created_task.get("description", "")[:100],
-                "received_description": (received_task.get("description", "")[:100] if received_task else "NOT RECEIVED"),
+                "received_description": (
+                    received_task.get("description", "")[:100]
+                    if received_task
+                    else "NOT RECEIVED"
+                ),
                 "description_match": (
                     created_task.get("description") == received_task.get("description")
                     if received_task
                     else False
                 ),
                 "created_priority": created_task.get("priority"),
-                "received_priority": received_task.get("priority") if received_task else None,
+                "received_priority": (
+                    received_task.get("priority") if received_task else None
+                ),
                 "priority_match": (
                     created_task.get("priority") == received_task.get("priority")
                     if received_task
@@ -163,7 +175,9 @@ class ValidationReport:
             received_task = received_by_id.get(task_id)
 
             planka_desc = planka_task.get("description", "")
-            received_desc = received_task.get("description", "") if received_task else ""
+            received_desc = (
+                received_task.get("description", "") if received_task else ""
+            )
 
             # Check for repetition in descriptions
             desc_repetitive = self._is_repetitive(planka_desc)
@@ -171,13 +185,23 @@ class ValidationReport:
             comparison = {
                 "task_id": task_id,
                 "planka_name": planka_task.get("name", ""),
-                "received_name": received_task.get("name", "") if received_task else "NOT RECEIVED",
-                "name_match": planka_task.get("name") == received_task.get("name") if received_task else False,
+                "received_name": (
+                    received_task.get("name", "") if received_task else "NOT RECEIVED"
+                ),
+                "name_match": (
+                    planka_task.get("name") == received_task.get("name")
+                    if received_task
+                    else False
+                ),
                 "planka_description": planka_desc[:150],
                 "planka_desc_length": len(planka_desc),
-                "received_description": received_desc[:150] if received_task else "NOT RECEIVED",
+                "received_description": (
+                    received_desc[:150] if received_task else "NOT RECEIVED"
+                ),
                 "received_desc_length": len(received_desc),
-                "description_match": planka_desc == received_desc if received_task else False,
+                "description_match": (
+                    planka_desc == received_desc if received_task else False
+                ),
                 "planka_is_repetitive": desc_repetitive,
             }
 
@@ -190,12 +214,12 @@ class ValidationReport:
         Parameters
         ----------
         text : str
-            Text to check for repetition
+            Text to check for repetition.
 
         Returns
         -------
         bool
-            True if text appears repetitive
+            True if text appears repetitive.
         """
         if not text or len(text) < 50:
             return False
@@ -223,12 +247,14 @@ class ValidationReport:
         Parameters
         ----------
         client : Inspector
-            The Inspector client with active session
+            The Inspector client with active session.
         """
         # Build prompt for AI assessment
         task_summary = "\n".join(
-            [f"- {task.get('name', 'Untitled')}: {task.get('description', 'No description')[:100]}"
-             for task in self.created_tasks]
+            [
+                f"- {task.get('name', 'Untitled')}: {task.get('description', 'No description')[:100]}"
+                for task in self.created_tasks
+            ]
         )
 
         assessment_prompt = f"""
@@ -276,7 +302,9 @@ Respond in JSON format:
             "organization_score": 8.0,  # Placeholder
             "overall_score": round(coverage_pct / 10, 1),
             "missing_components": [
-                feature for feature, covered in self.feature_coverage.items() if not covered
+                feature
+                for feature, covered in self.feature_coverage.items()
+                if not covered
             ],
             "strengths": ["Tasks generated successfully", "Clear task structure"],
             "weaknesses": ["Some features may not be fully covered"],
@@ -289,7 +317,7 @@ Respond in JSON format:
         Returns
         -------
         str
-            Formatted validation report
+            Formatted validation report.
         """
         end_time = datetime.now()
         duration = (end_time - self.start_time).total_seconds()
@@ -302,7 +330,9 @@ Respond in JSON format:
         report += "SUMMARY\n"
         report += "-" * 80 + "\n"
         report += f"Validation Time: {duration:.2f} seconds\n"
-        report += f"Project Description Length: {len(self.project_description)} characters\n"
+        report += (
+            f"Project Description Length: {len(self.project_description)} characters\n"
+        )
         report += f"Extracted Features: {len(self.extracted_features)}\n"
         report += f"Tasks Created: {len(self.created_tasks)}\n"
         report += f"Tasks Received by Agent: {len(self.received_tasks)}\n"
@@ -341,7 +371,9 @@ Respond in JSON format:
 
         matches = {
             "name": sum(1 for c in self.task_comparison if c["name_match"]),
-            "description": sum(1 for c in self.task_comparison if c["description_match"]),
+            "description": sum(
+                1 for c in self.task_comparison if c["description_match"]
+            ),
             "priority": sum(1 for c in self.task_comparison if c["priority_match"]),
         }
 
@@ -369,22 +401,30 @@ Respond in JSON format:
 
             planka_matches = {
                 "name": sum(1 for c in self.planka_comparison if c["name_match"]),
-                "description": sum(1 for c in self.planka_comparison if c["description_match"]),
+                "description": sum(
+                    1 for c in self.planka_comparison if c["description_match"]
+                ),
             }
 
             planka_total = len(self.planka_comparison)
             report += f"Name Matches: {planka_matches['name']}/{planka_total}\n"
-            report += f"Description Matches: {planka_matches['description']}/{planka_total}\n"
+            report += (
+                f"Description Matches: {planka_matches['description']}/{planka_total}\n"
+            )
 
             # Check for repetitive descriptions
-            repetitive_count = sum(1 for c in self.planka_comparison if c["planka_is_repetitive"])
+            repetitive_count = sum(
+                1 for c in self.planka_comparison if c["planka_is_repetitive"]
+            )
             if repetitive_count > 0:
                 report += f"⚠️  Repetitive Descriptions Found: {repetitive_count}/{planka_total}\n"
 
             report += "\n"
 
             # Detail Planka mismatches
-            planka_mismatches = [c for c in self.planka_comparison if not c["description_match"]]
+            planka_mismatches = [
+                c for c in self.planka_comparison if not c["description_match"]
+            ]
             if planka_mismatches:
                 report += "PLANKA DESCRIPTION ISSUES:\n"
                 for mismatch in planka_mismatches[:3]:  # Show first 3
@@ -398,7 +438,9 @@ Respond in JSON format:
                     report += f"  Agent: {mismatch['received_description']}...\n"
 
                 if len(planka_mismatches) > 3:
-                    report += f"\n  ... and {len(planka_mismatches) - 3} more mismatches\n"
+                    report += (
+                        f"\n  ... and {len(planka_mismatches) - 3} more mismatches\n"
+                    )
             else:
                 report += "✅ Planka cards match what agents receive!\n"
             report += "\n"
@@ -406,11 +448,15 @@ Respond in JSON format:
         # AI Quality Assessment
         report += "AI QUALITY ASSESSMENT\n"
         report += "-" * 80 + "\n"
-        report += f"Coverage Score: {self.ai_quality_score.get('coverage_score', 0)}/10\n"
+        report += (
+            f"Coverage Score: {self.ai_quality_score.get('coverage_score', 0)}/10\n"
+        )
         report += f"Clarity Score: {self.ai_quality_score.get('clarity_score', 0)}/10\n"
         report += f"Completeness Score: {self.ai_quality_score.get('completeness_score', 0)}/10\n"
         report += f"Organization Score: {self.ai_quality_score.get('organization_score', 0)}/10\n"
-        report += f"Overall Score: {self.ai_quality_score.get('overall_score', 0)}/10\n\n"
+        report += (
+            f"Overall Score: {self.ai_quality_score.get('overall_score', 0)}/10\n\n"
+        )
 
         missing = self.ai_quality_score.get("missing_components", [])
         if missing:
@@ -441,16 +487,28 @@ Respond in JSON format:
         # Check Planka integrity
         planka_issues = False
         if self.planka_comparison:
-            planka_desc_matches = sum(1 for c in self.planka_comparison if c["description_match"])
-            planka_repetitive = sum(1 for c in self.planka_comparison if c["planka_is_repetitive"])
-            planka_issues = (planka_desc_matches < len(self.planka_comparison)) or (planka_repetitive > 0)
+            planka_desc_matches = sum(
+                1 for c in self.planka_comparison if c["description_match"]
+            )
+            planka_repetitive = sum(
+                1 for c in self.planka_comparison if c["planka_is_repetitive"]
+            )
+            planka_issues = (planka_desc_matches < len(self.planka_comparison)) or (
+                planka_repetitive > 0
+            )
 
-        if overall_score >= 8.0 and all(matches[k] == total for k in matches) and not planka_issues:
+        if (
+            overall_score >= 8.0
+            and all(matches[k] == total for k in matches)
+            and not planka_issues
+        ):
             report += "✅ EXCELLENT: Tasks are high quality and perfectly preserved\n"
         elif overall_score >= 6.0 and matches["name"] == total and not planka_issues:
             report += "⚠️  GOOD: Tasks are reasonable quality with minor issues\n"
         elif planka_issues:
-            report += "⚠️  PLANKA ISSUES DETECTED: Check Planka card integrity section above\n"
+            report += (
+                "⚠️  PLANKA ISSUES DETECTED: Check Planka card integrity section above\n"
+            )
         else:
             report += "❌ NEEDS IMPROVEMENT: Significant quality or integrity issues\n"
 
@@ -599,6 +657,7 @@ async def validate_project_generation() -> None:
             try:
                 # Read workspace to get board IDs
                 import json as json_lib
+
                 workspace_path = project_root / ".marcus_workspace.json"
 
                 if workspace_path.exists():
@@ -616,8 +675,8 @@ async def validate_project_generation() -> None:
                             "get_all_board_tasks",
                             arguments={
                                 "board_id": str(board_id),
-                                "project_id": str(project_id)
-                            }
+                                "project_id": str(project_id),
+                            },
                         )
 
                         board_data = json.loads(board_tasks_result.content[0].text)
@@ -626,16 +685,20 @@ async def validate_project_generation() -> None:
                             validator.planka_tasks = board_data.get("tasks", [])
                             validator.created_tasks = validator.planka_tasks
 
-                            print(f"✅ Retrieved {len(validator.planka_tasks)} tasks from Planka")
+                            print(
+                                f"✅ Retrieved {len(validator.planka_tasks)} tasks from Planka"
+                            )
 
                             if validator.planka_tasks:
                                 sample = validator.planka_tasks[0]
                                 print(f"   Sample: {sample.get('name', 'N/A')[:50]}")
-                                desc_len = len(sample.get('description', ''))
+                                desc_len = len(sample.get("description", ""))
                                 print(f"   Description: {desc_len} chars")
 
                                 if desc_len > 500:
-                                    print(f"   ⚠️  Long description - checking for repetition...")
+                                    print(
+                                        f"   ⚠️  Long description - checking for repetition..."
+                                    )
                         else:
                             print(f"⚠️  Tool failed: {board_data.get('error')}")
                             validator.created_tasks = validator.received_tasks.copy()
@@ -649,6 +712,7 @@ async def validate_project_generation() -> None:
             except Exception as e:
                 print(f"⚠️  Error: {e}")
                 import traceback
+
                 traceback.print_exc()
                 validator.created_tasks = validator.received_tasks.copy()
 
@@ -677,6 +741,7 @@ async def validate_project_generation() -> None:
     except Exception as e:
         print(f"\n❌ Validation failed: {e}")
         import traceback
+
         traceback.print_exc()
 
 

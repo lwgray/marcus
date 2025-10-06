@@ -31,7 +31,7 @@ end_experiment()
 import asyncio
 import logging
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from src.experiments import MarcusExperiment
 
@@ -73,13 +73,12 @@ class LiveExperimentMonitor:
 
         # MLflow experiment
         self.mlflow_experiment = MarcusExperiment(
-            experiment_name=experiment_name,
-            tracking_uri="./mlruns"
+            experiment_name=experiment_name, tracking_uri="./mlruns"
         )
 
         # Monitoring state
         self.is_running = False
-        self.monitor_task: Optional[asyncio.Task] = None
+        self.monitor_task: Optional[asyncio.Task[None]] = None
         self.run_name: Optional[str] = None
 
         # Tracked metrics
@@ -123,7 +122,7 @@ class LiveExperimentMonitor:
             return {
                 "success": False,
                 "error": "Experiment already running",
-                "run_id": self.run_name
+                "run_id": self.run_name,
             }
 
         # Generate run name if not provided
@@ -136,19 +135,17 @@ class LiveExperimentMonitor:
         if params is None:
             params = {}
 
-        params.update({
-            "board_id": self.board_id,
-            "project_id": self.project_id,
-            "tracking_interval": self.tracking_interval,
-            "experiment_type": "live_monitoring"
-        })
+        params.update(
+            {
+                "board_id": self.board_id,
+                "project_id": self.project_id,
+                "tracking_interval": self.tracking_interval,
+                "experiment_type": "live_monitoring",
+            }
+        )
 
         # Start MLflow run
-        self.mlflow_experiment.start_run(
-            run_name=run_name,
-            params=params,
-            tags=tags
-        )
+        self.mlflow_experiment.start_run(run_name=run_name, params=params, tags=tags)
 
         # Start background monitoring
         self.is_running = True
@@ -161,7 +158,7 @@ class LiveExperimentMonitor:
             "run_name": run_name,
             "experiment_name": self.experiment_name,
             "board_id": self.board_id,
-            "message": "Live experiment monitoring started"
+            "message": "Live experiment monitoring started",
         }
 
     async def stop(self) -> Dict[str, Any]:
@@ -174,10 +171,7 @@ class LiveExperimentMonitor:
             Final statistics and status
         """
         if not self.is_running:
-            return {
-                "success": False,
-                "error": "No experiment currently running"
-            }
+            return {"success": False, "error": "No experiment currently running"}
 
         self.is_running = False
 
@@ -190,24 +184,21 @@ class LiveExperimentMonitor:
                 pass
 
         # Log final metrics
-        final_metrics = {
-            "total_registered_agents": len(self.registered_agents),
-            "total_task_assignments": len(self.task_assignments),
-            "total_task_completions": len(self.task_completions),
-            "total_blockers": self.blockers_reported,
-            "total_artifacts": self.artifacts_created,
-            "total_decisions": self.decisions_logged,
-            "total_context_requests": self.context_requests,
+        final_metrics: Dict[str, float] = {
+            "total_registered_agents": float(len(self.registered_agents)),
+            "total_task_assignments": float(len(self.task_assignments)),
+            "total_task_completions": float(len(self.task_completions)),
+            "total_blockers": float(self.blockers_reported),
+            "total_artifacts": float(self.artifacts_created),
+            "total_decisions": float(self.decisions_logged),
+            "total_context_requests": float(self.context_requests),
         }
 
         # Generate summary
         summary = self._generate_summary()
 
         # End MLflow run
-        self.mlflow_experiment.end_run(
-            final_metrics=final_metrics,
-            summary=summary
-        )
+        self.mlflow_experiment.end_run(final_metrics=final_metrics, summary=summary)
 
         logger.info(f"Stopped live experiment: {self.run_name}")
 
@@ -215,7 +206,7 @@ class LiveExperimentMonitor:
             "success": True,
             "run_name": self.run_name,
             "final_metrics": final_metrics,
-            "summary": summary
+            "summary": summary,
         }
 
     async def _monitor_loop(self) -> None:
@@ -224,12 +215,9 @@ class LiveExperimentMonitor:
 
         try:
             from src.monitoring.project_monitor import ProjectMonitor
-            from src.integrations.kanban_client import KanbanClient
 
             # Initialize monitoring
-            kanban_client = KanbanClient()
-            await kanban_client.initialize()
-            monitor = ProjectMonitor(kanban_client)
+            monitor = ProjectMonitor()
 
             while self.is_running:
                 await asyncio.sleep(self.tracking_interval)
@@ -246,14 +234,12 @@ class LiveExperimentMonitor:
                         blocked_tasks=state.blocked_tasks,
                         progress_percent=state.progress_percent,
                         velocity=state.team_velocity,
-                        step=step
+                        step=step,
                     )
 
                     # Log agent count
                     self.mlflow_experiment.log_metric(
-                        "active_agents",
-                        len(self.registered_agents),
-                        step=step
+                        "active_agents", len(self.registered_agents), step=step
                     )
 
                     step += 1
@@ -275,7 +261,7 @@ class LiveExperimentMonitor:
         agent_id: str,
         name: str,
         role: str,
-        skills: list,
+        skills: List[str],
     ) -> None:
         """
         Record an agent registration.
@@ -300,10 +286,7 @@ class LiveExperimentMonitor:
         }
 
         # Log to MLflow
-        self.mlflow_experiment.log_param(
-            f"agent_{agent_id}_skills",
-            ",".join(skills)
-        )
+        self.mlflow_experiment.log_param(f"agent_{agent_id}_skills", ",".join(skills))
 
         logger.info(f"Recorded agent registration: {agent_id} ({name})")
 
@@ -333,9 +316,7 @@ class LiveExperimentMonitor:
         # Log to MLflow
         if duration_seconds:
             self.mlflow_experiment.log_task_completion(
-                task_id=task_id,
-                duration_seconds=duration_seconds,
-                agent_id=agent_id
+                task_id=task_id, duration_seconds=duration_seconds, agent_id=agent_id
             )
 
         logger.info(f"Recorded task completion: {task_id} by {agent_id}")
@@ -354,7 +335,7 @@ class LiveExperimentMonitor:
             agent_id=agent_id,
             task_id=task_id,
             blocker_description=description,
-            severity=severity
+            severity=severity,
         )
 
         logger.info(f"Recorded blocker: {agent_id} on {task_id}")
@@ -373,7 +354,7 @@ class LiveExperimentMonitor:
             task_id=task_id,
             artifact_type=artifact_type,
             filename=filename,
-            description=description
+            description=description,
         )
 
         logger.info(f"Recorded artifact: {filename} ({artifact_type})")
@@ -388,9 +369,7 @@ class LiveExperimentMonitor:
         self.decisions_logged += 1
 
         self.mlflow_experiment.log_decision(
-            agent_id=agent_id,
-            task_id=task_id,
-            decision=decision
+            agent_id=agent_id, task_id=task_id, decision=decision
         )
 
         logger.info(f"Recorded decision: {agent_id} on {task_id}")
@@ -405,9 +384,7 @@ class LiveExperimentMonitor:
         self.context_requests += 1
 
         self.mlflow_experiment.log_context_request(
-            agent_id=agent_id,
-            task_id=task_id,
-            context_type=context_type
+            agent_id=agent_id, task_id=task_id, context_type=context_type
         )
 
         logger.debug(f"Recorded context request: {agent_id} for {task_id}")
@@ -438,11 +415,15 @@ class LiveExperimentMonitor:
     def _generate_summary(self) -> str:
         """Generate experiment summary."""
         duration = (
-            datetime.now() -
-            datetime.fromisoformat(
-                list(self.registered_agents.values())[0]["registered_at"]
-            )
-        ).total_seconds() if self.registered_agents else 0
+            (
+                datetime.now()
+                - datetime.fromisoformat(
+                    list(self.registered_agents.values())[0]["registered_at"]
+                )
+            ).total_seconds()
+            if self.registered_agents
+            else 0
+        )
 
         summary = f"""
 Live Experiment Summary
@@ -474,11 +455,13 @@ Top Agents by Completions:
         sorted_agents = sorted(
             self.registered_agents.items(),
             key=lambda x: x[1]["tasks_completed"],
-            reverse=True
+            reverse=True,
         )[:5]
 
         for agent_id, info in sorted_agents:
-            summary += f"- {info['name']} ({agent_id}): {info['tasks_completed']} tasks\n"
+            summary += (
+                f"- {info['name']} ({agent_id}): {info['tasks_completed']} tasks\n"
+            )
 
         return summary.strip()
 

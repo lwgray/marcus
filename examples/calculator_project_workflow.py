@@ -380,7 +380,9 @@ async def calculator_workflow() -> None:
 
                 task = task_data["task"]
                 task_id = task.get("id", "unknown")  # Response uses "id" not "task_id"
-                task_title = task.get("name", "Untitled Task")  # Response uses "name" not "title"
+                task_title = task.get(
+                    "name", "Untitled Task"
+                )  # Response uses "name" not "title"
                 task_count += 1
 
                 print(f"\n{'=' * 70}")

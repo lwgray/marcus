@@ -1485,9 +1485,10 @@ async def get_all_board_tasks(
         - count: Number of tasks retrieved
     """
     try:
-        from src.integrations.providers.planka import PlankaKanbanProvider
+        from src.integrations.providers.planka_kanban import PlankaKanban
 
-        provider = PlankaKanbanProvider(board_id=board_id, project_id=project_id)
+        provider = PlankaKanban(config={})
+        await provider.connect()
 
         tasks = await provider.get_all_tasks()
 

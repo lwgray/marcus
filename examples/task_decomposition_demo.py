@@ -17,7 +17,7 @@ from src.marcus_mcp.coordinator import (
 )
 
 
-async def demo_task_decomposition():
+async def demo_task_decomposition() -> None:
     """Demonstrate task decomposition workflow."""
     print("=" * 60)
     print("Task Decomposition System Demo")
@@ -166,7 +166,7 @@ async def demo_task_decomposition():
 
     # 5. Simulate subtask assignment workflow
     print("\n5. Simulating subtask assignment workflow...")
-    completed_subtasks = set()
+    completed_subtasks: set[str] = set()
 
     for i in range(len(subtasks)):
         # Get next available subtask
