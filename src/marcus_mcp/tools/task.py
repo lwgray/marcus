@@ -755,6 +755,45 @@ async def report_task_progress(
             update_data["status"] = TaskStatus.DONE
             update_data["completed_at"] = datetime.now().isoformat()
 
+            # Handle subtask completion
+            if hasattr(state, "subtask_manager") and state.subtask_manager:
+                if task_id in state.subtask_manager.subtasks:
+                    # This is a subtask - handle subtask-specific completion
+                    from src.marcus_mcp.coordinator.subtask_assignment import (
+                        check_and_complete_parent_task,
+                        update_subtask_progress_in_parent,
+                    )
+
+                    # Update subtask status
+                    state.subtask_manager.update_subtask_status(
+                        task_id, TaskStatus.DONE, agent_id
+                    )
+
+                    # Get parent task ID
+                    subtask = state.subtask_manager.subtasks[task_id]
+                    parent_task_id = subtask.parent_task_id
+
+                    # Update parent task progress
+                    await update_subtask_progress_in_parent(
+                        parent_task_id,
+                        task_id,
+                        state.subtask_manager,
+                        state.kanban_client,
+                    )
+
+                    # Check if parent should be auto-completed
+                    parent_completed = await check_and_complete_parent_task(
+                        parent_task_id,
+                        state.subtask_manager,
+                        state.kanban_client,
+                    )
+
+                    if parent_completed:
+                        logger.info(
+                            f"Parent task {parent_task_id} auto-completed "
+                            f"after subtask {task_id} completion"
+                        )
+
             # Calculate actual hours for experiment tracking
             task_assignment = state.agent_tasks.get(agent_id)
             if task_assignment:
@@ -767,12 +806,13 @@ async def report_task_progress(
 
             # Record in active experiment if one is running
             from src.experiments.live_experiment_monitor import get_active_monitor
+
             monitor = get_active_monitor()
             if monitor and monitor.is_running:
                 monitor.record_task_completion(
                     task_id=task_id,
                     agent_id=agent_id,
-                    duration_seconds=duration_seconds
+                    duration_seconds=duration_seconds,
                 )
 
             # Record completion in Memory if available
@@ -830,6 +870,13 @@ async def report_task_progress(
             # Include assigned_to for Planka provider compatibility
             if agent_id:
                 update_data["assigned_to"] = agent_id
+
+            # Handle subtask status update
+            if hasattr(state, "subtask_manager") and state.subtask_manager:
+                if task_id in state.subtask_manager.subtasks:
+                    state.subtask_manager.update_subtask_status(
+                        task_id, TaskStatus.IN_PROGRESS, agent_id
+                    )
 
         elif status == "blocked":
             update_data["status"] = TaskStatus.BLOCKED
@@ -958,13 +1005,14 @@ async def report_blocker(
 
         # Record in active experiment if one is running
         from src.experiments.live_experiment_monitor import get_active_monitor
+
         monitor = get_active_monitor()
         if monitor and monitor.is_running:
             monitor.record_blocker(
                 agent_id=agent_id,
                 task_id=task_id,
                 description=blocker_description,
-                severity=severity
+                severity=severity,
             )
 
         # Add detailed comment
@@ -1009,6 +1057,41 @@ async def report_blocker(
 
 async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Task]:
     """
+    Find the best task for an agent, prioritizing subtasks.
+
+    Checks for available subtasks first, then falls back to regular task
+    assignment if no subtasks are available.
+
+    Parameters
+    ----------
+    agent_id : str
+        The requesting agent's ID
+    state : Any
+        Marcus server state instance
+
+    Returns
+    -------
+    Optional[Task]
+        The best task for the agent (may be a subtask converted to Task),
+        or None if no suitable task found
+    """
+    # Import subtask integration helper
+    from src.marcus_mcp.coordinator.task_assignment_integration import (
+        find_optimal_task_with_subtasks,
+    )
+
+    # Use integrated finder that checks subtasks first
+    return await find_optimal_task_with_subtasks(
+        agent_id, state, _find_optimal_task_original_logic
+    )
+
+
+async def _find_optimal_task_original_logic(
+    agent_id: str, state: Any
+) -> Optional[Task]:
+    """
+    Original task assignment logic (used as fallback when no subtasks available).
+
     Find the best task for an agent using AI-powered analysis.
 
     Parameters
@@ -1376,9 +1459,7 @@ async def find_optimal_task_basic(
 
 
 async def get_all_board_tasks(
-    board_id: str,
-    project_id: str,
-    state: Any
+    board_id: str, project_id: str, state: Any
 ) -> Dict[str, Any]:
     """
     Get all tasks from a specific Planka board.
@@ -1406,10 +1487,7 @@ async def get_all_board_tasks(
     try:
         from src.integrations.providers.planka import PlankaKanbanProvider
 
-        provider = PlankaKanbanProvider(
-            board_id=board_id,
-            project_id=project_id
-        )
+        provider = PlankaKanbanProvider(board_id=board_id, project_id=project_id)
 
         tasks = await provider.get_all_tasks()
 
@@ -1418,14 +1496,9 @@ async def get_all_board_tasks(
             "tasks": tasks,
             "count": len(tasks),
             "board_id": board_id,
-            "project_id": project_id
+            "project_id": project_id,
         }
 
     except Exception as e:
         logger.error(f"Error fetching board tasks: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "tasks": [],
-            "count": 0
-        }
+        return {"success": False, "error": str(e), "tasks": [], "count": 0}

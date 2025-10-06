@@ -127,6 +127,11 @@ class MarcusServer:
         self._lock_manager = EventLoopLockManager()
         self.tasks_being_assigned: set[str] = set()
 
+        # Subtask management for hierarchical task decomposition
+        from src.marcus_mcp.coordinator import SubtaskManager
+
+        self.subtask_manager = SubtaskManager()
+
         # Assignment monitoring
         self.assignment_monitor: Optional[AssignmentMonitor] = None
 
@@ -1001,10 +1006,7 @@ class MarcusServer:
             )
 
         @self._fastmcp.tool()  # type: ignore[misc]
-        async def get_all_board_tasks(
-            board_id: str,
-            project_id: str
-        ) -> Dict[str, Any]:
+        async def get_all_board_tasks(board_id: str, project_id: str) -> Dict[str, Any]:
             """Get all tasks from a specific Planka board for validation/inspection."""
             from .tools.task import get_all_board_tasks as impl
 
@@ -1162,10 +1164,9 @@ class MarcusServer:
 
             @app.tool()  # type: ignore[misc]
             async def get_all_board_tasks(
-                board_id: str,
-                project_id: str
+                board_id: str, project_id: str
             ) -> Dict[str, Any]:
-                """Get all tasks from a specific Planka board for validation/inspection."""
+                """Get all tasks from a specific Planka board."""
                 from .tools.task import get_all_board_tasks as impl
 
                 return await impl(
