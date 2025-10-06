@@ -37,14 +37,21 @@ async def log_artifact(
     Store an artifact with prescriptive location management.
 
     By default, artifacts are stored in standard locations based on
-    their type:
-    - specifications → docs/specifications/
+    their type. Marcus accepts ANY artifact type, making it domain-agnostic.
+
+    Standard types (with predefined locations):
+    - specification → docs/specifications/
     - api → docs/api/
     - design → docs/design/
     - architecture → docs/architecture/
     - documentation → docs/
     - reference → docs/references/
     - temporary → tmp/artifacts/
+
+    Custom types:
+    - Any other type → docs/artifacts/ (default fallback)
+    - You can use domain-specific types like "podcast-script", "research",
+      "video-storyboard", "marketing-copy", etc.
 
     Parameters
     ----------
@@ -95,8 +102,8 @@ async def log_artifact(
                 "data": {"task_id": task_id, "filename": filename},
             }
 
-        # Validate artifact type
-        valid_types = [
+        # Log info for non-standard artifact types (but still accept them!)
+        standard_types = [
             "specification",
             "api",
             "design",
@@ -105,15 +112,11 @@ async def log_artifact(
             "reference",
             "temporary",
         ]
-        if artifact_type not in valid_types:
-            return {
-                "success": False,
-                "error": (
-                    f"Invalid artifact_type '{artifact_type}'. "
-                    f"Must be one of: {', '.join(valid_types)}"
-                ),
-                "data": {"task_id": task_id, "filename": filename},
-            }
+        if artifact_type not in standard_types:
+            logger.info(
+                f"Using custom artifact type '{artifact_type}' for {filename}. "
+                f"Will store in docs/artifacts/ (use 'location' parameter to override)"
+            )
 
         # Determine storage location
         if location:

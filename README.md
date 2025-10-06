@@ -8,18 +8,36 @@
 [![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-green)](https://modelcontextprotocol.io/)
 
 ## What is Marcus?
-Marcus turns your ideas into working software by coordinating AI agents. Tell Marcus what you want to build in plain English, and it creates a project board that multiple AI agents work from autonomously.
+Marcus is a **domain-agnostic AI agent coordination platform**. While it excels at turning your ideas into working software, Marcus can coordinate AI agents for **any multi-step project** - from software development to content creation, research, marketing, and beyond.
+
+Tell Marcus what you want to create in plain English, and it breaks down the work into tasks that multiple AI agents execute autonomously with proper context and coordination.
 
 ### Why I Built This
 I was stuck between micromanaging every agent decision or letting agents run wild. I wanted to step away and trust that agents had enough context to build what I wanted. Marcus solves this by being the project manager - you describe once, agents build with proper context and boundaries.
 
 ### How It Works
+**Example 1: Software Development**
 1. **You say:** "Build a todo app with authentication"
-2. **Marcus:** Creates tasks on a GitHub project board with dependencies
+2. **Marcus:** Creates tasks on a project board with dependencies
 3. **Agents:** Pull tasks, get context from previous work, build autonomously
 4. **You:** Watch progress, intervene only when needed
 
+**Example 2: Content Creation**
+1. **You say:** "Create a 10-minute podcast about chess opening history"
+2. **Marcus:** Breaks down into research, outline, script writing, fact-checking, audio production
+3. **Agents:** Research specialist → Content strategist → Script writer → Fact checker (in sequence)
+4. **You:** Receive completed podcast script with verified sources
+
 Each task is locked to one agent until complete, preventing conflicts. Agents share context through the board, seeing what others built without direct communication.
+
+### Domain Agnostic Design
+Marcus accepts **any artifact type** (code, research, scripts, designs, marketing copy, etc.), making it suitable for:
+- 🖥️ **Software Development** - APIs, frontends, databases
+- 🎙️ **Content Creation** - Podcasts, videos, articles
+- 🔬 **Research** - Literature reviews, data analysis, reports
+- 📊 **Marketing** - Campaigns, copy, social media
+- 📚 **Education** - Course content, lesson plans, assessments
+- ...and any other domain requiring multi-agent coordination
 
 ---
 

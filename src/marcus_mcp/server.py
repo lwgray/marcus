@@ -1001,10 +1001,7 @@ class MarcusServer:
             )
 
         @self._fastmcp.tool()  # type: ignore[misc]
-        async def get_all_board_tasks(
-            board_id: str,
-            project_id: str
-        ) -> Dict[str, Any]:
+        async def get_all_board_tasks(board_id: str, project_id: str) -> Dict[str, Any]:
             """Get all tasks from a specific Planka board for validation/inspection."""
             from .tools.task import get_all_board_tasks as impl
 
@@ -1162,10 +1159,11 @@ class MarcusServer:
 
             @app.tool()  # type: ignore[misc]
             async def get_all_board_tasks(
-                board_id: str,
-                project_id: str
+                board_id: str, project_id: str
             ) -> Dict[str, Any]:
-                """Get all tasks from a specific Planka board for validation/inspection."""
+                """
+                Get all tasks from a Planka board for validation.
+                """
                 from .tools.task import get_all_board_tasks as impl
 
                 return await impl(
@@ -1457,7 +1455,11 @@ class MarcusServer:
                 """
                 Store an artifact with smart location management.
 
-                Artifacts are automatically placed in standard locations based on type:
+                Marcus accepts ANY artifact type, making it domain-agnostic.
+                Use domain-specific types like "podcast-script", "research",
+                "video-storyboard", "marketing-copy", etc.
+
+                Standard types (with predefined locations):
                 - specification → docs/specifications/
                 - api → docs/api/
                 - design → docs/design/
@@ -1465,6 +1467,9 @@ class MarcusServer:
                 - documentation → docs/
                 - reference → docs/references/
                 - temporary → tmp/artifacts/
+
+                Custom types:
+                - Any other type → docs/artifacts/ (default fallback)
 
                 Parameters
                 ----------
@@ -1475,8 +1480,8 @@ class MarcusServer:
                 content : str
                     The artifact content to store
                 artifact_type : str
-                    Type of artifact: specification, api, design, architecture,
-                    documentation, reference, or temporary
+                    Type of artifact (any string accepted - use descriptive names
+                    like "podcast-script", "research", "video-storyboard", etc.)
                 project_root : str
                     REQUIRED: Absolute path to the project root directory where
                     artifacts will be created. All agents working on the same
