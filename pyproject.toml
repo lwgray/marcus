@@ -84,8 +84,6 @@ strict = true
 [tool.pydocstyle]
 convention = "numpy"
 add-ignore = ["D100", "D104"]  # Module and package docstrings optional
-match-dir = "^(?!tests).*"
-match = ".*\\.py"
 
 [tool.isort]
 profile = "black"

@@ -8,7 +8,7 @@ It runs whenever no suitable tasks are found and generates actionable reports.
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 
 from src.core.models import Task, TaskStatus
 
@@ -560,10 +560,13 @@ class DiagnosticReportGenerator:
                     issue_type="circular_dependency",
                     severity="critical",
                     affected_tasks=cycle,
-                    description=f"Circular dependency detected: {' → '.join(task_names[:3])}...",
+                    description=(
+                        f"Circular dependency: {' → '.join(task_names[:3])}..."
+                    ),
                     recommendation=(
-                        "Break the circular dependency by removing one dependency link. "
-                        f"Consider removing the dependency from '{task_names[0]}' to '{task_names[-1]}'"
+                        "Break the circular dependency by removing one link. "
+                        f"Consider removing '{task_names[0]}' → "
+                        f"'{task_names[-1]}'"
                     ),
                     details={"cycle": cycle, "cycle_length": len(cycle)},
                 )
@@ -602,8 +605,8 @@ class DiagnosticReportGenerator:
                         f"non-existent dependencies: {item['missing_dependency_ids']}"
                     ),
                     recommendation=(
-                        f"Remove invalid dependency references from '{item['task_name']}' "
-                        "or create the missing tasks"
+                        f"Remove invalid dependencies from "
+                        f"'{item['task_name']}' or create missing tasks"
                     ),
                     details=item,
                 )
@@ -643,10 +646,13 @@ class DiagnosticReportGenerator:
                     issue_type="all_tasks_blocked",
                     severity="critical",
                     affected_tasks=[t["id"] for t in blocked_tasks],
-                    description=f"All {len(blocked_tasks)} TODO tasks are blocked by dependencies",
+                    description=(
+                        f"All {len(blocked_tasks)} TODO tasks blocked by "
+                        "dependencies"
+                    ),
                     recommendation=(
-                        "This likely indicates a circular dependency or missing completed tasks. "
-                        "Check the circular dependency issues above."
+                        "Likely a circular dependency or missing tasks. "
+                        "Check circular dependency issues above."
                     ),
                     details={"blocked_tasks": blocked_tasks},
                 )
@@ -806,9 +812,8 @@ def format_diagnostic_report(report: DiagnosticReport) -> str:
         lines.append("⚠️  ISSUES DETECTED")
         lines.append("-" * 70)
         for i, issue in enumerate(report.issues, 1):
-            lines.append(
-                f"{i}. [{issue.severity.upper()}] {issue.issue_type.replace('_', ' ').title()}"
-            )
+            issue_title = issue.issue_type.replace("_", " ").title()
+            lines.append(f"{i}. [{issue.severity.upper()}] {issue_title}")
             lines.append(f"   {issue.description}")
             lines.append(f"   Affected tasks: {len(issue.affected_tasks)}")
             lines.append(f"   💡 {issue.recommendation}")
@@ -825,3 +830,6 @@ def format_diagnostic_report(report: DiagnosticReport) -> str:
     lines.append("=" * 70)
 
     return "\n".join(lines)
+
+
+# test
