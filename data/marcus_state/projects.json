@@ -18,8 +18,8 @@
     "_stored_at": "2025-10-05T17:48:46.471183"
   },
   "active_project": {
-    "project_id": "6fe75b9d-78ca-4d0e-a50a-1f8d25b6189b",
-    "_stored_at": "2025-10-05T22:42:37.865902"
+    "project_id": "affded4e-f5ac-4c5b-b8df-e472dc1430a2",
+    "_stored_at": "2025-10-05T23:13:01.771614"
   },
   "7297d2c3-e9f7-4916-ab93-d53a458c6f29": {
     "id": "7297d2c3-e9f7-4916-ab93-d53a458c6f29",
@@ -110,5 +110,23 @@
       "planka"
     ],
     "_stored_at": "2025-10-05T22:42:37.864043"
+  },
+  "affded4e-f5ac-4c5b-b8df-e472dc1430a2": {
+    "id": "affded4e-f5ac-4c5b-b8df-e472dc1430a2",
+    "name": "copper - Main Board",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": "1615108288561546956",
+      "project_name": "copper",
+      "board_id": "1615108288687376078",
+      "board_name": "Main Board"
+    },
+    "created_at": "2025-10-05T23:12:57.187519",
+    "last_used": "2025-10-05T23:13:01.770309",
+    "tags": [
+      "discovered",
+      "planka"
+    ],
+    "_stored_at": "2025-10-05T23:13:01.770736"
   }
 }

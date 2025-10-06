@@ -9,6 +9,7 @@ Task: Implement User Management (task_user_management_implement)
 """
 
 from app.config import get_settings
+from app.routes import auth
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -63,6 +64,5 @@ async def health_check() -> dict[str, str]:
     return {"status": "healthy"}
 
 
-# Routes will be registered here by subagents
-# from app.routes import auth
-# app.include_router(auth.router, prefix=settings.api_v1_prefix)
+# Register routes
+app.include_router(auth.router, prefix=settings.api_v1_prefix)
