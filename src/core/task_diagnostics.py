@@ -8,7 +8,7 @@ It runs whenever no suitable tasks are found and generates actionable reports.
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 
 from src.core.models import Task, TaskStatus
 
@@ -176,7 +176,7 @@ class TaskDiagnosticCollector:
                 average_age_days = sum(ages_days) / len(ages_days)
 
         # Count tasks by priority
-        priority_counts = {}
+        priority_counts: Dict[str, int] = {}
         for task in self.project_tasks:
             priority_str = task.priority.value if task.priority else "unknown"
             priority_counts[priority_str] = priority_counts.get(priority_str, 0) + 1
@@ -225,23 +225,22 @@ class TaskDiagnosticCollector:
         Dict[str, Any]
             Detailed filtering statistics
         """
-        stats = {
-            "total_tasks": len(self.project_tasks),
-            "completed": len(completed_task_ids),
-            "assigned": len(assigned_task_ids),
-            "todo": 0,
-            "in_progress": 0,
-            "blocked_by_dependencies": [],
-            "blocked_by_assignment": [],
-            "available": [],
-        }
+        # Use typed variables for better type inference
+        total_tasks = len(self.project_tasks)
+        completed = len(completed_task_ids)
+        assigned = len(assigned_task_ids)
+        todo_count = 0
+        in_progress_count = 0
+        blocked_by_dependencies: List[Dict[str, Any]] = []
+        blocked_by_assignment: List[Dict[str, Any]] = []
+        available: List[Dict[str, Any]] = []
 
         for task in self.project_tasks:
             # Count by status
             if task.status == TaskStatus.TODO:
-                stats["todo"] += 1
+                todo_count += 1
             elif task.status == TaskStatus.IN_PROGRESS:
-                stats["in_progress"] += 1
+                in_progress_count += 1
 
             # Skip non-TODO tasks
             if task.status != TaskStatus.TODO:
@@ -249,7 +248,7 @@ class TaskDiagnosticCollector:
 
             # Check if already assigned
             if task.id in assigned_task_ids:
-                stats["blocked_by_assignment"].append(
+                blocked_by_assignment.append(
                     {
                         "id": task.id,
                         "name": task.name,
@@ -263,7 +262,7 @@ class TaskDiagnosticCollector:
             incomplete_deps = [d for d in deps if d not in completed_task_ids]
 
             if incomplete_deps:
-                stats["blocked_by_dependencies"].append(
+                blocked_by_dependencies.append(
                     {
                         "id": task.id,
                         "name": task.name,
@@ -276,9 +275,20 @@ class TaskDiagnosticCollector:
                     }
                 )
             else:
-                stats["available"].append(
+                available.append(
                     {"id": task.id, "name": task.name, "priority": task.priority.value}
                 )
+
+        stats = {
+            "total_tasks": total_tasks,
+            "completed": completed,
+            "assigned": assigned,
+            "todo": todo_count,
+            "in_progress": in_progress_count,
+            "blocked_by_dependencies": blocked_by_dependencies,
+            "blocked_by_assignment": blocked_by_assignment,
+            "available": available,
+        }
 
         return stats
 
@@ -550,10 +560,13 @@ class DiagnosticReportGenerator:
                     issue_type="circular_dependency",
                     severity="critical",
                     affected_tasks=cycle,
-                    description=f"Circular dependency detected: {' → '.join(task_names[:3])}...",
+                    description=(
+                        f"Circular dependency: {' → '.join(task_names[:3])}..."
+                    ),
                     recommendation=(
-                        "Break the circular dependency by removing one dependency link. "
-                        f"Consider removing the dependency from '{task_names[0]}' to '{task_names[-1]}'"
+                        "Break the circular dependency by removing one link. "
+                        f"Consider removing '{task_names[0]}' → "
+                        f"'{task_names[-1]}'"
                     ),
                     details={"cycle": cycle, "cycle_length": len(cycle)},
                 )
@@ -592,8 +605,8 @@ class DiagnosticReportGenerator:
                         f"non-existent dependencies: {item['missing_dependency_ids']}"
                     ),
                     recommendation=(
-                        f"Remove invalid dependency references from '{item['task_name']}' "
-                        "or create the missing tasks"
+                        f"Remove invalid dependencies from "
+                        f"'{item['task_name']}' or create missing tasks"
                     ),
                     details=item,
                 )
@@ -633,10 +646,13 @@ class DiagnosticReportGenerator:
                     issue_type="all_tasks_blocked",
                     severity="critical",
                     affected_tasks=[t["id"] for t in blocked_tasks],
-                    description=f"All {len(blocked_tasks)} TODO tasks are blocked by dependencies",
+                    description=(
+                        f"All {len(blocked_tasks)} TODO tasks blocked by "
+                        "dependencies"
+                    ),
                     recommendation=(
-                        "This likely indicates a circular dependency or missing completed tasks. "
-                        "Check the circular dependency issues above."
+                        "Likely a circular dependency or missing tasks. "
+                        "Check circular dependency issues above."
                     ),
                     details={"blocked_tasks": blocked_tasks},
                 )
@@ -796,9 +812,8 @@ def format_diagnostic_report(report: DiagnosticReport) -> str:
         lines.append("⚠️  ISSUES DETECTED")
         lines.append("-" * 70)
         for i, issue in enumerate(report.issues, 1):
-            lines.append(
-                f"{i}. [{issue.severity.upper()}] {issue.issue_type.replace('_', ' ').title()}"
-            )
+            issue_title = issue.issue_type.replace("_", " ").title()
+            lines.append(f"{i}. [{issue.severity.upper()}] {issue_title}")
             lines.append(f"   {issue.description}")
             lines.append(f"   Affected tasks: {len(issue.affected_tasks)}")
             lines.append(f"   💡 {issue.recommendation}")
@@ -815,3 +830,6 @@ def format_diagnostic_report(report: DiagnosticReport) -> str:
     lines.append("=" * 70)
 
     return "\n".join(lines)
+
+
+# test

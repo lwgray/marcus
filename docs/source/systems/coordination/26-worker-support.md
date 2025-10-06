@@ -16,7 +16,7 @@ The Worker Support system is Marcus's sophisticated infrastructure for enabling 
          │                                         │
          ▼                                         ▼
 ┌─────────────────┐                      ┌──────────────────────┐
-│ WorkerMCPClient │                      │ MarcusServer         │
+│ Inspector │                      │ MarcusServer         │
 │  - Session Mgmt │                      │  - Tool Handlers    │
 │  - Error Handling│                      │  - State Management │
 │  - JSON Parsing │                      │  - Assignment Logic │
@@ -25,7 +25,7 @@ The Worker Support system is Marcus's sophisticated infrastructure for enabling 
 
 ### Key Classes
 
-#### WorkerMCPClient
+#### Inspector
 The primary client class that provides a high-level interface for worker agents to communicate with Marcus:
 
 - **Connection Management**: Handles MCP connection lifecycle through stdio pipes
@@ -59,7 +59,7 @@ The Worker Support system sits at the **client edge** of the Marcus ecosystem, s
 
 ### Data Flow
 ```
-Agent → WorkerMCPClient → MCP Protocol → Marcus Server → Kanban/Memory/Context
+Agent → Inspector → MCP Protocol → Marcus Server → Kanban/Memory/Context
   │                                                           │
   └─────────────── AI Suggestions & Context ←─────────────────┘
 ```
@@ -343,7 +343,7 @@ Modern AI agents need sophisticated tooling to operate effectively:
 
 ### 2. **Scalability Considerations**
 The system design supports scaling to many concurrent agents:
-- **Stateless Client**: WorkerMCPClient maintains minimal state
+- **Stateless Client**: Inspector maintains minimal state
 - **Server-Side Intelligence**: Heavy computation happens centrally
 - **Async Architecture**: Non-blocking operations support high concurrency
 - **Provider Abstraction**: Can scale across multiple kanban systems

@@ -1,13 +1,51 @@
 {
-  "93749b6a-5f91-4d86-9e29-85054136448c": {
-    "id": "93749b6a-5f91-4d86-9e29-85054136448c",
-    "name": "test50 - Main Board",
+  "active_project": {
+    "project_id": "488c44dd-978a-4c3d-abd7-dad274e9dd04",
+    "_stored_at": "2025-10-06T11:56:44.637808"
+  },
+  "eb9f616e-1140-4863-8501-8e1ac32293ee": {
+    "id": "eb9f616e-1140-4863-8501-8e1ac32293ee",
+    "name": "Task Master Test",
     "provider": "planka",
     "provider_config": {
-      "project_id": "1614945202378639068",
-      "project_name": "test50",
-      "board_id": "1614945202504468190",
-      "board_name": "Main Board"
+      "project_id": "1533678301472621705",
+      "board_id": "1533859887128249584"
+    },
+    "created_at": "2025-07-14T15:02:22.013854",
+    "last_used": "2025-10-04T19:36:00.905311",
+    "tags": [
+      "default",
+      "migrated"
+    ],
+    "_stored_at": "2025-10-04T19:36:00.905626"
+  },
+  "488c44dd-978a-4c3d-abd7-dad274e9dd04": {
+    "id": "488c44dd-978a-4c3d-abd7-dad274e9dd04",
+    "name": "1st Project - todo",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": "1612478574885864456",
+      "board_id": "1612478920202912778",
+      "project_name": "1st Project",
+      "board_name": "todo"
+    },
+    "created_at": "2025-10-05T05:48:41.393839",
+    "last_used": "2025-10-06T11:56:44.636256",
+    "tags": [
+      "planka",
+      "discovered"
+    ],
+    "_stored_at": "2025-10-06T11:56:44.636800"
+  },
+  "44ed31f0-6013-4575-8699-c92208782752": {
+    "id": "44ed31f0-6013-4575-8699-c92208782752",
+    "name": "test - test",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": "1612725664018859025",
+      "project_name": "test",
+      "board_id": "1612727100878357523",
+      "board_name": "test"
     },
     "created_at": "2025-10-05T17:48:46.469752",
     "last_used": "2025-10-05T17:48:46.470857",
@@ -73,6 +111,60 @@
       "discovered",
       "planka"
     ],
-    "_stored_at": "2025-10-05T22:14:16.121905"
+    "_stored_at": "2025-10-05T08:22:00.598362"
+  },
+  "088c326b-6358-4fbf-b102-a53ed87d98d6": {
+    "id": "088c326b-6358-4fbf-b102-a53ed87d98d6",
+    "name": "Task Management API Demo - Main Board",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": "1615085245810345044",
+      "project_name": "Task Management API Demo",
+      "board_id": "1615085245978117206",
+      "board_name": "Main Board"
+    },
+    "created_at": "2025-10-06T10:47:51.264714",
+    "last_used": "2025-10-06T10:47:51.264724",
+    "tags": [
+      "discovered",
+      "planka"
+    ],
+    "_stored_at": "2025-10-06T10:47:51.265193"
+  },
+  "9a610c23-bc11-43b9-a238-bf3e6fadf7eb": {
+    "id": "9a610c23-bc11-43b9-a238-bf3e6fadf7eb",
+    "name": "Task Management API Demo - Main Board",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": "1615093159899956517",
+      "project_name": "Task Management API Demo",
+      "board_id": "1615093160076117287",
+      "board_name": "Main Board"
+    },
+    "created_at": "2025-10-06T10:47:51.265837",
+    "last_used": "2025-10-06T10:47:51.265838",
+    "tags": [
+      "discovered",
+      "planka"
+    ],
+    "_stored_at": "2025-10-06T10:47:51.266110"
+  },
+  "8cfa53ff-287a-4094-ba2b-8604594b4019": {
+    "id": "8cfa53ff-287a-4094-ba2b-8604594b4019",
+    "name": "copper - Main Board",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": "1615108288561546956",
+      "project_name": "copper",
+      "board_id": "1615108288687376078",
+      "board_name": "Main Board"
+    },
+    "created_at": "2025-10-06T10:47:51.266573",
+    "last_used": "2025-10-06T10:47:51.266574",
+    "tags": [
+      "discovered",
+      "planka"
+    ],
+    "_stored_at": "2025-10-06T10:47:51.266832"
   }
 }

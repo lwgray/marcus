@@ -152,7 +152,7 @@ If you want to build your own agent programmatically:
 
 ```python
 """
-Demo script showing how to use WorkerMCPClient with stdio connections.
+Demo script showing how to use Inspector with stdio connections.
 
 This demonstrates:
 1. Connecting via stdio (spawns separate Marcus instance for isolated testing)
@@ -171,7 +171,7 @@ from typing import Any
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.worker.client import WorkerMCPClient  # noqa: E402
+from src.worker.inspector import Inspector  # noqa: E402
 
 
 def pretty_print_result(label: str, result: Any) -> None:
@@ -200,13 +200,13 @@ async def demo_stdio_connection() -> None:
     - You want to test without affecting the main Marcus server
     - You're running automated tests or development workflows
 
-    This is the RECOMMENDED way to test WorkerMCPClient!
+    This is the RECOMMENDED way to test Inspector!
     """
     print("\n" + "=" * 60)
     print("DEMO: STDIO Connection (Separate Test Instance)")
     print("=" * 60)
 
-    client = WorkerMCPClient()
+    client = Inspector()
 
     try:
         print("\n📡 Starting separate Marcus instance for testing...")
@@ -250,7 +250,7 @@ async def demo_stdio_connection() -> None:
 
 async def main() -> None:
     """Run the stdio demo."""
-    print("\n🚀 WorkerMCPClient Connection Demo")
+    print("\n🚀 Inspector Connection Demo")
     print("=" * 60)
     print("\nThis demo shows how to programmatically test Marcus")
     print("by spawning a separate instance via stdio.")

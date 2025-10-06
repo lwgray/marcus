@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Project Generation Quality Validation Script
+Project Generation Quality Validation Script.
 
 This script validates the quality of project creation by:
 1. Creating a project from a natural language description
@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Set
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.worker.new_client import Inspector  # noqa: E402
+from src.worker.inspector import Inspector  # noqa: E402
 
 
 class ValidationReport:
@@ -57,14 +57,14 @@ class ValidationReport:
         Parameters
         ----------
         description : str
-            The natural language project description
+            The natural language project description.
 
         Returns
         -------
         Set[str]
-            Set of extracted feature keywords
+            Set of extracted feature keywords.
         """
-        features = set()
+        features: Set[str] = set()
 
         # Common feature patterns
         patterns = [
@@ -214,12 +214,12 @@ class ValidationReport:
         Parameters
         ----------
         text : str
-            Text to check for repetition
+            Text to check for repetition.
 
         Returns
         -------
         bool
-            True if text appears repetitive
+            True if text appears repetitive.
         """
         if not text or len(text) < 50:
             return False
@@ -247,7 +247,7 @@ class ValidationReport:
         Parameters
         ----------
         client : Inspector
-            The Inspector client with active session
+            The Inspector client with active session.
         """
         # Build prompt for AI assessment
         task_summary = "\n".join(
@@ -317,7 +317,7 @@ Respond in JSON format:
         Returns
         -------
         str
-            Formatted validation report
+            Formatted validation report.
         """
         end_time = datetime.now()
         duration = (end_time - self.start_time).total_seconds()
@@ -670,32 +670,38 @@ async def validate_project_generation() -> None:
                     print(f"   Using Board ID: {board_id}, Project ID: {project_id}")
 
                     if board_id and project_id:
-                        # Call Planka provider directly
-                        from src.integrations.providers.planka import Planka
-
-                        planka_provider = Planka(
-                            board_id=str(board_id), project_id=str(project_id)
+                        # Use the new get_all_board_tasks tool
+                        board_tasks_result = await session.call_tool(
+                            "get_all_board_tasks",
+                            arguments={
+                                "board_id": str(board_id),
+                                "project_id": str(project_id),
+                            },
                         )
 
-                        # Fetch all tasks
-                        planka_tasks_list = await planka_provider.get_all_tasks()
-                        validator.planka_tasks = planka_tasks_list
-                        validator.created_tasks = planka_tasks_list
+                        board_data = json.loads(board_tasks_result.content[0].text)
 
-                        print(
-                            f"✅ Retrieved {len(validator.planka_tasks)} tasks from Planka"
-                        )
+                        if board_data.get("success"):
+                            validator.planka_tasks = board_data.get("tasks", [])
+                            validator.created_tasks = validator.planka_tasks
 
-                        if validator.planka_tasks:
-                            sample = validator.planka_tasks[0]
-                            print(f"   Sample: {sample.get('name', 'N/A')[:50]}")
-                            desc_len = len(sample.get("description", ""))
-                            print(f"   Description: {desc_len} chars")
+                            print(
+                                f"✅ Retrieved {len(validator.planka_tasks)} tasks from Planka"
+                            )
 
-                            if desc_len > 500:
-                                print(
-                                    f"   ⚠️  Long description - checking for repetition..."
-                                )
+                            if validator.planka_tasks:
+                                sample = validator.planka_tasks[0]
+                                print(f"   Sample: {sample.get('name', 'N/A')[:50]}")
+                                desc_len = len(sample.get("description", ""))
+                                print(f"   Description: {desc_len} chars")
+
+                                if desc_len > 500:
+                                    print(
+                                        f"   ⚠️  Long description - checking for repetition..."
+                                    )
+                        else:
+                            print(f"⚠️  Tool failed: {board_data.get('error')}")
+                            validator.created_tasks = validator.received_tasks.copy()
                     else:
                         print(f"⚠️  No board_id/project_id in workspace")
                         validator.created_tasks = validator.received_tasks.copy()

@@ -357,76 +357,65 @@ class TestContext:
         # Backend should not depend on frontend
         assert context._infer_dependency(backend_task, frontend_task) is False
 
-    def test_get_decisions_for_task(self, context):
+    @pytest.mark.asyncio
+    async def test_get_decisions_for_task(self, context):
         """Test getting decisions for a specific task"""
+        await context.log_decision(
+            "agent_1", "task_1", "Decision 1", "Why 1", "Impact 1"
+        )
+        await context.log_decision(
+            "agent_2", "task_2", "Decision 2", "Why 2", "Impact 2"
+        )
+        await context.log_decision(
+            "agent_1", "task_1", "Decision 3", "Why 3", "Impact 3"
+        )
 
-        async def setup():
-            await context.log_decision(
-                "agent_1", "task_1", "Decision 1", "Why 1", "Impact 1"
-            )
-            await context.log_decision(
-                "agent_2", "task_2", "Decision 2", "Why 2", "Impact 2"
-            )
-            await context.log_decision(
-                "agent_1", "task_1", "Decision 3", "Why 3", "Impact 3"
-            )
-
-        asyncio.run(setup())
-
-        task_1_decisions = context.get_decisions_for_task("task_1")
+        task_1_decisions = await context.get_decisions_for_task("task_1")
 
         assert len(task_1_decisions) == 2
         assert all(d.task_id == "task_1" for d in task_1_decisions)
 
-    def test_get_implementation_summary(self, context):
+    @pytest.mark.asyncio
+    async def test_get_implementation_summary(self, context):
         """Test getting implementation summary"""
+        await context.add_implementation("task_1", {"apis": ["GET /users"]})
+        await context.add_implementation("task_2", {"apis": ["GET /posts"]})
+        await context.log_decision("agent_1", "task_1", "Use REST", "Standard", "All")
 
-        async def setup():
-            await context.add_implementation("task_1", {"apis": ["GET /users"]})
-            await context.add_implementation("task_2", {"apis": ["GET /posts"]})
-            await context.log_decision(
-                "agent_1", "task_1", "Use REST", "Standard", "All"
-            )
-
-        asyncio.run(setup())
-
-        summary = context.get_implementation_summary()
+        summary = await context.get_implementation_summary()
 
         assert summary["total_implementations"] == 2
         assert summary["total_decisions"] == 1
         assert "recent_implementations" in summary
 
-    def test_clear_old_data(self, context):
+    @pytest.mark.asyncio
+    async def test_clear_old_data(self, context):
         """Test clearing old context data"""
+        # Add current data
+        await context.add_implementation("task_1", {"apis": ["GET /users"]})
 
-        async def setup():
-            # Add current data
-            await context.add_implementation("task_1", {"apis": ["GET /users"]})
+        # Add old decision (mock old timestamp)
+        old_decision = Decision(
+            decision_id="old_1",
+            task_id="old_task",
+            agent_id="agent_1",
+            timestamp=datetime.now() - timedelta(days=40),
+            what="Old decision",
+            why="Old reason",
+            impact="Old impact",
+        )
+        context.decisions.append(old_decision)
 
-            # Add old decision (mock old timestamp)
-            old_decision = Decision(
-                decision_id="old_1",
-                task_id="old_task",
-                agent_id="agent_1",
-                timestamp=datetime.now() - timedelta(days=40),
-                what="Old decision",
-                why="Old reason",
-                impact="Old impact",
-            )
-            context.decisions.append(old_decision)
-
-            # Add recent decision
-            await context.log_decision(
-                "agent_2", "task_2", "Recent decision", "Recent reason", "Recent impact"
-            )
-
-        asyncio.run(setup())
+        # Add recent decision
+        await context.log_decision(
+            "agent_2", "task_2", "Recent decision", "Recent reason", "Recent impact"
+        )
 
         # Should have 2 decisions before clearing
         assert len(context.decisions) == 2
 
         # Clear data older than 30 days
-        context.clear_old_data(days=30)
+        await context.clear_old_data(days=30)
 
         # Should only have 1 recent decision
         assert len(context.decisions) == 1

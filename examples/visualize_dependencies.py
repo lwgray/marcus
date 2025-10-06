@@ -24,7 +24,7 @@ from typing import Any, Dict, List
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.worker.new_client import Inspector  # noqa: E402
+from src.worker.inspector import Inspector  # noqa: E402
 
 
 def print_section(title: str) -> None:
@@ -46,10 +46,10 @@ def visualize_dependency_graph(tasks: List[Dict[str, Any]]) -> None:
     print("\n📊 DEPENDENCY GRAPH:\n")
 
     # Group tasks by status
-    by_status = {
+    by_status: Dict[str, List[Dict[str, Any]]] = {
         "TODO": [],
         "IN_PROGRESS": [],
-        "DONE": []
+        "DONE": [],
     }
 
     for task in tasks:
@@ -65,11 +65,7 @@ def visualize_dependency_graph(tasks: List[Dict[str, Any]]) -> None:
         if not status_tasks:
             continue
 
-        status_emoji = {
-            "TODO": "📋",
-            "IN_PROGRESS": "🔄",
-            "DONE": "✅"
-        }
+        status_emoji = {"TODO": "📋", "IN_PROGRESS": "🔄", "DONE": "✅"}
 
         print(f"{status_emoji[status]} {status} ({len(status_tasks)} tasks)")
         print("-" * 70)
@@ -92,7 +88,7 @@ def visualize_dependency_graph(tasks: List[Dict[str, Any]]) -> None:
                         status_icon = {
                             "DONE": "✅",
                             "IN_PROGRESS": "🔄",
-                            "TODO": "⏳"
+                            "TODO": "⏳",
                         }.get(dep_status, "❓")
                         print(f"      {status_icon} {dep_name} ({dep_status})")
                     else:
@@ -171,12 +167,13 @@ async def main() -> None:
                 return
 
             project_id = calculator_project.get("id")
-            print(f"Found project: {calculator_project.get('name')} (ID: {project_id[:8]}...)")
+            print(
+                f"Found project: {calculator_project.get('name')} (ID: {project_id[:8]}...)"
+            )
 
             # Select the project to view its tasks
             await session.call_tool(
-                "select_project",
-                arguments={"project_id": project_id}
+                "select_project", arguments={"project_id": project_id}
             )
 
             # Now visualize the dependency graph
@@ -295,6 +292,7 @@ The diagnostic correctly identified:
         print("   2. Start server if needed: ./marcus start")
         print(f"   3. Verify URL is correct: {url}\n")
         import traceback
+
         traceback.print_exc()
 
 

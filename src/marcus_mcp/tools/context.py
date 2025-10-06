@@ -82,12 +82,11 @@ async def log_decision(
 
         # Record in active experiment if one is running
         from src.experiments.live_experiment_monitor import get_active_monitor
+
         monitor = get_active_monitor()
         if monitor and monitor.is_running:
             monitor.record_decision(
-                agent_id=agent_id,
-                task_id=task_id,
-                decision=decision
+                agent_id=agent_id, task_id=task_id, decision=decision
             )
 
         return {
@@ -107,19 +106,69 @@ async def get_task_context(task_id: str, state: Any) -> Dict[str, Any]:
     This is useful for agents who want to understand the broader
     context of their work or review decisions made on dependencies.
 
+    For subtasks, includes parent task context and shared conventions.
+
     Parameters
     ----------
     task_id : str
-        The task to get context for
+        The task to get context for (can be regular task or subtask ID)
     state : Any
         Marcus server state instance
 
     Returns
     -------
     Dict[str, Any]
-        Dict with task context including implementations, dependencies, and decisions
+        Dict with task context including implementations, dependencies, and
+        decisions. For subtasks, includes parent_task, shared_conventions,
+        and dependency_artifacts.
     """
     try:
+        # Check if this is a subtask
+        if hasattr(state, "subtask_manager") and state.subtask_manager:
+            # Check if task_id is a subtask
+            if task_id in state.subtask_manager.subtasks:
+                # Get subtask context
+                subtask_context = state.subtask_manager.get_subtask_context(task_id)
+
+                # Get parent task context
+                parent_task_id = subtask_context["parent_task_id"]
+                parent_task = None
+                for t in state.project_tasks:
+                    if t.id == parent_task_id:
+                        parent_task = t
+                        break
+
+                # Build enriched context
+                context_dict = {
+                    "is_subtask": True,
+                    "subtask_info": subtask_context["subtask"],
+                    "parent_task": (
+                        {
+                            "id": parent_task_id,
+                            "name": parent_task.name if parent_task else "Unknown",
+                            "description": (
+                                parent_task.description if parent_task else ""
+                            ),
+                            "labels": parent_task.labels if parent_task else [],
+                        }
+                        if parent_task
+                        else {"id": parent_task_id}
+                    ),
+                    "shared_conventions": subtask_context["shared_conventions"],
+                    "dependency_artifacts": subtask_context["dependency_artifacts"],
+                    "sibling_subtasks": subtask_context["sibling_subtasks"],
+                }
+
+                # Add parent task's context if Context system is available
+                if hasattr(state, "context") and state.context and parent_task:
+                    parent_context = await state.context.get_context(
+                        parent_task_id, parent_task.dependencies or []
+                    )
+                    context_dict["parent_context"] = parent_context.to_dict()
+
+                return {"success": True, "context": context_dict}
+
+        # Standard task context (not a subtask)
         # Check if Context system is available
         if not hasattr(state, "context") or not state.context:
             return {"success": False, "error": "Context system not enabled"}
@@ -137,6 +186,7 @@ async def get_task_context(task_id: str, state: Any) -> Dict[str, Any]:
         # Get context
         context = await state.context.get_context(task_id, task.dependencies or [])
         context_dict = context.to_dict()
+        context_dict["is_subtask"] = False
 
         # Add artifact information
         artifacts = await _collect_task_artifacts(task_id, task, state)

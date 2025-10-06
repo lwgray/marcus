@@ -92,13 +92,11 @@ async def register_agent(
 
         # Record in active experiment if one is running
         from src.experiments.live_experiment_monitor import get_active_monitor
+
         monitor = get_active_monitor()
         if monitor and monitor.is_running:
             monitor.record_agent_registration(
-                agent_id=agent_id,
-                name=name,
-                role=role,
-                skills=skills
+                agent_id=agent_id, name=name, role=role, skills=skills
             )
 
         # Log conversation event for visualization

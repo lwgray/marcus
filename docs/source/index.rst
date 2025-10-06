@@ -67,10 +67,10 @@ Here's how an agent works with Marcus:
 
 .. code-block:: python
 
-    from src.worker.client import WorkerMCPClient
+    from src.worker.inspector import Inspector
 
     # Connect to Marcus MCP server
-    client = WorkerMCPClient()
+    client = Inspector()
     async with client.connect_to_marcus() as session:
         # Register agent with capabilities
         await client.register_agent(

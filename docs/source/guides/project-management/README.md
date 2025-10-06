@@ -52,6 +52,19 @@ Monitor system connectivity, assignment integrity, and board synchronization hea
 
 **Systems involved**: System Connectivity, Assignment Health, Board Health, Health Metrics Aggregation, Proactive Health Management
 
+### **[Hierarchical Task Decomposition](hierarchical-task-decomposition.md)**
+Use AI-powered task decomposition to break down large features into manageable subtasks with clear interfaces and automatic integration.
+
+**What you'll learn**:
+- When to decompose tasks vs. keep them intact
+- How AI analyzes and breaks down complex tasks
+- Working with subtasks as an agent
+- Tracking progress with parent auto-completion
+- Best practices for designing good decompositions
+- Monitoring subtask dependencies and status
+
+**Systems involved**: Decomposer, SubtaskManager, Subtask Assignment, AI Intelligence Engine, Context System, Kanban Integration
+
 ## Key Project Management Capabilities
 
 ### **Natural Language Project Creation**
@@ -120,6 +133,7 @@ Every project improves Marcus:
 - **Creating your first project?** → [Creating Projects](creating-projects.md)
 - **Want project visibility?** → [Monitoring Status](monitoring-status.md)
 - **Concerned about health?** → [Analyzing Health](analyzing-health.md)
+- **Breaking down large tasks?** → [Hierarchical Task Decomposition](hierarchical-task-decomposition.md)
 - **Need agent coordination?** → [Agent Workflows](../agent-workflows/)
 
 ---

@@ -1,35 +1,47 @@
 """
 Worker package for Marcus.
 
-This package provides the core infrastructure for worker agents to communicate
-with the Marcus server through the Model Context Protocol (MCP). It handles
-agent registration, task requests, progress reporting, and error handling.
+This package provides the MCP client for testing Marcus workflows and
+validating Marcus functionality. Inspector supports both stdio (isolated
+testing) and HTTP (integration testing) connections.
 
-The worker package is designed to enable autonomous agents to:
-- Register themselves with the Marcus system
-- Request and receive task assignments
-- Report progress and completion status
-- Handle blockers and errors gracefully
-- Maintain reliable communication with the Marcus server
+The Inspector client enables:
+- Testing Marcus MCP tool functionality
+- Validating task assignment workflows
+- Debugging Marcus coordination logic
+- Simulating agent behavior for development
 
-Modules
+Classes
 -------
-mcp_client : module
-    MCP client implementation for worker-to-server communication
+Inspector
+    Unified MCP testing client supporting stdio and HTTP connections
 
 Examples
 --------
-Basic usage for creating a worker agent:
+Test Marcus with isolated stdio connection:
 
->>> from src.worker.client import WorkerMCPClient
->>> client = WorkerMCPClient()
->>> async with client.connect_to_marcus() as session:
-...     await client.register_agent("worker-1", "Test Worker", "Developer", ["python"])
-...     task = await client.request_next_task("worker-1")
+>>> from src.worker import Inspector
+>>> client = Inspector(connection_type='stdio')
+>>> async with client.connect() as session:
+...     # Test Marcus functionality
+...     await client.register_agent("test-1", "Test Agent", "Developer", ["python"])
+...     task = await client.request_next_task("test-1")
+
+Test Marcus with HTTP connection:
+
+>>> from src.worker import Inspector
+>>> client = Inspector(connection_type='http')
+>>> async with client.connect(url="http://localhost:4298/mcp") as session:
+...     # Test against running Marcus instance
+...     await client.register_agent("test-1", "Test Agent", "Developer", [])
 
 Notes
 -----
-This package requires an active Marcus MCP server to be running for
-proper functionality. Workers operate in isolation and cannot directly
-communicate with each other.
+Inspector is designed for TESTING Marcus, not for production AI agents.
+Use stdio for isolated tests, HTTP for integration testing against a
+running Marcus server.
 """
+
+from src.worker.inspector import Inspector, create_inspector
+
+__all__ = ["Inspector", "create_inspector"]

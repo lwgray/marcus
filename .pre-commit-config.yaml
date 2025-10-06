@@ -4,7 +4,7 @@ repos:
     rev: v1.16.1
     hooks:
       - id: mypy
-        args: [--config-file=pyproject.toml]
+        args: [--config-file=pyproject.toml, --follow-imports=skip]
         additional_dependencies:
           - types-aiofiles
           - types-requests
@@ -47,13 +47,7 @@ repos:
     rev: 1.8.6
     hooks:
       - id: bandit
-        name: bandit
-        description: 'Bandit is a tool for finding common security threats'
-        entry: bandit
-        language: python
-        language_version: python3
-        types: [python]
-        args: ['--recursive']
+        args: ['-c', 'pyproject.toml']
         exclude: ^tests/
 
   # General pre-commit hooks

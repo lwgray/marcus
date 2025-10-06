@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from src.worker.client import WorkerMCPClient
+from src.worker.inspector import Inspector
 
 
 class TestInterruptionRecovery:
@@ -22,7 +22,7 @@ class TestInterruptionRecovery:
     @pytest.mark.asyncio
     async def test_ping_health_check(self):
         """Test that ping with health command returns system status."""
-        client = WorkerMCPClient()
+        client = Inspector()
 
         async with client.connect_to_marcus() as session:
             client.session = session
@@ -42,7 +42,7 @@ class TestInterruptionRecovery:
     @pytest.mark.asyncio
     async def test_cleanup_stuck_assignments(self):
         """Test that ping cleanup command clears stuck assignments."""
-        client = WorkerMCPClient()
+        client = Inspector()
 
         async with client.connect_to_marcus() as session:
             client.session = session
@@ -69,7 +69,7 @@ class TestInterruptionRecovery:
     @pytest.mark.asyncio
     async def test_retry_on_connection_failure(self):
         """Test that client retries operations on connection failure."""
-        client = WorkerMCPClient()
+        client = Inspector()
 
         # Track retry attempts
         attempts = []
@@ -132,7 +132,7 @@ class TestInterruptionRecovery:
     @pytest.mark.asyncio
     async def test_state_recovery_after_interruption(self):
         """Test that state is properly recovered after interruption."""
-        client = WorkerMCPClient()
+        client = Inspector()
 
         async with client.connect_to_marcus() as session:
             client.session = session

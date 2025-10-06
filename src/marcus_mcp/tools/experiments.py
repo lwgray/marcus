@@ -92,7 +92,7 @@ async def start_experiment(
             "success": False,
             "error": "An experiment is already running",
             "current_experiment": existing_monitor.experiment_name,
-            "current_run": existing_monitor.run_name
+            "current_run": existing_monitor.run_name,
         }
 
     # Get board_id and project_id from active project if not provided
@@ -100,7 +100,7 @@ async def start_experiment(
         if not state:
             return {
                 "success": False,
-                "error": "board_id and project_id required when state is not available"
+                "error": "board_id and project_id required when state is not available",
             }
 
         try:
@@ -108,7 +108,7 @@ async def start_experiment(
             if not active_project:
                 return {
                     "success": False,
-                    "error": "No active project selected. Use select_project first or provide board_id and project_id."
+                    "error": "No active project selected. Use select_project first or provide board_id and project_id.",
                 }
 
             # Get board_id and project_id from active project
@@ -120,7 +120,7 @@ async def start_experiment(
             if not board_id or not project_id:
                 return {
                     "success": False,
-                    "error": f"Active project missing board_id or project_id in config: {active_project.provider_config}"
+                    "error": f"Active project missing board_id or project_id in config: {active_project.provider_config}",
                 }
 
             logger.info(
@@ -131,7 +131,7 @@ async def start_experiment(
         except Exception as e:
             return {
                 "success": False,
-                "error": f"Failed to get active project: {str(e)}"
+                "error": f"Failed to get active project: {str(e)}",
             }
 
     try:
@@ -140,15 +140,11 @@ async def start_experiment(
             experiment_name=experiment_name,
             board_id=board_id,
             project_id=project_id,
-            tracking_interval=tracking_interval
+            tracking_interval=tracking_interval,
         )
 
         # Start monitoring
-        result = await monitor.start(
-            run_name=run_name,
-            params=params,
-            tags=tags
-        )
+        result = await monitor.start(run_name=run_name, params=params, tags=tags)
 
         if result["success"]:
             # Set as active monitor
@@ -162,10 +158,7 @@ async def start_experiment(
 
     except Exception as e:
         logger.error(f"Failed to start experiment: {e}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
+        return {"success": False, "error": str(e)}
 
 
 async def end_experiment() -> Dict[str, Any]:
@@ -201,10 +194,7 @@ async def end_experiment() -> Dict[str, Any]:
     monitor = get_active_monitor()
 
     if monitor is None:
-        return {
-            "success": False,
-            "error": "No experiment is currently running"
-        }
+        return {"success": False, "error": "No experiment is currently running"}
 
     try:
         result = await monitor.stop()
@@ -218,10 +208,7 @@ async def end_experiment() -> Dict[str, Any]:
 
     except Exception as e:
         logger.error(f"Failed to stop experiment: {e}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
+        return {"success": False, "error": str(e)}
 
 
 async def get_experiment_status() -> Dict[str, Any]:
@@ -254,10 +241,7 @@ async def get_experiment_status() -> Dict[str, Any]:
     monitor = get_active_monitor()
 
     if monitor is None:
-        return {
-            "is_running": False,
-            "message": "No experiment is currently running"
-        }
+        return {"is_running": False, "message": "No experiment is currently running"}
 
     return monitor.get_status()
 
@@ -272,51 +256,42 @@ EXPERIMENT_TOOLS = {
             "properties": {
                 "experiment_name": {
                     "type": "string",
-                    "description": "Name for the MLflow experiment"
+                    "description": "Name for the MLflow experiment",
                 },
                 "board_id": {
                     "type": "string",
-                    "description": "Board ID to monitor (optional, uses active project if not provided)"
+                    "description": "Board ID to monitor (optional, uses active project if not provided)",
                 },
                 "project_id": {
                     "type": "string",
-                    "description": "Project ID to monitor (optional, uses active project if not provided)"
+                    "description": "Project ID to monitor (optional, uses active project if not provided)",
                 },
                 "run_name": {
                     "type": "string",
-                    "description": "Name for this run (optional)"
+                    "description": "Name for this run (optional)",
                 },
                 "tracking_interval": {
                     "type": "integer",
                     "description": "Metrics logging interval in seconds",
-                    "default": 30
+                    "default": 30,
                 },
                 "params": {
                     "type": "object",
-                    "description": "Additional experiment parameters"
+                    "description": "Additional experiment parameters",
                 },
-                "tags": {
-                    "type": "object",
-                    "description": "Tags for the MLflow run"
-                }
+                "tags": {"type": "object", "description": "Tags for the MLflow run"},
             },
-            "required": ["experiment_name"]
-        }
+            "required": ["experiment_name"],
+        },
     },
     "end_experiment": {
         "function": end_experiment,
         "description": "Stop the current experiment and finalize results",
-        "parameters": {
-            "type": "object",
-            "properties": {}
-        }
+        "parameters": {"type": "object", "properties": {}},
     },
     "get_experiment_status": {
         "function": get_experiment_status,
         "description": "Get the status of the current experiment",
-        "parameters": {
-            "type": "object",
-            "properties": {}
-        }
-    }
+        "parameters": {"type": "object", "properties": {}},
+    },
 }

@@ -310,7 +310,7 @@ class ContextDetector:
         context.mode_preferences[new_mode] += 1
 
     def get_mode_suggestions(self, board_state: BoardState) -> List[str]:
-        """Get helpful suggestions based on board state"""
+        """Get helpful suggestions based on board state."""
         suggestions = []
 
         if board_state.is_empty:

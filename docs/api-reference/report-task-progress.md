@@ -28,7 +28,7 @@ async def report_task_progress(
 - **Type:** `str`
 - **Description:** Unique identifier of the task being updated
 - **Must:** Match a task ID from a previous task assignment (from `request_next_task`)
-- **Example:** `"task-123"`, `"abc123def456"`
+- **Example:** `"task-123"`, `"abc123def456"` <!-- pragma: allowlist secret -->
 
 ### `status` (required)
 - **Type:** `str`
