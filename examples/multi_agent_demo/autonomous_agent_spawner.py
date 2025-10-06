@@ -255,16 +255,24 @@ START NOW!
         with open(prompt_file, "w") as f:
             f.write(prompt)
 
-        # Spawn Claude Code with the prompt
-        cmd = ["claude", "--dangerously-skip-permissions", "--message", prompt]
+        # Spawn Claude Code with the prompt (using stdin)
+        cmd = ["claude", "--dangerously-skip-permissions", "--print"]
 
         log_file = self.demo_root / "logs" / "project_creator.log"
         log_file.parent.mkdir(exist_ok=True)
 
         with open(log_file, "w") as log:
             process = subprocess.Popen(
-                cmd, cwd=self.demo_root, stdout=log, stderr=subprocess.STDOUT, text=True
+                cmd,
+                cwd=self.demo_root,
+                stdin=subprocess.PIPE,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                text=True
             )
+            # Send the prompt to stdin
+            process.stdin.write(prompt)
+            process.stdin.close()
 
         print(f"✓ Project creator spawned (PID: {process.pid})")
         print(f"  Log: {log_file}")
@@ -296,8 +304,9 @@ START NOW!
         with open(prompt_file, "w") as f:
             f.write(prompt)
 
-        # Spawn Claude Code with the prompt
-        cmd = ["claude", "--dangerously-skip-permissions", "--message", prompt]
+        # Spawn Claude Code in interactive mode (workers need continuous operation)
+        # Send prompt via stdin for autonomous operation
+        cmd = ["claude", "--dangerously-skip-permissions"]
 
         log_file = self.demo_root / "logs" / f"{agent.agent_id}.log"
         log_file.parent.mkdir(exist_ok=True)
@@ -306,10 +315,14 @@ START NOW!
             process = subprocess.Popen(
                 cmd,
                 cwd=self.project_root,
+                stdin=subprocess.PIPE,
                 stdout=log,
                 stderr=subprocess.STDOUT,
                 text=True,
             )
+            # Send the prompt to stdin
+            process.stdin.write(prompt + "\n")
+            process.stdin.flush()
 
         print(f"  ✓ Spawned (PID: {process.pid})")
         print(f"  Log: {log_file}")
