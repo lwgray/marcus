@@ -1,0 +1,1212 @@
+openapi: 3.0.3
+info:
+  title: Task Management API - Authentication & Authorization
+  description: |
+    REST API specification for task management system authentication and core resources.
+    Uses JWT (JSON Web Tokens) for stateless authentication with bearer token authorization.
+  version: 1.0.0
+  contact:
+    name: Foundation Agent
+    email: foundation@marcus-demo.local
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Development server
+  - url: https://api.taskmanagement.local/v1
+    description: Production server
+
+tags:
+  - name: Authentication
+    description: User authentication and authorization endpoints
+  - name: Users
+    description: User management operations
+  - name: Projects
+    description: Project management operations
+  - name: Tasks
+    description: Task management operations
+  - name: Comments
+    description: Comment operations on tasks
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'JWT token for authentication. Format: Bearer {token}'
+
+  schemas:
+    # Error Schemas
+    Error:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Error type
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          description: Additional error details
+
+    ValidationError:
+      type: object
+      required:
+        - error
+        - message
+        - validation_errors
+      properties:
+        error:
+          type: string
+          example: validation_error
+        message:
+          type: string
+        validation_errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+
+    # Authentication Schemas
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          minLength: 8
+
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - username
+        - password
+        - first_name
+        - last_name
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+          pattern: '^[a-zA-Z0-9_-]+$'
+          example: john_doe
+        password:
+          type: string
+          format: password
+          minLength: 8
+        first_name:
+          type: string
+          maxLength: 100
+          example: John
+        last_name:
+          type: string
+          maxLength: 100
+          example: Doe
+
+    AuthResponse:
+      type: object
+      required:
+        - access_token
+        - token_type
+        - expires_in
+        - user
+      properties:
+        access_token:
+          type: string
+          description: JWT access token
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          description: Token expiration time in seconds
+          example: 3600
+        user:
+          $ref: '#/components/schemas/UserResponse'
+
+    # User Schemas
+    UserResponse:
+      type: object
+      required:
+        - id
+        - email
+        - username
+        - role
+        - is_active
+        - created_at
+      properties:
+        id:
+          type: integer
+          example: 1
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        username:
+          type: string
+          example: john_doe
+        first_name:
+          type: string
+          example: John
+        last_name:
+          type: string
+          example: Doe
+        role:
+          type: string
+          enum: [admin, manager, member, viewer]
+          example: member
+        is_active:
+          type: boolean
+          example: true
+        is_verified:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+        last_login:
+          type: string
+          format: date-time
+          nullable: true
+
+    UserUpdateRequest:
+      type: object
+      properties:
+        first_name:
+          type: string
+          maxLength: 100
+        last_name:
+          type: string
+          maxLength: 100
+        email:
+          type: string
+          format: email
+
+    # Project Schemas
+    ProjectResponse:
+      type: object
+      required:
+        - id
+        - name
+        - owner_id
+        - created_at
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Website Redesign
+        description:
+          type: string
+          example: Complete redesign of company website
+        owner_id:
+          type: integer
+          example: 1
+        owner:
+          $ref: '#/components/schemas/UserResponse'
+        is_archived:
+          type: boolean
+          example: false
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        member_count:
+          type: integer
+          example: 5
+        task_count:
+          type: integer
+          example: 23
+
+    ProjectCreateRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+
+    ProjectUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+        is_archived:
+          type: boolean
+
+    ProjectMemberResponse:
+      type: object
+      required:
+        - id
+        - project_id
+        - user_id
+        - role
+        - joined_at
+      properties:
+        id:
+          type: integer
+        project_id:
+          type: integer
+        user_id:
+          type: integer
+        user:
+          $ref: '#/components/schemas/UserResponse'
+        role:
+          type: string
+          enum: [admin, manager, member, viewer]
+        joined_at:
+          type: string
+          format: date-time
+
+    AddProjectMemberRequest:
+      type: object
+      required:
+        - user_id
+      properties:
+        user_id:
+          type: integer
+        role:
+          type: string
+          enum: [admin, manager, member, viewer]
+          default: member
+
+    # Task Schemas
+    TaskResponse:
+      type: object
+      required:
+        - id
+        - title
+        - project_id
+        - status
+        - priority
+        - created_at
+      properties:
+        id:
+          type: integer
+          example: 1
+        title:
+          type: string
+          example: Implement user authentication
+        description:
+          type: string
+          example: Add JWT-based authentication to the API
+        project_id:
+          type: integer
+          example: 1
+        created_by_id:
+          type: integer
+          example: 1
+        assigned_to_id:
+          type: integer
+          example: 2
+        creator:
+          $ref: '#/components/schemas/UserResponse'
+        assignee:
+          $ref: '#/components/schemas/UserResponse'
+        status:
+          type: string
+          enum: [todo, in_progress, in_review, completed, archived]
+          example: in_progress
+        priority:
+          type: string
+          enum: [low, medium, high, critical]
+          example: high
+        due_date:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        comment_count:
+          type: integer
+          example: 5
+
+    TaskCreateRequest:
+      type: object
+      required:
+        - title
+        - project_id
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 300
+        description:
+          type: string
+        project_id:
+          type: integer
+        assigned_to_id:
+          type: integer
+        status:
+          type: string
+          enum: [todo, in_progress, in_review, completed, archived]
+          default: todo
+        priority:
+          type: string
+          enum: [low, medium, high, critical]
+          default: medium
+        due_date:
+          type: string
+          format: date-time
+
+    TaskUpdateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 300
+        description:
+          type: string
+        assigned_to_id:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [todo, in_progress, in_review, completed, archived]
+        priority:
+          type: string
+          enum: [low, medium, high, critical]
+        due_date:
+          type: string
+          format: date-time
+          nullable: true
+
+    # Comment Schemas
+    CommentResponse:
+      type: object
+      required:
+        - id
+        - content
+        - task_id
+        - created_at
+      properties:
+        id:
+          type: integer
+          example: 1
+        content:
+          type: string
+          example: This task is progressing well
+        task_id:
+          type: integer
+          example: 1
+        author_id:
+          type: integer
+          example: 1
+        author:
+          $ref: '#/components/schemas/UserResponse'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CommentCreateRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          minLength: 1
+
+    CommentUpdateRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          minLength: 1
+
+    # Pagination
+    PaginationMeta:
+      type: object
+      required:
+        - total
+        - page
+        - page_size
+        - total_pages
+      properties:
+        total:
+          type: integer
+          example: 100
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 20
+        total_pages:
+          type: integer
+          example: 5
+
+paths:
+  # Authentication Endpoints
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user
+      description: Create a new user account with email and password
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '409':
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login user
+      description: Authenticate user and return JWT token
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/me:
+    get:
+      tags:
+        - Authentication
+      summary: Get current user
+      description: Get authenticated user's information
+      operationId: getCurrentUser
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Current user information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh access token
+      description: Get a new access token using current valid token
+      operationId: refreshToken
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # User Endpoints
+  /users:
+    get:
+      tags:
+        - Users
+      summary: List users
+      description: Get paginated list of users (admin only)
+      operationId: listUsers
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [admin, manager, member, viewer]
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                  - meta
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserResponse'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - Admin only
+
+  /users/{user_id}:
+    get:
+      tags:
+        - Users
+      summary: Get user by ID
+      operationId: getUserById
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '404':
+          description: User not found
+
+    patch:
+      tags:
+        - Users
+      summary: Update user
+      description: Update user information (own profile or admin)
+      operationId: updateUser
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+      responses:
+        '200':
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '403':
+          description: Forbidden
+        '404':
+          description: User not found
+
+  # Project Endpoints
+  /projects:
+    get:
+      tags:
+        - Projects
+      summary: List projects
+      description: Get user's projects (owned or member)
+      operationId: listProjects
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: archived
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProjectResponse'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+
+    post:
+      tags:
+        - Projects
+      summary: Create project
+      description: Create a new project
+      operationId: createProject
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectCreateRequest'
+      responses:
+        '201':
+          description: Project created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectResponse'
+        '400':
+          description: Invalid input
+
+  /projects/{project_id}:
+    get:
+      tags:
+        - Projects
+      summary: Get project by ID
+      operationId: getProjectById
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Project details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectResponse'
+        '403':
+          description: Access denied
+        '404':
+          description: Project not found
+
+    patch:
+      tags:
+        - Projects
+      summary: Update project
+      description: Update project (owner or admin only)
+      operationId: updateProject
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectUpdateRequest'
+      responses:
+        '200':
+          description: Project updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectResponse'
+        '403':
+          description: Forbidden
+        '404':
+          description: Project not found
+
+    delete:
+      tags:
+        - Projects
+      summary: Delete project
+      description: Delete project (owner only)
+      operationId: deleteProject
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Project deleted
+        '403':
+          description: Forbidden
+        '404':
+          description: Project not found
+
+  /projects/{project_id}/members:
+    get:
+      tags:
+        - Projects
+      summary: List project members
+      operationId: listProjectMembers
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of project members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProjectMemberResponse'
+
+    post:
+      tags:
+        - Projects
+      summary: Add project member
+      description: Add user to project (owner or admin only)
+      operationId: addProjectMember
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddProjectMemberRequest'
+      responses:
+        '201':
+          description: Member added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectMemberResponse'
+        '403':
+          description: Forbidden
+        '409':
+          description: User already member
+
+  /projects/{project_id}/members/{member_id}:
+    delete:
+      tags:
+        - Projects
+      summary: Remove project member
+      description: Remove user from project (owner or admin only)
+      operationId: removeProjectMember
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: member_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Member removed
+        '403':
+          description: Forbidden
+        '404':
+          description: Member not found
+
+  # Task Endpoints
+  /tasks:
+    get:
+      tags:
+        - Tasks
+      summary: List tasks
+      description: Get tasks with filters
+      operationId: listTasks
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: project_id
+          in: query
+          schema:
+            type: integer
+        - name: assigned_to_id
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [todo, in_progress, in_review, completed, archived]
+        - name: priority
+          in: query
+          schema:
+            type: string
+            enum: [low, medium, high, critical]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of tasks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TaskResponse'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+
+    post:
+      tags:
+        - Tasks
+      summary: Create task
+      description: Create a new task in a project
+      operationId: createTask
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCreateRequest'
+      responses:
+        '201':
+          description: Task created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+        '400':
+          description: Invalid input
+        '403':
+          description: Access denied to project
+
+  /tasks/{task_id}:
+    get:
+      tags:
+        - Tasks
+      summary: Get task by ID
+      operationId: getTaskById
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Task details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+        '403':
+          description: Access denied
+        '404':
+          description: Task not found
+
+    patch:
+      tags:
+        - Tasks
+      summary: Update task
+      description: Update task (project members only)
+      operationId: updateTask
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskUpdateRequest'
+      responses:
+        '200':
+          description: Task updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+        '403':
+          description: Forbidden
+        '404':
+          description: Task not found
+
+    delete:
+      tags:
+        - Tasks
+      summary: Delete task
+      description: Delete task (creator, project owner, or admin)
+      operationId: deleteTask
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Task deleted
+        '403':
+          description: Forbidden
+        '404':
+          description: Task not found
+
+  # Comment Endpoints
+  /tasks/{task_id}/comments:
+    get:
+      tags:
+        - Comments
+      summary: List task comments
+      operationId: listTaskComments
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: List of comments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CommentResponse'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+
+    post:
+      tags:
+        - Comments
+      summary: Create comment
+      description: Add comment to task
+      operationId: createComment
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommentCreateRequest'
+      responses:
+        '201':
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentResponse'
+        '403':
+          description: Access denied
+        '404':
+          description: Task not found
+
+  /comments/{comment_id}:
+    patch:
+      tags:
+        - Comments
+      summary: Update comment
+      description: Update own comment
+      operationId: updateComment
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: comment_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommentUpdateRequest'
+      responses:
+        '200':
+          description: Comment updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentResponse'
+        '403':
+          description: Forbidden
+        '404':
+          description: Comment not found
+
+    delete:
+      tags:
+        - Comments
+      summary: Delete comment
+      description: Delete own comment (or admin)
+      operationId: deleteComment
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: comment_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Comment deleted
+        '403':
+          description: Forbidden
+        '404':
+          description: Comment not found

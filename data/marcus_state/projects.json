@@ -18,8 +18,8 @@
     "_stored_at": "2025-10-05T17:48:46.471183"
   },
   "active_project": {
-    "project_id": "bb8a521b-d1fe-4ef5-9915-c453c97874e2",
-    "_stored_at": "2025-10-05T21:19:51.536319"
+    "project_id": "6fe75b9d-78ca-4d0e-a50a-1f8d25b6189b",
+    "_stored_at": "2025-10-05T22:42:37.865902"
   },
   "7297d2c3-e9f7-4916-ab93-d53a458c6f29": {
     "id": "7297d2c3-e9f7-4916-ab93-d53a458c6f29",
@@ -50,12 +50,12 @@
       "board_name": "Main Board"
     },
     "created_at": "2025-10-05T20:12:08.486282",
-    "last_used": "2025-10-05T21:19:51.534923",
+    "last_used": "2025-10-05T22:39:32.592458",
     "tags": [
       "discovered",
       "planka"
     ],
-    "_stored_at": "2025-10-05T21:19:51.535473"
+    "_stored_at": "2025-10-05T22:39:32.592976"
   },
   "07824dab-1ef8-4e43-9725-9bf90721b456": {
     "id": "07824dab-1ef8-4e43-9725-9bf90721b456",
@@ -74,5 +74,41 @@
       "planka"
     ],
     "_stored_at": "2025-10-05T22:14:16.121905"
+  },
+  "61635969-d7c2-48b3-bfbd-7121d60065e3": {
+    "id": "61635969-d7c2-48b3-bfbd-7121d60065e3",
+    "name": "Task Management API Demo - Main Board",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": "1615085245810345044",
+      "project_name": "Task Management API Demo",
+      "board_id": "1615085245978117206",
+      "board_name": "Main Board"
+    },
+    "created_at": "2025-10-05T22:26:31.906820",
+    "last_used": "2025-10-05T22:26:31.906842",
+    "tags": [
+      "discovered",
+      "planka"
+    ],
+    "_stored_at": "2025-10-05T22:26:31.907490"
+  },
+  "6fe75b9d-78ca-4d0e-a50a-1f8d25b6189b": {
+    "id": "6fe75b9d-78ca-4d0e-a50a-1f8d25b6189b",
+    "name": "Task Management API Demo - Main Board",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": "1615093159899956517",
+      "project_name": "Task Management API Demo",
+      "board_id": "1615093160076117287",
+      "board_name": "Main Board"
+    },
+    "created_at": "2025-10-05T22:42:32.474451",
+    "last_used": "2025-10-05T22:42:37.863301",
+    "tags": [
+      "discovered",
+      "planka"
+    ],
+    "_stored_at": "2025-10-05T22:42:37.864043"
   }
 }
