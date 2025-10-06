@@ -26,10 +26,12 @@ def selective_path_exists_for_config(return_value=False):
         What to return for config_marcus.json (default False)
     """
     original_exists = Path.exists
+
     def selective_exists(self):
         if "config_marcus.json" in str(self):
             return return_value
         return original_exists(self)
+
     return selective_exists
 
 

@@ -78,6 +78,7 @@ class TestKanbanClient:
         try:
             # Selective mock: only block config_marcus.json, allow kanban-mcp path
             original_exists = Path.exists
+
             def selective_exists(self):
                 if "config_marcus.json" in str(self):
                     return False
@@ -85,7 +86,9 @@ class TestKanbanClient:
                 return original_exists(self)
 
             with patch("pathlib.Path.exists", selective_exists):
-                with patch.object(KanbanClient, '_load_workspace_state', return_value=None):
+                with patch.object(
+                    KanbanClient, "_load_workspace_state", return_value=None
+                ):
                     client = KanbanClient()
 
                     # Should have None values for project/board
@@ -108,13 +111,14 @@ class TestKanbanClient:
     async def test_get_available_tasks_no_board_id(self):
         """Test getting available tasks when board_id is not set"""
         original_exists = Path.exists
+
         def selective_exists(self):
             if "config_marcus.json" in str(self):
                 return False
             return original_exists(self)
 
         with patch("pathlib.Path.exists", selective_exists):
-            with patch.object(KanbanClient, '_load_workspace_state', return_value=None):
+            with patch.object(KanbanClient, "_load_workspace_state", return_value=None):
                 client = KanbanClient()
 
                 with pytest.raises(RuntimeError, match="Board ID not set"):
@@ -124,13 +128,14 @@ class TestKanbanClient:
     async def test_get_all_tasks_no_board_id(self):
         """Test getting all tasks when board_id is not set"""
         original_exists = Path.exists
+
         def selective_exists(self):
             if "config_marcus.json" in str(self):
                 return False
             return original_exists(self)
 
         with patch("pathlib.Path.exists", selective_exists):
-            with patch.object(KanbanClient, '_load_workspace_state', return_value=None):
+            with patch.object(KanbanClient, "_load_workspace_state", return_value=None):
                 client = KanbanClient()
 
                 with pytest.raises(RuntimeError, match="Board ID not set"):
@@ -140,13 +145,14 @@ class TestKanbanClient:
     async def test_get_board_summary_no_board_id(self):
         """Test getting board summary when board_id is not set"""
         original_exists = Path.exists
+
         def selective_exists(self):
             if "config_marcus.json" in str(self):
                 return False
             return original_exists(self)
 
         with patch("pathlib.Path.exists", selective_exists):
-            with patch.object(KanbanClient, '_load_workspace_state', return_value=None):
+            with patch.object(KanbanClient, "_load_workspace_state", return_value=None):
                 client = KanbanClient()
 
                 with pytest.raises(RuntimeError, match="Board ID not set"):

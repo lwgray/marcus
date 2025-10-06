@@ -139,7 +139,7 @@ class TestMarcusAIEngine:
     @pytest.fixture
     def ai_engine(self):
         """Create a MarcusAIEngine instance for testing"""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
 
         # Mock config to avoid FileNotFoundError
         mock_config = MagicMock()
@@ -154,7 +154,7 @@ class TestMarcusAIEngine:
 
         mock_config.get = MagicMock(side_effect=config_get)
 
-        with patch('src.config.config_loader.get_config', return_value=mock_config):
+        with patch("src.config.config_loader.get_config", return_value=mock_config):
             return MarcusAIEngine()
 
     @pytest.fixture
@@ -199,7 +199,7 @@ class TestMarcusAIEngine:
             return_value=[
                 "Complete prerequisite task",
                 "Remove dependency",
-                "Consult with team lead"
+                "Consult with team lead",
             ]
         )
 
@@ -312,7 +312,9 @@ class TestMarcusAIEngine:
         # Mock LLM provider that raises exception
         mock_provider = AsyncMock()
         mock_provider.is_available = True
-        mock_provider.analyze_task_semantics = AsyncMock(side_effect=Exception("API Error"))
+        mock_provider.analyze_task_semantics = AsyncMock(
+            side_effect=Exception("API Error")
+        )
         ai_engine.llm_client = mock_provider
 
         # The private method _get_ai_insights should raise the exception
@@ -354,7 +356,9 @@ class TestMarcusAIEngine:
 
     @pytest.mark.asyncio
     @patch("src.ai.core.ai_engine.LLMAbstraction")
-    async def test_analyze_blocker(self, mock_llm_class, ai_engine, mock_llm_provider, sample_task):
+    async def test_analyze_blocker(
+        self, mock_llm_class, ai_engine, mock_llm_provider, sample_task
+    ):
         """Test AI-powered blocker analysis"""
         mock_llm_provider.analyze_blocker = AsyncMock(
             return_value={
@@ -376,7 +380,7 @@ class TestMarcusAIEngine:
             blocker_description="Waiting for API endpoint implementation",
             severity="HIGH",
             agent={"id": "agent-1", "name": "Test Agent"},
-            task=sample_task
+            task=sample_task,
         )
 
         assert analysis is not None
@@ -420,7 +424,7 @@ class TestIntegration:
     @pytest.fixture
     def full_engine(self):
         """Create a fully configured engine for integration testing"""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
 
         # Mock config to avoid FileNotFoundError
         mock_config = MagicMock()
@@ -435,7 +439,7 @@ class TestIntegration:
 
         mock_config.get = MagicMock(side_effect=config_get)
 
-        with patch('src.config.config_loader.get_config', return_value=mock_config):
+        with patch("src.config.config_loader.get_config", return_value=mock_config):
             return MarcusAIEngine()
 
     @pytest.fixture

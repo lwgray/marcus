@@ -380,9 +380,7 @@ class TestContext:
         """Test getting implementation summary"""
         await context.add_implementation("task_1", {"apis": ["GET /users"]})
         await context.add_implementation("task_2", {"apis": ["GET /posts"]})
-        await context.log_decision(
-            "agent_1", "task_1", "Use REST", "Standard", "All"
-        )
+        await context.log_decision("agent_1", "task_1", "Use REST", "Standard", "All")
 
         summary = await context.get_implementation_summary()
 
