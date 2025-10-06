@@ -237,7 +237,7 @@ START NOW!
 
     def spawn_project_creator(self) -> subprocess.Popen:
         """
-        Spawn the project creator agent.
+        Spawn the project creator agent in a new terminal window.
 
         Returns
         -------
@@ -255,32 +255,44 @@ START NOW!
         with open(prompt_file, "w") as f:
             f.write(prompt)
 
-        # Spawn Claude Code with the prompt (using stdin)
-        cmd = ["claude", "--dangerously-skip-permissions", "--print"]
+        # Create a script to run in the terminal
+        script = f"""cd {self.demo_root}
+echo "=========================================="
+echo "PROJECT CREATOR AGENT"
+echo "=========================================="
+echo ""
+echo "Creating Marcus project..."
+echo ""
+cat {prompt_file} | claude --dangerously-skip-permissions --print
+echo ""
+echo "=========================================="
+echo "Project Creator Complete"
+echo "=========================================="
+echo ""
+echo "Press any key to close this window..."
+read -n 1
+"""
+        script_file = self.demo_root / "prompts" / "project_creator.sh"
+        with open(script_file, "w") as f:
+            f.write(script)
+        script_file.chmod(0o755)
 
-        log_file = self.demo_root / "logs" / "project_creator.log"
-        log_file.parent.mkdir(exist_ok=True)
+        # Open in new Terminal window (macOS)
+        cmd = [
+            "osascript",
+            "-e",
+            f'tell application "Terminal" to do script "bash {script_file}"'
+        ]
 
-        with open(log_file, "w") as log:
-            process = subprocess.Popen(
-                cmd,
-                cwd=self.demo_root,
-                stdin=subprocess.PIPE,
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                text=True
-            )
-            # Send the prompt to stdin
-            process.stdin.write(prompt)
-            process.stdin.close()
+        process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        print(f"✓ Project creator spawned (PID: {process.pid})")
-        print(f"  Log: {log_file}")
+        print(f"✓ Project creator terminal opened")
+        print(f"  Prompt: {prompt_file}")
         return process
 
     def spawn_worker(self, agent: AgentConfig) -> subprocess.Popen:
         """
-        Spawn a worker agent.
+        Spawn a worker agent in a new terminal window.
 
         Parameters
         ----------
@@ -304,23 +316,43 @@ START NOW!
         with open(prompt_file, "w") as f:
             f.write(prompt)
 
-        # Spawn Claude Code with prompt as argument
-        cmd = ["claude", "--dangerously-skip-permissions", prompt]
+        # Create a script to run in the terminal
+        script = f"""cd {self.project_root}
+echo "=========================================="
+echo "{agent.name.upper()}"
+echo "ID: {agent.agent_id}"
+echo "Role: {agent.role}"
+echo "Branch: {branch_name}"
+echo "=========================================="
+echo ""
+echo "Waiting for project creation..."
+while [ ! -f {self.demo_root}/project_info.json ]; do
+    sleep 2
+done
+echo "✓ Project found, starting agent..."
+echo ""
+cat {prompt_file} | claude --dangerously-skip-permissions
+echo ""
+echo "=========================================="
+echo "{agent.name} - Work Complete"
+echo "=========================================="
+"""
+        script_file = self.demo_root / "prompts" / f"{agent.agent_id}.sh"
+        with open(script_file, "w") as f:
+            f.write(script)
+        script_file.chmod(0o755)
 
-        log_file = self.demo_root / "logs" / f"{agent.agent_id}.log"
-        log_file.parent.mkdir(exist_ok=True)
+        # Open in new Terminal window (macOS)
+        cmd = [
+            "osascript",
+            "-e",
+            f'tell application "Terminal" to do script "bash {script_file}"'
+        ]
 
-        with open(log_file, "w") as log:
-            process = subprocess.Popen(
-                cmd,
-                cwd=self.project_root,
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                text=True,
-            )
+        process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        print(f"  ✓ Spawned (PID: {process.pid})")
-        print(f"  Log: {log_file}")
+        print(f"  ✓ Terminal window opened")
+        print(f"  Prompt: {prompt_file}")
         print(f"  Branch: {branch_name}")
         print(f"  Subagents: {agent.num_subagents}")
         return process
@@ -389,46 +421,27 @@ START NOW!
         print("\n" + "=" * 60)
         print("All Agents Spawned!")
         print("=" * 60)
-        print(f"\n✓ {len(self.processes)} processes running")
+        print(f"\n✓ {len(self.processes)} terminal windows opened")
+        print(f"✓ 1 project creator + 4 worker agents")
         print(f"✓ 20 subagents will be registered by workers")
-        print(f"✓ Logs in: {self.demo_root / 'logs'}")
-        print("\nMonitoring agents (Ctrl+C to stop)...")
+        print(f"\n📺 Watch the terminal windows to see agents working!")
+        print("\nAgent windows:")
+        print("  - Project Creator (will close when done)")
+        print("  - Foundation Agent (database, models, migrations)")
+        print("  - Auth Agent (JWT, authentication)")
+        print("  - API Agent (projects, tasks, comments)")
+        print("  - Integration Agent (tests, validation)")
+        print("\nPress Ctrl+C when all agents are complete to exit this script.")
+        print("(The agent terminal windows will remain open)")
 
-        # Monitor processes
+        # Just wait for user interrupt
         try:
             while True:
-                time.sleep(30)
-
-                # Check process status
-                running = sum(1 for p in self.processes if p.poll() is None)
-                print(
-                    f"\n[{datetime.now().strftime('%H:%M:%S')}] Status: {running}/{len(self.processes)} processes running"
-                )
-
-                # If all workers are done (creator can exit)
-                worker_processes = self.processes[1:]  # Skip creator
-                if all(p.poll() is not None for p in worker_processes):
-                    print("\n✓ All worker agents completed!")
-                    break
-
+                time.sleep(60)
         except KeyboardInterrupt:
-            print("\n\nShutting down...")
-            self.cleanup()
+            print("\n\nDemo manager shutting down...")
+            print("Agent terminal windows will continue running.")
 
-    def cleanup(self):
-        """Clean up spawned processes."""
-        print("\nCleaning up processes...")
-        for process in self.processes:
-            if process.poll() is None:
-                print(f"  Terminating PID {process.pid}...")
-                process.terminate()
-                try:
-                    process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    print(f"  Force killing PID {process.pid}...")
-                    process.kill()
-
-        print("✓ Cleanup complete")
 
 
 async def main():
