@@ -280,7 +280,7 @@ START NOW!
 
     def spawn_worker(self, agent: AgentConfig) -> subprocess.Popen:
         """
-        Spawn a worker agent using agent_runner.py.
+        Spawn a worker agent.
 
         Parameters
         ----------
@@ -296,21 +296,16 @@ START NOW!
         print("-" * 60)
 
         branch_name = f"agent/{agent.agent_id}"
+        prompt = self.create_worker_prompt(agent, branch_name)
 
-        # Use agent_runner.py for continuous autonomous operation
-        agent_runner_path = self.demo_root / "agent_runner.py"
-        cmd = [
-            "python3",
-            str(agent_runner_path),
-            "--agent-id", agent.agent_id,
-            "--name", agent.name,
-            "--role", agent.role,
-            "--skills", ",".join(agent.skills),
-            "--num-subagents", str(agent.num_subagents),
-            "--project-root", str(self.project_root),
-            "--demo-root", str(self.demo_root),
-            "--branch", branch_name,
-        ]
+        prompt_file = self.demo_root / "prompts" / f"{agent.agent_id}.txt"
+        prompt_file.parent.mkdir(exist_ok=True)
+
+        with open(prompt_file, "w") as f:
+            f.write(prompt)
+
+        # Spawn Claude Code with prompt as argument
+        cmd = ["claude", "--dangerously-skip-permissions", prompt]
 
         log_file = self.demo_root / "logs" / f"{agent.agent_id}.log"
         log_file.parent.mkdir(exist_ok=True)
@@ -318,6 +313,7 @@ START NOW!
         with open(log_file, "w") as log:
             process = subprocess.Popen(
                 cmd,
+                cwd=self.project_root,
                 stdout=log,
                 stderr=subprocess.STDOUT,
                 text=True,

@@ -56,5 +56,23 @@
       "planka"
     ],
     "_stored_at": "2025-10-05T21:19:51.535473"
+  },
+  "07824dab-1ef8-4e43-9725-9bf90721b456": {
+    "id": "07824dab-1ef8-4e43-9725-9bf90721b456",
+    "name": "Task Management API Demo - Main Board",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": "1615079077029349314",
+      "project_name": "Task Management API Demo",
+      "board_id": "1615079077155178436",
+      "board_name": "Main Board"
+    },
+    "created_at": "2025-10-05T22:14:16.121195",
+    "last_used": "2025-10-05T22:14:16.121219",
+    "tags": [
+      "discovered",
+      "planka"
+    ],
+    "_stored_at": "2025-10-05T22:14:16.121905"
   }
 }
