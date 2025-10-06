@@ -1,0 +1,9 @@
+[bandit]
+# Bandit configuration file for multi_agent_demo implementation
+
+# Skip assert_used (B101) in test files
+# Asserts are expected and necessary in pytest tests
+skips: B101
+
+# Test files location
+tests: tests

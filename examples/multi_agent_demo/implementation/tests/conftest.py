@@ -8,16 +8,21 @@ Author: Foundation Agent
 Task: Implement User Management (task_user_management_implement)
 """
 
+from datetime import timedelta
 from typing import Generator
 
 import pytest
+from app.config import get_settings
 from app.database import get_db
 from app.main import app
-from app.models import Base
+from app.models import Base, User
+from app.utils.security import create_access_token, hash_password
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
+
+settings = get_settings()
 
 # Use in-memory SQLite for tests
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -127,3 +132,68 @@ def sample_login_data() -> dict[str, str]:
         "email": "test@example.com",
         "password": "SecurePass123",  # pragma: allowlist secret
     }
+
+
+@pytest.fixture  # type: ignore[misc]
+def test_user(db_session: Session) -> User:
+    """
+    Create a test user in the database.
+
+    Parameters
+    ----------
+    db_session : Session
+        Test database session
+
+    Returns
+    -------
+    User
+        Created test user model
+
+    Notes
+    -----
+    Creates a user with email 'testuser@example.com', username 'testuser',
+    and password 'TestPass123' (hashed with bcrypt).
+    """
+    user = User(
+        email="testuser@example.com",
+        username="testuser",
+        password_hash=hash_password("TestPass123"),  # pragma: allowlist secret
+        first_name="Test",
+        last_name="User",
+        is_active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+@pytest.fixture  # type: ignore[misc]
+def auth_headers(test_user: User) -> dict[str, str]:
+    """
+    Create valid JWT authentication headers for test user.
+
+    Parameters
+    ----------
+    test_user : User
+        Test user to create token for
+
+    Returns
+    -------
+    dict[str, str]
+        Authentication headers with Bearer token
+
+    Notes
+    -----
+    Creates a JWT token valid for the default expiration time
+    configured in settings (60 minutes).
+    """
+    token_data = {
+        "sub": str(test_user.id),
+        "email": test_user.email,
+        "role": test_user.role.value,
+    }
+    access_token = create_access_token(
+        token_data, expires_delta=timedelta(minutes=settings.jwt_expire_minutes)
+    )
+    return {"Authorization": f"Bearer {access_token}"}
