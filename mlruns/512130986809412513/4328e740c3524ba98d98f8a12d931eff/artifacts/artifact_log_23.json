@@ -1,0 +1,7 @@
+{
+  "timestamp": "2025-10-05T19:35:41.149207",
+  "task_id": "1614970761703851283",
+  "type": "architecture",
+  "filename": "real-time-notifications.md",
+  "description": "Complete real-time notifications architecture with WebSocket/Socket.IO, multi-channel delivery (email, SMS, push, in-app), at-least-once delivery guarantees, and 100K+ concurrent connection support"
+}

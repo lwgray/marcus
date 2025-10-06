@@ -1,0 +1,7 @@
+{
+  "timestamp": "2025-10-05T17:13:47.720940",
+  "agent_id": "test20-agent-4",
+  "task_id": "unknown",
+  "description": "Unable to get tasks. All tasks are blocked by circular dependencies. The diagnostics show:\n- 8 TODO tasks are blocked by dependencies\n- \"Design User Authentication\" is blocking 8 tasks\n- \"Design Tweet Management\" is blocking 8 tasks  \n- \"Design Following/Followers\" is blocking 8 tasks\n\nThis appears to be a circular dependency issue where all tasks are waiting for each other. Need guidance on how to break this dependency cycle.",
+  "severity": "critical"
+}

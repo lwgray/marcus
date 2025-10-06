@@ -1,0 +1,7 @@
+{
+  "timestamp": "2025-10-05T17:55:40.610887",
+  "task_id": "1614945341092661017",
+  "type": "specification",
+  "filename": "database-schema.sql",
+  "description": "PostgreSQL database schema for tweets, media, likes, retweets, and engagement tracking"
+}

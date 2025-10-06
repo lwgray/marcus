@@ -1,0 +1,15 @@
+artifact_uri: /Users/lwgray/dev/marcus/mlruns/990840860305183151/38b2064b9e4945da84036559671ff71b/artifacts
+deleted_time: 1759709483707
+end_time: 1759705910900
+entry_point_name: ''
+experiment_id: '990840860305183151'
+lifecycle_stage: deleted
+run_id: 38b2064b9e4945da84036559671ff71b
+run_name: 20_agent_swarm
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759705510618
+status: 3
+tags: []
+user_id: lwgray

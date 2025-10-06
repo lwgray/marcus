@@ -1,0 +1,15 @@
+artifact_uri: /Users/lwgray/dev/marcus/mlruns/518896495590784524/02323d80824b472fb545abe64b3c7fd7/artifacts
+deleted_time: 1759709483710
+end_time: 1759705501529
+entry_point_name: ''
+experiment_id: '518896495590784524'
+lifecycle_stage: deleted
+run_id: 02323d80824b472fb545abe64b3c7fd7
+run_name: initial-implementation
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759704739660
+status: 3
+tags: []
+user_id: lwgray

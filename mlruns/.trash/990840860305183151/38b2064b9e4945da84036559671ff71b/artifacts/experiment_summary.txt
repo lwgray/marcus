@@ -1,0 +1,24 @@
+Live Experiment Summary
+=======================
+
+Experiment: test20_twitter_clone
+Run: 20_agent_swarm
+Board: 1614901357028836977
+Duration: 0 seconds
+
+Agent Metrics:
+- Total Registered: 0
+- Active Agents: 0
+
+Task Metrics:
+- Total Assignments: 0
+- Total Completions: 1
+- Completion Rate: 100.0%
+
+Condition Metrics:
+- Blockers Reported: 0
+- Artifacts Created: 5
+- Decisions Logged: 1
+- Context Requests: 0
+
+Top Agents by Completions:

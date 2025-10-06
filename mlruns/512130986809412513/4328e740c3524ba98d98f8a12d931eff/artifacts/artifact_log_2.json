@@ -1,0 +1,7 @@
+{
+  "timestamp": "2025-10-05T17:54:43.197535",
+  "task_id": "1614945341092661017",
+  "type": "api",
+  "filename": "tweet-posting-api.yaml",
+  "description": "OpenAPI 3.0 specification for tweet posting, media upload, and engagement endpoints"
+}

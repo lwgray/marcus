@@ -1,0 +1,7 @@
+{
+  "timestamp": "2025-10-05T17:14:12.929299",
+  "agent_id": "test20-agent-5",
+  "task_id": "unknown",
+  "description": "Agent registered with skills [devops, deployment, testing] but there's 1 available task that isn't being assigned. Diagnostics show skill mismatch. Additionally, get_all_board_tasks API endpoint is returning error: 'Planka.__init__() got an unexpected keyword argument 'board_id''. Unable to view available tasks to understand skill requirements.",
+  "severity": "high"
+}

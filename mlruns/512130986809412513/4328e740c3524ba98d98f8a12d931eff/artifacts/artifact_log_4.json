@@ -1,0 +1,7 @@
+{
+  "timestamp": "2025-10-05T17:54:59.838843",
+  "task_id": "1614945335069640434",
+  "type": "api",
+  "filename": "auth-api.yaml",
+  "description": "OpenAPI 3.0 specification for user authentication API with JWT tokens, registration, login, logout, password reset, and email verification endpoints"
+}

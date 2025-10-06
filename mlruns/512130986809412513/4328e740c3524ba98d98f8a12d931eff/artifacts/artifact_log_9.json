@@ -1,0 +1,7 @@
+{
+  "timestamp": "2025-10-05T17:56:42.078958",
+  "task_id": "1614945346025162552",
+  "type": "specification",
+  "filename": "following-data-models.md",
+  "description": "Complete data model specifications including database models, API request/response models, validation rules, TypeScript definitions, and usage examples"
+}

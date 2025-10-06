@@ -767,12 +767,13 @@ async def report_task_progress(
 
             # Record in active experiment if one is running
             from src.experiments.live_experiment_monitor import get_active_monitor
+
             monitor = get_active_monitor()
             if monitor and monitor.is_running:
                 monitor.record_task_completion(
                     task_id=task_id,
                     agent_id=agent_id,
-                    duration_seconds=duration_seconds
+                    duration_seconds=duration_seconds,
                 )
 
             # Record completion in Memory if available
@@ -958,13 +959,14 @@ async def report_blocker(
 
         # Record in active experiment if one is running
         from src.experiments.live_experiment_monitor import get_active_monitor
+
         monitor = get_active_monitor()
         if monitor and monitor.is_running:
             monitor.record_blocker(
                 agent_id=agent_id,
                 task_id=task_id,
                 description=blocker_description,
-                severity=severity
+                severity=severity,
             )
 
         # Add detailed comment
@@ -1376,9 +1378,7 @@ async def find_optimal_task_basic(
 
 
 async def get_all_board_tasks(
-    board_id: str,
-    project_id: str,
-    state: Any
+    board_id: str, project_id: str, state: Any
 ) -> Dict[str, Any]:
     """
     Get all tasks from a specific Planka board.
@@ -1404,12 +1404,9 @@ async def get_all_board_tasks(
         - count: Number of tasks retrieved
     """
     try:
-        from src.integrations.providers.planka import PlankaKanbanProvider
+        from src.integrations.providers.planka import Planka
 
-        provider = PlankaKanbanProvider(
-            board_id=board_id,
-            project_id=project_id
-        )
+        provider = Planka(board_id=board_id, project_id=project_id)
 
         tasks = await provider.get_all_tasks()
 
@@ -1418,14 +1415,9 @@ async def get_all_board_tasks(
             "tasks": tasks,
             "count": len(tasks),
             "board_id": board_id,
-            "project_id": project_id
+            "project_id": project_id,
         }
 
     except Exception as e:
         logger.error(f"Error fetching board tasks: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "tasks": [],
-            "count": 0
-        }
+        return {"success": False, "error": str(e), "tasks": [], "count": 0}

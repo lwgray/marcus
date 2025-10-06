@@ -1,0 +1,14 @@
+artifact_uri: /Users/lwgray/dev/marcus/mlruns/512130986809412513/4328e740c3524ba98d98f8a12d931eff/artifacts
+end_time: null
+entry_point_name: ''
+experiment_id: '512130986809412513'
+lifecycle_stage: active
+run_id: 4328e740c3524ba98d98f8a12d931eff
+run_name: run_20251005_174851
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759708131427
+status: 1
+tags: []
+user_id: lwgray

@@ -1,0 +1,7 @@
+{
+  "timestamp": "2025-10-05T17:05:51.875053",
+  "task_id": "1614922215176799275",
+  "type": "specification",
+  "filename": "auth-data-models.md",
+  "description": "Complete data models and database schema for authentication system including Users, RefreshTokens, PasswordHistory, LoginAttempts tables with validation rules and caching strategy"
+}

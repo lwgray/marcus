@@ -1,0 +1,7 @@
+{
+  "timestamp": "2025-10-05T17:56:25.352964",
+  "task_id": "1614945335069640434",
+  "type": "specification",
+  "filename": "auth-models.py",
+  "description": "Pydantic models and schemas for FastAPI authentication including request/response models, validation rules, JWT payload structures, and configuration constants"
+}

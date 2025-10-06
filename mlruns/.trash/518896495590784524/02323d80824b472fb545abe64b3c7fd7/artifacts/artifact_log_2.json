@@ -1,0 +1,7 @@
+{
+  "timestamp": "2025-10-05T17:04:49.376744",
+  "task_id": "1614922215176799275",
+  "type": "api",
+  "filename": "auth-api.yaml",
+  "description": "OpenAPI 3.0 specification for authentication API including registration, login, logout, token refresh, email verification, and password reset"
+}

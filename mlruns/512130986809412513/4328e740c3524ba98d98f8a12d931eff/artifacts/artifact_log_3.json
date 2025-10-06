@@ -1,0 +1,7 @@
+{
+  "timestamp": "2025-10-05T17:54:52.174767",
+  "task_id": "1614945346025162552",
+  "type": "specification",
+  "filename": "following-database-schema.sql",
+  "description": "PostgreSQL database schema for user follow relationships with optimized indexes, materialized views for counts, and integrity constraints"
+}

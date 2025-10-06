@@ -1,0 +1,7 @@
+{
+  "timestamp": "2025-10-05T18:52:43.083335",
+  "task_id": "1614970741302756495",
+  "type": "architecture",
+  "filename": "authentication-authorization-architecture.md",
+  "description": "Complete authentication and authorization architecture design for enterprise multi-tenant todo application"
+}

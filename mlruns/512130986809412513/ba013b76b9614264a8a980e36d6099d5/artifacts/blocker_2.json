@@ -1,0 +1,7 @@
+{
+  "timestamp": "2025-10-05T17:13:49.458575",
+  "agent_id": "test20-agent-6",
+  "task_id": "initialization",
+  "description": "No tasks available - all 8 TODO tasks are blocked by circular dependencies. Critical design tasks (Design User Authentication, Design Tweet Management, Design Following/Followers) are blocking 8 other tasks each. The system reports 'all_tasks_blocked' as a critical issue with possible circular dependency or missing completed tasks.",
+  "severity": "critical"
+}

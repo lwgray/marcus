@@ -1,0 +1,7 @@
+{
+  "timestamp": "2025-10-05T17:57:44.056037",
+  "task_id": "1614945335069640434",
+  "type": "architecture",
+  "filename": "auth-security.md",
+  "description": "Comprehensive security specification for authentication system covering password security, JWT tokens, email verification, rate limiting, session management, threat mitigation, and compliance requirements"
+}

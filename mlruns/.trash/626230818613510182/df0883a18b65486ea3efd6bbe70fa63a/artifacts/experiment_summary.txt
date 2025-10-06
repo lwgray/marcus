@@ -1,0 +1,13 @@
+Twitter Swarm Experiment Summary
+================================
+
+Configuration:
+- Agents: 10
+- Complexity: enterprise
+- Blockers: Enabled
+- Artifacts: Enabled
+- Decisions: Enabled
+- Context Requests: Enabled
+
+Results tracked in MLflow.
+Use 'mlflow ui' to view detailed metrics and compare runs.

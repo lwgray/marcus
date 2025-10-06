@@ -1,130 +1,60 @@
 {
+  "93749b6a-5f91-4d86-9e29-85054136448c": {
+    "id": "93749b6a-5f91-4d86-9e29-85054136448c",
+    "name": "test50 - Main Board",
+    "provider": "planka",
+    "provider_config": {
+      "project_id": "1614945202378639068",
+      "project_name": "test50",
+      "board_id": "1614945202504468190",
+      "board_name": "Main Board"
+    },
+    "created_at": "2025-10-05T17:48:46.469752",
+    "last_used": "2025-10-05T17:48:46.470857",
+    "tags": [
+      "discovered",
+      "planka"
+    ],
+    "_stored_at": "2025-10-05T17:48:46.471183"
+  },
   "active_project": {
-    "project_id": "488c44dd-978a-4c3d-abd7-dad274e9dd04",
-    "_stored_at": "2025-10-05T11:55:48.085380"
+    "project_id": "bb8a521b-d1fe-4ef5-9915-c453c97874e2",
+    "_stored_at": "2025-10-05T21:19:51.536319"
   },
-  "eb9f616e-1140-4863-8501-8e1ac32293ee": {
-    "id": "eb9f616e-1140-4863-8501-8e1ac32293ee",
-    "name": "Task Master Test",
+  "7297d2c3-e9f7-4916-ab93-d53a458c6f29": {
+    "id": "7297d2c3-e9f7-4916-ab93-d53a458c6f29",
+    "name": "subagents - Main Board",
     "provider": "planka",
     "provider_config": {
-      "project_id": "1533678301472621705",
-      "board_id": "1533859887128249584"
+      "project_id": "1614970570024158329",
+      "project_name": "subagents",
+      "board_id": "1614970570208707707",
+      "board_name": "Main Board"
     },
-    "created_at": "2025-07-14T15:02:22.013854",
-    "last_used": "2025-10-04T19:36:00.905311",
-    "tags": [
-      "default",
-      "migrated"
-    ],
-    "_stored_at": "2025-10-04T19:36:00.905626"
-  },
-  "488c44dd-978a-4c3d-abd7-dad274e9dd04": {
-    "id": "488c44dd-978a-4c3d-abd7-dad274e9dd04",
-    "name": "1st Project - todo",
-    "provider": "planka",
-    "provider_config": {
-      "project_id": "1612478574885864456",
-      "board_id": "1612478920202912778",
-      "project_name": "1st Project",
-      "board_name": "todo"
-    },
-    "created_at": "2025-10-05T05:48:41.393839",
-    "last_used": "2025-10-05T11:55:48.084152",
-    "tags": [
-      "planka",
-      "discovered"
-    ],
-    "_stored_at": "2025-10-05T11:55:48.084602"
-  },
-  "44ed31f0-6013-4575-8699-c92208782752": {
-    "id": "44ed31f0-6013-4575-8699-c92208782752",
-    "name": "test - test",
-    "provider": "planka",
-    "provider_config": {
-      "project_id": "1612725664018859025",
-      "project_name": "test",
-      "board_id": "1612727100878357523",
-      "board_name": "test"
-    },
-    "created_at": "2025-10-05T08:22:00.594845",
-    "last_used": "2025-10-05T08:22:00.594845",
+    "created_at": "2025-10-05T18:42:36.248385",
+    "last_used": "2025-10-05T18:42:36.248414",
     "tags": [
       "discovered",
       "planka"
     ],
-    "_stored_at": "2025-10-05T08:22:00.595152"
+    "_stored_at": "2025-10-05T18:42:36.249064"
   },
-  "78de5732-0944-4c40-82ec-94c5a547191a": {
-    "id": "78de5732-0944-4c40-82ec-94c5a547191a",
-    "name": "Test Project 1759473511727 - Test Board",
+  "bb8a521b-d1fe-4ef5-9915-c453c97874e2": {
+    "id": "bb8a521b-d1fe-4ef5-9915-c453c97874e2",
+    "name": "podcast - Main Board",
     "provider": "planka",
     "provider_config": {
-      "project_id": "1612977583782102526",
-      "project_name": "Test Project 1759473511727",
-      "board_id": "1612977583882765824",
-      "board_name": "Test Board"
+      "project_id": "1615017663761745584",
+      "project_name": "podcast",
+      "board_id": "1615017663929517746",
+      "board_name": "Main Board"
     },
-    "created_at": "2025-10-05T08:22:00.595731",
-    "last_used": "2025-10-05T08:22:00.595732",
+    "created_at": "2025-10-05T20:12:08.486282",
+    "last_used": "2025-10-05T21:19:51.534923",
     "tags": [
       "discovered",
       "planka"
     ],
-    "_stored_at": "2025-10-05T08:22:00.596036"
-  },
-  "3b300f80-886e-432e-a429-dc4c201b2704": {
-    "id": "3b300f80-886e-432e-a429-dc4c201b2704",
-    "name": "Marcus Test 68967 - Test Board",
-    "provider": "planka",
-    "provider_config": {
-      "project_id": "1612979598876739095",
-      "project_name": "Marcus Test 68967",
-      "board_id": "1612979599010956825",
-      "board_name": "Test Board"
-    },
-    "created_at": "2025-10-05T08:22:00.596603",
-    "last_used": "2025-10-05T08:22:00.596604",
-    "tags": [
-      "discovered",
-      "planka"
-    ],
-    "_stored_at": "2025-10-05T08:22:00.596904"
-  },
-  "e8325c37-759c-4416-99dc-a4c6ecfcc9ba": {
-    "id": "e8325c37-759c-4416-99dc-a4c6ecfcc9ba",
-    "name": "Marcus E2E Test 72204 - Development Board",
-    "provider": "planka",
-    "provider_config": {
-      "project_id": "1612984214901229150",
-      "project_name": "Marcus E2E Test 72204",
-      "board_id": "1612984215069001312",
-      "board_name": "Development Board"
-    },
-    "created_at": "2025-10-05T08:22:00.597355",
-    "last_used": "2025-10-05T08:22:00.597356",
-    "tags": [
-      "discovered",
-      "planka"
-    ],
-    "_stored_at": "2025-10-05T08:22:00.597624"
-  },
-  "51e4542f-f3fa-46ac-be35-1be5c3aa6834": {
-    "id": "51e4542f-f3fa-46ac-be35-1be5c3aa6834",
-    "name": "Test Auto Project - Test Auto Board",
-    "provider": "planka",
-    "provider_config": {
-      "project_id": "1612990042869859959",
-      "project_name": "Test Auto Project",
-      "board_id": "1612990043087963769",
-      "board_name": "Test Auto Board"
-    },
-    "created_at": "2025-10-05T08:22:00.598100",
-    "last_used": "2025-10-05T08:22:00.598101",
-    "tags": [
-      "discovered",
-      "planka"
-    ],
-    "_stored_at": "2025-10-05T08:22:00.598362"
+    "_stored_at": "2025-10-05T21:19:51.535473"
   }
 }

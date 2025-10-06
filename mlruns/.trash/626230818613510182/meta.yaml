@@ -1,0 +1,8 @@
+artifact_location: /Users/lwgray/dev/marcus/mlruns/626230818613510182
+creation_time: 1759699304307
+experiment_id: '626230818613510182'
+last_update_time: 1759709483707
+lifecycle_stage: deleted
+name: twitter-swarm-test
+tags:
+  mlflow.experimentKind: custom_model_development

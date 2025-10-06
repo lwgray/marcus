@@ -1,0 +1,7 @@
+{
+  "timestamp": "2025-10-05T17:54:22.564806",
+  "task_id": "1614945346025162552",
+  "type": "api",
+  "filename": "following-users-api.yaml",
+  "description": "OpenAPI specification for Following Users API with endpoints for follow, unfollow, followers list, following list, and follow status"
+}
