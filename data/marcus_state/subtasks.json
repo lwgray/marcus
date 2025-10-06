@@ -1,0 +1,143 @@
+{
+  "subtasks": {
+    "task-001_sub_1": {
+      "id": "task-001_sub_1",
+      "parent_task_id": "task-001",
+      "name": "Create Task model",
+      "description": "Define Task model in src/models/task.py with fields: id, title, status, priority",
+      "status": "done",
+      "priority": "medium",
+      "assigned_to": "agent-1",
+      "created_at": "2025-10-05T20:17:56.449523",
+      "estimated_hours": 2.0,
+      "dependencies": [],
+      "file_artifacts": [
+        "src/models/task.py"
+      ],
+      "provides": "Task model with validation",
+      "requires": "None",
+      "order": 0
+    },
+    "task-001_sub_2": {
+      "id": "task-001_sub_2",
+      "parent_task_id": "task-001",
+      "name": "Build authentication middleware",
+      "description": "Create JWT authentication middleware in src/middleware/auth.py",
+      "status": "done",
+      "priority": "medium",
+      "assigned_to": "agent-2",
+      "created_at": "2025-10-05T20:17:56.449527",
+      "estimated_hours": 2.5,
+      "dependencies": [],
+      "file_artifacts": [
+        "src/middleware/auth.py"
+      ],
+      "provides": "JWT authentication middleware",
+      "requires": "None",
+      "order": 1
+    },
+    "task-001_sub_3": {
+      "id": "task-001_sub_3",
+      "parent_task_id": "task-001",
+      "name": "Implement CRUD endpoints",
+      "description": "Create REST endpoints: POST/GET/PUT/DELETE /api/tasks",
+      "status": "done",
+      "priority": "medium",
+      "assigned_to": "agent-3",
+      "created_at": "2025-10-05T20:17:56.449529",
+      "estimated_hours": 3.0,
+      "dependencies": [
+        "task-001_sub_1",
+        "task-001_sub_2"
+      ],
+      "file_artifacts": [
+        "src/api/tasks/create.py",
+        "src/api/tasks/read.py",
+        "src/api/tasks/update.py",
+        "src/api/tasks/delete.py"
+      ],
+      "provides": "Full CRUD API for tasks",
+      "requires": "Task model, Auth middleware",
+      "order": 2
+    },
+    "task-001_sub_4": {
+      "id": "task-001_sub_4",
+      "parent_task_id": "task-001",
+      "name": "Add WebSocket support",
+      "description": "Implement real-time task updates via WebSocket in src/websocket/tasks.py",
+      "status": "done",
+      "priority": "medium",
+      "assigned_to": "agent-4",
+      "created_at": "2025-10-05T20:17:56.449530",
+      "estimated_hours": 2.0,
+      "dependencies": [
+        "task-001_sub_1",
+        "task-001_sub_3"
+      ],
+      "file_artifacts": [
+        "src/websocket/tasks.py"
+      ],
+      "provides": "Real-time task updates",
+      "requires": "Task model, CRUD endpoints",
+      "order": 3
+    },
+    "task-001_sub_5": {
+      "id": "task-001_sub_5",
+      "parent_task_id": "task-001",
+      "name": "Integrate and validate Build task management API",
+      "description": "Final integration step for Build task management API:\n1. Verify all components work together\n2. Run integration tests across all files\n3. Create consolidated documentation\n4. Validate all interfaces and file outputs\n5. Ensure project meets original requirements",
+      "status": "done",
+      "priority": "medium",
+      "assigned_to": "agent-5",
+      "created_at": "2025-10-05T20:17:56.449532",
+      "estimated_hours": 1.5,
+      "dependencies": [
+        "task-001_sub_1",
+        "task-001_sub_2",
+        "task-001_sub_3",
+        "task-001_sub_4"
+      ],
+      "file_artifacts": [
+        "docs/integration_report.md",
+        "tests/integration/test_integration.py"
+      ],
+      "provides": "Fully integrated and validated solution",
+      "requires": "All components: Create Task model, Build authentication middleware, Implement CRUD endpoints, Add WebSocket support",
+      "order": 4
+    }
+  },
+  "parent_to_subtasks": {
+    "task-001": [
+      "task-001_sub_1",
+      "task-001_sub_2",
+      "task-001_sub_3",
+      "task-001_sub_4",
+      "task-001_sub_5"
+    ]
+  },
+  "metadata": {
+    "task-001": {
+      "shared_conventions": {
+        "base_path": "src/api/",
+        "file_structure": "src/{component}/{feature}.py",
+        "response_format": {
+          "success": {
+            "status": "success",
+            "data": "..."
+          },
+          "error": {
+            "status": "error",
+            "message": "..."
+          }
+        },
+        "naming_conventions": {
+          "files": "snake_case",
+          "classes": "PascalCase",
+          "functions": "snake_case"
+        }
+      },
+      "decomposed_at": "2025-10-05T20:17:56.449520",
+      "decomposed_by": "ai"
+    }
+  }
+}
