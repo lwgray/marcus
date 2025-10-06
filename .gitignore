@@ -53,6 +53,7 @@ marcus-fresh-env/
 main.py/
 todo-app/
 .misc/
+mlruns/
 
 # Runtime
 pids/*.pid
