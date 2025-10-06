@@ -205,15 +205,19 @@ STARTUP SEQUENCE:
    - role: "{agent.role}"
    - skills: {json.dumps(agent.skills)}
 
-6. Use mcp__marcus__start_experiment to start tracking:
-   - experiment_name: "marcus_multi_agent_demo"
-   - run_name: "task_api_build_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-   - project_id: <from project_info.json>
-   - board_id: <from project_info.json>
-   - tags: {{"agent_id": "{agent.agent_id}", "role": "{agent.role}"}}
-   - params: {{"num_subagents": {agent.num_subagents}}}
+6. Call mcp__marcus__request_next_task:
+   - No parameters needed
+   - This will find tasks suitable for your skills
+   - If you get "no suitable tasks", try again in 30 seconds (other agents may be working on dependencies)
 
-7. Enter the continuous work loop following the workflow below:
+7. When you get a task:
+   - Check dependencies with get_task_context
+   - Work on it in: {self.project_root}
+   - Report progress at 25%, 50%, 75%, 100%
+   - Commit to branch: {branch_name}
+   - When 100% complete, IMMEDIATELY call request_next_task again
+
+8. Repeat step 7 until NO_TASKS_AVAILABLE
 
 ---
 
@@ -221,15 +225,14 @@ STARTUP SEQUENCE:
 
 ---
 
-REMEMBER:
-- Work in {self.project_root}
-- All code goes in the implementation/ directory
-- Commit to branch: {branch_name}
-- NEVER STOP - always request the next task after completing one
+CRITICAL REMINDERS:
+- Work directory: {self.project_root}
+- Git branch: {branch_name}
+- After EVERY task completion, IMMEDIATELY request_next_task
 - Use get_task_context for tasks with dependencies
 - Use log_decision for architectural choices
-- Use log_artifact to share specifications/docs with other agents
-- project_root parameter for log_artifact MUST be: {self.project_root}
+- Use log_artifact with project_root: {self.project_root}
+- If "no suitable tasks", wait 30s and try again (max 3 retries)
 
 START NOW!
 """
