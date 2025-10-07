@@ -31,7 +31,7 @@ pip install python-dotenv==1.0.0
 Create `.env` file:
 ```bash
 # Database Configuration
-DATABASE_URL=postgresql://user:password@localhost:5432/taskmanagement
+DATABASE_URL=postgresql://user:password@localhost:5432/taskmanagement  # pragma: allowlist secret
 
 # JWT Configuration
 JWT_SECRET_KEY=your-super-secret-key-change-in-production
@@ -66,7 +66,7 @@ alembic init alembic
 
 Edit `alembic.ini`:
 ```ini
-sqlalchemy.url = postgresql://user:password@localhost:5432/taskmanagement
+sqlalchemy.url = postgresql://user:password@localhost:5432/taskmanagement  # pragma: allowlist secret
 ```
 
 Edit `alembic/env.py`:
@@ -486,7 +486,7 @@ class TestAuthService:
 
     def test_hash_password(self, auth_service):
         """Test password hashing."""
-        password = "SecurePass123!"
+        password = "SecurePass123!"  # pragma: allowlist secret
         hash1 = auth_service.hash_password(password)
         hash2 = auth_service.hash_password(password)
 
@@ -496,14 +496,14 @@ class TestAuthService:
 
     def test_verify_password_success(self, auth_service):
         """Test password verification with correct password."""
-        password = "SecurePass123!"
+        password = "SecurePass123!"  # pragma: allowlist secret
         password_hash = auth_service.hash_password(password)
 
         assert auth_service.verify_password(password, password_hash) is True
 
     def test_verify_password_failure(self, auth_service):
         """Test password verification with incorrect password."""
-        password = "SecurePass123!"
+        password = "SecurePass123!"  # pragma: allowlist secret
         password_hash = auth_service.hash_password(password)
 
         assert auth_service.verify_password("WrongPassword", password_hash) is False
@@ -606,7 +606,7 @@ async function getCurrentUser() {
 
 ### Production Environment Variables
 ```bash
-DATABASE_URL=postgresql://user:password@prod-db.example.com:5432/taskmanagement
+DATABASE_URL=postgresql://user:password@prod-db.example.com:5432/taskmanagement  # pragma: allowlist secret
 JWT_SECRET_KEY=<strong-random-256-bit-key>
 JWT_ALGORITHM=HS256
 JWT_EXPIRATION_HOURS=24
