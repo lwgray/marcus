@@ -95,6 +95,19 @@ class DocumentationTaskGenerator:
             )
         ]
 
+        # CRITICAL VALIDATION: PROJECT_SUCCESS must depend on implementation tasks
+        # If dependencies is empty but implementation tasks exist, this is a BUG
+        if len(dependencies) == 0 and len(implementation_tasks) > 0:
+            error_msg = (
+                f"CRITICAL: PROJECT_SUCCESS task has ZERO dependencies but "
+                f"{len(implementation_tasks)} implementation tasks exist. "
+                f"This means create_documentation_task() was called BEFORE "
+                f"implementation tasks were created. "
+                f"FIX: Call this function AFTER all other tasks are created."
+            )
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
         # Log dependency count for debugging
         logger.info(f"PROJECT_SUCCESS task will depend on {len(dependencies)} tasks")
 

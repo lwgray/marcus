@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 
 from src.core.models import Task
+from src.core.task_graph_validator import TaskGraphValidator
 from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
 from src.integrations.nlp_task_utils import (
     SafetyChecker,
@@ -76,8 +77,17 @@ class NaturalLanguageTaskCreator(ABC):
         RuntimeError
             If kanban client doesn't support task creation
         """
-        # Validate dependencies if requested
+        # CRITICAL: Validate task graph BEFORE committing to Kanban
+        # This RAISES exceptions for invalid graphs (preventative validation)
         if not skip_validation:
+            try:
+                TaskGraphValidator.validate_before_commit(tasks)
+            except ValueError as e:
+                # Task graph validation failed - this is CRITICAL
+                logger.error(f"Task graph validation failed: {e}")
+                raise  # Re-raise to prevent invalid tasks from being created
+
+            # Also run legacy safety checker (diagnostic warnings)
             errors = self.safety_checker.validate_dependencies(tasks)
             if errors:
                 logger.warning(f"Dependency validation errors: {errors}")

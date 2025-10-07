@@ -139,6 +139,15 @@ class MarcusServer:
         self.lease_manager: Optional[AssignmentLeaseManager] = None
         self.lease_monitor: Optional[LeaseMonitor] = None
 
+        # Gridlock detection
+        from src.core.gridlock_detector import GridlockDetector
+
+        self.gridlock_detector = GridlockDetector(
+            request_threshold=3,
+            time_window_minutes=5,
+            alert_cooldown_minutes=10,
+        )
+
         # Pipeline flow visualization (shared between processes)
         self.pipeline_visualizer = SharedPipelineVisualizer()
 

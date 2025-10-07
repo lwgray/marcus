@@ -275,8 +275,10 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
             # CRITICAL: Enforce one-task-per-agent rule
             if agent.current_tasks:
                 logger.warning(
-                    f"Agent {agent_id} ({agent.name}) already has {len(agent.current_tasks)} task(s): "
-                    f"{[t.name for t in agent.current_tasks]}. Rejecting new task request."
+                    f"Agent {agent_id} ({agent.name}) already has "
+                    f"{len(agent.current_tasks)} task(s): "
+                    f"{[t.name for t in agent.current_tasks]}. "
+                    "Rejecting new task request."
                 )
                 conversation_logger.log_pm_message(
                     "marcus",
@@ -290,7 +292,11 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 )
                 return {
                     "success": False,
-                    "error": "You already have a task assigned. Please complete or report blocker on current task before requesting another.",
+                    "error": (
+                        "You already have a task assigned. Please complete "
+                        "or report blocker on current task before "
+                        "requesting another."
+                    ),
                     "current_task": {
                         "id": agent.current_tasks[0].id,
                         "name": agent.current_tasks[0].name,
@@ -654,6 +660,32 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 return {"success": False, "error": f"Failed to assign task: {str(e)}"}
 
         else:
+            # Record no-task response for gridlock detection
+            if hasattr(state, "gridlock_detector") and state.gridlock_detector:
+                state.gridlock_detector.record_no_task_response(agent_id)
+
+                # Check for gridlock
+                gridlock_result = state.gridlock_detector.check_for_gridlock(
+                    state.project_tasks
+                )
+
+                if gridlock_result["is_gridlock"] and gridlock_result["should_alert"]:
+                    # CRITICAL: Project is gridlocked!
+                    logger.critical("🚨 PROJECT GRIDLOCK DETECTED!")
+                    logger.critical(gridlock_result["diagnosis"])
+
+                    # Log to conversation for visibility
+                    conversation_logger.log_pm_message(
+                        "marcus",
+                        "system",
+                        "🚨 PROJECT GRIDLOCK DETECTED",
+                        {
+                            "severity": "critical",
+                            "metrics": gridlock_result["metrics"],
+                            "diagnosis": gridlock_result["diagnosis"],
+                        },
+                    )
+
             # Check if there are any TODO tasks remaining
             # Only run diagnostics if tasks exist but can't be assigned
             todo_tasks = [t for t in state.project_tasks if t.status == TaskStatus.TODO]
