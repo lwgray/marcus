@@ -71,3 +71,4 @@ config_marcus.json.*
 
 knowledge_graph.html
 data/
+mlruns/

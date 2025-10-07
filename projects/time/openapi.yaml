@@ -1,0 +1,1213 @@
+openapi: 3.0.3
+info:
+  title: Task Management & Calendar Integration API
+  version: 1.0.0
+  description: |
+    Comprehensive task management platform with calendar integration, time tracking,
+    and data analytics capabilities. Designed to increase user productivity by 20%
+    through intelligent task management and seamless calendar synchronization.
+  contact:
+    name: API Support
+    email: api-support@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api.example.com/v1
+    description: Production server
+  - url: https://staging-api.example.com/v1
+    description: Staging server
+  - url: http://localhost:8000/v1
+    description: Development server
+
+tags:
+  - name: auth
+    description: Authentication and authorization operations
+  - name: tasks
+    description: Task management operations
+  - name: calendar
+    description: Calendar integration operations
+  - name: time
+    description: Time tracking operations
+  - name: analytics
+    description: Analytics and reporting operations
+  - name: projects
+    description: Project management operations
+
+security:
+  - BearerAuth: []
+
+paths:
+  # Authentication Endpoints
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Register a new user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRegistration'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Email or username already exists
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Authenticate user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserLogin'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: Get current user profile
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # Task Management Endpoints
+  /tasks:
+    get:
+      tags: [tasks]
+      summary: List tasks
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/TaskStatus'
+        - name: priority
+          in: query
+          schema:
+            $ref: '#/components/schemas/TaskPriority'
+        - name: project_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: tags
+          in: query
+          schema:
+            type: string
+            description: Comma-separated tag names
+        - name: due_before
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: due_after
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: List of tasks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [tasks]
+      summary: Create a new task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCreate'
+      responses:
+        '201':
+          description: Task created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /tasks/{task_id}:
+    get:
+      tags: [tasks]
+      summary: Get task by ID
+      parameters:
+        - $ref: '#/components/parameters/TaskIdParam'
+      responses:
+        '200':
+          description: Task details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [tasks]
+      summary: Update task
+      parameters:
+        - $ref: '#/components/parameters/TaskIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskUpdate'
+      responses:
+        '200':
+          description: Task updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [tasks]
+      summary: Delete task
+      parameters:
+        - $ref: '#/components/parameters/TaskIdParam'
+      responses:
+        '204':
+          description: Task deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tasks/{task_id}/subtasks:
+    get:
+      tags: [tasks]
+      summary: Get task subtasks
+      parameters:
+        - $ref: '#/components/parameters/TaskIdParam'
+      responses:
+        '200':
+          description: List of subtasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Task'
+
+  # Calendar Integration Endpoints
+  /calendar/connect:
+    post:
+      tags: [calendar]
+      summary: Connect a calendar provider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CalendarConnect'
+      responses:
+        '201':
+          description: Calendar connected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarConnection'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /calendar/connections:
+    get:
+      tags: [calendar]
+      summary: List calendar connections
+      responses:
+        '200':
+          description: List of calendar connections
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CalendarConnection'
+
+  /calendar/connections/{connection_id}:
+    delete:
+      tags: [calendar]
+      summary: Disconnect calendar
+      parameters:
+        - name: connection_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Calendar disconnected
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /calendar/sync/{connection_id}:
+    post:
+      tags: [calendar]
+      summary: Trigger calendar sync
+      parameters:
+        - name: connection_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '202':
+          description: Sync initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  job_id:
+                    type: string
+                    format: uuid
+                  estimated_completion:
+                    type: string
+                    format: date-time
+
+  /calendar/events:
+    get:
+      tags: [calendar]
+      summary: Get calendar events
+      parameters:
+        - name: start_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: end_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: connection_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of calendar events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CalendarEvent'
+
+  # Time Tracking Endpoints
+  /time/start:
+    post:
+      tags: [time]
+      summary: Start time tracking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [task_id]
+              properties:
+                task_id:
+                  type: string
+                  format: uuid
+                description:
+                  type: string
+      responses:
+        '201':
+          description: Time tracking started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeEntry'
+
+  /time/stop/{entry_id}:
+    post:
+      tags: [time]
+      summary: Stop time tracking
+      parameters:
+        - name: entry_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Time tracking stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeEntry'
+
+  /time/entries:
+    get:
+      tags: [time]
+      summary: Get time entries
+      parameters:
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: task_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: List of time entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TimeEntry'
+                  total_duration:
+                    type: integer
+                    description: Total duration in seconds
+                  total_entries:
+                    type: integer
+
+    post:
+      tags: [time]
+      summary: Create manual time entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TimeEntryCreate'
+      responses:
+        '201':
+          description: Time entry created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeEntry'
+
+  /time/entries/{entry_id}:
+    patch:
+      tags: [time]
+      summary: Update time entry
+      parameters:
+        - name: entry_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TimeEntryUpdate'
+      responses:
+        '200':
+          description: Time entry updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeEntry'
+
+    delete:
+      tags: [time]
+      summary: Delete time entry
+      parameters:
+        - name: entry_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Time entry deleted
+
+  # Analytics Endpoints
+  /analytics/dashboard:
+    get:
+      tags: [analytics]
+      summary: Get productivity dashboard
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [7d, 30d, 90d, 1y]
+            default: 30d
+      responses:
+        '200':
+          description: Dashboard data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dashboard'
+
+  /analytics/time-distribution:
+    get:
+      tags: [analytics]
+      summary: Get time distribution analytics
+      parameters:
+        - name: start_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: end_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: group_by
+          in: query
+          schema:
+            type: string
+            enum: [project, tag, priority, day, week]
+            default: project
+      responses:
+        '200':
+          description: Time distribution data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeDistribution'
+
+  /analytics/productivity-trends:
+    get:
+      tags: [analytics]
+      summary: Get productivity trends
+      parameters:
+        - name: start_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: end_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: granularity
+          in: query
+          schema:
+            type: string
+            enum: [day, week, month]
+            default: day
+      responses:
+        '200':
+          description: Productivity trends
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductivityTrends'
+
+  # Project Endpoints
+  /projects:
+    get:
+      tags: [projects]
+      summary: List projects
+      parameters:
+        - name: include_archived
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Project'
+
+    post:
+      tags: [projects]
+      summary: Create project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectCreate'
+      responses:
+        '201':
+          description: Project created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+
+  /projects/{project_id}:
+    get:
+      tags: [projects]
+      summary: Get project by ID
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Project details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+
+    patch:
+      tags: [projects]
+      summary: Update project
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectUpdate'
+      responses:
+        '200':
+          description: Project updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+
+    delete:
+      tags: [projects]
+      summary: Delete project
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Project deleted
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    LimitParam:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    TaskIdParam:
+      name: task_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    # Authentication Schemas
+    UserRegistration:
+      type: object
+      required: [email, username, password, full_name, timezone]
+      properties:
+        email:
+          type: string
+          format: email
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+        password:
+          type: string
+          minLength: 8
+          format: password
+        full_name:
+          type: string
+        timezone:
+          type: string
+          example: America/New_York
+
+    UserLogin:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    AuthResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        username:
+          type: string
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          example: 3600
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        username:
+          type: string
+        full_name:
+          type: string
+        timezone:
+          type: string
+        preferences:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        last_login:
+          type: string
+          format: date-time
+        is_active:
+          type: boolean
+
+    # Task Schemas
+    TaskStatus:
+      type: string
+      enum: [TODO, IN_PROGRESS, COMPLETED, CANCELLED]
+
+    TaskPriority:
+      type: string
+      enum: [LOW, MEDIUM, HIGH, URGENT]
+
+    TaskCreate:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        priority:
+          $ref: '#/components/schemas/TaskPriority'
+        due_date:
+          type: string
+          format: date-time
+        start_date:
+          type: string
+          format: date-time
+        estimated_duration:
+          type: integer
+          description: Estimated duration in minutes
+        tags:
+          type: array
+          items:
+            type: string
+        project_id:
+          type: string
+          format: uuid
+        parent_task_id:
+          type: string
+          format: uuid
+        recurrence_rule:
+          type: string
+          description: iCal RRULE format
+
+    TaskUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        priority:
+          $ref: '#/components/schemas/TaskPriority'
+        due_date:
+          type: string
+          format: date-time
+        start_date:
+          type: string
+          format: date-time
+        estimated_duration:
+          type: integer
+        actual_duration:
+          type: integer
+        tags:
+          type: array
+          items:
+            type: string
+        project_id:
+          type: string
+          format: uuid
+
+    Task:
+      allOf:
+        - $ref: '#/components/schemas/TaskCreate'
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            user_id:
+              type: string
+              format: uuid
+            actual_duration:
+              type: integer
+            calendar_event_id:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+            completed_at:
+              type: string
+              format: date-time
+
+    TaskList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        total_pages:
+          type: integer
+
+    # Calendar Schemas
+    CalendarProvider:
+      type: string
+      enum: [GOOGLE, MICROSOFT, ICAL]
+
+    CalendarConnect:
+      type: object
+      required: [provider, authorization_code, redirect_uri]
+      properties:
+        provider:
+          $ref: '#/components/schemas/CalendarProvider'
+        authorization_code:
+          type: string
+        redirect_uri:
+          type: string
+          format: uri
+        calendar_id:
+          type: string
+
+    CalendarConnection:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        provider:
+          $ref: '#/components/schemas/CalendarProvider'
+        provider_account_id:
+          type: string
+        calendar_id:
+          type: string
+        sync_enabled:
+          type: boolean
+        last_sync_at:
+          type: string
+          format: date-time
+        sync_status:
+          type: string
+          enum: [SUCCESS, FAILED, PENDING]
+        sync_error:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CalendarEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        source:
+          $ref: '#/components/schemas/CalendarProvider'
+        task_id:
+          type: string
+          format: uuid
+        is_all_day:
+          type: boolean
+
+    # Time Tracking Schemas
+    TimeEntryCreate:
+      type: object
+      required: [task_id, start_time, end_time]
+      properties:
+        task_id:
+          type: string
+          format: uuid
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        description:
+          type: string
+
+    TimeEntryUpdate:
+      type: object
+      properties:
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        description:
+          type: string
+
+    TimeEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        task_id:
+          type: string
+          format: uuid
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        duration:
+          type: integer
+          description: Duration in seconds
+        description:
+          type: string
+        is_manual:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    # Analytics Schemas
+    Dashboard:
+      type: object
+      properties:
+        period:
+          type: string
+        tasks_completed:
+          type: integer
+        tasks_created:
+          type: integer
+        completion_rate:
+          type: number
+          format: float
+        total_time_tracked:
+          type: integer
+        avg_task_duration:
+          type: integer
+        productivity_score:
+          type: integer
+        top_tags:
+          type: array
+          items:
+            type: object
+            properties:
+              tag:
+                type: string
+              time:
+                type: integer
+              tasks:
+                type: integer
+        daily_breakdown:
+          type: array
+          items:
+            type: object
+
+    TimeDistribution:
+      type: object
+      properties:
+        by_project:
+          type: array
+          items:
+            type: object
+        by_tag:
+          type: array
+          items:
+            type: object
+        by_priority:
+          type: array
+          items:
+            type: object
+        by_day_of_week:
+          type: array
+          items:
+            type: object
+
+    ProductivityTrends:
+      type: object
+      properties:
+        data_points:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              tasks_completed:
+                type: integer
+              time_tracked:
+                type: integer
+              productivity_score:
+                type: number
+
+    # Project Schemas
+    ProjectCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+
+    ProjectUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        color:
+          type: string
+        is_archived:
+          type: boolean
+
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        color:
+          type: string
+        is_archived:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    # Error Schemas
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

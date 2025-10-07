@@ -1,0 +1,591 @@
+openapi: 3.0.3
+info:
+  title: Task Management API
+  description: |
+    RESTful API for task creation, organization, and management.
+    Designed to increase user productivity by 20% within six months.
+  version: 1.0.0
+  contact:
+    name: Time Agent 3
+    email: support@taskmanager.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api.taskmanager.com/v1
+    description: Production server
+  - url: https://staging-api.taskmanager.com/v1
+    description: Staging server
+  - url: http://localhost:8000/v1
+    description: Development server
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: Tasks
+    description: Task management operations
+  - name: Projects
+    description: Project management operations
+  - name: Users
+    description: User management operations
+
+paths:
+  /tasks:
+    get:
+      tags:
+        - Tasks
+      summary: List tasks with filtering and pagination
+      description: Retrieve a paginated list of tasks with optional filtering by status, priority, tags, and dates
+      parameters:
+        - name: status
+          in: query
+          description: Filter by task status
+          schema:
+            type: string
+            enum: [todo, in_progress, completed, archived]
+        - name: priority
+          in: query
+          description: Filter by task priority
+          schema:
+            type: string
+            enum: [low, medium, high, urgent]
+        - name: tags
+          in: query
+          description: Filter by tags (comma-separated)
+          schema:
+            type: string
+            example: "work,important"
+        - name: project_id
+          in: query
+          description: Filter by project ID
+          schema:
+            type: string
+            format: uuid
+        - name: due_date_from
+          in: query
+          description: Filter tasks due after this date
+          schema:
+            type: string
+            format: date-time
+        - name: due_date_to
+          in: query
+          description: Filter tasks due before this date
+          schema:
+            type: string
+            format: date-time
+        - name: search
+          in: query
+          description: Search in title and description
+          schema:
+            type: string
+        - name: sort
+          in: query
+          description: Field to sort by
+          schema:
+            type: string
+            enum: [created_at, updated_at, due_date, priority]
+            default: created_at
+        - name: order
+          in: query
+          description: Sort order
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - name: page
+          in: query
+          description: Page number
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Items per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Successful response with task list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Task'
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    post:
+      tags:
+        - Tasks
+      summary: Create a new task
+      description: Create a new task with title, description, due date, and priority
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCreate'
+      responses:
+        '201':
+          description: Task created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Task'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /tasks/{task_id}:
+    get:
+      tags:
+        - Tasks
+      summary: Get a specific task
+      description: Retrieve details of a single task by ID
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          description: Task ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Task'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    put:
+      tags:
+        - Tasks
+      summary: Update a task
+      description: Update any field of an existing task
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          description: Task ID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskUpdate'
+      responses:
+        '200':
+          description: Task updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Task'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    delete:
+      tags:
+        - Tasks
+      summary: Delete a task
+      description: Permanently delete a task
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          description: Task ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Task deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /tasks/bulk:
+    post:
+      tags:
+        - Tasks
+      summary: Perform bulk operations on tasks
+      description: Update or delete multiple tasks at once
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkOperation'
+      responses:
+        '200':
+          description: Bulk operation completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      updated:
+                        type: integer
+                        example: 5
+                      failed:
+                        type: integer
+                        example: 0
+                      results:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            task_id:
+                              type: string
+                              format: uuid
+                            success:
+                              type: boolean
+                            error:
+                              type: string
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token for authentication
+
+  schemas:
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique task identifier
+        title:
+          type: string
+          maxLength: 200
+          description: Task title
+        description:
+          type: string
+          maxLength: 5000
+          nullable: true
+          description: Detailed task description
+        due_date:
+          type: string
+          format: date-time
+          nullable: true
+          description: Task due date in ISO 8601 format
+        priority:
+          type: string
+          enum: [low, medium, high, urgent]
+          description: Task priority level
+        status:
+          type: string
+          enum: [todo, in_progress, completed, archived]
+          description: Current task status
+        tags:
+          type: array
+          items:
+            type: string
+          description: Task tags for categorization
+        created_at:
+          type: string
+          format: date-time
+          description: Task creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Task completion timestamp
+        user_id:
+          type: string
+          format: uuid
+          description: Owner user ID
+        project_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Associated project ID
+      required:
+        - id
+        - title
+        - priority
+        - status
+        - created_at
+        - updated_at
+        - user_id
+
+    TaskCreate:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 200
+          description: Task title
+        description:
+          type: string
+          maxLength: 5000
+          description: Detailed task description
+        due_date:
+          type: string
+          format: date-time
+          description: Task due date in ISO 8601 format
+        priority:
+          type: string
+          enum: [low, medium, high, urgent]
+          default: medium
+          description: Task priority level
+        tags:
+          type: array
+          items:
+            type: string
+          description: Task tags for categorization
+        project_id:
+          type: string
+          format: uuid
+          description: Associated project ID
+      required:
+        - title
+      example:
+        title: "Complete project proposal"
+        description: "Prepare and submit Q4 project proposal"
+        due_date: "2025-10-15T17:00:00Z"
+        priority: "high"
+        tags: ["work", "proposal"]
+
+    TaskUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 200
+          description: Task title
+        description:
+          type: string
+          maxLength: 5000
+          description: Detailed task description
+        due_date:
+          type: string
+          format: date-time
+          description: Task due date in ISO 8601 format
+        priority:
+          type: string
+          enum: [low, medium, high, urgent]
+          description: Task priority level
+        status:
+          type: string
+          enum: [todo, in_progress, completed, archived]
+          description: Current task status
+        tags:
+          type: array
+          items:
+            type: string
+          description: Task tags for categorization
+        project_id:
+          type: string
+          format: uuid
+          description: Associated project ID
+      example:
+        status: "in_progress"
+        priority: "urgent"
+
+    BulkOperation:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [update_status, update_priority, delete]
+          description: Bulk operation type
+        task_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          minItems: 1
+          description: List of task IDs to operate on
+        data:
+          type: object
+          description: Data for update operations
+          properties:
+            status:
+              type: string
+              enum: [todo, in_progress, completed, archived]
+            priority:
+              type: string
+              enum: [low, medium, high, urgent]
+      required:
+        - action
+        - task_ids
+      example:
+        action: "update_status"
+        task_ids: ["uuid1", "uuid2", "uuid3"]
+        data:
+          status: "completed"
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 45
+        total_pages:
+          type: integer
+          example: 3
+
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              description: Error code
+            message:
+              type: string
+              description: Human-readable error message
+            details:
+              type: object
+              description: Additional error details
+            timestamp:
+              type: string
+              format: date-time
+              description: Error timestamp
+
+  responses:
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error:
+              code: "VALIDATION_ERROR"
+              message: "Title is required and must not exceed 200 characters"
+              details:
+                fields:
+                  title: "Field is required"
+              timestamp: "2025-10-06T10:30:00Z"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error:
+              code: "TASK_NOT_FOUND"
+              message: "Task with id 'task-uuid' not found"
+              timestamp: "2025-10-06T10:30:00Z"
+
+    Unauthorized:
+      description: Authentication required or invalid token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error:
+              code: "UNAUTHORIZED"
+              message: "Invalid or missing authentication token"
+              timestamp: "2025-10-06T10:30:00Z"
+
+    ServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error:
+              code: "SERVER_ERROR"
+              message: "An unexpected error occurred"
+              timestamp: "2025-10-06T10:30:00Z"
