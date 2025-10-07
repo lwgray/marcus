@@ -328,3 +328,46 @@ class TestBoardEdgeCases:
         assert board.set_cell(0, 0, CellState.X) is False
         # Cell should still have original value
         assert board.get_cell(0, 0) == CellState.X
+
+    def test_ascii_fallback_rendering(self):
+        """Test rendering with ASCII fallback when UTF-8 not supported."""
+        board = Board()
+        # Force ASCII mode
+        board._box_drawing_enabled = False
+        board.set_cell(0, 0, CellState.X)
+        board.set_cell(1, 1, CellState.O)
+        rendered = board.render()
+        # Should use ASCII characters
+        assert "|" in rendered
+        assert "-" in rendered
+        # Should contain player symbols
+        assert "X" in rendered
+        assert "O" in rendered
+
+    def test_box_drawing_detection_with_no_encoding(self):
+        """Test box drawing detection when sys.stdout has no encoding attribute."""
+        import sys
+        from unittest.mock import Mock, patch
+
+        board = Board()
+        # Mock sys.stdout to have no encoding
+        mock_stdout = Mock()
+        mock_stdout.encoding = None
+
+        with patch("sys.stdout", mock_stdout):
+            result = board._supports_box_drawing()
+            assert result is False
+
+    def test_box_drawing_detection_with_exception(self):
+        """Test box drawing detection handles exceptions gracefully."""
+        import sys
+        from unittest.mock import Mock, patch
+
+        board = Board()
+        # Mock sys.stdout to raise AttributeError
+        mock_stdout = Mock()
+        del mock_stdout.encoding  # Remove encoding attribute
+
+        with patch("sys.stdout", mock_stdout):
+            result = board._supports_box_drawing()
+            assert result is False
