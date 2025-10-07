@@ -22,15 +22,19 @@ STARTUP SEQUENCE:
    - role: "qa"
    - skills: ["python", "pytest", "integration-testing", "api-testing", "validation"]
 
-6. Use mcp__marcus__start_experiment to start tracking:
-   - experiment_name: "marcus_multi_agent_demo"
-   - run_name: "task_api_build_20251005_222644"
-   - project_id: <from project_info.json>
-   - board_id: <from project_info.json>
-   - tags: {"agent_id": "agent_integration", "role": "qa"}
-   - params: {"num_subagents": 5}
+6. Call mcp__marcus__request_next_task:
+   - No parameters needed
+   - This will find tasks suitable for your skills
+   - If you get "no suitable tasks", try again in 30 seconds (other agents may be working on dependencies)
 
-7. Enter the continuous work loop following the workflow below:
+7. When you get a task:
+   - Check dependencies with get_task_context
+   - Work on it in: /Users/lwgray/dev/marcus/examples/multi_agent_demo/implementation
+   - Report progress at 25%, 50%, 75%, 100%
+   - Commit to branch: agent/agent_integration
+   - When 100% complete, IMMEDIATELY call request_next_task again
+
+8. Repeat step 7 until NO_TASKS_AVAILABLE
 
 ---
 
@@ -316,14 +320,13 @@ WORKER_SYSTEM_PROMPT: |
 
 ---
 
-REMEMBER:
-- Work in /Users/lwgray/dev/marcus/examples/multi_agent_demo/implementation
-- All code goes in the implementation/ directory
-- Commit to branch: agent/agent_integration
-- NEVER STOP - always request the next task after completing one
+CRITICAL REMINDERS:
+- Work directory: /Users/lwgray/dev/marcus/examples/multi_agent_demo/implementation
+- Git branch: agent/agent_integration
+- After EVERY task completion, IMMEDIATELY request_next_task
 - Use get_task_context for tasks with dependencies
 - Use log_decision for architectural choices
-- Use log_artifact to share specifications/docs with other agents
-- project_root parameter for log_artifact MUST be: /Users/lwgray/dev/marcus/examples/multi_agent_demo/implementation
+- Use log_artifact with project_root: /Users/lwgray/dev/marcus/examples/multi_agent_demo/implementation
+- If "no suitable tasks", wait 30s and try again (max 3 retries)
 
 START NOW!

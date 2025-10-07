@@ -658,7 +658,7 @@ class AdvancedPRDParser:
             name=task_name,
             description=description,  # ✅ Clean AI content, no template noise
             status=TaskStatus.TODO,
-            priority=self._determine_priority_from_requirement(relevant_req, analysis),
+            priority=self._determine_priority({"type": task_type}, analysis),
             assigned_to=None,
             created_at=datetime.now(),
             updated_at=datetime.now(),
@@ -849,51 +849,6 @@ class AdvancedPRDParser:
                 unique_labels.append(label)
 
         return unique_labels
-
-    def _determine_priority_from_requirement(
-        self, requirement: Optional[Dict[str, Any]], analysis: PRDAnalysis
-    ) -> Priority:
-        """
-        Determine task priority from requirement and analysis.
-
-        Parameters
-        ----------
-        requirement : Optional[Dict[str, Any]]
-            The matched requirement dict
-        analysis : PRDAnalysis
-            Complete PRD analysis
-
-        Returns
-        -------
-        Priority
-            Priority level for the task
-        """
-        if not requirement:
-            return Priority.MEDIUM
-
-        # Check if requirement has explicit priority
-        req_priority = requirement.get("priority", "").lower()
-        if req_priority in ["critical", "high"]:
-            return Priority.HIGH
-        elif req_priority == "low":
-            return Priority.LOW
-
-        # Check if it's marked as MVP or core feature
-        is_mvp = requirement.get("is_mvp", False)
-        is_core = requirement.get("is_core_feature", False)
-
-        if is_mvp or is_core:
-            return Priority.HIGH
-
-        # Check requirement type
-        req_type = requirement.get("type", "").lower()
-        if req_type in ["security", "authentication", "core"]:
-            return Priority.HIGH
-        elif req_type in ["enhancement", "nice-to-have", "optional"]:
-            return Priority.LOW
-
-        # Default to medium
-        return Priority.MEDIUM
 
     async def _infer_smart_dependencies(
         self, tasks: List[Task], analysis: PRDAnalysis
