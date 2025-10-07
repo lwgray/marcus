@@ -46,7 +46,10 @@ def validate_range(row: int, col: int) -> ValidationResult:
         return ValidationResult(
             is_valid=False,
             error_message=(
-                f"Numbers must be between 0 and 2. You entered: ({row}, {col})"
+                f"❌ Error: Numbers must be between 0 and 2. "
+                f"You entered: ({row}, {col})\n"
+                "💡 Tip: Use row and column coordinates from 0 to 2 "
+                "(e.g., '0 0' for top-left)."
             ),
             error_code=ERROR_OUT_OF_RANGE,
         )
@@ -90,8 +93,8 @@ def validate_occupancy(board: List[List[str]], row: int, col: int) -> Validation
         return ValidationResult(
             is_valid=False,
             error_message=(
-                f"Position ({row}, {col}) is already occupied. "
-                "Please choose another."
+                f"❌ Error: Position ({row}, {col}) is already occupied.\n"
+                "💡 Tip: Choose an empty cell (shown as a number on the board)."
             ),
             error_code=ERROR_CELL_OCCUPIED,
         )

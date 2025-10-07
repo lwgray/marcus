@@ -50,7 +50,8 @@ def parse_player_input(input_string: str) -> Tuple[int, int]:
     # Check for empty input
     if not input_string:
         raise ValueError(
-            "Input cannot be empty. Please enter row and column (e.g., '1 2')"
+            "❌ Error: Input cannot be empty.\n"
+            "💡 Tip: Please enter row and column (e.g., '1 2')."
         )
 
     # Parse based on separator
@@ -61,7 +62,10 @@ def parse_player_input(input_string: str) -> Tuple[int, int]:
 
     # Validate count
     if len(parts) != 2:
-        raise ValueError("Please enter exactly 2 numbers (row and column)")
+        raise ValueError(
+            "❌ Error: Please enter exactly 2 numbers (row and column).\n"
+            "💡 Tip: Separate the numbers with a space, like '1 2' or '0,1'."
+        )
 
     # Convert to integers
     try:
@@ -69,7 +73,8 @@ def parse_player_input(input_string: str) -> Tuple[int, int]:
         col = int(parts[1].strip())
     except ValueError:
         raise ValueError(
-            "Invalid format. Please enter two numbers separated by space (e.g., '1 2')"
+            "❌ Error: Invalid format - inputs must be numbers.\n"
+            "💡 Tip: Enter two numbers separated by space (e.g., '1 2' or '0 1')."
         )
 
     return row, col
