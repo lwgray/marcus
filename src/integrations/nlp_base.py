@@ -180,7 +180,141 @@ class NaturalLanguageTaskCreator(ABC):
                 ),
             )
 
+        # Decompose tasks that meet criteria and add as checklist items
+        await self._decompose_and_add_subtasks(created_tasks, tasks)
+
         return created_tasks
+
+    async def _decompose_and_add_subtasks(
+        self, created_tasks: List[Task], original_tasks: List[Task]
+    ) -> None:
+        """
+        Decompose tasks that meet criteria and add subtasks as Planka checklist items.
+
+        Parameters
+        ----------
+        created_tasks : List[Task]
+            Tasks that were created on the Kanban board
+        original_tasks : List[Task]
+            Original task objects with estimated_hours
+        """
+        if not self.ai_engine:
+            logger.debug("No AI engine available for task decomposition")
+            return
+
+        from src.marcus_mcp.coordinator import decompose_task, should_decompose
+
+        # Create mapping of task names to original tasks (for estimated_hours)
+        task_map = {task.name: task for task in original_tasks}
+
+        for created_task in created_tasks:
+            try:
+                # Get original task to check estimated hours
+                original_task = task_map.get(created_task.name)
+                if not original_task:
+                    continue
+
+                # Check if task should be decomposed
+                if not should_decompose(original_task):
+                    continue
+
+                logger.info(
+                    f"Decomposing task '{created_task.name}' "
+                    f"({original_task.estimated_hours}h)"
+                )
+
+                # Decompose task using AI
+                decomposition = await decompose_task(
+                    original_task, self.ai_engine, project_context=None
+                )
+
+                if not decomposition.get("success"):
+                    logger.warning(
+                        f"Failed to decompose task '{created_task.name}': "
+                        f"{decomposition.get('error')}"
+                    )
+                    continue
+
+                subtasks = decomposition.get("subtasks", [])
+                num_subtasks = len(subtasks)
+                logger.info(
+                    f"Task '{created_task.name}' decomposed into "
+                    f"{num_subtasks} subtasks"
+                )
+
+                # Add subtasks as checklist items in Planka
+                await self._add_subtasks_as_checklist(created_task.id, subtasks)
+
+            except Exception as e:
+                logger.error(
+                    f"Error decomposing task '{created_task.name}': {e}", exc_info=True
+                )
+                # Continue with other tasks even if decomposition fails
+
+    async def _add_subtasks_as_checklist(
+        self, parent_card_id: str, subtasks: List[Dict[str, Any]]
+    ) -> None:
+        """
+        Add subtasks as checklist items (tasks) in Planka.
+
+        Parameters
+        ----------
+        parent_card_id : str
+            ID of the parent card in Planka
+        subtasks : List[Dict[str, Any]]
+            List of subtask definitions from decomposition
+        """
+        try:
+            import os
+
+            from mcp.client.stdio import stdio_client
+
+            from mcp import ClientSession, StdioServerParameters
+
+            # Use same server params as PlankaKanban
+            server_params = StdioServerParameters(
+                command="node",
+                args=["/app/kanban-mcp/dist/index.js"],
+                env=os.environ.copy(),
+            )
+
+            async with stdio_client(server_params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+
+                    # Create checklist item for each subtask
+                    for idx, subtask in enumerate(subtasks):
+                        subtask_name = subtask.get("name", f"Subtask {idx + 1}")
+
+                        # Create task (checklist item) in Planka
+                        result = await session.call_tool(
+                            "mcp_kanban_task_manager",
+                            {
+                                "action": "create",
+                                "cardId": parent_card_id,
+                                "name": subtask_name,
+                                "position": (idx + 1) * 65535,
+                            },
+                        )
+
+                        if result:
+                            logger.info(
+                                f"Created checklist item '{subtask_name}' "
+                                f"on card {parent_card_id}"
+                            )
+
+            num_added = len(subtasks)
+            logger.info(
+                f"Added {num_added} subtasks as checklist items "
+                f"to card {parent_card_id}"
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Error adding subtasks as checklist items to card "
+                f"{parent_card_id}: {e}",
+                exc_info=True,
+            )
 
     async def apply_safety_checks(self, tasks: List[Task]) -> List[Task]:
         """

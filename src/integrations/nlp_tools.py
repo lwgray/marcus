@@ -828,6 +828,10 @@ async def create_project_from_natural_language(
         if options is None:
             options = {}
 
+        # Set default mode to 'new_project' if not specified
+        if "mode" not in options:
+            options["mode"] = "new_project"
+
         # Validate required parameters
         if not description or not description.strip():
             return {

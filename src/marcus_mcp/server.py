@@ -1206,9 +1206,9 @@ class MarcusServer:
                     Name for the project
                 options : Optional[Dict[str, Any]]
                     Optional settings:
-                    - mode: "auto" (default) | "new_project" | "select_project"
+                    - mode: "new_project" (default) | "auto" | "select_project"
+                      - new_project: Force create new (skip discovery) [DEFAULT]
                       - auto: Find existing or create new
-                      - new_project: Force create new (skip discovery)
                       - select_project: Find and select existing (no task creation)
                     - project_id: Use specific project ID (skips discovery)
                     - complexity: "prototype" | "standard" | "enterprise"
