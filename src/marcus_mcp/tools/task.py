@@ -280,12 +280,11 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                     f"{[t.name for t in agent.current_tasks]}. "
                     "Rejecting new task request."
                 )
-                conversation_logger.log_pm_message(
-                    "marcus",
-                    "to_worker",
+                conversation_logger.log_worker_message(
+                    agent_id,
+                    "from_pm",
                     "Task request denied - complete current task first",
                     {
-                        "agent_id": agent_id,
                         "current_tasks": [t.id for t in agent.current_tasks],
                         "reason": "one_task_per_agent_rule",
                     },
@@ -604,12 +603,11 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                     response["task"]["predictions"] = predictions
 
                 # Log task assignment to conversation (CRITICAL for debugging)
-                conversation_logger.log_pm_message(
-                    "marcus",
-                    "to_worker",
+                conversation_logger.log_worker_message(
+                    agent_id,
+                    "from_pm",
                     f"Task assigned: {optimal_task.name}",
                     {
-                        "agent_id": agent_id,
                         "task_id": optimal_task.id,
                         "task_name": optimal_task.name,
                         "priority": optimal_task.priority.value,
@@ -675,9 +673,7 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                     logger.critical(gridlock_result["diagnosis"])
 
                     # Log to conversation for visibility
-                    conversation_logger.log_pm_message(
-                        "marcus",
-                        "system",
+                    conversation_logger.log_pm_thinking(
                         "🚨 PROJECT GRIDLOCK DETECTED",
                         {
                             "severity": "critical",
