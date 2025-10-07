@@ -98,27 +98,20 @@ async def capture_snapshot():
 async def replay_snapshot(snapshot_file: str):
     """Replay conversations from a snapshot file."""
     from src.marcus_mcp.tools.project_stall_analyzer import replay_stall_conversations
+    from src.visualization.stall_dashboard import render_snapshot
 
     if not Path(snapshot_file).exists():
         print(f"❌ Snapshot file not found: {snapshot_file}")
         return
 
-    print(f"🎬 Replaying conversations from: {snapshot_file}\n")
-
     # Load snapshot
     with open(snapshot_file, "r") as f:
         snapshot = json.load(f)
 
-    # Show basic info
-    print(f"📸 Snapshot Info:")
-    print(f"   Timestamp: {snapshot['timestamp']}")
-    print(f"   Project: {snapshot['project_name']}")
-    print(f"   Stall Reason: {snapshot['stall_reason']}\n")
-
-    # Show diagnostic report
-    print("=" * 70)
-    print(snapshot["diagnostic_report"]["formatted_report"])
-    print("=" * 70)
+    # Render rich dashboard with WHY analysis
+    print("\n")
+    render_snapshot(snapshot)
+    print("\n")
 
     # Replay conversations
     result = await replay_stall_conversations(snapshot_file)
