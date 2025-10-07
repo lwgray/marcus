@@ -1,0 +1,32 @@
+# Core API Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# Database
+sqlalchemy==2.0.23
+alembic==1.12.1
+psycopg2-binary==2.9.9  # PostgreSQL adapter
+aiosqlite==0.19.0  # Async SQLite for development
+
+# Authentication & Security
+python-jose[cryptography]==3.3.0  # JWT tokens
+passlib[bcrypt]==1.7.4  # Password hashing
+bcrypt==4.1.1
+
+# Validation
+pydantic==2.5.0
+pydantic-settings==2.1.0
+email-validator==2.1.0
+
+# Development
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+httpx==0.25.1  # For testing FastAPI
+black==23.11.0  # Code formatting
+mypy==1.7.1  # Type checking
+ruff==0.1.6  # Linting
+
+# Utilities
+python-dotenv==1.0.0
