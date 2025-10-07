@@ -98,9 +98,7 @@ class ConversationReplayAnalyzer:
         """
         self.log_dir = log_dir
 
-    def load_recent_events(
-        self, lookback_hours: int = 24
-    ) -> List[ConversationEvent]:
+    def load_recent_events(self, lookback_hours: int = 24) -> List[ConversationEvent]:
         """
         Load recent conversation events from logs.
 
@@ -169,9 +167,13 @@ class ConversationReplayAnalyzer:
 
         # Pattern 1: Repeated "no tasks available" messages
         no_task_events = [
-            e for e in events if "no_task" in e.event_type or "no task" in str(e.data)
+            e
+            for e in events
+            if "no_task" in e.event_type.lower()
+            or "no task" in e.event_type.lower()
+            or "no_task" in str(e.data).lower()
         ]
-        if len(no_task_events) > 3:
+        if len(no_task_events) >= 3:
             patterns.append(
                 {
                     "pattern": "repeated_no_tasks",
@@ -184,13 +186,13 @@ class ConversationReplayAnalyzer:
         # Pattern 2: Same task repeatedly failing
         task_errors = {}
         for e in events:
-            if "error" in e.event_type or "failed" in e.event_type:
+            if "error" in e.event_type.lower() or "failed" in e.event_type.lower():
                 task_id = e.data.get("task_id")
                 if task_id:
                     task_errors[task_id] = task_errors.get(task_id, 0) + 1
 
         for task_id, count in task_errors.items():
-            if count > 2:
+            if count >= 2:  # 2 or more failures is suspicious
                 patterns.append(
                     {
                         "pattern": "repeated_task_failure",
@@ -371,7 +373,9 @@ class DependencyLockVisualizer:
                                 {
                                     "id": dep_id,
                                     "name": self.analyzer.task_map[dep_id].name,
-                                    "status": self.analyzer.task_map[dep_id].status.value,
+                                    "status": self.analyzer.task_map[
+                                        dep_id
+                                    ].status.value,
                                 }
                                 for dep_id in incomplete_deps
                             ],
@@ -388,9 +392,7 @@ class DependencyLockVisualizer:
             "ascii_visualization": ascii_viz,
             "metrics": {
                 "average_lock_depth": (
-                    sum(l["lock_depth"] for l in locks) / len(locks)
-                    if locks
-                    else 0
+                    sum(l["lock_depth"] for l in locks) / len(locks) if locks else 0
                 ),
                 "max_lock_depth": max((l["lock_depth"] for l in locks), default=0),
             },
@@ -421,11 +423,15 @@ class DependencyLockVisualizer:
             blocked = lock["blocked_task"]
             blockers = lock["blocking_tasks"]
 
-            lines.append(f"\n🔒 BLOCKED: {blocked['name']} (Status: {blocked['status']})")
+            lines.append(
+                f"\n🔒 BLOCKED: {blocked['name']} (Status: {blocked['status']})"
+            )
             lines.append("   Waiting for:")
             for blocker in blockers:
                 status_symbol = "⏳" if blocker["status"] == "in_progress" else "❌"
-                lines.append(f"   {status_symbol} {blocker['name']} ({blocker['status']})")
+                lines.append(
+                    f"   {status_symbol} {blocker['name']} ({blocker['status']})"
+                )
 
         if len(locks) > 10:
             lines.append(f"\n... and {len(locks) - 10} more locks")

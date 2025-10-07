@@ -1275,6 +1275,96 @@ class MarcusServer:
                     state=server,
                 )
 
+        if "diagnose_project" in allowed_tools:
+
+            @app.tool()  # type: ignore[misc]
+            async def diagnose_project() -> Dict[str, Any]:
+                """
+                Run comprehensive diagnostics on the current project.
+
+                Analyzes why tasks aren't being assigned or completed, including:
+                - Circular dependencies
+                - Bottleneck tasks blocking others
+                - Missing dependencies
+                - Long dependency chains
+
+                Returns
+                -------
+                Dict[str, Any]
+                    Diagnostic report with issues and actionable recommendations
+                """
+                from .tools.diagnostics import diagnose_project as impl
+
+                return await impl(state=server)
+
+        if "capture_stall_snapshot" in allowed_tools:
+
+            @app.tool()  # type: ignore[misc]
+            async def capture_stall_snapshot(
+                include_conversation_hours: int = 24,
+            ) -> Dict[str, Any]:
+                """
+                Capture comprehensive snapshot when project development stalls.
+
+                This tool captures:
+                - Complete diagnostic report with all task statuses
+                - Conversation history leading up to the stall
+                - Task completion timeline to detect anomalies
+                - Dependency lock visualization (ASCII diagram)
+                - Early/anomalous task completions (e.g., "Project Success" too early)
+                - Pattern detection (repeated failures, "no task" loops)
+                - Actionable recommendations
+
+                Use this when:
+                - Development has stalled (no tasks being assigned)
+                - "No tasks available" but tasks exist
+                - Agents repeatedly report blockers
+                - Tasks completing in wrong order
+
+                Parameters
+                ----------
+                include_conversation_hours : int
+                    Hours of conversation history to include (default: 24)
+
+                Returns
+                -------
+                Dict[str, Any]
+                    Complete stall snapshot saved to file with analysis
+                """
+                from .tools.diagnostics import capture_stall_snapshot as impl
+
+                return await impl(
+                    state=server,
+                    include_conversation_hours=include_conversation_hours,
+                )
+
+        if "replay_snapshot_conversations" in allowed_tools:
+
+            @app.tool()  # type: ignore[misc]
+            async def replay_snapshot_conversations(
+                snapshot_file: str,
+            ) -> Dict[str, Any]:
+                """
+                Replay and analyze conversations from a stall snapshot.
+
+                Analyzes conversation patterns to identify what led to the stall,
+                including error patterns, repeated failures, and activity gaps.
+
+                Parameters
+                ----------
+                snapshot_file : str
+                    Path to the stall snapshot JSON file
+                    (usually in logs/stall_snapshots/)
+
+                Returns
+                -------
+                Dict[str, Any]
+                    Conversation analysis with timeline and key events
+                """
+                from .tools.diagnostics import replay_snapshot_conversations as impl
+
+                return await impl(snapshot_file=snapshot_file)
+
         if "list_projects" in allowed_tools:
 
             @app.tool()  # type: ignore[misc]

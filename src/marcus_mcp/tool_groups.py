@@ -24,6 +24,10 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "create_tasks",  # Create tasks on existing project/board
         "add_feature",  # NLP feature addition
         "get_usage_report",
+        # Diagnostics
+        "diagnose_project",  # Diagnose project issues
+        "capture_stall_snapshot",  # Capture snapshot when development stalls
+        "replay_snapshot_conversations",  # Replay conversations from snapshot
         # Experiment tracking
         "start_experiment",
         "end_experiment",
@@ -46,6 +50,9 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "select_project",  # Select project to work on
         "create_project",  # NLP project creation for autonomous agents
         "create_tasks",  # Create tasks on existing project/board
+        # Diagnostics
+        "diagnose_project",  # Diagnose project issues
+        "capture_stall_snapshot",  # Capture snapshot when development stalls
         # Experiment tracking (temporary until UI is ready)
         "start_experiment",
         "end_experiment",
@@ -120,6 +127,10 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "get_repository_metrics",
         "get_code_review_metrics",
         "get_code_quality_metrics",
+        # Diagnostics
+        "diagnose_project",
+        "capture_stall_snapshot",
+        "replay_snapshot_conversations",
     },
 }
 

@@ -25,11 +25,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 async def capture_snapshot():
     """Capture a stall snapshot from the current Marcus instance."""
     from src.config.config_loader import get_config
-    from src.core.project_registry import ProjectRegistry
     from src.core.project_context_manager import ProjectContextManager
-    from src.integrations.kanban_factory import KanbanFactory
+    from src.core.project_registry import ProjectRegistry
     from src.integrations.ai_analysis_engine import AIAnalysisEngine
-    from src.marcus_mcp.tools.project_stall_analyzer import capture_project_stall_snapshot
+    from src.integrations.kanban_factory import KanbanFactory
+    from src.marcus_mcp.tools.project_stall_analyzer import (
+        capture_project_stall_snapshot,
+    )
 
     print("🔍 Capturing project stall snapshot...")
 
@@ -72,20 +74,22 @@ async def capture_snapshot():
         print(f"\n💡 Recommendations: {result['summary']['recommendations_count']}")
 
         # Show dependency locks if any
-        if result['summary']['dependency_locks'] > 0:
+        if result["summary"]["dependency_locks"] > 0:
             print(f"\n🔒 Dependency Locks Detected:")
-            locks = result['snapshot']['dependency_locks']
-            print(locks['ascii_visualization'])
+            locks = result["snapshot"]["dependency_locks"]
+            print(locks["ascii_visualization"])
 
         # Show early completions if any
-        if result['summary']['early_completions'] > 0:
+        if result["summary"]["early_completions"] > 0:
             print(f"\n⚠️  Early/Anomalous Task Completions:")
-            for completion in result['snapshot']['early_completions']:
+            for completion in result["snapshot"]["early_completions"]:
                 print(f"   • {completion['task_name']}")
-                print(f"     Completed at {completion['completion_percentage']}% progress")
+                print(
+                    f"     Completed at {completion['completion_percentage']}% progress"
+                )
                 print(f"     Issue: {completion['issue']}")
 
-        return result['snapshot_file']
+        return result["snapshot_file"]
     else:
         print(f"\n❌ Failed to capture snapshot: {result.get('error')}")
         return None
@@ -102,7 +106,7 @@ async def replay_snapshot(snapshot_file: str):
     print(f"🎬 Replaying conversations from: {snapshot_file}\n")
 
     # Load snapshot
-    with open(snapshot_file, 'r') as f:
+    with open(snapshot_file, "r") as f:
         snapshot = json.load(f)
 
     # Show basic info
@@ -113,36 +117,40 @@ async def replay_snapshot(snapshot_file: str):
 
     # Show diagnostic report
     print("=" * 70)
-    print(snapshot['diagnostic_report']['formatted_report'])
+    print(snapshot["diagnostic_report"]["formatted_report"])
     print("=" * 70)
 
     # Replay conversations
     result = await replay_stall_conversations(snapshot_file)
 
-    if result['success']:
-        analysis = result['analysis']
+    if result["success"]:
+        analysis = result["analysis"]
         print(f"\n🗣️  Conversation Analysis:")
         print(f"   Total Events: {analysis['total_events']}")
         print(f"\n   Events by Type:")
-        for event_type, count in sorted(analysis['events_by_type'].items(), key=lambda x: x[1], reverse=True):
+        for event_type, count in sorted(
+            analysis["events_by_type"].items(), key=lambda x: x[1], reverse=True
+        ):
             print(f"      {event_type}: {count}")
 
-        if analysis['key_events']:
+        if analysis["key_events"]:
             print(f"\n   🔑 Key Events (errors, blockers, failures):")
-            for event in analysis['key_events'][:10]:
+            for event in analysis["key_events"][:10]:
                 print(f"      [{event['timestamp']}] {event['type']}")
-                if len(event['summary']) > 0:
+                if len(event["summary"]) > 0:
                     print(f"         {event['summary'][:100]}...")
 
         # Show early completions again
-        if snapshot['early_completions']:
+        if snapshot["early_completions"]:
             print(f"\n⚠️  Tasks Completed Too Early:")
-            for ec in snapshot['early_completions']:
-                print(f"   • '{ec['task_name']}' at {ec['completion_percentage']}% progress")
+            for ec in snapshot["early_completions"]:
+                print(
+                    f"   • '{ec['task_name']}' at {ec['completion_percentage']}% progress"
+                )
 
         # Show recommendations
         print(f"\n💡 Recommendations:")
-        for i, rec in enumerate(snapshot['recommendations'][:10], 1):
+        for i, rec in enumerate(snapshot["recommendations"][:10], 1):
             print(f"   {i}. {rec}")
     else:
         print(f"❌ Failed to replay: {result.get('error')}")
@@ -166,12 +174,12 @@ def list_snapshots():
 
     for snapshot_file in snapshots:
         try:
-            with open(snapshot_file, 'r') as f:
+            with open(snapshot_file, "r") as f:
                 snapshot = json.load(f)
 
-            timestamp = snapshot['timestamp']
-            project = snapshot.get('project_name', 'Unknown')
-            stall_reason = snapshot.get('stall_reason', 'Unknown')[:60]
+            timestamp = snapshot["timestamp"]
+            project = snapshot.get("project_name", "Unknown")
+            stall_reason = snapshot.get("stall_reason", "Unknown")[:60]
 
             print(f"   {snapshot_file.name}")
             print(f"      Time: {timestamp}")
