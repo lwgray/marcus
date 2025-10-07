@@ -1,0 +1,222 @@
+openapi: 3.0.3
+info:
+  title: User Registration API
+  description: |
+    API specification for user registration endpoint in the Task Management System.
+
+    This endpoint handles new user account creation with email/password authentication,
+    password strength validation, and automatic JWT token generation.
+  version: 1.0.0
+  contact:
+    name: API Development Team
+    email: api@taskmanagement.com
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Development server
+  - url: https://api.taskmanagement.com/v1
+    description: Production server
+
+tags:
+  - name: Authentication
+    description: User authentication and registration endpoints
+
+paths:
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user
+      description: |
+        Create a new user account with email and password.
+
+        **Password Requirements:**
+        - Minimum 8 characters
+        - At least one uppercase letter
+        - At least one lowercase letter
+        - At least one digit
+        - At least one special character (!@#$%^&*(),.?":{}|<>)
+
+        **Behavior:**
+        - Returns 201 Created with user details and JWT token on success
+        - Returns 400 Bad Request if validation fails
+        - Returns 409 Conflict if email already exists
+        - Automatically activates the account (is_active=true)
+        - Hashes password using bcrypt (cost factor: 12)
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRegisterRequest'
+            examples:
+              basic:
+                summary: Basic registration
+                value:
+                  email: user@example.com
+                  password: SecurePass123!  # pragma: allowlist secret
+              with_name:
+                summary: Registration with full name
+                value:
+                  email: john.doe@example.com
+                  password: MyP@ssw0rd!  # pragma: allowlist secret
+                  full_name: John Doe
+      responses:
+        '201':
+          description: User successfully registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRegisterResponse'
+              examples:
+                success:
+                  summary: Successful registration
+                  value:
+                    id: 1
+                    email: user@example.com
+                    full_name: John Doe
+                    is_active: true
+                    access_token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIiwiZXhwIjoxNjQwOTk1MjAwfQ.abcdef123456  # pragma: allowlist secret
+                    token_type: bearer
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              examples:
+                weak_password:
+                  summary: Weak password
+                  value:
+                    detail:
+                      - loc: [body, password]
+                        msg: Password must contain at least one uppercase letter
+                        type: value_error
+                invalid_email:
+                  summary: Invalid email format
+                  value:
+                    detail:
+                      - loc: [body, email]
+                        msg: value is not a valid email address
+                        type: value_error.email
+        '409':
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                duplicate_email:
+                  summary: Duplicate email
+                  value:
+                    detail: Email already registered
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    UserRegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 100
+          description: |
+            User's password. Must be at least 8 characters and include:
+            uppercase, lowercase, digit, and special character
+          example: SecurePass123!
+        full_name:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: User's full name (optional)
+          example: John Doe
+
+    UserRegisterResponse:
+      type: object
+      required:
+        - id
+        - email
+        - is_active
+        - access_token
+        - token_type
+      properties:
+        id:
+          type: integer
+          description: User's unique identifier
+          example: 1
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: user@example.com
+        full_name:
+          type: string
+          nullable: true
+          description: User's full name
+          example: John Doe
+        is_active:
+          type: boolean
+          description: Whether the account is active
+          example: true
+        access_token:
+          type: string
+          description: JWT access token for authentication
+          example: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+        token_type:
+          type: string
+          description: Token type (always "bearer")
+          example: bearer
+          default: bearer
+
+    ValidationError:
+      type: object
+      properties:
+        detail:
+          type: array
+          items:
+            type: object
+            properties:
+              loc:
+                type: array
+                items:
+                  type: string
+                description: Location of the error in the request
+              msg:
+                type: string
+                description: Error message
+              type:
+                type: string
+                description: Error type
+
+    Error:
+      type: object
+      properties:
+        detail:
+          type: string
+          description: Error message
+          example: An error occurred
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token obtained from registration or login.
+        Include in Authorization header as: Bearer <token>
