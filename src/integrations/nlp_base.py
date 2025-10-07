@@ -77,15 +77,20 @@ class NaturalLanguageTaskCreator(ABC):
         RuntimeError
             If kanban client doesn't support task creation
         """
-        # CRITICAL: Validate task graph BEFORE committing to Kanban
-        # This RAISES exceptions for invalid graphs (preventative validation)
+        # CRITICAL: Auto-fix task graph issues BEFORE committing to Kanban
+        # This fixes problems automatically rather than raising exceptions
         if not skip_validation:
-            try:
-                TaskGraphValidator.validate_before_commit(tasks)
-            except ValueError as e:
-                # Task graph validation failed - this is CRITICAL
-                logger.error(f"Task graph validation failed: {e}")
-                raise  # Re-raise to prevent invalid tasks from being created
+            # Auto-fix task graph issues
+            fixed_tasks, user_warnings = TaskGraphValidator.validate_and_fix(tasks)
+            tasks = fixed_tasks  # Use the fixed version
+
+            # Log user-friendly warnings
+            if user_warnings:
+                logger.warning(
+                    f"Task graph auto-fixed: {len(user_warnings)} issues corrected"
+                )
+                for warning in user_warnings:
+                    logger.info(f"  • {warning}")
 
             # Also run legacy safety checker (diagnostic warnings)
             errors = self.safety_checker.validate_dependencies(tasks)
