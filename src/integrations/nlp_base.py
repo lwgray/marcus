@@ -293,9 +293,11 @@ class NaturalLanguageTaskCreator(ABC):
             from mcp import ClientSession, StdioServerParameters
 
             # Use same server params as PlankaKanban
+            # Use local path for kanban-mcp
+            kanban_mcp_path = os.path.expanduser("~/dev/kanban-mcp/dist/index.js")
             server_params = StdioServerParameters(
                 command="node",
-                args=["/app/kanban-mcp/dist/index.js"],
+                args=[kanban_mcp_path],
                 env=os.environ.copy(),
             )
 

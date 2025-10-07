@@ -236,6 +236,8 @@ async def _mark_checklist_item_complete(parent_card_id: str, subtask_name: str) 
     """
     try:
         import json
+
+        # Use local path for kanban-mcp
         import os
 
         from mcp.client.stdio import stdio_client
@@ -243,9 +245,10 @@ async def _mark_checklist_item_complete(parent_card_id: str, subtask_name: str) 
 
         from mcp import ClientSession, StdioServerParameters
 
+        kanban_mcp_path = os.path.expanduser("~/dev/kanban-mcp/dist/index.js")
         server_params = StdioServerParameters(
             command="node",
-            args=["/app/kanban-mcp/dist/index.js"],
+            args=[kanban_mcp_path],
             env=os.environ.copy(),
         )
 
