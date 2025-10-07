@@ -1,0 +1,119 @@
+openapi: 3.0.0
+info:
+  title: Task Management API - User Profile
+  version: 1.0.0
+  description: API specification for user profile retrieval endpoint
+
+servers:
+  - url: https://api.example.com
+    description: Production server
+  - url: http://localhost:8000
+    description: Development server
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from user login/registration
+
+  schemas:
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Unique user identifier
+          example: 12345
+        email:
+          type: string
+          format: email
+          description: User email address
+          example: user@example.com
+        username:
+          type: string
+          description: User's display name
+          example: john_doe
+        created_at:
+          type: string
+          format: date-time
+          description: Account creation timestamp
+          example: "2024-01-15T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Last profile update timestamp
+          example: "2024-03-20T14:25:30Z"
+      required:
+        - id
+        - email
+        - username
+        - created_at
+        - updated_at
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: "Authentication required"
+        code:
+          type: string
+          description: Error code
+          example: "UNAUTHORIZED"
+      required:
+        - error
+        - code
+
+paths:
+  /api/users/profile:
+    get:
+      summary: Get authenticated user's profile
+      description: |
+        Retrieves the profile information for the currently authenticated user.
+        Requires valid JWT token in Authorization header.
+      operationId: getUserProfile
+      tags:
+        - Users
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '401':
+          description: Unauthorized - Invalid or missing JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Invalid or expired token"
+                code: "UNAUTHORIZED"
+        '404':
+          description: User profile not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "User profile not found"
+                code: "NOT_FOUND"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Internal server error"
+                code: "INTERNAL_ERROR"
