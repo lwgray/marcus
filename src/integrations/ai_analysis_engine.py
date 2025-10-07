@@ -1614,20 +1614,21 @@ Return JSON with this format:
         ...     response_format={"type": "object", "properties": {...}}
         ... )
         """
-        # Raise error if no AI client available - no fallback mode
-        if not self.client:
-            raise RuntimeError(
-                "AI client not available. Task decomposition requires an AI provider "
-                "(Anthropic, OpenAI, etc.) to be configured. Please set API keys in "
-                "config or environment variables."
-            )
-
+        # Use LLM abstraction layer to support all providers (Anthropic, OpenAI, local)
         try:
-            # Build full prompt with schema instructions
+            from src.ai.providers.llm_abstraction import LLMAbstraction
+
+            # Initialize LLM abstraction (supports local models via config)
+            llm = LLMAbstraction()
+
+            # Build full prompt with schema instructions and system prompt
             full_prompt = prompt
+            if system_prompt:
+                full_prompt = f"{system_prompt}\n\n{prompt}"
+
             if response_format:
                 schema_str = json.dumps(response_format, indent=2)
-                full_prompt = f"""{prompt}
+                full_prompt = f"""{full_prompt}
 
 IMPORTANT: Respond with valid JSON matching this exact schema:
 {schema_str}
@@ -1635,27 +1636,12 @@ IMPORTANT: Respond with valid JSON matching this exact schema:
 Your response must be pure JSON with no markdown formatting, \
 explanations, or additional text."""
 
-            # Create message structure
-            messages = []
-            if system_prompt:
-                # For Anthropic API, system is a separate parameter
-                pass
-            messages.append({"role": "user", "content": full_prompt})
-
-            # Call Claude API
-            payload = {
-                "model": self.model,
-                "max_tokens": 4096,  # Larger for structured responses
-                "messages": messages,
-            }
-
-            if system_prompt:
-                payload["system"] = system_prompt
-
-            response = self.client.messages.create(**payload)
-
-            # Extract text response
-            response_text = response.content[0].text
+            # Use LLM abstraction to call configured provider
+            # (Anthropic, OpenAI, or local)
+            response_text = await llm.analyze(
+                full_prompt,
+                context=type("obj", (object,), {"max_tokens": 4096})(),
+            )
 
             # Parse JSON response
             from src.utils.json_parser import parse_ai_json_response
@@ -1671,5 +1657,20 @@ explanations, or additional text."""
                 "did not follow the schema correctly."
             )
         except Exception as e:
+            error_msg = str(e)
+            # Provide helpful error messages based on what went wrong
+            if "No AI providers" in error_msg or "No LLM providers" in error_msg:
+                raise RuntimeError(
+                    "No AI provider configured. Task decomposition "
+                    "requires an AI provider. "
+                    "Please configure one of the following in "
+                    "config_marcus.json:\n"
+                    "- Local model (Ollama): Set ai.provider='local' "
+                    "and ai.local_model\n"
+                    "- Anthropic: Set ai.provider='anthropic' "
+                    "and ai.anthropic_api_key\n"
+                    "- OpenAI: Set ai.provider='openai' "
+                    "and ai.openai_api_key"
+                )
             print(f"Error generating structured response: {e}", file=sys.stderr)
             raise RuntimeError(f"Failed to generate structured response: {e}")

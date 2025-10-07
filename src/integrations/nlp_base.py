@@ -218,14 +218,10 @@ class NaturalLanguageTaskCreator(ABC):
             logger.debug("No AI engine available for task decomposition - skipping")
             return
 
-        # Skip decomposition if AI engine has no client configured
-        if not hasattr(self.ai_engine, "client") or not self.ai_engine.client:
-            logger.info(
-                "Task decomposition skipped: No AI provider configured. "
-                "To enable automatic task decomposition into subtasks, configure "
-                "an AI provider (Anthropic, OpenAI, etc.) in config or environment."
-            )
-            return
+        # Note: AI engine now uses LLMAbstraction which automatically
+        # checks provider availability and supports local models (Ollama),
+        # Anthropic, and OpenAI. If no provider is configured,
+        # decompose_task will raise a clear error message.
 
         from src.marcus_mcp.coordinator import decompose_task, should_decompose
 
