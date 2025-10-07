@@ -1,0 +1,219 @@
+openapi: 3.0.3
+info:
+  title: User Login API
+  description: |
+    API specification for user login endpoint in the Task Management System.
+
+    This endpoint handles user authentication with email/password credentials,
+    validates credentials against stored bcrypt hashes, and returns JWT tokens
+    for authenticated sessions.
+  version: 1.0.0
+  contact:
+    name: API Development Team
+    email: api@taskmanagement.com
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Development server
+  - url: https://api.taskmanagement.com/v1
+    description: Production server
+
+tags:
+  - name: Authentication
+    description: User authentication and session management endpoints
+
+paths:
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Authenticate user and obtain JWT token
+      description: |
+        Authenticate a user with email and password credentials.
+
+        **Authentication Process:**
+        1. Validate email format and required fields
+        2. Look up user by email address
+        3. Verify password against stored bcrypt hash
+        4. Check account is active (is_active=true)
+        5. Generate JWT access token with user ID
+        6. Return user details and token
+
+        **Behavior:**
+        - Returns 200 OK with user details and JWT token on success
+        - Returns 400 Bad Request if validation fails
+        - Returns 401 Unauthorized if credentials are invalid
+        - Returns 403 Forbidden if account is inactive
+        - Uses constant-time comparison to prevent timing attacks
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            examples:
+              basic:
+                summary: Basic login
+                value:
+                  email: user@example.com
+                  password: SecurePass123!  # pragma: allowlist secret
+      responses:
+        '200':
+          description: User successfully authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+              examples:
+                success:
+                  summary: Successful login
+                  value:
+                    id: 1
+                    email: user@example.com
+                    full_name: John Doe
+                    is_active: true
+                    access_token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIiwiZXhwIjoxNjQwOTk1MjAwfQ.xyz789  # pragma: allowlist secret
+                    token_type: bearer
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              examples:
+                missing_password:
+                  summary: Missing password field
+                  value:
+                    detail:
+                      - loc: [body, password]
+                        msg: field required
+                        type: value_error.missing
+                invalid_email:
+                  summary: Invalid email format
+                  value:
+                    detail:
+                      - loc: [body, email]
+                        msg: value is not a valid email address
+                        type: value_error.email
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid_credentials:
+                  summary: Invalid email or password
+                  value:
+                    detail: Invalid email or password
+        '403':
+          description: Account inactive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                account_inactive:
+                  summary: Account is not active
+                  value:
+                    detail: Account is inactive. Please contact support.
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          description: User's password
+          example: SecurePass123!
+
+    LoginResponse:
+      type: object
+      required:
+        - id
+        - email
+        - is_active
+        - access_token
+        - token_type
+      properties:
+        id:
+          type: integer
+          description: User's unique identifier
+          example: 1
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: user@example.com
+        full_name:
+          type: string
+          nullable: true
+          description: User's full name
+          example: John Doe
+        is_active:
+          type: boolean
+          description: Whether the account is active
+          example: true
+        access_token:
+          type: string
+          description: JWT access token for authentication
+          example: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+        token_type:
+          type: string
+          description: Token type (always "bearer")
+          example: bearer
+          default: bearer
+
+    ValidationError:
+      type: object
+      properties:
+        detail:
+          type: array
+          items:
+            type: object
+            properties:
+              loc:
+                type: array
+                items:
+                  type: string
+                description: Location of the error in the request
+              msg:
+                type: string
+                description: Error message
+              type:
+                type: string
+                description: Error type
+
+    Error:
+      type: object
+      properties:
+        detail:
+          type: string
+          description: Error message
+          example: An error occurred
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token obtained from registration or login.
+        Include in Authorization header as: Bearer <token>
