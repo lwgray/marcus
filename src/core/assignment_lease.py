@@ -133,15 +133,15 @@ class AssignmentLeaseManager:
         self,
         kanban_client: KanbanInterface,
         assignment_persistence: AssignmentPersistence,
-        default_lease_hours: float = 4.0,
+        default_lease_hours: float = 0.0833,  # 5 minutes (changed from 4.0 hours)
         max_renewals: int = 10,
-        warning_threshold_hours: float = 1.0,
+        warning_threshold_hours: float = 0.0167,  # 1 minute warning (changed from 1.0 hour)
         priority_multipliers: Optional[Dict[str, float]] = None,
         complexity_multipliers: Optional[Dict[str, float]] = None,
-        grace_period_minutes: int = 30,
+        grace_period_minutes: int = 2,  # 2 minute grace period (changed from 30)
         renewal_decay_factor: float = 0.9,
-        min_lease_hours: float = 1.0,
-        max_lease_hours: float = 24.0,
+        min_lease_hours: float = 0.0333,  # Minimum 2 minutes (changed from 1.0 hour)
+        max_lease_hours: float = 0.5,  # Maximum 30 minutes (changed from 24 hours)
         stuck_task_threshold_renewals: int = 5,
         enable_adaptive_leases: bool = True,
     ):

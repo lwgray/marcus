@@ -272,6 +272,32 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 },
             )
 
+            # CRITICAL: Enforce one-task-per-agent rule
+            if agent.current_tasks:
+                logger.warning(
+                    f"Agent {agent_id} ({agent.name}) already has {len(agent.current_tasks)} task(s): "
+                    f"{[t.name for t in agent.current_tasks]}. Rejecting new task request."
+                )
+                conversation_logger.log_pm_message(
+                    "marcus",
+                    "to_worker",
+                    "Task request denied - complete current task first",
+                    {
+                        "agent_id": agent_id,
+                        "current_tasks": [t.id for t in agent.current_tasks],
+                        "reason": "one_task_per_agent_rule",
+                    },
+                )
+                return {
+                    "success": False,
+                    "error": "You already have a task assigned. Please complete or report blocker on current task before requesting another.",
+                    "current_task": {
+                        "id": agent.current_tasks[0].id,
+                        "name": agent.current_tasks[0].name,
+                        "status": agent.current_tasks[0].status.value,
+                    },
+                }
+
         # Find optimal task for this agent
         optimal_task = await find_optimal_task_for_agent(agent_id, state)
 
@@ -570,6 +596,33 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                     response["task"]["full_context"] = context_data
                 if predictions:
                     response["task"]["predictions"] = predictions
+
+                # Log task assignment to conversation (CRITICAL for debugging)
+                conversation_logger.log_pm_message(
+                    "marcus",
+                    "to_worker",
+                    f"Task assigned: {optimal_task.name}",
+                    {
+                        "agent_id": agent_id,
+                        "task_id": optimal_task.id,
+                        "task_name": optimal_task.name,
+                        "priority": optimal_task.priority.value,
+                        "estimated_hours": optimal_task.estimated_hours,
+                    },
+                )
+
+                # Log as structured event for analysis
+                state.log_event(
+                    "task_assignment",
+                    {
+                        "agent_id": agent_id,
+                        "task_id": optimal_task.id,
+                        "task_name": optimal_task.name,
+                        "priority": optimal_task.priority.value,
+                        "source": "marcus",
+                        "target": agent_id,
+                    },
+                )
 
                 # Emit event if Events system is available (non-blocking)
                 if hasattr(state, "events") and state.events:
