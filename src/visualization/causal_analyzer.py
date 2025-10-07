@@ -44,6 +44,9 @@ class CausalAnalyzer:
             "intervention_points": self._find_intervention_points(),
             "human_decisions": self._analyze_human_decisions(),
             "narrative": self._build_narrative(),
+            "system_failures": self._analyze_system_failures(),
+            "actionable_fixes": self._generate_actionable_fixes(),
+            "prevention_strategies": self._generate_prevention_strategies(),
         }
 
     def _find_root_causes(self) -> List[Dict[str, Any]]:
@@ -465,6 +468,310 @@ class CausalAnalyzer:
         )
 
         return "".join(narrative_parts)
+
+    def _analyze_system_failures(self) -> List[Dict[str, Any]]:
+        """
+        Analyze WHICH parts of Marcus failed and WHY.
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of system failures with technical details
+        """
+        failures = []
+
+        early_completions = self.snapshot.get("early_completions", [])
+
+        # FAILURE 1: PROJECT_SUCCESS task created WITHOUT proper dependencies
+        if early_completions:
+            for ec in early_completions:
+                if "PROJECT_SUCCESS" in ec.get("task_name", ""):
+                    failures.append(
+                        {
+                            "system": "Task Creation / NLP Parser",
+                            "failure": "PROJECT_SUCCESS task created with EMPTY or INCOMPLETE dependencies",
+                            "evidence": f"Task completed at {ec.get('completion_percentage', 0)}% - should be last",
+                            "code_location": "src/integrations/documentation_tasks.py:89-96",
+                            "root_cause": (
+                                "DocumentationTaskGenerator.create_documentation_task() creates dependencies list "
+                                "by filtering existing_tasks. If tasks don't have proper labels "
+                                "(documentation/final/verification), OR if this function is called BEFORE "
+                                "other tasks are created, the dependencies list will be EMPTY."
+                            ),
+                            "why_checks_failed": (
+                                "Dependencies are set at task CREATION time. If task ordering is wrong "
+                                "(PROJECT_SUCCESS created too early in the flow), it has no tasks to depend on. "
+                                "Circular dependency checks only validate the GRAPH - they don't check if "
+                                "final tasks are actually depending on implementation tasks."
+                            ),
+                            "severity": "critical",
+                        }
+                    )
+
+        # FAILURE 2: Task ordering/priority allows final tasks to jump the queue
+        diag = self.snapshot.get("diagnostic_report", {})
+        if diag.get("issues"):
+            for issue in diag.get("issues", []):
+                if issue.get("type") == "bottleneck":
+                    failures.append(
+                        {
+                            "system": "Task Assignment / Priority Calculation",
+                            "failure": "Task priority/ordering allows wrong tasks to be assigned first",
+                            "evidence": f"{issue.get('affected_count', 0)} tasks blocked by bottleneck",
+                            "code_location": "src/core/task.py (find_optimal_task)",
+                            "root_cause": (
+                                "Priority calculation may not account for task position in dependency DAG. "
+                                "Tasks with HIGH priority but early in the chain (like PROJECT_SUCCESS) "
+                                "can be assigned before their prerequisites if dependency enforcement "
+                                "is not strict enough."
+                            ),
+                            "why_checks_failed": (
+                                "Dependency checks validate STRUCTURE but not ENFORCEMENT. "
+                                "A task can have dependencies in its data model but still be assigned "
+                                "if the assignment logic doesn't properly block on incomplete dependencies."
+                            ),
+                            "severity": "high",
+                        }
+                    )
+
+        # FAILURE 3: Circular dependency detection EXISTS but clearly isn't preventing the problem
+        if any(
+            issue.get("type") == "circular_dependency"
+            for issue in diag.get("issues", [])
+        ):
+            failures.append(
+                {
+                    "system": "Circular Dependency Validation",
+                    "failure": "Circular dependency checks exist but are not PREVENTING task creation",
+                    "evidence": "Circular dependencies detected in completed project",
+                    "code_location": "src/core/task_diagnostics.py (detect_circular_dependencies)",
+                    "root_cause": (
+                        "Validation is likely DIAGNOSTIC (detecting problems after they exist) "
+                        "rather than PREVENTATIVE (blocking bad task creation). The checks run "
+                        "AFTER tasks are created, not DURING creation."
+                    ),
+                    "why_checks_failed": (
+                        "The validation code exists in task_diagnostics.py but there's no enforcement "
+                        "layer that REJECTS task creation when circular dependencies would be introduced. "
+                        "It's a reporting tool, not a gatekeeper."
+                    ),
+                    "severity": "critical",
+                }
+            )
+
+        return failures
+
+    def _generate_actionable_fixes(self) -> List[Dict[str, Any]]:
+        """
+        Generate SPECIFIC, ACTIONABLE fixes with file paths and code changes.
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of fixes to implement
+        """
+        fixes = []
+
+        early_completions = self.snapshot.get("early_completions", [])
+
+        # FIX 1: Enforce dependency checking at task creation time
+        if early_completions:
+            fixes.append(
+                {
+                    "priority": "P0 - Critical",
+                    "title": "Add dependency validation BEFORE task creation",
+                    "problem": "PROJECT_SUCCESS created with empty/wrong dependencies",
+                    "solution": (
+                        "Modify task creation flow to validate dependencies BEFORE committing tasks. "
+                        "Add validation that ensures 'final' tasks depend on ALL implementation tasks."
+                    ),
+                    "files_to_modify": [
+                        "src/integrations/documentation_tasks.py",
+                        "src/integrations/nlp_tools.py (or wherever create_tasks_on_board is called)",
+                    ],
+                    "specific_changes": [
+                        {
+                            "file": "src/integrations/documentation_tasks.py:89",
+                            "change": (
+                                "Add assertion: if len(dependencies) == 0 and len(implementation_tasks) > 0: "
+                                "raise ValueError('PROJECT_SUCCESS must depend on implementation tasks')"
+                            ),
+                        },
+                        {
+                            "file": "src/integrations/nlp_tools.py",
+                            "change": (
+                                "Call DocumentationTaskGenerator.create_documentation_task() AFTER "
+                                "all other tasks are created and have IDs assigned. Currently might be "
+                                "called too early in the flow."
+                            ),
+                        },
+                    ],
+                    "test_validation": (
+                        "Add test: create project with implementation tasks, verify PROJECT_SUCCESS "
+                        "has dependencies == [all_impl_task_ids]"
+                    ),
+                    "estimated_time": "2-4 hours",
+                }
+            )
+
+        # FIX 2: Add gatekeeper validation layer
+        fixes.append(
+            {
+                "priority": "P0 - Critical",
+                "title": "Add pre-commit validation for task graphs",
+                "problem": "Tasks committed to Kanban without validation",
+                "solution": (
+                    "Create TaskGraphValidator that checks BEFORE pushing to Kanban: "
+                    "(1) No circular dependencies, (2) Final tasks depend on implementation tasks, "
+                    "(3) No orphaned dependencies"
+                ),
+                "files_to_modify": [
+                    "src/core/task_graph_validator.py (new file)",
+                    "src/integrations/kanban_factory.py or wherever tasks are pushed",
+                ],
+                "specific_changes": [
+                    {
+                        "file": "src/core/task_graph_validator.py (CREATE THIS)",
+                        "change": (
+                            "class TaskGraphValidator:\\n"
+                            "    @staticmethod\\n"
+                            "    def validate_before_commit(tasks: List[Task]) -> ValidationResult:\\n"
+                            "        # Check 1: Circular dependencies\\n"
+                            "        # Check 2: Final task dependencies\\n"
+                            "        # Check 3: Orphaned references\\n"
+                            "        # RAISE exception if invalid, don't just log"
+                        ),
+                    },
+                    {
+                        "file": "Wherever tasks are pushed to Kanban",
+                        "change": (
+                            "Before kanban_client.create_tasks(tasks):\\n"
+                            "    validation = TaskGraphValidator.validate_before_commit(tasks)\\n"
+                            "    if not validation.is_valid:\\n"
+                            "        raise TaskGraphInvalidError(validation.errors)"
+                        ),
+                    },
+                ],
+                "test_validation": (
+                    "Add tests that try to create invalid graphs and verify they are REJECTED"
+                ),
+                "estimated_time": "4-6 hours",
+            }
+        )
+
+        # FIX 3: Fix task ordering to respect dependency depth
+        diag = self.snapshot.get("diagnostic_report", {})
+        if any(issue.get("type") == "bottleneck" for issue in diag.get("issues", [])):
+            fixes.append(
+                {
+                    "priority": "P1 - High",
+                    "title": "Fix task assignment to block on dependencies",
+                    "problem": "Tasks assigned even when dependencies incomplete",
+                    "solution": (
+                        "Modify find_optimal_task() to strictly filter out tasks with ANY incomplete dependencies. "
+                        "Don't rely on priority alone - check dependency status."
+                    ),
+                    "files_to_modify": [
+                        "src/core/task.py (find_optimal_task function)"
+                    ],
+                    "specific_changes": [
+                        {
+                            "file": "src/core/task.py:find_optimal_task",
+                            "change": (
+                                "Add explicit check:\\n"
+                                "available_tasks = [t for t in tasks if t.status == TODO and "
+                                "all(dep_task.status == DONE for dep_task in get_dependencies(t))]"
+                            ),
+                        }
+                    ],
+                    "test_validation": (
+                        "Test: Create task B depending on task A (incomplete). "
+                        "Verify find_optimal_task() returns None for B."
+                    ),
+                    "estimated_time": "2-3 hours",
+                }
+            )
+
+        return fixes
+
+    def _generate_prevention_strategies(self) -> List[Dict[str, Any]]:
+        """
+        Generate long-term prevention strategies.
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            Prevention strategies for future
+        """
+        strategies = []
+
+        strategies.append(
+            {
+                "category": "Architecture",
+                "strategy": "Implement invariant checking at system boundaries",
+                "description": (
+                    "Add invariant validators at every point where external data enters Marcus: "
+                    "NLP parsing, task creation, Kanban sync. These validators should FAIL FAST "
+                    "rather than log warnings."
+                ),
+                "benefits": [
+                    "Catch bugs at creation time, not runtime",
+                    "Impossible to commit invalid states to database",
+                    "Clear error messages point to exact cause",
+                ],
+                "implementation": (
+                    "1. Define TaskGraphInvariants class with validation methods\\n"
+                    "2. Wrap all task creation paths with validators\\n"
+                    "3. Convert logging.warning() to raise exceptions\\n"
+                    "4. Add comprehensive test suite for invalid inputs"
+                ),
+            }
+        )
+
+        strategies.append(
+            {
+                "category": "Testing",
+                "strategy": "Add integration tests for complete project lifecycles",
+                "description": (
+                    "Current tests likely test individual components. Add end-to-end tests that: "
+                    "(1) Create project via NLP, (2) Verify task graph is valid, "
+                    "(3) Simulate agent assignment, (4) Verify tasks complete in correct order."
+                ),
+                "benefits": [
+                    "Catch ordering bugs before production",
+                    "Document expected behavior clearly",
+                    "Prevent regressions",
+                ],
+                "implementation": (
+                    "tests/integration/e2e/test_project_lifecycle.py:\\n"
+                    "  - test_project_success_task_is_last()\\n"
+                    "  - test_no_circular_dependencies_in_generated_projects()\\n"
+                    "  - test_task_assignment_respects_dependencies()"
+                ),
+            }
+        )
+
+        strategies.append(
+            {
+                "category": "Monitoring",
+                "strategy": "Add real-time validation hooks in production",
+                "description": (
+                    "Run diagnostic checks automatically after every N task operations. "
+                    "Alert immediately if problems detected rather than waiting for manual diagnosis."
+                ),
+                "benefits": [
+                    "Catch problems within minutes, not hours/days",
+                    "Automated alerts to humans",
+                    "Historical data for pattern analysis",
+                ],
+                "implementation": (
+                    "Add periodic task in server.py that runs diagnose_project() every 10 minutes, "
+                    "logs results to monitoring system, sends alerts on critical issues"
+                ),
+            }
+        )
+
+        return strategies
 
 
 def analyze_why(snapshot: Dict[str, Any]) -> Dict[str, Any]:

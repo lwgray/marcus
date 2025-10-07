@@ -98,7 +98,25 @@ class StallDashboard:
             console.print(self._build_conversation_patterns())
             console.print()
 
-        # Recommendations
+        # SYSTEM FAILURES (detailed technical analysis)
+        system_failures = self.causal_analysis.get("system_failures", [])
+        if system_failures:
+            console.print(self._build_system_failures(system_failures))
+            console.print()
+
+        # ACTIONABLE FIXES (specific code changes)
+        actionable_fixes = self.causal_analysis.get("actionable_fixes", [])
+        if actionable_fixes:
+            console.print(self._build_actionable_fixes(actionable_fixes))
+            console.print()
+
+        # PREVENTION STRATEGIES (long-term)
+        prevention = self.causal_analysis.get("prevention_strategies", [])
+        if prevention:
+            console.print(self._build_prevention_strategies(prevention))
+            console.print()
+
+        # Recommendations (old generic ones)
         recommendations = self.snapshot.get("recommendations", [])
         if recommendations:
             console.print(self._build_recommendations(recommendations))
@@ -521,6 +539,114 @@ class StallDashboard:
 
         print("\nFor better visualization, install rich:")
         print("  pip install rich")
+
+    def _build_system_failures(self, failures: List[Dict[str, Any]]) -> Panel:
+        """Build system failures panel with technical details."""
+        content = Text()
+
+        for i, failure in enumerate(failures, 1):
+            severity = failure.get("severity", "unknown")
+            icon = "🔴" if severity == "critical" else "🟠"
+            style = "red bold" if severity == "critical" else "yellow bold"
+
+            content.append(f"{i}. {icon} ", style=style)
+            content.append(f"{failure['system']}\n", style=style)
+
+            content.append(f"   FAILURE: ", style="bold red")
+            content.append(f"{failure['failure']}\n")
+
+            content.append(f"   EVIDENCE: ", style="bold yellow")
+            content.append(f"{failure['evidence']}\n")
+
+            content.append(f"   CODE: ", style="bold cyan")
+            content.append(f"{failure['code_location']}\n")
+
+            content.append(f"   ROOT CAUSE: ", style="bold magenta")
+            content.append(f"{failure['root_cause']}\n")
+
+            content.append(f"   WHY CHECKS FAILED: ", style="bold red")
+            content.append(f"{failure['why_checks_failed']}\n\n")
+
+        return Panel(
+            content,
+            title="[bold]🔧 SYSTEM FAILURES - TECHNICAL ANALYSIS[/bold]",
+            border_style="red",
+            subtitle="[dim]Understanding which parts of Marcus broke and why[/dim]",
+        )
+
+    def _build_actionable_fixes(self, fixes: List[Dict[str, Any]]) -> Panel:
+        """Build actionable fixes panel with specific code changes."""
+        content = Text()
+
+        for i, fix in enumerate(fixes, 1):
+            priority = fix.get("priority", "")
+            if "P0" in priority:
+                icon = "🔴"
+                style = "red bold"
+            elif "P1" in priority:
+                icon = "🟠"
+                style = "yellow bold"
+            else:
+                icon = "🟡"
+                style = "yellow"
+
+            content.append(f"{i}. {icon} ", style=style)
+            content.append(f"[{priority}] {fix['title']}\n", style=style)
+
+            content.append(f"   PROBLEM: ", style="bold red")
+            content.append(f"{fix['problem']}\n")
+
+            content.append(f"   SOLUTION: ", style="bold green")
+            content.append(f"{fix['solution']}\n")
+
+            content.append(f"   FILES TO MODIFY:\n", style="bold cyan")
+            for file in fix["files_to_modify"]:
+                content.append(f"      • {file}\n", style="cyan")
+
+            content.append(f"   SPECIFIC CHANGES:\n", style="bold magenta")
+            for change in fix["specific_changes"]:
+                content.append(f"      📄 {change['file']}\n", style="cyan")
+                content.append(f"         {change['change']}\n", style="dim")
+
+            content.append(f"   TEST: ", style="bold yellow")
+            content.append(f"{fix['test_validation']}\n")
+
+            content.append(f"   ESTIMATED TIME: ", style="bold")
+            content.append(f"{fix['estimated_time']}\n\n")
+
+        return Panel(
+            content,
+            title="[bold]🛠️  ACTIONABLE FIXES - IMMEDIATE ACTIONS[/bold]",
+            border_style="green",
+            subtitle="[dim]Specific code changes to implement right now[/dim]",
+        )
+
+    def _build_prevention_strategies(self, strategies: List[Dict[str, Any]]) -> Panel:
+        """Build prevention strategies panel."""
+        content = Text()
+
+        for i, strategy in enumerate(strategies, 1):
+            category = strategy.get("category", "General")
+            content.append(f"{i}. ", style="bold")
+            content.append(f"[{category}] ", style="cyan bold")
+            content.append(f"{strategy['strategy']}\n", style="bold")
+
+            content.append(f"   DESCRIPTION: ", style="bold")
+            content.append(f"{strategy['description']}\n")
+
+            content.append(f"   BENEFITS:\n", style="bold green")
+            for benefit in strategy["benefits"]:
+                content.append(f"      ✓ {benefit}\n", style="green")
+
+            content.append(f"   IMPLEMENTATION:\n", style="bold cyan")
+            content.append(f"      {strategy['implementation']}\n\n", style="dim")
+
+        return Panel(
+            content,
+            title="[bold]🛡️  PREVENTION STRATEGIES - LONG-TERM[/bold]",
+            border_style="blue",
+            subtitle="[dim]Architectural changes to prevent future stalls[/dim]",
+        )
 
 
 def render_snapshot(snapshot: Dict[str, Any]) -> None:
