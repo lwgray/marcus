@@ -290,13 +290,25 @@ Tasks are named based on context:
 - Generic: "Implement user authentication"
 - Context-aware: "Implement OAuth2 authentication with Google SSO"
 
-## Error Handling
+## Error Handling and Auto-Fix
 
+### Automatic Task Graph Correction
+The system includes automatic task graph validation and fixing via the [Task Graph Auto-Fix System](./task-graph-auto-fix.md). Common issues are silently corrected:
+
+- **Orphaned dependencies**: References to non-existent tasks are removed
+- **Circular dependencies**: Dependency cycles are broken by removing the back-edge
+- **Missing final task dependencies**: Implementation tasks are automatically added as dependencies to PROJECT_SUCCESS
+
+### Error Framework Integration
 Uses Marcus Error Framework for graceful degradation:
 
 ```python
 try:
     tasks = await self.process_natural_language(description)
+    # Automatic validation and fixing
+    tasks, warnings = TaskGraphValidator.validate_and_fix(tasks)
+    if warnings:
+        logger.warning(f"Auto-fixed {len(warnings)} task graph issues")
 except Exception as e:
     raise BusinessLogicError(
         "Failed to generate tasks from description",

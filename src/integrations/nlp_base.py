@@ -213,8 +213,18 @@ class NaturalLanguageTaskCreator(ABC):
         original_tasks : List[Task]
             Original task objects with estimated_hours
         """
+        # Skip decomposition if no AI engine is available
         if not self.ai_engine:
-            logger.debug("No AI engine available for task decomposition")
+            logger.debug("No AI engine available for task decomposition - skipping")
+            return
+
+        # Skip decomposition if AI engine has no client configured
+        if not hasattr(self.ai_engine, "client") or not self.ai_engine.client:
+            logger.info(
+                "Task decomposition skipped: No AI provider configured. "
+                "To enable automatic task decomposition into subtasks, configure "
+                "an AI provider (Anthropic, OpenAI, etc.) in config or environment."
+            )
             return
 
         from src.marcus_mcp.coordinator import decompose_task, should_decompose
@@ -423,19 +433,21 @@ class NaturalLanguageTaskCreator(ABC):
 
         return results
 
-    def get_tasks_by_type(self, tasks: List[Task], task_type: TaskType) -> List[Task]:
+    def get_tasks_by_type(self, tasks: List[Task], task_type: TaskType) -> List[Any]:
         """Get all tasks of a specific type."""
-        return self.task_classifier.filter_by_type(tasks, task_type)
+        return self.task_classifier.filter_by_type(  # type: ignore[no-any-return]
+            tasks, task_type
+        )
 
-    def is_deployment_task(self, task: Task) -> bool:
+    def is_deployment_task(self, task: Task) -> Any:
         """Check if task is deployment-related."""
         return self.task_classifier.is_type(task, TaskType.DEPLOYMENT)
 
-    def is_implementation_task(self, task: Task) -> bool:
+    def is_implementation_task(self, task: Task) -> Any:
         """Check if task is implementation-related."""
         return self.task_classifier.is_type(task, TaskType.IMPLEMENTATION)
 
-    def is_testing_task(self, task: Task) -> bool:
+    def is_testing_task(self, task: Task) -> Any:
         """Check if task is testing-related."""
         return self.task_classifier.is_type(task, TaskType.TESTING)
 

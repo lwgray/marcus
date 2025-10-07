@@ -1574,3 +1574,102 @@ Return JSON with this format:
         except Exception as e:
             print(f"Error calling Claude: {e}", file=sys.stderr)
             raise
+
+    async def generate_structured_response(
+        self,
+        prompt: str,
+        system_prompt: str = "",
+        response_format: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Generate a structured JSON response from the AI based on a schema.
+
+        This method is used for task decomposition and other operations requiring
+        structured output. It only works when an AI provider is configured.
+
+        Parameters
+        ----------
+        prompt : str
+            The user prompt describing what to generate
+        system_prompt : str, optional
+            System instructions for the AI
+        response_format : Dict[str, Any], optional
+            JSON schema describing expected response structure
+
+        Returns
+        -------
+        Dict[str, Any]
+            Structured response matching the schema
+
+        Raises
+        ------
+        RuntimeError
+            If no AI client is available (no API key configured)
+
+        Examples
+        --------
+        >>> result = await engine.generate_structured_response(
+        ...     prompt="Break down this task",
+        ...     system_prompt="You are a task decomposition expert",
+        ...     response_format={"type": "object", "properties": {...}}
+        ... )
+        """
+        # Raise error if no AI client available - no fallback mode
+        if not self.client:
+            raise RuntimeError(
+                "AI client not available. Task decomposition requires an AI provider "
+                "(Anthropic, OpenAI, etc.) to be configured. Please set API keys in "
+                "config or environment variables."
+            )
+
+        try:
+            # Build full prompt with schema instructions
+            full_prompt = prompt
+            if response_format:
+                schema_str = json.dumps(response_format, indent=2)
+                full_prompt = f"""{prompt}
+
+IMPORTANT: Respond with valid JSON matching this exact schema:
+{schema_str}
+
+Your response must be pure JSON with no markdown formatting, \
+explanations, or additional text."""
+
+            # Create message structure
+            messages = []
+            if system_prompt:
+                # For Anthropic API, system is a separate parameter
+                pass
+            messages.append({"role": "user", "content": full_prompt})
+
+            # Call Claude API
+            payload = {
+                "model": self.model,
+                "max_tokens": 4096,  # Larger for structured responses
+                "messages": messages,
+            }
+
+            if system_prompt:
+                payload["system"] = system_prompt
+
+            response = self.client.messages.create(**payload)
+
+            # Extract text response
+            response_text = response.content[0].text
+
+            # Parse JSON response
+            from src.utils.json_parser import parse_ai_json_response
+
+            return parse_ai_json_response(response_text)  # type: ignore[no-any-return]
+
+        except json.JSONDecodeError as e:
+            raw_text = response_text if "response_text" in locals() else "N/A"
+            print(f"Failed to parse structured response as JSON: {e}", file=sys.stderr)
+            print(f"Raw response: {raw_text}", file=sys.stderr)
+            raise RuntimeError(
+                f"AI returned invalid JSON: {e}. This may indicate the AI "
+                "did not follow the schema correctly."
+            )
+        except Exception as e:
+            print(f"Error generating structured response: {e}", file=sys.stderr)
+            raise RuntimeError(f"Failed to generate structured response: {e}")

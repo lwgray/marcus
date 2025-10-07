@@ -238,6 +238,8 @@ class DependencyResolver:
         )
 
         # Detect and resolve circular dependencies
+        # Note: Task graphs are automatically validated and fixed via the
+        # Task Graph Auto-Fix System (see task-graph-auto-fix.md)
         circular_dependencies = await self._detect_circular_dependencies(dependency_graph)
         if circular_dependencies:
             resolution_strategy = await self._resolve_circular_dependencies(

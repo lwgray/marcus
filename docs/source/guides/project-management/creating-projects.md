@@ -216,13 +216,17 @@ Task {
 ### What Happens:
 1. **Pattern Rules**: Applies logical dependency rules (setup before development)
 2. **AI Analysis**: Uses AI to infer complex dependencies between tasks
-3. **Conflict Resolution**: Resolves circular dependencies and impossible orderings
-4. **Cycle Detection**: Ensures dependency graph is acyclic
+3. **Automatic Issue Correction**: Via the [Task Graph Auto-Fix System](../../systems/project-management/task-graph-auto-fix.md), automatically fixes:
+   - Orphaned dependencies (references to non-existent tasks)
+   - Circular dependencies (removes back-edges to break cycles)
+   - Missing final task dependencies (ensures PROJECT_SUCCESS runs last)
+4. **Cycle Detection**: Ensures dependency graph is acyclic after fixes
 
 ### Intelligence Applied:
 - **Learning from Memory**: `01-memory-system.md` provides patterns from past projects
 - **Context Awareness**: Understands how tasks in this project relate to each other
 - **Risk Mitigation**: Identifies dependency risks and suggests alternatives
+- **Silent Correction**: Issues are fixed automatically without failing the creation process
 
 ### Dependency Graph Created:
 ```

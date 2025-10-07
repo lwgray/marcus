@@ -876,6 +876,16 @@ def assess_board_dependency_health(board_tasks: List[Task]) -> Dict[str, Any]:
 
 ## Error Handling and Resilience
 
+### Automatic Task Graph Correction
+
+The dependency system now includes automatic task graph validation and fixing via the [Task Graph Auto-Fix System](../project-management/task-graph-auto-fix.md). Instead of failing with errors, common issues are automatically corrected:
+
+- **Orphaned dependencies**: References to non-existent tasks are removed
+- **Circular dependencies**: Dependency cycles are broken by removing the back-edge
+- **Missing final task dependencies**: Implementation tasks are automatically added to PROJECT_SUCCESS
+
+This ensures users always receive working task graphs, even when the AI makes mistakes during dependency inference.
+
 ### Error Framework Integration
 
 The dependency system integrates deeply with Marcus's error framework for robust operation:
@@ -889,6 +899,7 @@ from src.core.error_framework import (
     with_retry,
     with_circuit_breaker
 )
+from src.intelligence.task_graph_validator import TaskGraphValidator
 
 class DependencyInferer:
     @with_retry(RetryConfig(max_attempts=3, base_delay=1.0))
@@ -909,14 +920,18 @@ class DependencyInferer:
                 # Combine and validate
                 combined_deps = self._combine_dependencies(pattern_deps, ai_deps)
 
-                # Build graph with cycle detection
+                # Build graph with automatic fixing
                 graph = self._build_dependency_graph(tasks, combined_deps)
 
-                if graph.has_cycle():
-                    raise CircularDependencyError(
-                        "Circular dependencies detected in task graph",
-                        context=error_context.get_current()
-                    )
+                # Auto-fix any issues instead of failing
+                fixed_tasks, warnings = TaskGraphValidator.validate_and_fix(tasks)
+                if warnings:
+                    logger.warning(f"Auto-fixed {len(warnings)} dependency issues")
+                    for warning in warnings:
+                        logger.debug(f"  - {warning}")
+
+                # Return fixed graph
+                graph = self._build_dependency_graph(fixed_tasks, combined_deps)
 
                 return graph
 
