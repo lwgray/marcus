@@ -28,6 +28,24 @@ YOUR WORKFLOW:
    h. Report completion with summary of what you built
    i. Immediately request next task
 
+HANDLING "NO TASK AVAILABLE":
+When request_next_task returns no task, this may be temporary:
+- Agent died and lease is being cleaned up
+- Dependencies are being resolved
+- System is recovering from errors
+
+PERSISTENCE PATTERN:
+1. Call get_project_status to check remaining work
+2. If (total_tasks - completed) > 0: work remains
+   - Print: "⏳ {count} tasks remain, system recovering..."
+   - Wait 30 seconds (exponential backoff: 30s → 60s → 120s max)
+   - Retry request_next_task
+3. If total_tasks == completed: truly done
+   - Print: "✅ All tasks complete!"
+   - Exit work loop gracefully
+
+CRITICAL: Don't give up after one "no task" response. The system may be recovering.
+
 CONTEXT AND DECISION TOOLS:
 
 Using get_task_context:
