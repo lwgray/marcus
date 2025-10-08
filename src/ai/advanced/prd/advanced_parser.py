@@ -617,15 +617,17 @@ class AdvancedPRDParser:
         relevant_req = self._find_matching_requirement(task_id, analysis)
 
         if relevant_req:
-            # ✅ USE AI DESCRIPTION DIRECTLY (no templates!)
+            # Get base information from requirement
             base_description = relevant_req.get("description", "")
             feature_name = relevant_req.get("name", "")
 
             # Create task name with phase prefix
             task_name = f"{task_type.title()} {feature_name}"
 
-            # Use AI description as-is (clean, no boilerplate)
-            description = base_description
+            # Generate task-type-specific description using LLM
+            description = await self._generate_task_description_for_type(
+                base_description, task_type, feature_name
+            )
 
             # Get estimated hours based on task type
             if task_type == "design":
@@ -787,6 +789,73 @@ class AdvancedPRDParser:
 
         logger.warning(f"No requirement found with id={req_id} for task_id={task_id}")
         return None
+
+    async def _generate_task_description_for_type(
+        self, base_description: str, task_type: str, feature_name: str
+    ) -> str:
+        """
+        Use LLM to generate task-type-specific descriptions.
+
+        This ensures Design/Implement/Test tasks get appropriate descriptions
+        that are then passed to subtasks during decomposition.
+
+        Parameters
+        ----------
+        base_description : str
+            Original requirement description
+        task_type : str
+            Task type: "design", "implement", or "test"
+        feature_name : str
+            Name of the feature being worked on
+
+        Returns
+        -------
+        str
+            Task-type-specific description
+        """
+        prompt = f"""Given this feature requirement:
+
+Feature: {feature_name}
+Requirement: {base_description}
+
+Generate a clear, specific description for a **{task_type.upper()}** task.
+
+Guidelines:
+- For DESIGN tasks: Focus on planning, architecture, API
+  specifications, data models, wireframes, user flows
+- For IMPLEMENT tasks: Focus on coding, building features, integrating
+  components, writing the actual code
+- For TEST tasks: Focus on writing tests, creating test scenarios,
+  validation, test coverage, quality assurance
+
+Provide ONLY the description (2-3 sentences), no preamble or
+explanation."""
+
+        try:
+            # Create a simple context object
+            class SimpleContext:
+                def __init__(self, max_tokens: int) -> None:
+                    self.max_tokens = max_tokens
+
+            context = SimpleContext(max_tokens=200)
+
+            # Use LLM to generate task-specific description
+            result = await self.llm_client.analyze(prompt, context)
+            description: str = str(result) if result else ""
+            return description.strip()
+
+        except Exception as e:
+            logger.warning(
+                f"Failed to generate task-specific description: {e}. "
+                f"Falling back to base description."
+            )
+            # Fallback: use base description with simple prefix
+            if task_type == "design":
+                return f"Design {base_description.lower()}"
+            elif task_type == "test":
+                return f"Test {base_description.lower()}"
+            else:
+                return base_description
 
     def _generate_task_labels(
         self, task_type: str, feature_name: str, analysis: PRDAnalysis

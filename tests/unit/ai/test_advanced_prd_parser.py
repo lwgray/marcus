@@ -545,3 +545,98 @@ class TestAdvancedPRDParserTaskGeneration:
 
         # Infrastructure epic should have 2 tasks (setup + CI/CD)
         assert len(hierarchy["epic_infrastructure"]) == 2
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_task_descriptions_are_task_type_specific(
+        self, parser, mock_constraints
+    ):
+        """
+        Test that Design/Implement/Test tasks get different descriptions.
+
+        Verifies the fix for the issue where all three task types were
+        getting the same implementation-focused description.
+        """
+        from src.ai.advanced.prd.advanced_parser import PRDAnalysis
+
+        prd_analysis = PRDAnalysis(
+            functional_requirements=[
+                {
+                    "id": "user_authentication",
+                    "name": "User Authentication",
+                    "description": "Implement JWT-based authentication for user registration, login, and token-based authorization",
+                    "priority": "high",
+                }
+            ],
+            non_functional_requirements=[],
+            technical_constraints=[],
+            business_objectives=[],
+            user_personas=[],
+            success_metrics=[],
+            implementation_approach="agile",
+            complexity_assessment={},
+            risk_factors=[],
+            confidence=0.9,
+        )
+
+        # Mock the LLM to return task-type-specific descriptions
+        async def mock_analyze(prompt, context):
+            # Return different descriptions based on task type in prompt
+            if "**DESIGN**" in prompt:
+                return "Design the authentication architecture, API endpoints, and user flow diagrams."
+            elif "**TEST**" in prompt:
+                return "Write comprehensive tests for authentication flows including registration, login, and token validation."
+            elif "**IMPLEMENT**" in prompt:
+                return "Implement JWT-based authentication with user registration and login endpoints."
+            return "Generic description"
+
+        parser.llm_client.analyze = AsyncMock(side_effect=mock_analyze)
+
+        # Generate all three task types
+        design_task = await parser._generate_detailed_task(
+            task_id="task_user_authentication_design",
+            epic_id="epic_user_auth",
+            analysis=prd_analysis,
+            constraints=mock_constraints,
+            sequence=1,
+        )
+
+        implement_task = await parser._generate_detailed_task(
+            task_id="task_user_authentication_implement",
+            epic_id="epic_user_auth",
+            analysis=prd_analysis,
+            constraints=mock_constraints,
+            sequence=2,
+        )
+
+        test_task = await parser._generate_detailed_task(
+            task_id="task_user_authentication_test",
+            epic_id="epic_user_auth",
+            analysis=prd_analysis,
+            constraints=mock_constraints,
+            sequence=3,
+        )
+
+        # Verify task names are correct (existing behavior)
+        assert design_task.name == "Design User Authentication"
+        assert implement_task.name == "Implement User Authentication"
+        assert test_task.name == "Test User Authentication"
+
+        # Verify descriptions are task-type-specific (NEW: this was the bug)
+        assert (
+            "design" in design_task.description.lower()
+            or "architecture" in design_task.description.lower()
+        )
+        assert (
+            "implement" in implement_task.description.lower()
+            or "build" in implement_task.description.lower()
+        )
+        assert (
+            "test" in test_task.description.lower()
+            or "validation" in test_task.description.lower()
+        )
+
+        # Verify they're NOT all the same description
+        assert design_task.description != implement_task.description
+        assert design_task.description != test_task.description
+        assert implement_task.description != test_task.description
