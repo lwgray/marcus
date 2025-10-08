@@ -9,17 +9,16 @@ Provides fixtures for:
 
 import pytest
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.pool import NullPool
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
-
+from sqlalchemy.pool import NullPool
 
 # Create a base for test models (import models after to register them)
 Base = declarative_base()
 
 # Import models to register with Base
 try:
-    from app.models import User, RefreshToken  # noqa: F401
+    from app.models import RefreshToken, User  # noqa: F401
 except ImportError:
     # Models may not be available in all test scenarios
     pass
@@ -32,6 +31,7 @@ TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 def event_loop():
     """Create event loop for async tests."""
     import asyncio
+
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
     loop.close()

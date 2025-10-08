@@ -7,8 +7,6 @@ Tests Pydantic validation for user CRUD, password changes, role management.
 from datetime import datetime
 
 import pytest
-from pydantic import ValidationError
-
 from app.schemas.user import (
     ErrorResponse,
     PasswordChange,
@@ -21,6 +19,7 @@ from app.schemas.user import (
     UserSearchParams,
     UserUpdate,
 )
+from pydantic import ValidationError
 
 
 class TestUserCreateSchema:
@@ -30,9 +29,7 @@ class TestUserCreateSchema:
         """Test valid user creation data."""
         # Act
         user = UserCreate(
-            email="test@example.com",
-            username="testuser",
-            password="SecureP@ssw0rd123"
+            email="test@example.com", username="testuser", password="SecureP@ssw0rd123"
         )
 
         # Assert
@@ -45,9 +42,7 @@ class TestUserCreateSchema:
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
             UserCreate(
-                email="invalid-email",
-                username="testuser",
-                password="SecureP@ssw0rd123"
+                email="invalid-email", username="testuser", password="SecureP@ssw0rd123"
             )
 
         assert "email" in str(exc_info.value).lower()
@@ -57,9 +52,7 @@ class TestUserCreateSchema:
         # Act & Assert
         with pytest.raises(ValidationError):
             UserCreate(
-                email="test@example.com",
-                username="ab",
-                password="SecureP@ssw0rd123"
+                email="test@example.com", username="ab", password="SecureP@ssw0rd123"
             )
 
     def test_username_invalid_characters(self):
@@ -69,7 +62,7 @@ class TestUserCreateSchema:
             UserCreate(
                 email="test@example.com",
                 username="test-user!",
-                password="SecureP@ssw0rd123"
+                password="SecureP@ssw0rd123",
             )
 
     def test_password_too_short(self):
@@ -77,9 +70,7 @@ class TestUserCreateSchema:
         # Act & Assert
         with pytest.raises(ValidationError, match="8 characters"):
             UserCreate(
-                email="test@example.com",
-                username="testuser",
-                password="Short1!"
+                email="test@example.com", username="testuser", password="Short1!"
             )
 
     def test_password_missing_uppercase(self):
@@ -89,7 +80,7 @@ class TestUserCreateSchema:
             UserCreate(
                 email="test@example.com",
                 username="testuser",
-                password="securep@ssw0rd123"
+                password="securep@ssw0rd123",
             )
 
     def test_password_missing_lowercase(self):
@@ -99,7 +90,7 @@ class TestUserCreateSchema:
             UserCreate(
                 email="test@example.com",
                 username="testuser",
-                password="SECUREP@SSW0RD123"
+                password="SECUREP@SSW0RD123",
             )
 
     def test_password_missing_digit(self):
@@ -107,9 +98,7 @@ class TestUserCreateSchema:
         # Act & Assert
         with pytest.raises(ValidationError, match="digit"):
             UserCreate(
-                email="test@example.com",
-                username="testuser",
-                password="SecureP@ssword"
+                email="test@example.com", username="testuser", password="SecureP@ssword"
             )
 
     def test_password_missing_special(self):
@@ -119,7 +108,7 @@ class TestUserCreateSchema:
             UserCreate(
                 email="test@example.com",
                 username="testuser",
-                password="SecurePassword123"
+                password="SecurePassword123",
             )
 
 
@@ -167,8 +156,7 @@ class TestPasswordChangeSchema:
         """Test valid password change data."""
         # Act
         change = PasswordChange(
-            current_password="OldPass123!",
-            new_password="NewPass456@"
+            current_password="OldPass123!", new_password="NewPass456@"
         )
 
         # Assert
@@ -179,10 +167,7 @@ class TestPasswordChangeSchema:
         """Test password change with weak new password."""
         # Act & Assert
         with pytest.raises(ValidationError):
-            PasswordChange(
-                current_password="OldPass123!",
-                new_password="weak"
-            )
+            PasswordChange(current_password="OldPass123!", new_password="weak")
 
     def test_missing_current_password(self):
         """Test password change without current password."""
@@ -209,7 +194,7 @@ class TestUserResponseSchema:
             created_at=now,
             updated_at=now,
             last_login=None,
-            roles=["user"]
+            roles=["user"],
         )
 
         # Assert
@@ -232,7 +217,7 @@ class TestUserResponseSchema:
             created_at=datetime.now(),
             updated_at=datetime.now(),
             last_login=datetime.now(),
-            roles=["user", "admin", "moderator"]
+            roles=["user", "admin", "moderator"],
         )
 
         # Assert
@@ -254,16 +239,12 @@ class TestUserListResponseSchema:
             is_verified=False,
             created_at=datetime.now(),
             updated_at=datetime.now(),
-            roles=[]
+            roles=[],
         )
 
         # Act
         response = UserListResponse(
-            users=[user],
-            total=1,
-            page=1,
-            page_size=20,
-            total_pages=1
+            users=[user], total=1, page=1, page_size=20, total_pages=1
         )
 
         # Assert
@@ -276,11 +257,7 @@ class TestUserListResponseSchema:
         """Test empty user list response."""
         # Act
         response = UserListResponse(
-            users=[],
-            total=0,
-            page=1,
-            page_size=20,
-            total_pages=0
+            users=[], total=0, page=1, page_size=20, total_pages=0
         )
 
         # Assert
@@ -314,7 +291,7 @@ class TestUserSearchParamsSchema:
             page=2,
             page_size=50,
             sort_by="username",
-            sort_order="asc"
+            sort_order="asc",
         )
 
         # Assert
@@ -388,11 +365,7 @@ class TestRoleResponseSchema:
 
         # Act
         response = RoleResponse(
-            id=1,
-            user_id=2,
-            role="admin",
-            granted_at=now,
-            granted_by=1
+            id=1, user_id=2, role="admin", granted_at=now, granted_by=1
         )
 
         # Assert
@@ -405,11 +378,7 @@ class TestRoleResponseSchema:
         """Test role response without granted_by."""
         # Act
         response = RoleResponse(
-            id=1,
-            user_id=2,
-            role="admin",
-            granted_at=datetime.now(),
-            granted_by=None
+            id=1, user_id=2, role="admin", granted_at=datetime.now(), granted_by=None
         )
 
         # Assert
@@ -422,10 +391,7 @@ class TestErrorResponseSchema:
     def test_basic_error_response(self):
         """Test basic error response."""
         # Act
-        error = ErrorResponse(
-            success=False,
-            error="Something went wrong"
-        )
+        error = ErrorResponse(success=False, error="Something went wrong")
 
         # Assert
         assert error.success is False
@@ -438,7 +404,7 @@ class TestErrorResponseSchema:
         error = ErrorResponse(
             success=False,
             error="Validation error",
-            details={"field": "email", "issue": "invalid"}
+            details={"field": "email", "issue": "invalid"},
         )
 
         # Assert
@@ -452,10 +418,7 @@ class TestSuccessResponseSchema:
     def test_basic_success_response(self):
         """Test basic success response."""
         # Act
-        success = SuccessResponse(
-            success=True,
-            message="Operation successful"
-        )
+        success = SuccessResponse(success=True, message="Operation successful")
 
         # Assert
         assert success.success is True
@@ -466,9 +429,7 @@ class TestSuccessResponseSchema:
         """Test success response with data."""
         # Act
         success = SuccessResponse(
-            success=True,
-            message="User created",
-            data={"user_id": 1}
+            success=True, message="User created", data={"user_id": 1}
         )
 
         # Assert
