@@ -5,15 +5,18 @@ Handles user accounts, authentication, and relationships to projects and tasks.
 """
 
 from typing import TYPE_CHECKING
+from datetime import datetime
 
 from app.models.base import Base, TimestampMixin
-from sqlalchemy import Index, String
+from sqlalchemy import Boolean, DateTime, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
     from app.models.comment import Comment
     from app.models.project import Project
+    from app.models.refresh_token import RefreshToken
     from app.models.task import Task
+    from app.models.user_role import UserRole
 
 
 class User(Base, TimestampMixin):
@@ -30,6 +33,12 @@ class User(Base, TimestampMixin):
         Unique email address for user (max 120 characters)
     password_hash : str
         Bcrypt hashed password (max 255 characters)
+    is_active : bool
+        Whether the user account is active (default: True)
+    is_verified : bool
+        Whether the user's email has been verified (default: False)
+    last_login : datetime, optional
+        UTC timestamp of the user's last successful login
     created_projects : list[Project]
         Projects created by this user
     assigned_tasks : list[Task]
@@ -74,6 +83,18 @@ class User(Base, TimestampMixin):
         String(255), nullable=False, doc="Bcrypt hashed password"
     )
 
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False, doc="Account active status"
+    )
+
+    is_verified: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, doc="Email verification status"
+    )
+
+    last_login: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, doc="Last successful login timestamp"
+    )
+
     # Relationships
     created_projects: Mapped[list["Project"]] = relationship(
         "Project",
@@ -103,6 +124,21 @@ class User(Base, TimestampMixin):
         back_populates="author",
         cascade="all, delete-orphan",
         doc="Comments written by this user",
+    )
+
+    roles: Mapped[list["UserRole"]] = relationship(
+        "UserRole",
+        back_populates="user",
+        foreign_keys="UserRole.user_id",
+        cascade="all, delete-orphan",
+        doc="Roles assigned to this user",
+    )
+
+    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
+        "RefreshToken",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        doc="Refresh tokens for this user",
     )
 
     # Indexes for performance
