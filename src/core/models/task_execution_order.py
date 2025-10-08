@@ -308,6 +308,10 @@ class DependencyGraph:
         path_lengths = {node: 0 for node in self.nodes}
         predecessors: Dict[str, Optional[str]] = {node: None for node in self.nodes}
 
+        # Handle empty graph case
+        if not path_lengths:
+            return []
+
         for node in execution_order:
             for dep in self.get_dependencies(node):
                 if path_lengths[dep] + 1 > path_lengths[node]:

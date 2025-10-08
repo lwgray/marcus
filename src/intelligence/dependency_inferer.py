@@ -106,6 +106,10 @@ class DependencyGraph:
                     queue.append(neighbor)
 
         # Find path to node with maximum distance
+        # Handle empty task graph case
+        if not distances:
+            return []
+
         max(distances.values())
         end_node = max(distances.items(), key=lambda x: x[1])[0]
 

@@ -462,6 +462,16 @@ class EnhancedTaskClassifier:
                     scores[TaskType.DESIGN] = max(design_score + 2.0, impl_score + 1.0)
                     ambiguous_case = True
 
+        # Defensive check: ensure scores is not empty before calling max()
+        if not scores:
+            return ClassificationResult(
+                task_type=TaskType.OTHER,
+                confidence=0.0,
+                matched_keywords=[],
+                matched_patterns=[],
+                reasoning="Scores dictionary became empty after processing",
+            )
+
         best_type = max(scores.items(), key=lambda x: x[1])[0]
         best_score = scores[best_type]
 
