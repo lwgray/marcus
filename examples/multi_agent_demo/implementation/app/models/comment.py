@@ -4,14 +4,15 @@ Comment model for task discussions.
 Handles comment entities and relationships to tasks and users.
 """
 
-from sqlalchemy import Text, ForeignKey, Index
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import TYPE_CHECKING
+
 from app.models.base import Base, TimestampMixin
+from sqlalchemy import ForeignKey, Index, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
-    from app.models.user import User
     from app.models.task import Task
+    from app.models.user import User
 
 
 class Comment(Base, TimestampMixin):
@@ -48,42 +49,32 @@ class Comment(Base, TimestampMixin):
     __tablename__ = "comments"
 
     id: Mapped[int] = mapped_column(
-        primary_key=True,
-        autoincrement=True,
-        doc="Unique comment identifier"
+        primary_key=True, autoincrement=True, doc="Unique comment identifier"
     )
 
-    text: Mapped[str] = mapped_column(
-        Text,
-        nullable=False,
-        doc="Comment text content"
-    )
+    text: Mapped[str] = mapped_column(Text, nullable=False, doc="Comment text content")
 
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
-        doc="Foreign key to user who wrote the comment"
+        doc="Foreign key to user who wrote the comment",
     )
 
     task_id: Mapped[int] = mapped_column(
         ForeignKey("tasks.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
-        doc="Foreign key to task this comment belongs to"
+        doc="Foreign key to task this comment belongs to",
     )
 
     # Relationships
     author: Mapped["User"] = relationship(
-        "User",
-        back_populates="comments",
-        doc="User who wrote this comment"
+        "User", back_populates="comments", doc="User who wrote this comment"
     )
 
     task: Mapped["Task"] = relationship(
-        "Task",
-        back_populates="comments",
-        doc="Task this comment is associated with"
+        "Task", back_populates="comments", doc="Task this comment is associated with"
     )
 
     # Indexes for common query patterns

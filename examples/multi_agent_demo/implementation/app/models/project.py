@@ -5,14 +5,15 @@ Handles project entities, ownership, and relationships to tasks.
 """
 
 from datetime import date
-from sqlalchemy import String, Text, Date, ForeignKey, Index
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import TYPE_CHECKING, Optional
+
 from app.models.base import Base, TimestampMixin
+from sqlalchemy import Date, ForeignKey, Index, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
-    from app.models.user import User
     from app.models.task import Task
+    from app.models.user import User
 
 
 class Project(Base, TimestampMixin):
@@ -53,41 +54,30 @@ class Project(Base, TimestampMixin):
     __tablename__ = "projects"
 
     id: Mapped[int] = mapped_column(
-        primary_key=True,
-        autoincrement=True,
-        doc="Unique project identifier"
+        primary_key=True, autoincrement=True, doc="Unique project identifier"
     )
 
     name: Mapped[str] = mapped_column(
-        String(200),
-        nullable=False,
-        index=True,
-        doc="Project name"
+        String(200), nullable=False, index=True, doc="Project name"
     )
 
     description: Mapped[Optional[str]] = mapped_column(
-        Text,
-        nullable=True,
-        doc="Detailed project description"
+        Text, nullable=True, doc="Detailed project description"
     )
 
     start_date: Mapped[Optional[date]] = mapped_column(
-        Date,
-        nullable=True,
-        doc="Project start date"
+        Date, nullable=True, doc="Project start date"
     )
 
     end_date: Mapped[Optional[date]] = mapped_column(
-        Date,
-        nullable=True,
-        doc="Project end date"
+        Date, nullable=True, doc="Project end date"
     )
 
     created_by: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
-        doc="Foreign key to user who created the project"
+        doc="Foreign key to user who created the project",
     )
 
     # Relationships
@@ -95,14 +85,14 @@ class Project(Base, TimestampMixin):
         "User",
         back_populates="created_projects",
         foreign_keys=[created_by],
-        doc="User who created this project"
+        doc="User who created this project",
     )
 
     tasks: Mapped[list["Task"]] = relationship(
         "Task",
         back_populates="project",
         cascade="all, delete-orphan",
-        doc="Tasks belonging to this project"
+        doc="Tasks belonging to this project",
     )
 
     # Indexes for performance
@@ -113,4 +103,6 @@ class Project(Base, TimestampMixin):
 
     def __repr__(self) -> str:
         """String representation of Project."""
-        return f"<Project(id={self.id}, name='{self.name}', created_by={self.created_by})>"
+        return (
+            f"<Project(id={self.id}, name='{self.name}', created_by={self.created_by})>"
+        )

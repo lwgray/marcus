@@ -6,15 +6,16 @@ Handles task entities, assignments, priorities, and relationships.
 
 from datetime import date
 from enum import Enum as PyEnum
-from sqlalchemy import String, Text, Date, ForeignKey, Enum, Index
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import TYPE_CHECKING, Optional
+
 from app.models.base import Base, TimestampMixin
+from sqlalchemy import Date, Enum, ForeignKey, Index, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
-    from app.models.user import User
-    from app.models.project import Project
     from app.models.comment import Comment
+    from app.models.project import Project
+    from app.models.user import User
 
 
 class TaskStatus(PyEnum):
@@ -34,6 +35,7 @@ class TaskStatus(PyEnum):
     BLOCKED : str
         Task blocked by external dependency
     """
+
     TODO = "todo"
     IN_PROGRESS = "in_progress"
     IN_REVIEW = "in_review"
@@ -56,6 +58,7 @@ class TaskPriority(PyEnum):
     CRITICAL : str
         Critical priority task requiring immediate attention
     """
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -111,29 +114,19 @@ class Task(Base, TimestampMixin):
     __tablename__ = "tasks"
 
     id: Mapped[int] = mapped_column(
-        primary_key=True,
-        autoincrement=True,
-        doc="Unique task identifier"
+        primary_key=True, autoincrement=True, doc="Unique task identifier"
     )
 
     title: Mapped[str] = mapped_column(
-        String(200),
-        nullable=False,
-        index=True,
-        doc="Task title"
+        String(200), nullable=False, index=True, doc="Task title"
     )
 
     description: Mapped[Optional[str]] = mapped_column(
-        Text,
-        nullable=True,
-        doc="Detailed task description"
+        Text, nullable=True, doc="Detailed task description"
     )
 
     due_date: Mapped[Optional[date]] = mapped_column(
-        Date,
-        nullable=True,
-        index=True,
-        doc="Task due date"
+        Date, nullable=True, index=True, doc="Task due date"
     )
 
     status: Mapped[TaskStatus] = mapped_column(
@@ -142,7 +135,7 @@ class Task(Base, TimestampMixin):
         default=TaskStatus.TODO,
         server_default=TaskStatus.TODO.value,
         index=True,
-        doc="Current task status"
+        doc="Current task status",
     )
 
     priority: Mapped[TaskPriority] = mapped_column(
@@ -151,56 +144,54 @@ class Task(Base, TimestampMixin):
         default=TaskPriority.MEDIUM,
         server_default=TaskPriority.MEDIUM.value,
         index=True,
-        doc="Task priority level"
+        doc="Task priority level",
     )
 
     project_id: Mapped[int] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
-        doc="Foreign key to parent project"
+        doc="Foreign key to parent project",
     )
 
     assigned_to: Mapped[Optional[int]] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
-        doc="Foreign key to assigned user"
+        doc="Foreign key to assigned user",
     )
 
     created_by: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
-        doc="Foreign key to user who created the task"
+        doc="Foreign key to user who created the task",
     )
 
     # Relationships
     project: Mapped["Project"] = relationship(
-        "Project",
-        back_populates="tasks",
-        doc="Parent project containing this task"
+        "Project", back_populates="tasks", doc="Parent project containing this task"
     )
 
     assignee: Mapped[Optional["User"]] = relationship(
         "User",
         back_populates="assigned_tasks",
         foreign_keys=[assigned_to],
-        doc="User assigned to work on this task"
+        doc="User assigned to work on this task",
     )
 
     creator: Mapped[Optional["User"]] = relationship(
         "User",
         back_populates="created_tasks",
         foreign_keys=[created_by],
-        doc="User who created this task"
+        doc="User who created this task",
     )
 
     comments: Mapped[list["Comment"]] = relationship(
         "Comment",
         back_populates="task",
         cascade="all, delete-orphan",
-        doc="Comments associated with this task"
+        doc="Comments associated with this task",
     )
 
     # Composite indexes for common query patterns

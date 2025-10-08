@@ -4,18 +4,20 @@ Unit tests for database models.
 Tests model creation, relationships, and cascade behavior using in-memory SQLite.
 """
 
-import pytest
 from datetime import date, datetime
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.exc import IntegrityError
+from typing import Generator
 
-from app.models import Base, User, Project, Task, Comment
-from app.models.task import TaskStatus, TaskPriority
+import pytest
+import sqlalchemy as sa
+from app.models import Base, Comment, Project, Task, User
+from app.models.task import TaskPriority, TaskStatus
+from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, sessionmaker
 
 
 @pytest.fixture
-def engine():
+def engine() -> sa.engine.Engine:
     """Create in-memory SQLite database engine for testing."""
     engine = create_engine("sqlite:///:memory:", echo=False)
     Base.metadata.create_all(bind=engine)
@@ -23,7 +25,7 @@ def engine():
 
 
 @pytest.fixture
-def db_session(engine):
+def db_session(engine: sa.engine.Engine) -> Generator[Session, None, None]:
     """Create database session for testing."""
     Session = sessionmaker(bind=engine)
     session = Session()
@@ -32,12 +34,12 @@ def db_session(engine):
 
 
 @pytest.fixture
-def sample_user(db_session):
+def sample_user(db_session: Session) -> User:
     """Create a sample user for testing."""
     user = User(
         username="testuser",
         email="test@example.com",
-        password_hash="$2b$12$hashed_password"
+        password_hash="$2b$12$hashed_password",
     )
     db_session.add(user)
     db_session.commit()
@@ -46,14 +48,14 @@ def sample_user(db_session):
 
 
 @pytest.fixture
-def sample_project(db_session, sample_user):
+def sample_project(db_session: Session, sample_user: User) -> Project:
     """Create a sample project for testing."""
     project = Project(
         name="Test Project",
         description="A test project",
         start_date=date(2025, 1, 1),
         end_date=date(2025, 12, 31),
-        created_by=sample_user.id
+        created_by=sample_user.id,
     )
     db_session.add(project)
     db_session.commit()
@@ -62,7 +64,9 @@ def sample_project(db_session, sample_user):
 
 
 @pytest.fixture
-def sample_task(db_session, sample_project, sample_user):
+def sample_task(
+    db_session: Session, sample_project: Project, sample_user: User
+) -> Task:
     """Create a sample task for testing."""
     task = Task(
         title="Test Task",
@@ -72,7 +76,7 @@ def sample_task(db_session, sample_project, sample_user):
         priority=TaskPriority.MEDIUM,
         project_id=sample_project.id,
         assigned_to=sample_user.id,
-        created_by=sample_user.id
+        created_by=sample_user.id,
     )
     db_session.add(task)
     db_session.commit()
@@ -83,13 +87,13 @@ def sample_task(db_session, sample_project, sample_user):
 class TestUserModel:
     """Test suite for User model."""
 
-    def test_create_user_successfully(self, db_session):
+    def test_create_user_successfully(self, db_session: Session) -> None:
         """Test creating a user with valid data."""
         # Arrange & Act
         user = User(
             username="johndoe",
             email="john@example.com",
-            password_hash="hashed_password"
+            password_hash="hashed_password",  # pragma: allowlist secret
         )
         db_session.add(user)
         db_session.commit()
@@ -102,13 +106,15 @@ class TestUserModel:
         assert user.created_at is not None
         assert user.updated_at is not None
 
-    def test_user_unique_username_constraint(self, db_session, sample_user):
+    def test_user_unique_username_constraint(
+        self, db_session: Session, sample_user: User
+    ) -> None:
         """Test that username must be unique."""
         # Arrange
         duplicate_user = User(
             username=sample_user.username,  # Duplicate username
             email="different@example.com",
-            password_hash="hash"
+            password_hash="hash",  # pragma: allowlist secret
         )
 
         # Act & Assert
@@ -122,7 +128,7 @@ class TestUserModel:
         duplicate_user = User(
             username="differentuser",
             email=sample_user.email,  # Duplicate email
-            password_hash="hash"
+            password_hash="hash",
         )
 
         # Act & Assert
@@ -130,18 +136,18 @@ class TestUserModel:
         with pytest.raises(IntegrityError):
             db_session.commit()
 
-    def test_user_to_dict_method(self, sample_user):
+    def test_user_to_dict_method(self, sample_user: User) -> None:
         """Test converting user to dictionary."""
         # Act
         user_dict = sample_user.to_dict()
 
         # Assert
         assert isinstance(user_dict, dict)
-        assert user_dict['id'] == sample_user.id
-        assert user_dict['username'] == sample_user.username
-        assert user_dict['email'] == sample_user.email
+        assert user_dict["id"] == sample_user.id
+        assert user_dict["username"] == sample_user.username
+        assert user_dict["email"] == sample_user.email
 
-    def test_user_repr_method(self, sample_user):
+    def test_user_repr_method(self, sample_user: User) -> None:
         """Test user string representation."""
         # Act
         repr_str = repr(sample_user)
@@ -163,7 +169,7 @@ class TestProjectModel:
             description="Project description",
             start_date=date(2025, 1, 1),
             end_date=date(2025, 6, 30),
-            created_by=sample_user.id
+            created_by=sample_user.id,
         )
         db_session.add(project)
         db_session.commit()
@@ -175,7 +181,9 @@ class TestProjectModel:
         assert project.created_by == sample_user.id
         assert project.created_at is not None
 
-    def test_project_creator_relationship(self, db_session, sample_project, sample_user):
+    def test_project_creator_relationship(
+        self, db_session, sample_project, sample_user
+    ):
         """Test project creator relationship."""
         # Act
         creator = sample_project.creator
@@ -196,10 +204,7 @@ class TestProjectModel:
     def test_project_nullable_dates(self, db_session, sample_user):
         """Test that project dates are nullable."""
         # Arrange & Act
-        project = Project(
-            name="Undated Project",
-            created_by=sample_user.id
-        )
+        project = Project(name="Undated Project", created_by=sample_user.id)
         db_session.add(project)
         db_session.commit()
         db_session.refresh(project)
@@ -223,7 +228,7 @@ class TestTaskModel:
             priority=TaskPriority.HIGH,
             project_id=sample_project.id,
             assigned_to=sample_user.id,
-            created_by=sample_user.id
+            created_by=sample_user.id,
         )
         db_session.add(task)
         db_session.commit()
@@ -241,7 +246,7 @@ class TestTaskModel:
         task = Task(
             title="Task with default status",
             project_id=sample_project.id,
-            priority=TaskPriority.MEDIUM
+            priority=TaskPriority.MEDIUM,
         )
         db_session.add(task)
         db_session.commit()
@@ -256,7 +261,7 @@ class TestTaskModel:
         task = Task(
             title="Task with default priority",
             project_id=sample_project.id,
-            status=TaskStatus.TODO
+            status=TaskStatus.TODO,
         )
         db_session.add(task)
         db_session.commit()
@@ -265,7 +270,9 @@ class TestTaskModel:
         # Assert
         assert task.priority == TaskPriority.MEDIUM
 
-    def test_task_relationships(self, db_session, sample_task, sample_project, sample_user):
+    def test_task_relationships(
+        self, db_session, sample_task, sample_project, sample_user
+    ):
         """Test task relationships with project and users."""
         # Act & Assert - Project relationship
         assert sample_task.project.id == sample_project.id
@@ -284,7 +291,7 @@ class TestTaskModel:
             project_id=sample_project.id,
             created_by=sample_user.id,
             status=TaskStatus.TODO,
-            priority=TaskPriority.LOW
+            priority=TaskPriority.LOW,
         )
         db_session.add(task)
         db_session.commit()
@@ -304,7 +311,7 @@ class TestCommentModel:
         comment = Comment(
             text="This is a test comment",
             user_id=sample_user.id,
-            task_id=sample_task.id
+            task_id=sample_task.id,
         )
         db_session.add(comment)
         db_session.commit()
@@ -320,9 +327,7 @@ class TestCommentModel:
         """Test comment relationships with task and author."""
         # Arrange
         comment = Comment(
-            text="Test comment",
-            user_id=sample_user.id,
-            task_id=sample_task.id
+            text="Test comment", user_id=sample_user.id, task_id=sample_task.id
         )
         db_session.add(comment)
         db_session.commit()
@@ -339,7 +344,9 @@ class TestCommentModel:
 class TestCascadeRules:
     """Test suite for cascade delete behavior."""
 
-    def test_deleting_project_cascades_to_tasks(self, db_session, sample_project, sample_task):
+    def test_deleting_project_cascades_to_tasks(
+        self, db_session, sample_project, sample_task
+    ):
         """Test that deleting a project deletes all its tasks."""
         # Arrange
         project_id = sample_project.id
@@ -350,16 +357,18 @@ class TestCascadeRules:
         db_session.commit()
 
         # Assert
-        assert db_session.query(Project).filter(Project.id == project_id).first() is None
+        assert (
+            db_session.query(Project).filter(Project.id == project_id).first() is None
+        )
         assert db_session.query(Task).filter(Task.id == task_id).first() is None
 
-    def test_deleting_task_cascades_to_comments(self, db_session, sample_task, sample_user):
+    def test_deleting_task_cascades_to_comments(
+        self, db_session, sample_task, sample_user
+    ):
         """Test that deleting a task deletes all its comments."""
         # Arrange
         comment = Comment(
-            text="Test comment",
-            user_id=sample_user.id,
-            task_id=sample_task.id
+            text="Test comment", user_id=sample_user.id, task_id=sample_task.id
         )
         db_session.add(comment)
         db_session.commit()
@@ -372,7 +381,9 @@ class TestCascadeRules:
 
         # Assert
         assert db_session.query(Task).filter(Task.id == task_id).first() is None
-        assert db_session.query(Comment).filter(Comment.id == comment_id).first() is None
+        assert (
+            db_session.query(Comment).filter(Comment.id == comment_id).first() is None
+        )
 
     def test_deleting_user_cascades_to_assigned_tasks(self, db_session, sample_user):
         """Test that deleting a user deletes tasks assigned to them."""
@@ -386,7 +397,7 @@ class TestCascadeRules:
             project_id=project.id,
             assigned_to=sample_user.id,
             status=TaskStatus.TODO,
-            priority=TaskPriority.MEDIUM
+            priority=TaskPriority.MEDIUM,
         )
         db_session.add(task)
         db_session.commit()
@@ -405,7 +416,7 @@ class TestCascadeRules:
 class TestTimestamps:
     """Test suite for automatic timestamp behavior."""
 
-    def test_created_at_set_automatically(self, db_session):
+    def test_created_at_set_automatically(self, db_session: Session) -> None:
         """Test that created_at is set automatically."""
         # Arrange & Act
         user = User(username="user", email="user@example.com", password_hash="hash")
@@ -417,7 +428,7 @@ class TestTimestamps:
         assert user.created_at is not None
         assert isinstance(user.created_at, datetime)
 
-    def test_updated_at_set_automatically(self, db_session):
+    def test_updated_at_set_automatically(self, db_session: Session) -> None:
         """Test that updated_at is set automatically."""
         # Arrange & Act
         user = User(username="user", email="user@example.com", password_hash="hash")

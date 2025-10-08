@@ -4,15 +4,16 @@ User model for authentication and authorization.
 Handles user accounts, authentication, and relationships to projects and tasks.
 """
 
-from sqlalchemy import String, Index
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import TYPE_CHECKING
+
 from app.models.base import Base, TimestampMixin
+from sqlalchemy import Index, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
+    from app.models.comment import Comment
     from app.models.project import Project
     from app.models.task import Task
-    from app.models.comment import Comment
 
 
 class User(Base, TimestampMixin):
@@ -54,9 +55,7 @@ class User(Base, TimestampMixin):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(
-        primary_key=True,
-        autoincrement=True,
-        doc="Unique user identifier"
+        primary_key=True, autoincrement=True, doc="Unique user identifier"
     )
 
     username: Mapped[str] = mapped_column(
@@ -64,21 +63,15 @@ class User(Base, TimestampMixin):
         unique=True,
         nullable=False,
         index=True,
-        doc="Unique username for login"
+        doc="Unique username for login",
     )
 
     email: Mapped[str] = mapped_column(
-        String(120),
-        unique=True,
-        nullable=False,
-        index=True,
-        doc="Unique email address"
+        String(120), unique=True, nullable=False, index=True, doc="Unique email address"
     )
 
     password_hash: Mapped[str] = mapped_column(
-        String(255),
-        nullable=False,
-        doc="Bcrypt hashed password"
+        String(255), nullable=False, doc="Bcrypt hashed password"
     )
 
     # Relationships
@@ -87,7 +80,7 @@ class User(Base, TimestampMixin):
         back_populates="creator",
         foreign_keys="Project.created_by",
         cascade="all, delete-orphan",
-        doc="Projects created by this user"
+        doc="Projects created by this user",
     )
 
     assigned_tasks: Mapped[list["Task"]] = relationship(
@@ -95,27 +88,25 @@ class User(Base, TimestampMixin):
         back_populates="assignee",
         foreign_keys="Task.assigned_to",
         cascade="all, delete-orphan",
-        doc="Tasks assigned to this user"
+        doc="Tasks assigned to this user",
     )
 
     created_tasks: Mapped[list["Task"]] = relationship(
         "Task",
         back_populates="creator",
         foreign_keys="Task.created_by",
-        doc="Tasks created by this user"
+        doc="Tasks created by this user",
     )
 
     comments: Mapped[list["Comment"]] = relationship(
         "Comment",
         back_populates="author",
         cascade="all, delete-orphan",
-        doc="Comments written by this user"
+        doc="Comments written by this user",
     )
 
     # Indexes for performance
-    __table_args__ = (
-        Index("ix_users_username_email", "username", "email"),
-    )
+    __table_args__ = (Index("ix_users_username_email", "username", "email"),)
 
     def __repr__(self) -> str:
         """String representation of User."""
