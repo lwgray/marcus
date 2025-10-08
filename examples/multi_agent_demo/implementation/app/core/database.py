@@ -5,32 +5,40 @@ This module configures SQLAlchemy with async support, connection pooling,
 and query optimization settings to achieve <100ms response times for CRUD operations.
 """
 
-from typing import AsyncGenerator
 import os
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    create_async_engine,
-    async_sessionmaker
-)
-from sqlalchemy.pool import NullPool, QueuePool
+from pathlib import Path
+from typing import AsyncGenerator
+
+from dotenv import load_dotenv
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
+from sqlalchemy.pool import NullPool, QueuePool
+
+# Load environment variables from .env file
+env_path = Path(__file__).parent.parent.parent / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
 
 # Database URL from environment
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://user:password@localhost:5432/task_management"  # pragma: allowlist secret
+    "sqlite+aiosqlite:///./task_management.db",  # Default to SQLite for easy testing
 )
 
 # Connection pool configuration for optimal performance
 POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "20"))  # Number of connections to maintain
 MAX_OVERFLOW = int(os.getenv("DB_MAX_OVERFLOW", "10"))  # Extra connections under load
 POOL_TIMEOUT = int(os.getenv("DB_POOL_TIMEOUT", "30"))  # Seconds to wait for connection
-POOL_RECYCLE = int(os.getenv("DB_POOL_RECYCLE", "3600"))  # Recycle connections after 1 hour
+POOL_RECYCLE = int(
+    os.getenv("DB_POOL_RECYCLE", "3600")
+)  # Recycle connections after 1 hour
 POOL_PRE_PING = os.getenv("DB_POOL_PRE_PING", "true").lower() == "true"
 
 # Query execution settings
 ECHO_SQL = os.getenv("DB_ECHO_SQL", "false").lower() == "true"  # Log SQL queries
-QUERY_TIMEOUT = int(os.getenv("DB_QUERY_TIMEOUT", "10000"))  # 10 seconds in milliseconds
+QUERY_TIMEOUT = int(
+    os.getenv("DB_QUERY_TIMEOUT", "10000")
+)  # 10 seconds in milliseconds
 
 # Base for declarative models
 Base = declarative_base()
@@ -66,31 +74,50 @@ def create_engine():
     >>> async with engine.begin() as conn:
     ...     result = await conn.execute(select(User).limit(10))
     """
-    # Use NullPool for testing, QueuePool for production
-    poolclass = NullPool if "pytest" in os.getenv("_", "") else QueuePool
+    # Detect if using SQLite
+    is_sqlite = DATABASE_URL.startswith("sqlite")
 
-    engine = create_async_engine(
-        DATABASE_URL,
-        echo=ECHO_SQL,
-        poolclass=poolclass,
-        pool_size=POOL_SIZE if poolclass == QueuePool else None,
-        max_overflow=MAX_OVERFLOW if poolclass == QueuePool else None,
-        pool_timeout=POOL_TIMEOUT if poolclass == QueuePool else None,
-        pool_recycle=POOL_RECYCLE if poolclass == QueuePool else None,
-        pool_pre_ping=POOL_PRE_PING if poolclass == QueuePool else False,
-        # Performance optimizations
-        execution_options={
-            "isolation_level": "READ COMMITTED",  # Balance between consistency and performance
-        },
-        connect_args={
+    # Use NullPool for testing or SQLite, QueuePool for production PostgreSQL
+    if "pytest" in os.getenv("_", "") or is_sqlite:
+        poolclass = NullPool
+    else:
+        poolclass = QueuePool
+
+    # Base engine configuration
+    engine_config = {
+        "echo": ECHO_SQL,
+        "poolclass": poolclass,
+    }
+
+    # Add pool configuration only for non-SQLite databases
+    if not is_sqlite and poolclass == QueuePool:
+        engine_config.update(
+            {
+                "pool_size": POOL_SIZE,
+                "max_overflow": MAX_OVERFLOW,
+                "pool_timeout": POOL_TIMEOUT,
+                "pool_recycle": POOL_RECYCLE,
+                "pool_pre_ping": POOL_PRE_PING,
+            }
+        )
+
+    # Add execution options only for PostgreSQL
+    if not is_sqlite:
+        engine_config["execution_options"] = {
+            "isolation_level": "READ COMMITTED",
+        }
+
+        # Add PostgreSQL-specific connect_args
+        engine_config["connect_args"] = {
             "server_settings": {
                 "application_name": "task_management_api",
-                "jit": "on",  # Enable JIT compilation for complex queries
+                "jit": "on",
             },
-            "command_timeout": QUERY_TIMEOUT / 1000,  # Convert to seconds
+            "command_timeout": QUERY_TIMEOUT / 1000,
             "timeout": QUERY_TIMEOUT / 1000,
-        },
-    )
+        }
+
+    engine = create_async_engine(DATABASE_URL, **engine_config)
 
     return engine
 
@@ -218,7 +245,9 @@ class DatabaseHealthCheck:
             "checked_in": pool.checkedin() if hasattr(pool, "checkedin") else None,
             "checked_out": pool.checkedout() if hasattr(pool, "checkedout") else None,
             "overflow": pool.overflow() if hasattr(pool, "overflow") else None,
-            "total": pool.size() + pool.overflow()
-            if hasattr(pool, "size") and hasattr(pool, "overflow")
-            else None,
+            "total": (
+                pool.size() + pool.overflow()
+                if hasattr(pool, "size") and hasattr(pool, "overflow")
+                else None
+            ),
         }

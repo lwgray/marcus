@@ -243,7 +243,8 @@ def _build_decomposition_prompt(
 
 **CRITICAL: This is a TESTING task. ALL subtasks MUST be testing-related:**
 
-Break this TESTING task into 3-5 testing subtasks. Each subtask must focus on writing tests, NOT implementing features.
+Break this TESTING task into 3-5 testing subtasks. Each subtask must focus
+on writing tests, NOT implementing features.
 
 Valid testing subtask types:
 - Write unit tests for specific components
@@ -254,7 +255,7 @@ Valid testing subtask types:
 - Create test documentation
 
 INVALID subtask types (DO NOT create these):
-- "Implement X" or "Build Y" or "Create Z" (these are implementation tasks)
+- "Implement X" or "Build Y" or "Create Z" (implementation tasks)
 - "Design X" (this is a design task)
 - Any subtask that involves writing production code
 
@@ -262,9 +263,11 @@ INVALID subtask types (DO NOT create these):
     elif task_type == "design":
         prompt += """
 
-**CRITICAL: This is a DESIGN task. ALL subtasks MUST be design/planning-related:**
+**CRITICAL: This is a DESIGN task. ALL subtasks MUST be
+design/planning-related:**
 
-Break this DESIGN task into 3-5 design subtasks. Each subtask must focus on planning and documentation, NOT implementation.
+Break this DESIGN task into 3-5 design subtasks. Each subtask must focus
+on planning and documentation, NOT implementation.
 
 Valid design subtask types:
 - Research existing solutions and best practices
@@ -283,9 +286,11 @@ INVALID subtask types (DO NOT create these):
     elif task_type == "implement":
         prompt += """
 
-**CRITICAL: This is an IMPLEMENTATION task. ALL subtasks MUST be implementation-related:**
+**CRITICAL: This is an IMPLEMENTATION task. ALL subtasks MUST be
+implementation-related:**
 
-Break this IMPLEMENTATION task into 3-5 implementation subtasks. Each subtask must focus on building features, NOT testing or design.
+Break this IMPLEMENTATION task into 3-5 implementation subtasks. Each
+subtask must focus on building features, NOT testing or design.
 
 Valid implementation subtask types:
 - Create/implement data models or database schemas
@@ -304,13 +309,15 @@ INVALID subtask types (DO NOT create these):
     else:
         prompt += """
 
-Break this task into 3-5 manageable subtasks that can be worked on independently or sequentially.  # noqa: E501
+Break this task into 3-5 manageable subtasks that can be worked on
+independently or sequentially.
 
 For each subtask, specify:
 1. **name**: Clear, action-oriented name
 2. **description**: Detailed description of what needs to be done
 3. **estimated_hours**: Time estimate (0.5-3 hours per subtask)
-4. **dependencies**: List of subtask indices that must complete first (use 0-based indexing)  # noqa: E501
+4. **dependencies**: List of subtask indices that must complete first
+   (use 0-based indexing)
 5. **file_artifacts**: List of files this subtask will create/modify
 6. **provides**: What interface/functionality this subtask provides for others
 7. **requires**: What this subtask needs from dependencies
@@ -339,7 +346,7 @@ Also define **shared_conventions** that all subtasks must follow:
   "subtasks": [
     {
       "name": "Write unit tests for authentication logic",
-      "description": "Create unit tests for login, logout, and token validation functions",
+      "description": "Create unit tests for login, logout, and token validation",
       "estimated_hours": 2.0,
       "dependencies": [],
       "file_artifacts": ["tests/unit/test_auth.py"],
@@ -348,7 +355,7 @@ Also define **shared_conventions** that all subtasks must follow:
     },
     {
       "name": "Create integration tests for auth API endpoints",
-      "description": "Test POST /api/login and /api/logout endpoints with various scenarios",
+      "description": "Test POST /api/login and /api/logout with various scenarios",
       "estimated_hours": 2.5,
       "dependencies": [0],
       "file_artifacts": ["tests/integration/test_auth_endpoints.py"],
@@ -377,7 +384,7 @@ Also define **shared_conventions** that all subtasks must follow:
   "subtasks": [
     {
       "name": "Research authentication best practices",
-      "description": "Research OAuth2, JWT standards, and security best practices for authentication",
+      "description": "Research OAuth2, JWT, and security best practices for auth",
       "estimated_hours": 1.5,
       "dependencies": [],
       "file_artifacts": ["docs/research/auth_research.md"],
@@ -386,7 +393,7 @@ Also define **shared_conventions** that all subtasks must follow:
     },
     {
       "name": "Design authentication API specification",
-      "description": "Define API endpoints, request/response formats, and error handling for auth system",
+      "description": "Define API endpoints, request/response, and error handling",
       "estimated_hours": 2.0,
       "dependencies": [0],
       "file_artifacts": ["docs/design/auth_api_spec.md"],
@@ -453,9 +460,11 @@ Also define **shared_conventions** that all subtasks must follow:
 
 def _get_decomposition_system_prompt(task_type: str = "implement") -> str:
     """Get system prompt for decomposition with type-specific constraints."""
-    base_prompt = """You are an expert software architect specializing in task decomposition.
+    base_prompt = """You are an expert software architect specializing in
+task decomposition.
 
-Your goal is to break complex tasks into manageable, well-defined subtasks that can be implemented by different agents.
+Your goal is to break complex tasks into manageable, well-defined
+subtasks that can be implemented by different agents.
 
 Key principles:
 1. **Clear Interfaces**: Each subtask must have clear inputs and outputs
@@ -495,7 +504,8 @@ Key principles:
 """
 
     base_prompt += """
-CRITICAL: Respond ONLY with valid JSON. No markdown, no explanations, just the JSON object."""
+CRITICAL: Respond ONLY with valid JSON. No markdown, no explanations,
+just the JSON object."""
 
     return base_prompt
 

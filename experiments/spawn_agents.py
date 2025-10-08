@@ -91,26 +91,36 @@ class AgentSpawner:
 
         prompt = f"""You are the Project Creator Agent for this Marcus experiment.
 
-Your ONLY task is to:
+WORKING DIRECTORY: {self.config.implementation_dir}
 
-1. Use the mcp__marcus__create_project tool to create a new project
+Your tasks:
+
+1. Verify you're in the correct directory:
+   - Current directory should be: {self.config.implementation_dir}
+   - This directory should have a .git folder
+   - This directory should have .claude/claude_desktop_config.json with Marcus MCP configured
+
+2. Use the mcp__marcus__create_project tool to create a new project
    called "{self.config.project_name}"
 
-2. Use this exact description:
+3. Use this exact description:
 
 {project_description}
 
-3. Use these options: {options_str}
+4. Use these options: {options_str}
 
-4. When the project is created successfully:
+5. When the project is created successfully:
    - Save the project_id and board_id to {self.config.project_info_file}
    - Format: {{"project_id": "<id>", "board_id": "<board_id>"}}
+   - Create an initial git commit:
+     git add -A
+     git commit -m "Initial commit: Marcus project created"
    - Print "PROJECT CREATED: project_id=<id> board_id=<board_id>"
    - Exit immediately
 
-5. If creation fails, print the error and exit with code 1
+6. If creation fails, print the error and exit with code 1
 
-DO NOT do anything else. Just create the project and exit.
+CRITICAL: Work in {self.config.implementation_dir} - this is where all code will be generated.
 """
         return prompt
 
@@ -220,14 +230,17 @@ START NOW!
             f.write(prompt)
 
         # Create a script to run in the terminal
-        script = f"""cd {self.config.experiment_dir}
+        script = f"""#!/bin/bash
+cd {self.config.implementation_dir} || exit 1
 echo "=========================================="
 echo "PROJECT CREATOR AGENT"
+echo "Working Directory: $(pwd)"
 echo "=========================================="
 echo ""
 echo "Creating Marcus project: {self.config.project_name}"
 echo ""
-cat {prompt_file} | claude --dangerously-skip-permissions --print
+# Launch Claude from the implementation directory (cwd matters!)
+claude --dangerously-skip-permissions --print < {prompt_file}
 echo ""
 echo "=========================================="
 echo "Project Creator Complete"
@@ -285,12 +298,14 @@ read -n 1
             f.write(prompt)
 
         # Create a script to run in the terminal
-        script = f"""cd {self.config.implementation_dir}
+        script = f"""#!/bin/bash
+cd {self.config.implementation_dir} || exit 1
 echo "=========================================="
 echo "{agent_name.upper()}"
 echo "ID: {agent_id}"
 echo "Role: {agent_role}"
 echo "Branch: main (shared)"
+echo "Working Directory: $(pwd)"
 echo "=========================================="
 echo ""
 echo "Waiting for project creation..."
@@ -299,7 +314,8 @@ while [ ! -f {self.config.project_info_file} ]; do
 done
 echo "✓ Project found, starting agent..."
 echo ""
-cat {prompt_file} | claude --dangerously-skip-permissions
+# Launch Claude from the implementation directory (cwd matters!)
+claude --dangerously-skip-permissions < {prompt_file}
 echo ""
 echo "=========================================="
 echo "{agent_name} - Work Complete"

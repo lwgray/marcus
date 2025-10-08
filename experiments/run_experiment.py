@@ -25,6 +25,8 @@ def create_experiment_structure(experiment_dir: Path, templates_dir: Path) -> bo
     templates_dir : Path
         Directory containing templates
     """
+    import subprocess
+
     experiment_dir.mkdir(parents=True, exist_ok=True)
 
     config_file = experiment_dir / "config.yaml"
@@ -66,7 +68,53 @@ def create_experiment_structure(experiment_dir: Path, templates_dir: Path) -> bo
     # Create subdirectories
     (experiment_dir / "prompts").mkdir(exist_ok=True)
     (experiment_dir / "logs").mkdir(exist_ok=True)
-    (experiment_dir / "implementation").mkdir(exist_ok=True)
+    implementation_dir = experiment_dir / "implementation"
+    implementation_dir.mkdir(exist_ok=True)
+
+    # Initialize git repository in implementation directory
+    git_dir = implementation_dir / ".git"
+    if not git_dir.exists():
+        print("\n[Setup] Initializing git repository...")
+        try:
+            subprocess.run(
+                ["git", "init"],
+                cwd=implementation_dir,
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "checkout", "-b", "main"],
+                cwd=implementation_dir,
+                check=True,
+                capture_output=True,
+            )
+            print("✓ Git repository initialized on main branch")
+        except subprocess.CalledProcessError as e:
+            print(f"⚠️  Git initialization failed: {e}")
+
+    # Verify Marcus MCP is configured
+    print("\n[Setup] Verifying Marcus MCP configuration...")
+    try:
+        result = subprocess.run(
+            ["claude", "mcp", "list"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        if "marcus" in result.stdout:
+            print("✓ Marcus MCP is configured")
+            print("  Agents will have access to Marcus tools")
+        else:
+            print("⚠️  Marcus MCP not found in configuration")
+            print(
+                "  Please run: claude mcp add marcus -t http http://localhost:4298/mcp"
+            )
+    except subprocess.CalledProcessError:
+        print("⚠️  Could not verify MCP configuration")
+        print("  Ensure Claude Code CLI is installed")
+        print(
+            "  To configure Marcus: claude mcp add marcus -t http http://localhost:4298/mcp"
+        )
 
     return not (config_file.exists() and spec_file.exists())
 

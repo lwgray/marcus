@@ -49,8 +49,9 @@ def find_next_available_subtask(
         if not subtask_manager.has_subtasks(task.id):
             continue
 
-        # Skip if parent task is not in TODO status
-        if task.status != TaskStatus.TODO:
+        # Skip if parent task is already DONE (allow TODO and IN_PROGRESS)
+        # This enables parallel assignment of multiple subtasks from the same parent
+        if task.status == TaskStatus.DONE:
             continue
 
         # Get all subtasks for this parent
