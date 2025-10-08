@@ -8,12 +8,17 @@ Tests end-to-end authentication flows including:
 - Protected endpoint access with JWT verification
 """
 
+from datetime import timedelta
+
 import pytest
 from app.schemas.auth import UserLogin, UserRegister
-from app.services.auth_service import AuthService, UserAlreadyExistsError, AuthenticationError
-from app.security.jwt_handler import verify_token, TokenExpiredError
+from app.security.jwt_handler import TokenExpiredError, verify_token
 from app.security.password import verify_password
-from datetime import timedelta
+from app.services.auth_service import (
+    AuthenticationError,
+    AuthService,
+    UserAlreadyExistsError,
+)
 
 
 class TestUserRegistrationIntegration:
@@ -22,9 +27,7 @@ class TestUserRegistrationIntegration:
     @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_register_user_creates_database_record(
-        self,
-        db_session,
-        sample_user_data
+        self, db_session, sample_user_data
     ):
         """
         Test that user registration creates a valid database record.
@@ -41,9 +44,7 @@ class TestUserRegistrationIntegration:
 
         # Act
         user, access_token, refresh_token = await auth_service.register_user(
-            user_data,
-            ip_address="127.0.0.1",
-            user_agent="TestAgent/1.0"
+            user_data, ip_address="127.0.0.1", user_agent="TestAgent/1.0"
         )
 
         # Assert - User was created
@@ -73,11 +74,7 @@ class TestUserRegistrationIntegration:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    async def test_register_duplicate_email_fails(
-        self,
-        db_session,
-        sample_user_data
-    ):
+    async def test_register_duplicate_email_fails(self, db_session, sample_user_data):
         """
         Test that duplicate email registration fails.
 
@@ -97,9 +94,7 @@ class TestUserRegistrationIntegration:
     @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_register_duplicate_username_fails(
-        self,
-        db_session,
-        sample_user_data
+        self, db_session, sample_user_data
     ):
         """
         Test that duplicate username registration fails.
@@ -129,10 +124,7 @@ class TestUserLoginIntegration:
     @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_login_with_valid_credentials(
-        self,
-        db_session,
-        sample_user_data,
-        sample_login_data
+        self, db_session, sample_user_data, sample_login_data
     ):
         """
         Test successful login with valid credentials.
@@ -151,9 +143,7 @@ class TestUserLoginIntegration:
 
         # Act - Login
         user, access_token, refresh_token = await auth_service.login_user(
-            login_data,
-            ip_address="127.0.0.1",
-            user_agent="TestAgent/1.0"
+            login_data, ip_address="127.0.0.1", user_agent="TestAgent/1.0"
         )
 
         # Assert - Login successful
@@ -171,11 +161,7 @@ class TestUserLoginIntegration:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    async def test_login_with_invalid_email(
-        self,
-        db_session,
-        sample_login_data
-    ):
+    async def test_login_with_invalid_email(self, db_session, sample_login_data):
         """Test login fails with non-existent email."""
         # Arrange
         auth_service = AuthService(db_session)
@@ -188,10 +174,7 @@ class TestUserLoginIntegration:
     @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_login_with_incorrect_password(
-        self,
-        db_session,
-        sample_user_data,
-        sample_login_data
+        self, db_session, sample_user_data, sample_login_data
     ):
         """Test login fails with incorrect password."""
         # Arrange - Register user
@@ -211,10 +194,7 @@ class TestUserLoginIntegration:
     @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_login_inactive_user_fails(
-        self,
-        db_session,
-        sample_user_data,
-        sample_login_data
+        self, db_session, sample_user_data, sample_login_data
     ):
         """Test login fails for deactivated user."""
         # Arrange - Register and deactivate user
@@ -239,9 +219,7 @@ class TestTokenRefreshIntegration:
     @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_refresh_token_generates_new_access_token(
-        self,
-        db_session,
-        sample_user_data
+        self, db_session, sample_user_data
     ):
         """
         Test that refresh token generates a new access token.
@@ -274,11 +252,7 @@ class TestTokenRefreshIntegration:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    async def test_revoked_refresh_token_fails(
-        self,
-        db_session,
-        sample_user_data
-    ):
+    async def test_revoked_refresh_token_fails(self, db_session, sample_user_data):
         """Test that revoked refresh tokens cannot be used."""
         # Arrange - Register user
         auth_service = AuthService(db_session)
@@ -290,6 +264,7 @@ class TestTokenRefreshIntegration:
 
         # Act & Assert - Try to use revoked token
         from app.services.auth_service import TokenError
+
         with pytest.raises(TokenError, match="revoked"):
             await auth_service.refresh_access_token(refresh_token)
 
@@ -299,11 +274,7 @@ class TestTokenRevocationIntegration:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    async def test_logout_revokes_refresh_token(
-        self,
-        db_session,
-        sample_user_data
-    ):
+    async def test_logout_revokes_refresh_token(self, db_session, sample_user_data):
         """
         Test that logout properly revokes refresh token.
 
@@ -321,6 +292,7 @@ class TestTokenRevocationIntegration:
 
         # Assert - Token is revoked and cannot be used
         from app.services.auth_service import TokenError
+
         with pytest.raises(TokenError, match="revoked"):
             await auth_service.refresh_access_token(refresh_token)
 
@@ -331,10 +303,7 @@ class TestEndToEndAuthFlow:
     @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_complete_authentication_workflow(
-        self,
-        db_session,
-        sample_user_data,
-        sample_login_data
+        self, db_session, sample_user_data, sample_login_data
     ):
         """
         Test complete authentication workflow: register → login → refresh → logout.
@@ -354,8 +323,8 @@ class TestEndToEndAuthFlow:
 
         # Step 2: Login
         login_data = UserLogin(**sample_login_data)
-        login_user, login_access_token, login_refresh_token = await auth_service.login_user(
-            login_data
+        login_user, login_access_token, login_refresh_token = (
+            await auth_service.login_user(login_data)
         )
         assert login_user.id == user.id
         assert login_access_token is not None
@@ -372,5 +341,6 @@ class TestEndToEndAuthFlow:
 
         # Assert - Revoked token cannot be used
         from app.services.auth_service import TokenError
+
         with pytest.raises(TokenError, match="revoked"):
             await auth_service.refresh_access_token(login_refresh_token)

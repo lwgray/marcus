@@ -680,7 +680,9 @@ class TestAdditionalCoverage:
             assert "User not found" in exc_info.value.detail
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="list_users endpoint requires integration tests - too complex to mock query chains")
+    @pytest.mark.skip(
+        reason="list_users endpoint requires integration tests - too complex to mock query chains"
+    )
     async def test_list_users_with_filters(self):
         """Test listing users with email filter."""
         # Arrange

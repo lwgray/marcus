@@ -241,7 +241,9 @@ class TestSanitizeURL:
         """Test that malformed URLs raise ValueError."""
         # Act & Assert
         # Test with various malformed URLs that might cause urlparse to fail
-        with pytest.raises(ValueError, match="Invalid URL format|not allowed|must include a domain"):
+        with pytest.raises(
+            ValueError, match="Invalid URL format|not allowed|must include a domain"
+        ):
             sanitize_url("ht!tp://invalid url with spaces")
 
 

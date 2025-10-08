@@ -10,21 +10,18 @@ Provides fixtures for:
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import declarative_base
 from sqlalchemy.pool import NullPool
 
-# Create a base for test models (import models after to register them)
-Base = declarative_base()
+# Import the actual Base and models from the app
+from app.models.base import Base
+from app.models import User, RefreshToken, Project, Task, Comment, UserRole  # noqa: F401
 
-# Import models to register with Base
-try:
-    from app.models import RefreshToken, User  # noqa: F401
-except ImportError:
-    # Models may not be available in all test scenarios
-    pass
-
-# Test database URL (in-memory SQLite for speed)
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+# Test database URL (file-based SQLite for async compatibility)
+# Use a temp file that gets cleaned up after tests
+import tempfile
+import os
+TEST_DB_FILE = os.path.join(tempfile.gettempdir(), "test_db.sqlite")
+TEST_DATABASE_URL = f"sqlite+aiosqlite:///{TEST_DB_FILE}"
 
 
 @pytest.fixture(scope="session")
@@ -67,6 +64,10 @@ async def db_engine():
         await conn.run_sync(Base.metadata.drop_all)
 
     await engine.dispose()
+
+    # Clean up test database file
+    if os.path.exists(TEST_DB_FILE):
+        os.remove(TEST_DB_FILE)
 
 
 @pytest_asyncio.fixture(scope="function")
