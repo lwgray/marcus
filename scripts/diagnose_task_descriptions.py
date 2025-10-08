@@ -23,20 +23,24 @@ from typing import Any, Dict, List, Optional
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.core.models import Task, WorkerStatus
-from src.integrations.ai_analysis_engine import AIAnalysisEngine
-from src.integrations.providers.planka_kanban import PlankaKanban
-from src.marcus_mcp.coordinator.subtask_manager import SubtaskManager
+from src.core.models import WorkerStatus  # noqa: E402
+from src.integrations.ai_analysis_engine import AIAnalysisEngine  # noqa: E402
+from src.integrations.providers.planka_kanban import (  # noqa: E402
+    PlankaKanban,
+)
+from src.marcus_mcp.coordinator.subtask_manager import (  # noqa: E402
+    SubtaskManager,
+)
 
 
-async def main():
+async def main() -> None:
     """Run the diagnostic analysis."""
     print("🔍 Task Description Diagnostics Tool\n")
     print("=" * 70)
 
     # Initialize components
     print("\n📡 Connecting to Planka...")
-    kanban_config = {"project_name": "time"}  # Your project
+    kanban_config = {"project_name": "Shorty2 AI Chatbot"}  # Your project
     kanban = PlankaKanban(kanban_config)
 
     try:
@@ -175,7 +179,8 @@ def check_relevance(task_name: str, description: Optional[str]) -> bool:
     """
     Check if description appears relevant to task name.
 
-    Uses a simple heuristic: significant words from task name should appear in description.
+    Uses a simple heuristic: significant words from task name should appear in
+    description.
     """
     if not description:
         return False
@@ -239,9 +244,10 @@ def generate_markdown_report(results: List[Dict[str, Any]]) -> str:
     for idx, r in enumerate(results, 1):
         lines.append(f"### <a name='task-{idx}'></a>Task {idx}: {r['task_name']}\n")
         lines.append(f"**Task ID:** `{r['task_id']}`")
-        lines.append(
-            f"\n**Description Matches Name:** {'✅ Yes' if r['matches_name'] else '❌ **NO - MISMATCH DETECTED**'}\n"
+        match_status = (
+            "✅ Yes" if r["matches_name"] else "❌ **NO - MISMATCH DETECTED**"
         )
+        lines.append(f"\n**Description Matches Name:** {match_status}\n")
 
         # Original Description
         lines.append("#### Original Description (from Planka)\n")
@@ -257,7 +263,8 @@ def generate_markdown_report(results: List[Dict[str, Any]]) -> str:
             lines.append("|-------|------|---------------------|--------|")
             for st in r["subtasks"]:
                 lines.append(
-                    f"| {st['order']} | {st['name']} | {st['description']} | {st['status']} |"
+                    f"| {st['order']} | {st['name']} | "
+                    f"{st['description']} | {st['status']} |"
                 )
             lines.append("")
         else:
