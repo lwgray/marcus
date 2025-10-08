@@ -15,6 +15,7 @@
 - [ ] [Implement hybrid artifact filtering](https://github.com/lwgray/marcus/issues/40) (#40) - Optimize context retrieval
 - [ ] [Remove template boilerplate from task descriptions](https://github.com/lwgray/marcus/issues/57) (#57)
 - [ ] [Artifact discovery needs session/project isolation](https://github.com/lwgray/marcus/issues/39) (#39)
+- [ ] [Performance: Sequential subtask decomposition causes slow project creation](https://github.com/lwgray/marcus/issues/61) (#61) - 🟡 Parallelize AI decomposition calls to reduce 32+ second overhead
 
 ## ✅ Testing & Quality
 
