@@ -143,6 +143,41 @@ class TestSanitizeFilename:
         # Assert
         assert result.endswith(".pdf")
 
+    def test_sanitize_filename_truncates_long_filename_with_extension(self) -> None:
+        """Test that very long filenames are truncated while preserving extension."""
+        # Arrange
+        long_name = "a" * 300  # 300 characters
+        filename = f"{long_name}.txt"
+
+        # Act
+        result = sanitize_filename(filename)
+
+        # Assert
+        assert len(result) <= 255
+        assert result.endswith(".txt")
+
+    def test_sanitize_filename_truncates_long_filename_without_extension(self) -> None:
+        """Test that very long filenames without extension are truncated."""
+        # Arrange
+        filename = "a" * 300  # 300 characters, no extension
+
+        # Act
+        result = sanitize_filename(filename)
+
+        # Assert
+        assert len(result) <= 255
+
+    def test_sanitize_filename_handles_empty_after_sanitization(self) -> None:
+        """Test that completely invalid filename gets default name."""
+        # Arrange
+        filename = "....   "  # Only dots and spaces
+
+        # Act
+        result = sanitize_filename(filename)
+
+        # Assert
+        assert result == "file"
+
 
 class TestSanitizeEmail:
     """Test suite for email sanitization."""
@@ -201,6 +236,13 @@ class TestSanitizeURL:
         # Act & Assert
         with pytest.raises(ValueError, match="must include a domain"):
             sanitize_url("http://")
+
+    def test_sanitize_url_malformed_url(self) -> None:
+        """Test that malformed URLs raise ValueError."""
+        # Act & Assert
+        # Test with various malformed URLs that might cause urlparse to fail
+        with pytest.raises(ValueError, match="Invalid URL format|not allowed|must include a domain"):
+            sanitize_url("ht!tp://invalid url with spaces")
 
 
 class TestEscapeSQLLike:

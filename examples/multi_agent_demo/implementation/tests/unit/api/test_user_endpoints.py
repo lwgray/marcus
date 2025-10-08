@@ -597,3 +597,134 @@ class TestRemoveRoleFromUser:
             )
 
         assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
+
+
+class TestAdditionalCoverage:
+    """Test suite for additional coverage of edge cases."""
+
+    @pytest.mark.asyncio
+    async def test_update_username_conflict(self):
+        """Test updating username to one that already exists."""
+        # Arrange
+        mock_current_user = Mock(spec=User)
+        mock_current_user.id = 1
+        mock_current_user.username = "oldusername"
+
+        mock_existing_user = Mock(spec=User)
+        mock_existing_user.id = 2
+        mock_existing_user.username = "newusername"
+
+        mock_db = Mock(spec=Session)
+        mock_query = mock_db.query.return_value
+        mock_filter = mock_query.filter.return_value
+        mock_filter.first.return_value = mock_existing_user
+
+        update_data = UserUpdate(username="newusername")
+
+        # Act & Assert
+        with pytest.raises(HTTPException) as exc_info:
+            await update_current_user_profile(
+                update_data=update_data, current_user=mock_current_user, db=mock_db
+            )
+
+        assert exc_info.value.status_code == status.HTTP_409_CONFLICT
+        assert "Username already taken" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_deactivate_user_not_found(self):
+        """Test deactivating non-existent user."""
+        # Arrange
+        mock_admin = Mock(spec=User)
+
+        mock_db = Mock(spec=Session)
+        mock_query = mock_db.query.return_value
+        mock_filter = mock_query.filter.return_value
+        mock_filter.first.return_value = None  # User not found
+
+        # Act & Assert
+        with pytest.raises(HTTPException) as exc_info:
+            await deactivate_user(user_id=999, admin_user=mock_admin, db=mock_db)
+
+        assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
+        assert "User not found" in exc_info.value.detail
+
+    # Note: test_assign_role_invalid_role removed because Pydantic schema validation
+    # prevents invalid roles from reaching the endpoint code (line 437 is unreachable)
+
+    @pytest.mark.asyncio
+    async def test_assign_role_user_not_found(self):
+        """Test assigning role to non-existent user."""
+        # Arrange
+        mock_admin = Mock(spec=User)
+
+        mock_db = Mock(spec=Session)
+        mock_query = mock_db.query.return_value
+        mock_filter = mock_query.filter.return_value
+        mock_filter.first.return_value = None  # User not found
+
+        role_assignment = RoleAssignment(user_id=999, role="admin")
+
+        # Mock Role.is_valid_role to return True
+        with patch("app.api.users.Role") as mock_role_class:
+            mock_role_class.is_valid_role.return_value = True
+
+            # Act & Assert
+            with pytest.raises(HTTPException) as exc_info:
+                await assign_role_to_user(
+                    user_id=999, role_assignment=role_assignment, admin_user=mock_admin, db=mock_db
+                )
+
+            assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
+            assert "User not found" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_list_users_with_filters(self):
+        """Test listing users with email filter."""
+        # Arrange
+        mock_admin = Mock(spec=User)
+
+        mock_user1 = Mock(spec=User)
+        mock_user1.id = 1
+        mock_user1.email = "test1@example.com"
+        mock_user1.username = "user1"
+        mock_user1.is_active = True
+        mock_user1.is_verified = False
+        mock_user1.created_at = datetime.now(timezone.utc)
+        mock_user1.updated_at = datetime.now(timezone.utc)
+        mock_user1.last_login = None
+
+        mock_db = Mock(spec=Session)
+        mock_query = Mock()
+
+        # Mock chained query methods
+        mock_query.filter.return_value = mock_query
+        mock_query.count.return_value = 1
+        mock_query.order_by.return_value = mock_query
+        mock_query.offset.return_value = mock_query
+        mock_query.limit.return_value = mock_query
+        mock_query.all.return_value = [mock_user1]
+
+        # Mock db.query to return our mock query
+        mock_db.query.return_value = mock_query
+
+        # Mock User.created_at attribute access for sorting
+        with patch("app.api.users.User") as mock_user_class:
+            mock_sort_column = Mock()
+            mock_sort_column.desc.return_value = Mock()
+            mock_user_class.created_at = mock_sort_column
+
+            # Act
+            result = await list_users(
+                email="test1",
+                admin_user=mock_admin,
+                db=mock_db,
+                page=1,
+                page_size=20,
+                sort_by="created_at",
+                sort_order="desc"
+            )
+
+        # Assert
+        assert result.total == 1
+        assert len(result.users) == 1
+        assert result.users[0].email == "test1@example.com"
