@@ -852,6 +852,7 @@ class KanbanClient:
         description = card.get("description", "")
         dependencies = self._parse_dependencies_from_description(description)
         original_id = self._parse_original_id_from_description(description)
+        estimated_hours = self._parse_estimated_hours_from_description(description)
 
         # Parse labels from the card
         labels = []
@@ -872,7 +873,7 @@ class KanbanClient:
             created_at=created_at,
             updated_at=updated_at,
             due_date=None,
-            estimated_hours=0.0,
+            estimated_hours=estimated_hours,
             actual_hours=0.0,
             dependencies=dependencies,
             labels=labels,
@@ -948,6 +949,43 @@ class KanbanClient:
             return match.group(1).strip()
 
         return None
+
+    def _parse_estimated_hours_from_description(self, description: str) -> float:
+        """
+        Parse estimated hours from the description field.
+
+        Estimated hours are stored in the description as:
+        ⏱️ Estimated: 8 hours
+        or
+        ⏱️ Estimated: 16.5 hours
+
+        Parameters
+        ----------
+        description : str
+            Task description that may contain estimated hours
+
+        Returns
+        -------
+        float
+            Estimated hours if found, 0.0 otherwise
+        """
+        if not description:
+            return 0.0
+
+        import re
+
+        # Look for the estimated hours line
+        # Pattern matches: "⏱️ Estimated: 8 hours" or "⏱️ Estimated: 16.5 hours"
+        pattern = r"⏱️ Estimated:\s*(\d+(?:\.\d+)?)\s*hours?"
+        match = re.search(pattern, description)
+
+        if match:
+            try:
+                return float(match.group(1))
+            except ValueError:
+                return 0.0
+
+        return 0.0
 
     async def add_comment(self, task_id: str, comment_text: str) -> None:
         """

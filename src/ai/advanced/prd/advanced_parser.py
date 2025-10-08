@@ -603,55 +603,252 @@ class AdvancedPRDParser:
         constraints: ProjectConstraints,
         sequence: int,
     ) -> Task:
-        """Generate a detailed task with AI-enhanced metadata."""
-        # Extract task information from analysis
-        task_info = self._extract_task_info(task_id, epic_id, analysis)
+        """
+        Generate a detailed task using AI descriptions directly.
 
-        # Use AI to enhance task details
-        enhanced_details = await self._enhance_task_with_ai(
-            task_info, analysis, constraints
-        )
+        This creates tasks with clean, AI-generated descriptions instead of
+        template boilerplate, while preserving Design/Implement/Test methodology
+        through task names and labels.
+        """
+        # Extract task type from task_id
+        task_type = self._extract_task_type(task_id)
 
-        # Create task with all metadata
+        # Find matching requirement from AI analysis
+        relevant_req = self._find_matching_requirement(task_id, analysis)
+
+        if relevant_req:
+            # ✅ USE AI DESCRIPTION DIRECTLY (no templates!)
+            base_description = relevant_req.get("description", "")
+            feature_name = relevant_req.get("name", "")
+
+            # Create task name with phase prefix
+            task_name = f"{task_type.title()} {feature_name}"
+
+            # Use AI description as-is (clean, no boilerplate)
+            description = base_description
+
+            # Get estimated hours based on task type
+            if task_type == "design":
+                estimated_hours = 8
+            elif task_type == "implement":
+                estimated_hours = 16
+            elif task_type == "test":
+                estimated_hours = 8
+            else:
+                estimated_hours = 12
+
+        else:
+            # Fallback: use old template approach if no AI requirement matches
+            logger.warning(f"No matching AI requirement for {task_id}, using fallback")
+            task_info = self._extract_task_info(task_id, epic_id, analysis)
+            enhanced_details = await self._enhance_task_with_ai(
+                task_info, analysis, constraints
+            )
+            task_name = enhanced_details.get("name", f"Task {sequence}")
+            description = enhanced_details.get("description", "")
+            estimated_hours = enhanced_details.get("estimated_hours", 12.0)
+            feature_name = task_name  # Use task name for labels in fallback
+
+        # Generate labels (methodology preserved here)
+        labels = self._generate_task_labels(task_type, feature_name, analysis)
+
+        # Create task with clean AI description
         task = Task(
             id=task_id,
-            name=enhanced_details.get("name", f"Task {sequence}"),
-            description=enhanced_details.get("description", ""),
+            name=task_name,
+            description=description,  # ✅ Clean AI content, no template noise
             status=TaskStatus.TODO,
-            priority=self._determine_priority(task_info, analysis),
+            priority=self._determine_priority({"type": task_type}, analysis),
             assigned_to=None,
             created_at=datetime.now(),
             updated_at=datetime.now(),
-            due_date=enhanced_details.get("due_date"),
-            estimated_hours=enhanced_details.get("estimated_hours", 1.0),
+            due_date=None,
+            estimated_hours=estimated_hours,
             dependencies=[],  # Will be filled by dependency inference
-            labels=enhanced_details.get("labels", []),
-            # New generalization fields
+            labels=labels,
+            # Store context for reference
             source_type="nlp_project",
             source_context={
                 "prd_analysis": (
                     analysis.__dict__ if hasattr(analysis, "__dict__") else {}
                 ),
-                "task_info": task_info,
+                "requirement": relevant_req,
+                "task_type": task_type,
                 "constraints": (
                     constraints.__dict__ if hasattr(constraints, "__dict__") else {}
                 ),
             },
         )
 
-        # Note: acceptance_criteria and subtasks would need to be added
-        # to Task model. For now, we store them in labels or use a
-        # different approach
-        if enhanced_details.get("acceptance_criteria"):
-            # task.acceptance_criteria =
-            # enhanced_details["acceptance_criteria"]  # type: ignore
-            pass
-
-        if enhanced_details.get("subtasks"):
-            # task.subtasks = enhanced_details["subtasks"]  # type: ignore
-            pass
-
         return task
+
+    def _extract_task_type(self, task_id: str) -> str:
+        """
+        Extract task type (design/implement/test) from task_id.
+
+        Parameters
+        ----------
+        task_id : str
+            Task ID in format like "epic_1_design_1" or "epic_1_implement_1"
+
+        Returns
+        -------
+        str
+            Task type: "design", "implement", or "test"
+        """
+        task_id_lower = task_id.lower()
+
+        if "design" in task_id_lower:
+            return "design"
+        elif "implement" in task_id_lower:
+            return "implement"
+        elif "test" in task_id_lower:
+            return "test"
+        else:
+            # Default to implement for unknown types
+            logger.warning(
+                f"Could not extract task type from {task_id}, defaulting to 'implement'"
+            )
+            return "implement"
+
+    def _find_matching_requirement(
+        self, task_id: str, analysis: PRDAnalysis
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Find the AI requirement that matches this task_id.
+
+        Parameters
+        ----------
+        task_id : str
+            Task ID like "task_todo_list_management_design" or
+            "nfr_task_performance_requirement"
+        analysis : PRDAnalysis
+            Complete PRD analysis with requirements
+
+        Returns
+        -------
+        Optional[Dict[str, Any]]
+            Matching requirement dict or None if not found
+        """
+        # Get all requirements from analysis (functional + non-functional)
+        functional_reqs = getattr(analysis, "functional_requirements", [])
+        non_functional_reqs = getattr(analysis, "non_functional_requirements", [])
+
+        all_requirements = []
+        if functional_reqs:
+            all_requirements.extend(
+                functional_reqs
+                if isinstance(functional_reqs, list)
+                else [functional_reqs]
+            )
+        if non_functional_reqs:
+            all_requirements.extend(
+                non_functional_reqs
+                if isinstance(non_functional_reqs, list)
+                else [non_functional_reqs]
+            )
+
+        if not all_requirements:
+            logger.warning("No requirements found in analysis")
+            return None
+
+        # Extract requirement ID from task_id
+        # task_todo_list_management_design -> todo_list_management
+        # nfr_task_performance_requirement -> performance_requirement
+        # task_user_auth_implement -> user_auth
+
+        if task_id.startswith("nfr_task_"):
+            # Non-functional requirement
+            req_id = task_id.replace("nfr_task_", "")
+        elif task_id.startswith("task_"):
+            # Functional requirement - extract between "task_" and last "_phase"
+            parts = task_id.replace("task_", "").rsplit("_", 1)
+            req_id = parts[0] if parts else task_id
+        else:
+            logger.warning(f"Unknown task_id format: {task_id}")
+            return None
+
+        # Find matching requirement by ID
+        for req in all_requirements:
+            # Convert to dict if it's a Pydantic model
+            req_dict: Dict[str, Any]
+            if hasattr(req, "dict"):
+                req_dict = req.dict()
+            elif hasattr(req, "__dict__"):
+                req_dict = req.__dict__
+            elif isinstance(req, dict):
+                req_dict = req
+            else:
+                continue
+
+            # Check if this requirement matches
+            if req_dict.get("id") == req_id:
+                return req_dict
+
+        logger.warning(f"No requirement found with id={req_id} for task_id={task_id}")
+        return None
+
+    def _generate_task_labels(
+        self, task_type: str, feature_name: str, analysis: PRDAnalysis
+    ) -> List[str]:
+        """
+        Generate labels for a task to preserve D/I/T methodology.
+
+        Parameters
+        ----------
+        task_type : str
+            "design", "implement", or "test"
+        feature_name : str
+            Name of the feature being worked on
+        analysis : PRDAnalysis
+            Complete PRD analysis
+
+        Returns
+        -------
+        List[str]
+            List of labels for the task
+        """
+        labels = []
+
+        # Add task type label (preserves methodology)
+        labels.append(task_type)
+
+        # Add technology/domain labels from analysis
+        tech_stack = getattr(analysis, "technical_requirements", {})
+        if isinstance(tech_stack, dict):
+            # Add backend/frontend labels
+            if tech_stack.get("backend"):
+                labels.append("backend")
+            if tech_stack.get("frontend"):
+                labels.append("frontend")
+            if tech_stack.get("database"):
+                labels.append("database")
+
+        # Add priority-based labels
+        project_type = getattr(analysis, "project_type", "")
+        if project_type:
+            labels.append(project_type.lower())
+
+        # Add feature-based labels (extract key terms)
+        feature_lower = feature_name.lower()
+        if "api" in feature_lower or "endpoint" in feature_lower:
+            labels.append("api")
+        if "auth" in feature_lower or "login" in feature_lower:
+            labels.append("authentication")
+        if "user" in feature_lower:
+            labels.append("user-management")
+        if "database" in feature_lower or "model" in feature_lower:
+            labels.append("data")
+
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_labels = []
+        for label in labels:
+            if label not in seen:
+                seen.add(label)
+                unique_labels.append(label)
+
+        return unique_labels
 
     async def _infer_smart_dependencies(
         self, tasks: List[Task], analysis: PRDAnalysis

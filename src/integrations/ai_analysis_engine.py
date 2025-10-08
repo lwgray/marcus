@@ -1574,3 +1574,103 @@ Return JSON with this format:
         except Exception as e:
             print(f"Error calling Claude: {e}", file=sys.stderr)
             raise
+
+    async def generate_structured_response(
+        self,
+        prompt: str,
+        system_prompt: str = "",
+        response_format: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Generate a structured JSON response from the AI based on a schema.
+
+        This method is used for task decomposition and other operations requiring
+        structured output. It only works when an AI provider is configured.
+
+        Parameters
+        ----------
+        prompt : str
+            The user prompt describing what to generate
+        system_prompt : str, optional
+            System instructions for the AI
+        response_format : Dict[str, Any], optional
+            JSON schema describing expected response structure
+
+        Returns
+        -------
+        Dict[str, Any]
+            Structured response matching the schema
+
+        Raises
+        ------
+        RuntimeError
+            If no AI client is available (no API key configured)
+
+        Examples
+        --------
+        >>> result = await engine.generate_structured_response(
+        ...     prompt="Break down this task",
+        ...     system_prompt="You are a task decomposition expert",
+        ...     response_format={"type": "object", "properties": {...}}
+        ... )
+        """
+        # Use LLM abstraction layer to support all providers (Anthropic, OpenAI, local)
+        try:
+            from src.ai.providers.llm_abstraction import LLMAbstraction
+
+            # Initialize LLM abstraction (supports local models via config)
+            llm = LLMAbstraction()
+
+            # Build full prompt with schema instructions and system prompt
+            full_prompt = prompt
+            if system_prompt:
+                full_prompt = f"{system_prompt}\n\n{prompt}"
+
+            if response_format:
+                schema_str = json.dumps(response_format, indent=2)
+                full_prompt = f"""{full_prompt}
+
+IMPORTANT: Respond with valid JSON matching this exact schema:
+{schema_str}
+
+Your response must be pure JSON with no markdown formatting, \
+explanations, or additional text."""
+
+            # Use LLM abstraction to call configured provider
+            # (Anthropic, OpenAI, or local)
+            response_text = await llm.analyze(
+                full_prompt,
+                context=type("obj", (object,), {"max_tokens": 4096})(),
+            )
+
+            # Parse JSON response
+            from src.utils.json_parser import parse_ai_json_response
+
+            return parse_ai_json_response(response_text)  # type: ignore[no-any-return]
+
+        except json.JSONDecodeError as e:
+            raw_text = response_text if "response_text" in locals() else "N/A"
+            print(f"Failed to parse structured response as JSON: {e}", file=sys.stderr)
+            print(f"Raw response: {raw_text}", file=sys.stderr)
+            raise RuntimeError(
+                f"AI returned invalid JSON: {e}. This may indicate the AI "
+                "did not follow the schema correctly."
+            )
+        except Exception as e:
+            error_msg = str(e)
+            # Provide helpful error messages based on what went wrong
+            if "No AI providers" in error_msg or "No LLM providers" in error_msg:
+                raise RuntimeError(
+                    "No AI provider configured. Task decomposition "
+                    "requires an AI provider. "
+                    "Please configure one of the following in "
+                    "config_marcus.json:\n"
+                    "- Local model (Ollama): Set ai.provider='local' "
+                    "and ai.local_model\n"
+                    "- Anthropic: Set ai.provider='anthropic' "
+                    "and ai.anthropic_api_key\n"
+                    "- OpenAI: Set ai.provider='openai' "
+                    "and ai.openai_api_key"
+                )
+            print(f"Error generating structured response: {e}", file=sys.stderr)
+            raise RuntimeError(f"Failed to generate structured response: {e}")

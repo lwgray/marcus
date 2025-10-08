@@ -12,6 +12,10 @@ from src.core.task_diagnostics import (
     format_diagnostic_report,
     run_automatic_diagnostics,
 )
+from src.marcus_mcp.tools.project_stall_analyzer import (
+    capture_project_stall_snapshot,
+    replay_stall_conversations,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -194,3 +198,74 @@ async def diagnose_task_blockage(task_id: str, state: Any) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error diagnosing task {task_id}: {e}", exc_info=True)
         return {"success": False, "error": f"Diagnostic error: {str(e)}"}
+
+
+async def capture_stall_snapshot(
+    state: Any,
+    include_conversation_hours: int = 24,
+) -> Dict[str, Any]:
+    """
+    Capture comprehensive snapshot when project development stalls.
+
+    This tool captures:
+    - Complete diagnostic report
+    - Conversation history leading up to the stall
+    - Task completion timeline
+    - Dependency lock visualization
+    - Early/anomalous task completions (e.g., "Project Success" completed early)
+    - Actionable recommendations
+
+    Parameters
+    ----------
+    state : Any
+        Marcus server state instance
+    include_conversation_hours : int
+        Hours of conversation history to include (default: 24)
+
+    Returns
+    -------
+    Dict[str, Any]
+        Complete stall snapshot saved to file with analysis
+
+    Examples
+    --------
+    >>> result = await capture_stall_snapshot(state)
+    >>> print(result['summary'])
+    {
+        'stall_reason': 'all_tasks_blocked: All 5 TODO tasks blocked',
+        'total_issues': 3,
+        'dependency_locks': 5,
+        'early_completions': 1,
+        'recommendations_count': 7
+    }
+    """
+    return await capture_project_stall_snapshot(state, include_conversation_hours)
+
+
+async def replay_snapshot_conversations(
+    snapshot_file: str,
+) -> Dict[str, Any]:
+    """
+    Replay and analyze conversations from a stall snapshot.
+
+    Analyzes conversation patterns to identify what led to the stall,
+    including error patterns, repeated failures, and activity gaps.
+
+    Parameters
+    ----------
+    snapshot_file : str
+        Path to the stall snapshot JSON file
+
+    Returns
+    -------
+    Dict[str, Any]
+        Conversation analysis with timeline and key events
+
+    Examples
+    --------
+    >>> result = await replay_snapshot_conversations(
+    ...     "logs/stall_snapshots/stall_snapshot_20251006_220000.json"
+    ... )
+    >>> print(result['analysis']['key_events'])
+    """
+    return await replay_stall_conversations(snapshot_file)

@@ -177,6 +177,8 @@ async def update_subtask_progress_in_parent(
     """
     Update parent task progress based on subtask completion.
 
+    Also checks off the corresponding checklist item in Planka.
+
     Parameters
     ----------
     parent_task_id : str
@@ -188,6 +190,15 @@ async def update_subtask_progress_in_parent(
     kanban_client : Any
         Kanban client for updating task status
     """
+    # Get the completed subtask
+    subtask = subtask_manager.subtasks.get(subtask_id)
+    if not subtask:
+        logger.warning(f"Subtask {subtask_id} not found in manager")
+        return
+
+    # Mark checklist item as complete in Planka
+    await _mark_checklist_item_complete(parent_task_id, subtask.name)
+
     # Calculate parent task progress
     progress = subtask_manager.get_completion_percentage(parent_task_id)
 
@@ -210,3 +221,85 @@ async def update_subtask_progress_in_parent(
         f"subtasks completed ({progress:.0f}%)"
     )
     await kanban_client.add_comment(parent_task_id, progress_comment)
+
+
+async def _mark_checklist_item_complete(parent_card_id: str, subtask_name: str) -> None:
+    """
+    Mark a checklist item (Planka task) as complete.
+
+    Parameters
+    ----------
+    parent_card_id : str
+        ID of the parent card in Planka
+    subtask_name : str
+        Name of the subtask to mark complete
+    """
+    try:
+        import json
+
+        # Use local path for kanban-mcp
+        import os
+
+        from mcp.client.stdio import stdio_client
+        from mcp.types import TextContent
+
+        from mcp import ClientSession, StdioServerParameters
+
+        kanban_mcp_path = os.path.expanduser("~/dev/kanban-mcp/dist/index.js")
+        server_params = StdioServerParameters(
+            command="node",
+            args=[kanban_mcp_path],
+            env=os.environ.copy(),
+        )
+
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+
+                # Get all checklist items for the card
+                result = await session.call_tool(
+                    "mcp_kanban_task_manager",
+                    {"action": "get_all", "cardId": parent_card_id},
+                )
+
+                if not result or not hasattr(result, "content") or not result.content:
+                    logger.warning(
+                        f"No checklist items found for card {parent_card_id}"
+                    )
+                    return
+
+                content = result.content[0]
+                if isinstance(content, TextContent):
+                    tasks_text = str(content.text)
+                    checklist_data = json.loads(tasks_text)
+                    checklist_items = (
+                        checklist_data
+                        if isinstance(checklist_data, list)
+                        else checklist_data.get("items", [])
+                    )
+
+                    # Find the matching checklist item
+                    for item in checklist_items:
+                        if item.get("name") == subtask_name:
+                            task_id = item.get("id")
+                            if task_id and not item.get("isCompleted"):
+                                # Mark as complete
+                                await session.call_tool(
+                                    "mcp_kanban_task_manager",
+                                    {
+                                        "action": "update",
+                                        "id": task_id,
+                                        "isCompleted": True,
+                                    },
+                                )
+                                logger.info(
+                                    f"✅ Checked off checklist item '{subtask_name}' "
+                                    f"on card {parent_card_id}"
+                                )
+                            break
+
+    except Exception as e:
+        logger.error(
+            f"Error marking checklist item complete for '{subtask_name}': {e}",
+            exc_info=True,
+        )

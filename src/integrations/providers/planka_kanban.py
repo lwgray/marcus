@@ -63,9 +63,11 @@ class PlankaKanban(KanbanInterface):
         self.connected = False
 
         # Store server parameters for MCP calls
+        # Use local path for kanban-mcp
+        kanban_mcp_path = os.path.expanduser("~/dev/kanban-mcp/dist/index.js")
         self._server_params = StdioServerParameters(
             command="node",
-            args=["/app/kanban-mcp/dist/index.js"],
+            args=[kanban_mcp_path],
             env=os.environ.copy(),
         )
 

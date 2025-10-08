@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 
 from src.core.models import Task
+from src.core.task_graph_validator import TaskGraphValidator
 from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
 from src.integrations.nlp_task_utils import (
     SafetyChecker,
@@ -76,8 +77,22 @@ class NaturalLanguageTaskCreator(ABC):
         RuntimeError
             If kanban client doesn't support task creation
         """
-        # Validate dependencies if requested
+        # CRITICAL: Auto-fix task graph issues BEFORE committing to Kanban
+        # This fixes problems automatically rather than raising exceptions
         if not skip_validation:
+            # Auto-fix task graph issues
+            fixed_tasks, user_warnings = TaskGraphValidator.validate_and_fix(tasks)
+            tasks = fixed_tasks  # Use the fixed version
+
+            # Log user-friendly warnings
+            if user_warnings:
+                logger.warning(
+                    f"Task graph auto-fixed: {len(user_warnings)} issues corrected"
+                )
+                for warning in user_warnings:
+                    logger.info(f"  • {warning}")
+
+            # Also run legacy safety checker (diagnostic warnings)
             errors = self.safety_checker.validate_dependencies(tasks)
             if errors:
                 logger.warning(f"Dependency validation errors: {errors}")
@@ -180,7 +195,149 @@ class NaturalLanguageTaskCreator(ABC):
                 ),
             )
 
+        # Decompose tasks that meet criteria and add as checklist items
+        await self._decompose_and_add_subtasks(created_tasks, tasks)
+
         return created_tasks
+
+    async def _decompose_and_add_subtasks(
+        self, created_tasks: List[Task], original_tasks: List[Task]
+    ) -> None:
+        """
+        Decompose tasks that meet criteria and add subtasks as Planka checklist items.
+
+        Parameters
+        ----------
+        created_tasks : List[Task]
+            Tasks that were created on the Kanban board
+        original_tasks : List[Task]
+            Original task objects with estimated_hours
+        """
+        # Skip decomposition if no AI engine is available
+        if not self.ai_engine:
+            logger.debug("No AI engine available for task decomposition - skipping")
+            return
+
+        # Note: AI engine now uses LLMAbstraction which automatically
+        # checks provider availability and supports local models (Ollama),
+        # Anthropic, and OpenAI. If no provider is configured,
+        # decompose_task will raise a clear error message.
+
+        from src.marcus_mcp.coordinator import decompose_task, should_decompose
+
+        # Create mapping of task names to original tasks (for estimated_hours)
+        task_map = {task.name: task for task in original_tasks}
+
+        for created_task in created_tasks:
+            try:
+                # Get original task to check estimated hours
+                original_task = task_map.get(created_task.name)
+                if not original_task:
+                    continue
+
+                # Check if task should be decomposed
+                if not should_decompose(original_task):
+                    continue
+
+                logger.info(
+                    f"Decomposing task '{created_task.name}' "
+                    f"({original_task.estimated_hours}h)"
+                )
+
+                # Decompose task using AI
+                decomposition = await decompose_task(
+                    original_task, self.ai_engine, project_context=None
+                )
+
+                if not decomposition.get("success"):
+                    logger.warning(
+                        f"Failed to decompose task '{created_task.name}': "
+                        f"{decomposition.get('error')}"
+                    )
+                    continue
+
+                subtasks = decomposition.get("subtasks", [])
+                num_subtasks = len(subtasks)
+                logger.info(
+                    f"Task '{created_task.name}' decomposed into "
+                    f"{num_subtasks} subtasks"
+                )
+
+                # Add subtasks as checklist items in Planka
+                await self._add_subtasks_as_checklist(created_task.id, subtasks)
+
+            except Exception as e:
+                logger.error(
+                    f"Error decomposing task '{created_task.name}': {e}", exc_info=True
+                )
+                # Continue with other tasks even if decomposition fails
+
+    async def _add_subtasks_as_checklist(
+        self, parent_card_id: str, subtasks: List[Dict[str, Any]]
+    ) -> None:
+        """
+        Add subtasks as checklist items (tasks) in Planka.
+
+        Parameters
+        ----------
+        parent_card_id : str
+            ID of the parent card in Planka
+        subtasks : List[Dict[str, Any]]
+            List of subtask definitions from decomposition
+        """
+        try:
+            import os
+
+            from mcp.client.stdio import stdio_client
+
+            from mcp import ClientSession, StdioServerParameters
+
+            # Use same server params as PlankaKanban
+            # Use local path for kanban-mcp
+            kanban_mcp_path = os.path.expanduser("~/dev/kanban-mcp/dist/index.js")
+            server_params = StdioServerParameters(
+                command="node",
+                args=[kanban_mcp_path],
+                env=os.environ.copy(),
+            )
+
+            async with stdio_client(server_params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+
+                    # Create checklist item for each subtask
+                    for idx, subtask in enumerate(subtasks):
+                        subtask_name = subtask.get("name", f"Subtask {idx + 1}")
+
+                        # Create task (checklist item) in Planka
+                        result = await session.call_tool(
+                            "mcp_kanban_task_manager",
+                            {
+                                "action": "create",
+                                "cardId": parent_card_id,
+                                "name": subtask_name,
+                                "position": (idx + 1) * 65535,
+                            },
+                        )
+
+                        if result:
+                            logger.info(
+                                f"Created checklist item '{subtask_name}' "
+                                f"on card {parent_card_id}"
+                            )
+
+            num_added = len(subtasks)
+            logger.info(
+                f"Added {num_added} subtasks as checklist items "
+                f"to card {parent_card_id}"
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Error adding subtasks as checklist items to card "
+                f"{parent_card_id}: {e}",
+                exc_info=True,
+            )
 
     async def apply_safety_checks(self, tasks: List[Task]) -> List[Task]:
         """
@@ -274,19 +431,21 @@ class NaturalLanguageTaskCreator(ABC):
 
         return results
 
-    def get_tasks_by_type(self, tasks: List[Task], task_type: TaskType) -> List[Task]:
+    def get_tasks_by_type(self, tasks: List[Task], task_type: TaskType) -> List[Any]:
         """Get all tasks of a specific type."""
-        return self.task_classifier.filter_by_type(tasks, task_type)
+        return self.task_classifier.filter_by_type(  # type: ignore[no-any-return]
+            tasks, task_type
+        )
 
-    def is_deployment_task(self, task: Task) -> bool:
+    def is_deployment_task(self, task: Task) -> Any:
         """Check if task is deployment-related."""
         return self.task_classifier.is_type(task, TaskType.DEPLOYMENT)
 
-    def is_implementation_task(self, task: Task) -> bool:
+    def is_implementation_task(self, task: Task) -> Any:
         """Check if task is implementation-related."""
         return self.task_classifier.is_type(task, TaskType.IMPLEMENTATION)
 
-    def is_testing_task(self, task: Task) -> bool:
+    def is_testing_task(self, task: Task) -> Any:
         """Check if task is testing-related."""
         return self.task_classifier.is_type(task, TaskType.TESTING)
 

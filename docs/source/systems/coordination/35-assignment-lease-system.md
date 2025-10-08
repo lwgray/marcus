@@ -526,6 +526,13 @@ $ ping marcus cleanup
 • Reset 3 tasks to TODO status
 ```
 
+## Related Systems
+
+- **Gridlock Detection System**: Detects when projects are stalled due to all tasks being blocked
+- **Task Graph Auto-Fix System**: Prevents and resolves circular dependencies
+- **Orphan Task Recovery System**: Handles tasks without proper ownership
+- **Task Dependency System**: Core dependency tracking and validation
+
 ## Conclusion
 
 The Assignment Lease System provides Marcus with adaptive time-based task management that prevents tasks from being stuck indefinitely when agents disconnect or fail. By implementing intelligent lease durations based on task characteristics, automatic renewal with decay, and graceful recovery with configurable grace periods, the system ensures reliable task completion while accommodating varying task complexities and network conditions.
