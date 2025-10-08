@@ -5,10 +5,11 @@ Provides request/response validation for user registration, login,
 token refresh, and authentication responses per auth-api-spec.yaml.
 """
 
+import re
 from datetime import datetime
 from typing import Optional
+
 from pydantic import BaseModel, EmailStr, Field, field_validator
-import re
 
 
 class UserRegister(BaseModel):
@@ -22,18 +23,16 @@ class UserRegister(BaseModel):
     """
 
     email: EmailStr = Field(
-        ...,
-        description="Valid email address",
-        examples=["user@example.com"]
+        ..., description="Valid email address", examples=["user@example.com"]
     )
 
     username: str = Field(
         ...,
         min_length=3,
         max_length=50,
-        pattern=r'^[a-zA-Z0-9_]+$',
+        pattern=r"^[a-zA-Z0-9_]+$",
         description="Unique username (alphanumeric and underscore only)",
-        examples=["johndoe"]
+        examples=["johndoe"],
     )
 
     password: str = Field(
@@ -41,10 +40,10 @@ class UserRegister(BaseModel):
         min_length=8,
         max_length=128,
         description="Password meeting complexity requirements",
-        examples=["SecureP@ssw0rd"]
+        examples=["SecureP@ssw0rd"],
     )
 
-    @field_validator('password')
+    @field_validator("password")
     @classmethod
     def validate_password_complexity(cls, v: str) -> str:
         """
@@ -61,14 +60,14 @@ class UserRegister(BaseModel):
         ValueError
             If password doesn't meet complexity requirements
         """
-        if not re.search(r'[A-Z]', v):
-            raise ValueError('Password must contain at least one uppercase letter')
-        if not re.search(r'[a-z]', v):
-            raise ValueError('Password must contain at least one lowercase letter')
-        if not re.search(r'\d', v):
-            raise ValueError('Password must contain at least one digit')
-        if not re.search(r'[^A-Za-z0-9]', v):
-            raise ValueError('Password must contain at least one special character')
+        if not re.search(r"[A-Z]", v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not re.search(r"[a-z]", v):
+            raise ValueError("Password must contain at least one lowercase letter")
+        if not re.search(r"\d", v):
+            raise ValueError("Password must contain at least one digit")
+        if not re.search(r"[^A-Za-z0-9]", v):
+            raise ValueError("Password must contain at least one special character")
         return v
 
 
@@ -80,16 +79,10 @@ class UserLogin(BaseModel):
     """
 
     email: EmailStr = Field(
-        ...,
-        description="User email address",
-        examples=["user@example.com"]
+        ..., description="User email address", examples=["user@example.com"]
     )
 
-    password: str = Field(
-        ...,
-        description="User password",
-        examples=["SecureP@ssw0rd"]
-    )
+    password: str = Field(..., description="User password", examples=["SecureP@ssw0rd"])
 
 
 class TokenRefresh(BaseModel):
@@ -102,7 +95,7 @@ class TokenRefresh(BaseModel):
     refresh_token: str = Field(
         ...,
         description="JWT refresh token",
-        examples=["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."]
+        examples=["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."],
     )
 
 
@@ -113,50 +106,35 @@ class UserResponse(BaseModel):
     Returns user profile information without sensitive data.
     """
 
-    id: int = Field(
-        ...,
-        description="Unique user identifier",
-        examples=[1]
-    )
+    id: int = Field(..., description="Unique user identifier", examples=[1])
 
     email: str = Field(
-        ...,
-        description="User email address",
-        examples=["user@example.com"]
+        ..., description="User email address", examples=["user@example.com"]
     )
 
-    username: str = Field(
-        ...,
-        description="Username",
-        examples=["johndoe"]
-    )
+    username: str = Field(..., description="Username", examples=["johndoe"])
 
     is_active: bool = Field(
-        default=True,
-        description="Whether user account is active",
-        examples=[True]
+        default=True, description="Whether user account is active", examples=[True]
     )
 
     is_verified: bool = Field(
-        default=False,
-        description="Whether email is verified",
-        examples=[False]
+        default=False, description="Whether email is verified", examples=[False]
     )
 
     created_at: datetime = Field(
-        ...,
-        description="Account creation timestamp",
-        examples=["2025-10-08T12:00:00Z"]
+        ..., description="Account creation timestamp", examples=["2025-10-08T12:00:00Z"]
     )
 
     last_login: Optional[datetime] = Field(
         default=None,
         description="Last login timestamp",
-        examples=["2025-10-08T15:30:00Z"]
+        examples=["2025-10-08T15:30:00Z"],
     )
 
     class Config:
         """Pydantic configuration."""
+
         from_attributes = True  # Allow ORM model conversion
 
 
@@ -170,31 +148,24 @@ class TokenData(BaseModel):
     access_token: str = Field(
         ...,
         description="JWT access token (15 min expiry)",
-        examples=["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."]
+        examples=["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."],
     )
 
     refresh_token: str = Field(
         ...,
         description="JWT refresh token (7 day expiry)",
-        examples=["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."]
+        examples=["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."],
     )
 
     token_type: str = Field(
-        default="Bearer",
-        description="Token type",
-        examples=["Bearer"]
+        default="Bearer", description="Token type", examples=["Bearer"]
     )
 
     expires_in: int = Field(
-        ...,
-        description="Access token expiry in seconds",
-        examples=[900]
+        ..., description="Access token expiry in seconds", examples=[900]
     )
 
-    user: UserResponse = Field(
-        ...,
-        description="User profile information"
-    )
+    user: UserResponse = Field(..., description="User profile information")
 
 
 class TokenResponse(BaseModel):
@@ -205,21 +176,16 @@ class TokenResponse(BaseModel):
     """
 
     success: bool = Field(
-        default=True,
-        description="Indicates successful operation",
-        examples=[True]
+        default=True, description="Indicates successful operation", examples=[True]
     )
 
     message: str = Field(
         ...,
         description="Human-readable response message",
-        examples=["Login successful", "User registered successfully"]
+        examples=["Login successful", "User registered successfully"],
     )
 
-    data: TokenData = Field(
-        ...,
-        description="Token and user data"
-    )
+    data: TokenData = Field(..., description="Token and user data")
 
 
 class TokenRefreshResponse(BaseModel):
@@ -230,25 +196,21 @@ class TokenRefreshResponse(BaseModel):
     """
 
     success: bool = Field(
-        default=True,
-        description="Indicates successful operation",
-        examples=[True]
+        default=True, description="Indicates successful operation", examples=[True]
     )
 
     message: str = Field(
         ...,
         description="Human-readable response message",
-        examples=["Token refreshed successfully"]
+        examples=["Token refreshed successfully"],
     )
 
     data: dict = Field(
         ...,
         description="New access token data",
-        examples=[{
-            "access_token": "eyJhbGci...",
-            "token_type": "Bearer",
-            "expires_in": 900
-        }]
+        examples=[
+            {"access_token": "eyJhbGci...", "token_type": "Bearer", "expires_in": 900}
+        ],
     )
 
 
@@ -260,20 +222,17 @@ class ErrorResponse(BaseModel):
     """
 
     success: bool = Field(
-        default=False,
-        description="Indicates failed operation",
-        examples=[False]
+        default=False, description="Indicates failed operation", examples=[False]
     )
 
     error: str = Field(
         ...,
         description="Error message description",
-        examples=["Invalid email or password", "Email already registered"]
+        examples=["Invalid email or password", "Email already registered"],
     )
 
     details: Optional[dict] = Field(
-        default=None,
-        description="Additional error details (optional)"
+        default=None, description="Additional error details (optional)"
     )
 
 
@@ -287,7 +246,7 @@ class LogoutRequest(BaseModel):
     refresh_token: str = Field(
         ...,
         description="JWT refresh token to revoke",
-        examples=["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."]
+        examples=["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."],
     )
 
 
@@ -299,13 +258,11 @@ class SuccessResponse(BaseModel):
     """
 
     success: bool = Field(
-        default=True,
-        description="Indicates successful operation",
-        examples=[True]
+        default=True, description="Indicates successful operation", examples=[True]
     )
 
     message: str = Field(
         ...,
         description="Human-readable response message",
-        examples=["Logout successful"]
+        examples=["Logout successful"],
     )

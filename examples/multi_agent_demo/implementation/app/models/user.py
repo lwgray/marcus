@@ -4,8 +4,8 @@ User model for authentication and authorization.
 Handles user accounts, authentication, and relationships to projects and tasks.
 """
 
-from typing import TYPE_CHECKING
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from app.models.base import Base, TimestampMixin
 from sqlalchemy import Boolean, DateTime, Index, String

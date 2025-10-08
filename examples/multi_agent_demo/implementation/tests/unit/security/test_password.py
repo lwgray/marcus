@@ -6,9 +6,9 @@ Tests bcrypt password hashing, verification, and strength evaluation.
 
 import pytest
 from app.security.password import (
+    get_password_strength,
     hash_password,
     verify_password,
-    get_password_strength,
 )
 
 
@@ -156,7 +156,9 @@ class TestPasswordStrength:
     def test_password_strength_strong(self) -> None:
         """Test strong password (16+ chars, all types)."""
         # Act
-        result = get_password_strength("VeryStrongPassword123!")  # pragma: allowlist secret
+        result = get_password_strength(
+            "VeryStrongPassword123!"
+        )  # pragma: allowlist secret
 
         # Assert
         assert result["score"] == 5

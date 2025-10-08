@@ -5,8 +5,9 @@ Provides secure password hashing with automatic salt generation
 and configurable work factor for future-proofing against attacks.
 """
 
-import bcrypt
 from typing import Union
+
+import bcrypt
 
 
 def hash_password(password: str, rounds: int = 12) -> str:
@@ -44,7 +45,7 @@ def hash_password(password: str, rounds: int = 12) -> str:
     - Format: $2b$<rounds>$<22-char-salt><31-char-hash>
     """
     # Encode password to bytes
-    password_bytes = password.encode('utf-8')
+    password_bytes = password.encode("utf-8")
 
     # Generate salt with specified rounds
     salt = bcrypt.gensalt(rounds=rounds)
@@ -53,7 +54,7 @@ def hash_password(password: str, rounds: int = 12) -> str:
     hashed = bcrypt.hashpw(password_bytes, salt)
 
     # Return as UTF-8 string for database storage
-    return hashed.decode('utf-8')
+    return hashed.decode("utf-8")
 
 
 def verify_password(password: str, password_hash: str) -> bool:
@@ -89,8 +90,8 @@ def verify_password(password: str, password_hash: str) -> bool:
     """
     try:
         # Encode inputs to bytes
-        password_bytes = password.encode('utf-8')
-        hash_bytes = password_hash.encode('utf-8')
+        password_bytes = password.encode("utf-8")
+        hash_bytes = password_hash.encode("utf-8")
 
         # Verify password (timing-safe comparison)
         return bcrypt.checkpw(password_bytes, hash_bytes)
@@ -154,10 +155,14 @@ def get_password_strength(password: str) -> dict[str, Union[int, bool, str]]:
         recommendation = "Very weak - use at least 8 characters"
     elif length < 12:
         score = min(diversity, 3)
-        recommendation = ["Weak", "Fair", "Moderate", "Good"][score - 1] if score > 0 else "Weak"
+        recommendation = (
+            ["Weak", "Fair", "Moderate", "Good"][score - 1] if score > 0 else "Weak"
+        )
     elif length < 16:
         score = min(diversity + 1, 4)
-        recommendation = ["Fair", "Moderate", "Good", "Good"][score - 1] if score > 0 else "Weak"
+        recommendation = (
+            ["Fair", "Moderate", "Good", "Good"][score - 1] if score > 0 else "Weak"
+        )
     else:
         score = 5 if diversity == 4 else 4
         recommendation = "Strong" if score == 5 else "Good"

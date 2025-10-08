@@ -6,12 +6,12 @@ Tests HTML sanitization, text cleaning, and input validation.
 
 import pytest
 from app.security.sanitizer import (
+    escape_sql_like,
+    sanitize_email,
+    sanitize_filename,
     sanitize_html,
     sanitize_text,
-    sanitize_filename,
-    sanitize_email,
     sanitize_url,
-    escape_sql_like,
 )
 
 

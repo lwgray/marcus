@@ -13,28 +13,30 @@ import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 
+from app.models import RefreshToken, User
+from app.schemas.auth import UserLogin, UserRegister
+from app.security.jwt_handler import create_access_token
+from app.security.password import hash_password, verify_password
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import RefreshToken, User
-from app.schemas.auth import UserRegister, UserLogin
-from app.security.jwt_handler import create_access_token
-from app.security.password import hash_password, verify_password
-
 
 class AuthenticationError(Exception):
     """Raised when authentication fails."""
+
     pass
 
 
 class UserAlreadyExistsError(Exception):
     """Raised when attempting to register duplicate user."""
+
     pass
 
 
 class TokenError(Exception):
     """Raised when token operations fail."""
+
     pass
 
 
@@ -117,9 +119,7 @@ class AuthService:
 
         # Generate tokens
         access_token = self._create_access_token(user)
-        refresh_token = await self._create_refresh_token(
-            user, ip_address, user_agent
-        )
+        refresh_token = await self._create_refresh_token(user, ip_address, user_agent)
 
         await self.db.commit()
         await self.db.refresh(user)
@@ -172,18 +172,14 @@ class AuthService:
 
         # Generate tokens
         access_token = self._create_access_token(user)
-        refresh_token = await self._create_refresh_token(
-            user, ip_address, user_agent
-        )
+        refresh_token = await self._create_refresh_token(user, ip_address, user_agent)
 
         await self.db.commit()
         await self.db.refresh(user)
 
         return user, access_token, refresh_token
 
-    async def refresh_access_token(
-        self, refresh_token_string: str
-    ) -> Tuple[str, User]:
+    async def refresh_access_token(self, refresh_token_string: str) -> Tuple[str, User]:
         """
         Generate new access token from refresh token.
 
@@ -313,9 +309,7 @@ class AuthService:
         self, email: str, username: str
     ) -> Optional[User]:
         """Get user by email or username."""
-        stmt = select(User).where(
-            (User.email == email) | (User.username == username)
-        )
+        stmt = select(User).where((User.email == email) | (User.username == username))
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -336,7 +330,11 @@ class AuthService:
         expires_delta = timedelta(minutes=self.ACCESS_TOKEN_EXPIRE_MINUTES)
 
         # Get user roles (if they exist)
-        roles = [role.role.value for role in user.roles] if hasattr(user, 'roles') and user.roles else ["user"]
+        roles = (
+            [role.role.value for role in user.roles]
+            if hasattr(user, "roles") and user.roles
+            else ["user"]
+        )
 
         additional_claims = {
             "email": user.email,

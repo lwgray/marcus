@@ -6,32 +6,49 @@ against malicious user input across the application.
 """
 
 import re
-import bleach
 from typing import List, Optional
 
+import bleach
 
 # Allowed HTML tags for rich text (comments, descriptions)
 ALLOWED_TAGS = [
-    'p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-    'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'a', 'img'
+    "p",
+    "br",
+    "strong",
+    "em",
+    "u",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "ul",
+    "ol",
+    "li",
+    "blockquote",
+    "code",
+    "pre",
+    "a",
+    "img",
 ]
 
 # Allowed HTML attributes
 ALLOWED_ATTRIBUTES = {
-    'a': ['href', 'title', 'rel'],
-    'img': ['src', 'alt', 'title', 'width', 'height'],
-    'code': ['class'],
+    "a": ["href", "title", "rel"],
+    "img": ["src", "alt", "title", "width", "height"],
+    "code": ["class"],
 }
 
 # Allowed URL protocols
-ALLOWED_PROTOCOLS = ['http', 'https', 'mailto']
+ALLOWED_PROTOCOLS = ["http", "https", "mailto"]
 
 
 def sanitize_html(
     html_content: str,
     allowed_tags: Optional[List[str]] = None,
     allowed_attributes: Optional[dict] = None,
-    strip: bool = False
+    strip: bool = False,
 ) -> str:
     """
     Sanitize HTML content to prevent XSS attacks.
@@ -84,7 +101,7 @@ def sanitize_html(
         tags=allowed_tags,
         attributes=allowed_attributes,
         protocols=ALLOWED_PROTOCOLS,
-        strip=strip
+        strip=strip,
     )
 
     return clean_html
@@ -124,11 +141,11 @@ def sanitize_text(text: str, max_length: Optional[int] = None) -> str:
     clean_text = bleach.clean(text, tags=[], strip=True)
 
     # Remove extra whitespace
-    clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+    clean_text = re.sub(r"\s+", " ", clean_text).strip()
 
     # Truncate if needed
     if max_length and len(clean_text) > max_length:
-        clean_text = clean_text[:max_length - 3] + "..."
+        clean_text = clean_text[: max_length - 3] + "..."
 
     return clean_text
 
@@ -233,7 +250,7 @@ def sanitize_email(email: str) -> str:
     email = email.strip().lower()
 
     # Basic email validation
-    email_pattern = r'^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$'
+    email_pattern = r"^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"
     if not re.match(email_pattern, email):
         raise ValueError("Invalid email format")
 
@@ -279,7 +296,7 @@ def sanitize_url(url: str, allowed_schemes: Optional[List[str]] = None) -> str:
     from urllib.parse import urlparse
 
     if allowed_schemes is None:
-        allowed_schemes = ['http', 'https']
+        allowed_schemes = ["http", "https"]
 
     # Strip whitespace
     url = url.strip()

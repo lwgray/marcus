@@ -4,20 +4,21 @@ Unit tests for JWT token handling.
 Tests JWT token creation, verification, and user extraction.
 """
 
-import pytest
 import time
 from datetime import timedelta
+
 import jwt as pyjwt
+import pytest
 from app.security.jwt_handler import (
-    create_access_token,
-    verify_token,
-    get_current_user,
-    refresh_token,
-    decode_token_without_verification,
+    JWT_ALGORITHM,
+    JWT_SECRET_KEY,
     TokenExpiredError,
     TokenInvalidError,
-    JWT_SECRET_KEY,
-    JWT_ALGORITHM,
+    create_access_token,
+    decode_token_without_verification,
+    get_current_user,
+    refresh_token,
+    verify_token,
 )
 
 
@@ -105,7 +106,7 @@ class TestVerifyToken:
         expired_token = create_access_token(
             user_id=1,
             username="test",
-            expires_delta=timedelta(seconds=-1)  # Already expired
+            expires_delta=timedelta(seconds=-1),  # Already expired
         )
 
         # Act & Assert
@@ -117,9 +118,7 @@ class TestVerifyToken:
         """Test that tokens with invalid signature raise TokenInvalidError."""
         # Arrange - create token with wrong secret
         invalid_token = pyjwt.encode(
-            {"user_id": 1, "sub": "test"},
-            "wrong-secret",
-            algorithm=JWT_ALGORITHM
+            {"user_id": 1, "sub": "test"}, "wrong-secret", algorithm=JWT_ALGORITHM
         )
 
         # Act & Assert
@@ -161,9 +160,7 @@ class TestGetCurrentUser:
         """Test that additional claims are included."""
         # Arrange
         token = create_access_token(
-            user_id=1,
-            username="admin",
-            additional_claims={"role": "admin"}
+            user_id=1, username="admin", additional_claims={"role": "admin"}
         )
 
         # Act
@@ -176,9 +173,7 @@ class TestGetCurrentUser:
         """Test that expired token raises TokenExpiredError."""
         # Arrange
         expired_token = create_access_token(
-            user_id=1,
-            username="test",
-            expires_delta=timedelta(seconds=-1)
+            user_id=1, username="test", expires_delta=timedelta(seconds=-1)
         )
 
         # Act & Assert
@@ -189,9 +184,7 @@ class TestGetCurrentUser:
         """Test that token missing user_id raises error."""
         # Arrange - manually create token without user_id
         token = pyjwt.encode(
-            {"sub": "test"},  # Missing user_id
-            JWT_SECRET_KEY,
-            algorithm=JWT_ALGORITHM
+            {"sub": "test"}, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM  # Missing user_id
         )
 
         # Act & Assert
@@ -235,9 +228,7 @@ class TestRefreshToken:
         """Test that expired tokens can be refreshed."""
         # Arrange
         expired_token = create_access_token(
-            user_id=1,
-            username="test",
-            expires_delta=timedelta(seconds=-1)
+            user_id=1, username="test", expires_delta=timedelta(seconds=-1)
         )
 
         # Act
@@ -305,9 +296,7 @@ class TestDecodeWithoutVerification:
         """Test that expired tokens can still be decoded."""
         # Arrange
         expired_token = create_access_token(
-            user_id=1,
-            username="test",
-            expires_delta=timedelta(seconds=-1)
+            user_id=1, username="test", expires_delta=timedelta(seconds=-1)
         )
 
         # Act - Should NOT raise exception

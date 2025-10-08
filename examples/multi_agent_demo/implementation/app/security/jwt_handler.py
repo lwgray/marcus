@@ -7,10 +7,10 @@ Supports access tokens with configurable expiration times.
 
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, Any
-import jwt
-from jwt.exceptions import InvalidTokenError, ExpiredSignatureError
+from typing import Any, Dict, Optional
 
+import jwt
+from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 
 # JWT Configuration
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
@@ -20,16 +20,19 @@ JWT_EXPIRATION_DELTA = timedelta(hours=24)  # Default: 24 hours
 
 class TokenError(Exception):
     """Base exception for token-related errors."""
+
     pass
 
 
 class TokenExpiredError(TokenError):
     """Raised when a token has expired."""
+
     pass
 
 
 class TokenInvalidError(TokenError):
     """Raised when a token is invalid or malformed."""
+
     pass
 
 
@@ -37,7 +40,7 @@ def create_access_token(
     user_id: int,
     username: str,
     expires_delta: Optional[timedelta] = None,
-    additional_claims: Optional[Dict[str, Any]] = None
+    additional_claims: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
     Create a JWT access token for a user.
@@ -147,7 +150,7 @@ def verify_token(token: str) -> Dict[str, Any]:
             token,
             JWT_SECRET_KEY,
             algorithms=[JWT_ALGORITHM],
-            options={"verify_exp": True}  # Verify expiration
+            options={"verify_exp": True},  # Verify expiration
         )
         return payload
 
@@ -206,7 +209,11 @@ def get_current_user(token: str) -> Dict[str, Any]:
     return {
         "user_id": payload["user_id"],
         "username": payload["sub"],
-        **{k: v for k, v in payload.items() if k not in ["user_id", "sub", "iat", "exp"]}
+        **{
+            k: v
+            for k, v in payload.items()
+            if k not in ["user_id", "sub", "iat", "exp"]
+        },
     }
 
 
@@ -251,14 +258,14 @@ def refresh_token(old_token: str, expires_delta: Optional[timedelta] = None) -> 
             old_token,
             JWT_SECRET_KEY,
             algorithms=[JWT_ALGORITHM],
-            options={"verify_exp": False}  # Don't verify expiration
+            options={"verify_exp": False},  # Don't verify expiration
         )
 
         # Create new token with same user info
         return create_access_token(
             user_id=payload["user_id"],
             username=payload["sub"],
-            expires_delta=expires_delta
+            expires_delta=expires_delta,
         )
 
     except InvalidTokenError as e:

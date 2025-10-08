@@ -12,9 +12,6 @@ Implements JWT-based authentication endpoints per auth-api-spec.yaml:
 from datetime import timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.schemas.auth import (
     ErrorResponse,
     LogoutRequest,
@@ -27,13 +24,15 @@ from app.schemas.auth import (
     UserRegister,
     UserResponse,
 )
+from app.security.jwt_handler import TokenExpiredError, TokenInvalidError, verify_token
 from app.services.auth_service import (
     AuthenticationError,
     AuthService,
     TokenError,
     UserAlreadyExistsError,
 )
-from app.security.jwt_handler import verify_token, TokenExpiredError, TokenInvalidError
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # Router configuration
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])

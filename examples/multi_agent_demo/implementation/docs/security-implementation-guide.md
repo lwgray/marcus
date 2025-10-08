@@ -161,8 +161,8 @@ safe_html = sanitize_html(
 )
 ```
 
-**Default Allowed Tags**: p, br, strong, em, ul, ol, li, a, span, div  
-**Default Allowed Attributes**: href, title, class  
+**Default Allowed Tags**: p, br, strong, em, ul, ol, li, a, span, div
+**Default Allowed Attributes**: href, title, class
 **Default Allowed Protocols**: http, https, mailto
 
 #### Plain Text Sanitization
@@ -333,7 +333,7 @@ app = FastAPI()
 async def get_authenticated_user(authorization: str = Header(...)):
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid authorization header")
-    
+
     token = authorization.split(" ")[1]
     try:
         user_info = get_current_user(token)
@@ -349,13 +349,13 @@ async def register(username: str, email: str, password: str):
     # Sanitize inputs
     clean_email = sanitize_email(email)
     clean_username = sanitize_text(username, max_length=80)
-    
+
     # Hash password
     password_hash = hash_password(password)
-    
+
     # Create user in database
     # ... database logic ...
-    
+
     return {"message": "User created"}
 
 # Login endpoint
@@ -363,14 +363,14 @@ async def register(username: str, email: str, password: str):
 async def login(username: str, password: str):
     # Fetch user from database
     # ... database logic ...
-    
+
     # Verify password
     if not verify_password(password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    
+
     # Create token
     token = create_access_token(user_id=user.id, username=user.username)
-    
+
     return {"token": token, "user": {"id": user.id, "username": user.username}}
 
 # Protected endpoint
@@ -398,7 +398,7 @@ def require_auth(f):
         auth_header = request.headers.get('Authorization')
         if not auth_header or not auth_header.startswith('Bearer '):
             return jsonify({"error": "Missing or invalid authorization header"}), 401
-        
+
         token = auth_header.split(' ')[1]
         try:
             user_info = get_current_user(token)
@@ -408,7 +408,7 @@ def require_auth(f):
             return jsonify({"error": "Token expired"}), 401
         except TokenInvalidError:
             return jsonify({"error": "Invalid token"}), 401
-    
+
     return decorated_function
 
 @app.route('/api/auth/login', methods=['POST'])
@@ -494,26 +494,26 @@ pip install bcrypt PyJWT bleach Flask-Limiter
 
 ### JWT Token Issues
 
-**Problem**: `TokenInvalidError: Invalid token`  
+**Problem**: `TokenInvalidError: Invalid token`
 **Solution**: Check JWT_SECRET_KEY matches between token creation and verification
 
-**Problem**: `TokenExpiredError: Token has expired`  
+**Problem**: `TokenExpiredError: Token has expired`
 **Solution**: Implement token refresh flow or increase JWT_EXPIRATION_HOURS
 
 ### Rate Limiting Issues
 
-**Problem**: Rate limits not working  
+**Problem**: Rate limits not working
 **Solution**: Ensure `limiter.init_app(app)` is called before route definitions
 
-**Problem**: Rate limits too strict in development  
+**Problem**: Rate limits too strict in development
 **Solution**: Set `RATE_LIMIT_ENABLED=false` in development environment
 
 ### Password Hashing Issues
 
-**Problem**: Password verification takes too long  
+**Problem**: Password verification takes too long
 **Solution**: Reduce bcrypt rounds (use 10-11 for faster verification, but less secure)
 
-**Problem**: `ValueError: Invalid salt`  
+**Problem**: `ValueError: Invalid salt`
 **Solution**: Ensure password_hash is stored as UTF-8 string, not bytes
 
 ## References
@@ -526,7 +526,7 @@ pip install bcrypt PyJWT bleach Flask-Limiter
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: 2025-10-08  
-**Author**: Foundation Agent (agent_foundation)  
+**Document Version**: 1.0
+**Last Updated**: 2025-10-08
+**Author**: Foundation Agent (agent_foundation)
 **Task**: Security Implementation (Task ID: 1616789808523249040)

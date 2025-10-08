@@ -4,20 +4,20 @@ Unit tests for authentication schemas.
 Tests Pydantic validation for registration, login, and token schemas.
 """
 
-import pytest
 from datetime import datetime
-from pydantic import ValidationError
 
+import pytest
 from app.schemas.auth import (
-    UserRegister,
-    UserLogin,
-    TokenRefresh,
-    UserResponse,
-    TokenData,
-    TokenResponse,
     ErrorResponse,
     LogoutRequest,
+    TokenData,
+    TokenRefresh,
+    TokenResponse,
+    UserLogin,
+    UserRegister,
+    UserResponse,
 )
+from pydantic import ValidationError
 
 
 class TestUserRegisterSchema:
@@ -27,9 +27,7 @@ class TestUserRegisterSchema:
         """Test valid registration data."""
         # Arrange & Act
         user = UserRegister(
-            email="test@example.com",
-            username="testuser",
-            password="SecureP@ssw0rd123"
+            email="test@example.com", username="testuser", password="SecureP@ssw0rd123"
         )
 
         # Assert
@@ -42,9 +40,7 @@ class TestUserRegisterSchema:
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
             UserRegister(
-                email="invalid-email",
-                username="testuser",
-                password="SecureP@ssw0rd123"
+                email="invalid-email", username="testuser", password="SecureP@ssw0rd123"
             )
 
         assert "email" in str(exc_info.value)
@@ -54,9 +50,7 @@ class TestUserRegisterSchema:
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
             UserRegister(
-                email="test@example.com",
-                username="ab",
-                password="SecureP@ssw0rd123"
+                email="test@example.com", username="ab", password="SecureP@ssw0rd123"
             )
 
         assert "username" in str(exc_info.value)
@@ -68,7 +62,7 @@ class TestUserRegisterSchema:
             UserRegister(
                 email="test@example.com",
                 username="a" * 51,
-                password="SecureP@ssw0rd123"
+                password="SecureP@ssw0rd123",
             )
 
         assert "username" in str(exc_info.value)
@@ -80,7 +74,7 @@ class TestUserRegisterSchema:
             UserRegister(
                 email="test@example.com",
                 username="test-user!",
-                password="SecureP@ssw0rd123"
+                password="SecureP@ssw0rd123",
             )
 
         assert "username" in str(exc_info.value)
@@ -90,9 +84,7 @@ class TestUserRegisterSchema:
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
             UserRegister(
-                email="test@example.com",
-                username="testuser",
-                password="Short1!"
+                email="test@example.com", username="testuser", password="Short1!"
             )
 
         assert "password" in str(exc_info.value)
@@ -104,7 +96,7 @@ class TestUserRegisterSchema:
             UserRegister(
                 email="test@example.com",
                 username="testuser",
-                password="A1!" + "a" * 126
+                password="A1!" + "a" * 126,
             )
 
         assert "password" in str(exc_info.value)
@@ -116,7 +108,7 @@ class TestUserRegisterSchema:
             UserRegister(
                 email="test@example.com",
                 username="testuser",
-                password="securep@ssw0rd123"
+                password="securep@ssw0rd123",
             )
 
     def test_password_missing_lowercase(self):
@@ -126,7 +118,7 @@ class TestUserRegisterSchema:
             UserRegister(
                 email="test@example.com",
                 username="testuser",
-                password="SECUREP@SSW0RD123"
+                password="SECUREP@SSW0RD123",
             )
 
     def test_password_missing_digit(self):
@@ -134,9 +126,7 @@ class TestUserRegisterSchema:
         # Act & Assert
         with pytest.raises(ValidationError, match="digit"):
             UserRegister(
-                email="test@example.com",
-                username="testuser",
-                password="SecureP@ssword"
+                email="test@example.com", username="testuser", password="SecureP@ssword"
             )
 
     def test_password_missing_special(self):
@@ -146,7 +136,7 @@ class TestUserRegisterSchema:
             UserRegister(
                 email="test@example.com",
                 username="testuser",
-                password="SecurePassword123"
+                password="SecurePassword123",
             )
 
 
@@ -156,10 +146,7 @@ class TestUserLoginSchema:
     def test_valid_login(self):
         """Test valid login data."""
         # Arrange & Act
-        login = UserLogin(
-            email="test@example.com",
-            password="any_password"
-        )
+        login = UserLogin(email="test@example.com", password="any_password")
 
         # Assert
         assert login.email == "test@example.com"
@@ -169,10 +156,7 @@ class TestUserLoginSchema:
         """Test login with invalid email format."""
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
-            UserLogin(
-                email="not-an-email",
-                password="password"
-            )
+            UserLogin(email="not-an-email", password="password")
 
         assert "email" in str(exc_info.value)
 
@@ -191,9 +175,7 @@ class TestTokenRefreshSchema:
     def test_valid_refresh_token(self):
         """Test valid refresh token data."""
         # Arrange & Act
-        refresh = TokenRefresh(
-            refresh_token="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-        )
+        refresh = TokenRefresh(refresh_token="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...")
 
         # Assert
         assert refresh.refresh_token.startswith("eyJh")
@@ -220,7 +202,7 @@ class TestUserResponseSchema:
             is_active=True,
             is_verified=False,
             created_at=datetime.now(),
-            last_login=None
+            last_login=None,
         )
 
         # Assert
@@ -244,7 +226,7 @@ class TestUserResponseSchema:
             is_active=True,
             is_verified=True,
             created_at=now,
-            last_login=now
+            last_login=now,
         )
 
         # Assert
@@ -263,7 +245,7 @@ class TestTokenDataSchema:
             username="testuser",
             is_active=True,
             is_verified=False,
-            created_at=datetime.now()
+            created_at=datetime.now(),
         )
 
         # Act
@@ -272,7 +254,7 @@ class TestTokenDataSchema:
             refresh_token="refresh_token_string",
             token_type="Bearer",
             expires_in=900,
-            user=user
+            user=user,
         )
 
         # Assert
@@ -291,15 +273,12 @@ class TestTokenDataSchema:
             username="testuser",
             is_active=True,
             is_verified=False,
-            created_at=datetime.now()
+            created_at=datetime.now(),
         )
 
         # Act
         token_data = TokenData(
-            access_token="access",
-            refresh_token="refresh",
-            expires_in=900,
-            user=user
+            access_token="access", refresh_token="refresh", expires_in=900, user=user
         )
 
         # Assert
@@ -318,7 +297,7 @@ class TestTokenResponseSchema:
             username="testuser",
             is_active=True,
             is_verified=False,
-            created_at=datetime.now()
+            created_at=datetime.now(),
         )
 
         token_data = TokenData(
@@ -326,14 +305,12 @@ class TestTokenResponseSchema:
             refresh_token="refresh",
             token_type="Bearer",
             expires_in=900,
-            user=user
+            user=user,
         )
 
         # Act
         response = TokenResponse(
-            success=True,
-            message="Login successful",
-            data=token_data
+            success=True, message="Login successful", data=token_data
         )
 
         # Assert
@@ -348,10 +325,7 @@ class TestErrorResponseSchema:
     def test_error_response_basic(self):
         """Test basic error response."""
         # Act
-        error = ErrorResponse(
-            success=False,
-            error="Something went wrong"
-        )
+        error = ErrorResponse(success=False, error="Something went wrong")
 
         # Assert
         assert error.success is False
@@ -364,7 +338,7 @@ class TestErrorResponseSchema:
         error = ErrorResponse(
             success=False,
             error="Validation error",
-            details={"field": "email", "issue": "invalid format"}
+            details={"field": "email", "issue": "invalid format"},
         )
 
         # Assert
@@ -378,9 +352,7 @@ class TestLogoutRequestSchema:
     def test_valid_logout_request(self):
         """Test valid logout request."""
         # Act
-        logout = LogoutRequest(
-            refresh_token="token_to_revoke"
-        )
+        logout = LogoutRequest(refresh_token="token_to_revoke")
 
         # Assert
         assert logout.refresh_token == "token_to_revoke"

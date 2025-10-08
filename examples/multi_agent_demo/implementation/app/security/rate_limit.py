@@ -6,11 +6,11 @@ for different endpoint types, especially authentication endpoints.
 """
 
 import os
-from typing import Optional, Callable
+from typing import Callable, Optional
+
 from flask import Request
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-
 
 # Rate limiting configuration from environment
 RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
@@ -45,7 +45,7 @@ def get_identifier(request: Optional[Request] = None) -> str:
     - Falls back to IP address for anonymous users
     - Handles proxy headers (X-Forwarded-For) for correct IP
     """
-    if request and hasattr(request, 'user_id'):
+    if request and hasattr(request, "user_id"):
         # Use user ID for authenticated requests
         return f"user:{request.user_id}"
 
@@ -267,16 +267,12 @@ def get_rate_limit_status(identifier: Optional[str] = None) -> dict:
     - Returns None values if limiter not configured
     """
     if not RATE_LIMIT_ENABLED:
-        return {
-            "limit": None,
-            "remaining": None,
-            "reset": None
-        }
+        return {"limit": None, "remaining": None, "reset": None}
 
     # This would need to query the limiter's storage backend
     # Implementation depends on storage type (memory, Redis, etc.)
     return {
         "limit": DEFAULT_RATE_LIMIT,
         "remaining": None,  # Would query from storage
-        "reset": None  # Would calculate from storage
+        "reset": None,  # Would calculate from storage
     }

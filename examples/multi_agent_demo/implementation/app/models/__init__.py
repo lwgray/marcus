@@ -18,4 +18,13 @@ from app.models.task import Task
 from app.models.user import User
 from app.models.user_role import Role, UserRole
 
-__all__ = ["Base", "User", "UserRole", "Role", "RefreshToken", "Project", "Task", "Comment"]
+__all__ = [
+    "Base",
+    "User",
+    "UserRole",
+    "Role",
+    "RefreshToken",
+    "Project",
+    "Task",
+    "Comment",
+]
