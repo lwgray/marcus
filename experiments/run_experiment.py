@@ -1,0 +1,200 @@
+#!/usr/bin/env python3
+"""
+Marcus Experiment Launcher.
+
+Convenience script to run Marcus multi-agent experiments.
+Creates experiment directory structure if needed and launches agents.
+"""
+
+import argparse
+import shutil
+import sys
+from pathlib import Path
+
+from spawn_agents import AgentSpawner, ExperimentConfig
+
+
+def create_experiment_structure(experiment_dir: Path, templates_dir: Path) -> bool:
+    """
+    Create experiment directory structure with templates.
+
+    Parameters
+    ----------
+    experiment_dir : Path
+        Directory for the experiment
+    templates_dir : Path
+        Directory containing templates
+    """
+    experiment_dir.mkdir(parents=True, exist_ok=True)
+
+    config_file = experiment_dir / "config.yaml"
+    spec_file = experiment_dir / "project_spec.md"
+
+    # Copy templates if they don't exist
+    if not config_file.exists():
+        template_config = templates_dir / "config.yaml.template"
+        shutil.copy(template_config, config_file)
+        print("✓ Created config.yaml from template")
+        print(f"  Edit {config_file} to configure your experiment")
+
+    if not spec_file.exists():
+        # Create a minimal project spec template
+        with open(spec_file, "w") as f:
+            f.write(
+                """# Project Specification
+
+## Overview
+[Describe what you want to build]
+
+## Features
+- [Feature 1]
+- [Feature 2]
+- [Feature 3]
+
+## Technical Requirements
+- [Requirement 1]
+- [Requirement 2]
+
+## Deliverables
+- [Deliverable 1]
+- [Deliverable 2]
+"""
+            )
+        print("✓ Created project_spec.md template")
+        print(f"  Edit {spec_file} to describe your project")
+
+    # Create subdirectories
+    (experiment_dir / "prompts").mkdir(exist_ok=True)
+    (experiment_dir / "logs").mkdir(exist_ok=True)
+    (experiment_dir / "implementation").mkdir(exist_ok=True)
+
+    return not (config_file.exists() and spec_file.exists())
+
+
+def validate_experiment(experiment_dir: Path) -> bool:
+    """
+    Validate that experiment directory is ready to run.
+
+    Parameters
+    ----------
+    experiment_dir : Path
+        Directory for the experiment
+
+    Returns
+    -------
+    bool
+        True if valid, False otherwise
+    """
+    config_file = experiment_dir / "config.yaml"
+    spec_file = experiment_dir / "project_spec.md"
+
+    errors = []
+
+    if not config_file.exists():
+        errors.append(f"Missing config.yaml at {config_file}")
+
+    if not spec_file.exists():
+        errors.append(f"Missing project_spec.md at {spec_file}")
+
+    if errors:
+        print("Validation errors:")
+        for error in errors:
+            print(f"  ✗ {error}")
+        return False
+
+    return True
+
+
+def main() -> None:
+    """Run the experiment launcher."""
+    parser = argparse.ArgumentParser(
+        description="Run a Marcus multi-agent experiment",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Create a new experiment
+  python run_experiment.py --init ~/experiments/my-project
+
+  # Run an existing experiment
+  python run_experiment.py ~/experiments/my-project
+
+  # Validate experiment config without running
+  python run_experiment.py --validate ~/experiments/my-project
+        """,
+    )
+
+    parser.add_argument(
+        "experiment_dir",
+        type=str,
+        help="Path to experiment directory (will be created if --init)",
+    )
+
+    parser.add_argument(
+        "--init",
+        action="store_true",
+        help="Initialize a new experiment with templates",
+    )
+
+    parser.add_argument(
+        "--validate",
+        action="store_true",
+        help="Validate experiment configuration without running",
+    )
+
+    args = parser.parse_args()
+
+    experiment_dir = Path(args.experiment_dir).resolve()
+
+    # Find templates directory
+    script_dir = Path(__file__).parent
+    templates_dir = script_dir / "templates"
+
+    if not templates_dir.exists():
+        print(f"Error: Templates directory not found at {templates_dir}")
+        sys.exit(1)
+
+    # Initialize mode
+    if args.init:
+        print(f"Initializing experiment at: {experiment_dir}")
+        print()
+        create_experiment_structure(experiment_dir, templates_dir)
+        print()
+        print("✓ Experiment initialized!")
+        print()
+        print("Next steps:")
+        print(f"  1. Edit {experiment_dir / 'config.yaml'}")
+        print(f"  2. Edit {experiment_dir / 'project_spec.md'}")
+        print(f"  3. Run: python run_experiment.py {experiment_dir}")
+        sys.exit(0)
+
+    # Validate experiment exists
+    if not experiment_dir.exists():
+        print(f"Error: Experiment directory not found: {experiment_dir}")
+        print()
+        print("To create it, run:")
+        print(f"  python run_experiment.py --init {experiment_dir}")
+        sys.exit(1)
+
+    # Validate configuration
+    if not validate_experiment(experiment_dir):
+        sys.exit(1)
+
+    # Validate-only mode
+    if args.validate:
+        print(f"✓ Experiment configuration is valid: {experiment_dir}")
+        sys.exit(0)
+
+    # Run the experiment
+    print(f"Running experiment: {experiment_dir}")
+    print()
+
+    config_file = experiment_dir / "config.yaml"
+    config = ExperimentConfig(config_file)
+    spawner = AgentSpawner(config, templates_dir)
+
+    success = spawner.run()
+    sys.exit(0 if success else 1)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,69 @@
+# Marcus Multi-Agent Experiment: Task Management API
+# This is an example configuration demonstrating a full-stack API project
+
+project_name: "Task Management API Demo"
+
+project_spec_file: "project_spec.md"
+
+project_options:
+  complexity: "standard"
+  provider: "planka"
+  mode: "new_project"
+
+# Agent configuration for a backend API project
+# 4 agents with specialized roles, 13 total subagents
+agents:
+  # Database and core infrastructure
+  - id: "agent_foundation"
+    name: "Foundation Agent"
+    role: "backend"
+    skills:
+      - "python"
+      - "sqlalchemy"
+      - "postgresql"
+      - "alembic"
+      - "database-design"
+      - "pydantic"
+    subagents: 5  # Handles models, migrations, schemas, DB setup
+
+  # Authentication and security
+  - id: "agent_auth"
+    name: "Authentication Agent"
+    role: "backend"
+    skills:
+      - "python"
+      - "fastapi"
+      - "jwt"
+      - "security"
+      - "bcrypt"
+      - "testing"
+    subagents: 3  # Handles auth endpoints, JWT, password hashing
+
+  # API endpoints (projects, tasks, comments)
+  - id: "agent_api"
+    name: "API Development Agent"
+    role: "backend"
+    skills:
+      - "python"
+      - "fastapi"
+      - "rest-api"
+      - "pydantic"
+      - "testing"
+    subagents: 3  # Handles CRUD endpoints, business logic
+
+  # Integration testing and quality assurance
+  - id: "agent_integration"
+    name: "Integration & QA Agent"
+    role: "qa"
+    skills:
+      - "python"
+      - "pytest"
+      - "integration-testing"
+      - "api-testing"
+      - "validation"
+      - "coverage"
+    subagents: 2  # Handles integration tests, coverage, validation
+
+timeouts:
+  project_creation: 300  # 5 minutes
+  agent_startup: 60      # 1 minute

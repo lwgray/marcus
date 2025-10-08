@@ -1,0 +1,62 @@
+# Marcus Multi-Agent Experiment Configuration
+# Copy this template to your experiment directory and customize
+
+# Project name (will be created in Marcus/Planka)
+project_name: "Your Project Name"
+
+# Project description/specification file (relative to experiment dir)
+project_spec_file: "project_spec.md"
+
+# Marcus project options
+project_options:
+  complexity: "standard"  # prototype | standard | enterprise
+  provider: "planka"      # planka | github | linear
+  mode: "new_project"     # new_project | auto | select_project
+
+# Agent definitions
+agents:
+  - id: "agent_foundation"
+    name: "Foundation Agent"
+    role: "backend"
+    skills:
+      - "python"
+      - "sqlalchemy"
+      - "postgresql"
+      - "database-design"
+    subagents: 5
+
+  - id: "agent_auth"
+    name: "Authentication Agent"
+    role: "backend"
+    skills:
+      - "python"
+      - "fastapi"
+      - "jwt"
+      - "security"
+      - "bcrypt"
+    subagents: 3
+
+  - id: "agent_api"
+    name: "API Development Agent"
+    role: "backend"
+    skills:
+      - "python"
+      - "fastapi"
+      - "rest-api"
+      - "pydantic"
+    subagents: 3
+
+  - id: "agent_integration"
+    name: "Integration & QA Agent"
+    role: "qa"
+    skills:
+      - "python"
+      - "pytest"
+      - "integration-testing"
+      - "api-testing"
+    subagents: 2
+
+# Optional: Timeout settings (in seconds)
+timeouts:
+  project_creation: 300  # 5 minutes
+  agent_startup: 60      # 1 minute per agent
