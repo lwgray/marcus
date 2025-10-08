@@ -127,10 +127,13 @@ async def decompose_task(
         # Build decomposition prompt
         prompt = _build_decomposition_prompt(task, project_context)
 
+        # Extract task type for system prompt
+        task_type = task.name.split()[0].lower() if task.name else "implement"
+
         # Call AI to generate decomposition
         response = await ai_engine.generate_structured_response(
             prompt=prompt,
-            system_prompt=_get_decomposition_system_prompt(),
+            system_prompt=_get_decomposition_system_prompt(task_type),
             response_format={
                 "type": "object",
                 "properties": {
@@ -213,9 +216,14 @@ def _build_decomposition_prompt(
     task: Task, project_context: Optional[Dict[str, Any]]
 ) -> str:
     """Build the AI prompt for task decomposition."""
+    # Extract task type from task name (first word: Design/Implement/Test)
+    task_type = task.name.split()[0].lower() if task.name else "implement"
+
     prompt = f"""Decompose the following task into subtasks:
 
 **Task Name:** {task.name}
+
+**Task Type:** {task_type.upper()}
 
 **Description:** {task.description}
 
@@ -229,7 +237,72 @@ def _build_decomposition_prompt(
     if project_context:
         prompt += f"\n\n**Project Context:**\n{json.dumps(project_context, indent=2)}\n"
 
-    prompt += """
+    # Add type-specific guidance
+    if task_type == "test":
+        prompt += """
+
+**CRITICAL: This is a TESTING task. ALL subtasks MUST be testing-related:**
+
+Break this TESTING task into 3-5 testing subtasks. Each subtask must focus on writing tests, NOT implementing features.
+
+Valid testing subtask types:
+- Write unit tests for specific components
+- Create integration test scenarios
+- Write end-to-end test cases
+- Set up test fixtures and mock data
+- Perform security/performance testing
+- Create test documentation
+
+INVALID subtask types (DO NOT create these):
+- "Implement X" or "Build Y" or "Create Z" (these are implementation tasks)
+- "Design X" (this is a design task)
+- Any subtask that involves writing production code
+
+"""
+    elif task_type == "design":
+        prompt += """
+
+**CRITICAL: This is a DESIGN task. ALL subtasks MUST be design/planning-related:**
+
+Break this DESIGN task into 3-5 design subtasks. Each subtask must focus on planning and documentation, NOT implementation.
+
+Valid design subtask types:
+- Research existing solutions and best practices
+- Create wireframes, mockups, or diagrams
+- Define API specifications and contracts
+- Design data models and schemas
+- Document architectural decisions
+- Create design system components
+
+INVALID subtask types (DO NOT create these):
+- "Implement X" or "Build Y" (these are implementation tasks)
+- "Test X" (this is a testing task)
+- Any subtask that involves writing production code
+
+"""
+    elif task_type == "implement":
+        prompt += """
+
+**CRITICAL: This is an IMPLEMENTATION task. ALL subtasks MUST be implementation-related:**
+
+Break this IMPLEMENTATION task into 3-5 implementation subtasks. Each subtask must focus on building features, NOT testing or design.
+
+Valid implementation subtask types:
+- Create/implement data models or database schemas
+- Build API endpoints or services
+- Implement business logic
+- Create UI components
+- Integrate with external services
+- Add validation and error handling
+
+INVALID subtask types (DO NOT create these):
+- "Test X" or "Write tests for Y" (these are testing tasks)
+- "Design X" (this is a design task)
+- Any subtask focused purely on testing or planning
+
+"""
+    else:
+        prompt += """
 
 Break this task into 3-5 manageable subtasks that can be worked on independently or sequentially.  # noqa: E501
 
@@ -255,8 +328,87 @@ Also define **shared_conventions** that all subtasks must follow:
 - Ensure clear interfaces between subtasks
 - DO NOT create more than 5 subtasks (excluding final integration)
 - Each subtask should be testable independently
+"""
 
-**Example:**
+    # Add type-specific example
+    if task_type == "test":
+        prompt += """
+**Example for TESTING task:**
+```json
+{
+  "subtasks": [
+    {
+      "name": "Write unit tests for authentication logic",
+      "description": "Create unit tests for login, logout, and token validation functions",
+      "estimated_hours": 2.0,
+      "dependencies": [],
+      "file_artifacts": ["tests/unit/test_auth.py"],
+      "provides": "Unit test coverage for auth functions",
+      "requires": "None"
+    },
+    {
+      "name": "Create integration tests for auth API endpoints",
+      "description": "Test POST /api/login and /api/logout endpoints with various scenarios",
+      "estimated_hours": 2.5,
+      "dependencies": [0],
+      "file_artifacts": ["tests/integration/test_auth_endpoints.py"],
+      "provides": "Integration tests for auth API",
+      "requires": "Unit tests passing from subtask 1"
+    }
+  ],
+  "shared_conventions": {
+    "base_path": "tests/",
+    "file_structure": "tests/{test_type}/test_{feature}.py",
+    "test_framework": "pytest",
+    "naming_conventions": {
+      "files": "test_*.py",
+      "classes": "Test*",
+      "functions": "test_*"
+    }
+  }
+}
+```
+"""
+    elif task_type == "design":
+        prompt += """
+**Example for DESIGN task:**
+```json
+{
+  "subtasks": [
+    {
+      "name": "Research authentication best practices",
+      "description": "Research OAuth2, JWT standards, and security best practices for authentication",
+      "estimated_hours": 1.5,
+      "dependencies": [],
+      "file_artifacts": ["docs/research/auth_research.md"],
+      "provides": "Research findings and recommendations",
+      "requires": "None"
+    },
+    {
+      "name": "Design authentication API specification",
+      "description": "Define API endpoints, request/response formats, and error handling for auth system",
+      "estimated_hours": 2.0,
+      "dependencies": [0],
+      "file_artifacts": ["docs/design/auth_api_spec.md"],
+      "provides": "Complete API specification with examples",
+      "requires": "Research findings from subtask 1"
+    }
+  ],
+  "shared_conventions": {
+    "base_path": "docs/design/",
+    "file_structure": "docs/{type}/{feature}.md",
+    "documentation_format": "Markdown with diagrams",
+    "naming_conventions": {
+      "files": "snake_case.md",
+      "sections": "Title Case Headers"
+    }
+  }
+}
+```
+"""
+    else:  # implement
+        prompt += """
+**Example for IMPLEMENTATION task:**
 ```json
 {
   "subtasks": [
@@ -299,21 +451,53 @@ Also define **shared_conventions** that all subtasks must follow:
     return prompt
 
 
-def _get_decomposition_system_prompt() -> str:
-    """Get system prompt for decomposition."""
-    return """You are an expert software architect specializing in task decomposition.
+def _get_decomposition_system_prompt(task_type: str = "implement") -> str:
+    """Get system prompt for decomposition with type-specific constraints."""
+    base_prompt = """You are an expert software architect specializing in task decomposition.
 
-Your goal is to break complex tasks into manageable, well-defined subtasks that can be implemented by different agents.  # noqa: E501
+Your goal is to break complex tasks into manageable, well-defined subtasks that can be implemented by different agents.
 
 Key principles:
 1. **Clear Interfaces**: Each subtask must have clear inputs and outputs
 2. **Minimal Dependencies**: Reduce coupling where possible
 3. **Sequential When Needed**: Don't parallelize tightly coupled work
-4. **Testable Units**: Each subtask should be independently testable
-5. **File Ownership**: Each subtask should primarily work on its own files
-6. **Consistent Patterns**: Use shared conventions to avoid integration issues
+4. **File Ownership**: Each subtask should primarily work on its own files
+5. **Consistent Patterns**: Use shared conventions to avoid integration issues
+"""
 
-CRITICAL: Respond ONLY with valid JSON. No markdown, no explanations, just the JSON object."""  # noqa: E501
+    # Add type-specific constraints
+    if task_type == "test":
+        base_prompt += """
+**CRITICAL CONSTRAINTS FOR TESTING TASKS:**
+- ALL subtasks MUST be testing-related (writing tests, creating test data, etc.)
+- NEVER create implementation subtasks (no "Implement X", "Build Y", "Create Z")
+- NEVER create design subtasks (no "Design X", "Plan Y")
+- Focus on: unit tests, integration tests, test fixtures, test documentation
+- Each subtask should test a specific component or scenario
+"""
+    elif task_type == "design":
+        base_prompt += """
+**CRITICAL CONSTRAINTS FOR DESIGN TASKS:**
+- ALL subtasks MUST be design/planning-related (research, documentation, specifications)
+- NEVER create implementation subtasks (no "Implement X", "Build Y")
+- NEVER create testing subtasks (no "Test X", "Write tests for Y")
+- Focus on: research, wireframes, API specs, data models, architectural decisions
+- Each subtask should produce documentation or design artifacts
+"""
+    elif task_type == "implement":
+        base_prompt += """
+**CRITICAL CONSTRAINTS FOR IMPLEMENTATION TASKS:**
+- ALL subtasks MUST be implementation-related (building features, writing code)
+- NEVER create testing subtasks (no "Test X", "Write tests for Y")
+- NEVER create design subtasks (no "Design X", "Plan Y")
+- Focus on: building features, creating models, implementing APIs, adding logic
+- Each subtask should produce working code
+"""
+
+    base_prompt += """
+CRITICAL: Respond ONLY with valid JSON. No markdown, no explanations, just the JSON object."""
+
+    return base_prompt
 
 
 def _create_integration_subtask(
