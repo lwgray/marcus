@@ -260,6 +260,13 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 )
                 logger.info(f"After documentation enhancement: {len(safe_tasks)} tasks")
 
+                # Create and insert About task at the beginning
+                about_task = self._create_about_task(
+                    description, project_name, safe_tasks
+                )
+                safe_tasks.insert(0, about_task)
+                logger.info("Added 'About' task card at beginning of task list")
+
                 # Log safety check impact
                 added_tasks = len(safe_tasks) - len(tasks)
                 if added_tasks > 0:
@@ -482,6 +489,67 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             return "medium"
         else:
             return "low"
+
+    def _create_about_task(
+        self, description: str, project_name: str, tasks: List[Task]
+    ) -> Task:
+        """
+        Create an 'About' task card that documents the project.
+
+        Parameters
+        ----------
+        description : str
+            Original user description of the project
+        project_name : str
+            Name of the project
+        tasks : List[Task]
+            List of tasks generated for the project
+
+        Returns
+        -------
+        Task
+            About task card with project documentation
+        """
+        # Format task list with descriptions
+        task_list_md = "## Generated Tasks\n\n"
+        for idx, task in enumerate(tasks, 1):
+            task_list_md += f"### {idx}. {task.name}\n"
+            task_list_md += f"**Description:** {task.description}\n"
+            task_list_md += f"**Estimated Hours:** {task.estimated_hours}\n"
+            task_list_md += f"**Labels:** {', '.join(task.labels)}\n\n"
+
+        # Create the About card description
+        about_description = f"""# {project_name} - Project Overview
+
+## Original Description
+
+{description}
+
+{task_list_md}
+
+---
+*This card provides an overview of the project and is not assignable to agents.*
+"""
+
+        # Create the About task
+        about_task = Task(
+            id="about_project",
+            name=f"About: {project_name}",
+            description=about_description,
+            status=TaskStatus.DONE,  # Mark as completed
+            priority=Priority.LOW,
+            assigned_to=None,  # Not assignable
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=0,  # No time estimate
+            dependencies=[],
+            labels=["documentation"],  # Documentation label
+            source_type="project_about",
+            source_context={"project_name": project_name},
+        )
+
+        return about_task
 
 
 class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
