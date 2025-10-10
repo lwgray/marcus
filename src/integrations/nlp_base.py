@@ -206,6 +206,9 @@ class NaturalLanguageTaskCreator(ABC):
         """
         Decompose tasks that meet criteria and add subtasks as Planka checklist items.
 
+        Uses parallel AI calls for performance - all task decompositions are
+        executed concurrently instead of sequentially.
+
         Parameters
         ----------
         created_tasks : List[Task]
@@ -223,40 +226,80 @@ class NaturalLanguageTaskCreator(ABC):
         # Anthropic, and OpenAI. If no provider is configured,
         # decompose_task will raise a clear error message.
 
+        import asyncio
+
         from src.marcus_mcp.coordinator import decompose_task, should_decompose
 
         # Create mapping of task names to original tasks (for estimated_hours)
         task_map = {task.name: task for task in original_tasks}
 
+        # Collect all tasks that need decomposition for parallel execution
+        decomposition_jobs = []
+        task_metadata = []  # Track (created_task, original_task) pairs
+
         for created_task in created_tasks:
+            # Get original task to check estimated hours
+            original_task = task_map.get(created_task.name)
+            if not original_task:
+                continue
+
+            # Check if task should be decomposed
+            if not should_decompose(original_task):
+                continue
+
+            logger.info(
+                f"Queueing task '{created_task.name}' for decomposition "
+                f"({original_task.estimated_hours}h)"
+            )
+
+            # Add decomposition job to parallel execution list
+            decomposition_jobs.append(
+                decompose_task(original_task, self.ai_engine, project_context=None)
+            )
+            task_metadata.append((created_task, original_task))
+
+        # Execute all decompositions in parallel
+        if not decomposition_jobs:
+            logger.debug("No tasks require decomposition")
+            return
+
+        logger.info(f"Decomposing {len(decomposition_jobs)} tasks in parallel...")
+
+        decomposition_results = await asyncio.gather(
+            *decomposition_jobs, return_exceptions=True
+        )
+
+        # Process results and add checklist items
+        successful_count = 0
+        failed_count = 0
+
+        for idx, result in enumerate(decomposition_results):
+            created_task, original_task = task_metadata[idx]
+
             try:
-                # Get original task to check estimated hours
-                original_task = task_map.get(created_task.name)
-                if not original_task:
-                    continue
-
-                # Check if task should be decomposed
-                if not should_decompose(original_task):
-                    continue
-
-                logger.info(
-                    f"Decomposing task '{created_task.name}' "
-                    f"({original_task.estimated_hours}h)"
-                )
-
-                # Decompose task using AI
-                decomposition = await decompose_task(
-                    original_task, self.ai_engine, project_context=None
-                )
-
-                if not decomposition.get("success"):
-                    logger.warning(
-                        f"Failed to decompose task '{created_task.name}': "
-                        f"{decomposition.get('error')}"
+                # Handle exceptions from gather
+                if isinstance(result, Exception):
+                    failed_count += 1
+                    logger.error(
+                        (
+                            f"Decomposition failed for task "
+                            f"'{created_task.name}': {result}"
+                        ),
+                        exc_info=result,
                     )
                     continue
 
-                subtasks = decomposition.get("subtasks", [])
+                # Handle failed decomposition responses
+                if not result.get("success"):
+                    failed_count += 1
+                    logger.warning(
+                        f"Failed to decompose task '{created_task.name}': "
+                        f"{result.get('error')}"
+                    )
+                    continue
+
+                # Successfully decomposed - add subtasks
+                subtasks = result.get("subtasks", [])
                 num_subtasks = len(subtasks)
                 logger.info(
                     f"Task '{created_task.name}' decomposed into "
@@ -265,12 +308,24 @@ class NaturalLanguageTaskCreator(ABC):
 
                 # Add subtasks as checklist items in Planka
                 await self._add_subtasks_as_checklist(created_task.id, subtasks)
+                successful_count += 1
 
             except Exception as e:
+                failed_count += 1
                 logger.error(
-                    f"Error decomposing task '{created_task.name}': {e}", exc_info=True
+                    (
+                        f"Error processing decomposition for task "
+                        f"'{created_task.name}': {e}"
+                    ),
+                    exc_info=True,
                 )
-                # Continue with other tasks even if decomposition fails
+                # Continue with other tasks even if processing fails
+
+        # Log summary
+        logger.info(
+            f"Task decomposition complete: {successful_count} succeeded, "
+            f"{failed_count} failed"
+        )
 
     async def _add_subtasks_as_checklist(
         self, parent_card_id: str, subtasks: List[Dict[str, Any]]

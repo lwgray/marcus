@@ -562,17 +562,23 @@ class AdvancedPRDParser:
         analysis: PRDAnalysis,
         constraints: ProjectConstraints,
     ) -> List[Task]:
-        """Create detailed Task objects with rich metadata."""
-        tasks = []
-        task_counter = 1
+        """
+        Create detailed Task objects with rich metadata.
+
+        Uses parallel AI calls for performance - all task descriptions are
+        generated concurrently instead of sequentially.
+        """
+        import asyncio
+
+        # Collect all task generation jobs for parallel execution
+        task_generation_jobs = []
+        task_sequence = 1
 
         for epic_id, task_ids in list(task_hierarchy.items()):
             # Skip deployment-related epics based on deployment_target
             deploy_target = constraints.deployment_target
             if self._should_skip_epic(epic_id, deploy_target):
-                logger.info(
-                    f"Skipping {epic_id} for " f"deployment_target={deploy_target}"
-                )
+                logger.info(f"Skipping {epic_id} for deployment_target={deploy_target}")
                 continue
 
             for task_id in task_ids:
@@ -586,12 +592,43 @@ class AdvancedPRDParser:
                     )
                     continue
 
-                # Generate task based on ID and analysis
-                task = await self._generate_detailed_task(
-                    task_id, epic_id, analysis, constraints, task_counter
+                # Add task generation to parallel jobs instead of awaiting
+                task_generation_jobs.append(
+                    self._generate_detailed_task(
+                        task_id, epic_id, analysis, constraints, task_sequence
+                    )
                 )
-                tasks.append(task)
-                task_counter += 1
+                task_sequence += 1
+
+        # Execute all task generations in parallel with error handling
+        logger.info(
+            f"Generating {len(task_generation_jobs)} task descriptions in parallel..."
+        )
+        task_results = await asyncio.gather(
+            *task_generation_jobs, return_exceptions=True
+        )
+
+        # Filter out exceptions and collect valid tasks
+        tasks = []
+        failed_count = 0
+        for idx, result in enumerate(task_results):
+            if isinstance(result, Task):
+                tasks.append(result)
+            elif isinstance(result, Exception):
+                failed_count += 1
+                logger.error(
+                    f"Task generation failed for task {idx + 1}: {result}",
+                    exc_info=result,
+                )
+                # Continue with other tasks
+
+        if failed_count > 0:
+            logger.warning(
+                f"Task generation completed with {failed_count} failures. "
+                f"Successfully generated {len(tasks)}/{len(task_results)} tasks."
+            )
+        else:
+            logger.info(f"Successfully generated all {len(tasks)} tasks in parallel")
 
         return tasks
 
