@@ -98,7 +98,7 @@ Your tasks:
 1. Verify you're in the correct directory:
    - Current directory should be: {self.config.implementation_dir}
    - This directory should have a .git folder
-   - This directory should have .claude/claude_desktop_config.json with Marcus MCP configured
+   - Verify Marcus MCP tools are accessible (use mcp__marcus__ping to confirm)
 
 2. Use the mcp__marcus__create_project tool to create a new project
    called "{self.config.project_name}"
@@ -236,6 +236,9 @@ echo "=========================================="
 echo "PROJECT CREATOR AGENT"
 echo "Working Directory: $(pwd)"
 echo "=========================================="
+echo ""
+echo "Configuring Marcus MCP..."
+claude mcp add marcus -t http http://localhost:4298/mcp
 echo ""
 echo "Creating Marcus project: {self.config.project_name}"
 echo ""
