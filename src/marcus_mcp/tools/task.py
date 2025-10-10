@@ -5,6 +5,7 @@ This module contains tools for task operations in the Marcus system:
 - request_next_task: Get optimal task assignment for an agent
 - report_task_progress: Update progress on assigned tasks
 - report_blocker: Report blockers with AI-powered suggestions
+- unassign_task: Manually unassign a task from an agent
 """
 
 import json
@@ -1584,3 +1585,141 @@ async def get_all_board_tasks(
     except Exception as e:
         logger.error(f"Error fetching board tasks: {e}")
         return {"success": False, "error": str(e), "tasks": [], "count": 0}
+
+
+async def unassign_task(
+    task_id: str, agent_id: Optional[str], state: Any
+) -> Dict[str, Any]:
+    """
+    Unassign a task from an agent and reset it to TODO status.
+
+    This tool manually breaks task assignments, useful for recovering from
+    stuck assignments when agents crash, disconnect, or get stuck.
+
+    Parameters
+    ----------
+    task_id : str
+        The task ID to unassign
+    agent_id : Optional[str]
+        The agent ID (optional - will be auto-detected if not provided)
+    state : Any
+        Marcus server state instance
+
+    Returns
+    -------
+    Dict[str, Any]
+        Dictionary containing:
+        - success: bool
+        - message: str
+        - agent_id: str (the agent it was unassigned from)
+        - task_id: str
+    """
+    try:
+        # Initialize kanban if needed
+        await state.initialize_kanban()
+
+        # Find which agent has this task if not provided
+        if not agent_id:
+            # Check in-memory assignments
+            for a_id, assignment in state.agent_tasks.items():
+                if assignment.task_id == task_id:
+                    agent_id = a_id
+                    break
+
+            # Check agent current_tasks
+            if not agent_id:
+                for a_id, agent in state.agent_status.items():
+                    if agent.current_tasks and any(
+                        t.id == task_id for t in agent.current_tasks
+                    ):
+                        agent_id = a_id
+                        break
+
+        if not agent_id:
+            # Task not currently assigned
+            logger.warning(f"Task {task_id} is not currently assigned to any agent")
+            return {
+                "success": False,
+                "error": f"Task {task_id} is not currently assigned",
+                "task_id": task_id,
+            }
+
+        # Log the unassignment request
+        conversation_logger.log_pm_decision(
+            decision=f"Manually unassign task {task_id} from {agent_id}",
+            rationale="Manual intervention to unstick assignment",
+            confidence_score=1.0,
+            decision_factors={"manual_override": True},
+        )
+
+        logger.info(f"Unassigning task {task_id} from agent {agent_id}")
+
+        # 1. Remove from state.agent_tasks
+        if agent_id in state.agent_tasks:
+            del state.agent_tasks[agent_id]
+            logger.debug(f"Removed task from state.agent_tasks for {agent_id}")
+
+        # 2. Clear agent's current_tasks
+        if agent_id in state.agent_status:
+            agent = state.agent_status[agent_id]
+            agent.current_tasks = []
+            logger.debug(f"Cleared current_tasks for agent {agent_id}")
+
+        # 3. Remove from assignment_persistence
+        await state.assignment_persistence.remove_assignment(agent_id)
+        logger.debug(f"Removed from assignment_persistence for {agent_id}")
+
+        # 4. Remove from tasks_being_assigned
+        state.tasks_being_assigned.discard(task_id)
+        logger.debug(f"Removed task {task_id} from tasks_being_assigned")
+
+        # 5. Remove from active_operations
+        if hasattr(state, "_active_operations"):
+            state._active_operations.discard(f"task_assignment_{task_id}")
+            logger.debug("Removed from _active_operations")
+
+        # 6. Delete lease if exists
+        if hasattr(state, "lease_manager") and state.lease_manager:
+            if task_id in state.lease_manager.active_leases:
+                del state.lease_manager.active_leases[task_id]
+                logger.info(f"Removed lease for task {task_id}")
+
+        # 7. Update Kanban: Set status back to TODO, clear assigned_to
+        await state.kanban_client.update_task(
+            task_id,
+            {"status": TaskStatus.TODO, "assigned_to": None, "progress": 0},
+        )
+        logger.info(f"Updated kanban status to TODO for task {task_id}")
+
+        # Refresh project state
+        await state.refresh_project_state()
+
+        # Log conversation event
+        conversation_logger.log_worker_message(
+            agent_id,
+            "from_pm",
+            f"Task {task_id} unassigned - reset to TODO",
+            {"task_id": task_id, "manual_unassignment": True},
+        )
+
+        # Log event
+        state.log_event(
+            "task_unassigned",
+            {
+                "agent_id": agent_id,
+                "task_id": task_id,
+                "source": "manual_intervention",
+                "target": "marcus",
+            },
+        )
+
+        return {
+            "success": True,
+            "message": f"Task {task_id} successfully unassigned from {agent_id}",
+            "agent_id": agent_id,
+            "task_id": task_id,
+        }
+
+    except Exception as e:
+        logger.error(f"Error unassigning task {task_id}: {e}", exc_info=True)
+        return {"success": False, "error": str(e), "task_id": task_id}

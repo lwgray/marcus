@@ -1169,6 +1169,21 @@ class MarcusServer:
                     state=server,
                 )
 
+        if "unassign_task" in allowed_tools:
+
+            @app.tool()  # type: ignore[misc]
+            async def unassign_task(
+                task_id: str, agent_id: Optional[str] = None
+            ) -> Dict[str, Any]:
+                """Manually unassign a task from an agent."""
+                from .tools.task import unassign_task as impl
+
+                return await impl(
+                    task_id=task_id,
+                    agent_id=agent_id,
+                    state=server,
+                )
+
         if "get_all_board_tasks" in allowed_tools:
 
             @app.tool()  # type: ignore[misc]
