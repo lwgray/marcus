@@ -120,7 +120,8 @@ Your tasks:
 
 6. If creation fails, print the error and exit with code 1
 
-CRITICAL: Work in {self.config.implementation_dir} - this is where all code will be generated.
+CRITICAL: Work in {self.config.implementation_dir}
+This is where all code will be generated.
 """
         return prompt
 
@@ -231,6 +232,10 @@ START NOW!
 
         # Create a script to run in the terminal
         script = f"""#!/bin/bash
+# Source shell profile to get nvm/claude in PATH
+[ -f ~/.zshrc ] && source ~/.zshrc
+[ -f ~/.bashrc ] && source ~/.bashrc
+
 cd {self.config.implementation_dir} || exit 1
 echo "=========================================="
 echo "PROJECT CREATOR AGENT"
@@ -302,6 +307,10 @@ read -n 1
 
         # Create a script to run in the terminal
         script = f"""#!/bin/bash
+# Source shell profile to get nvm/claude in PATH
+[ -f ~/.zshrc ] && source ~/.zshrc
+[ -f ~/.bashrc ] && source ~/.bashrc
+
 cd {self.config.implementation_dir} || exit 1
 echo "=========================================="
 echo "{agent_name.upper()}"
