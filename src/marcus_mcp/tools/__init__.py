@@ -10,10 +10,8 @@ This package contains all MCP tool implementations organized by domain:
 """
 
 from .agent import get_agent_status, list_registered_agents, register_agent
-from .attachment import (
-    get_task_context,
-    log_artifact,
-)
+from .attachment import log_artifact
+from .context import get_task_context, log_decision
 from .nlp import add_feature, create_project
 from .project import get_project_status
 from .system import check_assignment_health, ping
@@ -30,7 +28,9 @@ __all__ = [
     "report_blocker",
     # Artifact tools
     "log_artifact",
+    # Context tools
     "get_task_context",
+    "log_decision",
     # Project tools
     "get_project_status",
     # System tools

@@ -5,8 +5,10 @@ This module contains tools for context management:
 - get_task_context: Get context for a specific task
 """
 
-from pathlib import Path
+import logging
 from typing import Any, Dict, List
+
+logger = logging.getLogger(__name__)
 
 
 async def log_decision(
@@ -67,12 +69,16 @@ async def log_decision(
 
         # Add comment to task if kanban is available
         if state.kanban_client:
-            comment = f"🏗️ ARCHITECTURAL DECISION by {agent_id}\\n"
-            comment += f"Decision: {what}\\n"
-            comment += f"Reasoning: {why}\\n"
-            comment += f"Impact: {impact}"
+            try:
+                comment = f"🏗️ ARCHITECTURAL DECISION by {agent_id}\\n"
+                comment += f"Decision: {what}\\n"
+                comment += f"Reasoning: {why}\\n"
+                comment += f"Impact: {impact}"
 
-            await state.kanban_client.add_comment(task_id, comment)
+                await state.kanban_client.add_comment(task_id, comment)
+            except Exception as e:
+                # Don't fail if kanban comment fails - decision is still logged
+                logger.warning(f"Failed to add kanban comment for decision: {e}")
 
         # Log event (non-blocking)
         if hasattr(state, "events") and state.events:
@@ -202,21 +208,23 @@ async def _collect_task_artifacts(
     task_id: str, task: Any, state: Any
 ) -> List[Dict[str, Any]]:
     """
-    Collect all artifacts available for this task from multiple sources.
+    Collect all artifacts available for this task from tracked sources.
 
     Returns artifacts from:
-    1. Repository-based artifacts (docs/ directory)
+    1. Artifacts logged via log_artifact for this task (in state.task_artifacts)
     2. Kanban attachments for this task
-    3. Artifacts from dependency tasks
+    3. Artifacts from dependency tasks (both logged and attached)
+
+    Does NOT scan filesystem - only returns explicitly tracked artifacts.
     """
     artifacts = []
 
     try:
-        # 1. Collect repository-based artifacts
-        repo_artifacts = _scan_repository_artifacts(task_id)
-        artifacts.extend(repo_artifacts)
+        # 1. Get artifacts logged via log_artifact
+        if hasattr(state, "task_artifacts") and task_id in state.task_artifacts:
+            artifacts.extend(state.task_artifacts[task_id].copy())
 
-        # 2. Collect kanban attachments for this task
+        # 2. Get Kanban attachments for this task
         if state.kanban_client:
             try:
                 card_id = getattr(task, "kanban_card_id", None) or task.id
@@ -232,7 +240,7 @@ async def _collect_task_artifacts(
                                     f"{attachment.get('name')}"
                                 ),
                                 "storage_type": "attachment",
-                                "artifact_type": "reference",  # Default for attachments
+                                "artifact_type": "reference",
                                 "created_by": attachment.get("userId"),
                                 "created_at": attachment.get("createdAt"),
                                 "description": f"Attachment from task {task_id}",
@@ -240,28 +248,31 @@ async def _collect_task_artifacts(
                         )
             except Exception as e:
                 # Don't fail the whole operation if kanban is unavailable
-                # Log the error for debugging but continue with artifact collection
                 print(
                     f"Warning: Failed to get kanban attachments for task {task_id}: {e}"
                 )
 
-        # 3. Collect artifacts from dependency tasks
+        # 3. Get artifacts from dependency tasks
         if task.dependencies:
             for dep_id in task.dependencies:
                 dep_task = next(
                     (t for t in state.project_tasks if t.id == dep_id), None
                 )
                 if dep_task:
-                    # Repository artifacts from dependency
-                    dep_repo_artifacts = _scan_repository_artifacts(dep_id)
-                    for artifact in dep_repo_artifacts:
-                        artifact["dependency_task_id"] = dep_id
-                        artifact["dependency_task_name"] = dep_task.name
-                        artifact["description"] = (
-                            f"{artifact['description']} "
-                            f"(from dependency: {dep_task.name})"
-                        )
-                    artifacts.extend(dep_repo_artifacts)
+                    # Logged artifacts from dependency
+                    if (
+                        hasattr(state, "task_artifacts")
+                        and dep_id in state.task_artifacts
+                    ):
+                        dep_artifacts = state.task_artifacts[dep_id].copy()
+                        for artifact in dep_artifacts:
+                            artifact["dependency_task_id"] = dep_id
+                            artifact["dependency_task_name"] = dep_task.name
+                            artifact["description"] = (
+                                f"{artifact.get('description', '')} "
+                                f"(from dependency: {dep_task.name})"
+                            )
+                        artifacts.extend(dep_artifacts)
 
                     # Kanban attachments from dependency
                     if state.kanban_client:
@@ -296,8 +307,6 @@ async def _collect_task_artifacts(
                                     )
                         except Exception as e:
                             # Don't fail if kanban is unavailable
-                            # Log the error for debugging but continue
-                            # with artifact collection
                             print(
                                 f"Warning: Failed to get kanban attachments "
                                 f"for dependency {dep_id}: {e}"
@@ -305,62 +314,6 @@ async def _collect_task_artifacts(
 
     except Exception as e:
         # Don't fail the whole context operation if artifact collection fails
-        # Log the error for debugging but return partial results
         print(f"Warning: Artifact collection encountered an error: {e}")
 
     return artifacts
-
-
-def _scan_repository_artifacts(task_id: str) -> List[Dict[str, Any]]:
-    """
-    Scan repository for artifacts that might be relevant to this task.
-
-    Looks in docs/ directories for specifications, documentation, etc.
-    """
-    artifacts = []
-    docs_paths = [
-        "docs/api",
-        "docs/schema",
-        "docs/specifications",
-        "docs/architecture",
-        "docs/setup",
-        "docs",
-    ]
-
-    for docs_path in docs_paths:
-        path = Path(docs_path)
-        if path.exists() and path.is_dir():
-            for file_path in path.rglob("*"):
-                if file_path.is_file() and not file_path.name.startswith("."):
-                    # Determine artifact type based on location and content
-                    artifact_type = _determine_artifact_type(file_path)
-
-                    artifacts.append(
-                        {
-                            "filename": file_path.name,
-                            "location": str(file_path),
-                            "storage_type": "repository",
-                            "artifact_type": artifact_type,
-                            "description": (
-                                f"{artifact_type.title()} file in repository"
-                            ),
-                        }
-                    )
-
-    return artifacts
-
-
-def _determine_artifact_type(file_path: Path) -> str:
-    """Determine artifact type based on file path and extension."""
-    file_str = str(file_path).lower()
-
-    if "api" in file_str or file_path.suffix in [".yaml", ".yml", ".json"]:
-        if "schema" in file_str or "database" in file_str:
-            return "specification"
-        return "specification"
-    elif file_path.suffix == ".md":
-        if "architecture" in file_str or "design" in file_str:
-            return "documentation"
-        return "documentation"
-    else:
-        return "documentation"

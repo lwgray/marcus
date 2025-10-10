@@ -15,9 +15,22 @@ import pytest
 
 from src.marcus_mcp.tools.attachment import (
     _discover_artifacts_in_standard_locations,
-    get_task_context,
     log_artifact,
 )
+from src.marcus_mcp.tools.context import get_task_context
+
+
+class MockContext:
+    """Mock context system for testing."""
+
+    async def get_context(self, task_id: str, dependencies: List[str]) -> Any:
+        """Mock get_context method."""
+
+        class MockContextResult:
+            def to_dict(self) -> Dict[str, Any]:
+                return {"implementations": [], "decisions": []}
+
+        return MockContextResult()
 
 
 class MockState:
@@ -29,6 +42,7 @@ class MockState:
         self.task_blockers: Dict[str, Any] = {}
         self.project_tasks: List[Any] = []
         self.kanban_client: Optional[Any] = None
+        self.context = MockContext()  # Add context for get_task_context
 
 
 class TestArtifactProjectRoot:
@@ -138,8 +152,8 @@ class TestArtifactProjectRoot:
                 ), f"{test_file} should not exist in Marcus directory"
 
     @pytest.mark.asyncio
-    async def test_get_task_context_with_project_root(self):
-        """Test that get_task_context only returns artifacts from specified directory."""
+    async def test_get_task_context_returns_logged_artifacts(self):
+        """Test that get_task_context returns artifacts logged for this task."""
         with tempfile.TemporaryDirectory() as temp_dir:
             working_dir = Path(temp_dir)
             state = MockState()
@@ -163,7 +177,7 @@ class TestArtifactProjectRoot:
             )
             state.project_tasks = [task]
 
-            # Create some artifacts in the working directory
+            # Log artifact for this task
             await log_artifact(
                 task_id="test-task-4",
                 filename="spec.md",
@@ -173,43 +187,38 @@ class TestArtifactProjectRoot:
                 state=state,
             )
 
-            # Create artifact in a different directory (should not be found)
-            with tempfile.TemporaryDirectory() as other_dir:
-                other_working_dir = Path(other_dir)
-                other_state = MockState()
-                await log_artifact(
-                    task_id="other-task",
-                    filename="other.md",
-                    content="# Other",
-                    artifact_type="documentation",
-                    project_root=str(other_working_dir),
-                    state=other_state,
-                )
+            # Log artifact for a different task (should NOT be in our context)
+            other_state = MockState()
+            other_state.project_tasks = []
+            await log_artifact(
+                task_id="other-task",
+                filename="other.md",
+                content="# Other",
+                artifact_type="documentation",
+                project_root=str(working_dir),
+                state=other_state,
+            )
 
-                # Get context with project_root
-                result = await get_task_context(
-                    task_id="test-task-4",
-                    project_root=str(working_dir),
-                    state=state,
-                )
+            # Get context - should only return artifacts for test-task-4
+            result = await get_task_context(
+                task_id="test-task-4",
+                state=state,
+            )
 
-                assert result["success"] is True
-                context = result["context"]
-                assert "artifacts" in context
+            assert result["success"] is True
+            context = result["context"]
+            assert "artifacts" in context
 
-                # Should only find artifacts from working_dir
-                artifacts = context["artifacts"]
-                assert len(artifacts) >= 1  # At least the one we created
-                assert all(
-                    "spec.md" in a["filename"] or a.get("discovered", False)
-                    for a in artifacts
-                )
-                # Should not find artifacts from other directory
-                assert not any("other.md" in a["filename"] for a in artifacts)
+            # Should only find artifacts logged for this task
+            artifacts = context["artifacts"]
+            assert len(artifacts) == 1  # Exactly the one we logged
+            assert artifacts[0]["filename"] == "spec.md"
+            # Should NOT find artifacts from other task
+            assert not any("other.md" in a["filename"] for a in artifacts)
 
     @pytest.mark.asyncio
-    async def test_get_task_context_without_project_root_returns_empty(self):
-        """Test that get_task_context returns empty artifacts without project_root."""
+    async def test_get_task_context_returns_empty_when_no_artifacts_logged(self):
+        """Test that get_task_context returns empty artifacts when none are logged."""
         state = MockState()
 
         # Create a task
@@ -231,17 +240,19 @@ class TestArtifactProjectRoot:
         )
         state.project_tasks = [task]
 
-        # Get context without project_root
+        # Don't log any artifacts for this task
+
+        # Get context
         result = await get_task_context(
             task_id="test-task-5",
             state=state,
         )
 
-        # Should succeed but with no discovered artifacts
+        # Should succeed but with no artifacts
         assert result["success"] is True
         context = result["context"]
         assert "artifacts" in context
-        assert context["artifacts"] == []  # No artifacts without working directory
+        assert context["artifacts"] == []  # No artifacts logged for this task
 
     @pytest.mark.asyncio
     async def test_multiple_agents_same_project_share_artifacts(self):
