@@ -26,6 +26,7 @@ async def list_projects(server: Any, arguments: Dict[str, Any]) -> List[Dict[str
         Optional filters:
         - filter_tags: List of tags to filter by
         - provider: Provider to filter by (planka, linear, github)
+        - force_sync: Force sync from Planka (default: True)
 
     Returns
     -------
@@ -34,16 +35,21 @@ async def list_projects(server: Any, arguments: Dict[str, Any]) -> List[Dict[str
     """
     filter_tags = arguments.get("filter_tags")
     provider = arguments.get("provider")
+    force_sync = arguments.get("force_sync", True)
 
-    # Auto-sync from Planka before listing
-    try:
-        await discover_planka_projects(server, {"auto_sync": True})
-    except Exception as e:
-        # Log but don't fail if sync fails
-        server.log_event(
-            "list_projects_auto_sync_failed",
-            {"error": str(e), "error_type": type(e).__name__},
-        )
+    # Always sync from Planka to ensure we have latest projects
+    if force_sync:
+        try:
+            sync_result = await discover_planka_projects(server, {"auto_sync": True})
+            if not sync_result.get("success"):
+                logger.warning(f"Planka sync failed: {sync_result.get('error')}")
+        except Exception as e:
+            # Log but don't fail if sync fails
+            logger.error(f"Failed to sync from Planka: {e}")
+            server.log_event(
+                "list_projects_auto_sync_failed",
+                {"error": str(e), "error_type": type(e).__name__},
+            )
 
     # Get projects from registry
     projects = await server.project_registry.list_projects(
