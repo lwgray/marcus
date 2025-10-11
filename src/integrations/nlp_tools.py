@@ -44,8 +44,10 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
     Refactored to use base class and eliminate code duplication.
     """
 
-    def __init__(self, kanban_client: Any, ai_engine: Any) -> None:
-        super().__init__(kanban_client, ai_engine)
+    def __init__(
+        self, kanban_client: Any, ai_engine: Any, subtask_manager: Any = None
+    ) -> None:
+        super().__init__(kanban_client, ai_engine, subtask_manager)
         self.prd_parser = AdvancedPRDParser()
         self.board_analyzer = BoardAnalyzer()
         self.context_detector = ContextDetector(self.board_analyzer)
@@ -119,7 +121,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         else:
             logger.info("No dependencies returned from PRD parser")
 
-        return prd_result.tasks
+        return prd_result.tasks  # type: ignore[no-any-return]
 
     async def create_project_from_description(
         self,
@@ -334,7 +336,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             if isinstance(e, MarcusBaseError):
                 logger.error(f"Marcus error during project creation: {e}")
                 # Return proper MCP error response
-                return handle_mcp_tool_error(
+                return handle_mcp_tool_error(  # type: ignore[no-any-return]
                     e,
                     "create_project",
                     {
@@ -357,7 +359,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 )
 
                 logger.error(f"Unexpected error creating project: {unexpected_error}")
-                return handle_mcp_tool_error(
+                return handle_mcp_tool_error(  # type: ignore[no-any-return]
                     unexpected_error,
                     "create_project",
                     {
@@ -1073,9 +1075,14 @@ async def create_project_from_natural_language(
                 ),
             }
 
+        # Get subtask_manager if available (GH-62 fix)
+        subtask_manager = getattr(state, "subtask_manager", None)
+
         # Initialize project creator
         creator = NaturalLanguageProjectCreator(
-            kanban_client=state.kanban_client, ai_engine=state.ai_engine
+            kanban_client=state.kanban_client,
+            ai_engine=state.ai_engine,
+            subtask_manager=subtask_manager,
         )
 
         # Create project

@@ -568,7 +568,7 @@ async def create_tasks(
             state, {"project_name": project_name, "board_name": board_name}
         )
         if not select_result.get("success"):
-            return select_result
+            return select_result  # type: ignore[no-any-return]
     else:
         # Use active project
         active_project = await state.project_registry.get_active_project()
@@ -652,9 +652,14 @@ async def create_tasks(
         # Create a temporary project name for AI processing
         temp_project_name = current_project.name or "Task Breakdown"
 
+        # Get subtask_manager if available (GH-62 fix)
+        subtask_manager = getattr(state, "subtask_manager", None)
+
         # Initialize project creator
         creator = NaturalLanguageProjectCreator(
-            kanban_client=kanban_client, ai_engine=state.ai_engine
+            kanban_client=kanban_client,
+            ai_engine=state.ai_engine,
+            subtask_manager=subtask_manager,
         )
 
         # Use the creator to parse tasks from description

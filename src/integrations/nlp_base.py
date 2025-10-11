@@ -30,7 +30,12 @@ class NaturalLanguageTaskCreator(ABC):
     - Error handling
     """
 
-    def __init__(self, kanban_client: Any, ai_engine: Any = None) -> None:
+    def __init__(
+        self,
+        kanban_client: Any,
+        ai_engine: Any = None,
+        subtask_manager: Any = None,
+    ) -> None:
         """
         Initialize the base task creator.
 
@@ -40,9 +45,12 @@ class NaturalLanguageTaskCreator(ABC):
             Kanban board client with create_task method
         ai_engine : Any, optional
             Optional AI engine for enhanced processing
+        subtask_manager : Any, optional
+            Optional SubtaskManager for registering decomposed subtasks
         """
         self.kanban_client = kanban_client
         self.ai_engine = ai_engine
+        self.subtask_manager = subtask_manager
         self.task_classifier = EnhancedTaskClassifier()
         self.task_builder = TaskBuilder()
         self.safety_checker = SafetyChecker()
@@ -277,15 +285,15 @@ class NaturalLanguageTaskCreator(ABC):
             created_task, original_task = task_metadata[idx]
 
             try:
-                # Handle exceptions from gather
-                if isinstance(result, Exception):
+                # Handle exceptions from gather (both Exception and BaseException)
+                if isinstance(result, BaseException):
                     failed_count += 1
                     logger.error(
                         (
                             f"Decomposition failed for task "
                             f"'{created_task.name}': {result}"
                         ),
-                        exc_info=result,
+                        exc_info=result if isinstance(result, Exception) else None,
                     )
                     continue
 
@@ -300,11 +308,37 @@ class NaturalLanguageTaskCreator(ABC):
 
                 # Successfully decomposed - add subtasks
                 subtasks = result.get("subtasks", [])
+                shared_conventions = result.get("shared_conventions", {})
                 num_subtasks = len(subtasks)
                 logger.info(
                     f"Task '{created_task.name}' decomposed into "
                     f"{num_subtasks} subtasks"
                 )
+
+                # Register subtasks with SubtaskManager (GH-62 fix)
+                if self.subtask_manager:
+                    from src.marcus_mcp.coordinator.subtask_manager import (
+                        SubtaskMetadata,
+                    )
+
+                    metadata = SubtaskMetadata(
+                        shared_conventions=shared_conventions,
+                        decomposed_by="ai",
+                    )
+                    self.subtask_manager.add_subtasks(
+                        parent_task_id=created_task.id,
+                        subtasks=subtasks,
+                        metadata=metadata,
+                    )
+                    logger.info(
+                        f"Registered {num_subtasks} subtasks with SubtaskManager "
+                        f"for task '{created_task.name}'"
+                    )
+                else:
+                    logger.warning(
+                        "SubtaskManager not available - subtasks will only exist as "
+                        "checklist items (GH-62)"
+                    )
 
                 # Add subtasks as checklist items in Planka
                 await self._add_subtasks_as_checklist(created_task.id, subtasks)
