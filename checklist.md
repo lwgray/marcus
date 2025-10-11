@@ -44,6 +44,7 @@
 - [ ] [Complete Seneca Integration](https://github.com/lwgray/marcus/issues/31) (#31)
 - [ ] [Build Epictetus Observability Layer](https://github.com/lwgray/marcus/issues/30) (#30)
 - [ ] [Achieve SOTA on Multi-Agent Development Benchmarks](https://github.com/lwgray/marcus/issues/32) (#32)
+- [ ] [Conversation Debugger v3: Advanced Features (WebSocket, Search, Export)](https://github.com/lwgray/marcus/issues/63) (#63) - Real-time updates, full-text search, and advanced diagnostics
 
 ## 📹 Release Tasks
 
