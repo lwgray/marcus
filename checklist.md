@@ -3,6 +3,9 @@
 ## 🔴 Critical Issues
 
 - [ ] [get_task_context MCP tool exceeds token limit (2.3M tokens)](https://github.com/lwgray/marcus/issues/59) (#59) - Tool returns responses exceeding 25K token limit, blocking agents from accessing task context
+- [ ] [[CRITICAL] Remove hard-coded MCP client paths](https://github.com/lwgray/marcus/issues/66) (#66) - 🔴 Blocks production deployment, hard-coded paths prevent testing
+- [ ] [[CRITICAL] Create MCPSessionManager utility to eliminate duplication](https://github.com/lwgray/marcus/issues/67) (#67) - 🔴 ~200 lines of duplicated MCP session management code
+- [ ] [[CRITICAL] Centralize configuration management](https://github.com/lwgray/marcus/issues/68) (#68) - 🔴 Scattered config makes deployment difficult
 
 ## 🐛 Known Bugs
 
@@ -37,6 +40,10 @@
 - [ ] [Refactor ai_analysis_engine.py: Separate providers](https://github.com/lwgray/marcus/issues/16) (#16)
 - [ ] [Refactor advanced_parser.py: Decompose parser monolith](https://github.com/lwgray/marcus/issues/13) (#13)
 - [ ] [Create Comprehensive Refactoring Documentation](https://github.com/lwgray/marcus/issues/17) (#17)
+- [ ] [Refactor task assignment logic into separate services](https://github.com/lwgray/marcus/issues/69) (#69) - Split 311-line monolith into focused services
+- [ ] [Eliminate status/priority normalization duplication](https://github.com/lwgray/marcus/issues/70) (#70) - Consolidate 8+ duplicated mapping implementations
+- [ ] [Add circuit breaker pattern to external service calls](https://github.com/lwgray/marcus/issues/71) (#71) - 🟡 Improve resilience with circuit breakers
+- [ ] [Create task graph algorithms module](https://github.com/lwgray/marcus/issues/72) (#72) - Centralize graph operations for dependencies
 
 ## 🎯 Future Features
 
