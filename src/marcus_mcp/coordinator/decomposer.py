@@ -147,7 +147,7 @@ async def decompose_task(
                                 "estimated_hours": {"type": "number"},
                                 "dependencies": {
                                     "type": "array",
-                                    "items": {"type": "string"},
+                                    "items": {"type": "integer"},
                                 },
                                 "file_artifacts": {
                                     "type": "array",
@@ -621,6 +621,9 @@ def _adjust_subtask_dependencies(
     """
     Adjust subtask dependencies to use actual subtask IDs instead of indices.
 
+    Converts integer dependency indices (0-based) to actual subtask IDs
+    in format: {parent_task_id}_sub_{index+1}
+
     Parameters
     ----------
     parent_task_id : str
@@ -631,18 +634,35 @@ def _adjust_subtask_dependencies(
     Returns
     -------
     Dict[str, Any]
-        Decomposition with ID-based dependencies
+        Decomposition with actual subtask ID-based dependencies
     """
-    # Create mapping of index -> subtask_id
-    index_to_id = {}
-    for idx in range(len(decomposition["subtasks"])):
-        index_to_id[idx] = f"{parent_task_id}_sub_{idx + 1}"
+    subtasks = decomposition["subtasks"]
+
+    # Create mapping of index -> actual subtask_id
+    index_to_id = {
+        idx: f"{parent_task_id}_sub_{idx + 1}" for idx in range(len(subtasks))
+    }
 
     # Update dependencies in each subtask
-    for idx, subtask in enumerate(decomposition["subtasks"]):
+    for idx, subtask in enumerate(subtasks):
         if "dependencies" in subtask and subtask["dependencies"]:
-            subtask["dependencies"] = [
-                index_to_id[dep_idx] for dep_idx in subtask["dependencies"]
-            ]
+            new_deps = []
+            for dep_idx in subtask["dependencies"]:
+                if not isinstance(dep_idx, int):
+                    logger.error(
+                        f"Subtask {idx} has non-integer dependency: {dep_idx} "
+                        f"(type: {type(dep_idx)}). Schema should enforce integer type."
+                    )
+                    continue
+
+                if 0 <= dep_idx < len(subtasks):
+                    new_deps.append(index_to_id[dep_idx])
+                else:
+                    logger.warning(
+                        f"Subtask {idx} has invalid dependency index {dep_idx} "
+                        f"(valid range: 0-{len(subtasks)-1})"
+                    )
+
+            subtask["dependencies"] = new_deps
 
     return decomposition
