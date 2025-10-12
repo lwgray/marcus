@@ -196,8 +196,6 @@ class PlankaKanban(KanbanInterface):  # type: ignore[misc]
             elif status_lower in ["blocked", "on hold"]:
                 target_list_name = "blocked"
 
-        logger.info(f"Creating task '{card_data['name']}' in list: {target_list_name}")
-
         # Find target list and create card using direct MCP call
         async with stdio_client(self._server_params) as (read, write):
             async with ClientSession(read, write) as session:
