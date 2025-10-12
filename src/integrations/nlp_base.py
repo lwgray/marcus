@@ -229,6 +229,12 @@ class NaturalLanguageTaskCreator(ABC):
             logger.debug("No AI engine available for task decomposition - skipping")
             return
 
+        # Log decomposition context
+        logger.debug(
+            f"Task decomposition started: {len(created_tasks)} tasks, "
+            f"SubtaskManager available: {self.subtask_manager is not None}"
+        )
+
         # Note: AI engine now uses LLMAbstraction which automatically
         # checks provider availability and supports local models (Ollama),
         # Anthropic, and OpenAI. If no provider is configured,

@@ -106,7 +106,10 @@ def load_conversations(
                             continue
 
                         # Filter by conversation type
-                        if filter_type and entry.get("conversation_type") != filter_type:
+                        if (
+                            filter_type
+                            and entry.get("conversation_type") != filter_type
+                        ):
                             continue
 
                         conversations.append(entry)
@@ -253,7 +256,11 @@ def get_stats():
         "by_type": {},
         "by_worker": {},
         "recent_activity": len(
-            [c for c in conversations if format_timestamp(c.get("timestamp", "")) == "Just now"]
+            [
+                c
+                for c in conversations
+                if format_timestamp(c.get("timestamp", "")) == "Just now"
+            ]
         ),
     }
 
