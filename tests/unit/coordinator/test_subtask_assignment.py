@@ -11,6 +11,7 @@ import pytest
 
 from src.core.models import Priority, Task, TaskStatus
 from src.marcus_mcp.coordinator.subtask_assignment import (
+    _are_dependencies_satisfied,
     convert_subtask_to_task,
     find_next_available_subtask,
 )
@@ -332,3 +333,231 @@ class TestSubtaskAssignment:
         assert subtask2.name == "Subtask 2"
         assert subtask1 is not None
         assert subtask2.id != subtask1.id
+
+
+class TestDependencyChecking:
+    """Test suite for GH-64: dependency checking in subtask assignment."""
+
+    def test_no_dependencies_returns_true(self):
+        """Test that tasks with no dependencies are always satisfied."""
+        task = Task(
+            id="task1",
+            name="Task 1",
+            description="Test task",
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            dependencies=[],
+        )
+        all_tasks = [task]
+
+        assert _are_dependencies_satisfied(task, all_tasks) is True
+
+    def test_all_dependencies_done_returns_true(self):
+        """Test that tasks with all dependencies DONE are satisfied."""
+        dep1 = Task(
+            id="dep1",
+            name="Dependency 1",
+            description="First dependency",
+            status=TaskStatus.DONE,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+        dep2 = Task(
+            id="dep2",
+            name="Dependency 2",
+            description="Second dependency",
+            status=TaskStatus.DONE,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+        task = Task(
+            id="task1",
+            name="Task 1",
+            description="Test task",
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            dependencies=["dep1", "dep2"],
+        )
+        all_tasks = [dep1, dep2, task]
+
+        assert _are_dependencies_satisfied(task, all_tasks) is True
+
+    def test_incomplete_dependencies_returns_false(self):
+        """Test that tasks with incomplete dependencies are not satisfied."""
+        dep1 = Task(
+            id="dep1",
+            name="Dependency 1",
+            description="First dependency",
+            status=TaskStatus.DONE,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+        dep2 = Task(
+            id="dep2",
+            name="Dependency 2",
+            description="Second dependency",
+            status=TaskStatus.TODO,  # Not done!
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+        task = Task(
+            id="task1",
+            name="Task 1",
+            description="Test task",
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            dependencies=["dep1", "dep2"],
+        )
+        all_tasks = [dep1, dep2, task]
+
+        assert _are_dependencies_satisfied(task, all_tasks) is False
+
+    def test_in_progress_dependency_returns_false(self):
+        """Test that tasks with IN_PROGRESS dependencies are not satisfied."""
+        dep = Task(
+            id="dep1",
+            name="Dependency 1",
+            description="First dependency",
+            status=TaskStatus.IN_PROGRESS,  # Not DONE
+            priority=Priority.MEDIUM,
+            assigned_to="agent-1",
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+        task = Task(
+            id="task1",
+            name="Task 1",
+            description="Test task",
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            dependencies=["dep1"],
+        )
+        all_tasks = [dep, task]
+
+        assert _are_dependencies_satisfied(task, all_tasks) is False
+
+    def test_design_implement_test_workflow(self, subtask_manager):
+        """
+        Test GH-64: Design → Implement → Test workflow with dependencies.
+
+        Ensures that Test subtasks are only available after Design and Implement
+        parent tasks are complete.
+        """
+        # Create three tasks with proper dependencies
+        design_task = Task(
+            id="design1",
+            name="Design Task",
+            description="Design",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            dependencies=[],
+        )
+        implement_task = Task(
+            id="implement1",
+            name="Implement Task",
+            description="Implement",
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            dependencies=["design1"],
+        )
+        test_task = Task(
+            id="test1",
+            name="Test Task",
+            description="Test",
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            dependencies=["design1", "implement1"],
+        )
+
+        # Add subtasks to each
+        design_subtasks = [
+            {"name": "Design Subtask 1", "estimated_hours": 2.0, "dependencies": []}
+        ]
+        implement_subtasks = [
+            {
+                "name": "Implement Subtask 1",
+                "estimated_hours": 2.0,
+                "dependencies": [],
+            }
+        ]
+        test_subtasks = [
+            {"name": "Test Subtask 1", "estimated_hours": 2.0, "dependencies": []}
+        ]
+
+        subtask_manager.add_subtasks(design_task.id, design_subtasks)
+        subtask_manager.add_subtasks(implement_task.id, implement_subtasks)
+        subtask_manager.add_subtasks(test_task.id, test_subtasks)
+
+        all_tasks = [design_task, implement_task, test_task]
+
+        # Phase 1: Only design subtasks should be available
+        result = find_next_available_subtask(
+            agent_id="agent1",
+            project_tasks=all_tasks,
+            subtask_manager=subtask_manager,
+            assigned_task_ids=set(),
+        )
+        assert result is not None
+        assert result.parent_task_id == "design1"
+
+        # Implement and Test should NOT be available yet
+        assert not _are_dependencies_satisfied(implement_task, all_tasks)
+        assert not _are_dependencies_satisfied(test_task, all_tasks)
+
+        # Phase 2: Design is DONE, implement subtasks should be available
+        design_task.status = TaskStatus.DONE
+        result = find_next_available_subtask(
+            agent_id="agent1",
+            project_tasks=all_tasks,
+            subtask_manager=subtask_manager,
+            assigned_task_ids=set(),
+        )
+        assert result is not None
+        assert result.parent_task_id == "implement1"
+
+        # Test should still NOT be available
+        assert _are_dependencies_satisfied(implement_task, all_tasks)
+        assert not _are_dependencies_satisfied(test_task, all_tasks)
+
+        # Phase 3: Both Design and Implement DONE, test subtasks available
+        implement_task.status = TaskStatus.DONE
+        result = find_next_available_subtask(
+            agent_id="agent1",
+            project_tasks=all_tasks,
+            subtask_manager=subtask_manager,
+            assigned_task_ids=set(),
+        )
+        assert result is not None
+        assert result.parent_task_id == "test1"
+
+        # All dependencies satisfied
+        assert _are_dependencies_satisfied(test_task, all_tasks)

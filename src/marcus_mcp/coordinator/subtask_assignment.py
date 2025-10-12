@@ -14,6 +14,44 @@ from src.marcus_mcp.coordinator.subtask_manager import Subtask, SubtaskManager
 logger = logging.getLogger(__name__)
 
 
+def _are_dependencies_satisfied(task: Task, all_tasks: List[Task]) -> bool:
+    """
+    Check if all dependencies of a task are completed.
+
+    This ensures that subtasks from a parent task are only available
+    after all of the parent task's dependencies are satisfied.
+
+    Parameters
+    ----------
+    task : Task
+        The task to check dependencies for
+    all_tasks : List[Task]
+        All tasks in the project
+
+    Returns
+    -------
+    bool
+        True if all dependencies are satisfied (or no dependencies exist)
+    """
+    if not task.dependencies:
+        return True
+
+    # Create a mapping of task IDs to their status
+    task_status_map = {t.id: t.status for t in all_tasks}
+
+    # Check if all dependencies are DONE
+    for dep_id in task.dependencies:
+        dep_status = task_status_map.get(dep_id)
+        if dep_status != TaskStatus.DONE:
+            logger.debug(
+                f"Parent task {task.name} has unsatisfied dependency: "
+                f"{dep_id} (status: {dep_status})"
+            )
+            return False
+
+    return True
+
+
 def find_next_available_subtask(
     agent_id: str,
     project_tasks: List[Task],
@@ -52,6 +90,15 @@ def find_next_available_subtask(
         # Skip if parent task is already DONE (allow TODO and IN_PROGRESS)
         # This enables parallel assignment of multiple subtasks from the same parent
         if task.status == TaskStatus.DONE:
+            continue
+
+        # GH-64: Check if parent task dependencies are satisfied
+        # Subtasks should only be available after parent's dependencies complete
+        if not _are_dependencies_satisfied(task, project_tasks):
+            logger.debug(
+                f"Skipping subtasks for '{task.name}' - "
+                "parent dependencies not satisfied"
+            )
             continue
 
         # Get all subtasks for this parent
