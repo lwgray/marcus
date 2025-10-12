@@ -174,14 +174,47 @@ class KanbanClientWithCreate(KanbanClient):
                     else:
                         lists = []
 
-                    # Look for Backlog or TODO list
+                    # Determine target list based on status field
+                    status = task_data.get("status")
+                    target_list_name = "backlog"  # Default
+
+                    # Map status to list name
+                    if isinstance(status, str):
+                        status_lower = status.lower()
+                        if status_lower in ["done", "completed"]:
+                            target_list_name = "done"
+                        elif status_lower in ["in_progress", "in progress", "active"]:
+                            target_list_name = "in progress"
+                        elif status_lower in ["blocked", "on hold"]:
+                            target_list_name = "blocked"
+                        # else: remains "backlog" for "todo" or any other value
+
+                    # DEBUG: Log status mapping for About tasks
+                    if "About" in task_data.get("name", ""):
+                        logger.info(
+                            f"[DEBUG] create_task for '{task_data.get('name')}': "
+                            f"status={status}, target_list_name={target_list_name}"
+                        )
+
+                    # Find the target list by name
                     for lst in lists:
                         list_name_lower = lst.get("name", "").lower()
-                        if "backlog" in list_name_lower or "todo" in list_name_lower:
+                        if target_list_name in list_name_lower:
                             target_list = lst
                             break
 
-                    # If no backlog/todo list found, use the first list
+                    # Fallback: If target list not found, look for backlog/todo
+                    if not target_list:
+                        for lst in lists:
+                            list_name_lower = lst.get("name", "").lower()
+                            if (
+                                "backlog" in list_name_lower
+                                or "todo" in list_name_lower
+                            ):
+                                target_list = lst
+                                break
+
+                    # If still no target list found, use the first list
                     if not target_list and lists:
                         target_list = lists[0]
 
