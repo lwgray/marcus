@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+
+{% block title %}Conversations - Marcus Debugger{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Filters Section -->
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <h2 class="text-lg font-semibold text-gray-800 mb-4">Filters</h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <!-- Project Filter -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Project</label>
+                <select id="project-filter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    {% for project in projects %}
+                    <option value="{{ project }}">{{ project }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Time Range Filter -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Time Range</label>
+                <select id="hours-filter"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        hx-get="/api/conversations"
+                        hx-trigger="change"
+                        hx-target="#timeline"
+                        hx-include="#worker-filter,#type-filter,#limit-filter">
+                    <option value="1">Last 1 hour</option>
+                    <option value="4">Last 4 hours</option>
+                    <option value="24" selected>Last 24 hours</option>
+                    <option value="168">Last 7 days</option>
+                    <option value="720">Last 30 days</option>
+                </select>
+            </div>
+
+            <!-- Worker Filter -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Worker</label>
+                <select id="worker-filter"
+                        name="worker_id"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        hx-get="/api/conversations"
+                        hx-trigger="change"
+                        hx-target="#timeline"
+                        hx-include="#hours-filter,#type-filter,#limit-filter">
+                    <option value="">All Workers</option>
+                    {% for worker in workers %}
+                    <option value="{{ worker }}">{{ worker }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Conversation Type Filter -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Event Type</label>
+                <select id="type-filter"
+                        name="filter_type"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        hx-get="/api/conversations"
+                        hx-trigger="change"
+                        hx-target="#timeline"
+                        hx-include="#hours-filter,#worker-filter,#limit-filter">
+                    <option value="">All Events</option>
+                    <option value="pm_to_worker">🤖 Marcus → Worker</option>
+                    <option value="worker_to_pm">👷 Worker → Marcus</option>
+                    <option value="decision">🧠 Marcus Decisions</option>
+                    <option value="internal_thinking">💭 Marcus Thinking</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Hidden limit field -->
+        <input type="hidden" id="limit-filter" name="limit" value="50">
+
+        <!-- Quick Actions -->
+        <div class="mt-4 flex items-center space-x-4">
+            <button
+                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                hx-get="/api/conversations"
+                hx-trigger="click"
+                hx-target="#timeline"
+                hx-include="#hours-filter,#worker-filter,#type-filter,#limit-filter">
+                🔄 Refresh Now
+            </button>
+
+            <div class="text-sm text-gray-600">
+                Auto-refreshes every 5 seconds
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Banner -->
+    <div id="stats-banner"
+         class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200 p-4"
+         hx-get="/api/stats"
+         hx-trigger="load, every 5s"
+         hx-swap="innerHTML">
+        <div class="flex items-center justify-center space-x-8 text-sm">
+            <div class="flex items-center space-x-2">
+                <span class="text-gray-600">Loading stats...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Timeline Section -->
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+        <div class="p-6 border-b border-gray-200">
+            <h2 class="text-lg font-semibold text-gray-800">Conversation Timeline</h2>
+        </div>
+
+        <div id="timeline"
+             class="divide-y divide-gray-200"
+             hx-get="/api/conversations"
+             hx-trigger="load, every 5s"
+             hx-include="#hours-filter,#worker-filter,#type-filter,#limit-filter">
+            <!-- Conversations loaded here via HTMX -->
+            <div class="p-8 text-center text-gray-500">
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <p class="mt-4">Loading conversations...</p>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Handle HTMX responses for timeline
+document.body.addEventListener('htmx:afterSwap', function(event) {
+    if (event.detail.target.id === 'timeline') {
+        const conversations = JSON.parse(event.detail.xhr.responseText);
+        renderConversations(conversations);
+    }
+
+    if (event.detail.target.id === 'stats-banner') {
+        const stats = JSON.parse(event.detail.xhr.responseText);
+        renderStats(stats);
+    }
+});
+
+function renderConversations(conversations) {
+    const timeline = document.getElementById('timeline');
+
+    if (conversations.length === 0) {
+        timeline.innerHTML = `
+            <div class="p-8 text-center text-gray-500">
+                <span class="text-4xl">📭</span>
+                <p class="mt-4">No conversations found for the selected filters</p>
+                <p class="text-sm mt-2">Try adjusting your time range or filters</p>
+            </div>
+        `;
+        return;
+    }
+
+    timeline.innerHTML = conversations.map(conv => renderConversationCard(conv)).join('');
+}
+
+function renderConversationCard(conv) {
+    const convType = conv.conversation_type || 'unknown';
+    const workerId = conv.worker_id || 'unknown';
+    const message = conv.message || conv.event || 'No message';
+    const timestamp = conv.timestamp || '';
+    const metadata = conv.metadata || conv;
+
+    // Determine direction and styling
+    const isFromMarcus = convType.includes('pm_to_worker') || convType === 'decision' || convType === 'internal_thinking';
+    const borderColor = isFromMarcus ? 'border-blue-500' : 'border-green-500';
+    const bgColor = isFromMarcus ? 'bg-blue-50' : 'bg-green-50';
+
+    // Direction display
+    const direction = isFromMarcus
+        ? `<span class="text-2xl">🤖</span> <span class="font-bold">Marcus</span> <span class="text-gray-400">→</span> <span class="text-2xl">👷</span> <span>${workerId}</span>`
+        : `<span class="text-2xl">👷</span> <span>${workerId}</span> <span class="text-gray-400">→</span> <span class="text-2xl">🤖</span> <span class="font-bold">Marcus</span>`;
+
+    const metadataJson = JSON.stringify(metadata, null, 2);
+    const cardId = `card-${Math.random().toString(36).substr(2, 9)}`;
+
+    return `
+        <div class="p-6 hover:bg-gray-50 transition border-l-4 ${borderColor}">
+            <!-- Header -->
+            <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center space-x-2">
+                    ${direction}
+                </div>
+                <div class="flex items-center space-x-3">
+                    <span class="text-xs px-2 py-1 rounded ${bgColor} text-gray-700 font-medium">${convType}</span>
+                    <span class="text-sm text-gray-500">${formatTimestamp(timestamp)}</span>
+                </div>
+            </div>
+
+            <!-- Message -->
+            <div class="mb-3">
+                <p class="text-lg text-gray-800">${escapeHtml(message)}</p>
+            </div>
+
+            <!-- Quick metadata preview -->
+            ${renderQuickMetadata(metadata)}
+
+            <!-- Expandable details -->
+            <details class="mt-3">
+                <summary class="cursor-pointer text-sm text-blue-600 hover:text-blue-700 font-medium">
+                    🔍 View Full Details
+                </summary>
+                <div class="mt-2 bg-gray-50 p-3 rounded border border-gray-200">
+                    <pre class="text-xs overflow-x-auto text-gray-700"><code>${escapeHtml(metadataJson)}</code></pre>
+                </div>
+            </details>
+        </div>
+    `;
+}
+
+function renderQuickMetadata(metadata) {
+    const badges = [];
+
+    if (metadata.task_id) {
+        badges.push(`<span class="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium">🎯 ${metadata.task_id}</span>`);
+    }
+
+    if (metadata.status) {
+        badges.push(`<span class="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs font-medium">📊 ${metadata.status}</span>`);
+    }
+
+    if (metadata.progress !== undefined) {
+        badges.push(`<span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium">📈 ${metadata.progress}%</span>`);
+    }
+
+    if (metadata.priority) {
+        badges.push(`<span class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium">🔥 ${metadata.priority}</span>`);
+    }
+
+    if (badges.length > 0) {
+        return `<div class="flex flex-wrap gap-2">${badges.join('')}</div>`;
+    }
+
+    return '';
+}
+
+function renderStats(stats) {
+    const statsBanner = document.getElementById('stats-banner');
+
+    statsBanner.innerHTML = `
+        <div class="flex items-center justify-around text-sm">
+            <div class="flex items-center space-x-2">
+                <span class="text-2xl">💬</span>
+                <div>
+                    <div class="font-semibold text-gray-800">${stats.total_conversations}</div>
+                    <div class="text-gray-600">Total Conversations</div>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-2">
+                <span class="text-2xl">👷</span>
+                <div>
+                    <div class="font-semibold text-gray-800">${Object.keys(stats.by_worker || {}).length}</div>
+                    <div class="text-gray-600">Active Workers</div>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-2">
+                <span class="text-2xl">⚡</span>
+                <div>
+                    <div class="font-semibold text-gray-800">${stats.recent_activity || 0}</div>
+                    <div class="text-gray-600">Recent Activity</div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function formatTimestamp(timestamp) {
+    if (!timestamp) return 'Unknown';
+
+    try {
+        const date = new Date(timestamp);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+
+        if (diffMins < 1) return 'Just now';
+        if (diffMins < 60) return `${diffMins} min${diffMins !== 1 ? 's' : ''} ago`;
+        if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+
+        return date.toLocaleString();
+    } catch (e) {
+        return timestamp;
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}
