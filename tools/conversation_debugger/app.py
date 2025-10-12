@@ -194,7 +194,9 @@ def index() -> str:
     """Render the main conversation viewer page."""
     projects = get_projects()
     workers = get_workers()
-    return render_template("index.html", projects=projects, workers=workers)  # type: ignore[no-any-return]
+    return render_template(  # type: ignore[no-any-return]
+        "index.html", projects=projects, workers=workers
+    )
 
 
 @app.route("/api/conversations")  # type: ignore[misc]
@@ -240,7 +242,7 @@ def get_conversations_api() -> Response:
     return jsonify(conversations)
 
 
-@app.route("/api/stats")
+@app.route("/api/stats")  # type: ignore[misc]
 def get_stats() -> Response:
     """
     Return conversation statistics.
@@ -252,7 +254,7 @@ def get_stats() -> Response:
     """
     conversations = load_conversations(hours_back=24)
 
-    stats = {
+    stats: Dict[str, Any] = {
         "total_conversations": len(conversations),
         "by_type": {},
         "by_worker": {},
