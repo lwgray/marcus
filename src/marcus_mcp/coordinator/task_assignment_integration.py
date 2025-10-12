@@ -42,6 +42,14 @@ async def find_optimal_task_with_subtasks(
     Optional[Task]
         Task or Subtask (converted to Task) for assignment
     """
+    # Check if subtask feature is enabled
+    from src.config.settings import Settings
+
+    settings = Settings()
+    if not settings.is_subtasks_enabled():
+        logger.debug("Subtask feature is disabled, using fallback")
+        return await fallback_task_finder(agent_id, state)
+
     # Check if subtask manager is available
     if not hasattr(state, "subtask_manager") or not state.subtask_manager:
         logger.debug("SubtaskManager not available, using fallback")

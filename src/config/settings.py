@@ -114,6 +114,11 @@ class Settings:
                 "retry_attempts": 3,
                 "retry_delay": 1.0,
             },
+            # Feature flags
+            "features": {
+                # Enable automatic task decomposition into subtasks
+                "enable_subtasks": True,
+            },
         }
 
         # Load configuration
@@ -210,6 +215,13 @@ class Settings:
                     )
                     config["ai_settings"]["max_tokens"] = ai_config.get(
                         "max_tokens", config["ai_settings"]["max_tokens"]
+                    )
+
+                # Get feature flags
+                features_config = config_loader.get("features", {})
+                if features_config and isinstance(config["features"], dict):
+                    config["features"]["enable_subtasks"] = features_config.get(
+                        "enable_subtasks", config["features"]["enable_subtasks"]
                     )
 
             except Exception as e:
@@ -318,12 +330,21 @@ class Settings:
         if "ANTHROPIC_API_KEY" in os.environ:
             config["anthropic_api_key"] = os.environ["ANTHROPIC_API_KEY"]
 
+        # Feature flags
+        if "MARCUS_ENABLE_SUBTASKS" in os.environ:
+            if "features" not in config:
+                config["features"] = {}
+            config["features"]["enable_subtasks"] = (
+                os.environ["MARCUS_ENABLE_SUBTASKS"].lower() == "true"
+            )
+
         return config
 
     def get(self, key: str, default: Any = None) -> Any:
         """Get configuration value using dot notation key.
 
-        Supports nested key access using dot notation (e.g., 'risk_thresholds.high_risk').
+        Supports nested key access using dot notation
+        (e.g., 'risk_thresholds.high_risk').
 
         Parameters
         ----------
@@ -562,6 +583,33 @@ class Settings:
         from typing import cast
 
         return cast(Dict[str, Any], self.defaults["ai_settings"])
+
+    def is_subtasks_enabled(self) -> bool:
+        """Check if subtask functionality is enabled.
+
+        Returns whether automatic task decomposition and subtask
+        assignment features are enabled.
+
+        Returns
+        -------
+        bool
+            True if subtasks are enabled, False otherwise
+
+        Examples
+        --------
+        >>> if settings.is_subtasks_enabled():
+        ...     decompose_task(task)
+        >>> # Can also be set via environment:
+        >>> # export MARCUS_ENABLE_SUBTASKS=false
+
+        Notes
+        -----
+        Can be controlled via:
+        - Configuration file: features.enable_subtasks
+        - Environment variable: MARCUS_ENABLE_SUBTASKS=true/false
+        """
+        result = self.get("features.enable_subtasks", True)
+        return bool(result)
 
     def validate(self) -> bool:
         """Validate current configuration for consistency and completeness.

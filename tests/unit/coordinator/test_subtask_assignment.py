@@ -896,3 +896,226 @@ class TestSubtaskWorkflowFixes:
         assert len(available_tasks) == 1
         assert available_tasks[0].id == regular_task.id
         assert parent_task.id not in [t.id for t in available_tasks]
+
+
+class TestSubtaskConfigSwitch:
+    """Test suite for subtask feature flag configuration."""
+
+    @pytest.fixture
+    def subtask_manager(self, tmp_path):
+        """Create a subtask manager with test data."""
+        manager = SubtaskManager(state_file=tmp_path / "subtasks_test.json")
+        return manager
+
+    @pytest.fixture
+    def mock_state(self, subtask_manager):
+        """Create a mock state object."""
+        state = Mock()
+        state.subtask_manager = subtask_manager
+        state.project_tasks = []
+        state.agent_tasks = {}
+        state.tasks_being_assigned = set()
+        state.assignment_persistence = Mock()
+        state.assignment_persistence.get_all_assigned_task_ids = AsyncMock(
+            return_value=set()
+        )
+        return state
+
+    @pytest.fixture
+    def parent_task(self):
+        """Create a parent task with subtasks."""
+        return Task(
+            id="parent1",
+            name="Parent Task",
+            description="Parent task with subtasks",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=8.0,
+            labels=["backend", "api"],
+        )
+
+    @pytest.fixture
+    def regular_task(self):
+        """Create a regular task without subtasks."""
+        return Task(
+            id="regular1",
+            name="Regular Task",
+            description="Regular task without subtasks",
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=4.0,
+            labels=["backend"],
+        )
+
+    @pytest.mark.asyncio
+    async def test_subtasks_enabled_returns_subtask(
+        self, subtask_manager, mock_state, parent_task, tmp_path
+    ):
+        """
+        Test that when subtasks are enabled (default), subtask logic works.
+        """
+        from src.marcus_mcp.coordinator.task_assignment_integration import (
+            find_optimal_task_with_subtasks,
+        )
+
+        # Add subtasks to parent
+        subtasks_data = [
+            {
+                "name": "Subtask 1",
+                "description": "First subtask",
+                "estimated_hours": 2.0,
+                "dependencies": [],
+            },
+        ]
+        subtask_manager.add_subtasks(parent_task.id, subtasks_data)
+
+        # Setup state
+        mock_state.project_tasks = [parent_task]
+
+        # Create settings with subtasks enabled
+        from src.config.settings import Settings
+
+        config_path = tmp_path / "test_config.json"
+        with open(config_path, "w") as f:
+            import json
+
+            json.dump({"features": {"enable_subtasks": True}}, f)
+
+        # Mock Settings to use test config
+        import unittest.mock
+
+        with unittest.mock.patch.object(
+            Settings, "__init__", lambda self, config_path=None: None
+        ):
+            with unittest.mock.patch.object(
+                Settings,
+                "is_subtasks_enabled",
+                return_value=True,
+            ):
+
+                async def fallback_finder(agent_id, state):
+                    return None
+
+                # Find optimal task (should return subtask)
+                task = await find_optimal_task_with_subtasks(
+                    agent_id="agent1",
+                    state=mock_state,
+                    fallback_task_finder=fallback_finder,
+                )
+
+                # Verify subtask was returned
+                assert task is not None
+                assert task.name == "Subtask 1"
+
+    @pytest.mark.asyncio
+    async def test_subtasks_disabled_uses_fallback(
+        self, subtask_manager, mock_state, parent_task, regular_task
+    ):
+        """
+        Test that when subtasks are disabled, fallback task finder is used.
+        """
+        from src.config.settings import Settings
+        from src.marcus_mcp.coordinator.task_assignment_integration import (
+            find_optimal_task_with_subtasks,
+        )
+
+        # Add subtasks to parent
+        subtasks_data = [
+            {
+                "name": "Subtask 1",
+                "description": "First subtask",
+                "estimated_hours": 2.0,
+                "dependencies": [],
+            },
+        ]
+        subtask_manager.add_subtasks(parent_task.id, subtasks_data)
+
+        # Setup state
+        mock_state.project_tasks = [parent_task, regular_task]
+
+        # Mock Settings to disable subtasks
+        import unittest.mock
+
+        with unittest.mock.patch.object(
+            Settings,
+            "is_subtasks_enabled",
+            return_value=False,
+        ):
+
+            async def fallback_finder(agent_id, state):
+                # Return regular task from fallback
+                return regular_task
+
+            # Find optimal task (should use fallback)
+            task = await find_optimal_task_with_subtasks(
+                agent_id="agent1",
+                state=mock_state,
+                fallback_task_finder=fallback_finder,
+            )
+
+            # Verify fallback task was returned, not subtask
+            assert task is not None
+            assert task.id == regular_task.id
+            assert task.name == "Regular Task"
+
+    @pytest.mark.asyncio
+    async def test_subtasks_disabled_via_env_uses_fallback(
+        self, subtask_manager, mock_state, parent_task, regular_task, monkeypatch
+    ):
+        """
+        Test that subtasks can be disabled via MARCUS_ENABLE_SUBTASKS env variable.
+        """
+        from src.config.settings import Settings
+        from src.marcus_mcp.coordinator.task_assignment_integration import (
+            find_optimal_task_with_subtasks,
+        )
+
+        # Set environment variable to disable subtasks
+        monkeypatch.setenv("MARCUS_ENABLE_SUBTASKS", "false")
+
+        # Add subtasks to parent
+        subtasks_data = [
+            {
+                "name": "Subtask 1",
+                "description": "First subtask",
+                "estimated_hours": 2.0,
+                "dependencies": [],
+            },
+        ]
+        subtask_manager.add_subtasks(parent_task.id, subtasks_data)
+
+        # Setup state
+        mock_state.project_tasks = [parent_task, regular_task]
+
+        # Mock Settings.is_subtasks_enabled to return False
+        import unittest.mock
+
+        with unittest.mock.patch.object(
+            Settings,
+            "is_subtasks_enabled",
+            return_value=False,
+        ):
+
+            async def fallback_finder(agent_id, state):
+                # Return regular task from fallback
+                return regular_task
+
+            # Find optimal task (should use fallback due to env variable)
+            task = await find_optimal_task_with_subtasks(
+                agent_id="agent1",
+                state=mock_state,
+                fallback_task_finder=fallback_finder,
+            )
+
+            # Verify fallback task was returned
+            assert task is not None
+            assert task.id == regular_task.id
+            assert task.name == "Regular Task"
