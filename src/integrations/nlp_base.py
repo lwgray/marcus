@@ -267,8 +267,28 @@ class NaturalLanguageTaskCreator(ABC):
             )
 
             # Add decomposition job to parallel execution list
+            # CRITICAL: Pass created_task which has the real Planka ID,
+            # not original_task. We need to create a task object that has
+            # both the real ID and the original details
+            task_with_real_id = Task(
+                id=created_task.id,  # Real Planka ID
+                name=original_task.name,
+                description=original_task.description,
+                status=original_task.status,
+                priority=original_task.priority,
+                assigned_to=original_task.assigned_to,
+                created_at=original_task.created_at,
+                updated_at=original_task.updated_at,
+                due_date=original_task.due_date,
+                estimated_hours=original_task.estimated_hours,
+                actual_hours=original_task.actual_hours,
+                dependencies=original_task.dependencies,
+                labels=original_task.labels,
+                project_id=getattr(original_task, "project_id", None),
+                project_name=getattr(original_task, "project_name", None),
+            )
             decomposition_jobs.append(
-                decompose_task(original_task, self.ai_engine, project_context=None)
+                decompose_task(task_with_real_id, self.ai_engine, project_context=None)
             )
             task_metadata.append((created_task, original_task))
 

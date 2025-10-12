@@ -79,7 +79,8 @@ def load_conversations(
     filter_type: Optional[str] = None,
     project_id: Optional[str] = None,
     limit: Optional[int] = None,
-) -> List[Dict[str, Any]]:
+    page: int = 1,
+) -> tuple[List[Dict[str, Any]], int]:
     """
     Load conversations from log files.
 
@@ -94,17 +95,19 @@ def load_conversations(
     project_id : Optional[str]
         Filter by specific project ID
     limit : Optional[int]
-        Maximum number of conversations to return
+        Maximum number of conversations to return per page
+    page : int
+        Page number (1-indexed)
 
     Returns
     -------
-    List[Dict[str, Any]]
-        List of conversation entries sorted by timestamp
+    tuple[List[Dict[str, Any]], int]
+        Tuple of (conversation entries, total count)
     """
     log_dir = get_log_directory()
 
     if not log_dir.exists():
-        return []
+        return [], 0
 
     # Create timezone-aware cutoff to compare with log timestamps
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours_back)
@@ -167,11 +170,15 @@ def load_conversations(
     # Sort by timestamp
     conversations.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
 
-    # Apply limit
-    if limit:
-        conversations = conversations[:limit]
+    # Get total count before pagination
+    total_count = len(conversations)
 
-    return conversations
+    # Apply pagination
+    if limit:
+        offset = (page - 1) * limit
+        conversations = conversations[offset : offset + limit]
+
+    return conversations, total_count
 
 
 def get_workers() -> List[str]:
@@ -183,7 +190,7 @@ def get_workers() -> List[str]:
     List[str]
         List of worker IDs
     """
-    conversations = load_conversations(hours_back=168)  # Last week
+    conversations, _ = load_conversations(hours_back=168)  # Last week
     workers = set()
 
     for conv in conversations:
@@ -257,18 +264,21 @@ def get_conversations_api() -> Response:
     project_id : str
         Filter by project ID (optional)
     limit : int
-        Maximum results to return (optional)
+        Maximum results to return per page (optional)
+    page : int
+        Page number (default: 1)
 
     Returns
     -------
     Response
-        JSON response with list of conversation entries
+        JSON response with conversation entries and pagination info
     """
     hours_back = int(request.args.get("hours", 24))
     worker_id = request.args.get("worker_id")
     filter_type = request.args.get("filter_type")
     project_id = request.args.get("project_id")
     limit_str = request.args.get("limit")
+    page_str = request.args.get("page", "1")
 
     if worker_id == "":
         worker_id = None
@@ -281,15 +291,33 @@ def get_conversations_api() -> Response:
     if limit_str:
         limit = int(limit_str)
 
-    conversations = load_conversations(
+    page = int(page_str)
+
+    conversations, total_count = load_conversations(
         hours_back=hours_back,
         worker_id=worker_id,
         filter_type=filter_type,
         project_id=project_id,
         limit=limit,
+        page=page,
     )
 
-    return jsonify(conversations)
+    # Calculate pagination info
+    total_pages = (total_count + (limit - 1)) // limit if limit else 1
+
+    return jsonify(
+        {
+            "conversations": conversations,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_count": total_count,
+                "total_pages": total_pages,
+                "has_prev": page > 1,
+                "has_next": page < total_pages,
+            },
+        }
+    )
 
 
 @app.route("/api/stats")  # type: ignore[misc]
@@ -302,7 +330,7 @@ def get_stats() -> Response:
     Response
         JSON response with statistics about conversations
     """
-    conversations = load_conversations(hours_back=24)
+    conversations, _ = load_conversations(hours_back=24)
 
     stats: Dict[str, Any] = {
         "total_conversations": len(conversations),

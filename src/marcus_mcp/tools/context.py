@@ -165,6 +165,15 @@ async def get_task_context(task_id: str, state: Any) -> Dict[str, Any]:
                     "sibling_subtasks": subtask_context["sibling_subtasks"],
                 }
 
+                # CRITICAL: Add artifacts and decisions from sibling subtasks
+                # This allows subtasks to see what their siblings have produced
+                # Optimized: Single pass through siblings collecting both
+                sibling_context = await _collect_sibling_subtask_context(
+                    task_id, parent_task_id, state
+                )
+                context_dict["sibling_artifacts"] = sibling_context["artifacts"]
+                context_dict["sibling_decisions"] = sibling_context["decisions"]
+
                 # Add parent task's context if Context system is available
                 if hasattr(state, "context") and state.context and parent_task:
                     parent_context = await state.context.get_context(
@@ -317,3 +326,72 @@ async def _collect_task_artifacts(
         print(f"Warning: Artifact collection encountered an error: {e}")
 
     return artifacts
+
+
+async def _collect_sibling_subtask_context(
+    current_subtask_id: str, parent_task_id: str, state: Any
+) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Collect both artifacts AND decisions from sibling subtasks in one pass.
+
+    OPTIMIZED: Single loop through siblings collecting both artifacts and
+    decisions, reducing from 2 separate calls to 1.
+
+    When Task B's subtask 1 calls get_task_context, it should see
+    artifacts and decisions produced by Task B's subtask 2, 3, etc.
+
+    Parameters
+    ----------
+    current_subtask_id : str
+        The current subtask requesting context
+    parent_task_id : str
+        The parent task ID
+    state : Any
+        Marcus server state
+
+    Returns
+    -------
+    Dict[str, List[Dict[str, Any]]]
+        Dict with "artifacts" and "decisions" keys containing sibling context
+    """
+    sibling_artifacts: List[Dict[str, Any]] = []
+    sibling_decisions: List[Dict[str, Any]] = []
+
+    if not hasattr(state, "subtask_manager") or not state.subtask_manager:
+        return {"artifacts": sibling_artifacts, "decisions": sibling_decisions}
+
+    # Get all subtasks for this parent
+    subtasks = state.subtask_manager.get_subtasks(parent_task_id)
+
+    # Single pass: collect both artifacts and decisions from siblings
+    for subtask in subtasks:
+        if subtask.id == current_subtask_id:
+            continue  # Skip current subtask
+
+        # Collect artifacts from this sibling
+        if hasattr(state, "task_artifacts") and subtask.id in state.task_artifacts:
+            for artifact in state.task_artifacts[subtask.id]:
+                # Add sibling context to artifact
+                sibling_artifact = artifact.copy()
+                sibling_artifact["from_sibling_subtask"] = subtask.id
+                sibling_artifact["from_sibling_subtask_name"] = subtask.name
+                sibling_artifact["description"] = (
+                    f"[From sibling subtask: {subtask.name}] "
+                    f"{sibling_artifact.get('description', '')}"
+                )
+                sibling_artifacts.append(sibling_artifact)
+
+        # Collect decisions from this sibling
+        if hasattr(state, "context") and state.context:
+            subtask_decisions = [
+                d.to_dict() for d in state.context.decisions if d.task_id == subtask.id
+            ]
+
+            for decision in subtask_decisions:
+                # Add sibling context
+                decision["from_sibling_subtask"] = subtask.id
+                decision["from_sibling_subtask_name"] = subtask.name
+                decision["what"] = f"[From sibling: {subtask.name}] {decision['what']}"
+                sibling_decisions.append(decision)
+
+    return {"artifacts": sibling_artifacts, "decisions": sibling_decisions}

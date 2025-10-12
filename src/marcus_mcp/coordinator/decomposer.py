@@ -183,6 +183,13 @@ async def decompose_task(
         else:
             decomposition = response
 
+        # DEBUG: Log what AI returned BEFORE fixing
+        logger.info(f"AI returned decomposition for {task.name}:")
+        for idx, st in enumerate(decomposition.get("subtasks", [])):
+            deps = st.get("dependencies", [])
+            dep_types = [type(d).__name__ for d in deps]
+            logger.info(f"  Subtask {idx}: deps={deps} (types: {dep_types})")
+
         # Add final integration subtask automatically
         integration_subtask = _create_integration_subtask(
             task, decomposition.get("subtasks", [])
@@ -199,6 +206,13 @@ async def decompose_task(
 
         # Adjust subtask dependencies to use subtask IDs
         decomposition = _adjust_subtask_dependencies(task.id, decomposition)
+
+        # DEBUG: Log what dependencies look like AFTER fixing
+        logger.info(f"After adjustment for {task.name}:")
+        for idx, st in enumerate(decomposition.get("subtasks", [])):
+            deps = st.get("dependencies", [])
+            dep_types = [type(d).__name__ for d in deps]
+            logger.info(f"  Subtask {idx}: deps={deps} (types: {dep_types})")
 
         logger.info(
             f"Successfully decomposed task {task.name} into "
