@@ -8,11 +8,11 @@ conversations between Marcus and worker agents.
 
 import json
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request
 
 # Add Marcus root to path
 MARCUS_ROOT = Path(__file__).parent.parent.parent
@@ -71,7 +71,8 @@ def load_conversations(
     if not log_dir.exists():
         return []
 
-    cutoff = datetime.now() - timedelta(hours=hours_back)
+    # Create timezone-aware cutoff to compare with log timestamps
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours_back)
     conversations = []
 
     # Read all conversation log files
@@ -188,18 +189,18 @@ def format_timestamp(timestamp_str: str) -> str:
 app.jinja_env.filters["format_timestamp"] = format_timestamp
 
 
-@app.route("/")
-def index():
-    """Main conversation viewer page."""
+@app.route("/")  # type: ignore[misc]
+def index() -> str:
+    """Render the main conversation viewer page."""
     projects = get_projects()
     workers = get_workers()
-    return render_template("index.html", projects=projects, workers=workers)
+    return render_template("index.html", projects=projects, workers=workers)  # type: ignore[no-any-return]
 
 
-@app.route("/api/conversations")
-def get_conversations_api():
+@app.route("/api/conversations")  # type: ignore[misc]
+def get_conversations_api() -> Response:
     """
-    API endpoint for conversation data.
+    Return conversation data from logs.
 
     Query Parameters
     ----------------
@@ -214,8 +215,8 @@ def get_conversations_api():
 
     Returns
     -------
-    JSON
-        List of conversation entries
+    Response
+        JSON response with list of conversation entries
     """
     hours_back = int(request.args.get("hours", 24))
     worker_id = request.args.get("worker_id")
@@ -240,14 +241,14 @@ def get_conversations_api():
 
 
 @app.route("/api/stats")
-def get_stats():
+def get_stats() -> Response:
     """
-    Get conversation statistics.
+    Return conversation statistics.
 
     Returns
     -------
-    JSON
-        Statistics about conversations
+    Response
+        JSON response with statistics about conversations
     """
     conversations = load_conversations(hours_back=24)
 
@@ -283,4 +284,5 @@ if __name__ == "__main__":
     print("[I] Log directory:", get_log_directory())
     print("[I] Press Ctrl+C to stop\n")
 
-    app.run(debug=True, port=5002, host="127.0.0.1")
+    # Debug mode is acceptable for this local development/debugging tool
+    app.run(debug=True, port=5002, host="127.0.0.1")  # nosec B201

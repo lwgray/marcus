@@ -55,12 +55,26 @@ def build_tiered_instructions(
     -----
     Instruction layers:
     1. Base instructions (always included)
-    2. Implementation context (if previous work exists)
-    3. Dependency awareness (if task has dependents)
-    4. Decision logging (if task affects others)
-    5. Predictions and warnings (if available)
+    2. Subtask context (if this is a subtask)
+    3. Implementation context (if previous work exists)
+    4. Dependency awareness (if task has dependents)
+    5. Decision logging (if task affects others)
+    6. Predictions and warnings (if available)
     """
     instructions_parts = [base_instructions]
+
+    # Layer 1.5: Subtask Context (if this is a subtask)
+    if hasattr(task, "_is_subtask") and task._is_subtask:
+        parent_name = getattr(task, "_parent_task_name", "parent task")
+        instructions_parts.append(
+            f"\n\n📋 SUBTASK CONTEXT:\n"
+            f"This is a SUBTASK of the larger task: '{parent_name}'\n\n"
+            f"FOCUS ONLY on completing this specific subtask:\n"
+            f"  Task: {task.name}\n"
+            f"  Description: {task.description}\n\n"
+            f"Do NOT work on the full parent task - only complete this "
+            f"specific subtask. Other agents will handle the remaining subtasks."
+        )
 
     # Layer 2: Implementation Context
     if context_data and context_data.get("previous_implementations"):
@@ -1234,6 +1248,19 @@ async def _find_optimal_task_original_logic(
                 continue
             if t.id in all_assigned_ids:
                 filtering_stats["already_assigned"] += 1
+                continue
+
+            # GH-XX: Skip parent tasks that have subtasks
+            # Parent tasks should not be assigned - only their subtasks
+            if (
+                hasattr(state, "subtask_manager")
+                and state.subtask_manager
+                and state.subtask_manager.has_subtasks(t.id)
+            ):
+                logger.debug(
+                    f"Skipping parent task '{t.name}' - "
+                    "has subtasks that should be assigned instead"
+                )
                 continue
 
             # Check dependencies

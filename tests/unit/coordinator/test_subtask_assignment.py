@@ -5,7 +5,7 @@ Tests the bug fix for parallel subtask assignment.
 """
 
 from datetime import datetime
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -338,6 +338,12 @@ class TestSubtaskAssignment:
 class TestDependencyChecking:
     """Test suite for GH-64: dependency checking in subtask assignment."""
 
+    @pytest.fixture
+    def subtask_manager(self, tmp_path):
+        """Create a subtask manager with test data."""
+        manager = SubtaskManager(state_file=tmp_path / "subtasks_test.json")
+        return manager
+
     def test_no_dependencies_returns_true(self):
         """Test that tasks with no dependencies are always satisfied."""
         task = Task(
@@ -349,6 +355,8 @@ class TestDependencyChecking:
             assigned_to=None,
             created_at=datetime.now(),
             updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=4.0,
             dependencies=[],
         )
         all_tasks = [task]
@@ -366,6 +374,8 @@ class TestDependencyChecking:
             assigned_to=None,
             created_at=datetime.now(),
             updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=2.0,
         )
         dep2 = Task(
             id="dep2",
@@ -376,6 +386,8 @@ class TestDependencyChecking:
             assigned_to=None,
             created_at=datetime.now(),
             updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=2.0,
         )
         task = Task(
             id="task1",
@@ -386,6 +398,8 @@ class TestDependencyChecking:
             assigned_to=None,
             created_at=datetime.now(),
             updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=4.0,
             dependencies=["dep1", "dep2"],
         )
         all_tasks = [dep1, dep2, task]
@@ -403,6 +417,8 @@ class TestDependencyChecking:
             assigned_to=None,
             created_at=datetime.now(),
             updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=2.0,
         )
         dep2 = Task(
             id="dep2",
@@ -413,6 +429,8 @@ class TestDependencyChecking:
             assigned_to=None,
             created_at=datetime.now(),
             updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=2.0,
         )
         task = Task(
             id="task1",
@@ -423,6 +441,8 @@ class TestDependencyChecking:
             assigned_to=None,
             created_at=datetime.now(),
             updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=4.0,
             dependencies=["dep1", "dep2"],
         )
         all_tasks = [dep1, dep2, task]
@@ -440,6 +460,8 @@ class TestDependencyChecking:
             assigned_to="agent-1",
             created_at=datetime.now(),
             updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=2.0,
         )
         task = Task(
             id="task1",
@@ -450,6 +472,8 @@ class TestDependencyChecking:
             assigned_to=None,
             created_at=datetime.now(),
             updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=4.0,
             dependencies=["dep1"],
         )
         all_tasks = [dep, task]
@@ -473,6 +497,8 @@ class TestDependencyChecking:
             assigned_to=None,
             created_at=datetime.now(),
             updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=4.0,
             dependencies=[],
         )
         implement_task = Task(
@@ -484,6 +510,8 @@ class TestDependencyChecking:
             assigned_to=None,
             created_at=datetime.now(),
             updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=8.0,
             dependencies=["design1"],
         )
         test_task = Task(
@@ -495,22 +523,35 @@ class TestDependencyChecking:
             assigned_to=None,
             created_at=datetime.now(),
             updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=4.0,
             dependencies=["design1", "implement1"],
         )
 
         # Add subtasks to each
         design_subtasks = [
-            {"name": "Design Subtask 1", "estimated_hours": 2.0, "dependencies": []}
+            {
+                "name": "Design Subtask 1",
+                "description": "Design subtask",
+                "estimated_hours": 2.0,
+                "dependencies": [],
+            }
         ]
         implement_subtasks = [
             {
                 "name": "Implement Subtask 1",
+                "description": "Implement subtask",
                 "estimated_hours": 2.0,
                 "dependencies": [],
             }
         ]
         test_subtasks = [
-            {"name": "Test Subtask 1", "estimated_hours": 2.0, "dependencies": []}
+            {
+                "name": "Test Subtask 1",
+                "description": "Test subtask",
+                "estimated_hours": 2.0,
+                "dependencies": [],
+            }
         ]
 
         subtask_manager.add_subtasks(design_task.id, design_subtasks)
@@ -561,3 +602,297 @@ class TestDependencyChecking:
 
         # All dependencies satisfied
         assert _are_dependencies_satisfied(test_task, all_tasks)
+
+
+class TestSubtaskWorkflowFixes:
+    """Test suite for GH-XX: subtask workflow fixes."""
+
+    @pytest.fixture
+    def subtask_manager(self, tmp_path):
+        """Create a subtask manager with test data."""
+        manager = SubtaskManager(state_file=tmp_path / "subtasks_test.json")
+        return manager
+
+    @pytest.fixture
+    def mock_state(self, subtask_manager):
+        """Create a mock state object."""
+        state = Mock()
+        state.subtask_manager = subtask_manager
+        state.kanban_client = Mock()
+        state.kanban_client.update_task = AsyncMock(return_value=None)
+        return state
+
+    @pytest.fixture
+    def parent_task(self):
+        """Create a parent task."""
+        return Task(
+            id="parent1",
+            name="Parent Task",
+            description="Parent task with subtasks",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=8.0,
+            labels=["backend", "api"],
+            project_id="project1",
+            project_name="Test Project",
+        )
+
+    @pytest.mark.asyncio
+    async def test_parent_task_moves_to_in_progress_on_first_subtask(
+        self, subtask_manager, mock_state, parent_task
+    ):
+        """
+        Test GH-XX Fix #1: Parent task moves to IN_PROGRESS when first subtask is assigned.
+
+        When the first subtask is assigned, the parent task should automatically
+        move from TODO to IN_PROGRESS status.
+        """
+        from src.marcus_mcp.coordinator.task_assignment_integration import (
+            find_optimal_task_with_subtasks,
+        )
+
+        # Add subtasks to parent
+        subtasks_data = [
+            {
+                "name": "Subtask 1",
+                "description": "First subtask",
+                "estimated_hours": 2.0,
+                "dependencies": [],
+            },
+            {
+                "name": "Subtask 2",
+                "description": "Second subtask",
+                "estimated_hours": 2.0,
+                "dependencies": [],
+            },
+        ]
+        subtask_manager.add_subtasks(parent_task.id, subtasks_data)
+
+        # Setup state
+        mock_state.project_tasks = [parent_task]
+        mock_state.agent_tasks = {}
+        mock_state.tasks_being_assigned = set()
+        mock_state.assignment_persistence = Mock()
+        mock_state.assignment_persistence.get_all_assigned_task_ids = AsyncMock(
+            return_value=set()
+        )
+
+        # Fallback should not be called
+        async def fallback_finder(agent_id, state):
+            return None
+
+        # Find optimal task (should return first subtask)
+        task = await find_optimal_task_with_subtasks(
+            agent_id="agent1",
+            state=mock_state,
+            fallback_task_finder=fallback_finder,
+        )
+
+        # Verify subtask was returned
+        assert task is not None
+        assert task.name == "Subtask 1"
+
+        # Verify parent task was updated to IN_PROGRESS
+        mock_state.kanban_client.update_task.assert_called_once()
+        call_args = mock_state.kanban_client.update_task.call_args
+        assert call_args[0][0] == parent_task.id
+        assert call_args[0][1]["status"] == TaskStatus.IN_PROGRESS
+
+        # Verify local state was updated
+        assert parent_task.status == TaskStatus.IN_PROGRESS
+
+    @pytest.mark.asyncio
+    async def test_parent_task_not_updated_if_already_in_progress(
+        self, subtask_manager, mock_state
+    ):
+        """
+        Test that parent task is NOT updated if already IN_PROGRESS.
+
+        When assigning the second, third, etc. subtask, the parent should
+        not be updated again.
+        """
+        from src.marcus_mcp.coordinator.task_assignment_integration import (
+            find_optimal_task_with_subtasks,
+        )
+
+        parent_task = Task(
+            id="parent1",
+            name="Parent Task",
+            description="Parent task with subtasks",
+            status=TaskStatus.IN_PROGRESS,  # Already in progress
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=8.0,
+            labels=["backend", "api"],
+            project_id="project1",
+            project_name="Test Project",
+        )
+
+        # Add subtasks to parent
+        subtasks_data = [
+            {
+                "name": "Subtask 1",
+                "description": "First subtask",
+                "estimated_hours": 2.0,
+                "dependencies": [],
+            },
+            {
+                "name": "Subtask 2",
+                "description": "Second subtask",
+                "estimated_hours": 2.0,
+                "dependencies": [],
+            },
+        ]
+        created_subtasks = subtask_manager.add_subtasks(parent_task.id, subtasks_data)
+
+        # Mark first subtask as already assigned
+        subtask_manager.update_subtask_status(
+            created_subtasks[0].id, TaskStatus.IN_PROGRESS, "agent1"
+        )
+
+        # Setup state
+        mock_state.project_tasks = [parent_task]
+        mock_state.agent_tasks = {}
+        mock_state.tasks_being_assigned = {created_subtasks[0].id}
+        mock_state.assignment_persistence = Mock()
+        mock_state.assignment_persistence.get_all_assigned_task_ids = AsyncMock(
+            return_value={created_subtasks[0].id}
+        )
+
+        async def fallback_finder(agent_id, state):
+            return None
+
+        # Find optimal task (should return second subtask)
+        task = await find_optimal_task_with_subtasks(
+            agent_id="agent2",
+            state=mock_state,
+            fallback_task_finder=fallback_finder,
+        )
+
+        # Verify subtask was returned
+        assert task is not None
+        assert task.name == "Subtask 2"
+
+        # Verify parent task was NOT updated (already IN_PROGRESS)
+        mock_state.kanban_client.update_task.assert_not_called()
+
+    def test_subtask_instructions_include_context(self, parent_task):
+        """
+        Test GH-XX Fix #2: Subtask instructions include subtask-specific context.
+
+        Instructions for subtasks should clearly indicate this is a subtask
+        of a larger task and focus only on the specific subtask.
+        """
+        from src.marcus_mcp.tools.task import build_tiered_instructions
+
+        subtask = Subtask(
+            id="parent1_sub_1",
+            parent_task_id=parent_task.id,
+            name="Design API endpoints",
+            description="Design RESTful API endpoints for user management",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=datetime.now(),
+            estimated_hours=2.0,
+            dependencies=[],
+            file_artifacts=[],
+            provides="API design",
+            requires="None",
+        )
+
+        # Convert subtask to task
+        task = convert_subtask_to_task(subtask, parent_task)
+
+        # Add metadata (as done in task_assignment_integration.py)
+        task._is_subtask = True  # type: ignore
+        task._parent_task_id = parent_task.id  # type: ignore
+        task._parent_task_name = parent_task.name  # type: ignore
+
+        # Generate instructions
+        base_instructions = "Complete the assigned task"
+        instructions = build_tiered_instructions(
+            base_instructions=base_instructions,
+            task=task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+        )
+
+        # Verify subtask context is included
+        assert "SUBTASK CONTEXT" in instructions
+        assert parent_task.name in instructions
+        assert "FOCUS ONLY on completing this specific subtask" in instructions
+        assert task.name in instructions
+        assert task.description in instructions
+        assert "Do NOT work on the full parent task" in instructions
+
+    def test_parent_tasks_with_subtasks_are_filtered_out(self, subtask_manager):
+        """
+        Test GH-XX Fix #3: Parent tasks with subtasks are not assigned as regular tasks.
+
+        When a task has subtasks, only the subtasks should be assignable,
+        not the parent task itself.
+        """
+        # Create parent task
+        parent_task = Task(
+            id="parent1",
+            name="Parent Task",
+            description="Parent task with subtasks",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=8.0,
+            labels=["backend", "api"],
+        )
+
+        # Create regular task (no subtasks)
+        regular_task = Task(
+            id="regular1",
+            name="Regular Task",
+            description="Regular task without subtasks",
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            due_date=None,
+            estimated_hours=4.0,
+            labels=["backend"],
+        )
+
+        # Add subtasks to parent
+        subtasks_data = [
+            {
+                "name": "Subtask 1",
+                "description": "First subtask",
+                "estimated_hours": 2.0,
+                "dependencies": [],
+            },
+        ]
+        subtask_manager.add_subtasks(parent_task.id, subtasks_data)
+
+        # Simulate task filtering logic from _find_optimal_task_original_logic
+        available_tasks = []
+        project_tasks = [parent_task, regular_task]
+
+        for t in project_tasks:
+            # Skip parent tasks that have subtasks
+            if subtask_manager.has_subtasks(t.id):
+                continue
+            available_tasks.append(t)
+
+        # Verify parent task was filtered out, but regular task was not
+        assert len(available_tasks) == 1
+        assert available_tasks[0].id == regular_task.id
+        assert parent_task.id not in [t.id for t in available_tasks]
