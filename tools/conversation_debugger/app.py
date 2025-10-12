@@ -28,23 +28,56 @@ def get_log_directory() -> Path:
     return MARCUS_ROOT / "logs" / "conversations"
 
 
-def get_projects() -> List[str]:
+def get_projects() -> List[Dict[str, str]]:
     """
     Get list of available projects from logs.
 
     Returns
     -------
-    List[str]
-        List of project names found in logs
+    List[Dict[str, str]]
+        List of dicts with project_id and project_name found in logs
     """
-    # For now, return a placeholder - could be enhanced to parse from logs
-    return ["Task Master Test", "All Projects"]
+    log_dir = get_log_directory()
+
+    if not log_dir.exists():
+        return []
+
+    projects_seen: Dict[str, str] = {}  # project_id -> project_name
+
+    # Read all conversation log files to extract unique projects
+    for log_file in sorted(log_dir.glob("conversations_*.jsonl")):
+        try:
+            with open(log_file, encoding="utf-8") as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+
+                    try:
+                        entry = json.loads(line)
+                        metadata = entry.get("metadata", {})
+
+                        project_id = metadata.get("project_id")
+                        project_name = metadata.get("project_name")
+
+                        if project_id and project_name:
+                            projects_seen[project_id] = project_name
+
+                    except json.JSONDecodeError:
+                        continue
+
+        except Exception as e:
+            print(f"Error reading log file {log_file}: {e}", file=sys.stderr)
+            continue
+
+    # Return as list of dicts
+    return [{"id": pid, "name": pname} for pid, pname in sorted(projects_seen.items())]
 
 
 def load_conversations(
     hours_back: int = 24,
     worker_id: Optional[str] = None,
     filter_type: Optional[str] = None,
+    project_id: Optional[str] = None,
     limit: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """
@@ -58,6 +91,8 @@ def load_conversations(
         Filter by specific worker ID
     filter_type : Optional[str]
         Filter by conversation type (worker_to_pm, pm_to_worker, etc.)
+    project_id : Optional[str]
+        Filter by specific project ID
     limit : Optional[int]
         Maximum number of conversations to return
 
@@ -112,6 +147,13 @@ def load_conversations(
                             and entry.get("conversation_type") != filter_type
                         ):
                             continue
+
+                        # Filter by project
+                        if project_id:
+                            metadata = entry.get("metadata", {})
+                            entry_project_id = metadata.get("project_id")
+                            if entry_project_id != project_id:
+                                continue
 
                         conversations.append(entry)
 
@@ -212,6 +254,8 @@ def get_conversations_api() -> Response:
         Filter by worker ID (optional)
     filter_type : str
         Filter by conversation type (optional)
+    project_id : str
+        Filter by project ID (optional)
     limit : int
         Maximum results to return (optional)
 
@@ -223,19 +267,25 @@ def get_conversations_api() -> Response:
     hours_back = int(request.args.get("hours", 24))
     worker_id = request.args.get("worker_id")
     filter_type = request.args.get("filter_type")
-    limit = request.args.get("limit")
+    project_id = request.args.get("project_id")
+    limit_str = request.args.get("limit")
 
     if worker_id == "":
         worker_id = None
     if filter_type == "":
         filter_type = None
-    if limit:
-        limit = int(limit)
+    if project_id == "":
+        project_id = None
+
+    limit: Optional[int] = None
+    if limit_str:
+        limit = int(limit_str)
 
     conversations = load_conversations(
         hours_back=hours_back,
         worker_id=worker_id,
         filter_type=filter_type,
+        project_id=project_id,
         limit=limit,
     )
 

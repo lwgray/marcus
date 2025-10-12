@@ -23,6 +23,58 @@ from src.marcus_mcp.utils import serialize_for_mcp
 logger = logging.getLogger(__name__)
 
 
+async def get_project_board_context(state: Any) -> Dict[str, Optional[str]]:
+    """
+    Extract project and board context from state.
+
+    Parameters
+    ----------
+    state : Any
+        Marcus server state instance
+
+    Returns
+    -------
+    Dict[str, Optional[str]]
+        Dictionary with project_id, project_name, board_id, board_name
+        (values are None if not available)
+    """
+    context: Dict[str, Optional[str]] = {
+        "project_id": None,
+        "project_name": None,
+        "board_id": None,
+        "board_name": None,
+    }
+
+    try:
+        # Get active project from registry
+        if hasattr(state, "project_registry") and state.project_registry:
+            active_project = await state.project_registry.get_active_project()
+            if active_project:
+                context["project_id"] = active_project.id
+                context["project_name"] = active_project.name
+
+                # Extract board_id from provider_config
+                provider_config = active_project.provider_config or {}
+
+                if active_project.provider == "planka":
+                    context["board_id"] = provider_config.get("board_id")
+                    # Board name might not be available, we could fetch it
+                    # from kanban client if needed
+                elif active_project.provider == "github":
+                    # GitHub uses repo as the "board"
+                    context["board_id"] = provider_config.get("repo")
+                    context["board_name"] = provider_config.get("repo")
+                elif active_project.provider == "linear":
+                    # Linear uses team_id and project_id
+                    context["board_id"] = provider_config.get("team_id")
+                    context["board_name"] = provider_config.get("team_id")
+
+    except Exception as e:
+        logger.debug(f"Error extracting project/board context: {e}")
+
+    return context
+
+
 def build_tiered_instructions(
     base_instructions: str,
     task: Task,
@@ -248,12 +300,15 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
     Any
         Dict with task details and instructions if successful
     """
+    # Get project/board context
+    project_context = await get_project_board_context(state)
+
     # Log task request
     conversation_logger.log_worker_message(
         agent_id,
         "to_pm",
         "Requesting next task",
-        {"worker_info": f"Worker {agent_id} requesting task"},
+        {"worker_info": f"Worker {agent_id} requesting task", **project_context},
     )
 
     try:
@@ -302,6 +357,7 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                     {
                         "current_tasks": [t.id for t in agent.current_tasks],
                         "reason": "one_task_per_agent_rule",
+                        **project_context,
                     },
                 )
                 return {
@@ -572,6 +628,7 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                         "task_id": optimal_task.id,
                         "instructions": instructions,
                         "priority": optimal_task.priority.value,
+                        **project_context,
                     },
                 )
 
@@ -627,6 +684,7 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                         "task_name": optimal_task.name,
                         "priority": optimal_task.priority.value,
                         "estimated_hours": optimal_task.estimated_hours,
+                        **project_context,
                     },
                 )
 
@@ -667,7 +725,7 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                     agent_id,
                     "from_pm",
                     f"Failed to assign task: {str(e)}",
-                    {"error": str(e)},
+                    {"error": str(e), **project_context},
                 )
 
                 return {"success": False, "error": f"Failed to assign task: {str(e)}"}
@@ -767,7 +825,11 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 agent_id,
                 "from_pm",
                 "No suitable tasks available at this time",
-                {"reason": "no_matching_tasks", "diagnostics": diagnostic_summary},
+                {
+                    "reason": "no_matching_tasks",
+                    "diagnostics": diagnostic_summary,
+                    **project_context,
+                },
             )
 
             response = {
@@ -813,12 +875,15 @@ async def report_task_progress(
     Dict[str, Any]
         Dict with success status
     """
+    # Get project/board context
+    project_context = await get_project_board_context(state)
+
     # Log progress update
     conversation_logger.log_worker_message(
         agent_id,
         "to_pm",
         f"Progress update: {message} ({progress}%)",
-        {"task_id": task_id, "status": status, "progress": progress},
+        {"task_id": task_id, "status": status, "progress": progress, **project_context},
     )
 
     # Log conversation event for visualization
@@ -1024,7 +1089,7 @@ async def report_task_progress(
             agent_id,
             "from_pm",
             f"Progress update received: {status} at {progress}%",
-            {"acknowledged": True},
+            {"acknowledged": True, **project_context},
         )
 
         # Update system state
@@ -1063,12 +1128,15 @@ async def report_blocker(
     Dict[str, Any]
         Dict with AI suggestions and success status
     """
+    # Get project/board context
+    project_context = await get_project_board_context(state)
+
     # Log blocker report
     conversation_logger.log_worker_message(
         agent_id,
         "to_pm",
         f"Reporting blocker: {blocker_description}",
-        {"task_id": task_id, "severity": severity},
+        {"task_id": task_id, "severity": severity, **project_context},
     )
 
     try:
@@ -1135,7 +1203,7 @@ async def report_blocker(
             agent_id,
             "from_pm",
             "Blocker acknowledged. Suggestions provided.",
-            {"suggestions": suggestions, "severity": severity},
+            {"suggestions": suggestions, "severity": severity, **project_context},
         )
 
         return {
@@ -1641,6 +1709,9 @@ async def unassign_task(
         - agent_id: str (the agent it was unassigned from)
         - task_id: str
     """
+    # Get project/board context
+    project_context = await get_project_board_context(state)
+
     try:
         # Initialize kanban if needed
         await state.initialize_kanban()
@@ -1726,7 +1797,7 @@ async def unassign_task(
             agent_id,
             "from_pm",
             f"Task {task_id} unassigned - reset to TODO",
-            {"task_id": task_id, "manual_unassignment": True},
+            {"task_id": task_id, "manual_unassignment": True, **project_context},
         )
 
         # Log event
