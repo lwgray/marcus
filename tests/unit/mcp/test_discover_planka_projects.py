@@ -159,3 +159,74 @@ class TestDiscoverPlankaProjects:
 
             assert result["success"] is False
             assert "Connection failed" in result["error"]
+
+    async def test_discover_removes_stale_boards(
+        self, mock_server, mock_planka_projects, mock_boards_responses
+    ):
+        """Test that discovery removes boards from registry that no longer exist in Planka"""
+        from src.core.project_registry import ProjectConfig
+        from src.marcus_mcp.tools.project_management import discover_planka_projects
+
+        # Setup mock project registry with stale board
+        mock_registry = Mock()
+        mock_registry.list_projects = AsyncMock(
+            return_value=[
+                ProjectConfig(
+                    id="stale-1",
+                    name="Stale Project",
+                    provider="planka",
+                    provider_config={
+                        "project_id": "old-proj",
+                        "board_id": "stale-board-999",  # This board doesn't exist
+                    },
+                    created_at=datetime.now(),
+                    last_used=datetime.now(),
+                    tags=["discovered"],
+                ),
+                ProjectConfig(
+                    id="valid-1",
+                    name="Valid Project",
+                    provider="planka",
+                    provider_config={
+                        "project_id": "proj-1",
+                        "board_id": "board-1",  # This board exists
+                    },
+                    created_at=datetime.now(),
+                    last_used=datetime.now(),
+                    tags=["discovered"],
+                ),
+            ]
+        )
+        mock_registry.delete_project = AsyncMock()
+        mock_server.project_registry = mock_registry
+
+        with patch("src.integrations.providers.planka.Planka") as mock_planka_class:
+            mock_planka = Mock()
+            mock_planka.client = Mock()
+            mock_planka.client.get_projects = AsyncMock(
+                return_value=mock_planka_projects
+            )
+
+            async def get_boards_side_effect(project_id):
+                return mock_boards_responses.get(project_id, [])
+
+            mock_planka.client.get_boards_for_project = AsyncMock(
+                side_effect=get_boards_side_effect
+            )
+            mock_planka.connect = AsyncMock()
+            mock_planka.disconnect = AsyncMock()
+            mock_planka_class.return_value = mock_planka
+
+            result = await discover_planka_projects(mock_server, {"auto_sync": False})
+
+            assert result["success"] is True
+            assert "stale_removed" in result
+
+            # Verify stale board was removed
+            stale_result = result["stale_removed"]
+            assert stale_result["removed_count"] == 1
+            assert len(stale_result["removed"]) == 1
+            assert stale_result["removed"][0]["board_id"] == "stale-board-999"
+
+            # Verify delete was called for the stale board
+            mock_registry.delete_project.assert_called_once_with("stale-1")

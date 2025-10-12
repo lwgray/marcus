@@ -762,10 +762,18 @@ async def discover_planka_projects(
                 )
                 continue
 
+        # Clean up stale boards - remove registry entries for boards that no longer exist
+        valid_board_ids = {
+            proj["config"]["board_id"]  # type: ignore[index]
+            for proj in projects_to_sync
+        }
+        cleanup_result = await _remove_stale_boards(server, valid_board_ids)
+
         result = {
             "success": True,
             "discovered_count": len(projects_to_sync),
             "projects": projects_to_sync,
+            "stale_removed": cleanup_result,
         }
 
         # Auto-sync if requested
@@ -773,9 +781,19 @@ async def discover_planka_projects(
             sync_result = await sync_projects(server, {"projects": projects_to_sync})
             result["sync_result"] = sync_result
 
+        # Log the discovery and cleanup operation
+        stale_count = cleanup_result.get("removed_count", 0)
+        thought = f"Discovered {len(projects_to_sync)} projects from Planka"
+        if stale_count > 0:
+            thought += f", removed {stale_count} stale boards"
+
         conversation_logger.log_pm_thinking(
-            thought=f"Discovered {len(projects_to_sync)} projects from Planka",
-            context={"auto_sync": auto_sync, "project_count": len(projects_to_sync)},
+            thought=thought,
+            context={
+                "auto_sync": auto_sync,
+                "project_count": len(projects_to_sync),
+                "stale_removed": stale_count,
+            },
         )
 
         return result
@@ -850,6 +868,49 @@ async def _deduplicate_registry(server: Any) -> Dict[str, Any]:
                 logger.info(
                     f"Removed duplicate project '{dup.name}' (kept '{keep.name}')"
                 )
+
+    return {"removed_count": len(removed), "removed": removed}
+
+
+async def _remove_stale_boards(
+    server: Any, valid_board_ids: set[str]
+) -> Dict[str, Any]:
+    """
+    Remove registry entries for Planka boards that no longer exist.
+
+    Parameters
+    ----------
+    server : Any
+        MarcusServer instance
+    valid_board_ids : set[str]
+        Set of board IDs that currently exist in Planka
+
+    Returns
+    -------
+    Dict[str, Any]
+        Summary with count of stale boards removed
+    """
+    # Get all Planka projects from registry
+    all_projects = await server.project_registry.list_projects(provider="planka")
+
+    removed = []
+    for project in all_projects:
+        board_id = project.provider_config.get("board_id")
+        if board_id and board_id not in valid_board_ids:
+            # This board doesn't exist in Planka anymore - remove it
+            await server.project_registry.delete_project(project.id)
+            removed.append(
+                {
+                    "id": project.id,
+                    "name": project.name,
+                    "board_id": board_id,
+                    "reason": "Board not found in Planka",
+                }
+            )
+            logger.info(
+                f"Removed stale board '{project.name}' (board_id: {board_id}) "
+                "- no longer exists in Planka"
+            )
 
     return {"removed_count": len(removed), "removed": removed}
 
