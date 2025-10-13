@@ -203,7 +203,7 @@ class Task(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        """String representation of Task."""
+        """Return string representation of Task."""
         return (
             f"<Task(id={self.id}, title='{self.title}', "
             f"status={self.status.value}, priority={self.priority.value})>"
