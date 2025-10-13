@@ -259,19 +259,12 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 )
                 logger.info(f"After documentation enhancement: {len(safe_tasks)} tasks")
 
-                # Create and insert About task at the beginning
-                about_task = self._create_about_task(
-                    description, project_name, safe_tasks
-                )
-                safe_tasks.insert(0, about_task)
-                logger.info("Added 'About' task card at beginning of task list")
-
                 # Log safety check impact
                 added_tasks = len(safe_tasks) - len(tasks)
                 if added_tasks > 0:
                     logger.info(f"Safety checks added {added_tasks} dependency tasks")
 
-            # Create tasks on board using base class
+            # Create tasks on board using base class (this also triggers decomposition)
             with error_context(
                 "kanban_task_creation",
                 custom_context={
@@ -281,6 +274,42 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             ):
                 created_tasks = await self.create_tasks_on_board(safe_tasks)
                 logger.info(f"Created {len(created_tasks)} tasks on board")
+
+                # NOW create About task AFTER decomposition with real task IDs
+                # Map created tasks to original tasks to preserve details
+                tasks_with_real_ids = []
+                for i, created in enumerate(created_tasks):
+                    if i < len(safe_tasks):
+                        original = safe_tasks[i]
+                        task_with_id = Task(
+                            id=created.id,  # Real Planka/Kanban ID
+                            name=original.name,
+                            description=original.description,
+                            status=original.status,
+                            priority=original.priority,
+                            assigned_to=original.assigned_to,
+                            created_at=original.created_at,
+                            updated_at=original.updated_at,
+                            due_date=original.due_date,
+                            estimated_hours=original.estimated_hours,
+                            dependencies=original.dependencies,
+                            labels=original.labels,
+                        )
+                        tasks_with_real_ids.append(task_with_id)
+
+                # Create About task with hierarchical subtask information
+                about_task = self._create_about_task(
+                    description, project_name, tasks_with_real_ids
+                )
+
+                # Add About task to board at the beginning
+                about_task_data = self.task_builder.build_task_data(about_task)
+                about_kanban_task = await self.kanban_client.create_task(
+                    about_task_data
+                )
+                logger.info(
+                    f"Created 'About' task card with ID: {about_kanban_task.id}"
+                )
 
                 # Log creation success rate
                 success_rate = (
