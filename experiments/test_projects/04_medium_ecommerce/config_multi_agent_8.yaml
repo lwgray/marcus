@@ -1,0 +1,89 @@
+# E-Commerce API - 8 Agent Configuration
+# Experiment: Medium complexity with 8 agents (testing saturation point)
+
+project_name: "E-Commerce API - 8 Agents"
+project_spec_file: "project_description.txt"
+
+project_options:
+  complexity: "standard"
+  provider: "planka"
+  mode: "new_project"
+
+agents:
+  - id: "agent_database"
+    name: "Database Agent"
+    role: "backend"
+    skills:
+      - "python"
+      - "sqlalchemy"
+      - "postgresql"
+      - "database-design"
+    subagents: 2
+
+  - id: "agent_migrations"
+    name: "Migrations Agent"
+    role: "backend"
+    skills:
+      - "python"
+      - "alembic"
+      - "database-migrations"
+    subagents: 1
+
+  - id: "agent_auth"
+    name: "Authentication Agent"
+    role: "backend"
+    skills:
+      - "python"
+      - "fastapi"
+      - "jwt"
+      - "security"
+    subagents: 1
+
+  - id: "agent_products"
+    name: "Products API Agent"
+    role: "backend"
+    skills:
+      - "python"
+      - "fastapi"
+      - "rest-api"
+    subagents: 1
+
+  - id: "agent_cart"
+    name: "Shopping Cart Agent"
+    role: "backend"
+    skills:
+      - "python"
+      - "fastapi"
+      - "business-logic"
+    subagents: 1
+
+  - id: "agent_orders"
+    name: "Orders Agent"
+    role: "backend"
+    skills:
+      - "python"
+      - "fastapi"
+      - "transactions"
+    subagents: 1
+
+  - id: "agent_inventory"
+    name: "Inventory Agent"
+    role: "backend"
+    skills:
+      - "python"
+      - "business-logic"
+      - "validation"
+    subagents: 1
+
+  - id: "agent_qa"
+    name: "QA Agent"
+    role: "qa"
+    skills:
+      - "python"
+      - "pytest"
+      - "testing"
+    subagents: 2
+
+timeouts:
+  project_creation: 300
+  agent_startup: 60

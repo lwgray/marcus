@@ -554,3 +554,269 @@ class MarcusExperiment:
             json.dump(report, f, indent=2)
 
         logger.info(f"Generated experiment report: {output_file}")
+
+    def log_code_quality(
+        self,
+        test_coverage: float,
+        linting_errors: int,
+        type_errors: int,
+        cyclomatic_complexity: Optional[float] = None,
+        step: Optional[int] = None,
+    ) -> None:
+        """
+        Log code quality metrics.
+
+        Parameters
+        ----------
+        test_coverage : float
+            Test coverage percentage (0-100)
+        linting_errors : int
+            Number of linting errors detected
+        type_errors : int
+            Number of type checking errors (e.g., mypy errors)
+        cyclomatic_complexity : float, optional
+            Average cyclomatic complexity across codebase
+        step : int, optional
+            Step number for time-series tracking
+        """
+        metrics = {
+            "test_coverage": test_coverage,
+            "linting_errors": linting_errors,
+            "type_errors": type_errors,
+        }
+
+        if cyclomatic_complexity is not None:
+            metrics["cyclomatic_complexity"] = cyclomatic_complexity
+
+        mlflow.log_metrics(metrics, step=step)
+        logger.info(
+            f"Logged code quality: coverage={test_coverage}%, "
+            f"lint={linting_errors}, types={type_errors}"
+        )
+
+    def log_dependency_metrics(
+        self,
+        critical_path_length: int,
+        avg_dependency_depth: float,
+        parallelizable_fraction: float,
+        max_parallel_tasks: int,
+        step: Optional[int] = None,
+    ) -> None:
+        """
+        Log task dependency structure metrics.
+
+        Parameters
+        ----------
+        critical_path_length : int
+            Length of the longest dependency chain
+        avg_dependency_depth : float
+            Average depth of dependency chains
+        parallelizable_fraction : float
+            Fraction of tasks that can run in parallel (0.0-1.0)
+        max_parallel_tasks : int
+            Maximum number of tasks that can run simultaneously
+        step : int, optional
+            Step number for time-series tracking
+        """
+        metrics = {
+            "critical_path_length": critical_path_length,
+            "avg_dependency_depth": avg_dependency_depth,
+            "parallelizable_fraction": parallelizable_fraction,
+            "max_parallel_tasks": max_parallel_tasks,
+        }
+
+        mlflow.log_metrics(metrics, step=step)
+        logger.info(
+            f"Logged dependency metrics: critical_path={critical_path_length}, "
+            f"parallel_fraction={parallelizable_fraction:.2%}"
+        )
+
+    def log_agent_idle_time(
+        self, agent_id: str, idle_seconds: float, step: Optional[int] = None
+    ) -> None:
+        """
+        Log time an agent spent waiting for tasks.
+
+        Parameters
+        ----------
+        agent_id : str
+            Agent identifier
+        idle_seconds : float
+            Time spent idle in seconds
+        step : int, optional
+            Step number for time-series tracking
+        """
+        mlflow.log_metric(f"agent_{agent_id}_idle_time", idle_seconds, step=step)
+        logger.info(f"Logged idle time: {agent_id} idle for {idle_seconds}s")
+
+    def log_coordination_overhead(
+        self,
+        context_requests: int,
+        blockers: int,
+        avg_blocker_resolution_time: float,
+        merge_conflicts: Optional[int] = None,
+        step: Optional[int] = None,
+    ) -> None:
+        """
+        Log coordination overhead metrics for multi-agent systems.
+
+        Parameters
+        ----------
+        context_requests : int
+            Total number of context requests made
+        blockers : int
+            Total number of blockers reported
+        avg_blocker_resolution_time : float
+            Average time to resolve blockers in seconds
+        merge_conflicts : int, optional
+            Number of git merge conflicts encountered
+        step : int, optional
+            Step number for time-series tracking
+        """
+        metrics = {
+            "coordination_context_requests": context_requests,
+            "coordination_blockers": blockers,
+            "coordination_avg_blocker_resolution": avg_blocker_resolution_time,
+        }
+
+        if merge_conflicts is not None:
+            metrics["coordination_merge_conflicts"] = merge_conflicts
+
+        mlflow.log_metrics(metrics, step=step)
+        logger.info(
+            f"Logged coordination overhead: {context_requests} context requests, "
+            f"{blockers} blockers"
+        )
+
+    def log_resource_usage(
+        self,
+        total_tokens: int,
+        api_cost_usd: float,
+        tokens_per_task: Optional[float] = None,
+        cost_per_task: Optional[float] = None,
+        step: Optional[int] = None,
+    ) -> None:
+        """
+        Log resource usage and cost metrics.
+
+        Parameters
+        ----------
+        total_tokens : int
+            Total tokens consumed
+        api_cost_usd : float
+            Total API cost in USD
+        tokens_per_task : float, optional
+            Average tokens per completed task
+        cost_per_task : float, optional
+            Average cost per completed task in USD
+        step : int, optional
+            Step number for time-series tracking
+        """
+        metrics = {
+            "total_tokens": float(total_tokens),
+            "api_cost_usd": api_cost_usd,
+        }
+
+        if tokens_per_task is not None:
+            metrics["tokens_per_task"] = tokens_per_task
+
+        if cost_per_task is not None:
+            metrics["cost_per_task"] = cost_per_task
+
+        mlflow.log_metrics(metrics, step=step)
+        logger.info(
+            f"Logged resource usage: {total_tokens} tokens, ${api_cost_usd:.2f}"
+        )
+
+    def log_throughput(
+        self,
+        tasks_completed: int,
+        elapsed_hours: float,
+        tasks_per_hour: Optional[float] = None,
+        step: Optional[int] = None,
+    ) -> None:
+        """
+        Log throughput metrics.
+
+        Parameters
+        ----------
+        tasks_completed : int
+            Number of tasks completed
+        elapsed_hours : float
+            Total elapsed time in hours
+        tasks_per_hour : float, optional
+            Calculated throughput (if not provided, will be calculated)
+        step : int, optional
+            Step number for time-series tracking
+        """
+        if tasks_per_hour is None and elapsed_hours > 0:
+            tasks_per_hour = tasks_completed / elapsed_hours
+
+        metrics = {
+            "throughput_tasks_completed": float(tasks_completed),
+            "throughput_elapsed_hours": elapsed_hours,
+        }
+
+        if tasks_per_hour is not None:
+            metrics["throughput_tasks_per_hour"] = tasks_per_hour
+
+        mlflow.log_metrics(metrics, step=step)
+        logger.info(
+            f"Logged throughput: {tasks_completed} tasks in {elapsed_hours:.2f}h "
+            f"({tasks_per_hour:.2f} tasks/hour)"
+        )
+
+    def log_parallel_efficiency(
+        self,
+        num_agents: int,
+        single_agent_time: float,
+        multi_agent_time: float,
+        speedup_factor: Optional[float] = None,
+        efficiency: Optional[float] = None,
+    ) -> None:
+        """
+        Log parallel efficiency metrics comparing multi-agent to single-agent.
+
+        Parameters
+        ----------
+        num_agents : int
+            Number of agents in multi-agent configuration
+        single_agent_time : float
+            Time taken by single agent in hours
+        multi_agent_time : float
+            Time taken by multi-agent system in hours
+        speedup_factor : float, optional
+            Speedup factor (if not provided, will be calculated)
+        efficiency : float, optional
+            Parallel efficiency (if not provided, will be calculated)
+        """
+        if speedup_factor is None and multi_agent_time > 0:
+            speedup_factor = single_agent_time / multi_agent_time
+
+        if efficiency is None and speedup_factor is not None and num_agents > 0:
+            efficiency = speedup_factor / num_agents
+
+        metrics = {
+            "parallel_num_agents": float(num_agents),
+            "parallel_single_agent_time": single_agent_time,
+            "parallel_multi_agent_time": multi_agent_time,
+        }
+
+        if speedup_factor is not None:
+            metrics["parallel_speedup_factor"] = speedup_factor
+
+        if efficiency is not None:
+            metrics["parallel_efficiency"] = efficiency
+
+        mlflow.log_metrics(metrics)
+
+        if speedup_factor is not None and efficiency is not None:
+            logger.info(
+                f"Logged parallel efficiency: {num_agents} agents, "
+                f"{speedup_factor:.2f}x speedup, {efficiency:.2%} efficiency"
+            )
+        else:
+            logger.info(
+                f"Logged parallel efficiency: {num_agents} agents "
+                "(speedup/efficiency not calculated)"
+            )
