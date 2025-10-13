@@ -21,7 +21,7 @@ Register a new user account.
 {
   "email": "user@example.com",
   "username": "johndoe",
-  "password": "SecureP@ssw0rd123"
+  "password": "SecureP@ssw0rd123" <!-- pragma: allowlist secret -->
 }
 ```
 
@@ -42,7 +42,7 @@ Register a new user account.
   "success": true,
   "message": "User registered successfully",
   "data": {
-    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...", <!-- pragma: allowlist secret -->
     "refresh_token": "a1b2c3d4e5f6...",
     "token_type": "Bearer",
     "expires_in": 900,
@@ -73,7 +73,7 @@ Authenticate user and return tokens.
 ```json
 {
   "email": "user@example.com",
-  "password": "SecureP@ssw0rd123"
+  "password": "SecureP@ssw0rd123" <!-- pragma: allowlist secret -->
 }
 ```
 
@@ -83,7 +83,7 @@ Authenticate user and return tokens.
   "success": true,
   "message": "Login successful",
   "data": {
-    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...", <!-- pragma: allowlist secret -->
     "refresh_token": "a1b2c3d4e5f6...",
     "token_type": "Bearer",
     "expires_in": 900,
@@ -122,7 +122,7 @@ Refresh access token using refresh token.
   "success": true,
   "message": "Token refreshed successfully",
   "data": {
-    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...", <!-- pragma: allowlist secret -->
     "token_type": "Bearer",
     "expires_in": 900
   }
@@ -298,14 +298,14 @@ Authorization: Bearer <access_token>
 ```bash
 curl -X POST http://localhost:8000/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","username":"testuser","password":"SecureP@ss123!"}'
+  -d '{"email":"test@example.com","username":"testuser","password":"SecureP@ss123!"}' <!-- pragma: allowlist secret -->
 ```
 
 **Login:**
 ```bash
 curl -X POST http://localhost:8000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","password":"SecureP@ss123!"}'
+  -d '{"email":"test@example.com","password":"SecureP@ss123!"}' <!-- pragma: allowlist secret -->
 ```
 
 **Get Profile:**
@@ -397,7 +397,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES=15      # Optional (default: 15)
 REFRESH_TOKEN_EXPIRE_DAYS=7         # Optional (default: 7)
 
 # Database
-DATABASE_URL=postgresql://user:pass@localhost/dbname
+DATABASE_URL=postgresql://user:pass@localhost/dbname <!-- pragma: allowlist secret -->
 
 # Security
 BCRYPT_COST_FACTOR=12               # Optional (default: 12)
