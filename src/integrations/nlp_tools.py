@@ -29,9 +29,6 @@ from src.detection.context_detector import ContextDetector, MarcusMode  # noqa: 
 from src.integrations.nlp_base import NaturalLanguageTaskCreator  # noqa: E402
 from src.integrations.nlp_task_utils import TaskType  # noqa: E402
 from src.integrations.project_auto_setup import ProjectAutoSetup  # noqa: E402
-from src.marcus_mcp.tools.project_management import (  # noqa: E402
-    find_or_create_project,
-)
 from src.modes.adaptive.basic_adaptive import BasicAdaptiveMode  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -44,8 +41,10 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
     Refactored to use base class and eliminate code duplication.
     """
 
-    def __init__(self, kanban_client: Any, ai_engine: Any) -> None:
-        super().__init__(kanban_client, ai_engine)
+    def __init__(
+        self, kanban_client: Any, ai_engine: Any, subtask_manager: Any = None
+    ) -> None:
+        super().__init__(kanban_client, ai_engine, subtask_manager)
         self.prd_parser = AdvancedPRDParser()
         self.board_analyzer = BoardAnalyzer()
         self.context_detector = ContextDetector(self.board_analyzer)
@@ -260,19 +259,12 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 )
                 logger.info(f"After documentation enhancement: {len(safe_tasks)} tasks")
 
-                # Create and insert About task at the beginning
-                about_task = self._create_about_task(
-                    description, project_name, safe_tasks
-                )
-                safe_tasks.insert(0, about_task)
-                logger.info("Added 'About' task card at beginning of task list")
-
                 # Log safety check impact
                 added_tasks = len(safe_tasks) - len(tasks)
                 if added_tasks > 0:
                     logger.info(f"Safety checks added {added_tasks} dependency tasks")
 
-            # Create tasks on board using base class
+            # Create tasks on board using base class (this also triggers decomposition)
             with error_context(
                 "kanban_task_creation",
                 custom_context={
@@ -282,6 +274,42 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             ):
                 created_tasks = await self.create_tasks_on_board(safe_tasks)
                 logger.info(f"Created {len(created_tasks)} tasks on board")
+
+                # NOW create About task AFTER decomposition with real task IDs
+                # Map created tasks to original tasks to preserve details
+                tasks_with_real_ids = []
+                for i, created in enumerate(created_tasks):
+                    if i < len(safe_tasks):
+                        original = safe_tasks[i]
+                        task_with_id = Task(
+                            id=created.id,  # Real Planka/Kanban ID
+                            name=original.name,
+                            description=original.description,
+                            status=original.status,
+                            priority=original.priority,
+                            assigned_to=original.assigned_to,
+                            created_at=original.created_at,
+                            updated_at=original.updated_at,
+                            due_date=original.due_date,
+                            estimated_hours=original.estimated_hours,
+                            dependencies=original.dependencies,
+                            labels=original.labels,
+                        )
+                        tasks_with_real_ids.append(task_with_id)
+
+                # Create About task with hierarchical subtask information
+                about_task = self._create_about_task(
+                    description, project_name, tasks_with_real_ids
+                )
+
+                # Add About task to board at the beginning
+                about_task_data = self.task_builder.build_task_data(about_task)
+                about_kanban_task = await self.kanban_client.create_task(
+                    about_task_data
+                )
+                logger.info(
+                    f"Created 'About' task card with ID: {about_kanban_task.id}"
+                )
 
                 # Log creation success rate
                 success_rate = (
@@ -496,6 +524,9 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         """
         Create an 'About' task card that documents the project.
 
+        Supports hierarchical formatting when subtasks are present.
+        Tasks with subtasks show their children indented underneath.
+
         Parameters
         ----------
         description : str
@@ -510,13 +541,31 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         Task
             About task card with project documentation
         """
-        # Format task list with descriptions
+        # Get subtask manager if available
+        subtask_manager = getattr(self, "subtask_manager", None)
+
+        # Format task list with hierarchical structure
         task_list_md = "## Generated Tasks\n\n"
         for idx, task in enumerate(tasks, 1):
+            # Format parent/standalone task
             task_list_md += f"### {idx}. {task.name}\n"
             task_list_md += f"**Description:** {task.description}\n"
             task_list_md += f"**Estimated Hours:** {task.estimated_hours}\n"
-            task_list_md += f"**Labels:** {', '.join(task.labels)}\n\n"
+            task_list_md += f"**Labels:** {', '.join(task.labels)}\n"
+
+            # Add subtasks if they exist
+            if subtask_manager and subtask_manager.has_subtasks(task.id):
+                subtasks = subtask_manager.get_subtasks(task.id)
+                if subtasks:
+                    task_list_md += "\n**Subtasks:**\n"
+                    for sub_idx, subtask in enumerate(subtasks, 1):
+                        task_list_md += f"  {idx}.{sub_idx}. {subtask.name}\n"
+                        task_list_md += f"     - {subtask.description}\n"
+                        task_list_md += (
+                            f"     - Estimated: {subtask.estimated_hours}h\n"
+                        )
+
+            task_list_md += "\n"
 
         # Create the About card description
         about_description = f"""# {project_name} - Project Overview
@@ -880,6 +929,7 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
 
 
 # MCP Tool Functions remain the same
+# Simplified version - just the create_project function
 async def create_project_from_natural_language(
     description: str,
     project_name: str,
@@ -887,16 +937,18 @@ async def create_project_from_natural_language(
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
-    MCP tool to create a project from natural language description.
+    MCP tool to create a NEW project from natural language description.
+
+    This tool ALWAYS creates a new project - it does not search for or reuse
+    existing projects. For working with existing projects, use select_project
+    or create_tasks tools instead.
 
     This is the main entry point that Claude will call.
     """
     try:
-        # Initialize options if not provided
+        # Initialize options with default mode
         if options is None:
             options = {}
-
-        # Set default mode to 'new_project' if not specified
         if "mode" not in options:
             options["mode"] = "new_project"
 
@@ -917,82 +969,6 @@ async def create_project_from_natural_language(
         if state is None:
             raise ValueError("State parameter is required")
 
-        # PHASE 1: PROJECT DISCOVERY
-        # Check if user explicitly provided project_id → use existing project
-        if "project_id" in options and options["project_id"]:
-            logger.info(f"Using existing project: {options['project_id']}")
-            try:
-                # Switch to the specified project
-                await state.project_manager.switch_project(options["project_id"])
-                state.kanban_client = await state.project_manager.get_kanban_client()
-            except Exception as e:
-                project_id_val = options["project_id"]
-                return {
-                    "success": False,
-                    "error": f"Failed to switch to project {project_id_val}: {str(e)}",
-                }
-
-        # Check if mode is "new_project" → force creation (skip discovery)
-        elif options.get("mode") == "new_project":
-            logger.info(
-                f"Mode 'new_project' - forcing new project creation "
-                f"for '{project_name}'"
-            )
-            # Clear any stale project/board IDs to force new creation
-            if state.kanban_client:
-                state.kanban_client.project_id = None
-                state.kanban_client.board_id = None
-                logger.debug("Cleared stale project/board IDs to force new creation")
-            # Continue to auto-creation below
-
-        # Otherwise, search for existing projects by name
-        elif hasattr(state, "project_registry"):
-            discovery_result = await find_or_create_project(
-                server=state,
-                arguments={
-                    "project_name": project_name,
-                    "create_if_missing": False,
-                },
-            )
-
-            # Handle discovery results
-            if discovery_result["action"] == "found_existing":
-                # Exact match found - offer to use it or create new
-                logger.info(
-                    f"Found existing project '{discovery_result['project']['name']}' - "
-                    f"using it unless mode=new_project specified"
-                )
-                # Switch to existing project
-                await state.project_manager.switch_project(
-                    discovery_result["project"]["id"]
-                )
-                state.kanban_client = await state.project_manager.get_kanban_client()
-
-            elif discovery_result["action"] == "found_similar":
-                # Similar projects found - suggest to user
-                return {
-                    "success": False,
-                    "action": "found_similar",
-                    "message": discovery_result["suggestion"],
-                    "matches": discovery_result["matches"],
-                    "next_steps": discovery_result["next_steps"],
-                    "hint": (
-                        "To proceed: specify project_id in options or "
-                        "set mode='new_project' to create new"
-                    ),
-                }
-
-            # If action == "not_found", clear IDs to force auto-creation below
-            if discovery_result.get("action") == "not_found":
-                if state.kanban_client:
-                    state.kanban_client.project_id = None
-                    state.kanban_client.board_id = None
-                    logger.info(
-                        f"No existing project found for '{project_name}' - "
-                        f"will auto-create new project"
-                    )
-
-        # PHASE 2: INITIALIZE KANBAN CLIENT
         # Initialize kanban client if needed
         if not state.kanban_client:
             try:
@@ -1003,65 +979,47 @@ async def create_project_from_natural_language(
                     "error": f"Failed to initialize kanban client: {str(e)}",
                 }
 
-        # Re-clear project/board IDs if mode is "new_project"
-        # (in case initialize_kanban reloaded them from active project)
-        if options.get("mode") == "new_project":
-            if state.kanban_client:
-                state.kanban_client.project_id = None
-                state.kanban_client.board_id = None
-                logger.info(
-                    "Re-cleared project/board IDs after kanban init "
-                    "to force new creation"
-                )
+        # Always clear stale project/board IDs to force new project creation
+        if state.kanban_client:
+            state.kanban_client.project_id = None
+            state.kanban_client.board_id = None
+            logger.info(f"Creating NEW project '{project_name}'")
 
-        # PHASE 3: AUTO-CREATE PROJECT (if needed)
-        # Auto-create Planka project/board if no IDs exist
-        if not state.kanban_client.project_id or not state.kanban_client.board_id:
-            # Get provider from options or default to planka
-            provider = options.get("provider", "planka")
+        # Get provider from options or default to planka
+        provider = options.get("provider", "planka")
 
-            logger.info(
-                f"No project/board IDs found. Auto-creating {provider} "
-                f"project '{project_name}'"
+        logger.info(f"Auto-creating {provider} project '{project_name}'")
+
+        try:
+            # Use ProjectAutoSetup for provider-agnostic creation
+            auto_setup = ProjectAutoSetup()
+            project_config = await auto_setup.setup_new_project(
+                kanban_client=state.kanban_client,
+                provider=provider,
+                project_name=project_name,
+                options=options,
             )
 
-            try:
-                # Use ProjectAutoSetup for provider-agnostic creation
-                auto_setup = ProjectAutoSetup()
-                project_config = await auto_setup.setup_new_project(
-                    kanban_client=state.kanban_client,
-                    provider=provider,
-                    project_name=project_name,
-                    options=options,
-                )
+            logger.info(
+                f"Auto-created {provider} project: {project_config.provider_config}"
+            )
 
-                logger.info(
-                    f"Auto-created {provider} project: "
-                    f"{project_config.provider_config}"
-                )
+            # Register new project in ProjectRegistry
+            if hasattr(state, "project_registry"):
+                project_id = await state.project_registry.add_project(project_config)
+                logger.info(f"Registered new project in registry: {project_id}")
 
-                # Register new project in ProjectRegistry
-                if hasattr(state, "project_registry"):
-                    project_id = await state.project_registry.add_project(
-                        project_config
-                    )
-                    logger.info(f"Registered new project in registry: {project_id}")
+                # Switch to new project
+                await state.project_manager.switch_project(project_id)
+                state.kanban_client = await state.project_manager.get_kanban_client()
+            else:
+                logger.warning("ProjectRegistry not available - project not registered")
 
-                    # Switch to new project
-                    await state.project_manager.switch_project(project_id)
-                    state.kanban_client = (
-                        await state.project_manager.get_kanban_client()
-                    )
-                else:
-                    logger.warning(
-                        "ProjectRegistry not available - project not registered"
-                    )
-
-            except Exception as e:
-                return {
-                    "success": False,
-                    "error": f"Failed to auto-create {provider} project: {str(e)}",
-                }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Failed to auto-create {provider} project: {str(e)}",
+            }
 
         # Verify kanban client supports create_task
         if not hasattr(state.kanban_client, "create_task"):
@@ -1073,9 +1031,14 @@ async def create_project_from_natural_language(
                 ),
             }
 
+        # Get subtask_manager if available (GH-62 fix)
+        subtask_manager = getattr(state, "subtask_manager", None)
+
         # Initialize project creator
         creator = NaturalLanguageProjectCreator(
-            kanban_client=state.kanban_client, ai_engine=state.ai_engine
+            kanban_client=state.kanban_client,
+            ai_engine=state.ai_engine,
+            subtask_manager=subtask_manager,
         )
 
         # Create project

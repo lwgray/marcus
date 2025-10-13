@@ -40,9 +40,11 @@ async def start_experiment(
     experiment_name : str
         Name for the MLflow experiment
     board_id : str, optional
-        Board ID to monitor. If not provided, uses the currently selected project's board.
+        Board ID to monitor. If not provided, uses the currently selected
+        project's board.
     project_id : str, optional
-        Project ID to monitor. If not provided, uses the currently selected project.
+        Project ID to monitor. If not provided, uses the currently selected
+        project.
     run_name : str, optional
         Name for this specific run (auto-generated if not provided)
     tracking_interval : int, optional
@@ -108,7 +110,10 @@ async def start_experiment(
             if not active_project:
                 return {
                     "success": False,
-                    "error": "No active project selected. Use select_project first or provide board_id and project_id.",
+                    "error": (
+                        "No active project selected. Use select_project "
+                        "first or provide board_id and project_id."
+                    ),
                 }
 
             # Get board_id and project_id from active project
@@ -120,7 +125,10 @@ async def start_experiment(
             if not board_id or not project_id:
                 return {
                     "success": False,
-                    "error": f"Active project missing board_id or project_id in config: {active_project.provider_config}",
+                    "error": (
+                        "Active project missing board_id or project_id "
+                        f"in config: {active_project.provider_config}"
+                    ),
                 }
 
             logger.info(
@@ -260,11 +268,17 @@ EXPERIMENT_TOOLS = {
                 },
                 "board_id": {
                     "type": "string",
-                    "description": "Board ID to monitor (optional, uses active project if not provided)",
+                    "description": (
+                        "Board ID to monitor (optional, uses active "
+                        "project if not provided)"
+                    ),
                 },
                 "project_id": {
                     "type": "string",
-                    "description": "Project ID to monitor (optional, uses active project if not provided)",
+                    "description": (
+                        "Project ID to monitor (optional, uses active "
+                        "project if not provided)"
+                    ),
                 },
                 "run_name": {
                     "type": "string",

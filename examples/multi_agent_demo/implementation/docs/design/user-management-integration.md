@@ -45,7 +45,7 @@ This document describes how the authentication system integrates with the user m
 POST /api/auth/register
 {
     "email": "user@example.com",
-    "password": "SecureP@ssw0rd",
+    "password": "SecureP@ssw0rd", <!-- pragma: allowlist secret -->
     "username": "johndoe"
 }
 
@@ -91,7 +91,7 @@ async def register_user(request: RegistrationRequest):
 POST /api/auth/login
 {
     "email": "user@example.com",
-    "password": "SecureP@ssw0rd"
+    "password": "SecureP@ssw0rd" <!-- pragma: allowlist secret -->
 }
 
 # Integration steps:
@@ -134,8 +134,8 @@ async def login_user(request: LoginRequest):
 PUT /api/users/me/password
 Authorization: Bearer <access_token>
 {
-    "current_password": "OldP@ssw0rd",
-    "new_password": "NewP@ssw0rd"
+    "current_password": "OldP@ssw0rd", <!-- pragma: allowlist secret -->
+    "new_password": "NewP@ssw0rd" <!-- pragma: allowlist secret -->
 }
 
 # Integration steps:
@@ -404,7 +404,7 @@ GET /api/auth/reset-password?token=<reset_token>
 POST /api/auth/reset-password
 {
     "token": "<reset_token>",
-    "new_password": "NewP@ssw0rd"
+    "new_password": "NewP@ssw0rd" <!-- pragma: allowlist secret -->
 }
 
 # Integration:

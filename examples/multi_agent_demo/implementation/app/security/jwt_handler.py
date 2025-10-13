@@ -104,7 +104,7 @@ def create_access_token(
         payload.update(additional_claims)
 
     # Encode and return token
-    token = jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+    token: str = jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
     return token
 
 
@@ -146,13 +146,13 @@ def verify_token(token: str) -> Dict[str, Any]:
     """
     try:
         # Decode and verify token
-        payload = jwt.decode(
+        decoded: Dict[str, Any] = jwt.decode(
             token,
             JWT_SECRET_KEY,
             algorithms=[JWT_ALGORITHM],
             options={"verify_exp": True},  # Verify expiration
         )
-        return payload
+        return decoded
 
     except ExpiredSignatureError:
         raise TokenExpiredError("Token has expired")
@@ -298,4 +298,7 @@ def decode_token_without_verification(token: str) -> Dict[str, Any]:
     >>> 'user_id' in payload
     True
     """
-    return jwt.decode(token, options={"verify_signature": False, "verify_exp": False})
+    decoded: Dict[str, Any] = jwt.decode(
+        token, options={"verify_signature": False, "verify_exp": False}
+    )
+    return decoded

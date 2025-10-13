@@ -400,6 +400,8 @@ class TestGetTaskContext:
                 "sibling_subtasks": [],
             }
         )
+        # Mock get_subtasks to return empty list (no sibling subtasks)
+        mock_subtask_manager.get_subtasks = Mock(return_value=[])
 
         parent_task = Task(
             id="parent-task-1",

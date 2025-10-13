@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fix Demo Issues
+Fix Demo Issues.
 
 This script helps diagnose and fix common demo issues:
 1. End running experiments
@@ -12,13 +12,15 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import Dict
 
-from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from mcp import ClientSession, StdioServerParameters
 
-async def main():
-    """Main diagnostic and fix routine."""
+
+async def main() -> None:
+    """Run diagnostic and fix routine."""
     demo_root = Path(__file__).parent
     project_info_file = demo_root / "project_info.json"
 
@@ -62,15 +64,24 @@ async def main():
             try:
                 result = await session.call_tool(
                     "get_all_board_tasks",
-                    arguments={"board_id": board_id, "project_id": project_id}
+                    arguments={"board_id": board_id, "project_id": project_id},
                 )
 
-                if isinstance(result, dict) and "tasks" in result:
-                    tasks = result["tasks"]
+                # Extract content from CallToolResult
+                result_dict = {}
+                if hasattr(result, "content"):
+                    content = result.content
+                    if isinstance(content, list) and len(content) > 0:
+                        first_content = content[0]
+                        if hasattr(first_content, "text"):
+                            result_dict = json.loads(first_content.text)
+
+                if isinstance(result_dict, dict) and "tasks" in result_dict:
+                    tasks = result_dict["tasks"]
                     print(f"  ✓ Found {len(tasks)} tasks on board")
 
                     # Group by status
-                    by_status = {}
+                    by_status: Dict[str, int] = {}
                     for task in tasks:
                         status = task.get("status", "unknown")
                         by_status[status] = by_status.get(status, 0) + 1
@@ -86,10 +97,12 @@ async def main():
                         print("\n  Sample unassigned tasks:")
                         for task in unassigned[:5]:
                             print(f"    - {task.get('name')} (ID: {task.get('id')})")
-                            if task.get('labels'):
-                                print(f"      Labels: {', '.join(task.get('labels', []))}")
+                            if task.get("labels"):
+                                print(
+                                    f"      Labels: {', '.join(task.get('labels', []))}"
+                                )
                 else:
-                    print(f"  Unexpected result: {result}")
+                    print(f"  Unexpected result: {result_dict}")
 
             except Exception as e:
                 print(f"  ❌ Error getting tasks: {e}")
@@ -102,20 +115,19 @@ async def main():
                     "agent_foundation",
                     "agent_auth",
                     "agent_api",
-                    "agent_integration"
+                    "agent_integration",
                 ]
 
                 registered = []
                 for agent_id in agent_ids:
                     try:
                         result = await session.call_tool(
-                            "get_agent_status",
-                            arguments={"agent_id": agent_id}
+                            "get_agent_status", arguments={"agent_id": agent_id}
                         )
                         if result:
                             registered.append(agent_id)
                             print(f"  ✓ {agent_id}: Registered")
-                    except:
+                    except Exception:
                         print(f"  ✗ {agent_id}: Not registered")
 
                 print(f"\n  Total registered: {len(registered)}/{len(agent_ids)}")

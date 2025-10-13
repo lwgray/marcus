@@ -9,11 +9,11 @@ from sqlalchemy import engine_from_config, pool
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 # Import all models for autogenerate support
-from app.models import Base
-from app.models.comment import Comment
-from app.models.project import Project
-from app.models.task import Task
-from app.models.user import User
+from app.models import Base  # noqa: E402
+from app.models.comment import Comment  # noqa: E402, F401
+from app.models.project import Project  # noqa: E402, F401
+from app.models.task import Task  # noqa: E402, F401
+from app.models.user import User  # noqa: E402, F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

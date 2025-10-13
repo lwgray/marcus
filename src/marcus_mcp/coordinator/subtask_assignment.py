@@ -14,6 +14,73 @@ from src.marcus_mcp.coordinator.subtask_manager import Subtask, SubtaskManager
 logger = logging.getLogger(__name__)
 
 
+def _determine_task_type(task: Task) -> str:
+    """
+    Determine the task type (design/implementation/testing) from task name and labels.
+
+    This logic mirrors the type detection in
+    AIAnalysisEngine.generate_task_instructions() to ensure consistency.
+
+    Parameters
+    ----------
+    task : Task
+        The task to determine type for
+
+    Returns
+    -------
+    str
+        Task type: "design", "testing", or "implementation"
+    """
+    task_name_lower = task.name.lower()
+    task_labels = getattr(task, "labels", []) or []
+
+    # Check name and labels for explicit type indicators
+    if "design" in task_name_lower or "type:design" in task_labels:
+        return "design"
+    elif "test" in task_name_lower or "type:testing" in task_labels:
+        return "testing"
+    else:
+        return "implementation"
+
+
+def _are_dependencies_satisfied(task: Task, all_tasks: List[Task]) -> bool:
+    """
+    Check if all dependencies of a task are completed.
+
+    This ensures that subtasks from a parent task are only available
+    after all of the parent task's dependencies are satisfied.
+
+    Parameters
+    ----------
+    task : Task
+        The task to check dependencies for
+    all_tasks : List[Task]
+        All tasks in the project
+
+    Returns
+    -------
+    bool
+        True if all dependencies are satisfied (or no dependencies exist)
+    """
+    if not task.dependencies:
+        return True
+
+    # Create a mapping of task IDs to their status
+    task_status_map = {t.id: t.status for t in all_tasks}
+
+    # Check if all dependencies are DONE
+    for dep_id in task.dependencies:
+        dep_status = task_status_map.get(dep_id)
+        if dep_status != TaskStatus.DONE:
+            logger.debug(
+                f"Parent task {task.name} has unsatisfied dependency: "
+                f"{dep_id} (status: {dep_status})"
+            )
+            return False
+
+    return True
+
+
 def find_next_available_subtask(
     agent_id: str,
     project_tasks: List[Task],
@@ -52,6 +119,15 @@ def find_next_available_subtask(
         # Skip if parent task is already DONE (allow TODO and IN_PROGRESS)
         # This enables parallel assignment of multiple subtasks from the same parent
         if task.status == TaskStatus.DONE:
+            continue
+
+        # GH-64: Check if parent task dependencies are satisfied
+        # Subtasks should only be available after parent's dependencies complete
+        if not _are_dependencies_satisfied(task, project_tasks):
+            logger.debug(
+                f"Skipping subtasks for '{task.name}' - "
+                "parent dependencies not satisfied"
+            )
             continue
 
         # Get all subtasks for this parent
@@ -93,8 +169,11 @@ def convert_subtask_to_task(subtask: Subtask, parent_task: Task) -> Task:
     Returns
     -------
     Task
-        Task object representing the subtask
+        Task object representing the subtask with parent task type metadata
     """
+    # Determine parent task type
+    parent_task_type = _determine_task_type(parent_task)
+
     # Create a Task object from the Subtask
     task = Task(
         id=subtask.id,
@@ -113,6 +192,14 @@ def convert_subtask_to_task(subtask: Subtask, parent_task: Task) -> Task:
         project_name=parent_task.project_name,
     )
 
+    # Add parent task type as metadata
+    # This ensures subtasks inherit the correct instruction type
+    task._parent_task_type = parent_task_type  # type: ignore[attr-defined]
+
+    logger.debug(
+        f"Converted subtask '{subtask.name}' with parent task type: {parent_task_type}"
+    )
+
     return task
 
 
@@ -120,9 +207,13 @@ async def check_and_complete_parent_task(
     parent_task_id: str,
     subtask_manager: SubtaskManager,
     kanban_client: Any,
+    state: Any = None,
 ) -> bool:
     """
     Check if all subtasks are complete and auto-complete parent task.
+
+    CRITICAL: Also rolls up subtask artifacts and decisions to parent task
+    so that dependent tasks can see the work done by subtasks.
 
     Parameters
     ----------
@@ -132,6 +223,8 @@ async def check_and_complete_parent_task(
         Manager tracking all subtasks
     kanban_client : Any
         Kanban client for updating task status
+    state : Any, optional
+        Marcus server state for accessing artifacts and context
 
     Returns
     -------
@@ -142,6 +235,16 @@ async def check_and_complete_parent_task(
         logger.info(
             f"All subtasks complete for {parent_task_id} " "- auto-completing parent"
         )
+
+        # CRITICAL FIX: Roll up subtask artifacts and decisions to parent
+        # This ensures dependent tasks can see what subtasks produced
+        if state:
+            await _rollup_subtask_artifacts_to_parent(
+                parent_task_id, subtask_manager, state
+            )
+            await _rollup_subtask_decisions_to_parent(
+                parent_task_id, subtask_manager, state
+            )
 
         # Update parent task to DONE
         await kanban_client.update_task(
@@ -167,6 +270,111 @@ async def check_and_complete_parent_task(
         return True
 
     return False
+
+
+async def _rollup_subtask_artifacts_to_parent(
+    parent_task_id: str, subtask_manager: SubtaskManager, state: Any
+) -> None:
+    """
+    Roll up all subtask artifacts to the parent task.
+
+    This ensures that when Task 2 depends on Task 1, and both have subtasks,
+    Task 2's subtasks can see the artifacts produced by Task 1's subtasks.
+
+    Parameters
+    ----------
+    parent_task_id : str
+        ID of the parent task
+    subtask_manager : SubtaskManager
+        Manager tracking all subtasks
+    state : Any
+        Marcus server state for accessing task_artifacts
+    """
+    if not hasattr(state, "task_artifacts"):
+        return
+
+    subtasks = subtask_manager.get_subtasks(parent_task_id)
+    if not subtasks:
+        return
+
+    # Initialize parent's artifact list if not exists
+    if parent_task_id not in state.task_artifacts:
+        state.task_artifacts[parent_task_id] = []
+
+    # Collect artifacts from all subtasks
+    rollup_count = 0
+    for subtask in subtasks:
+        if subtask.id in state.task_artifacts:
+            for artifact in state.task_artifacts[subtask.id]:
+                # Add subtask context to artifact
+                rollup_artifact = artifact.copy()
+                rollup_artifact["from_subtask"] = subtask.id
+                rollup_artifact["from_subtask_name"] = subtask.name
+                rollup_artifact["description"] = (
+                    f"[From subtask: {subtask.name}] "
+                    f"{rollup_artifact.get('description', '')}"
+                )
+
+                # Add to parent's artifacts
+                state.task_artifacts[parent_task_id].append(rollup_artifact)
+                rollup_count += 1
+
+    if rollup_count > 0:
+        logger.info(
+            f"Rolled up {rollup_count} artifacts from {len(subtasks)} subtasks "
+            f"to parent task {parent_task_id}"
+        )
+
+
+async def _rollup_subtask_decisions_to_parent(
+    parent_task_id: str, subtask_manager: SubtaskManager, state: Any
+) -> None:
+    """
+    Roll up all subtask decisions to the parent task.
+
+    This ensures that when Task 2 depends on Task 1, and both have subtasks,
+    Task 2's subtasks can see the decisions made by Task 1's subtasks.
+
+    Parameters
+    ----------
+    parent_task_id : str
+        ID of the parent task
+    subtask_manager : SubtaskManager
+        Manager tracking all subtasks
+    state : Any
+        Marcus server state for accessing context.decisions
+    """
+    if not hasattr(state, "context") or not state.context:
+        return
+
+    subtasks = subtask_manager.get_subtasks(parent_task_id)
+    if not subtasks:
+        return
+
+    # Collect decisions from all subtasks and re-log them for parent
+    rollup_count = 0
+    for subtask in subtasks:
+        # Find decisions made during this subtask
+        subtask_decisions = [
+            d for d in state.context.decisions if d.task_id == subtask.id
+        ]
+
+        for decision in subtask_decisions:
+            # Re-log the decision with parent task ID
+            await state.context.log_decision(
+                agent_id=decision.agent_id,
+                task_id=parent_task_id,
+                what=f"[From subtask: {subtask.name}] {decision.what}",
+                why=decision.why,
+                impact=decision.impact,
+            )
+            rollup_count += 1
+
+    if rollup_count > 0:
+        logger.info(
+            f"Rolled up {rollup_count} decisions from {len(subtasks)} subtasks "
+            f"to parent task {parent_task_id}"
+        )
 
 
 async def update_subtask_progress_in_parent(

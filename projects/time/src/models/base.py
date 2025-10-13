@@ -6,7 +6,6 @@ and common functionality shared across models.
 """
 
 import uuid
-from datetime import datetime
 
 from sqlalchemy import Column, DateTime
 from sqlalchemy.ext.declarative import declarative_base

@@ -25,97 +25,107 @@ from pydantic import ValidationError
 class TestUserCreateSchema:
     """Test suite for UserCreate schema validation."""
 
-    def test_valid_user_create(self):
+    def test_valid_user_create(self) -> None:
         """Test valid user creation data."""
         # Act
         user = UserCreate(
-            email="test@example.com", username="testuser", password="SecureP@ssw0rd123"
+            email="test@example.com",
+            username="testuser",
+            password="SecureP@ssw0rd123",  # pragma: allowlist secret
         )
 
         # Assert
         assert user.email == "test@example.com"
         assert user.username == "testuser"
-        assert user.password == "SecureP@ssw0rd123"
+        assert user.password == "SecureP@ssw0rd123"  # pragma: allowlist secret
 
-    def test_invalid_email(self):
+    def test_invalid_email(self) -> None:
         """Test creation with invalid email format."""
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
             UserCreate(
-                email="invalid-email", username="testuser", password="SecureP@ssw0rd123"
+                email="invalid-email",
+                username="testuser",
+                password="SecureP@ssw0rd123",  # pragma: allowlist secret
             )
 
         assert "email" in str(exc_info.value).lower()
 
-    def test_username_too_short(self):
+    def test_username_too_short(self) -> None:
         """Test username shorter than 3 characters."""
         # Act & Assert
         with pytest.raises(ValidationError):
             UserCreate(
-                email="test@example.com", username="ab", password="SecureP@ssw0rd123"
+                email="test@example.com",
+                username="ab",
+                password="SecureP@ssw0rd123",  # pragma: allowlist secret
             )
 
-    def test_username_invalid_characters(self):
+    def test_username_invalid_characters(self) -> None:
         """Test username with invalid characters."""
         # Act & Assert
         with pytest.raises(ValidationError, match="letters, numbers, and underscores"):
             UserCreate(
                 email="test@example.com",
                 username="test-user!",
-                password="SecureP@ssw0rd123",
+                password="SecureP@ssw0rd123",  # pragma: allowlist secret
             )
 
-    def test_password_too_short(self):
+    def test_password_too_short(self) -> None:
         """Test password shorter than 8 characters."""
         # Act & Assert
         with pytest.raises(ValidationError, match="8 characters"):
             UserCreate(
-                email="test@example.com", username="testuser", password="Short1!"
+                email="test@example.com",
+                username="testuser",
+                password="Short1!",  # pragma: allowlist secret
             )
 
-    def test_password_missing_uppercase(self):
+    def test_password_missing_uppercase(self) -> None:
         """Test password without uppercase letter."""
         # Act & Assert
         with pytest.raises(ValidationError, match="uppercase"):
             UserCreate(
                 email="test@example.com",
                 username="testuser",
-                password="securep@ssw0rd123",
+                password="securep@ssw0rd123",  # pragma: allowlist secret
             )
 
-    def test_password_missing_lowercase(self):
+    def test_password_missing_lowercase(self) -> None:
         """Test password without lowercase letter."""
         # Act & Assert
         with pytest.raises(ValidationError, match="lowercase"):
             UserCreate(
                 email="test@example.com",
                 username="testuser",
-                password="SECUREP@SSW0RD123",
+                password="SECUREP@SSW0RD123",  # pragma: allowlist secret
             )
 
-    def test_password_missing_digit(self):
+    def test_password_missing_digit(self) -> None:
         """Test password without digit."""
         # Act & Assert
         with pytest.raises(ValidationError, match="digit"):
             UserCreate(
-                email="test@example.com", username="testuser", password="SecureP@ssword"
+                email="test@example.com",
+                username="testuser",
+                password="SecureP@ssword",  # pragma: allowlist secret
             )
 
-    def test_password_missing_special(self):
+    def test_password_missing_special(self) -> None:
         """Test password without special character."""
         # Act & Assert
         with pytest.raises(ValidationError, match="special"):
             UserCreate(
                 email="test@example.com",
                 username="testuser",
-                password="SecurePassword123",
+                password="SecurePassword123",  # pragma: allowlist secret
             )
 
 
 class TestUserUpdateSchema:
     """Test suite for UserUpdate schema validation."""
 
-    def test_update_email_only(self):
+    def test_update_email_only(self) -> None:
         """Test updating only email."""
         # Act
         update = UserUpdate(email="new@example.com")
@@ -124,7 +134,7 @@ class TestUserUpdateSchema:
         assert update.email == "new@example.com"
         assert update.username is None
 
-    def test_update_username_only(self):
+    def test_update_username_only(self) -> None:
         """Test updating only username."""
         # Act
         update = UserUpdate(username="newusername")
@@ -133,7 +143,7 @@ class TestUserUpdateSchema:
         assert update.username == "newusername"
         assert update.email is None
 
-    def test_update_both_fields(self):
+    def test_update_both_fields(self) -> None:
         """Test updating both email and username."""
         # Act
         update = UserUpdate(email="new@example.com", username="newusername")
@@ -142,7 +152,7 @@ class TestUserUpdateSchema:
         assert update.email == "new@example.com"
         assert update.username == "newusername"
 
-    def test_update_invalid_username(self):
+    def test_update_invalid_username(self) -> None:
         """Test update with invalid username characters."""
         # Act & Assert
         with pytest.raises(ValidationError, match="letters, numbers, and underscores"):
@@ -152,34 +162,38 @@ class TestUserUpdateSchema:
 class TestPasswordChangeSchema:
     """Test suite for PasswordChange schema validation."""
 
-    def test_valid_password_change(self):
+    def test_valid_password_change(self) -> None:
         """Test valid password change data."""
         # Act
         change = PasswordChange(
-            current_password="OldPass123!", new_password="NewPass456@"
+            current_password="OldPass123!",  # pragma: allowlist secret
+            new_password="NewPass456@",  # pragma: allowlist secret
         )
 
         # Assert
-        assert change.current_password == "OldPass123!"
-        assert change.new_password == "NewPass456@"
+        assert change.current_password == "OldPass123!"  # pragma: allowlist secret
+        assert change.new_password == "NewPass456@"  # pragma: allowlist secret
 
-    def test_new_password_too_weak(self):
+    def test_new_password_too_weak(self) -> None:
         """Test password change with weak new password."""
         # Act & Assert
         with pytest.raises(ValidationError):
-            PasswordChange(current_password="OldPass123!", new_password="weak")
+            PasswordChange(
+                current_password="OldPass123!",  # pragma: allowlist secret
+                new_password="weak",  # pragma: allowlist secret
+            )
 
-    def test_missing_current_password(self):
+    def test_missing_current_password(self) -> None:
         """Test password change without current password."""
         # Act & Assert
         with pytest.raises(ValidationError):
-            PasswordChange(new_password="NewPass456@")
+            PasswordChange(new_password="NewPass456@")  # pragma: allowlist secret
 
 
 class TestUserResponseSchema:
     """Test suite for UserResponse schema."""
 
-    def test_valid_user_response(self):
+    def test_valid_user_response(self) -> None:
         """Test valid user response data."""
         # Arrange
         now = datetime.now()
@@ -205,7 +219,7 @@ class TestUserResponseSchema:
         assert response.is_verified is False
         assert response.roles == ["user"]
 
-    def test_user_response_multiple_roles(self):
+    def test_user_response_multiple_roles(self) -> None:
         """Test user response with multiple roles."""
         # Act
         response = UserResponse(
@@ -228,7 +242,7 @@ class TestUserResponseSchema:
 class TestUserListResponseSchema:
     """Test suite for UserListResponse schema."""
 
-    def test_valid_user_list(self):
+    def test_valid_user_list(self) -> None:
         """Test valid user list response."""
         # Arrange
         user = UserResponse(
@@ -253,7 +267,7 @@ class TestUserListResponseSchema:
         assert response.page == 1
         assert response.total_pages == 1
 
-    def test_empty_user_list(self):
+    def test_empty_user_list(self) -> None:
         """Test empty user list response."""
         # Act
         response = UserListResponse(
@@ -268,7 +282,7 @@ class TestUserListResponseSchema:
 class TestUserSearchParamsSchema:
     """Test suite for UserSearchParams schema."""
 
-    def test_default_search_params(self):
+    def test_default_search_params(self) -> None:
         """Test search params with defaults."""
         # Act
         params = UserSearchParams()
@@ -279,7 +293,7 @@ class TestUserSearchParamsSchema:
         assert params.sort_by == "created_at"
         assert params.sort_order == "desc"
 
-    def test_custom_search_params(self):
+    def test_custom_search_params(self) -> None:
         """Test search params with custom values."""
         # Act
         params = UserSearchParams(
@@ -305,7 +319,7 @@ class TestUserSearchParamsSchema:
         assert params.sort_by == "username"
         assert params.sort_order == "asc"
 
-    def test_invalid_page_size(self):
+    def test_invalid_page_size(self) -> None:
         """Test page size validation."""
         # Act & Assert - page_size > 100
         with pytest.raises(ValidationError):
@@ -315,13 +329,13 @@ class TestUserSearchParamsSchema:
         with pytest.raises(ValidationError):
             UserSearchParams(page_size=0)
 
-    def test_invalid_sort_by(self):
+    def test_invalid_sort_by(self) -> None:
         """Test invalid sort_by field."""
         # Act & Assert
         with pytest.raises(ValidationError):
             UserSearchParams(sort_by="invalid_field")
 
-    def test_invalid_sort_order(self):
+    def test_invalid_sort_order(self) -> None:
         """Test invalid sort_order value."""
         # Act & Assert
         with pytest.raises(ValidationError):
@@ -331,7 +345,7 @@ class TestUserSearchParamsSchema:
 class TestRoleAssignmentSchema:
     """Test suite for RoleAssignment schema."""
 
-    def test_valid_role_assignment(self):
+    def test_valid_role_assignment(self) -> None:
         """Test valid role assignment."""
         # Act
         assignment = RoleAssignment(user_id=1, role="admin")
@@ -340,7 +354,7 @@ class TestRoleAssignmentSchema:
         assert assignment.user_id == 1
         assert assignment.role == "admin"
 
-    def test_all_valid_roles(self):
+    def test_all_valid_roles(self) -> None:
         """Test all valid role values."""
         valid_roles = ["user", "admin", "moderator", "super_admin"]
 
@@ -348,7 +362,7 @@ class TestRoleAssignmentSchema:
             assignment = RoleAssignment(user_id=1, role=role)
             assert assignment.role == role
 
-    def test_invalid_role(self):
+    def test_invalid_role(self) -> None:
         """Test invalid role value."""
         # Act & Assert
         with pytest.raises(ValidationError):
@@ -358,7 +372,7 @@ class TestRoleAssignmentSchema:
 class TestRoleResponseSchema:
     """Test suite for RoleResponse schema."""
 
-    def test_valid_role_response(self):
+    def test_valid_role_response(self) -> None:
         """Test valid role response."""
         # Arrange
         now = datetime.now()
@@ -374,7 +388,7 @@ class TestRoleResponseSchema:
         assert response.role == "admin"
         assert response.granted_by == 1
 
-    def test_role_response_without_granter(self):
+    def test_role_response_without_granter(self) -> None:
         """Test role response without granted_by."""
         # Act
         response = RoleResponse(
@@ -388,7 +402,7 @@ class TestRoleResponseSchema:
 class TestErrorResponseSchema:
     """Test suite for ErrorResponse schema."""
 
-    def test_basic_error_response(self):
+    def test_basic_error_response(self) -> None:
         """Test basic error response."""
         # Act
         error = ErrorResponse(success=False, error="Something went wrong")
@@ -398,7 +412,7 @@ class TestErrorResponseSchema:
         assert error.error == "Something went wrong"
         assert error.details is None
 
-    def test_error_response_with_details(self):
+    def test_error_response_with_details(self) -> None:
         """Test error response with details."""
         # Act
         error = ErrorResponse(
@@ -415,7 +429,7 @@ class TestErrorResponseSchema:
 class TestSuccessResponseSchema:
     """Test suite for SuccessResponse schema."""
 
-    def test_basic_success_response(self):
+    def test_basic_success_response(self) -> None:
         """Test basic success response."""
         # Act
         success = SuccessResponse(success=True, message="Operation successful")
@@ -425,7 +439,7 @@ class TestSuccessResponseSchema:
         assert success.message == "Operation successful"
         assert success.data is None
 
-    def test_success_response_with_data(self):
+    def test_success_response_with_data(self) -> None:
         """Test success response with data."""
         # Act
         success = SuccessResponse(

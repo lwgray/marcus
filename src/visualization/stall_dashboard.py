@@ -5,16 +5,13 @@ Uses rich library for beautiful terminal output with colors, tables, and trees.
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from src.visualization.causal_analyzer import analyze_why
 
 try:
     from rich import box
-    from rich.columns import Columns
     from rich.console import Console
-    from rich.layout import Layout
-    from rich.markdown import Markdown
     from rich.panel import Panel
     from rich.table import Table
     from rich.text import Text
@@ -49,7 +46,9 @@ class StallDashboard:
             return
 
         console = self.console
-        assert console is not None
+        if console is None:
+            self._render_plain()
+            return
 
         # Header
         console.print()
@@ -131,9 +130,9 @@ class StallDashboard:
         title.append("PROJECT STALL ANALYSIS", style="bold white on blue")
 
         content = Text()
-        content.append(f"Project: ", style="bold")
+        content.append("Project: ", style="bold")
         content.append(f"{project_name}\n", style="cyan")
-        content.append(f"Captured: ", style="bold")
+        content.append("Captured: ", style="bold")
         content.append(f"{timestamp}", style="dim")
 
         return Panel(content, title=title, border_style="blue", box=box.DOUBLE)
@@ -172,15 +171,15 @@ class StallDashboard:
             )
 
             # WHAT happened
-            content.append(f"   WHAT: ", style="bold cyan")
+            content.append("   WHAT: ", style="bold cyan")
             content.append(f"{cause.get('explanation', 'Unknown')}\n")
 
             # WHY it happened
-            content.append(f"   WHY:  ", style="bold magenta")
+            content.append("   WHY:  ", style="bold magenta")
             content.append(f"{cause.get('why', 'Unknown')}\n")
 
             # IMPACT
-            content.append(f"   IMPACT: ", style="bold red")
+            content.append("   IMPACT: ", style="bold red")
             content.append(f"{cause.get('impact', 'Unknown')}\n\n")
 
         return Panel(
@@ -297,18 +296,20 @@ class StallDashboard:
             more = Text(f"\n... and {len(issues) - 10} more issues", style="dim")
             content.append(more)
 
+        has_critical = any(i.get("severity") == "critical" for i in issues)
+        has_high_severity = any(
+            i.get("severity") in ["critical", "high"] for i in issues
+        )
+        title_prefix = "🔴 CRITICAL " if has_critical else "⚠️  "
+
         return Panel(
             (
                 Text.assemble(*content)
                 if content
                 else Text("No issues found", style="green")
             ),
-            title=f"[bold]{'🔴 CRITICAL ' if any(i.get('severity') == 'critical' for i in issues) else '⚠️  '}ISSUES ({len(issues)})[/bold]",
-            border_style=(
-                "red"
-                if any(i.get("severity") in ["critical", "high"] for i in issues)
-                else "yellow"
-            ),
+            title=f"[bold]{title_prefix}ISSUES ({len(issues)})[/bold]",
+            border_style="red" if has_high_severity else "yellow",
         )
 
     def _build_dependency_locks(self, locks_data: Dict[str, Any]) -> Panel:
@@ -343,9 +344,11 @@ class StallDashboard:
                     icon = "❌"
                     style = "red"
 
-                blocked_branch.add(
-                    f"{icon} [{style}]{blocker_name}[/{style}] [dim]({blocker_status})[/dim]"
+                blocker_text = (
+                    f"{icon} [{style}]{blocker_name}[/{style}] "
+                    f"[dim]({blocker_status})[/dim]"
                 )
+                blocked_branch.add(blocker_text)
 
         if len(locks) > 10:
             tree.add(f"[dim]... and {len(locks) - 10} more locks[/dim]")
@@ -364,9 +367,10 @@ class StallDashboard:
 
         combined = Group(tree, metrics_text)
 
+        total_locks = locks_data.get("total_locks", 0)
         return Panel(
             combined,
-            title=f"[bold]🔒 DEPENDENCY LOCKS ({locks_data.get('total_locks', 0)})[/bold]",
+            title=f"[bold]🔒 DEPENDENCY LOCKS ({total_locks})[/bold]",
             border_style="red",
         )
 
@@ -552,19 +556,19 @@ class StallDashboard:
             content.append(f"{i}. {icon} ", style=style)
             content.append(f"{failure['system']}\n", style=style)
 
-            content.append(f"   FAILURE: ", style="bold red")
+            content.append("   FAILURE: ", style="bold red")
             content.append(f"{failure['failure']}\n")
 
-            content.append(f"   EVIDENCE: ", style="bold yellow")
+            content.append("   EVIDENCE: ", style="bold yellow")
             content.append(f"{failure['evidence']}\n")
 
-            content.append(f"   CODE: ", style="bold cyan")
+            content.append("   CODE: ", style="bold cyan")
             content.append(f"{failure['code_location']}\n")
 
-            content.append(f"   ROOT CAUSE: ", style="bold magenta")
+            content.append("   ROOT CAUSE: ", style="bold magenta")
             content.append(f"{failure['root_cause']}\n")
 
-            content.append(f"   WHY CHECKS FAILED: ", style="bold red")
+            content.append("   WHY CHECKS FAILED: ", style="bold red")
             content.append(f"{failure['why_checks_failed']}\n\n")
 
         return Panel(
@@ -593,25 +597,25 @@ class StallDashboard:
             content.append(f"{i}. {icon} ", style=style)
             content.append(f"[{priority}] {fix['title']}\n", style=style)
 
-            content.append(f"   PROBLEM: ", style="bold red")
+            content.append("   PROBLEM: ", style="bold red")
             content.append(f"{fix['problem']}\n")
 
-            content.append(f"   SOLUTION: ", style="bold green")
+            content.append("   SOLUTION: ", style="bold green")
             content.append(f"{fix['solution']}\n")
 
-            content.append(f"   FILES TO MODIFY:\n", style="bold cyan")
+            content.append("   FILES TO MODIFY:\n", style="bold cyan")
             for file in fix["files_to_modify"]:
                 content.append(f"      • {file}\n", style="cyan")
 
-            content.append(f"   SPECIFIC CHANGES:\n", style="bold magenta")
+            content.append("   SPECIFIC CHANGES:\n", style="bold magenta")
             for change in fix["specific_changes"]:
                 content.append(f"      📄 {change['file']}\n", style="cyan")
                 content.append(f"         {change['change']}\n", style="dim")
 
-            content.append(f"   TEST: ", style="bold yellow")
+            content.append("   TEST: ", style="bold yellow")
             content.append(f"{fix['test_validation']}\n")
 
-            content.append(f"   ESTIMATED TIME: ", style="bold")
+            content.append("   ESTIMATED TIME: ", style="bold")
             content.append(f"{fix['estimated_time']}\n\n")
 
         return Panel(
@@ -631,14 +635,14 @@ class StallDashboard:
             content.append(f"[{category}] ", style="cyan bold")
             content.append(f"{strategy['strategy']}\n", style="bold")
 
-            content.append(f"   DESCRIPTION: ", style="bold")
+            content.append("   DESCRIPTION: ", style="bold")
             content.append(f"{strategy['description']}\n")
 
-            content.append(f"   BENEFITS:\n", style="bold green")
+            content.append("   BENEFITS:\n", style="bold green")
             for benefit in strategy["benefits"]:
                 content.append(f"      ✓ {benefit}\n", style="green")
 
-            content.append(f"   IMPLEMENTATION:\n", style="bold cyan")
+            content.append("   IMPLEMENTATION:\n", style="bold cyan")
             content.append(f"      {strategy['implementation']}\n\n", style="dim")
 
         return Panel(

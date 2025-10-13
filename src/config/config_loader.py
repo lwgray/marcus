@@ -61,8 +61,10 @@ class ConfigLoader:
 
         if self._config_path is None:
             raise FileNotFoundError(
-                f"config_marcus.json not found. Tried: {[str(p) for p in possible_paths]}. "
-                "Please copy config_marcus.example.json to config_marcus.json and fill in your settings."
+                f"config_marcus.json not found. Tried: "
+                f"{[str(p) for p in possible_paths]}. "
+                "Please copy config_marcus.example.json to "
+                "config_marcus.json and fill in your settings."
             )
 
         # Load the config file
@@ -84,24 +86,34 @@ class ConfigLoader:
             # Planka
             "MARCUS_KANBAN_PLANKA_BASE_URL": "kanban.planka.base_url",
             "MARCUS_KANBAN_PLANKA_EMAIL": "kanban.planka.email",
-            "MARCUS_KANBAN_PLANKA_PASSWORD": "kanban.planka.password",
+            "MARCUS_KANBAN_PLANKA_PASSWORD": (
+                "kanban.planka.password"
+            ),  # pragma: allowlist secret
             "MARCUS_KANBAN_PLANKA_PROJECT_ID": "kanban.planka.project_id",
             "MARCUS_KANBAN_PLANKA_BOARD_ID": "kanban.planka.board_id",
             # GitHub
-            "MARCUS_KANBAN_GITHUB_TOKEN": "kanban.github.token",
+            "MARCUS_KANBAN_GITHUB_TOKEN": (
+                "kanban.github.token"
+            ),  # pragma: allowlist secret
             "MARCUS_KANBAN_GITHUB_OWNER": "kanban.github.owner",
             "MARCUS_KANBAN_GITHUB_REPO": "kanban.github.repo",
             # Linear
-            "MARCUS_KANBAN_LINEAR_API_KEY": "kanban.linear.api_key",
+            "MARCUS_KANBAN_LINEAR_API_KEY": (
+                "kanban.linear.api_key"
+            ),  # pragma: allowlist secret
             "MARCUS_KANBAN_LINEAR_TEAM_ID": "kanban.linear.team_id",
             # AI
-            "MARCUS_AI_ANTHROPIC_API_KEY": "ai.anthropic_api_key",
-            "MARCUS_AI_OPENAI_API_KEY": "ai.openai_api_key",
+            "MARCUS_AI_ANTHROPIC_API_KEY": (
+                "ai.anthropic_api_key"
+            ),  # pragma: allowlist secret
+            "MARCUS_AI_OPENAI_API_KEY": (
+                "ai.openai_api_key"
+            ),  # pragma: allowlist secret
             "MARCUS_AI_MODEL": "ai.model",
             "MARCUS_LLM_PROVIDER": "ai.provider",
             "MARCUS_LOCAL_LLM_PATH": "ai.local_model",
             "MARCUS_LOCAL_LLM_URL": "ai.local_url",
-            "MARCUS_LOCAL_LLM_KEY": "ai.local_key",
+            "MARCUS_LOCAL_LLM_KEY": "ai.local_key",  # pragma: allowlist secret
             "MARCUS_AI_ENABLED": "ai.enabled",
             # Monitoring
             "MARCUS_MONITORING_INTERVAL": "monitoring.interval",
@@ -256,7 +268,8 @@ class ConfigLoader:
             and "projects" not in self._config
         ):
             logger.info(
-                "Detected legacy configuration format. Migrating to multi-project format..."
+                "Detected legacy configuration format. "
+                "Migrating to multi-project format..."
             )
 
             # Create a default project from legacy config
@@ -322,7 +335,8 @@ class ConfigLoader:
             # Don't move or remove it - just leave it in place
 
             logger.info(
-                f"Migration complete. Created default project with ID: {default_project_id}"
+                f"Migration complete. Created default project with ID: "
+                f"{default_project_id}"
             )
 
         # Clean up stale fields from root config (applies to all configs)
@@ -334,7 +348,8 @@ class ConfigLoader:
             ):
                 self._config["default_project_name"] = self._config["project_name"]
                 logger.info(
-                    f"Migrated project_name to default_project_name: {self._config['project_name']}"
+                    f"Migrated project_name to default_project_name: "
+                    f"{self._config['project_name']}"
                 )
 
             # Remove stale runtime state fields

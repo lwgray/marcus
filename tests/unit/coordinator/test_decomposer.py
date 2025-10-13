@@ -413,3 +413,46 @@ class TestAdjustSubtaskDependencies:
         # Assert
         assert result["subtasks"][0]["dependencies"] == []
         assert "dependencies" not in result["subtasks"][1]
+
+    def test_adjust_subtask_dependencies_rejects_string_dependencies(self, caplog):
+        """Test non-integer dependencies are rejected and logged as errors."""
+        # Arrange
+        parent_id = "task-1"
+        decomposition = {
+            "subtasks": [
+                {"name": "Sub 1", "dependencies": []},
+                {
+                    "name": "Sub 2",
+                    "dependencies": ["task_xxx_sub_1"],  # Invalid string dependency
+                },
+            ]
+        }
+
+        # Act
+        result = _adjust_subtask_dependencies(parent_id, decomposition)
+
+        # Assert
+        # String dependency should be rejected, leaving empty list
+        assert result["subtasks"][1]["dependencies"] == []
+        # Should log error about non-integer dependency
+        assert "non-integer dependency" in caplog.text.lower()
+
+    def test_adjust_subtask_dependencies_handles_invalid_indices(self, caplog):
+        """Test out-of-range dependency indices are rejected with warning."""
+        # Arrange
+        parent_id = "task-1"
+        decomposition = {
+            "subtasks": [
+                {"name": "Sub 1", "dependencies": []},
+                {"name": "Sub 2", "dependencies": [0, 5]},  # Index 5 doesn't exist
+            ]
+        }
+
+        # Act
+        result = _adjust_subtask_dependencies(parent_id, decomposition)
+
+        # Assert
+        # Valid dependency should be included, invalid should be skipped
+        assert result["subtasks"][1]["dependencies"] == ["task-1_sub_1"]
+        # Should log warning about invalid index
+        assert "invalid dependency index" in caplog.text.lower()

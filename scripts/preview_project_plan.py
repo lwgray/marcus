@@ -17,13 +17,13 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, List
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
-async def preview_project_plan(description: str, project_name: str) -> Dict[str, Any]:
+async def preview_project_plan(description: str, project_name: str) -> Any:
     """
     Generate project plan without creating in Planka.
 
@@ -36,8 +36,8 @@ async def preview_project_plan(description: str, project_name: str) -> Dict[str,
 
     Returns
     -------
-    Dict[str, Any]
-        Complete project plan with tasks, dependencies, priorities
+    Any
+        TaskGenerationResult with tasks, dependencies, priorities
     """
     print("🔍 Generating Project Plan Preview\n")
     print("=" * 70)
@@ -80,7 +80,7 @@ def generate_preview_markdown(result: Any, description: str, project_name: str) 
     lines.append("# Project Plan Preview")
     lines.append(f"\n**Generated:** {datetime.now().isoformat()}")
     lines.append(f"\n**Project Name:** {project_name}")
-    lines.append(f"\n**Status:** ⚠️ NOT YET CREATED - PREVIEW ONLY\n")
+    lines.append("\n**Status:** ⚠️ NOT YET CREATED - PREVIEW ONLY\n")
 
     # Original description
     lines.append("## Original Description\n")
@@ -120,9 +120,11 @@ def generate_preview_markdown(result: Any, description: str, project_name: str) 
         status = (
             task.status.value if hasattr(task.status, "value") else str(task.status)
         )
-        lines.append(
-            f"| {idx} | {task_name} | {priority} | {est_hours} | {deps} deps | {status} |"
+        row = (
+            f"| {idx} | {task_name} | {priority} | {est_hours} | "
+            f"{deps} deps | {status} |"
         )
+        lines.append(row)
 
     lines.append("\n---\n")
 
@@ -158,11 +160,11 @@ def generate_preview_markdown(result: Any, description: str, project_name: str) 
         lines.append(f"```\n{desc}\n```\n")
 
         # Dependencies
-        deps = task.dependencies or []
-        if deps:
+        deps_list: List[Any] = task.dependencies or []
+        if deps_list:
             lines.append("#### Dependencies\n")
-            lines.append(f"This task depends on {len(deps)} other task(s):\n")
-            for dep in deps:
+            lines.append(f"This task depends on {len(deps_list)} other task(s):\n")
+            for dep in deps_list:
                 lines.append(f"- {dep}")
             lines.append("")
         else:
@@ -202,7 +204,7 @@ def generate_preview_markdown(result: Any, description: str, project_name: str) 
     return "\n".join(lines)
 
 
-async def main():
+async def main() -> None:
     """Run the preview tool."""
     if len(sys.argv) < 3:
         print(
@@ -252,7 +254,7 @@ async def main():
         print(f"Estimated duration: {timeline.get('total_duration', 'N/A')}")
         print(f"Risk level: {risk.get('overall_risk', 'N/A')}")
         print(f"Confidence: {plan.generation_confidence:.2f}")
-        print(f"\n⚠️  This is a PREVIEW - nothing has been created yet!")
+        print("\n⚠️  This is a PREVIEW - nothing has been created yet!")
         print(f"\nReview the full plan at: {output_file}")
 
     except Exception as e:

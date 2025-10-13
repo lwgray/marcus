@@ -6,7 +6,7 @@ Provides request/response validation and serialization for user-related operatio
 
 import re
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -27,7 +27,7 @@ class UserCreate(UserBase):
         ...,
         min_length=8,
         max_length=128,
-        description="Password (8-128 chars, must include uppercase, lowercase, digit, special char)",
+        description="Password (8-128 chars, requires upper/lower/digit/special)",
     )
 
     @field_validator("username")
@@ -54,7 +54,7 @@ class UserCreate(UserBase):
             raise ValueError("Password must contain at least one lowercase letter")
         if not re.search(r"\d", v):
             raise ValueError("Password must contain at least one digit")
-        if not re.search(r'[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]', v):
+        if not re.search(r"[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]", v):
             raise ValueError("Password must contain at least one special character")
         return v
 
@@ -103,7 +103,7 @@ class PasswordChange(BaseModel):
             raise ValueError("Password must contain at least one lowercase letter")
         if not re.search(r"\d", v):
             raise ValueError("Password must contain at least one digit")
-        if not re.search(r'[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]', v):
+        if not re.search(r"[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]", v):
             raise ValueError("Password must contain at least one special character")
         return v
 
@@ -190,7 +190,9 @@ class ErrorResponse(BaseModel):
 
     success: bool = Field(False, description="Always false for errors")
     error: str = Field(..., description="Error message")
-    details: Optional[dict] = Field(None, description="Additional error details")
+    details: Optional[dict[str, Any]] = Field(
+        None, description="Additional error details"
+    )
 
 
 class SuccessResponse(BaseModel):
@@ -198,4 +200,4 @@ class SuccessResponse(BaseModel):
 
     success: bool = Field(True, description="Operation success status")
     message: str = Field(..., description="Success message")
-    data: Optional[dict] = Field(None, description="Optional response data")
+    data: Optional[dict[str, Any]] = Field(None, description="Optional response data")

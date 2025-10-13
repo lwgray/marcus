@@ -11,11 +11,10 @@ import logging
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional
 
 from src.core.task_diagnostics import (
     DependencyChainAnalyzer,
-    DiagnosticReport,
     TaskDiagnosticCollector,
 )
 
@@ -178,13 +177,16 @@ class ConversationReplayAnalyzer:
                 {
                     "pattern": "repeated_no_tasks",
                     "count": len(no_task_events),
-                    "description": f"Agent requested tasks {len(no_task_events)} times but none available",
+                    "description": (
+                        f"Agent requested tasks {len(no_task_events)} times "
+                        "but none available"
+                    ),
                     "severity": "high",
                 }
             )
 
         # Pattern 2: Same task repeatedly failing
-        task_errors = {}
+        task_errors: Dict[str, int] = {}
         for e in events:
             if "error" in e.event_type.lower() or "failed" in e.event_type.lower():
                 task_id = e.data.get("task_id")
@@ -215,7 +217,9 @@ class ConversationReplayAnalyzer:
                         "pattern": "low_activity",
                         "gap_hours": round(gap_hours, 2),
                         "event_count": len(events),
-                        "description": f"Only {len(events)} events in {gap_hours:.1f} hours",
+                        "description": (
+                            f"Only {len(events)} events in {gap_hours:.1f} hours"
+                        ),
                         "severity": "medium",
                     }
                 )
@@ -259,11 +263,21 @@ class TaskCompletionAnalyzer:
                 # Use created_at as fallback
                 completion_time = getattr(task, "created_at", datetime.now())
 
+            # Ensure completion_time is a datetime object
+            if isinstance(completion_time, str):
+                completion_time = datetime.fromisoformat(completion_time)
+
+            timestamp_str = (
+                completion_time.isoformat()
+                if isinstance(completion_time, datetime)
+                else str(completion_time)
+            )
+
             timeline.append(
                 TaskCompletionEvent(
                     task_id=task.id,
                     task_name=task.name,
-                    timestamp=completion_time.isoformat(),
+                    timestamp=timestamp_str,
                     completed_by=getattr(task, "assignee", None),
                     sequence_number=idx + 1,
                 )
@@ -314,7 +328,10 @@ class TaskCompletionAnalyzer:
                             "sequence": event.sequence_number,
                             "total_tasks": total_tasks,
                             "completion_percentage": round(completion_percentage, 1),
-                            "issue": f"Final task completed at {completion_percentage:.0f}% progress",
+                            "issue": (
+                                f"Final task completed at "
+                                f"{completion_percentage:.0f}% progress"
+                            ),
                             "severity": "high",
                         }
                     )
@@ -386,15 +403,26 @@ class DependencyLockVisualizer:
         # Generate ASCII visualization
         ascii_viz = self._generate_ascii_graph(locks)
 
+        # Calculate metrics with explicit types
+        avg_lock_depth = 0.0
+        max_lock_depth = 0
+        if locks:
+            lock_depths: List[int] = []
+            for lock in locks:
+                depth = lock.get("lock_depth", 0)
+                if isinstance(depth, int):
+                    lock_depths.append(depth)
+            if lock_depths:
+                avg_lock_depth = sum(lock_depths) / len(lock_depths)
+                max_lock_depth = max(lock_depths)
+
         return {
             "total_locks": len(locks),
             "locks": locks,
             "ascii_visualization": ascii_viz,
             "metrics": {
-                "average_lock_depth": (
-                    sum(l["lock_depth"] for l in locks) / len(locks) if locks else 0
-                ),
-                "max_lock_depth": max((l["lock_depth"] for l in locks), default=0),
+                "average_lock_depth": avg_lock_depth,
+                "max_lock_depth": max_lock_depth,
             },
         }
 
@@ -525,7 +553,8 @@ async def capture_project_stall_snapshot(
         if early_completions:
             recommendations.insert(
                 0,
-                f"⚠️ {len(early_completions)} tasks completed prematurely - review completion criteria",
+                f"⚠️ {len(early_completions)} tasks completed prematurely - "
+                "review completion criteria",
             )
         for pattern in stall_patterns[:3]:
             recommendations.append(f"Pattern detected: {pattern['description']}")
@@ -576,7 +605,7 @@ async def capture_project_stall_snapshot(
                 }
                 for e in completion_timeline
             ],
-            dependency_locks=dependency_locks,
+            dependency_locks=[dependency_locks],
             early_completions=early_completions,
             stall_reason=stall_reason,
             recommendations=recommendations,
@@ -639,25 +668,27 @@ async def replay_stall_conversations(
         conversation_history = snapshot_data.get("conversation_history", [])
 
         # Analyze conversation flow
+        events_by_type: Dict[str, int] = {}
+        timeline: List[Dict[str, Any]] = []
+        key_events: List[Dict[str, Any]] = []
+
         analysis = {
             "total_events": len(conversation_history),
-            "events_by_type": {},
-            "timeline": [],
-            "key_events": [],
+            "events_by_type": events_by_type,
+            "timeline": timeline,
+            "key_events": key_events,
         }
 
         for event in conversation_history:
             event_type = event.get("type", "unknown")
-            analysis["events_by_type"][event_type] = (
-                analysis["events_by_type"].get(event_type, 0) + 1
-            )
+            events_by_type[event_type] = events_by_type.get(event_type, 0) + 1
 
             # Identify key events
             if any(
                 keyword in event_type
                 for keyword in ["error", "blocker", "no_task", "failed"]
             ):
-                analysis["key_events"].append(
+                key_events.append(
                     {
                         "timestamp": event.get("timestamp"),
                         "type": event_type,
@@ -665,7 +696,7 @@ async def replay_stall_conversations(
                     }
                 )
 
-            analysis["timeline"].append(
+            timeline.append(
                 {
                     "timestamp": event.get("timestamp"),
                     "type": event_type,

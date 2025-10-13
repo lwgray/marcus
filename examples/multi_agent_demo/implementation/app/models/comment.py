@@ -84,6 +84,9 @@ class Comment(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        """String representation of Comment."""
+        """Return string representation of Comment."""
         text_preview = self.text[:50] + "..." if len(self.text) > 50 else self.text
-        return f"<Comment(id={self.id}, task_id={self.task_id}, author_id={self.user_id}, text='{text_preview}')>"
+        return (
+            f"<Comment(id={self.id}, task_id={self.task_id}, "
+            f"author_id={self.user_id}, text='{text_preview}')>"
+        )

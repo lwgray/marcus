@@ -22,8 +22,9 @@ def engine() -> sa.engine.Engine:
     engine = create_engine("sqlite:///:memory:", echo=False)
 
     # Enable foreign key constraints in SQLite
-    from sqlalchemy import event
     from typing import Any
+
+    from sqlalchemy import event
 
     @event.listens_for(engine, "connect")
     def set_sqlite_pragma(dbapi_connection: Any, connection_record: Any) -> None:
@@ -50,7 +51,7 @@ def sample_user(db_session: Session) -> User:
     user = User(
         username="testuser",
         email="test@example.com",
-        password_hash="$2b$12$hashed_password",
+        password_hash="$2b$12$hashed_password",  # pragma: allowlist secret
     )
     db_session.add(user)
     db_session.commit()
@@ -174,7 +175,9 @@ class TestUserModel:
 class TestProjectModel:
     """Test suite for Project model."""
 
-    def test_create_project_successfully(self, db_session, sample_user):
+    def test_create_project_successfully(
+        self, db_session: Session, sample_user: User
+    ) -> None:
         """Test creating a project with valid data."""
         # Arrange & Act
         project = Project(
@@ -195,8 +198,8 @@ class TestProjectModel:
         assert project.created_at is not None
 
     def test_project_creator_relationship(
-        self, db_session, sample_project, sample_user
-    ):
+        self, db_session: Session, sample_project: Project, sample_user: User
+    ) -> None:
         """Test project creator relationship."""
         # Act
         creator = sample_project.creator
@@ -205,7 +208,9 @@ class TestProjectModel:
         assert creator.id == sample_user.id
         assert creator.username == sample_user.username
 
-    def test_project_tasks_relationship(self, db_session, sample_project, sample_task):
+    def test_project_tasks_relationship(
+        self, db_session: Session, sample_project: Project, sample_task: Task
+    ) -> None:
         """Test project tasks relationship."""
         # Act
         tasks = sample_project.tasks
@@ -214,7 +219,9 @@ class TestProjectModel:
         assert len(tasks) == 1
         assert tasks[0].id == sample_task.id
 
-    def test_project_nullable_dates(self, db_session, sample_user):
+    def test_project_nullable_dates(
+        self, db_session: Session, sample_user: User
+    ) -> None:
         """Test that project dates are nullable."""
         # Arrange & Act
         project = Project(name="Undated Project", created_by=sample_user.id)
@@ -230,7 +237,9 @@ class TestProjectModel:
 class TestTaskModel:
     """Test suite for Task model."""
 
-    def test_create_task_successfully(self, db_session, sample_project, sample_user):
+    def test_create_task_successfully(
+        self, db_session: Session, sample_project: Project, sample_user: User
+    ) -> None:
         """Test creating a task with valid data."""
         # Arrange & Act
         task = Task(
@@ -253,7 +262,9 @@ class TestTaskModel:
         assert task.status == TaskStatus.TODO
         assert task.priority == TaskPriority.HIGH
 
-    def test_task_default_status(self, db_session, sample_project):
+    def test_task_default_status(
+        self, db_session: Session, sample_project: Project
+    ) -> None:
         """Test that task status defaults to TODO."""
         # Arrange & Act
         task = Task(
@@ -268,7 +279,9 @@ class TestTaskModel:
         # Assert
         assert task.status == TaskStatus.TODO
 
-    def test_task_default_priority(self, db_session, sample_project):
+    def test_task_default_priority(
+        self, db_session: Session, sample_project: Project
+    ) -> None:
         """Test that task priority defaults to MEDIUM."""
         # Arrange & Act
         task = Task(
@@ -284,8 +297,12 @@ class TestTaskModel:
         assert task.priority == TaskPriority.MEDIUM
 
     def test_task_relationships(
-        self, db_session, sample_task, sample_project, sample_user
-    ):
+        self,
+        db_session: Session,
+        sample_task: Task,
+        sample_project: Project,
+        sample_user: User,
+    ) -> None:
         """Test task relationships with project and users."""
         # Act & Assert - Project relationship
         assert sample_task.project.id == sample_project.id
@@ -296,7 +313,9 @@ class TestTaskModel:
         # Assert - Creator relationship
         assert sample_task.creator.id == sample_user.id
 
-    def test_task_nullable_assigned_to(self, db_session, sample_project, sample_user):
+    def test_task_nullable_assigned_to(
+        self, db_session: Session, sample_project: Project, sample_user: User
+    ) -> None:
         """Test that assigned_to is nullable for unassigned tasks."""
         # Arrange & Act
         task = Task(
@@ -318,7 +337,9 @@ class TestTaskModel:
 class TestCommentModel:
     """Test suite for Comment model."""
 
-    def test_create_comment_successfully(self, db_session, sample_task, sample_user):
+    def test_create_comment_successfully(
+        self, db_session: Session, sample_task: Task, sample_user: User
+    ) -> None:
         """Test creating a comment with valid data."""
         # Arrange & Act
         comment = Comment(
@@ -336,7 +357,9 @@ class TestCommentModel:
         assert comment.user_id == sample_user.id
         assert comment.task_id == sample_task.id
 
-    def test_comment_relationships(self, db_session, sample_task, sample_user):
+    def test_comment_relationships(
+        self, db_session: Session, sample_task: Task, sample_user: User
+    ) -> None:
         """Test comment relationships with task and author."""
         # Arrange
         comment = Comment(
@@ -358,8 +381,8 @@ class TestCascadeRules:
     """Test suite for cascade delete behavior."""
 
     def test_deleting_project_cascades_to_tasks(
-        self, db_session, sample_project, sample_task
-    ):
+        self, db_session: Session, sample_project: Project, sample_task: Task
+    ) -> None:
         """Test that deleting a project deletes all its tasks."""
         # Arrange
         project_id = sample_project.id
@@ -376,8 +399,8 @@ class TestCascadeRules:
         assert db_session.query(Task).filter(Task.id == task_id).first() is None
 
     def test_deleting_task_cascades_to_comments(
-        self, db_session, sample_task, sample_user
-    ):
+        self, db_session: Session, sample_task: Task, sample_user: User
+    ) -> None:
         """Test that deleting a task deletes all its comments."""
         # Arrange
         comment = Comment(
@@ -398,7 +421,9 @@ class TestCascadeRules:
             db_session.query(Comment).filter(Comment.id == comment_id).first() is None
         )
 
-    def test_deleting_user_cascades_to_assigned_tasks(self, db_session, sample_user):
+    def test_deleting_user_cascades_to_assigned_tasks(
+        self, db_session: Session, sample_user: User
+    ) -> None:
         """Test that deleting a user deletes tasks assigned to them."""
         # Arrange
         project = Project(name="Project", created_by=sample_user.id)
@@ -432,7 +457,11 @@ class TestTimestamps:
     def test_created_at_set_automatically(self, db_session: Session) -> None:
         """Test that created_at is set automatically."""
         # Arrange & Act
-        user = User(username="user", email="user@example.com", password_hash="hash")
+        user = User(
+            username="user",
+            email="user@example.com",
+            password_hash="hash",  # pragma: allowlist secret
+        )
         db_session.add(user)
         db_session.commit()
         db_session.refresh(user)
@@ -444,7 +473,11 @@ class TestTimestamps:
     def test_updated_at_set_automatically(self, db_session: Session) -> None:
         """Test that updated_at is set automatically."""
         # Arrange & Act
-        user = User(username="user", email="user@example.com", password_hash="hash")
+        user = User(
+            username="user",
+            email="user@example.com",
+            password_hash="hash",  # pragma: allowlist secret
+        )
         db_session.add(user)
         db_session.commit()
         db_session.refresh(user)
@@ -604,7 +637,7 @@ class TestRefreshTokenModel:
         expires = datetime.utcnow() + timedelta(days=7)
         token = RefreshToken(
             user_id=sample_user.id,
-            token_hash="abc123hash",
+            token_hash="abc123hash",  # pragma: allowlist secret
             expires_at=expires,
             ip_address="127.0.0.1",
             user_agent="TestAgent/1.0",
@@ -616,7 +649,7 @@ class TestRefreshTokenModel:
         # Assert
         assert token.id is not None
         assert token.user_id == sample_user.id
-        assert token.token_hash == "abc123hash"
+        assert token.token_hash == "abc123hash"  # pragma: allowlist secret
         assert token.is_revoked is False
         assert token.created_at is not None
         assert token.revoked_at is None
@@ -632,7 +665,9 @@ class TestRefreshTokenModel:
 
         expires = datetime.utcnow() + timedelta(days=7)
         token = RefreshToken(
-            user_id=sample_user.id, token_hash="hash123", expires_at=expires
+            user_id=sample_user.id,
+            token_hash="hash123",
+            expires_at=expires,  # pragma: allowlist secret
         )
         db_session.add(token)
         db_session.commit()
@@ -653,14 +688,18 @@ class TestRefreshTokenModel:
 
         expires = datetime.utcnow() + timedelta(days=7)
         token1 = RefreshToken(
-            user_id=sample_user.id, token_hash="samehash", expires_at=expires
+            user_id=sample_user.id,
+            token_hash="samehash",
+            expires_at=expires,  # pragma: allowlist secret
         )
         db_session.add(token1)
         db_session.commit()
 
         # Act & Assert - Try to add token with same hash
         token2 = RefreshToken(
-            user_id=sample_user.id, token_hash="samehash", expires_at=expires
+            user_id=sample_user.id,
+            token_hash="samehash",
+            expires_at=expires,  # pragma: allowlist secret
         )
         db_session.add(token2)
         with pytest.raises(IntegrityError):
@@ -678,7 +717,7 @@ class TestRefreshTokenModel:
         expires = datetime.utcnow() + timedelta(days=7)
         token = RefreshToken(
             user_id=sample_user.id,
-            token_hash="validtoken",
+            token_hash="validtoken",  # pragma: allowlist secret
             expires_at=expires,
             is_revoked=False,
         )
@@ -703,7 +742,7 @@ class TestRefreshTokenModel:
         expires = datetime.utcnow() - timedelta(days=1)  # Expired yesterday
         token = RefreshToken(
             user_id=sample_user.id,
-            token_hash="expiredtoken",
+            token_hash="expiredtoken",  # pragma: allowlist secret
             expires_at=expires,
             is_revoked=False,
         )
@@ -728,7 +767,7 @@ class TestRefreshTokenModel:
         expires = datetime.utcnow() + timedelta(days=7)
         token = RefreshToken(
             user_id=sample_user.id,
-            token_hash="revokedtoken",
+            token_hash="revokedtoken",  # pragma: allowlist secret
             expires_at=expires,
             is_revoked=True,
         )
@@ -753,7 +792,7 @@ class TestRefreshTokenModel:
         expires = datetime.utcnow() + timedelta(days=7)
         token = RefreshToken(
             user_id=sample_user.id,
-            token_hash="torevoke",
+            token_hash="torevoke",  # pragma: allowlist secret
             expires_at=expires,
             is_revoked=False,
         )
@@ -778,7 +817,9 @@ class TestRefreshTokenModel:
 
         expires = datetime.utcnow() + timedelta(days=7)
         token = RefreshToken(
-            user_id=sample_user.id, token_hash="reprhash", expires_at=expires
+            user_id=sample_user.id,
+            token_hash="reprhash",
+            expires_at=expires,  # pragma: allowlist secret
         )
         db_session.add(token)
         db_session.commit()
@@ -882,7 +923,9 @@ class TestAdditionalCascadeRules:
 
         expires = datetime.utcnow() + timedelta(days=7)
         token = RefreshToken(
-            user_id=sample_user.id, token_hash="usertokenhash", expires_at=expires
+            user_id=sample_user.id,
+            token_hash="usertokenhash",
+            expires_at=expires,  # pragma: allowlist secret
         )
         db_session.add(token)
         db_session.commit()

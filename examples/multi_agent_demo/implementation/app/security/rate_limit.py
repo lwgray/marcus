@@ -6,9 +6,9 @@ for different endpoint types, especially authentication endpoints.
 """
 
 import os
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
-from flask import Request
+from flask import Flask, Request
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
@@ -19,7 +19,9 @@ RATE_LIMIT_STORAGE_URL = os.getenv("RATE_LIMIT_STORAGE_URL", "memory://")
 # Default rate limits
 DEFAULT_RATE_LIMIT = "200 per hour"
 AUTH_RATE_LIMIT = "5 per minute"  # Strict for login/register
-PASSWORD_RESET_LIMIT = "3 per hour"  # Very strict for password reset
+PASSWORD_RESET_LIMIT = (  # nosec B105
+    "3 per hour"  # Very strict for password reset  # pragma: allowlist secret
+)
 
 
 def get_identifier(request: Optional[Request] = None) -> str:
@@ -50,7 +52,8 @@ def get_identifier(request: Optional[Request] = None) -> str:
         return f"user:{request.user_id}"
 
     # Fall back to IP address
-    return get_remote_address()
+    ip_address = get_remote_address()
+    return str(ip_address) if ip_address else "unknown"
 
 
 # Initialize Flask-Limiter
@@ -62,7 +65,7 @@ limiter = Limiter(
 )
 
 
-def configure_rate_limiting(app):
+def configure_rate_limiting(app: Flask) -> Limiter:
     """
     Configure rate limiting for a Flask application.
 
@@ -93,9 +96,9 @@ def configure_rate_limiting(app):
     return limiter
 
 
-def auth_rate_limit() -> Callable:
+def auth_rate_limit() -> Callable[..., Any]:
     """
-    Decorator for authentication endpoints with strict rate limiting.
+    Decorate authentication endpoints with strict rate limiting.
 
     Returns
     -------
@@ -116,12 +119,12 @@ def auth_rate_limit() -> Callable:
     - Prevents brute-force password attacks
     - Applies per IP address or user
     """
-    return limiter.limit(AUTH_RATE_LIMIT)
+    return limiter.limit(AUTH_RATE_LIMIT)  # type: ignore[no-any-return]
 
 
-def password_reset_rate_limit() -> Callable:
+def password_reset_rate_limit() -> Callable[..., Any]:
     """
-    Decorator for password reset endpoints with very strict rate limiting.
+    Decorate password reset endpoints with very strict rate limiting.
 
     Returns
     -------
@@ -142,10 +145,10 @@ def password_reset_rate_limit() -> Callable:
     - Prevents email flooding and abuse
     - Very strict to protect against DoS
     """
-    return limiter.limit(PASSWORD_RESET_LIMIT)
+    return limiter.limit(PASSWORD_RESET_LIMIT)  # type: ignore[no-any-return]
 
 
-def custom_rate_limit(limit_string: str) -> Callable:
+def custom_rate_limit(limit_string: str) -> Callable[..., Any]:
     """
     Create a custom rate limit decorator.
 
@@ -174,10 +177,10 @@ def custom_rate_limit(limit_string: str) -> Callable:
     - Supports: second, minute, hour, day units
     - Can combine multiple limits: "5/minute;100/hour"
     """
-    return limiter.limit(limit_string)
+    return limiter.limit(limit_string)  # type: ignore[no-any-return]
 
 
-def exempt_from_rate_limit(func: Callable) -> Callable:
+def exempt_from_rate_limit(func: Callable[..., Any]) -> Callable[..., Any]:
     """
     Exempt a route from rate limiting.
 
@@ -204,7 +207,7 @@ def exempt_from_rate_limit(func: Callable) -> Callable:
     - Does not apply default or custom limits
     - Still counts towards storage if using shared backend
     """
-    return limiter.exempt(func)
+    return limiter.exempt(func)  # type: ignore[no-any-return]
 
 
 class RateLimitExceeded(Exception):
@@ -235,7 +238,7 @@ class RateLimitExceeded(Exception):
         super().__init__(f"Rate limit exceeded: {limit}")
 
 
-def get_rate_limit_status(identifier: Optional[str] = None) -> dict:
+def get_rate_limit_status(identifier: Optional[str] = None) -> dict[str, Optional[str]]:
     """
     Get current rate limit status for an identifier.
 

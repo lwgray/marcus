@@ -5,18 +5,22 @@ Implements Redis-based caching for frequently accessed data to reduce
 database load and achieve <100ms response times.
 """
 
-from typing import Optional, Any, Callable
-from functools import wraps
-import json
 import hashlib
+import json
 import os
-from datetime import timedelta
+from functools import wraps
+from typing import Any, Callable, Optional, ParamSpec, TypeVar
 
 try:
     import redis.asyncio as redis
+
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
+
+# Type variables for generic decorators
+P = ParamSpec("P")
+T = TypeVar("T")
 
 
 # Redis configuration
@@ -35,17 +39,19 @@ class CacheClient:
     Examples
     --------
     >>> cache = CacheClient()
-    >>> await cache.set("user:123", {"name": "John", "email": "john@example.com"}, ttl=300)
+    >>> await cache.set(
+    ...     "user:123", {"name": "John", "email": "john@example.com"}, ttl=300
+    ... )
     >>> user = await cache.get("user:123")
     >>> print(user["name"])  # "John"
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize Redis client with connection pooling."""
-        self._client: Optional[redis.Redis] = None
-        self._enabled = CACHE_ENABLED and REDIS_AVAILABLE
+        self._client: Optional[Any] = None  # redis.Redis type not available
+        self._enabled: bool = CACHE_ENABLED and REDIS_AVAILABLE
 
-    async def connect(self):
+    async def connect(self) -> None:
         """
         Establish Redis connection with connection pooling.
 
@@ -69,7 +75,7 @@ class CacheClient:
             self._enabled = False
             self._client = None
 
-    async def close(self):
+    async def close(self) -> None:
         """Close Redis connection and cleanup resources."""
         if self._client:
             await self._client.close()
@@ -106,12 +112,7 @@ class CacheClient:
         except Exception:
             return None
 
-    async def set(
-        self,
-        key: str,
-        value: Any,
-        ttl: Optional[int] = None
-    ) -> bool:
+    async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
         """
         Set value in cache with optional TTL.
 
@@ -194,12 +195,13 @@ class CacheClient:
             return 0
 
         try:
-            keys = []
+            keys: list[str] = []
             async for key in self._client.scan_iter(match=pattern):
                 keys.append(key)
 
             if keys:
-                return await self._client.delete(*keys)
+                deleted: int = await self._client.delete(*keys)
+                return deleted
             return 0
         except Exception:
             return 0
@@ -222,7 +224,8 @@ class CacheClient:
             return False
 
         try:
-            return await self._client.exists(key) > 0
+            result: int = await self._client.exists(key)
+            return result > 0
         except Exception:
             return False
 
@@ -231,7 +234,7 @@ class CacheClient:
 cache = CacheClient()
 
 
-def cache_key(*args, **kwargs) -> str:
+def cache_key(*args: Any, **kwargs: Any) -> str:
     """
     Generate consistent cache key from function arguments.
 
@@ -259,10 +262,10 @@ def cache_key(*args, **kwargs) -> str:
 def cached(
     ttl: int = CACHE_DEFAULT_TTL,
     key_prefix: str = "",
-    key_builder: Optional[Callable] = None
-):
+    key_builder: Optional[Callable[..., str]] = None,
+) -> Callable[[Callable[P, T]], Callable[P, T]]:
     """
-    Decorator to cache function results.
+    Decorate function to cache results.
 
     Automatically caches function return values in Redis with the specified TTL.
     Subsequent calls with the same arguments return cached result.
@@ -294,9 +297,10 @@ def cached(
     >>> # Second call - returns from cache (much faster)
     >>> user = await get_user("123")
     """
-    def decorator(func: Callable):
+
+    def decorator(func: Callable[P, T]) -> Callable[P, T]:
         @wraps(func)
-        async def wrapper(*args, **kwargs):
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             # Build cache key
             if key_builder:
                 key_suffix = key_builder(*args, **kwargs)
@@ -308,18 +312,19 @@ def cached(
             # Try to get from cache
             cached_result = await cache.get(cache_key_str)
             if cached_result is not None:
-                return cached_result
+                return cached_result  # type: ignore[no-any-return]
 
             # Cache miss - call function
-            result = await func(*args, **kwargs)
+            result = await func(*args, **kwargs)  # type: ignore[misc]
 
             # Cache the result
             if result is not None:
                 await cache.set(cache_key_str, result, ttl=ttl)
 
-            return result
+            return result  # type: ignore[no-any-return]
 
-        return wrapper
+        return wrapper  # type: ignore[return-value]
+
     return decorator
 
 
@@ -361,7 +366,7 @@ class CacheStrategy:
         return f"blacklist:{token_jti}"
 
 
-async def invalidate_user_cache(user_id: str):
+async def invalidate_user_cache(user_id: str) -> None:
     """
     Invalidate all cache entries for a user.
 

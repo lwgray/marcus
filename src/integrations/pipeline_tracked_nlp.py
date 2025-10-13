@@ -36,8 +36,11 @@ class PipelineTrackedProjectCreator:
         ai_engine: Any,
         pipeline_visualizer: SharedPipelineVisualizer,
         conversation_logger: Any = None,
+        subtask_manager: Any = None,
     ) -> None:
-        self.creator = NaturalLanguageProjectCreator(kanban_client, ai_engine)
+        self.creator = NaturalLanguageProjectCreator(
+            kanban_client, ai_engine, subtask_manager
+        )
         self.pipeline_visualizer = pipeline_visualizer
         self.prd_parser = self.creator.prd_parser
 
@@ -301,12 +304,16 @@ async def create_project_from_natural_language_tracked(
     if hasattr(state, "conversation_logger"):
         conversation_logger = state.conversation_logger
 
+    # Get subtask_manager if available (GH-62 fix)
+    subtask_manager = getattr(state, "subtask_manager", None)
+
     # Initialize tracked creator
     tracked_creator = PipelineTrackedProjectCreator(
         kanban_client=state.kanban_client,
         ai_engine=state.ai_engine,
         pipeline_visualizer=state.pipeline_visualizer,
         conversation_logger=conversation_logger,
+        subtask_manager=subtask_manager,
     )
 
     # Create project

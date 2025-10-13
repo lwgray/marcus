@@ -274,7 +274,10 @@ class WhatIfAnalysisEngine:
                 {
                     "decision": "Use microservices architecture",
                     "confidence": 0.85,
-                    "reasoning": f"Large team of {parameters['team_size']} benefits from service isolation",
+                    "reasoning": (
+                        f"Large team of {parameters['team_size']} "
+                        "benefits from service isolation"
+                    ),
                 }
             )
         else:
@@ -282,7 +285,10 @@ class WhatIfAnalysisEngine:
                 {
                     "decision": "Use monolithic architecture",
                     "confidence": 0.9,
-                    "reasoning": f"Small team of {parameters['team_size']} benefits from simplicity",
+                    "reasoning": (
+                        f"Small team of {parameters['team_size']} "
+                        "benefits from simplicity"
+                    ),
                 }
             )
 
@@ -400,7 +406,10 @@ class WhatIfAnalysisEngine:
                     {
                         "type": "quality",
                         "modifications": variation["modifications"],
-                        "impact": f"Improve quality by {comparison.quality_diff * 100:.1f}%",
+                        "impact": (
+                            f"Improve quality by "
+                            f"{comparison.quality_diff * 100:.1f}%"
+                        ),
                         "trade_offs": self._identify_tradeoffs(comparison),
                     }
                 )

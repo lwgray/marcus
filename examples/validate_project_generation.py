@@ -23,11 +23,13 @@ import re
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Set, cast
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
+
+from mcp.types import TextContent  # noqa: E402
 
 from src.worker.inspector import Inspector  # noqa: E402
 
@@ -117,7 +119,8 @@ class ValidationReport:
         """
         Compare created tasks with what agents receive.
 
-        Identifies differences between original tasks and what request_next_task returns.
+        Identifies differences between original tasks and what
+        request_next_task returns.
         """
         # Create lookup dict for received tasks by ID
         received_by_id = {task.get("id"): task for task in self.received_tasks}
@@ -252,12 +255,16 @@ class ValidationReport:
         # Build prompt for AI assessment
         task_summary = "\n".join(
             [
-                f"- {task.get('name', 'Untitled')}: {task.get('description', 'No description')[:100]}"
+                f"- {task.get('name', 'Untitled')}: "
+                f"{task.get('description', 'No description')[:100]}"
                 for task in self.created_tasks
             ]
         )
 
-        assessment_prompt = f"""
+        # Note: assessment_prompt would be used for AI model call
+        # in production. For now, we calculate a basic score based
+        # on coverage
+        _ = f"""
 You are evaluating the quality of task generation for a project.
 
 PROJECT DESCRIPTION:
@@ -267,10 +274,10 @@ GENERATED TASKS:
 {task_summary}
 
 Please evaluate:
-1. Coverage: Do the tasks comprehensively cover all aspects of the description? (0-10)
-2. Clarity: Are the task descriptions clear and actionable? (0-10)
-3. Completeness: Are there any missing critical components? (0-10)
-4. Organization: Are tasks logically structured and ordered? (0-10)
+1. Coverage: Do the tasks comprehensively cover all aspects?
+2. Clarity: Are the task descriptions clear and actionable?
+3. Completeness: Are there any missing critical components?
+4. Organization: Are tasks logically structured and ordered?
 
 Respond in JSON format:
 {{
@@ -355,7 +362,10 @@ Respond in JSON format:
         )
         report += "FEATURE COVERAGE ANALYSIS\n"
         report += "-" * 80 + "\n"
-        report += f"Features Covered: {covered_count}/{len(self.feature_coverage)} ({coverage_pct:.1f}%)\n"
+        report += (
+            f"Features Covered: {covered_count}/"
+            f"{len(self.feature_coverage)} ({coverage_pct:.1f}%)\n"
+        )
 
         if coverage_pct >= 80:
             report += "Status: ✅ EXCELLENT COVERAGE\n"
@@ -417,7 +427,10 @@ Respond in JSON format:
                 1 for c in self.planka_comparison if c["planka_is_repetitive"]
             )
             if repetitive_count > 0:
-                report += f"⚠️  Repetitive Descriptions Found: {repetitive_count}/{planka_total}\n"
+                report += (
+                    f"⚠️  Repetitive Descriptions Found: "
+                    f"{repetitive_count}/{planka_total}\n"
+                )
 
             report += "\n"
 
@@ -428,14 +441,23 @@ Respond in JSON format:
             if planka_mismatches:
                 report += "PLANKA DESCRIPTION ISSUES:\n"
                 for mismatch in planka_mismatches[:3]:  # Show first 3
-                    report += f"\nTask ID: {mismatch['task_id']}\n"
-                    report += f"  Planka Name: {mismatch['planka_name']}\n"
+                    report += "\nTask ID: {}\n".format(mismatch["task_id"])
+                    report += "  Planka Name: {}\n".format(mismatch["planka_name"])
                     if mismatch["planka_is_repetitive"]:
-                        report += f"  ⚠️  REPETITIVE: Planka description appears to have duplicate content\n"
-                    report += f"  Planka Desc Length: {mismatch['planka_desc_length']} chars\n"
-                    report += f"  Received Desc Length: {mismatch['received_desc_length']} chars\n"
-                    report += f"  Planka: {mismatch['planka_description']}...\n"
-                    report += f"  Agent: {mismatch['received_description']}...\n"
+                        report += (
+                            "  ⚠️  REPETITIVE: Planka description appears "
+                            "to have duplicate content\n"
+                        )
+                    report += "  Planka Desc Length: {} chars\n".format(
+                        mismatch["planka_desc_length"]
+                    )
+                    report += "  Received Desc Length: {} chars\n".format(
+                        mismatch["received_desc_length"]
+                    )
+                    report += "  Planka: {}...\n".format(mismatch["planka_description"])
+                    report += "  Agent: {}...\n".format(
+                        mismatch["received_description"]
+                    )
 
                 if len(planka_mismatches) > 3:
                     report += (
@@ -451,9 +473,17 @@ Respond in JSON format:
         report += (
             f"Coverage Score: {self.ai_quality_score.get('coverage_score', 0)}/10\n"
         )
-        report += f"Clarity Score: {self.ai_quality_score.get('clarity_score', 0)}/10\n"
-        report += f"Completeness Score: {self.ai_quality_score.get('completeness_score', 0)}/10\n"
-        report += f"Organization Score: {self.ai_quality_score.get('organization_score', 0)}/10\n"
+        report += (
+            f"Clarity Score: {self.ai_quality_score.get('clarity_score', 0)}" "/10\n"
+        )
+        report += (
+            f"Completeness Score: "
+            f"{self.ai_quality_score.get('completeness_score', 0)}/10\n"
+        )
+        report += (
+            f"Organization Score: "
+            f"{self.ai_quality_score.get('organization_score', 0)}/10\n"
+        )
         report += (
             f"Overall Score: {self.ai_quality_score.get('overall_score', 0)}/10\n\n"
         )
@@ -507,7 +537,8 @@ Respond in JSON format:
             report += "⚠️  GOOD: Tasks are reasonable quality with minor issues\n"
         elif planka_issues:
             report += (
-                "⚠️  PLANKA ISSUES DETECTED: Check Planka card integrity section above\n"
+                "⚠️  PLANKA ISSUES DETECTED: Check Planka card "
+                "integrity section above\n"
             )
         else:
             report += "❌ NEEDS IMPROVEMENT: Significant quality or integrity issues\n"
@@ -601,7 +632,8 @@ async def validate_project_generation() -> None:
             )
 
             # Parse create_project response
-            create_data = json.loads(create_result.content[0].text)
+            create_content = cast(TextContent, create_result.content[0])
+            create_data = json.loads(create_content.text)
             if not create_data.get("success"):
                 print(f"❌ Failed to create project: {create_data.get('error')}")
                 return
@@ -679,14 +711,16 @@ async def validate_project_generation() -> None:
                             },
                         )
 
-                        board_data = json.loads(board_tasks_result.content[0].text)
+                        board_content = cast(TextContent, board_tasks_result.content[0])
+                        board_data = json.loads(board_content.text)
 
                         if board_data.get("success"):
                             validator.planka_tasks = board_data.get("tasks", [])
                             validator.created_tasks = validator.planka_tasks
 
                             print(
-                                f"✅ Retrieved {len(validator.planka_tasks)} tasks from Planka"
+                                f"✅ Retrieved {len(validator.planka_tasks)} "
+                                "tasks from Planka"
                             )
 
                             if validator.planka_tasks:
@@ -697,13 +731,14 @@ async def validate_project_generation() -> None:
 
                                 if desc_len > 500:
                                     print(
-                                        f"   ⚠️  Long description - checking for repetition..."
+                                        "   ⚠️  Long description - "
+                                        "checking for repetition..."
                                     )
                         else:
                             print(f"⚠️  Tool failed: {board_data.get('error')}")
                             validator.created_tasks = validator.received_tasks.copy()
                     else:
-                        print(f"⚠️  No board_id/project_id in workspace")
+                        print("⚠️  No board_id/project_id in workspace")
                         validator.created_tasks = validator.received_tasks.copy()
                 else:
                     print(f"⚠️  Workspace file not found: {workspace_path}")

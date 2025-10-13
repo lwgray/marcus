@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, root_validator, validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class TaskStatus(str, Enum):
@@ -101,14 +101,14 @@ class TaskCreate(BaseModel):
         min_length=3,
         max_length=200,
         description="A clear, concise name for your task",
-        example="Complete project documentation",
+        examples=["Complete project documentation"],
     )
 
     description: Optional[str] = Field(
         None,
         max_length=5000,
         description="Additional details about the task (optional)",
-        example="Write comprehensive user guide and API documentation",
+        examples=["Write comprehensive user guide and API documentation"],
     )
 
     status: TaskStatus = Field(
@@ -124,13 +124,13 @@ class TaskCreate(BaseModel):
     due_date: Optional[datetime] = Field(
         None,
         description="When this task needs to be completed (optional)",
-        example="2025-10-15T17:00:00Z",
+        examples=["2025-10-15T17:00:00Z"],
     )
 
     start_date: Optional[datetime] = Field(
         None,
         description="When to start working on this task (optional)",
-        example="2025-10-10T09:00:00Z",
+        examples=["2025-10-10T09:00:00Z"],
     )
 
     estimated_duration: Optional[int] = Field(
@@ -138,14 +138,14 @@ class TaskCreate(BaseModel):
         ge=1,
         le=1440,
         description="Estimated time to complete in minutes (1-1440, optional)",
-        example=120,
+        examples=[120],
     )
 
     tags: Optional[List[str]] = Field(
         None,
-        max_items=10,
+        max_length=10,
         description="Tags for organizing tasks (max 10, optional)",
-        example=["documentation", "urgent"],
+        examples=[["documentation", "urgent"]],
     )
 
     project_id: Optional[str] = Field(
@@ -161,10 +161,11 @@ class TaskCreate(BaseModel):
     recurrence_rule: Optional[str] = Field(
         None,
         description="iCal RRULE for recurring tasks (optional)",
-        example="FREQ=WEEKLY;BYDAY=MO,WE,FR",
+        examples=["FREQ=WEEKLY;BYDAY=MO,WE,FR"],
     )
 
-    @validator("title")
+    @field_validator("title")
+    @classmethod
     def title_not_empty(cls, v: str) -> str:
         """
         Validate that title is not just whitespace.
@@ -191,7 +192,8 @@ class TaskCreate(BaseModel):
             )
         return v.strip()
 
-    @validator("title")
+    @field_validator("title")
+    @classmethod
     def title_not_too_short(cls, v: str) -> str:
         """Validate minimum title length with helpful message."""
         if len(v) < 3:
@@ -201,14 +203,16 @@ class TaskCreate(BaseModel):
             )
         return v
 
-    @validator("description")
+    @field_validator("description")
+    @classmethod
     def description_clean(cls, v: Optional[str]) -> Optional[str]:
         """Clean and validate description."""
         if v:
             return v.strip()
         return v
 
-    @validator("due_date")
+    @field_validator("due_date")
+    @classmethod
     def due_date_validation(cls, v: Optional[datetime]) -> Optional[datetime]:
         """
         Validate due date is reasonable.
@@ -226,7 +230,8 @@ class TaskCreate(BaseModel):
                 )
         return v
 
-    @validator("estimated_duration")
+    @field_validator("estimated_duration")
+    @classmethod
     def estimated_duration_validation(cls, v: Optional[int]) -> Optional[int]:
         """Validate estimated duration with helpful message."""
         if v is not None:
@@ -242,7 +247,8 @@ class TaskCreate(BaseModel):
                 )
         return v
 
-    @validator("tags")
+    @field_validator("tags")
+    @classmethod
     def tags_validation(cls, v: Optional[List[str]]) -> Optional[List[str]]:
         """Validate and clean tags."""
         if v:
@@ -265,35 +271,31 @@ class TaskCreate(BaseModel):
                 if not re.match(r"^[a-zA-Z0-9_-]+$", tag):
                     raise ValueError(
                         f"Tag '{tag}' contains invalid characters. "
-                        "Tags can only contain letters, numbers, hyphens, and underscores."
+                        "Tags can only contain letters, numbers, "
+                        "hyphens, and underscores."
                     )
 
             return cleaned_tags
         return v
 
-    @root_validator
-    def validate_date_relationship(cls, values):
+    @model_validator(mode="after")
+    def validate_date_relationship(self) -> "TaskCreate":
         """
         Validate relationship between start and due dates.
 
         Provides helpful message if dates are illogical.
         """
-        start_date = values.get("start_date")
-        due_date = values.get("due_date")
-
-        if start_date and due_date:
-            if start_date > due_date:
+        if self.start_date and self.due_date:
+            if self.start_date > self.due_date:
                 raise ValueError(
                     "The start date cannot be after the due date. "
                     "Please adjust the dates so the start date comes first."
                 )
 
-        return values
+        return self
 
-    class Config:
-        """Pydantic configuration."""
-
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "title": "Complete project documentation",
                 "description": "Write comprehensive user guide and API docs",
@@ -307,6 +309,7 @@ class TaskCreate(BaseModel):
                 "parent_task_id": None,
             }
         }
+    )
 
 
 class TaskUpdate(BaseModel):
@@ -387,7 +390,7 @@ class TaskUpdate(BaseModel):
 
     tags: Optional[List[str]] = Field(
         None,
-        max_items=10,
+        max_length=10,
         description="Updated tags",
     )
 
@@ -397,30 +400,26 @@ class TaskUpdate(BaseModel):
     )
 
     # Reuse validators from TaskCreate
-    _title_not_empty = validator("title", allow_reuse=True)(TaskCreate.title_not_empty)
-    _title_not_too_short = validator("title", allow_reuse=True)(
-        TaskCreate.title_not_too_short
-    )
-    _description_clean = validator("description", allow_reuse=True)(
-        TaskCreate.description_clean
-    )
-    _due_date_validation = validator("due_date", allow_reuse=True)(
-        TaskCreate.due_date_validation
-    )
-    _estimated_duration_validation = validator("estimated_duration", allow_reuse=True)(
+    _title_not_empty = field_validator("title")(TaskCreate.title_not_empty)
+    _title_not_too_short = field_validator("title")(TaskCreate.title_not_too_short)
+    _description_clean = field_validator("description")(TaskCreate.description_clean)
+    _due_date_validation = field_validator("due_date")(TaskCreate.due_date_validation)
+    _estimated_duration_validation = field_validator("estimated_duration")(
         TaskCreate.estimated_duration_validation
     )
-    _tags_validation = validator("tags", allow_reuse=True)(TaskCreate.tags_validation)
+    _tags_validation = field_validator("tags")(TaskCreate.tags_validation)
 
-    @root_validator
-    def at_least_one_field(cls, values):
+    @model_validator(mode="after")
+    def at_least_one_field(self) -> "TaskUpdate":
         """Ensure at least one field is being updated."""
-        if not any(v is not None for v in values.values()):
+        if not any(
+            getattr(self, field) is not None for field in self.model_fields.keys()
+        ):
             raise ValueError(
                 "Please provide at least one field to update. "
                 "You haven't specified any changes."
             )
-        return values
+        return self
 
 
 class TimeEntryCreate(BaseModel):
@@ -447,37 +446,34 @@ class TimeEntryCreate(BaseModel):
     start_time: datetime = Field(
         ...,
         description="When work started",
-        example="2025-10-06T09:00:00Z",
+        examples=["2025-10-06T09:00:00Z"],
     )
 
     end_time: datetime = Field(
         ...,
         description="When work ended",
-        example="2025-10-06T11:30:00Z",
+        examples=["2025-10-06T11:30:00Z"],
     )
 
     description: Optional[str] = Field(
         None,
         max_length=500,
         description="Description of the work done (optional)",
-        example="Wrote user documentation and created examples",
+        examples=["Wrote user documentation and created examples"],
     )
 
-    @root_validator
-    def validate_time_range(cls, values):
+    @model_validator(mode="after")
+    def validate_time_range(self) -> "TimeEntryCreate":
         """Validate that end time is after start time."""
-        start_time = values.get("start_time")
-        end_time = values.get("end_time")
-
-        if start_time and end_time:
-            if end_time <= start_time:
+        if self.start_time and self.end_time:
+            if self.end_time <= self.start_time:
                 raise ValueError(
                     "The end time must be after the start time. "
                     "Please check your time entry."
                 )
 
             # Check for unreasonably long sessions
-            duration = end_time - start_time
+            duration = self.end_time - self.start_time
             if duration.total_seconds() > 24 * 3600:  # 24 hours
                 raise ValueError(
                     "Time entry duration cannot exceed 24 hours. "
@@ -491,7 +487,7 @@ class TimeEntryCreate(BaseModel):
                     "For very brief tasks, round up to 1 minute."
                 )
 
-        return values
+        return self
 
 
 class UserRegistration(BaseModel):
@@ -515,7 +511,7 @@ class UserRegistration(BaseModel):
     email: str = Field(
         ...,
         description="Your email address",
-        example="user@example.com",
+        examples=["user@example.com"],
     )
 
     username: str = Field(
@@ -523,30 +519,31 @@ class UserRegistration(BaseModel):
         min_length=3,
         max_length=50,
         description="Choose a username (3-50 characters)",
-        example="johndoe",
+        examples=["johndoe"],
     )
 
     password: str = Field(
         ...,
         min_length=8,
         description="Create a secure password (minimum 8 characters)",
-        example="SecurePass123!",
+        examples=["SecurePass123!"],
     )
 
     full_name: str = Field(
         ...,
         max_length=255,
         description="Your full name",
-        example="John Doe",
+        examples=["John Doe"],
     )
 
     timezone: str = Field(
         ...,
         description="Your timezone (e.g., 'America/New_York')",
-        example="America/New_York",
+        examples=["America/New_York"],
     )
 
-    @validator("email")
+    @field_validator("email")
+    @classmethod
     def email_validation(cls, v: str) -> str:
         """Validate email format with helpful message."""
         v = v.strip().lower()
@@ -559,7 +556,8 @@ class UserRegistration(BaseModel):
 
         return v
 
-    @validator("username")
+    @field_validator("username")
+    @classmethod
     def username_validation(cls, v: str) -> str:
         """Validate username format."""
         v = v.strip()
@@ -572,7 +570,8 @@ class UserRegistration(BaseModel):
 
         return v
 
-    @validator("password")
+    @field_validator("password")
+    @classmethod
     def password_strength(cls, v: str) -> str:
         """Validate password strength with helpful guidance."""
         if len(v) < 8:
@@ -594,15 +593,14 @@ class UserRegistration(BaseModel):
 
         return v
 
-    class Config:
-        """Pydantic configuration."""
-
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "email": "user@example.com",
                 "username": "johndoe",
-                "password": "SecurePass123!",
+                "password": "SecurePass123!",  # pragma: allowlist secret
                 "full_name": "John Doe",
                 "timezone": "America/New_York",
             }
         }
+    )

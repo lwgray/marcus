@@ -7,7 +7,7 @@ token refresh, and authentication responses per auth-api-spec.yaml.
 
 import re
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -205,7 +205,7 @@ class TokenRefreshResponse(BaseModel):
         examples=["Token refreshed successfully"],
     )
 
-    data: dict = Field(
+    data: dict[str, Any] = Field(
         ...,
         description="New access token data",
         examples=[
@@ -231,7 +231,7 @@ class ErrorResponse(BaseModel):
         examples=["Invalid email or password", "Email already registered"],
     )
 
-    details: Optional[dict] = Field(
+    details: Optional[dict[str, Any]] = Field(
         default=None, description="Additional error details (optional)"
     )
 

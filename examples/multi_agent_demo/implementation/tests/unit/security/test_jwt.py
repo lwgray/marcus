@@ -28,7 +28,9 @@ class TestCreateAccessToken:
     def test_create_access_token_returns_string(self) -> None:
         """Test that create_access_token returns a JWT string."""
         # Act
-        token = create_access_token(user_id=1, username="testuser")
+        token = create_access_token(
+            user_id=1, username="testuser"
+        )  # pragma: allowlist secret
 
         # Assert
         assert isinstance(token, str)
@@ -37,8 +39,10 @@ class TestCreateAccessToken:
     def test_create_access_token_includes_user_data(self) -> None:
         """Test that token includes user ID and username."""
         # Act
-        token = create_access_token(user_id=42, username="john")
-        payload = decode_token_without_verification(token)
+        token = create_access_token(
+            user_id=42, username="john"
+        )  # pragma: allowlist secret
+        payload = decode_token_without_verification(token)  # pragma: allowlist secret
 
         # Assert
         assert payload["user_id"] == 42
@@ -47,8 +51,10 @@ class TestCreateAccessToken:
     def test_create_access_token_includes_timestamps(self) -> None:
         """Test that token includes iat and exp claims."""
         # Act
-        token = create_access_token(user_id=1, username="test")
-        payload = decode_token_without_verification(token)
+        token = create_access_token(
+            user_id=1, username="test"
+        )  # pragma: allowlist secret
+        payload = decode_token_without_verification(token)  # pragma: allowlist secret
 
         # Assert
         assert "iat" in payload  # Issued at
@@ -60,10 +66,10 @@ class TestCreateAccessToken:
         short_expiration = timedelta(minutes=5)
 
         # Act
-        token = create_access_token(
+        token = create_access_token(  # pragma: allowlist secret
             user_id=1, username="test", expires_delta=short_expiration
         )
-        payload = decode_token_without_verification(token)
+        payload = decode_token_without_verification(token)  # pragma: allowlist secret
 
         # Assert
         exp_diff = payload["exp"] - payload["iat"]
@@ -75,10 +81,10 @@ class TestCreateAccessToken:
         custom_claims = {"role": "admin", "permissions": ["read", "write"]}
 
         # Act
-        token = create_access_token(
+        token = create_access_token(  # pragma: allowlist secret
             user_id=1, username="admin", additional_claims=custom_claims
         )
-        payload = decode_token_without_verification(token)
+        payload = decode_token_without_verification(token)  # pragma: allowlist secret
 
         # Assert
         assert payload["role"] == "admin"
@@ -91,10 +97,12 @@ class TestVerifyToken:
     def test_verify_token_valid_token(self) -> None:
         """Test verifying a valid token."""
         # Arrange
-        token = create_access_token(user_id=1, username="test")
+        token = create_access_token(
+            user_id=1, username="test"
+        )  # pragma: allowlist secret
 
         # Act
-        payload = verify_token(token)
+        payload = verify_token(token)  # pragma: allowlist secret
 
         # Assert
         assert payload["user_id"] == 1
@@ -103,7 +111,7 @@ class TestVerifyToken:
     def test_verify_token_expired_token(self) -> None:
         """Test that expired tokens raise TokenExpiredError."""
         # Arrange - create token with negative expiration
-        expired_token = create_access_token(
+        expired_token = create_access_token(  # pragma: allowlist secret
             user_id=1,
             username="test",
             expires_delta=timedelta(seconds=-1),  # Already expired
@@ -111,19 +119,21 @@ class TestVerifyToken:
 
         # Act & Assert
         with pytest.raises(TokenExpiredError) as exc_info:
-            verify_token(expired_token)
+            verify_token(expired_token)  # pragma: allowlist secret
         assert "expired" in str(exc_info.value).lower()
 
     def test_verify_token_invalid_signature(self) -> None:
         """Test that tokens with invalid signature raise TokenInvalidError."""
         # Arrange - create token with wrong secret
-        invalid_token = pyjwt.encode(
-            {"user_id": 1, "sub": "test"}, "wrong-secret", algorithm=JWT_ALGORITHM
+        invalid_token = pyjwt.encode(  # pragma: allowlist secret
+            {"user_id": 1, "sub": "test"},
+            "wrong-secret",
+            algorithm=JWT_ALGORITHM,  # pragma: allowlist secret
         )
 
         # Act & Assert
         with pytest.raises(TokenInvalidError):
-            verify_token(invalid_token)
+            verify_token(invalid_token)  # pragma: allowlist secret
 
     def test_verify_token_malformed_token(self) -> None:
         """Test that malformed tokens raise TokenInvalidError."""
@@ -147,10 +157,12 @@ class TestGetCurrentUser:
     def test_get_current_user_valid_token(self) -> None:
         """Test extracting user info from valid token."""
         # Arrange
-        token = create_access_token(user_id=123, username="john")
+        token = create_access_token(
+            user_id=123, username="john"
+        )  # pragma: allowlist secret
 
         # Act
-        user = get_current_user(token)
+        user = get_current_user(token)  # pragma: allowlist secret
 
         # Assert
         assert user["user_id"] == 123
@@ -159,12 +171,12 @@ class TestGetCurrentUser:
     def test_get_current_user_with_additional_claims(self) -> None:
         """Test that additional claims are included."""
         # Arrange
-        token = create_access_token(
+        token = create_access_token(  # pragma: allowlist secret
             user_id=1, username="admin", additional_claims={"role": "admin"}
         )
 
         # Act
-        user = get_current_user(token)
+        user = get_current_user(token)  # pragma: allowlist secret
 
         # Assert
         assert user["role"] == "admin"
@@ -172,24 +184,26 @@ class TestGetCurrentUser:
     def test_get_current_user_expired_token(self) -> None:
         """Test that expired token raises TokenExpiredError."""
         # Arrange
-        expired_token = create_access_token(
+        expired_token = create_access_token(  # pragma: allowlist secret
             user_id=1, username="test", expires_delta=timedelta(seconds=-1)
         )
 
         # Act & Assert
         with pytest.raises(TokenExpiredError):
-            get_current_user(expired_token)
+            get_current_user(expired_token)  # pragma: allowlist secret
 
     def test_get_current_user_missing_user_id(self) -> None:
         """Test that token missing user_id raises error."""
         # Arrange - manually create token without user_id
-        token = pyjwt.encode(
-            {"sub": "test"}, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM  # Missing user_id
+        token = pyjwt.encode(  # pragma: allowlist secret
+            {"sub": "test"},
+            JWT_SECRET_KEY,
+            algorithm=JWT_ALGORITHM,  # Missing user_id  # pragma: allowlist secret
         )
 
         # Act & Assert
         with pytest.raises(TokenInvalidError) as exc_info:
-            get_current_user(token)
+            get_current_user(token)  # pragma: allowlist secret
         assert "missing required user claims" in str(exc_info.value).lower()
 
 
@@ -199,13 +213,15 @@ class TestRefreshToken:
     def test_refresh_token_creates_new_token(self) -> None:
         """Test that refresh creates a new token."""
         # Arrange
-        old_token = create_access_token(user_id=1, username="test")
+        old_token = create_access_token(
+            user_id=1, username="test"
+        )  # pragma: allowlist secret
 
         # Wait to ensure different timestamp
         time.sleep(1)
 
         # Act
-        new_token = refresh_token(old_token)
+        new_token = refresh_token(old_token)  # pragma: allowlist secret
 
         # Assert
         assert new_token != old_token
@@ -214,11 +230,13 @@ class TestRefreshToken:
     def test_refresh_token_preserves_user_data(self) -> None:
         """Test that refreshed token has same user data."""
         # Arrange
-        old_token = create_access_token(user_id=42, username="john")
+        old_token = create_access_token(
+            user_id=42, username="john"
+        )  # pragma: allowlist secret
 
         # Act
-        new_token = refresh_token(old_token)
-        new_payload = verify_token(new_token)
+        new_token = refresh_token(old_token)  # pragma: allowlist secret
+        new_payload = verify_token(new_token)  # pragma: allowlist secret
 
         # Assert
         assert new_payload["user_id"] == 42
@@ -227,30 +245,36 @@ class TestRefreshToken:
     def test_refresh_token_works_with_expired_token(self) -> None:
         """Test that expired tokens can be refreshed."""
         # Arrange
-        expired_token = create_access_token(
+        expired_token = create_access_token(  # pragma: allowlist secret
             user_id=1, username="test", expires_delta=timedelta(seconds=-1)
         )
 
         # Act
-        new_token = refresh_token(expired_token)
+        new_token = refresh_token(expired_token)  # pragma: allowlist secret
 
         # Assert
         # New token should be valid
-        payload = verify_token(new_token)
+        payload = verify_token(new_token)  # pragma: allowlist secret
         assert payload["user_id"] == 1
 
     def test_refresh_token_updates_expiration(self) -> None:
         """Test that refreshed token has new expiration."""
         # Arrange
-        old_token = create_access_token(user_id=1, username="test")
-        old_payload = decode_token_without_verification(old_token)
+        old_token = create_access_token(
+            user_id=1, username="test"
+        )  # pragma: allowlist secret
+        old_payload = decode_token_without_verification(
+            old_token
+        )  # pragma: allowlist secret
 
         # Wait to ensure different timestamps
         time.sleep(1)
 
         # Act
-        new_token = refresh_token(old_token)
-        new_payload = decode_token_without_verification(new_token)
+        new_token = refresh_token(old_token)  # pragma: allowlist secret
+        new_payload = decode_token_without_verification(
+            new_token
+        )  # pragma: allowlist secret
 
         # Assert
         assert new_payload["iat"] > old_payload["iat"]
@@ -259,12 +283,18 @@ class TestRefreshToken:
     def test_refresh_token_custom_expiration(self) -> None:
         """Test refreshing with custom expiration."""
         # Arrange
-        old_token = create_access_token(user_id=1, username="test")
+        old_token = create_access_token(
+            user_id=1, username="test"
+        )  # pragma: allowlist secret
         custom_exp = timedelta(hours=48)
 
         # Act
-        new_token = refresh_token(old_token, expires_delta=custom_exp)
-        new_payload = decode_token_without_verification(new_token)
+        new_token = refresh_token(
+            old_token, expires_delta=custom_exp
+        )  # pragma: allowlist secret
+        new_payload = decode_token_without_verification(
+            new_token
+        )  # pragma: allowlist secret
 
         # Assert
         exp_diff = new_payload["exp"] - new_payload["iat"]
@@ -283,10 +313,12 @@ class TestDecodeWithoutVerification:
     def test_decode_without_verification_returns_payload(self) -> None:
         """Test that decode returns payload without verification."""
         # Arrange
-        token = create_access_token(user_id=1, username="test")
+        token = create_access_token(
+            user_id=1, username="test"
+        )  # pragma: allowlist secret
 
         # Act
-        payload = decode_token_without_verification(token)
+        payload = decode_token_without_verification(token)  # pragma: allowlist secret
 
         # Assert
         assert payload["user_id"] == 1
@@ -295,12 +327,14 @@ class TestDecodeWithoutVerification:
     def test_decode_without_verification_expired_token(self) -> None:
         """Test that expired tokens can still be decoded."""
         # Arrange
-        expired_token = create_access_token(
+        expired_token = create_access_token(  # pragma: allowlist secret
             user_id=1, username="test", expires_delta=timedelta(seconds=-1)
         )
 
         # Act - Should NOT raise exception
-        payload = decode_token_without_verification(expired_token)
+        payload = decode_token_without_verification(
+            expired_token
+        )  # pragma: allowlist secret
 
         # Assert
         assert payload["user_id"] == 1

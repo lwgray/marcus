@@ -296,18 +296,45 @@ class ConversationLogger:
 
         Files are created with timestamp format: YYYYMMDD_HHMMSS
         Log rotation should be managed externally or through system tools.
+
+        Handlers only capture structured logs from ConversationLogger,
+        filtering out plain text logs from other parts of the application.
         """
+
+        # Create a filter that only allows structured logs from conversation loggers
+        class ConversationLogFilter(logging.Filter):
+            """Filter that only allows logs from conversation loggers."""
+
+            def filter(self, record: logging.LogRecord) -> bool:
+                """
+                Filter log records to only allow conversation loggers.
+
+                Parameters
+                ----------
+                record : logging.LogRecord
+                    The log record to filter.
+
+                Returns
+                -------
+                bool
+                    True if the record should be logged, False otherwise.
+                """
+                # Only allow logs from marcus, worker, and kanban loggers
+                return record.name in ("marcus", "worker", "kanban")
+
         # Main conversation log
         conversation_handler = logging.FileHandler(
             self.log_dir / f"conversations_{datetime.now():%Y%m%d_%H%M%S}.jsonl"
         )
         conversation_handler.setLevel(logging.DEBUG)
+        conversation_handler.addFilter(ConversationLogFilter())
 
         # Decision log for Marcus decisions
         decision_handler = logging.FileHandler(
             self.log_dir / f"decisions_{datetime.now():%Y%m%d_%H%M%S}.jsonl"
         )
         decision_handler.setLevel(logging.INFO)
+        decision_handler.addFilter(ConversationLogFilter())
 
         # Add handlers to root logger
         root_logger = logging.getLogger()

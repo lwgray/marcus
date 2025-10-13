@@ -4,7 +4,7 @@ repos:
     rev: v1.16.1
     hooks:
       - id: mypy
-        args: [--config-file=pyproject.toml, --follow-imports=skip]
+        args: [--config-file=pyproject.toml]
         additional_dependencies:
           - types-aiofiles
           - types-requests
@@ -48,7 +48,6 @@ repos:
     hooks:
       - id: bandit
         args: ['-c', 'pyproject.toml']
-        exclude: ^tests/
 
   # General pre-commit hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks

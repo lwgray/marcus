@@ -1,4 +1,4 @@
-"""Initial database schema with User, Project, Task, and Comment models
+"""Initial database schema with User, Project, Task, and Comment models.
 
 Revision ID: 8f03f242faea
 Revises:

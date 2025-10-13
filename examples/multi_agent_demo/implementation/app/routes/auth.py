@@ -9,8 +9,7 @@ Implements JWT-based authentication endpoints per auth-api-spec.yaml:
 - GET /auth/me: Get current user profile
 """
 
-from datetime import timedelta
-from typing import Annotated
+from typing import Annotated, Any
 
 from app.schemas.auth import (
     ErrorResponse,
@@ -59,7 +58,7 @@ async def get_db() -> AsyncSession:
 async def get_current_user(
     authorization: Annotated[str | None, Header()] = None,
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     """
     Extract and validate current user from Authorization header.
 
@@ -72,7 +71,7 @@ async def get_current_user(
 
     Returns
     -------
-    dict
+    dict[str, Any]
         User information from token
 
     Raises
@@ -99,7 +98,7 @@ async def get_current_user(
 
     # Verify token
     try:
-        payload = verify_token(token)
+        payload: dict[str, Any] = verify_token(token)
         return payload
     except TokenExpiredError:
         raise HTTPException(
@@ -179,7 +178,7 @@ async def register(
         token_data = TokenData(
             access_token=access_token,
             refresh_token=refresh_token,
-            token_type="Bearer",
+            token_type="Bearer",  # nosec B106
             expires_in=AuthService.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
             user=user_response,
         )
@@ -267,7 +266,7 @@ async def login(
         token_data = TokenData(
             access_token=access_token,
             refresh_token=refresh_token,
-            token_type="Bearer",
+            token_type="Bearer",  # nosec B106
             expires_in=AuthService.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
             user=user_response,
         )
@@ -367,7 +366,7 @@ async def refresh_token(
 )
 async def logout(
     logout_data: LogoutRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> SuccessResponse:
     """
@@ -379,7 +378,7 @@ async def logout(
     ----------
     logout_data : LogoutRequest
         Logout request with refresh token
-    current_user : dict
+    current_user : dict[str, Any]
         Current authenticated user
     db : AsyncSession
         Database session
@@ -427,7 +426,7 @@ async def logout(
     },
 )
 async def get_current_user_profile(
-    current_user: dict = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> UserResponse:
     """
@@ -437,7 +436,7 @@ async def get_current_user_profile(
 
     Parameters
     ----------
-    current_user : dict
+    current_user : dict[str, Any]
         Current authenticated user from token
     db : AsyncSession
         Database session

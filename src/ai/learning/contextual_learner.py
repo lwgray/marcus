@@ -113,7 +113,8 @@ class ContextualLearningSystem:
 
         if len(completed_projects) < self.min_samples_for_learning:
             logger.warning(
-                f"Insufficient data for team {team_id} learning: {len(completed_projects)} projects"
+                f"Insufficient data for team {team_id} learning: "
+                f"{len(completed_projects)} projects"
             )
             return self._create_default_team_learnings(team_id)
 
@@ -603,7 +604,10 @@ class ContextualLearningSystem:
             template_id="estimation_adapted",
             original_template={"base_multiplier": 1.0},
             adaptations=adaptations,
-            adaptation_reasoning="Combined team velocity patterns with technology-specific multipliers",
+            adaptation_reasoning=(
+                "Combined team velocity patterns with "
+                "technology-specific multipliers"
+            ),
             confidence=0.8,
             usage_count=0,
             success_rate=0.0,
@@ -629,7 +633,9 @@ class ContextualLearningSystem:
                 "standard_phases": ["design", "implement", "test", "deploy"]
             },
             adaptations=adaptations,
-            adaptation_reasoning="Adapted based on team preferences and project type patterns",
+            adaptation_reasoning=(
+                "Adapted based on team preferences and project type patterns"
+            ),
             confidence=0.75,
             usage_count=0,
             success_rate=0.0,
@@ -665,8 +671,10 @@ class ContextualLearningSystem:
         # Velocity recommendations
         for task_type, velocity in team_learning.velocity_patterns.items():
             if velocity > 1.5:
+                percent = (velocity - 1) * 100
                 recommendations.append(
-                    f"Team tends to underestimate {task_type} tasks by {(velocity-1)*100:.0f}% - consider adding buffer"
+                    f"Team tends to underestimate {task_type} tasks by "
+                    f"{percent:.0f}% - consider adding buffer"
                 )
 
         # Skill recommendations
@@ -691,8 +699,10 @@ class ContextualLearningSystem:
         # Risk mitigation
         for risk, probability in tech_learning.risk_factors.items():
             if probability > 0.3:
+                percent = probability * 100
                 recommendations.append(
-                    f"Monitor for {risk} (occurs in {probability*100:.0f}% of {tech_learning.tech_stack} projects)"
+                    f"Monitor for {risk} (occurs in {percent:.0f}% of "
+                    f"{tech_learning.tech_stack} projects)"
                 )
 
         # Best practices
@@ -713,8 +723,10 @@ class ContextualLearningSystem:
 
         # Phase recommendations
         if project_learning.typical_phases:
+            phases = ", ".join(project_learning.typical_phases)
             recommendations.append(
-                f"For {project_learning.project_type} projects, consider phases: {', '.join(project_learning.typical_phases)}"
+                f"For {project_learning.project_type} projects, "
+                f"consider phases: {phases}"
             )
 
         # Pitfall warnings

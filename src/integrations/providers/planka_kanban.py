@@ -173,7 +173,46 @@ class PlankaKanban(KanbanInterface):
             "position": 65535,  # Default position
         }
 
-        # Find backlog list and create card using direct MCP call
+        # Determine target list based on status
+        status = task_data.get("status")
+        target_list_name = "backlog"  # Default to backlog for TODO status
+
+        # DEBUG: Log status information
+        logger.info(
+            f"[DEBUG] create_task for '{task_data.get('name')}': "
+            f"status={status} (type: {type(status).__name__})"
+        )
+
+        # Map TaskStatus enum to list names
+        if isinstance(status, TaskStatus):
+            status_to_list = {
+                TaskStatus.TODO: "backlog",
+                TaskStatus.IN_PROGRESS: "in progress",
+                TaskStatus.DONE: "done",
+                TaskStatus.BLOCKED: "blocked",
+            }
+            target_list_name = status_to_list.get(status, "backlog")
+            logger.info(
+                "[DEBUG] Status is TaskStatus enum, "
+                f"target_list_name={target_list_name}"
+            )
+        elif isinstance(status, str):
+            # Handle string status values
+            status_lower = status.lower()
+            logger.info(f"[DEBUG] Status is string: '{status_lower}'")
+            if status_lower in ["done", "completed"]:
+                target_list_name = "done"
+            elif status_lower in ["in_progress", "in progress", "active"]:
+                target_list_name = "in progress"
+            elif status_lower in ["blocked", "on hold"]:
+                target_list_name = "blocked"
+            logger.info(f"[DEBUG] Set target_list_name={target_list_name}")
+        else:
+            logger.info(
+                "[DEBUG] Status is neither TaskStatus nor str, defaulting to backlog"
+            )
+
+        # Find target list and create card using direct MCP call
         async with stdio_client(self._server_params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
@@ -195,21 +234,35 @@ class PlankaKanban(KanbanInterface):
                     else lists_data.get("items", [])
                 )
 
-                # Find backlog list
-                backlog_list = None
+                # Find target list
+                target_list = None
                 for list_data in lists:
-                    if "backlog" in list_data["name"].lower():
-                        backlog_list = list_data
+                    if target_list_name.lower() in list_data["name"].lower():
+                        target_list = list_data
                         break
 
-                if not backlog_list:
-                    raise ValueError("No backlog list found")
+                if not target_list:
+                    # Fallback to backlog if target list not found
+                    logger.warning(
+                        f"Could not find list '{target_list_name}', "
+                        "falling back to backlog"
+                    )
+                    for list_data in lists:
+                        if "backlog" in list_data["name"].lower():
+                            target_list = list_data
+                            break
+
+                if not target_list:
+                    raise ValueError(
+                        f"No suitable list found "
+                        f"(tried '{target_list_name}' and 'backlog')"
+                    )
 
                 # Create card
                 result = await session.call_tool(
                     "mcp_kanban_create_card",
                     {
-                        "listId": backlog_list["id"],
+                        "listId": target_list["id"],
                         "name": card_data["name"],
                         "description": card_data["description"],
                         "position": card_data["position"],

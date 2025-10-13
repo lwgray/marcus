@@ -239,7 +239,7 @@ alembic history
 The database URL can be configured via environment variable:
 
 ```bash
-export DATABASE_URL="postgresql://user:password@localhost:5432/taskmanagement"
+export DATABASE_URL="postgresql://user:password@localhost:5432/taskmanagement"  <!-- pragma: allowlist secret -->
 ```
 
 Or use the default in `alembic.ini`:

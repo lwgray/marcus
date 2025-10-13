@@ -8,7 +8,7 @@ against malicious user input across the application.
 import re
 from typing import List, Optional
 
-import bleach
+import bleach  # type: ignore[import-untyped]
 
 # Allowed HTML tags for rich text (comments, descriptions)
 ALLOWED_TAGS = [
@@ -47,10 +47,10 @@ ALLOWED_PROTOCOLS = ["http", "https", "mailto"]
 def sanitize_html(
     html_content: str,
     allowed_tags: Optional[List[str]] = None,
-    allowed_attributes: Optional[dict] = None,
+    allowed_attributes: Optional[dict[str, List[str]]] = None,
     strip: bool = False,
 ) -> str:
-    """
+    r"""
     Sanitize HTML content to prevent XSS attacks.
 
     Parameters
@@ -96,7 +96,7 @@ def sanitize_html(
         allowed_attributes = ALLOWED_ATTRIBUTES
 
     # Sanitize using bleach
-    clean_html = bleach.clean(
+    clean_html: str = bleach.clean(
         html_content,
         tags=allowed_tags,
         attributes=allowed_attributes,
@@ -138,7 +138,7 @@ def sanitize_text(text: str, max_length: Optional[int] = None) -> str:
     - Optionally truncates to max_length with ellipsis
     """
     # Strip all HTML tags
-    clean_text = bleach.clean(text, tags=[], strip=True)
+    clean_text: str = bleach.clean(text, tags=[], strip=True)
 
     # Remove extra whitespace
     clean_text = re.sub(r"\s+", " ", clean_text).strip()
@@ -151,7 +151,7 @@ def sanitize_text(text: str, max_length: Optional[int] = None) -> str:
 
 
 def sanitize_filename(filename: str, replacement: str = "_") -> str:
-    """
+    r"""
     Sanitize a filename to prevent path traversal attacks.
 
     Parameters
@@ -319,7 +319,7 @@ def sanitize_url(url: str, allowed_schemes: Optional[List[str]] = None) -> str:
 
 
 def escape_sql_like(value: str, escape_char: str = "\\") -> str:
-    """
+    r"""
     Escape special characters for SQL LIKE queries.
 
     Parameters
@@ -340,7 +340,9 @@ def escape_sql_like(value: str, escape_char: str = "\\") -> str:
     '50\\\\%\\\\_discount'
 
     >>> # Use in SQLAlchemy query
-    >>> # User.query.filter(User.username.like(f"%{escape_sql_like(search)}%", escape="\\\\"))
+    >>> # User.query.filter(
+    >>> #     User.username.like(f"%{escape_sql_like(search)}%", escape="\\\\")
+    >>> # )
 
     Notes
     -----

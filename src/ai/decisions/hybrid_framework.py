@@ -128,7 +128,7 @@ class HybridDecisionFramework:
         self, task: Task, context: AssignmentContext
     ) -> AssignmentDecision:
         """
-        Make hybrid assignment decision combining rule-based safety with AI optimization.
+        Make hybrid assignment decision combining rules with AI optimization.
 
         Args
         ----
@@ -282,7 +282,7 @@ class HybridDecisionFramework:
         -------
             Assignment quality evaluation
         """
-        evaluation = {
+        evaluation: Dict[str, Any] = {
             "task_id": task.id,
             "agent_id": agent_id,
             "completion_success": assignment_outcome.get("success", True),
@@ -295,6 +295,7 @@ class HybridDecisionFramework:
         # Calculate assignment effectiveness
         estimated_time = assignment_outcome.get("estimated_time", 8.0)
         actual_time = assignment_outcome.get("completion_time", 8.0)
+        time_accuracy: Optional[float] = None
 
         if estimated_time > 0:
             time_accuracy = min(estimated_time, actual_time) / max(
@@ -321,13 +322,13 @@ class HybridDecisionFramework:
         if assignment_outcome.get("blockers"):
             learnings.append("Consider better dependency checking")
 
-        if time_accuracy and time_accuracy < 0.7:
+        if time_accuracy is not None and time_accuracy < 0.7:
             learnings.append("Improve time estimation accuracy")
 
         evaluation["learnings"] = learnings
 
         logger.debug(
-            f"Assignment quality evaluation for {task.id}: {evaluation['decision_quality']}"
+            f"Assignment quality for {task.id}: " f"{evaluation['decision_quality']}"
         )
 
         return evaluation

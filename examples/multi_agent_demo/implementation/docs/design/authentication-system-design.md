@@ -131,7 +131,7 @@ CREATE TABLE user_roles (
 ```json
 {
   "email": "user@example.com",
-  "password": "SecureP@ssw0rd",
+  "password": "SecureP@ssw0rd", <!-- pragma: allowlist secret -->
   "username": "johndoe"
 }
 ```
@@ -367,7 +367,7 @@ async def protected_endpoint(user_id, user_roles):
 **Example Test**:
 ```python
 def test_password_hashing():
-    password = "SecureP@ssw0rd"
+    password = "SecureP@ssw0rd"  # pragma: allowlist secret
     hash1 = hash_password(password)
     hash2 = hash_password(password)
 
@@ -394,7 +394,7 @@ async def test_registration_login_flow():
     # Register new user
     response = await client.post("/api/auth/register", json={
         "email": "test@example.com",
-        "password": "SecureP@ssw0rd",
+        "password": "SecureP@ssw0rd",  # pragma: allowlist secret
         "username": "testuser"
     })
     assert response.status_code == 201
@@ -450,7 +450,7 @@ async def test_registration_login_flow():
 ```bash
 # Required
 JWT_SECRET_KEY=<strong-random-key>
-DATABASE_URL=postgresql://user:pass@localhost/dbname
+DATABASE_URL=postgresql://user:pass@localhost/dbname <!-- pragma: allowlist secret -->
 
 # Optional (with defaults)
 ACCESS_TOKEN_EXPIRE_MINUTES=15

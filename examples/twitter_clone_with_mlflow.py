@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""
+r"""
 Example: Twitter Swarm with MLflow Experiment Tracking.
 
 This demonstrates a complete autonomous agent swarm with comprehensive
@@ -23,7 +23,7 @@ Prerequisites
 
 Usage
 -----
-python examples/twitter_clone_with_mlflow.py --experiment-name "my-test" \\
+python examples/twitter_clone_with_mlflow.py --experiment-name "my-test" \
     --enable-blockers --enable-artifacts --enable-decisions
 """
 
@@ -38,6 +38,8 @@ from typing import Any, Dict, List, Optional
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
+
+from mcp.types import TextContent  # noqa: E402
 
 from src.experiments import MarcusExperiment  # noqa: E402
 from src.worker.inspector import Inspector  # noqa: E402
@@ -178,8 +180,12 @@ async def agent_worker(
 
                 # Handle different response formats
                 if hasattr(task_result, "content") and task_result.content:
-                    task_text = task_result.content[0].text
-                    task_data = json.loads(task_text)
+                    content_item = task_result.content[0]
+                    if isinstance(content_item, TextContent):
+                        task_text = content_item.text
+                        task_data = json.loads(task_text)
+                    else:
+                        task_data = task_result
                 else:
                     task_data = task_result
 
@@ -217,7 +223,7 @@ async def agent_worker(
                 )
 
                 # Simulate work with conditional behaviors
-                work_duration = random.uniform(0.5, 2.0)
+                work_duration = random.uniform(0.5, 2.0)  # nosec B311
 
                 # Simulate blocker if enabled
                 if (
@@ -445,8 +451,13 @@ async def twitter_mlflow_workflow(
                     },
                 )
 
-                create_data = json.loads(create_result.content[0].text)
-                total_tasks = create_data.get("tasks_created", 0)
+                # Extract and parse the result
+                content_item = create_result.content[0]
+                if isinstance(content_item, TextContent):
+                    create_data = json.loads(content_item.text)
+                    total_tasks = create_data.get("tasks_created", 0)
+                else:
+                    total_tasks = 0
 
                 print(f"✅ Project created with {total_tasks} tasks")
                 experiment.log_param("total_tasks_created", total_tasks)
@@ -531,10 +542,8 @@ async def twitter_mlflow_workflow(
                 """Periodically log project metrics to MLflow."""
                 step = 0
                 try:
-                    from src.integrations.kanban_client import KanbanClient
                     from src.monitoring.project_monitor import ProjectMonitor
 
-                    kanban_client = KanbanClient()
                     monitor = ProjectMonitor()
 
                     while True:
@@ -577,12 +586,9 @@ async def twitter_mlflow_workflow(
 
             # Get final project state and metrics from Marcus
             try:
-                from src.integrations.kanban_client import KanbanClient
                 from src.monitoring.project_monitor import ProjectMonitor
 
                 # Initialize monitoring to get velocity
-                kanban_client = KanbanClient()
-
                 monitor = ProjectMonitor()
                 project_state = await monitor.get_project_state()
 
@@ -599,11 +605,12 @@ async def twitter_mlflow_workflow(
                 # Also log velocity separately for easier viewing
                 experiment.log_velocity(project_state.team_velocity)
 
-                print(f"\n📊 Final Metrics:")
+                print("\n📊 Final Metrics:")
                 print(f"  Velocity: {project_state.team_velocity:.2f} tasks/week")
                 print(f"  Progress: {project_state.progress_percent:.1f}%")
                 print(
-                    f"  Completed: {project_state.completed_tasks}/{project_state.total_tasks}"
+                    f"  Completed: {project_state.completed_tasks}/"
+                    f"{project_state.total_tasks}"
                 )
 
             except Exception as e:
@@ -620,7 +627,7 @@ async def twitter_mlflow_workflow(
                     "avg_completion_time_seconds", avg_completion_time
                 )
 
-                print(f"\n📊 Calculated Metrics (Fallback):")
+                print("\n📊 Calculated Metrics (Fallback):")
                 print(f"  Velocity: {calculated_velocity:.2f} tasks/hour")
                 print(f"  Avg Completion Time: {avg_completion_time:.2f} seconds")
                 print(f"  Completed: {len(task_tracker.completed_tasks)}")

@@ -170,7 +170,20 @@ class TaskBuilder:
         Dict[str, Any]
             Dictionary with task data ready for kanban API
         """
-        return {
+        # Convert status to string value
+        status_value = (
+            task.status.value if hasattr(task.status, "value") else task.status
+        )
+
+        # DEBUG: Log status conversion for About tasks
+        if "About" in task.name:
+            logger.info(
+                f"[DEBUG] build_task_data for '{task.name}': "
+                f"task.status={task.status} (type: {type(task.status).__name__}), "
+                f"status_value='{status_value}' (type: {type(status_value).__name__})"
+            )
+
+        result = {
             "name": task.name,
             "description": task.description,
             "priority": (
@@ -188,12 +201,20 @@ class TaskBuilder:
             # Include subtasks if available
             "subtasks": getattr(task, "subtasks", []),
             # Additional fields that might be needed
-            "status": (
-                task.status.value if hasattr(task.status, "value") else task.status
-            ),
+            "status": status_value,
             "created_at": task.created_at.isoformat() if task.created_at else None,
             "metadata": {"ai_generated": True, "source": "natural_language"},
         }
+
+        # DEBUG: Verify status is in result for About tasks
+        if "About" in task.name:
+            logger.info(
+                f"[DEBUG] build_task_data result for '{task.name}': "
+                f"'status' in result={('status' in result)}, "
+                f"result['status']='{result.get('status')}'"
+            )
+
+        return result
 
     @staticmethod
     def build_minimal_task_data(task: Task) -> Dict[str, Any]:

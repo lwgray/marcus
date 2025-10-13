@@ -5,11 +5,15 @@ Provides tools to measure, monitor, and optimize query performance
 to achieve <100ms response times for CRUD operations.
 """
 
-from typing import Optional, Callable, Any
-from functools import wraps
-from time import perf_counter
 import logging
 from contextlib import asynccontextmanager
+from functools import wraps
+from time import perf_counter
+from typing import Any, AsyncIterator, Callable, Optional, ParamSpec, TypeVar
+
+# Type variables for generic decorators
+P = ParamSpec("P")
+T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
@@ -39,18 +43,19 @@ class PerformanceTimer:
         self.end_time: Optional[float] = None
         self.elapsed_ms: Optional[float] = None
 
-    def __enter__(self):
+    def __enter__(self) -> "PerformanceTimer":
         """Start timing."""
         self.start_time = perf_counter()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Stop timing and calculate elapsed time."""
         self.end_time = perf_counter()
-        self.elapsed_ms = (self.end_time - self.start_time) * 1000
+        if self.start_time is not None:
+            self.elapsed_ms = (self.end_time - self.start_time) * 1000
 
         # Log slow operations (>100ms)
-        if self.elapsed_ms > 100:
+        if self.elapsed_ms is not None and self.elapsed_ms > 100:
             logger.warning(
                 f"Slow operation detected: {self.name} took {self.elapsed_ms:.2f}ms "
                 f"(target: <100ms)"
@@ -58,7 +63,9 @@ class PerformanceTimer:
 
 
 @asynccontextmanager
-async def async_performance_timer(name: str = "operation"):
+async def async_performance_timer(
+    name: str = "operation",
+) -> AsyncIterator[dict[str, float]]:
     """
     Async context manager for measuring execution time.
 
@@ -78,7 +85,7 @@ async def async_performance_timer(name: str = "operation"):
     ...     result = await db.execute(query)
     >>> print(f"Query took {timer['elapsed_ms']}ms")
     """
-    timer = {"start": perf_counter(), "elapsed_ms": 0}
+    timer: dict[str, float] = {"start": perf_counter(), "elapsed_ms": 0}
     try:
         yield timer
     finally:
@@ -92,9 +99,11 @@ async def async_performance_timer(name: str = "operation"):
             )
 
 
-def monitor_performance(threshold_ms: float = 100):
+def monitor_performance(
+    threshold_ms: float = 100,
+) -> Callable[[Callable[P, T]], Callable[P, T]]:
     """
-    Decorator to monitor function performance.
+    Monitor function performance and log warnings for slow operations.
 
     Logs warning if execution time exceeds threshold.
 
@@ -114,13 +123,14 @@ def monitor_performance(threshold_ms: float = 100):
     >>> async def get_user(user_id: str):
     ...     return await db.query(User).filter(User.id == user_id).first()
     """
-    def decorator(func: Callable):
+
+    def decorator(func: Callable[P, T]) -> Callable[P, T]:
         @wraps(func)
-        async def wrapper(*args, **kwargs):
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             start = perf_counter()
             try:
-                result = await func(*args, **kwargs)
-                return result
+                result = await func(*args, **kwargs)  # type: ignore[misc]
+                return result  # type: ignore[no-any-return]
             finally:
                 elapsed_ms = (perf_counter() - start) * 1000
 
@@ -130,11 +140,10 @@ def monitor_performance(threshold_ms: float = 100):
                         f"took {elapsed_ms:.2f}ms (threshold: {threshold_ms}ms)"
                     )
                 else:
-                    logger.debug(
-                        f"{func.__name__} completed in {elapsed_ms:.2f}ms"
-                    )
+                    logger.debug(f"{func.__name__} completed in {elapsed_ms:.2f}ms")
 
-        return wrapper
+        return wrapper  # type: ignore[return-value]
+
     return decorator
 
 
@@ -206,14 +215,14 @@ class PerformanceMetrics:
     Tracks response times, cache hit rates, and query performance.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize metrics storage."""
         self.query_times: list[float] = []
-        self.cache_hits = 0
-        self.cache_misses = 0
-        self.slow_queries = 0
+        self.cache_hits: int = 0
+        self.cache_misses: int = 0
+        self.slow_queries: int = 0
 
-    def record_query(self, elapsed_ms: float):
+    def record_query(self, elapsed_ms: float) -> None:
         """
         Record query execution time.
 
@@ -226,15 +235,15 @@ class PerformanceMetrics:
         if elapsed_ms > 100:
             self.slow_queries += 1
 
-    def record_cache_hit(self):
+    def record_cache_hit(self) -> None:
         """Record cache hit."""
         self.cache_hits += 1
 
-    def record_cache_miss(self):
+    def record_cache_miss(self) -> None:
         """Record cache miss."""
         self.cache_misses += 1
 
-    def get_summary(self) -> dict:
+    def get_summary(self) -> dict[str, float]:
         """
         Get performance metrics summary.
 
@@ -266,9 +275,7 @@ class PerformanceMetrics:
         total = len(sorted_times)
 
         cache_total = self.cache_hits + self.cache_misses
-        cache_hit_rate = (
-            self.cache_hits / cache_total * 100 if cache_total > 0 else 0
-        )
+        cache_hit_rate = self.cache_hits / cache_total * 100 if cache_total > 0 else 0
 
         return {
             "total_queries": total,
@@ -282,7 +289,7 @@ class PerformanceMetrics:
             "cache_hit_rate": cache_hit_rate,
         }
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset all metrics."""
         self.query_times.clear()
         self.cache_hits = 0
@@ -361,7 +368,7 @@ class QueryAnalyzer:
     """
 
     @staticmethod
-    async def explain_query(session: Any, query: Any) -> dict:
+    async def explain_query(session: Any, query: Any) -> dict[str, Any]:
         """
         Get query execution plan (EXPLAIN ANALYZE).
 
@@ -395,6 +402,5 @@ class QueryAnalyzer:
 
         return {
             "plan": plan,
-            "execution_time_ms": plan[0]["Execution Time"]
-            if plan else 0,
+            "execution_time_ms": plan[0]["Execution Time"] if plan else 0,
         }

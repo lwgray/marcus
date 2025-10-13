@@ -7,6 +7,7 @@ Useful for debugging protocol-level communication issues
 import asyncio
 import json
 import os
+import shutil
 import sys
 from typing import Optional
 
@@ -31,7 +32,7 @@ async def test_stdio_protocol() -> None:
 
     node_cmd: Optional[str] = None
     for path in node_paths:
-        if os.path.exists(path) or os.system(f"which {path} > /dev/null 2>&1") == 0:
+        if os.path.exists(path) or shutil.which(path) is not None:
             node_cmd = path
             break
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Autonomous Multi-Agent Spawner for Marcus Demo
+Autonomous Multi-Agent Spawner for Marcus Demo.
 
 Spawns 5 processes:
 - Process 1: Creates the Marcus project
@@ -12,12 +12,11 @@ the Agent_prompt.md workflow autonomously.
 
 import asyncio
 import json
-import subprocess
+import subprocess  # nosec B404
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
 
 class AgentConfig:
@@ -94,7 +93,14 @@ class AutonomousAgentSpawner:
                 agent_id="agent_auth",
                 name="Authentication Agent",
                 role="backend",
-                skills=["python", "fastapi", "jwt", "security", "bcrypt", "testing"],
+                skills=[
+                    "python",
+                    "fastapi",
+                    "jwt",
+                    "security",
+                    "bcrypt",
+                    "testing",
+                ],
                 num_subagents=5,
             ),
             AgentConfig(
@@ -121,7 +127,7 @@ class AutonomousAgentSpawner:
 
         self.project_id: Optional[str] = None
         self.board_id: Optional[str] = None
-        self.processes: List[subprocess.Popen] = []
+        self.processes: List[subprocess.Popen[Any]] = []
 
     def create_project_creator_prompt(self) -> str:
         """
@@ -135,19 +141,23 @@ class AutonomousAgentSpawner:
         with open(self.project_spec_path, "r") as f:
             project_description = f.read()
 
-        prompt = f"""You are the Project Creator Agent for the Marcus Multi-Agent Demo.
+        project_info_path = self.demo_root / "project_info.json"
+        prompt = f"""You are the Project Creator Agent for the Marcus \
+Multi-Agent Demo.
 
 Your ONLY task is to:
 
-1. Use the mcp__marcus__create_project tool to create a new project called "Task Management API Demo"
+1. Use the mcp__marcus__create_project tool to create a new project called \
+"Task Management API Demo"
 2. Use this exact description:
 
 {project_description}
 
-3. Use these options: {{"complexity": "standard", "provider": "planka", "mode": "new_project"}}
+3. Use these options: {{"complexity": "standard", "provider": "planka", \
+"mode": "new_project"}}
 
 4. When the project is created successfully:
-   - Save the project_id and board_id to {self.demo_root / "project_info.json"}
+   - Save the project_id and board_id to {project_info_path}
    - Print "PROJECT CREATED: project_id=<id> board_id=<board_id>"
    - Exit immediately
 
@@ -181,7 +191,9 @@ DO NOT do anything else. Just create the project and exit.
         base_prompt = base_prompt.replace("{BRANCH_NAME}", branch_name)
 
         # Add agent-specific instructions
-        worker_prompt = f"""You are {agent.name} (ID: {agent.agent_id}) in the Marcus Multi-Agent Demo.
+        project_info_path = self.demo_root / "project_info.json"
+        worker_prompt = f"""You are {agent.name} (ID: {agent.agent_id}) in \
+the Marcus Multi-Agent Demo.
 
 Your role: {agent.role}
 Your skills: {", ".join(agent.skills)}
@@ -189,7 +201,8 @@ Your git branch: {branch_name}
 Project root: {self.project_root}
 
 STARTUP SEQUENCE:
-1. Wait for project_info.json to exist at {self.demo_root / "project_info.json"} (check every 5 seconds)
+1. Wait for project_info.json to exist at {project_info_path} (check every \
+5 seconds)
 2. Read project_info.json to get project_id and board_id
 3. Use mcp__marcus__select_project with the project_id
 4. Use mcp__marcus__register_agent to register yourself:
@@ -200,7 +213,8 @@ STARTUP SEQUENCE:
 
 5. Register {agent.num_subagents} subagents:
    For i in 1 to {agent.num_subagents}:
-   - Use mcp__marcus__register_agent with agent_id: "{agent.agent_id}_sub{{i}}"
+   - Use mcp__marcus__register_agent with agent_id: \
+"{agent.agent_id}_sub{{i}}"
    - name: "{agent.name} Subagent {{i}}"
    - role: "{agent.role}"
    - skills: {json.dumps(agent.skills)}
@@ -208,7 +222,8 @@ STARTUP SEQUENCE:
 6. Call mcp__marcus__request_next_task:
    - No parameters needed
    - This will find tasks suitable for your skills
-   - If you get "no suitable tasks", try again in 30 seconds (other agents may be working on dependencies)
+   - If you get "no suitable tasks", try again in 30 seconds (other agents \
+may be working on dependencies)
 
 7. When you get a task:
    - Check dependencies with get_task_context
@@ -238,13 +253,13 @@ START NOW!
 """
         return worker_prompt
 
-    def spawn_project_creator(self) -> subprocess.Popen:
+    def spawn_project_creator(self) -> subprocess.Popen[Any]:
         """
         Spawn the project creator agent in a new terminal window.
 
         Returns
         -------
-        subprocess.Popen
+        subprocess.Popen[Any]
             Process handle
         """
         print("=" * 60)
@@ -284,16 +299,18 @@ read -n 1
         cmd = [
             "osascript",
             "-e",
-            f'tell application "Terminal" to do script "bash {script_file}"'
+            f'tell application "Terminal" to do script "bash {script_file}"',
         ]
 
-        process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        process = subprocess.Popen(  # nosec B603
+            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
 
-        print(f"✓ Project creator terminal opened")
+        print("✓ Project creator terminal opened")
         print(f"  Prompt: {prompt_file}")
         return process
 
-    def spawn_worker(self, agent: AgentConfig) -> subprocess.Popen:
+    def spawn_worker(self, agent: AgentConfig) -> subprocess.Popen[Any]:
         """
         Spawn a worker agent in a new terminal window.
 
@@ -304,7 +321,7 @@ read -n 1
 
         Returns
         -------
-        subprocess.Popen
+        subprocess.Popen[Any]
             Process handle
         """
         print(f"\nSpawning {agent.name} ({agent.agent_id})")
@@ -349,25 +366,27 @@ echo "=========================================="
         cmd = [
             "osascript",
             "-e",
-            f'tell application "Terminal" to do script "bash {script_file}"'
+            f'tell application "Terminal" to do script "bash {script_file}"',
         ]
 
-        process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        process = subprocess.Popen(  # nosec B603
+            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
 
-        print(f"  ✓ Terminal window opened")
+        print("  ✓ Terminal window opened")
         print(f"  Prompt: {prompt_file}")
         print(f"  Branch: {branch_name}")
         print(f"  Subagents: {agent.num_subagents}")
         return process
 
-    async def run(self):
+    async def run(self) -> None:
         """Run the autonomous multi-agent demo."""
         print("\n" + "=" * 60)
         print("Marcus Autonomous Multi-Agent Demo")
         print("=" * 60)
         print(f"Demo root: {self.demo_root}")
         print(f"Project root: {self.project_root}")
-        print(f"Total agents: 4 (+ 20 subagents)")
+        print("Total agents: 4 (+ 20 subagents)")
         print("=" * 60)
 
         # Phase 1: Spawn project creator
@@ -384,14 +403,12 @@ echo "=========================================="
         while not project_info_file.exists():
             if time.time() - start_time > timeout:
                 print("✗ Project creation timed out!")
-                self.cleanup()
                 sys.exit(1)
 
             # Check if creator process failed
             if creator_process.poll() is not None:
                 if creator_process.returncode != 0:
                     print("✗ Project creator failed!")
-                    self.cleanup()
                     sys.exit(1)
                 # Process exited successfully, check for file
                 if not project_info_file.exists():
@@ -425,16 +442,16 @@ echo "=========================================="
         print("All Agents Spawned!")
         print("=" * 60)
         print(f"\n✓ {len(self.processes)} terminal windows opened")
-        print(f"✓ 1 project creator + 4 worker agents")
-        print(f"✓ 20 subagents will be registered by workers")
-        print(f"\n📺 Watch the terminal windows to see agents working!")
+        print("✓ 1 project creator + 4 worker agents")
+        print("✓ 20 subagents will be registered by workers")
+        print("\n📺 Watch the terminal windows to see agents working!")
         print("\nAgent windows:")
         print("  - Project Creator (will close when done)")
         print("  - Foundation Agent (database, models, migrations)")
         print("  - Auth Agent (JWT, authentication)")
         print("  - API Agent (projects, tasks, comments)")
         print("  - Integration Agent (tests, validation)")
-        print("\nPress Ctrl+C when all agents are complete to exit this script.")
+        print("\nPress Ctrl+C when all agents are complete to exit.")
         print("(The agent terminal windows will remain open)")
 
         # Just wait for user interrupt
@@ -446,9 +463,8 @@ echo "=========================================="
             print("Agent terminal windows will continue running.")
 
 
-
-async def main():
-    """Main entry point."""
+async def main() -> None:
+    """Execute the autonomous multi-agent demo."""
     demo_root = Path(__file__).parent
     project_root = demo_root / "implementation"
     project_root.mkdir(exist_ok=True)

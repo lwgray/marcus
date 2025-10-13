@@ -5,11 +5,14 @@ Validates that all CRUD operations meet the <100ms response time requirement.
 Tests cover create, read, update, and delete operations on all major entities.
 """
 
-import pytest
+# nosec B101 - Allow assert statements in test code
+
 import asyncio
 from time import perf_counter
-from typing import List
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 from uuid import uuid4
+
+import pytest
 
 # Performance requirement
 MAX_RESPONSE_TIME_MS = 100
@@ -24,7 +27,9 @@ class TestUserCRUDPerformance:
     Validates that all user operations complete within 100ms.
     """
 
-    async def test_create_user_performance(self, db_session, user_factory):
+    async def test_create_user_performance(
+        self, db_session: Any, user_factory: Any
+    ) -> None:
         """
         Test user creation meets performance budget (<100ms).
 
@@ -49,14 +54,16 @@ class TestUserCRUDPerformance:
         elapsed_ms = (perf_counter() - start) * 1000
 
         # Assert
-        assert user is not None
-        assert user.username == user_data["username"]
-        assert elapsed_ms < MAX_RESPONSE_TIME_MS, (
+        assert user is not None  # nosec
+        assert user.username == user_data["username"]  # nosec
+        assert elapsed_ms < MAX_RESPONSE_TIME_MS, (  # nosec
             f"User creation took {elapsed_ms:.2f}ms "
             f"(target: <{MAX_RESPONSE_TIME_MS}ms)"
         )
 
-    async def test_read_user_by_id_performance(self, db_session, user_factory):
+    async def test_read_user_by_id_performance(
+        self, db_session: Any, user_factory: Any
+    ) -> None:
         """
         Test reading user by ID meets performance budget (<50ms).
 
@@ -76,14 +83,15 @@ class TestUserCRUDPerformance:
         elapsed_ms = (perf_counter() - start) * 1000
 
         # Assert
-        assert fetched_user is not None
-        assert fetched_user.id == user.id
-        assert elapsed_ms < MAX_RESPONSE_TIME_MS, (
-            f"User read took {elapsed_ms:.2f}ms "
-            f"(target: <{MAX_RESPONSE_TIME_MS}ms)"
+        assert fetched_user is not None  # nosec
+        assert fetched_user.id == user.id  # nosec
+        assert elapsed_ms < MAX_RESPONSE_TIME_MS, (  # nosec
+            f"User read took {elapsed_ms:.2f}ms " f"(target: <{MAX_RESPONSE_TIME_MS}ms)"
         )
 
-    async def test_read_user_by_email_performance(self, db_session, user_factory):
+    async def test_read_user_by_email_performance(
+        self, db_session: Any, user_factory: Any
+    ) -> None:
         """
         Test reading user by email with index lookup (<100ms).
 
@@ -98,14 +106,16 @@ class TestUserCRUDPerformance:
         elapsed_ms = (perf_counter() - start) * 1000
 
         # Assert
-        assert fetched_user is not None
-        assert fetched_user.email == user.email
-        assert elapsed_ms < MAX_RESPONSE_TIME_MS, (
+        assert fetched_user is not None  # nosec
+        assert fetched_user.email == user.email  # nosec
+        assert elapsed_ms < MAX_RESPONSE_TIME_MS, (  # nosec
             f"User lookup by email took {elapsed_ms:.2f}ms "
             f"(target: <{MAX_RESPONSE_TIME_MS}ms)"
         )
 
-    async def test_update_user_performance(self, db_session, user_factory):
+    async def test_update_user_performance(
+        self, db_session: Any, user_factory: Any
+    ) -> None:
         """
         Test user update meets performance budget (<100ms).
 
@@ -122,13 +132,15 @@ class TestUserCRUDPerformance:
         elapsed_ms = (perf_counter() - start) * 1000
 
         # Assert
-        assert user.full_name == new_name
-        assert elapsed_ms < MAX_RESPONSE_TIME_MS, (
+        assert user.full_name == new_name  # nosec
+        assert elapsed_ms < MAX_RESPONSE_TIME_MS, (  # nosec
             f"User update took {elapsed_ms:.2f}ms "
             f"(target: <{MAX_RESPONSE_TIME_MS}ms)"
         )
 
-    async def test_delete_user_performance(self, db_session, user_factory):
+    async def test_delete_user_performance(
+        self, db_session: Any, user_factory: Any
+    ) -> None:
         """
         Test user deletion with cascade meets performance budget (<100ms).
 
@@ -146,13 +158,15 @@ class TestUserCRUDPerformance:
 
         # Assert - User deleted
         deleted_user = await user_factory.get_by_id(user_id)
-        assert deleted_user is None
-        assert elapsed_ms < MAX_RESPONSE_TIME_MS, (
+        assert deleted_user is None  # nosec
+        assert elapsed_ms < MAX_RESPONSE_TIME_MS, (  # nosec
             f"User deletion took {elapsed_ms:.2f}ms "
             f"(target: <{MAX_RESPONSE_TIME_MS}ms)"
         )
 
-    async def test_list_users_paginated_performance(self, db_session, user_factory):
+    async def test_list_users_paginated_performance(
+        self, db_session: Any, user_factory: Any
+    ) -> None:
         """
         Test listing users with pagination (<200ms for 20 results).
 
@@ -163,9 +177,7 @@ class TestUserCRUDPerformance:
         Target: <200ms for page of 20 users
         """
         # Arrange - Create 50 users
-        users = await asyncio.gather(*[
-            user_factory.create() for _ in range(50)
-        ])
+        _ = await asyncio.gather(*[user_factory.create() for _ in range(50)])
 
         # Act - Read first page (20 users)
         start = perf_counter()
@@ -173,10 +185,10 @@ class TestUserCRUDPerformance:
         elapsed_ms = (perf_counter() - start) * 1000
 
         # Assert
-        assert len(result) == 20
-        assert elapsed_ms < 200, (
-            f"Paginated list took {elapsed_ms:.2f}ms (target: <200ms)"
-        )
+        assert len(result) == 20  # nosec
+        assert (  # nosec
+            elapsed_ms < 200
+        ), f"Paginated list took {elapsed_ms:.2f}ms (target: <200ms)"
 
 
 @pytest.mark.performance
@@ -188,7 +200,9 @@ class TestConcurrentOperationsPerformance:
     Validates connection pooling handles concurrent requests efficiently.
     """
 
-    async def test_concurrent_user_reads(self, db_session, user_factory):
+    async def test_concurrent_user_reads(
+        self, db_session: Any, user_factory: Any
+    ) -> None:
         """
         Test 10 concurrent user reads complete quickly (<500ms total).
 
@@ -200,32 +214,32 @@ class TestConcurrentOperationsPerformance:
         Average per-request: <100ms
         """
         # Arrange - Create 10 users
-        users = await asyncio.gather(*[
-            user_factory.create() for _ in range(10)
-        ])
+        users = await asyncio.gather(*[user_factory.create() for _ in range(10)])
 
         # Act - Read all users concurrently
         start = perf_counter()
-        results = await asyncio.gather(*[
-            user_factory.get_by_id(user.id) for user in users
-        ])
+        results = await asyncio.gather(
+            *[user_factory.get_by_id(user.id) for user in users]
+        )
         elapsed_ms = (perf_counter() - start) * 1000
 
         # Assert
-        assert len(results) == 10
-        assert all(r is not None for r in results)
-        assert elapsed_ms < 500, (
-            f"10 concurrent reads took {elapsed_ms:.2f}ms (target: <500ms)"
-        )
+        assert len(results) == 10  # nosec
+        assert all(r is not None for r in results)  # nosec
+        assert (  # nosec
+            elapsed_ms < 500
+        ), f"10 concurrent reads took {elapsed_ms:.2f}ms (target: <500ms)"
 
         # Check average per-request time
         avg_per_request = elapsed_ms / 10
-        assert avg_per_request < MAX_RESPONSE_TIME_MS, (
+        assert avg_per_request < MAX_RESPONSE_TIME_MS, (  # nosec
             f"Average per-request time: {avg_per_request:.2f}ms "
             f"(target: <{MAX_RESPONSE_TIME_MS}ms)"
         )
 
-    async def test_concurrent_user_creates(self, db_session, user_factory):
+    async def test_concurrent_user_creates(
+        self, db_session: Any, user_factory: Any
+    ) -> None:
         """
         Test 5 concurrent user creates (<500ms total).
 
@@ -243,17 +257,17 @@ class TestConcurrentOperationsPerformance:
 
         # Act - Create all users concurrently
         start = perf_counter()
-        results = await asyncio.gather(*[
-            user_factory.create(**data) for data in users_data
-        ])
+        results = await asyncio.gather(
+            *[user_factory.create(**data) for data in users_data]
+        )
         elapsed_ms = (perf_counter() - start) * 1000
 
         # Assert
-        assert len(results) == 5
-        assert all(r is not None for r in results)
-        assert elapsed_ms < 500, (
-            f"5 concurrent creates took {elapsed_ms:.2f}ms (target: <500ms)"
-        )
+        assert len(results) == 5  # nosec
+        assert all(r is not None for r in results)  # nosec
+        assert (  # nosec
+            elapsed_ms < 500
+        ), f"5 concurrent creates took {elapsed_ms:.2f}ms (target: <500ms)"
 
 
 @pytest.mark.performance
@@ -266,11 +280,8 @@ class TestCachePerformance:
     """
 
     async def test_cached_read_faster_than_uncached(
-        self,
-        db_session,
-        user_factory,
-        cache_client
-    ):
+        self, db_session: Any, user_factory: Any, cache_client: Any
+    ) -> None:
         """
         Test cached reads are at least 2x faster than uncached reads.
 
@@ -299,13 +310,13 @@ class TestCachePerformance:
         cached_ms = (perf_counter() - start) * 1000
 
         # Assert - Cached is significantly faster
-        assert cached_ms < uncached_ms / 2, (
+        assert cached_ms < uncached_ms / 2, (  # nosec
             f"Cached read ({cached_ms:.2f}ms) should be at least 2x faster "
             f"than uncached ({uncached_ms:.2f}ms)"
         )
-        assert cached_ms < 20, (
-            f"Cached read took {cached_ms:.2f}ms (target: <20ms)"
-        )
+        assert (
+            cached_ms < 20
+        ), f"Cached read took {cached_ms:.2f}ms (target: <20ms)"  # nosec
 
 
 @pytest.mark.performance
@@ -317,7 +328,9 @@ class TestBulkOperationsPerformance:
     Validates batch operations are optimized.
     """
 
-    async def test_bulk_create_performance(self, db_session, user_factory):
+    async def test_bulk_create_performance(
+        self, db_session: Any, user_factory: Any
+    ) -> None:
         """
         Test bulk user creation (<500ms for 100 users).
 
@@ -344,16 +357,16 @@ class TestBulkOperationsPerformance:
         elapsed_ms = (perf_counter() - start) * 1000
 
         # Assert
-        assert len(users) == 100
-        assert elapsed_ms < 500, (
-            f"Bulk create of 100 users took {elapsed_ms:.2f}ms (target: <500ms)"
-        )
+        assert len(users) == 100  # nosec
+        assert (  # nosec
+            elapsed_ms < 500
+        ), f"Bulk create of 100 users took {elapsed_ms:.2f}ms (target: <500ms)"
 
         # Check average per-user time
         avg_per_user = elapsed_ms / 100
-        assert avg_per_user < 5, (
-            f"Average time per user: {avg_per_user:.2f}ms (target: <5ms)"
-        )
+        assert (  # nosec
+            avg_per_user < 5
+        ), f"Average time per user: {avg_per_user:.2f}ms (target: <5ms)"
 
 
 @pytest.mark.performance
@@ -365,16 +378,14 @@ class TestIndexEffectiveness:
     Validates all indexed columns have fast lookups.
     """
 
-    async def test_email_index_lookup(self, db_session, user_factory):
+    async def test_email_index_lookup(self, db_session: Any, user_factory: Any) -> None:
         """
         Test email index provides fast lookups (<100ms).
 
         Email column is indexed, so lookups should be O(log n) not O(n).
         """
         # Arrange - Create 1000 users
-        users = await asyncio.gather(*[
-            user_factory.create() for _ in range(1000)
-        ])
+        users = await asyncio.gather(*[user_factory.create() for _ in range(1000)])
         target_user = users[500]  # User in middle of dataset
 
         # Act - Lookup by email
@@ -383,18 +394,18 @@ class TestIndexEffectiveness:
         elapsed_ms = (perf_counter() - start) * 1000
 
         # Assert
-        assert found_user.id == target_user.id
-        assert elapsed_ms < MAX_RESPONSE_TIME_MS, (
+        assert found_user.id == target_user.id  # nosec
+        assert elapsed_ms < MAX_RESPONSE_TIME_MS, (  # nosec
             f"Email lookup in 1000 users took {elapsed_ms:.2f}ms "
             f"(target: <{MAX_RESPONSE_TIME_MS}ms) - check index"
         )
 
-    async def test_username_index_lookup(self, db_session, user_factory):
+    async def test_username_index_lookup(
+        self, db_session: Any, user_factory: Any
+    ) -> None:
         """Test username index provides fast lookups (<100ms)."""
         # Arrange - Create 1000 users
-        users = await asyncio.gather(*[
-            user_factory.create() for _ in range(1000)
-        ])
+        users = await asyncio.gather(*[user_factory.create() for _ in range(1000)])
         target_user = users[750]
 
         # Act
@@ -403,8 +414,8 @@ class TestIndexEffectiveness:
         elapsed_ms = (perf_counter() - start) * 1000
 
         # Assert
-        assert found_user.id == target_user.id
-        assert elapsed_ms < MAX_RESPONSE_TIME_MS, (
+        assert found_user.id == target_user.id  # nosec
+        assert elapsed_ms < MAX_RESPONSE_TIME_MS, (  # nosec
             f"Username lookup in 1000 users took {elapsed_ms:.2f}ms "
             f"(target: <{MAX_RESPONSE_TIME_MS}ms) - check index"
         )
@@ -412,18 +423,20 @@ class TestIndexEffectiveness:
 
 # Fixtures for performance tests
 @pytest.fixture
-async def user_factory(db_session):
+async def user_factory(db_session: Any) -> Any:
     """Factory for creating users in tests."""
-    from app.models.user import User
     from app.core.security import hash_password
+    from app.models.user import User
 
     class UserFactory:
-        async def create(self, **kwargs):
+        async def create(self, **kwargs: Any) -> Any:
             data = {
                 "username": f"user_{uuid4().hex[:8]}",
                 "email": f"user_{uuid4().hex[:8]}@example.com",
-                "password_hash": hash_password("TestPass123!"),  # pragma: allowlist secret
-                **kwargs
+                "password_hash": hash_password(
+                    "TestPass123!"
+                ),  # pragma: allowlist secret
+                **kwargs,
             }
             if "password" in data:
                 data["password_hash"] = hash_password(data.pop("password"))
@@ -434,37 +447,36 @@ async def user_factory(db_session):
             await db_session.refresh(user)
             return user
 
-        async def get_by_id(self, user_id):
+        async def get_by_id(self, user_id: Any) -> Optional[Any]:
             from sqlalchemy import select
-            result = await db_session.execute(
-                select(User).where(User.id == user_id)
-            )
+
+            result = await db_session.execute(select(User).where(User.id == user_id))
             return result.scalar_one_or_none()
 
-        async def get_by_email(self, email):
+        async def get_by_email(self, email: str) -> Optional[Any]:
             from sqlalchemy import select
-            result = await db_session.execute(
-                select(User).where(User.email == email)
-            )
+
+            result = await db_session.execute(select(User).where(User.email == email))
             return result.scalar_one_or_none()
 
-        async def get_by_username(self, username):
+        async def get_by_username(self, username: str) -> Optional[Any]:
             from sqlalchemy import select
+
             result = await db_session.execute(
                 select(User).where(User.username == username)
             )
             return result.scalar_one_or_none()
 
-        async def list_paginated(self, page=1, limit=20):
+        async def list_paginated(self, page: int = 1, limit: int = 20) -> List[Any]:
             from sqlalchemy import select
-            offset = (page - 1) * limit
-            result = await db_session.execute(
-                select(User).offset(offset).limit(limit)
-            )
-            return result.scalars().all()
 
-        async def bulk_create(self, users_data: List[dict]):
+            offset = (page - 1) * limit
+            result = await db_session.execute(select(User).offset(offset).limit(limit))
+            return cast(List[Any], result.scalars().all())
+
+        async def bulk_create(self, users_data: List[Dict[str, Any]]) -> List[Any]:
             from app.core.security import hash_password
+
             users = []
             for data in users_data:
                 if "password" in data:
@@ -479,9 +491,10 @@ async def user_factory(db_session):
 
 
 @pytest.fixture
-async def cache_client():
+async def cache_client() -> AsyncGenerator[Any, None]:
     """Cache client for performance tests."""
     from app.core.cache import cache
+
     await cache.connect()
     yield cache
     await cache.close()

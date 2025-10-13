@@ -42,6 +42,14 @@ async def find_optimal_task_with_subtasks(
     Optional[Task]
         Task or Subtask (converted to Task) for assignment
     """
+    # Check if subtask feature is enabled
+    from src.config.settings import Settings
+
+    settings = Settings()
+    if not settings.is_subtasks_enabled():
+        logger.debug("Subtask feature is disabled, using fallback")
+        return await fallback_task_finder(agent_id, state)
+
     # Check if subtask manager is available
     if not hasattr(state, "subtask_manager") or not state.subtask_manager:
         logger.debug("SubtaskManager not available, using fallback")
@@ -72,8 +80,38 @@ async def find_optimal_task_with_subtasks(
         )
 
         if parent_task:
+            # Update parent task to IN_PROGRESS if it's still TODO
+            # (first subtask being assigned)
+            from src.core.models import TaskStatus
+
+            if parent_task.status == TaskStatus.TODO:
+                logger.info(
+                    f"Moving parent task '{parent_task.name}' to IN_PROGRESS "
+                    f"(first subtask assignment)"
+                )
+                try:
+                    await state.kanban_client.update_task(
+                        parent_task.id,
+                        {"status": TaskStatus.IN_PROGRESS},
+                    )
+                    # Update local state
+                    parent_task.status = TaskStatus.IN_PROGRESS
+                except Exception as e:
+                    logger.error(
+                        f"Failed to update parent task status: {e}",
+                        exc_info=True,
+                    )
+
             # Convert subtask to Task for assignment
             task = convert_subtask_to_task(subtask, parent_task)
+
+            # Add metadata to help identify this as a subtask
+            # This will help with instruction generation
+            # These are dynamic attributes added at runtime
+            task._is_subtask = True  # type: ignore[attr-defined]
+            task._parent_task_id = parent_task.id  # type: ignore[attr-defined]
+            task._parent_task_name = parent_task.name  # type: ignore[attr-defined]
+
             logger.info(
                 f"Assigning subtask {subtask.name} "
                 f"(parent: {parent_task.name}) to {agent_id}"

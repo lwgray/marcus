@@ -39,6 +39,8 @@ class PaginationLinks(BaseModel):
     prev: Optional[str] = Field(None, description="Link to the previous page")
 
     class Config:
+        """Pydantic model configuration."""
+
         schema_extra = {
             "example": {
                 "self": "/api/v1/tasks?page=2&limit=20",
@@ -69,6 +71,8 @@ class ResourceLinks(BaseModel):
     )
 
     class Config:
+        """Pydantic model configuration."""
+
         schema_extra = {
             "example": {
                 "self": "/api/v1/tasks/abc123",
@@ -123,6 +127,8 @@ class PaginatedResponse(BaseModel, Generic[T]):
     _links: PaginationLinks = Field(..., description="Pagination links")
 
     class Config:
+        """Pydantic model configuration."""
+
         schema_extra = {
             "example": {
                 "items": [],
@@ -179,6 +185,8 @@ class SuccessResponse(BaseModel):
     timestamp: str = Field(..., description="ISO 8601 timestamp")
 
     class Config:
+        """Pydantic model configuration."""
+
         schema_extra = {
             "example": {
                 "success": True,

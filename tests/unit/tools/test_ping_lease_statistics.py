@@ -14,7 +14,7 @@ class TestPingLeaseStatistics:
     """Test suite for ping tool lease statistics in health response."""
 
     @pytest.fixture
-    def mock_state(self):
+    def mock_state(self, tmp_path):
         """Create a mock state object with lease manager."""
         state = Mock()
 
@@ -27,9 +27,9 @@ class TestPingLeaseStatistics:
         state._shutdown_event = Mock(is_set=Mock(return_value=False))
         state._active_operations = set()
 
-        # Mock realtime log
+        # Mock realtime log with pytest tmp_path
         state.realtime_log = Mock()
-        state.realtime_log.name = "/tmp/test_log.jsonl"
+        state.realtime_log.name = str(tmp_path / "test_log.jsonl")
 
         # Mock assignment components
         state.assignment_persistence = Mock()

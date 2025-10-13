@@ -30,7 +30,12 @@ class NaturalLanguageTaskCreator(ABC):
     - Error handling
     """
 
-    def __init__(self, kanban_client: Any, ai_engine: Any = None) -> None:
+    def __init__(
+        self,
+        kanban_client: Any,
+        ai_engine: Any = None,
+        subtask_manager: Any = None,
+    ) -> None:
         """
         Initialize the base task creator.
 
@@ -40,9 +45,12 @@ class NaturalLanguageTaskCreator(ABC):
             Kanban board client with create_task method
         ai_engine : Any, optional
             Optional AI engine for enhanced processing
+        subtask_manager : Any, optional
+            Optional SubtaskManager for registering decomposed subtasks
         """
         self.kanban_client = kanban_client
         self.ai_engine = ai_engine
+        self.subtask_manager = subtask_manager
         self.task_classifier = EnhancedTaskClassifier()
         self.task_builder = TaskBuilder()
         self.safety_checker = SafetyChecker()
@@ -221,6 +229,12 @@ class NaturalLanguageTaskCreator(ABC):
             logger.debug("No AI engine available for task decomposition - skipping")
             return
 
+        # Log decomposition context
+        logger.debug(
+            f"Task decomposition started: {len(created_tasks)} tasks, "
+            f"SubtaskManager available: {self.subtask_manager is not None}"
+        )
+
         # Note: AI engine now uses LLMAbstraction which automatically
         # checks provider availability and supports local models (Ollama),
         # Anthropic, and OpenAI. If no provider is configured,
@@ -253,8 +267,28 @@ class NaturalLanguageTaskCreator(ABC):
             )
 
             # Add decomposition job to parallel execution list
+            # CRITICAL: Pass created_task which has the real Planka ID,
+            # not original_task. We need to create a task object that has
+            # both the real ID and the original details
+            task_with_real_id = Task(
+                id=created_task.id,  # Real Planka ID
+                name=original_task.name,
+                description=original_task.description,
+                status=original_task.status,
+                priority=original_task.priority,
+                assigned_to=original_task.assigned_to,
+                created_at=original_task.created_at,
+                updated_at=original_task.updated_at,
+                due_date=original_task.due_date,
+                estimated_hours=original_task.estimated_hours,
+                actual_hours=original_task.actual_hours,
+                dependencies=original_task.dependencies,
+                labels=original_task.labels,
+                project_id=getattr(original_task, "project_id", None),
+                project_name=getattr(original_task, "project_name", None),
+            )
             decomposition_jobs.append(
-                decompose_task(original_task, self.ai_engine, project_context=None)
+                decompose_task(task_with_real_id, self.ai_engine, project_context=None)
             )
             task_metadata.append((created_task, original_task))
 
@@ -277,15 +311,15 @@ class NaturalLanguageTaskCreator(ABC):
             created_task, original_task = task_metadata[idx]
 
             try:
-                # Handle exceptions from gather
-                if isinstance(result, Exception):
+                # Handle exceptions from gather (both Exception and BaseException)
+                if isinstance(result, BaseException):
                     failed_count += 1
                     logger.error(
                         (
                             f"Decomposition failed for task "
                             f"'{created_task.name}': {result}"
                         ),
-                        exc_info=result,
+                        exc_info=result if isinstance(result, Exception) else None,
                     )
                     continue
 
@@ -300,11 +334,37 @@ class NaturalLanguageTaskCreator(ABC):
 
                 # Successfully decomposed - add subtasks
                 subtasks = result.get("subtasks", [])
+                shared_conventions = result.get("shared_conventions", {})
                 num_subtasks = len(subtasks)
                 logger.info(
                     f"Task '{created_task.name}' decomposed into "
                     f"{num_subtasks} subtasks"
                 )
+
+                # Register subtasks with SubtaskManager (GH-62 fix)
+                if self.subtask_manager:
+                    from src.marcus_mcp.coordinator.subtask_manager import (
+                        SubtaskMetadata,
+                    )
+
+                    metadata = SubtaskMetadata(
+                        shared_conventions=shared_conventions,
+                        decomposed_by="ai",
+                    )
+                    self.subtask_manager.add_subtasks(
+                        parent_task_id=created_task.id,
+                        subtasks=subtasks,
+                        metadata=metadata,
+                    )
+                    logger.info(
+                        f"Registered {num_subtasks} subtasks with SubtaskManager "
+                        f"for task '{created_task.name}'"
+                    )
+                else:
+                    logger.warning(
+                        "SubtaskManager not available - subtasks will only exist as "
+                        "checklist items (GH-62)"
+                    )
 
                 # Add subtasks as checklist items in Planka
                 await self._add_subtasks_as_checklist(created_task.id, subtasks)
@@ -488,9 +548,7 @@ class NaturalLanguageTaskCreator(ABC):
 
     def get_tasks_by_type(self, tasks: List[Task], task_type: TaskType) -> List[Any]:
         """Get all tasks of a specific type."""
-        return self.task_classifier.filter_by_type(  # type: ignore[no-any-return]
-            tasks, task_type
-        )
+        return self.task_classifier.filter_by_type(tasks, task_type)
 
     def is_deployment_task(self, task: Task) -> Any:
         """Check if task is deployment-related."""

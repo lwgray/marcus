@@ -7,7 +7,8 @@ Usage:
     python scripts/analyze_stall.py capture
 
     # Replay a specific snapshot
-    python scripts/analyze_stall.py replay logs/stall_snapshots/stall_snapshot_20251006_220000.json
+    python scripts/analyze_stall.py replay \
+logs/stall_snapshots/stall_snapshot_20251006_220000.json
 
     # List all snapshots
     python scripts/analyze_stall.py list
@@ -17,12 +18,13 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
-async def capture_snapshot():
+async def capture_snapshot() -> Optional[str]:
     """Capture a stall snapshot from the current Marcus instance."""
     from src.config.config_loader import get_config
     from src.core.project_context_manager import ProjectContextManager
@@ -37,16 +39,16 @@ async def capture_snapshot():
 
     # Create minimal state object
     class MockState:
-        def __init__(self):
+        def __init__(self) -> None:
             self.config = get_config()
             self.project_registry = ProjectRegistry()
             self.project_manager = ProjectContextManager(self.project_registry)
             self.ai_engine = AIAnalysisEngine()
-            self.kanban_client = None
-            self.agent_tasks = {}
-            self.project_tasks = []
+            self.kanban_client: Optional[Any] = None
+            self.agent_tasks: Dict[str, Any] = {}
+            self.project_tasks: List[Any] = []
 
-        async def initialize_kanban(self):
+        async def initialize_kanban(self) -> None:
             if not self.kanban_client:
                 provider = self.config.get("kanban.provider", "planka")
                 self.kanban_client = KanbanFactory.create(provider)
@@ -63,39 +65,38 @@ async def capture_snapshot():
     result = await capture_project_stall_snapshot(state, include_conversation_hours=48)
 
     if result["success"]:
-        print(f"\n✅ Snapshot captured successfully!")
+        print("\n✅ Snapshot captured successfully!")
         print(f"📁 Saved to: {result['snapshot_file']}")
-        print(f"\n📊 Summary:")
+        print("\n📊 Summary:")
         print(f"   Stall Reason: {result['summary']['stall_reason']}")
         print(f"   Total Issues: {result['summary']['total_issues']}")
         print(f"   Dependency Locks: {result['summary']['dependency_locks']}")
         print(f"   Early Completions: {result['summary']['early_completions']}")
         print(f"   Conversation Events: {result['summary']['conversation_events']}")
-        print(f"\n💡 Recommendations: {result['summary']['recommendations_count']}")
+        print("\n💡 Recommendations: " f"{result['summary']['recommendations_count']}")
 
         # Show dependency locks if any
         if result["summary"]["dependency_locks"] > 0:
-            print(f"\n🔒 Dependency Locks Detected:")
+            print("\n🔒 Dependency Locks Detected:")
             locks = result["snapshot"]["dependency_locks"]
             print(locks["ascii_visualization"])
 
         # Show early completions if any
         if result["summary"]["early_completions"] > 0:
-            print(f"\n⚠️  Early/Anomalous Task Completions:")
+            print("\n⚠️  Early/Anomalous Task Completions:")
             for completion in result["snapshot"]["early_completions"]:
                 print(f"   • {completion['task_name']}")
-                print(
-                    f"     Completed at {completion['completion_percentage']}% progress"
-                )
+                completion_pct = completion["completion_percentage"]
+                print(f"     Completed at {completion_pct}% progress")
                 print(f"     Issue: {completion['issue']}")
 
-        return result["snapshot_file"]
+        return str(result["snapshot_file"])
     else:
         print(f"\n❌ Failed to capture snapshot: {result.get('error')}")
         return None
 
 
-async def replay_snapshot(snapshot_file: str):
+async def replay_snapshot(snapshot_file: str) -> None:
     """Replay conversations from a snapshot file."""
     from src.marcus_mcp.tools.project_stall_analyzer import replay_stall_conversations
     from src.visualization.stall_dashboard import render_snapshot
@@ -118,16 +119,16 @@ async def replay_snapshot(snapshot_file: str):
 
     if result["success"]:
         analysis = result["analysis"]
-        print(f"\n🗣️  Conversation Analysis:")
+        print("\n🗣️  Conversation Analysis:")
         print(f"   Total Events: {analysis['total_events']}")
-        print(f"\n   Events by Type:")
+        print("\n   Events by Type:")
         for event_type, count in sorted(
             analysis["events_by_type"].items(), key=lambda x: x[1], reverse=True
         ):
             print(f"      {event_type}: {count}")
 
         if analysis["key_events"]:
-            print(f"\n   🔑 Key Events (errors, blockers, failures):")
+            print("\n   🔑 Key Events (errors, blockers, failures):")
             for event in analysis["key_events"][:10]:
                 print(f"      [{event['timestamp']}] {event['type']}")
                 if len(event["summary"]) > 0:
@@ -135,21 +136,20 @@ async def replay_snapshot(snapshot_file: str):
 
         # Show early completions again
         if snapshot["early_completions"]:
-            print(f"\n⚠️  Tasks Completed Too Early:")
+            print("\n⚠️  Tasks Completed Too Early:")
             for ec in snapshot["early_completions"]:
-                print(
-                    f"   • '{ec['task_name']}' at {ec['completion_percentage']}% progress"
-                )
+                ec_pct = ec["completion_percentage"]
+                print(f"   • '{ec['task_name']}' at {ec_pct}% progress")
 
         # Show recommendations
-        print(f"\n💡 Recommendations:")
+        print("\n💡 Recommendations:")
         for i, rec in enumerate(snapshot["recommendations"][:10], 1):
             print(f"   {i}. {rec}")
     else:
         print(f"❌ Failed to replay: {result.get('error')}")
 
 
-def list_snapshots():
+def list_snapshots() -> None:
     """List all available snapshots."""
     snapshot_dir = Path("logs/stall_snapshots")
 
@@ -183,8 +183,8 @@ def list_snapshots():
             print(f"   {snapshot_file.name} (error reading: {e})")
 
 
-async def main():
-    """Main entry point."""
+async def main() -> None:
+    """Run the stall analysis tool."""
     if len(sys.argv) < 2:
         print(__doc__)
         return

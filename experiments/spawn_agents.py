@@ -89,39 +89,51 @@ class AgentSpawner:
 
         options_str = json.dumps(self.config.project_options)
 
-        prompt = f"""You are the Project Creator Agent for this Marcus experiment.
+        prompt = f"""You are an autonomous Project Creator Agent. Execute these \
+steps IMMEDIATELY without asking for permission.
 
 WORKING DIRECTORY: {self.config.implementation_dir}
 
-Your tasks:
+EXECUTE NOW - DO NOT ASK FOR CONFIRMATION:
 
-1. Verify you're in the correct directory:
-   - Current directory should be: {self.config.implementation_dir}
-   - This directory should have a .git folder
-   - Verify Marcus MCP tools are accessible (use mcp__marcus__ping to confirm)
+1. First, verify the environment (quick checks only):
+   - Confirm working directory: {self.config.implementation_dir}
+   - Ping Marcus: mcp__marcus__ping
 
-2. Use the mcp__marcus__create_project tool to create a new project
-   called "{self.config.project_name}"
+2. IMMEDIATELY call mcp__marcus__create_project with these EXACT parameters:
+   - project_name: "{self.config.project_name}"
+   - description: (the full spec below)
+   - options: {options_str}
 
-3. Use this exact description:
-
+PROJECT SPECIFICATION:
 {project_description}
 
-4. Use these options: {options_str}
-
-5. When the project is created successfully:
-   - Save the project_id and board_id to {self.config.project_info_file}
+3. As soon as the project is created (DO NOT WAIT for user input):
+   - Write project_id and board_id to: {self.config.project_info_file}
    - Format: {{"project_id": "<id>", "board_id": "<board_id>"}}
-   - Create an initial git commit:
-     git add -A
-     git commit -m "Initial commit: Marcus project created"
-   - Print "PROJECT CREATED: project_id=<id> board_id=<board_id>"
-   - Exit immediately
+   - Run: git add -A && git commit -m "Initial commit: Marcus project created"
+   - Print: "PROJECT CREATED: project_id=<id> board_id=<board_id>"
 
-6. If creation fails, print the error and exit with code 1
+4. IMMEDIATELY start MLflow experiment tracking:
+   - Call mcp__marcus__start_experiment with:
+     - experiment_name: "\
+{self.config.project_name.lower().replace(' ', '_')}_experiment"
+     - run_name: "\
+{self.config.project_name.lower().replace(' ', '_')}_{{timestamp}}"
+     - project_id: (the project_id from step 2)
+     - board_id: (the board_id from step 2)
+     - tags: {{"project_type": \
+"{self.config.project_options.get('complexity', 'standard')}", \
+"provider": "{self.config.project_options.get('provider', 'planka')}"}}
+     - params: {{"num_agents": {len(self.config.agents)}}}
+   - Print: "EXPERIMENT STARTED: <experiment_name>"
+   - Exit
 
-CRITICAL: Work in {self.config.implementation_dir}
-This is where all code will be generated.
+CRITICAL INSTRUCTIONS:
+- Work in: {self.config.implementation_dir}
+- DO NOT ask "May I proceed?" - just do it
+- DO NOT wait for confirmation - execute immediately
+- This is an automated process - no human interaction needed
 """
         return prompt
 

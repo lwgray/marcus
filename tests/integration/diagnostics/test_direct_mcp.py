@@ -13,6 +13,7 @@ to the MCP server, as it eliminates Marcus code as a potential cause.
 
 import asyncio
 import os
+import shutil
 import sys
 from typing import List, Optional, Tuple
 
@@ -70,7 +71,7 @@ async def test_direct() -> None:
     # Find working node
     node_cmd = None
     for path in node_paths:
-        if os.path.exists(path) or os.system(f"which {path} > /dev/null 2>&1") == 0:
+        if os.path.exists(path) or shutil.which(path) is not None:
             node_cmd = path
             break
 

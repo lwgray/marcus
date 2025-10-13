@@ -25,38 +25,27 @@ async def create_project(
     description: str, project_name: str, options: Optional[Dict[str, Any]], state: Any
 ) -> Dict[str, Any]:
     """
-    Create a complete project from natural language description.
+    Create a NEW project from natural language description.
 
-    Includes smart project discovery.
+    This tool ALWAYS creates a new project - it does not search for or reuse
+    existing projects. For working with existing projects, use select_project
+    or create_tasks tools instead.
 
     Uses AI to parse natural language project requirements and automatically:
-    - Discovers existing projects by name (exact and fuzzy matching)
     - Breaks down into tasks and subtasks
     - Assigns priorities and dependencies
     - Estimates time requirements
     - Creates organized kanban board structure
-    - Auto-creates and registers new projects if needed
-
-    Project Discovery Workflow:
-    1. If options.project_id provided → use that specific project
-    2. If options.mode="new_project" → force creation (skip discovery)
-    3. Otherwise → search for existing projects by name:
-       - Exact match found → automatically use existing project
-       - Similar matches found → return suggestions, require clarification
-       - No matches → create and register new project
+    - Registers the new project in Marcus
 
     Parameters
     ----------
     description : str
         Natural language project description
     project_name : str
-        Name for the project (used for discovery and creation)
+        Name for the new project
     options : Optional[Dict[str, Any]]
         Optional configuration dictionary with the following keys:
-
-        Project Selection:
-        - project_id (str): Explicit project ID to use (skips discovery)
-        - mode (str): Creation mode - "new_project" (default), "auto"
 
         Provider Config:
         - provider (str): Kanban provider - "planka" (default), "github", "linear"
@@ -97,16 +86,6 @@ async def create_project(
             "complexity_score": float
         }
 
-        On similar matches found:
-        {
-            "success": False,
-            "action": "found_similar",
-            "message": str,
-            "matches": List[Dict],
-            "next_steps": List[str],
-            "hint": str
-        }
-
         On error:
         {
             "success": False,
@@ -115,29 +94,15 @@ async def create_project(
 
     Examples
     --------
-    Auto-discover or create:
+    Create new project with defaults:
         >>> create_project(
-        ...     description="Build a REST API",
+        ...     description="Build a REST API with user authentication",
         ...     project_name="MyAPI"
         ... )
 
-    Force new project creation:
+    Create with advanced configuration:
         >>> create_project(
-        ...     description="Build OAuth 2.0 system",
-        ...     project_name="MyAPI-v2",
-        ...     options={"mode": "new_project"}
-        ... )
-
-    Use specific existing project:
-        >>> create_project(
-        ...     description="Add password reset",
-        ...     project_name="MyAPI",
-        ...     options={"project_id": "proj-123"}
-        ... )
-
-    Advanced configuration:
-        >>> create_project(
-        ...     description="E-commerce platform",
+        ...     description="E-commerce platform with payment integration",
         ...     project_name="ShopFlow",
         ...     options={
         ...         "complexity": "enterprise",
@@ -652,9 +617,14 @@ async def create_tasks(
         # Create a temporary project name for AI processing
         temp_project_name = current_project.name or "Task Breakdown"
 
+        # Get subtask_manager if available (GH-62 fix)
+        subtask_manager = getattr(state, "subtask_manager", None)
+
         # Initialize project creator
         creator = NaturalLanguageProjectCreator(
-            kanban_client=kanban_client, ai_engine=state.ai_engine
+            kanban_client=kanban_client,
+            ai_engine=state.ai_engine,
+            subtask_manager=subtask_manager,
         )
 
         # Use the creator to parse tasks from description

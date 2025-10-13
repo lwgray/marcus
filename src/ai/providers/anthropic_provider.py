@@ -230,10 +230,13 @@ Project Context:
 - Technology Stack: {', '.join(tech_stack) if tech_stack else 'Not specified'}
 - Team Size: {context.get('team_size', 'Unknown')}
 
-Please analyze this task and provide a JSON response with the following structure:
+Please analyze this task and provide a JSON response with the following
+structure:
 {{
   "task_intent": "Brief description of what this task is trying to accomplish",
-  "semantic_dependencies": ["List of task types that should logically come before this"],
+  "semantic_dependencies": [
+    "List of task types that should logically come before this"
+  ],
   "risk_factors": ["List of potential risks or complications"],
   "suggestions": ["List of recommendations for successful completion"],
   "confidence": 0.0-1.0,
@@ -268,7 +271,8 @@ You are analyzing task dependencies for a software project.
 Tasks to analyze:
 {task_list}
 
-Please identify logical dependencies between these tasks and return a JSON array with this structure:
+Please identify logical dependencies between these tasks and return a JSON
+array with this structure:
 [
   {{
     "dependent_task_id": "task_that_depends",
@@ -309,7 +313,8 @@ Please provide an enhanced description that includes:
 3. Key considerations or gotchas
 4. Definition of done
 
-Keep it concise but comprehensive. Focus on what a developer needs to know to complete the task successfully.
+Keep it concise but comprehensive. Focus on what a developer needs to know
+to complete the task successfully.
 
 Enhanced Description:"""
 
@@ -326,7 +331,8 @@ Enhanced Description:"""
         if similar_tasks:
             similar_tasks_text = "\nSimilar historical tasks:\n" + "\n".join(
                 [
-                    f"- {h.get('name', 'Unknown')}: {h.get('actual_hours', 'Unknown')} hours"
+                    f"- {h.get('name', 'Unknown')}: "
+                    f"{h.get('actual_hours', 'Unknown')} hours"
                     for h in similar_tasks[:3]
                 ]
             )
