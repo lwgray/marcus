@@ -17,7 +17,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 
-async def main():
+async def main() -> None:
     """Main diagnostic and fix routine."""
     demo_root = Path(__file__).parent
     project_info_file = demo_root / "project_info.json"
@@ -65,8 +65,17 @@ async def main():
                     arguments={"board_id": board_id, "project_id": project_id}
                 )
 
-                if isinstance(result, dict) and "tasks" in result:
-                    tasks = result["tasks"]
+                # Extract content from CallToolResult
+                result_dict = {}
+                if hasattr(result, 'content'):
+                    content = result.content
+                    if isinstance(content, list) and len(content) > 0:
+                        first_content = content[0]
+                        if hasattr(first_content, 'text'):
+                            result_dict = json.loads(first_content.text)
+
+                if isinstance(result_dict, dict) and "tasks" in result_dict:
+                    tasks = result_dict["tasks"]
                     print(f"  ✓ Found {len(tasks)} tasks on board")
 
                     # Group by status
@@ -89,7 +98,7 @@ async def main():
                             if task.get('labels'):
                                 print(f"      Labels: {', '.join(task.get('labels', []))}")
                 else:
-                    print(f"  Unexpected result: {result}")
+                    print(f"  Unexpected result: {result_dict}")
 
             except Exception as e:
                 print(f"  ❌ Error getting tasks: {e}")

@@ -568,7 +568,7 @@ async def create_tasks(
             state, {"project_name": project_name, "board_name": board_name}
         )
         if not select_result.get("success"):
-            return select_result  # type: ignore[no-any-return]
+            return select_result
     else:
         # Use active project
         active_project = await state.project_registry.get_active_project()

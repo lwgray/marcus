@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 
-async def create_marcus_project():
+async def create_marcus_project() -> None:
     """Create the Task Management API project in Marcus."""
     try:
         from mcp.client.stdio import stdio_client
@@ -70,16 +70,26 @@ async def create_marcus_project():
                     },
                 )
 
+                # Extract content from CallToolResult
+                result_dict = {}
+                if hasattr(result, 'content'):
+                    content = result.content
+                    if isinstance(content, list) and len(content) > 0:
+                        first_content = content[0]
+                        if hasattr(first_content, 'text'):
+                            import json
+                            result_dict = json.loads(first_content.text)
+
                 print("\n" + "=" * 60)
-                if result.get("success"):
+                if result_dict.get("success"):
                     print("✅ PROJECT CREATED SUCCESSFULLY!")
                     print("=" * 60)
                     print(f"\n📊 Project Details:")
-                    print(f"   Project ID: {result.get('project_id')}")
-                    print(f"   Board ID: {result.get('board', {}).get('board_id')}")
-                    print(f"   Tasks Created: {result.get('tasks_created', 0)}")
+                    print(f"   Project ID: {result_dict.get('project_id')}")
+                    print(f"   Board ID: {result_dict.get('board', {}).get('board_id')}")
+                    print(f"   Tasks Created: {result_dict.get('tasks_created', 0)}")
 
-                    board_info = result.get("board", {})
+                    board_info = result_dict.get("board", {})
                     print(f"\n📋 Board: {board_info.get('board_name', 'N/A')}")
 
                     print("\n✨ Next Steps:")
@@ -89,14 +99,13 @@ async def create_marcus_project():
 
                     # Save project info for later use
                     info_file = demo_root / "project_info.json"
-                    import json
 
                     with open(info_file, "w") as f:
                         json.dump(
                             {
-                                "project_id": result.get("project_id"),
+                                "project_id": result_dict.get("project_id"),
                                 "board_id": board_info.get("board_id"),
-                                "tasks_created": result.get("tasks_created"),
+                                "tasks_created": result_dict.get("tasks_created"),
                                 "created_at": str(asyncio.get_event_loop().time()),
                             },
                             f,
@@ -108,7 +117,7 @@ async def create_marcus_project():
                 else:
                     print("❌ PROJECT CREATION FAILED")
                     print("=" * 60)
-                    print(f"\n Error: {result.get('error', 'Unknown error')}")
+                    print(f"\n Error: {result_dict.get('error', 'Unknown error')}")
                     sys.exit(1)
 
     except Exception as e:
@@ -120,7 +129,7 @@ async def create_marcus_project():
         sys.exit(1)
 
 
-async def start_experiment_tracking():
+async def start_experiment_tracking() -> None:
     """Start MLflow experiment for tracking metrics."""
     try:
         from mcp.client.stdio import stdio_client
@@ -171,7 +180,7 @@ async def start_experiment_tracking():
         print("   (Continuing without experiment tracking)")
 
 
-async def main():
+async def main() -> None:
     """Main entry point."""
     import argparse
 

@@ -15,7 +15,7 @@ from src.ai.advanced.prd.advanced_parser import AdvancedPRDParser, ProjectConstr
 from src.core.models import WorkerStatus
 
 
-async def show_ai_input():
+async def show_ai_input() -> None:
     """Show what AI receives for instruction generation."""
     # Generate a project
     parser = AdvancedPRDParser()

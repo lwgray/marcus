@@ -14,7 +14,7 @@ import json
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 class AgentMonitor:
@@ -40,7 +40,7 @@ class AgentMonitor:
             "agent_integration",
         ]
 
-        self.metrics: Dict[str, Dict] = {}
+        self.metrics: Dict[str, Dict[str, Any]] = {}
 
     def get_log_tail(self, agent_id: str, lines: int = 10) -> List[str]:
         """
@@ -69,7 +69,7 @@ class AgentMonitor:
         except Exception as e:
             return [f"Error reading log: {e}"]
 
-    def parse_agent_status(self, log_lines: List[str]) -> Dict:
+    def parse_agent_status(self, log_lines: List[str]) -> Dict[str, Any]:
         """
         Parse agent status from log lines.
 
@@ -80,10 +80,10 @@ class AgentMonitor:
 
         Returns
         -------
-        Dict
+        Dict[str, Any]
             Status information
         """
-        status = {
+        status: Dict[str, Any] = {
             "current_task": None,
             "progress": 0,
             "last_activity": None,
@@ -96,15 +96,15 @@ class AgentMonitor:
         if "request_next_task" in log_text or "TASK ASSIGNED" in log_text:
             status["last_activity"] = "Requesting task"
 
-        # Look for progress
+        # Look for progress (as strings)
         if "25%" in log_text:
-            status["progress"] = 25
+            status["progress"] = "25%"
         elif "50%" in log_text:
-            status["progress"] = 50
+            status["progress"] = "50%"
         elif "75%" in log_text:
-            status["progress"] = 75
+            status["progress"] = "75%"
         elif "100%" in log_text or "completed" in log_text.lower():
-            status["progress"] = 100
+            status["progress"] = "100%"
 
         # Look for activity indicators
         if "Implementing" in log_text or "Creating" in log_text:
@@ -116,13 +116,13 @@ class AgentMonitor:
 
         return status
 
-    def display_dashboard(self, stdscr):
+    def display_dashboard(self, stdscr: Any) -> None:
         """
         Display real-time dashboard using curses.
 
         Parameters
         ----------
-        stdscr
+        stdscr : Any
             Curses screen object
         """
         curses.curs_set(0)  # Hide cursor
@@ -207,12 +207,12 @@ class AgentMonitor:
                 stdscr.refresh()
                 time.sleep(5)
 
-    def run(self):
+    def run(self) -> None:
         """Run the monitor with curses UI."""
         curses.wrapper(self.display_dashboard)
 
 
-def main():
+def main() -> None:
     """Main entry point."""
     demo_root = Path(__file__).parent
     monitor = AgentMonitor(demo_root)

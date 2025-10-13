@@ -5,7 +5,7 @@ Implements Redis-based caching for frequently accessed data to reduce
 database load and achieve <100ms response times.
 """
 
-from typing import Optional, Any, Callable
+from typing import Optional, Any, Callable, TypeVar, ParamSpec
 from functools import wraps
 import json
 import hashlib
@@ -13,10 +13,14 @@ import os
 from datetime import timedelta
 
 try:
-    import redis.asyncio as redis
+    import redis.asyncio as redis  # type: ignore[import-untyped]
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
+
+# Type variables for generic decorators
+P = ParamSpec('P')
+T = TypeVar('T')
 
 
 # Redis configuration

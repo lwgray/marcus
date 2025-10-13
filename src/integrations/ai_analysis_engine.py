@@ -458,14 +458,19 @@ Identify risks and provide JSON:
             # Fallback instructions when AI is not available
             return self._generate_fallback_instructions(task, agent)
 
-        # Determine task type from name or labels
-        task_type = "implementation"  # default
-        task_labels = getattr(task, "labels", []) or []
+        # Determine task type from parent metadata, name, or labels
+        # CRITICAL: Check parent task type first for subtasks (GH-XXX)
+        if hasattr(task, "_parent_task_type"):
+            task_type = task._parent_task_type
+        else:
+            # Fall back to inferring from name or labels
+            task_type = "implementation"  # default
+            task_labels = getattr(task, "labels", []) or []
 
-        if "design" in task.name.lower() or "type:design" in task_labels:
-            task_type = "design"
-        elif "test" in task.name.lower() or "type:testing" in task_labels:
-            task_type = "testing"
+            if "design" in task.name.lower() or "type:design" in task_labels:
+                task_type = "design"
+            elif "test" in task.name.lower() or "type:testing" in task_labels:
+                task_type = "testing"
 
         task_data = {
             "name": task.name,
@@ -514,14 +519,17 @@ Identify risks and provide JSON:
         """
         agent_name = agent.name if agent else "Team Member"
 
-        # Determine task type
-        task_type = "implementation"
-        task_labels = getattr(task, "labels", []) or []
+        # Determine task type (check parent metadata first for subtasks)
+        if hasattr(task, "_parent_task_type"):
+            task_type = task._parent_task_type
+        else:
+            task_type = "implementation"
+            task_labels = getattr(task, "labels", []) or []
 
-        if "design" in task.name.lower() or "type:design" in task_labels:
-            task_type = "design"
-        elif "test" in task.name.lower() or "type:testing" in task_labels:
-            task_type = "testing"
+            if "design" in task.name.lower() or "type:design" in task_labels:
+                task_type = "design"
+            elif "test" in task.name.lower() or "type:testing" in task_labels:
+                task_type = "testing"
 
         # Generate type-specific instructions
         if task_type == "design":
@@ -1646,7 +1654,7 @@ explanations, or additional text."""
             # Parse JSON response
             from src.utils.json_parser import parse_ai_json_response
 
-            return parse_ai_json_response(response_text)  # type: ignore[no-any-return]
+            return parse_ai_json_response(response_text)
 
         except json.JSONDecodeError as e:
             raw_text = response_text if "response_text" in locals() else "N/A"

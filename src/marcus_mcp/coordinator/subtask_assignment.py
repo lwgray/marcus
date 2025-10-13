@@ -14,6 +14,35 @@ from src.marcus_mcp.coordinator.subtask_manager import Subtask, SubtaskManager
 logger = logging.getLogger(__name__)
 
 
+def _determine_task_type(task: Task) -> str:
+    """
+    Determine the task type (design/implementation/testing) from task name and labels.
+
+    This logic mirrors the type detection in AIAnalysisEngine.generate_task_instructions()
+    to ensure consistency.
+
+    Parameters
+    ----------
+    task : Task
+        The task to determine type for
+
+    Returns
+    -------
+    str
+        Task type: "design", "testing", or "implementation"
+    """
+    task_name_lower = task.name.lower()
+    task_labels = getattr(task, "labels", []) or []
+
+    # Check name and labels for explicit type indicators
+    if "design" in task_name_lower or "type:design" in task_labels:
+        return "design"
+    elif "test" in task_name_lower or "type:testing" in task_labels:
+        return "testing"
+    else:
+        return "implementation"
+
+
 def _are_dependencies_satisfied(task: Task, all_tasks: List[Task]) -> bool:
     """
     Check if all dependencies of a task are completed.
@@ -140,8 +169,11 @@ def convert_subtask_to_task(subtask: Subtask, parent_task: Task) -> Task:
     Returns
     -------
     Task
-        Task object representing the subtask
+        Task object representing the subtask with parent task type metadata
     """
+    # Determine parent task type
+    parent_task_type = _determine_task_type(parent_task)
+
     # Create a Task object from the Subtask
     task = Task(
         id=subtask.id,
@@ -158,6 +190,14 @@ def convert_subtask_to_task(subtask: Subtask, parent_task: Task) -> Task:
         labels=parent_task.labels,  # Inherit labels from parent
         project_id=parent_task.project_id,
         project_name=parent_task.project_name,
+    )
+
+    # Add parent task type as metadata
+    # This ensures subtasks inherit the correct instruction type
+    task._parent_task_type = parent_task_type  # type: ignore[attr-defined]
+
+    logger.debug(
+        f"Converted subtask '{subtask.name}' with parent task type: {parent_task_type}"
     )
 
     return task

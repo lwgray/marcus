@@ -121,7 +121,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         else:
             logger.info("No dependencies returned from PRD parser")
 
-        return prd_result.tasks  # type: ignore[no-any-return]
+        return prd_result.tasks
 
     async def create_project_from_description(
         self,
@@ -336,7 +336,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             if isinstance(e, MarcusBaseError):
                 logger.error(f"Marcus error during project creation: {e}")
                 # Return proper MCP error response
-                return handle_mcp_tool_error(  # type: ignore[no-any-return]
+                return handle_mcp_tool_error(
                     e,
                     "create_project",
                     {
@@ -359,7 +359,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 )
 
                 logger.error(f"Unexpected error creating project: {unexpected_error}")
-                return handle_mcp_tool_error(  # type: ignore[no-any-return]
+                return handle_mcp_tool_error(
                     unexpected_error,
                     "create_project",
                     {
@@ -498,6 +498,9 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         """
         Create an 'About' task card that documents the project.
 
+        Supports hierarchical formatting when subtasks are present.
+        Tasks with subtasks show their children indented underneath.
+
         Parameters
         ----------
         description : str
@@ -512,13 +515,29 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         Task
             About task card with project documentation
         """
-        # Format task list with descriptions
+        # Get subtask manager if available
+        subtask_manager = getattr(self, "subtask_manager", None)
+
+        # Format task list with hierarchical structure
         task_list_md = "## Generated Tasks\n\n"
         for idx, task in enumerate(tasks, 1):
+            # Format parent/standalone task
             task_list_md += f"### {idx}. {task.name}\n"
             task_list_md += f"**Description:** {task.description}\n"
             task_list_md += f"**Estimated Hours:** {task.estimated_hours}\n"
-            task_list_md += f"**Labels:** {', '.join(task.labels)}\n\n"
+            task_list_md += f"**Labels:** {', '.join(task.labels)}\n"
+
+            # Add subtasks if they exist
+            if subtask_manager and subtask_manager.has_subtasks(task.id):
+                subtasks = subtask_manager.get_subtasks(task.id)
+                if subtasks:
+                    task_list_md += "\n**Subtasks:**\n"
+                    for sub_idx, subtask in enumerate(subtasks, 1):
+                        task_list_md += f"  {idx}.{sub_idx}. {subtask.name}\n"
+                        task_list_md += f"     - {subtask.description}\n"
+                        task_list_md += f"     - Estimated: {subtask.estimated_hours}h\n"
+
+            task_list_md += "\n"
 
         # Create the About card description
         about_description = f"""# {project_name} - Project Overview

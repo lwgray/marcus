@@ -6,7 +6,7 @@ Provides request/response validation and serialization for user-related operatio
 
 import re
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -190,7 +190,7 @@ class ErrorResponse(BaseModel):
 
     success: bool = Field(False, description="Always false for errors")
     error: str = Field(..., description="Error message")
-    details: Optional[dict] = Field(None, description="Additional error details")
+    details: Optional[dict[str, Any]] = Field(None, description="Additional error details")
 
 
 class SuccessResponse(BaseModel):
@@ -198,4 +198,4 @@ class SuccessResponse(BaseModel):
 
     success: bool = Field(True, description="Operation success status")
     message: str = Field(..., description="Success message")
-    data: Optional[dict] = Field(None, description="Optional response data")
+    data: Optional[dict[str, Any]] = Field(None, description="Optional response data")

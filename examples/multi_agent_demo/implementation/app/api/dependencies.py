@@ -7,7 +7,7 @@ Provides dependency injection for:
 - Role-based access control (RBAC)
 """
 
-from typing import Annotated, Generator
+from typing import Annotated, Callable, Generator
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -148,7 +148,7 @@ async def get_current_active_user(
     return current_user
 
 
-def require_roles(*required_roles: str):
+def require_roles(*required_roles: str) -> Callable[..., User]:
     """
     Dependency factory for role-based access control.
 
@@ -229,17 +229,17 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 
 
 # Pre-configured role dependencies
-def require_admin():
+def require_admin() -> Callable[..., User]:
     """Require admin role."""
     return require_roles(Role.ADMIN, Role.SUPER_ADMIN)
 
 
-def require_super_admin():
+def require_super_admin() -> Callable[..., User]:
     """Require super admin role."""
     return require_roles(Role.SUPER_ADMIN)
 
 
-def require_moderator():
+def require_moderator() -> Callable[..., User]:
     """Require moderator role or higher."""
     return require_roles(Role.MODERATOR, Role.ADMIN, Role.SUPER_ADMIN)
 

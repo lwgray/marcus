@@ -6,9 +6,9 @@ for different endpoint types, especially authentication endpoints.
 """
 
 import os
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
-from flask import Request
+from flask import Flask, Request
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
@@ -50,7 +50,8 @@ def get_identifier(request: Optional[Request] = None) -> str:
         return f"user:{request.user_id}"
 
     # Fall back to IP address
-    return get_remote_address()
+    ip_address = get_remote_address()
+    return str(ip_address) if ip_address else "unknown"
 
 
 # Initialize Flask-Limiter
@@ -62,7 +63,7 @@ limiter = Limiter(
 )
 
 
-def configure_rate_limiting(app):
+def configure_rate_limiting(app: Flask) -> Limiter:
     """
     Configure rate limiting for a Flask application.
 
@@ -93,7 +94,7 @@ def configure_rate_limiting(app):
     return limiter
 
 
-def auth_rate_limit() -> Callable:
+def auth_rate_limit() -> Callable[..., Any]:
     """
     Decorator for authentication endpoints with strict rate limiting.
 
@@ -119,7 +120,7 @@ def auth_rate_limit() -> Callable:
     return limiter.limit(AUTH_RATE_LIMIT)
 
 
-def password_reset_rate_limit() -> Callable:
+def password_reset_rate_limit() -> Callable[..., Any]:
     """
     Decorator for password reset endpoints with very strict rate limiting.
 
@@ -145,7 +146,7 @@ def password_reset_rate_limit() -> Callable:
     return limiter.limit(PASSWORD_RESET_LIMIT)
 
 
-def custom_rate_limit(limit_string: str) -> Callable:
+def custom_rate_limit(limit_string: str) -> Callable[..., Any]:
     """
     Create a custom rate limit decorator.
 
@@ -177,7 +178,7 @@ def custom_rate_limit(limit_string: str) -> Callable:
     return limiter.limit(limit_string)
 
 
-def exempt_from_rate_limit(func: Callable) -> Callable:
+def exempt_from_rate_limit(func: Callable[..., Any]) -> Callable[..., Any]:
     """
     Exempt a route from rate limiting.
 
@@ -235,7 +236,7 @@ class RateLimitExceeded(Exception):
         super().__init__(f"Rate limit exceeded: {limit}")
 
 
-def get_rate_limit_status(identifier: Optional[str] = None) -> dict:
+def get_rate_limit_status(identifier: Optional[str] = None) -> dict[str, Optional[str]]:
     """
     Get current rate limit status for an identifier.
 

@@ -7,9 +7,10 @@ Provides fixtures for:
 - Sample data factories
 """
 
+from typing import Any, AsyncGenerator, Dict, Generator
 import pytest
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 # Import the actual Base and models from the app
@@ -25,7 +26,7 @@ TEST_DATABASE_URL = f"sqlite+aiosqlite:///{TEST_DB_FILE}"
 
 
 @pytest.fixture(scope="session")
-def event_loop():
+def event_loop() -> Generator[Any, None, None]:
     """Create event loop for async tests."""
     import asyncio
 
@@ -35,7 +36,7 @@ def event_loop():
 
 
 @pytest_asyncio.fixture(scope="function")
-async def db_engine():
+async def db_engine() -> AsyncGenerator[AsyncEngine, None]:
     """
     Create async test database engine.
 
@@ -71,7 +72,7 @@ async def db_engine():
 
 
 @pytest_asyncio.fixture(scope="function")
-async def db_session(db_engine):
+async def db_session(db_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, None]:
     """
     Create async database session for tests.
 
@@ -99,7 +100,7 @@ async def db_session(db_engine):
 
 
 @pytest.fixture
-def sample_user_data():
+def sample_user_data() -> Dict[str, str]:
     """
     Provide sample user registration data.
 
@@ -117,7 +118,7 @@ def sample_user_data():
 
 
 @pytest.fixture
-def sample_login_data():
+def sample_login_data() -> Dict[str, str]:
     """
     Provide sample login credentials.
 

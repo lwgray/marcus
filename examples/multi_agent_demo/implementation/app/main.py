@@ -7,17 +7,17 @@ user management, projects, tasks, and comments.
 
 import os
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 
 from app.core.database import close_db, init_db
 from app.routes import auth_router
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     Lifespan context manager for startup and shutdown events.
 
@@ -68,7 +68,7 @@ app.add_middleware(
 
 # Health check endpoint
 @app.get("/health", tags=["Health"])
-async def health_check():
+async def health_check() -> dict[str, str]:
     """
     Health check endpoint.
 
@@ -81,7 +81,7 @@ async def health_check():
 
 
 @app.get("/", tags=["Root"])
-async def root():
+async def root() -> dict[str, str]:
     """
     Root endpoint with API information.
 
@@ -110,7 +110,7 @@ app.include_router(auth_router, prefix="/api/v1/auth", tags=["Authentication"])
 
 # Global exception handler
 @app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """
     Global exception handler for unhandled errors.
 

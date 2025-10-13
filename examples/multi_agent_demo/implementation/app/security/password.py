@@ -51,7 +51,7 @@ def hash_password(password: str, rounds: int = 12) -> str:
     salt = bcrypt.gensalt(rounds=rounds)
 
     # Hash password with salt
-    hashed = bcrypt.hashpw(password_bytes, salt)
+    hashed: bytes = bcrypt.hashpw(password_bytes, salt)
 
     # Return as UTF-8 string for database storage
     return hashed.decode("utf-8")
@@ -94,7 +94,8 @@ def verify_password(password: str, password_hash: str) -> bool:
         hash_bytes = password_hash.encode("utf-8")
 
         # Verify password (timing-safe comparison)
-        return bcrypt.checkpw(password_bytes, hash_bytes)
+        result: bool = bcrypt.checkpw(password_bytes, hash_bytes)
+        return result
 
     except (ValueError, AttributeError):
         # Invalid hash format or encoding issue

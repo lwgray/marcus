@@ -7,12 +7,12 @@ and query optimization settings to achieve <100ms response times for CRUD operat
 
 import os
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator, Optional, Type, Union
 
 from dotenv import load_dotenv
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
-from sqlalchemy.pool import NullPool, QueuePool
+from sqlalchemy.pool import NullPool, Pool, QueuePool
 
 # Load environment variables from .env file
 env_path = Path(__file__).parent.parent.parent / ".env"
@@ -44,7 +44,7 @@ QUERY_TIMEOUT = int(
 Base = declarative_base()
 
 
-def create_engine():
+def create_engine() -> AsyncEngine:
     """
     Create async SQLAlchemy engine with optimized connection pooling.
 
@@ -78,6 +78,7 @@ def create_engine():
     is_sqlite = DATABASE_URL.startswith("sqlite")
 
     # Use NullPool for testing or SQLite, QueuePool for production PostgreSQL
+    poolclass: Type[Pool]
     if "pytest" in os.getenv("_", "") or is_sqlite:
         poolclass = NullPool
     else:
@@ -117,7 +118,7 @@ def create_engine():
             "timeout": QUERY_TIMEOUT / 1000,
         }
 
-    engine = create_async_engine(DATABASE_URL, **engine_config)
+    engine: AsyncEngine = create_async_engine(DATABASE_URL, **engine_config)
 
     return engine
 
@@ -161,7 +162,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
-async def init_db():
+async def init_db() -> None:
     """
     Initialize database schema.
 
@@ -178,7 +179,7 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
 
 
-async def close_db():
+async def close_db() -> None:
     """
     Close database connections and cleanup resources.
 
@@ -217,15 +218,16 @@ class DatabaseHealthCheck:
         >>> if not is_healthy:
         ...     logger.error("Database connection unhealthy")
         """
+        from sqlalchemy import text
         try:
             async with AsyncSessionLocal() as session:
-                await session.execute("SELECT 1")
+                await session.execute(text("SELECT 1"))
                 return True
         except Exception:
             return False
 
     @staticmethod
-    def get_pool_status() -> dict:
+    def get_pool_status() -> dict[str, Optional[int]]:
         """
         Get current connection pool statistics.
 

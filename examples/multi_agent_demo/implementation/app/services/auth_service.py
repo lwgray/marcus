@@ -342,12 +342,13 @@ class AuthService:
             "type": "access",
         }
 
-        return create_access_token(
+        token: str = create_access_token(
             user_id=user.id,
             username=user.username,
             expires_delta=expires_delta,
             additional_claims=additional_claims,
         )
+        return token
 
     async def _create_refresh_token(
         self,

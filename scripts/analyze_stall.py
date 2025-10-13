@@ -17,12 +17,13 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
-async def capture_snapshot():
+async def capture_snapshot() -> Optional[str]:
     """Capture a stall snapshot from the current Marcus instance."""
     from src.config.config_loader import get_config
     from src.core.project_context_manager import ProjectContextManager
@@ -37,16 +38,16 @@ async def capture_snapshot():
 
     # Create minimal state object
     class MockState:
-        def __init__(self):
+        def __init__(self) -> None:
             self.config = get_config()
             self.project_registry = ProjectRegistry()
             self.project_manager = ProjectContextManager(self.project_registry)
             self.ai_engine = AIAnalysisEngine()
-            self.kanban_client = None
-            self.agent_tasks = {}
-            self.project_tasks = []
+            self.kanban_client: Optional[Any] = None
+            self.agent_tasks: Dict[str, Any] = {}
+            self.project_tasks: List[Any] = []
 
-        async def initialize_kanban(self):
+        async def initialize_kanban(self) -> None:
             if not self.kanban_client:
                 provider = self.config.get("kanban.provider", "planka")
                 self.kanban_client = KanbanFactory.create(provider)
@@ -89,13 +90,13 @@ async def capture_snapshot():
                 )
                 print(f"     Issue: {completion['issue']}")
 
-        return result["snapshot_file"]
+        return str(result["snapshot_file"])
     else:
         print(f"\n❌ Failed to capture snapshot: {result.get('error')}")
         return None
 
 
-async def replay_snapshot(snapshot_file: str):
+async def replay_snapshot(snapshot_file: str) -> None:
     """Replay conversations from a snapshot file."""
     from src.marcus_mcp.tools.project_stall_analyzer import replay_stall_conversations
     from src.visualization.stall_dashboard import render_snapshot
@@ -149,7 +150,7 @@ async def replay_snapshot(snapshot_file: str):
         print(f"❌ Failed to replay: {result.get('error')}")
 
 
-def list_snapshots():
+def list_snapshots() -> None:
     """List all available snapshots."""
     snapshot_dir = Path("logs/stall_snapshots")
 
@@ -183,7 +184,7 @@ def list_snapshots():
             print(f"   {snapshot_file.name} (error reading: {e})")
 
 
-async def main():
+async def main() -> None:
     """Main entry point."""
     if len(sys.argv) < 2:
         print(__doc__)

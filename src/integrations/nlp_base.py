@@ -548,9 +548,7 @@ class NaturalLanguageTaskCreator(ABC):
 
     def get_tasks_by_type(self, tasks: List[Task], task_type: TaskType) -> List[Any]:
         """Get all tasks of a specific type."""
-        return self.task_classifier.filter_by_type(  # type: ignore[no-any-return]
-            tasks, task_type
-        )
+        return self.task_classifier.filter_by_type(tasks, task_type)
 
     def is_deployment_task(self, task: Task) -> Any:
         """Check if task is deployment-related."""
