@@ -5,22 +5,23 @@ Implements Redis-based caching for frequently accessed data to reduce
 database load and achieve <100ms response times.
 """
 
-from typing import Optional, Any, Callable, TypeVar, ParamSpec
-from functools import wraps
-import json
 import hashlib
+import json
 import os
 from datetime import timedelta
+from functools import wraps
+from typing import Any, Callable, Optional, ParamSpec, TypeVar
 
 try:
     import redis.asyncio as redis  # type: ignore[import-untyped]
+
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
 
 # Type variables for generic decorators
-P = ParamSpec('P')
-T = TypeVar('T')
+P = ParamSpec("P")
+T = TypeVar("T")
 
 
 # Redis configuration
@@ -110,12 +111,7 @@ class CacheClient:
         except Exception:
             return None
 
-    async def set(
-        self,
-        key: str,
-        value: Any,
-        ttl: Optional[int] = None
-    ) -> bool:
+    async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
         """
         Set value in cache with optional TTL.
 
@@ -265,7 +261,7 @@ def cache_key(*args: Any, **kwargs: Any) -> str:
 def cached(
     ttl: int = CACHE_DEFAULT_TTL,
     key_prefix: str = "",
-    key_builder: Optional[Callable[..., str]] = None
+    key_builder: Optional[Callable[..., str]] = None,
 ) -> Callable[[Callable[P, T]], Callable[P, T]]:
     """
     Decorator to cache function results.
@@ -300,6 +296,7 @@ def cached(
     >>> # Second call - returns from cache (much faster)
     >>> user = await get_user("123")
     """
+
     def decorator(func: Callable[P, T]) -> Callable[P, T]:
         @wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
@@ -326,6 +323,7 @@ def cached(
             return result  # type: ignore[no-any-return]
 
         return wrapper  # type: ignore[return-value]
+
     return decorator
 
 

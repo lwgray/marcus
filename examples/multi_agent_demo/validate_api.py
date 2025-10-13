@@ -210,7 +210,10 @@ class APIValidator:
         # Test user endpoints (require auth)
         await self.validate_endpoint("GET", "/users/me", headers=headers)
         await self.validate_endpoint(
-            "PUT", "/users/me", headers=headers, json_data={"full_name": "Test User"}  # pragma: allowlist secret
+            "PUT",
+            "/users/me",
+            headers=headers,
+            json_data={"full_name": "Test User"},  # pragma: allowlist secret
         )
 
         # Test project endpoints
@@ -312,7 +315,9 @@ class QualityMetrics:
             if cov_file.exists():
                 with open(cov_file, "r") as f:
                     cov_data = json.load(f)
-                    percent_covered = cov_data.get("totals", {}).get("percent_covered", 0.0)
+                    percent_covered = cov_data.get("totals", {}).get(
+                        "percent_covered", 0.0
+                    )
                     coverage: float = float(percent_covered)
                     self.metrics["test_coverage"] = coverage
                     return coverage
