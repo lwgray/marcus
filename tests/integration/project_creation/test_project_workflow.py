@@ -31,6 +31,7 @@ def create_test_project() -> Optional[Dict[str, Any]]:
             "description": "A simple todo application with user authentication and REST API",
             "type": "web_app",
         },
+        timeout=30,
     )
 
     if response.status_code == 200:
@@ -74,6 +75,7 @@ def add_features(project_id: str) -> List[Dict[str, Any]]:
         response = requests.post(
             f"{API_BASE_URL}/projects/features/add",
             json={"project_id": project_id, **feature},
+            timeout=30,
         )
 
         if response.status_code == 200:
@@ -102,6 +104,7 @@ def start_workflow(project_id: str) -> Optional[Dict[str, Any]]:
                 "max_agents": 3,
             },
         },
+        timeout=30,
     )
 
     if response.status_code == 200:
@@ -130,7 +133,9 @@ def monitor_pipeline(flow_id: str, duration: int = 30) -> None:
 
         # Check dashboard every 5 seconds
         if current_time - last_check >= 5:
-            response = requests.get(f"{API_BASE_URL}/pipeline/monitor/dashboard")
+            response = requests.get(
+                f"{API_BASE_URL}/pipeline/monitor/dashboard", timeout=30
+            )
             if response.status_code == 200:
                 data = response.json()
                 if data["success"]:

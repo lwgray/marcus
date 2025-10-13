@@ -6,6 +6,7 @@ and can recover gracefully.
 """
 
 import asyncio
+import json
 import signal
 import subprocess
 import time
@@ -31,7 +32,7 @@ class TestInterruptionRecovery:
             result = await session.call_tool("ping", arguments={"echo": "health"})
 
             assert result.content
-            response = eval(result.content[0].text)  # Safe in test context
+            response = json.loads(result.content[0].text)
 
             assert response["success"] is True
             assert response["status"] == "online"
@@ -60,7 +61,7 @@ class TestInterruptionRecovery:
 
             # Run cleanup
             result = await session.call_tool("ping", arguments={"echo": "cleanup"})
-            response = eval(result.content[0].text)
+            response = json.loads(result.content[0].text)
 
             assert response["success"] is True
             assert "cleanup" in response
@@ -144,7 +145,7 @@ class TestInterruptionRecovery:
 
             # Get initial health
             result = await session.call_tool("ping", arguments={"echo": "health"})
-            initial_health = eval(result.content[0].text)
+            initial_health = json.loads(result.content[0].text)
 
             # Simulate some operations
             try:
@@ -157,7 +158,7 @@ class TestInterruptionRecovery:
 
             # Get health after cleanup
             result = await session.call_tool("ping", arguments={"echo": "health"})
-            final_health = eval(result.content[0].text)
+            final_health = json.loads(result.content[0].text)
 
             # Should have cleaned up stuck assignments
             assert len(final_health["health"]["tasks_being_assigned"]) == 0
