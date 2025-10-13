@@ -231,7 +231,10 @@ class CommunicationHub:
             The task that has been unblocked
         """
         if task.assigned_to:
-            message = f"✅ Good news! Task '{task.name}' is now unblocked and ready to proceed."
+            message = (
+                f"✅ Good news! Task '{task.name}' is now "
+                "unblocked and ready to proceed."
+            )
 
             if self.slack_enabled:
                 await self._send_slack_message(task.assigned_to, message)
@@ -299,11 +302,16 @@ class CommunicationHub:
             - slack: Slack markdown formatted message
             - email: HTML formatted email body
         """
+        due_date_str = (
+            assignment.due_date.strftime("%Y-%m-%d")
+            if assignment.due_date
+            else "Not set"
+        )
         return {
             "kanban": f"""📋 Task assigned to {agent_id}
 **Priority:** {assignment.priority.value}
 **Estimated Hours:** {assignment.estimated_hours}
-**Due Date:** {assignment.due_date.strftime('%Y-%m-%d') if assignment.due_date else 'Not set'}
+**Due Date:** {due_date_str}
 
 **Instructions:**
 {assignment.instructions}""",
@@ -320,7 +328,7 @@ _Reply with `!help` if you need assistance or `!block` if you encounter issues._
 <p><strong>Description:</strong> {assignment.description}</p>
 <p><strong>Priority:</strong> {assignment.priority.value}</p>
 <p><strong>Estimated Hours:</strong> {assignment.estimated_hours}</p>
-<p><strong>Due Date:</strong> {assignment.due_date.strftime('%Y-%m-%d') if assignment.due_date else 'Not set'}</p>
+<p><strong>Due Date:</strong> {due_date_str}</p>
 
 <h3>Instructions:</h3>
 <pre>{assignment.instructions}</pre>
@@ -446,7 +454,10 @@ Please address this blocker immediately.""",
         """
         task_list = "\n".join(
             [
-                f"{i+1}. {rec['task_name']} ({rec['priority']}) - {rec['estimated_hours']}h"
+                (
+                    f"{i+1}. {rec['task_name']} ({rec['priority']}) - "
+                    f"{rec['estimated_hours']}h"
+                )
                 for i, rec in enumerate(recommendations[:5])
             ]
         )
@@ -463,17 +474,23 @@ Please address this blocker immediately.""",
 • Update task progress regularly
 
 Have a productive day! 🚀""",
-            "email": f"""<h2>Your Daily Work Plan</h2>
+            "email": (
+                f"""<h2>Your Daily Work Plan</h2>
 <p>Good morning, {agent_id}!</p>
 
 <h3>Recommended Tasks:</h3>
 <ol>
-{''.join([f'<li>{rec["task_name"]} (Priority: {rec["priority"]}) - {rec["estimated_hours"]} hours</li>' for rec in recommendations[:5]])}
+{''.join([
+    f'<li>{rec["task_name"]} (Priority: {rec["priority"]}) - '
+    f'{rec["estimated_hours"]} hours</li>'
+    for rec in recommendations[:5]
+])}
 </ol>
 
-<p>Remember to update your progress throughout the day and reach out if you need any assistance.</p>
-
-<p>Best regards,<br>AI Project Manager</p>""",
+<p>Remember to update your progress throughout the day """
+                "and reach out if you need any assistance.</p>\n\n"
+                "<p>Best regards,<br>AI Project Manager</p>"
+            ),
         }
 
     def _get_blocker_recipients(

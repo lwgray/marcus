@@ -260,8 +260,8 @@ class Inspector:
         ----------
         connection_type : Literal['stdio', 'http'], default='stdio'
             The type of connection to use:
-            - 'stdio': Spawn isolated Marcus instance (recommended for testing)
-            - 'http': Connect to running Marcus HTTP server (recommended for integration)
+            - 'stdio': Spawn isolated Marcus instance (for testing)
+            - 'http': Connect to running Marcus HTTP server (for integration)
         """
         self.session: Optional[ClientSession] = None
         self.connection_type = connection_type

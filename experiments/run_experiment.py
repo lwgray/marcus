@@ -72,23 +72,25 @@ def create_experiment_structure(experiment_dir: Path, templates_dir: Path) -> bo
     implementation_dir.mkdir(exist_ok=True)
 
     # Initialize git repository in implementation directory
-    git_dir = implementation_dir / ".git"
+    git_dir = implementation_dir / ".git"  # pragma: allowlist secret
     if not git_dir.exists():
         print("\n[Setup] Initializing git repository...")
         try:
             subprocess.run(
-                ["git", "init"],
+                ["git", "init"],  # pragma: allowlist secret
                 cwd=implementation_dir,
                 check=True,
                 capture_output=True,
             )
             subprocess.run(
-                ["git", "checkout", "-b", "main"],
+                ["git", "checkout", "-b", "main"],  # pragma: allowlist secret
                 cwd=implementation_dir,
                 check=True,
                 capture_output=True,
             )
-            print("✓ Git repository initialized on main branch")
+            print(
+                "✓ Git repository initialized on main branch"
+            )  # pragma: allowlist secret
         except subprocess.CalledProcessError as e:
             print(f"⚠️  Git initialization failed: {e}")
 
@@ -96,7 +98,7 @@ def create_experiment_structure(experiment_dir: Path, templates_dir: Path) -> bo
     print("\n[Setup] Verifying Marcus MCP configuration...")
     try:
         result = subprocess.run(
-            ["claude", "mcp", "list"],
+            ["claude", "mcp", "list"],  # pragma: allowlist secret
             capture_output=True,
             text=True,
             check=True,
@@ -106,14 +108,18 @@ def create_experiment_structure(experiment_dir: Path, templates_dir: Path) -> bo
             print("  Agents will have access to Marcus tools")
         else:
             print("⚠️  Marcus MCP not found in configuration")
+            # pragma: allowlist secret
             print(
-                "  Please run: claude mcp add marcus -t http http://localhost:4298/mcp"
+                "  Please run: claude mcp add marcus -t http "
+                "http://localhost:4298/mcp"
             )
     except subprocess.CalledProcessError:
         print("⚠️  Could not verify MCP configuration")
         print("  Ensure Claude Code CLI is installed")
+        # pragma: allowlist secret
         print(
-            "  To configure Marcus: claude mcp add marcus -t http http://localhost:4298/mcp"
+            "  To configure Marcus: claude mcp add marcus -t http "
+            "http://localhost:4298/mcp"
         )
 
     return not (config_file.exists() and spec_file.exists())

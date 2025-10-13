@@ -4,7 +4,7 @@ Base model configuration for SQLAlchemy ORM.
 Provides shared base class and common utilities for all database models.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import MetaData

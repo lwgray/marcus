@@ -1,5 +1,5 @@
 """
-API Validation Suite for Marcus Multi-Agent Demo
+API Validation Suite for Marcus Multi-Agent Demo.
 
 This script validates that the implemented API matches the OpenAPI specification
 and measures quality metrics (test coverage, type safety, spec compliance).
@@ -9,17 +9,14 @@ import asyncio
 import json
 import subprocess
 import sys
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Hashable, Optional
 
 import httpx
 import yaml
 from openapi_core import OpenAPI
-from openapi_core.contrib.requests import (
-    RequestsOpenAPIRequest,
-    RequestsOpenAPIResponse,
-)
 
 
 class APIValidator:
@@ -48,10 +45,10 @@ class APIValidator:
             "failures": [],
         }
 
-    def _load_spec(self) -> Dict[str, Any]:
+    def _load_spec(self) -> Mapping[Hashable, Any]:
         """Load OpenAPI specification from YAML file."""
         with open(self.spec_path, "r") as f:
-            spec: Dict[str, Any] = yaml.safe_load(f)
+            spec: Mapping[Hashable, Any] = yaml.safe_load(f)
             return spec
 
     async def validate_endpoint(
@@ -197,14 +194,17 @@ class APIValidator:
             json_data={
                 "email": "test@example.com",
                 "username": "testuser",
-                "password": "testpass123",
+                "password": "testpass123",  # pragma: allowlist secret
             },
         )
 
         await self.validate_endpoint(
             "POST",
             "/auth/login",
-            json_data={"email": "test@example.com", "password": "testpass123"},
+            json_data={
+                "email": "test@example.com",
+                "password": "testpass123",  # pragma: allowlist secret
+            },
         )
 
         # Test user endpoints (require auth)
@@ -302,7 +302,7 @@ class QualityMetrics:
             Coverage percentage
         """
         try:
-            result = subprocess.run(
+            subprocess.run(
                 ["pytest", "--cov=.", "--cov-report=json", "--cov-report=term"],
                 cwd=self.project_root,
                 capture_output=True,

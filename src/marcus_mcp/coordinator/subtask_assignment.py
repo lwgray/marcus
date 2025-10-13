@@ -18,8 +18,8 @@ def _determine_task_type(task: Task) -> str:
     """
     Determine the task type (design/implementation/testing) from task name and labels.
 
-    This logic mirrors the type detection in AIAnalysisEngine.generate_task_instructions()
-    to ensure consistency.
+    This logic mirrors the type detection in
+    AIAnalysisEngine.generate_task_instructions() to ensure consistency.
 
     Parameters
     ----------

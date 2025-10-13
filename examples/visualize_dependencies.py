@@ -20,6 +20,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
+from mcp.types import TextContent
+
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
@@ -139,7 +141,12 @@ async def main() -> None:
                 },
             )
 
-            create_data = json.loads(create_result.content[0].text)
+            # Extract text content safely
+            create_content = create_result.content[0]
+            if not isinstance(create_content, TextContent):
+                print("❌ Unexpected content type in create_project response")
+                return
+            create_data = json.loads(create_content.text)
 
             if not create_data.get("success"):
                 print(f"❌ Failed to create project: {create_data.get('error')}")
@@ -153,7 +160,13 @@ async def main() -> None:
 
             # List projects to get the project ID
             projects_result = await session.call_tool("list_projects", arguments={})
-            projects_data = json.loads(projects_result.content[0].text)
+
+            # Extract text content safely
+            projects_content = projects_result.content[0]
+            if not isinstance(projects_content, TextContent):
+                print("❌ Unexpected content type in list_projects response")
+                return
+            projects_data = json.loads(projects_content.text)
 
             # Find our project
             calculator_project = None
@@ -167,9 +180,8 @@ async def main() -> None:
                 return
 
             project_id = calculator_project.get("id")
-            print(
-                f"Found project: {calculator_project.get('name')} (ID: {project_id[:8]}...)"
-            )
+            project_name = calculator_project.get("name")
+            print(f"Found project: {project_name} (ID: {project_id[:8]}...)")
 
             # Select the project to view its tasks
             await session.call_tool(
@@ -179,15 +191,12 @@ async def main() -> None:
             # Now visualize the dependency graph
             print_section("🔗 STEP 3: Visualize Dependency Graph")
 
-            # We need to get the actual tasks - let's use check_task_dependencies on each
-            # First, let's get the tasks from the board info
-            board_info = create_data.get("board", {})
-
             # For demonstration, create a mock task structure
             # In reality, you would fetch this from the kanban board
             print("Task Dependencies:")
-            print("\nℹ️  Note: Tasks with dependencies will wait for those dependencies")
-            print("   to complete before they can be assigned.\n")
+            print("\nℹ️  Note: Tasks with dependencies will wait")
+            print("   for those dependencies to complete before")
+            print("   they can be assigned.\n")
 
             # Show a simple example
             example_graph = """
@@ -209,7 +218,7 @@ async def main() -> None:
                     ▼                           ▼
             ┌──────────────────────────────────────────────────────────┐
             │               IMPLEMENTATION PHASE                        │
-            │  (These are BLOCKED waiting for design to complete)     │
+            │  (Blocked waiting for design to complete)                │
             └──────────────────────────────────────────────────────────┘
                     │                           │
                     ▼                           ▼
@@ -222,7 +231,7 @@ async def main() -> None:
                     ▼                           ▼
             ┌──────────────────────────────────────────────────────────┐
             │                  TESTING PHASE                           │
-            │  (These are BLOCKED waiting for implementation)         │
+            │  (Blocked waiting for implementation)                    │
             └──────────────────────────────────────────────────────────┘
             """
 

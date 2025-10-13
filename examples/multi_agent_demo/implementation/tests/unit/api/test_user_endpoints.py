@@ -10,7 +10,7 @@ Tests cover:
 """
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 from app.api.users import (
@@ -24,7 +24,7 @@ from app.api.users import (
     remove_role_from_user,
     update_current_user_profile,
 )
-from app.models import Role, User, UserRole
+from app.models import User, UserRole
 from app.schemas import PasswordChange, RoleAssignment, UserUpdate
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -34,7 +34,7 @@ class TestGetCurrentUserProfile:
     """Test suite for GET /users/me endpoint."""
 
     @pytest.mark.asyncio
-    async def test_get_current_user_profile_success(self):
+    async def test_get_current_user_profile_success(self) -> None:
         """Test successful retrieval of current user profile."""
         # Arrange
         mock_user = Mock(spec=User)
@@ -64,7 +64,7 @@ class TestGetCurrentUserProfile:
         assert result.roles == ["user"]
 
     @pytest.mark.asyncio
-    async def test_get_current_user_profile_with_multiple_roles(self):
+    async def test_get_current_user_profile_with_multiple_roles(self) -> None:
         """Test retrieval with user having multiple roles."""
         # Arrange
         mock_user = Mock(spec=User)
@@ -96,7 +96,7 @@ class TestUpdateCurrentUserProfile:
     """Test suite for PUT /users/me endpoint."""
 
     @pytest.mark.asyncio
-    async def test_update_email_success(self):
+    async def test_update_email_success(self) -> None:
         """Test successful email update."""
         # Arrange
         mock_user = Mock(spec=User)
@@ -131,7 +131,7 @@ class TestUpdateCurrentUserProfile:
         assert result.email == "new@example.com"
 
     @pytest.mark.asyncio
-    async def test_update_email_conflict(self):
+    async def test_update_email_conflict(self) -> None:
         """Test email update fails when email already exists."""
         # Arrange
         mock_user = Mock(spec=User)
@@ -154,7 +154,7 @@ class TestUpdateCurrentUserProfile:
         assert "Email already registered" in exc_info.value.detail
 
     @pytest.mark.asyncio
-    async def test_update_username_success(self):
+    async def test_update_username_success(self) -> None:
         """Test successful username update."""
         # Arrange
         mock_user = Mock(spec=User)
@@ -190,7 +190,7 @@ class TestDeleteCurrentUser:
     """Test suite for DELETE /users/me endpoint."""
 
     @pytest.mark.asyncio
-    async def test_delete_current_user_success(self):
+    async def test_delete_current_user_success(self) -> None:
         """Test successful account deactivation."""
         # Arrange
         mock_user = Mock(spec=User)
@@ -214,19 +214,21 @@ class TestChangePassword:
     @patch("app.api.users.verify_password")
     @patch("app.api.users.hash_password")
     @pytest.mark.asyncio
-    async def test_change_password_success(self, mock_hash, mock_verify):
+    async def test_change_password_success(
+        self, mock_hash: Mock, mock_verify: Mock
+    ) -> None:
         """Test successful password change."""
         # Arrange
         mock_user = Mock(spec=User)
-        mock_user.password_hash = "old_hash"
+        mock_user.password_hash = "old_hash"  # pragma: allowlist secret
 
         password_change = PasswordChange(
-            current_password="OldPass123!",
-            new_password="NewPass456!",
+            current_password="OldPass123!",  # pragma: allowlist secret
+            new_password="NewPass456!",  # pragma: allowlist secret
         )
 
         mock_verify.return_value = True  # Current password correct
-        mock_hash.return_value = "new_hash"
+        mock_hash.return_value = "new_hash"  # pragma: allowlist secret
 
         mock_db = Mock(spec=Session)
 
@@ -234,23 +236,27 @@ class TestChangePassword:
         result = await change_password(password_change, mock_user, mock_db)
 
         # Assert
-        mock_verify.assert_called_once_with("OldPass123!", "old_hash")
-        mock_hash.assert_called_once_with("NewPass456!")
-        assert mock_user.password_hash == "new_hash"
+        mock_verify.assert_called_once_with(
+            "OldPass123!", "old_hash"
+        )  # pragma: allowlist secret
+        mock_hash.assert_called_once_with("NewPass456!")  # pragma: allowlist secret
+        assert mock_user.password_hash == "new_hash"  # pragma: allowlist secret
         assert mock_db.commit.called
         assert result.success is True
 
     @patch("app.api.users.verify_password")
     @pytest.mark.asyncio
-    async def test_change_password_wrong_current_password(self, mock_verify):
+    async def test_change_password_wrong_current_password(
+        self, mock_verify: Mock
+    ) -> None:
         """Test password change fails with incorrect current password."""
         # Arrange
         mock_user = Mock(spec=User)
-        mock_user.password_hash = "old_hash"
+        mock_user.password_hash = "old_hash"  # pragma: allowlist secret
 
         password_change = PasswordChange(
-            current_password="WrongPass123!",
-            new_password="NewPass456!",
+            current_password="WrongPass123!",  # pragma: allowlist secret
+            new_password="NewPass456!",  # pragma: allowlist secret
         )
 
         mock_verify.return_value = False  # Current password incorrect
@@ -270,7 +276,7 @@ class TestListUsers:
 
     @pytest.mark.skip(reason="Complex mock chain - covered by integration tests")
     @pytest.mark.asyncio
-    async def test_list_users_no_filters(self):
+    async def test_list_users_no_filters(self) -> None:
         """Test listing all users without filters."""
         # Arrange
         mock_admin = Mock(spec=User)
@@ -330,7 +336,7 @@ class TestListUsers:
 
     @pytest.mark.skip(reason="Complex mock chain - covered by integration tests")
     @pytest.mark.asyncio
-    async def test_list_users_with_email_filter(self):
+    async def test_list_users_with_email_filter(self) -> None:
         """Test filtering users by email."""
         # Arrange
         mock_admin = Mock(spec=User)
@@ -375,7 +381,7 @@ class TestGetUserById:
     """Test suite for GET /users/{user_id} endpoint."""
 
     @pytest.mark.asyncio
-    async def test_get_user_by_id_success(self):
+    async def test_get_user_by_id_success(self) -> None:
         """Test successful retrieval of user by ID."""
         # Arrange
         mock_admin = Mock(spec=User)
@@ -408,7 +414,7 @@ class TestGetUserById:
         assert result.username == "testuser"
 
     @pytest.mark.asyncio
-    async def test_get_user_by_id_not_found(self):
+    async def test_get_user_by_id_not_found(self) -> None:
         """Test retrieval fails when user doesn't exist."""
         # Arrange
         mock_admin = Mock(spec=User)
@@ -429,7 +435,7 @@ class TestDeactivateUser:
     """Test suite for DELETE /users/{user_id} endpoint."""
 
     @pytest.mark.asyncio
-    async def test_deactivate_user_success(self):
+    async def test_deactivate_user_success(self) -> None:
         """Test successful user deactivation."""
         # Arrange
         mock_admin = Mock(spec=User)
@@ -453,7 +459,7 @@ class TestDeactivateUser:
         assert result.success is True
 
     @pytest.mark.asyncio
-    async def test_deactivate_user_self(self):
+    async def test_deactivate_user_self(self) -> None:
         """Test admin cannot deactivate their own account."""
         # Arrange
         mock_admin = Mock(spec=User)
@@ -473,7 +479,7 @@ class TestAssignRoleToUser:
     """Test suite for POST /users/{user_id}/roles endpoint."""
 
     @pytest.mark.asyncio
-    async def test_assign_role_success(self):
+    async def test_assign_role_success(self) -> None:
         """Test successful role assignment."""
         # Arrange
         mock_admin = Mock(spec=User)
@@ -499,7 +505,7 @@ class TestAssignRoleToUser:
         mock_db.query.side_effect = lambda model: query_calls.pop(0)
 
         # Mock the refresh to set an ID
-        def mock_refresh(obj):
+        def mock_refresh(obj: Mock) -> None:
             obj.id = 1
             obj.granted_at = datetime.now(timezone.utc)
 
@@ -519,7 +525,7 @@ class TestAssignRoleToUser:
         assert result.role == "admin"
 
     @pytest.mark.asyncio
-    async def test_assign_role_already_assigned(self):
+    async def test_assign_role_already_assigned(self) -> None:
         """Test role assignment fails when role already assigned."""
         # Arrange
         mock_admin = Mock(spec=User)
@@ -557,7 +563,7 @@ class TestRemoveRoleFromUser:
     """Test suite for DELETE /users/{user_id}/roles/{role} endpoint."""
 
     @pytest.mark.asyncio
-    async def test_remove_role_success(self):
+    async def test_remove_role_success(self) -> None:
         """Test successful role removal."""
         # Arrange
         mock_admin = Mock(spec=User)
@@ -579,7 +585,7 @@ class TestRemoveRoleFromUser:
         assert result.success is True
 
     @pytest.mark.asyncio
-    async def test_remove_role_not_found(self):
+    async def test_remove_role_not_found(self) -> None:
         """Test role removal fails when role not assigned."""
         # Arrange
         mock_admin = Mock(spec=User)
@@ -602,7 +608,7 @@ class TestAdditionalCoverage:
     """Test suite for additional coverage of edge cases."""
 
     @pytest.mark.asyncio
-    async def test_update_username_conflict(self):
+    async def test_update_username_conflict(self) -> None:
         """Test updating username to one that already exists."""
         # Arrange
         mock_current_user = Mock(spec=User)
@@ -630,7 +636,7 @@ class TestAdditionalCoverage:
         assert "Username already taken" in exc_info.value.detail
 
     @pytest.mark.asyncio
-    async def test_deactivate_user_not_found(self):
+    async def test_deactivate_user_not_found(self) -> None:
         """Test deactivating non-existent user."""
         # Arrange
         mock_admin = Mock(spec=User)
@@ -651,7 +657,7 @@ class TestAdditionalCoverage:
     # prevents invalid roles from reaching the endpoint code (line 437 is unreachable)
 
     @pytest.mark.asyncio
-    async def test_assign_role_user_not_found(self):
+    async def test_assign_role_user_not_found(self) -> None:
         """Test assigning role to non-existent user."""
         # Arrange
         mock_admin = Mock(spec=User)
@@ -681,9 +687,12 @@ class TestAdditionalCoverage:
 
     @pytest.mark.asyncio
     @pytest.mark.skip(
-        reason="list_users endpoint requires integration tests - too complex to mock query chains"
+        reason=(
+            "list_users endpoint requires integration tests - "
+            "too complex to mock query chains"
+        )
     )
-    async def test_list_users_with_filters(self):
+    async def test_list_users_with_filters(self) -> None:
         """Test listing users with email filter."""
         # Arrange
         mock_admin = Mock(spec=User)
@@ -717,7 +726,7 @@ class TestAdditionalCoverage:
         mock_role_query.all.return_value = []
 
         # Mock db.query to return appropriate query based on argument
-        def query_side_effect(model):
+        def query_side_effect(model: type) -> Mock:
             if model == User:
                 return mock_user_query
             else:  # UserRole

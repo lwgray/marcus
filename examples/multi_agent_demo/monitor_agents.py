@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Real-time Agent Monitor for Marcus Multi-Agent Demo
+Real-time Agent Monitor for Marcus Multi-Agent Demo.
 
 Monitors agent activity by:
 - Watching log files for progress
@@ -8,13 +8,12 @@ Monitors agent activity by:
 - Displaying real-time metrics
 """
 
-import asyncio
 import curses
 import json
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 
 class AgentMonitor:
@@ -213,7 +212,7 @@ class AgentMonitor:
 
 
 def main() -> None:
-    """Main entry point."""
+    """Start the agent monitor."""
     demo_root = Path(__file__).parent
     monitor = AgentMonitor(demo_root)
 

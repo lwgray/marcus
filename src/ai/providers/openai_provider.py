@@ -121,7 +121,10 @@ class OpenAIProvider(BaseLLMProvider):
         messages = [
             {
                 "role": "system",
-                "content": "You are an expert software project manager analyzing development tasks. Respond only with valid JSON.",
+                "content": (
+                    "You are an expert software project manager analyzing "
+                    "development tasks. Respond only with valid JSON."
+                ),
             },
             {
                 "role": "user",
@@ -165,9 +168,15 @@ class OpenAIProvider(BaseLLMProvider):
         messages = [
             {
                 "role": "system",
-                "content": "You are analyzing task dependencies. Respond only with valid JSON array.",
+                "content": (
+                    "You are analyzing task dependencies. "
+                    "Respond only with valid JSON array."
+                ),
             },
-            {"role": "user", "content": self._build_dependency_inference_prompt(tasks)},
+            {
+                "role": "user",
+                "content": self._build_dependency_inference_prompt(tasks),
+            },
         ]
 
         try:
@@ -185,9 +194,15 @@ class OpenAIProvider(BaseLLMProvider):
         messages = [
             {
                 "role": "system",
-                "content": "You are enhancing task descriptions for software development. Be concise but thorough.",
+                "content": (
+                    "You are enhancing task descriptions for software "
+                    "development. Be concise but thorough."
+                ),
             },
-            {"role": "user", "content": self._build_enhancement_prompt(task, context)},
+            {
+                "role": "user",
+                "content": self._build_enhancement_prompt(task, context),
+            },
         ]
 
         try:
@@ -205,9 +220,15 @@ class OpenAIProvider(BaseLLMProvider):
         messages = [
             {
                 "role": "system",
-                "content": "You are estimating development effort. Respond only with valid JSON.",
+                "content": (
+                    "You are estimating development effort. "
+                    "Respond only with valid JSON."
+                ),
             },
-            {"role": "user", "content": self._build_estimation_prompt(task, context)},
+            {
+                "role": "user",
+                "content": self._build_estimation_prompt(task, context),
+            },
         ]
 
         try:
@@ -231,7 +252,10 @@ class OpenAIProvider(BaseLLMProvider):
         messages = [
             {
                 "role": "system",
-                "content": "You are helping resolve development blockers. Respond with a JSON array of specific suggestions.",
+                "content": (
+                    "You are helping resolve development blockers. "
+                    "Respond with a JSON array of specific suggestions."
+                ),
             },
             {
                 "role": "user",

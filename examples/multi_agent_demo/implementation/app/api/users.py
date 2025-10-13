@@ -10,37 +10,29 @@ Provides REST API for:
 
 from datetime import datetime, timezone
 from math import ceil
-from typing import Annotated
-
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import or_
-from sqlalchemy.orm import Session
 
 from app.api.dependencies import (
     AdminUser,
     CurrentUser,
     DatabaseSession,
-    get_db,
-    require_admin,
 )
 from app.models import Role, User, UserRole
 from app.schemas import (
-    ErrorResponse,
     PasswordChange,
     RoleAssignment,
     RoleResponse,
     SuccessResponse,
     UserListResponse,
     UserResponse,
-    UserSearchParams,
     UserUpdate,
 )
 from app.security.password import hash_password, verify_password
+from fastapi import APIRouter, HTTPException, Query, status
 
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/me", response_model=UserResponse)  # type: ignore[misc]
 async def get_current_user_profile(
     current_user: CurrentUser,
     db: DatabaseSession,
@@ -74,7 +66,7 @@ async def get_current_user_profile(
     )
 
 
-@router.put("/me", response_model=UserResponse)
+@router.put("/me", response_model=UserResponse)  # type: ignore[misc]
 async def update_current_user_profile(
     update_data: UserUpdate,
     current_user: CurrentUser,
@@ -144,7 +136,7 @@ async def update_current_user_profile(
     )
 
 
-@router.delete("/me", response_model=SuccessResponse)
+@router.delete("/me", response_model=SuccessResponse)  # type: ignore[misc]
 async def delete_current_user(
     current_user: CurrentUser,
     db: DatabaseSession,
@@ -167,12 +159,10 @@ async def delete_current_user(
 
     db.commit()
 
-    return SuccessResponse(
-        success=True, message="Account deactivated successfully"
-    )
+    return SuccessResponse(success=True, message="Account deactivated successfully")
 
 
-@router.put("/me/password", response_model=SuccessResponse)
+@router.put("/me/password", response_model=SuccessResponse)  # type: ignore[misc]
 async def change_password(
     password_change: PasswordChange,
     current_user: CurrentUser,
@@ -198,7 +188,9 @@ async def change_password(
         400 if new password doesn't meet requirements
     """
     # Verify current password
-    if not verify_password(password_change.current_password, current_user.password_hash):
+    if not verify_password(
+        password_change.current_password, current_user.password_hash
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Current password is incorrect",
@@ -215,7 +207,7 @@ async def change_password(
     return SuccessResponse(success=True, message="Password changed successfully")
 
 
-@router.get("", response_model=UserListResponse)
+@router.get("", response_model=UserListResponse)  # type: ignore[misc]
 async def list_users(
     admin_user: AdminUser,
     db: DatabaseSession,
@@ -226,7 +218,9 @@ async def list_users(
     is_verified: bool = Query(None, description="Filter by verified status"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Results per page"),
-    sort_by: str = Query("created_at", pattern="^(created_at|username|email|last_login)$"),
+    sort_by: str = Query(
+        "created_at", pattern="^(created_at|username|email|last_login)$"
+    ),
     sort_order: str = Query("desc", pattern="^(asc|desc)$"),
 ) -> UserListResponse:
     """
@@ -307,7 +301,7 @@ async def list_users(
     )
 
 
-@router.get("/{user_id}", response_model=UserResponse)
+@router.get("/{user_id}", response_model=UserResponse)  # type: ignore[misc]
 async def get_user_by_id(
     user_id: int,
     admin_user: AdminUser,
@@ -356,7 +350,7 @@ async def get_user_by_id(
     )
 
 
-@router.delete("/{user_id}", response_model=SuccessResponse)
+@router.delete("/{user_id}", response_model=SuccessResponse)  # type: ignore[misc]
 async def deactivate_user(
     user_id: int,
     admin_user: AdminUser,
@@ -403,7 +397,7 @@ async def deactivate_user(
     return SuccessResponse(success=True, message="User deactivated successfully")
 
 
-@router.post("/{user_id}/roles", response_model=RoleResponse)
+@router.post("/{user_id}/roles", response_model=RoleResponse)  # type: ignore[misc]
 async def assign_role_to_user(
     user_id: int,
     role_assignment: RoleAssignment,
@@ -481,7 +475,9 @@ async def assign_role_to_user(
     )
 
 
-@router.delete("/{user_id}/roles/{role}", response_model=SuccessResponse)
+@router.delete(  # type: ignore[misc]
+    "/{user_id}/roles/{role}", response_model=SuccessResponse
+)
 async def remove_role_from_user(
     user_id: int,
     role: str,

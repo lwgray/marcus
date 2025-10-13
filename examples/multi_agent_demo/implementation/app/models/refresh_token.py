@@ -111,7 +111,7 @@ class RefreshToken(Base):
     )
 
     def __repr__(self) -> str:
-        """String representation of RefreshToken."""
+        """Return string representation of RefreshToken."""
         return (
             f"<RefreshToken(id={self.id}, user_id={self.user_id}, "
             f"expires={self.expires_at}, revoked={self.is_revoked})>"

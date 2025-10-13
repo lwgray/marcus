@@ -762,7 +762,8 @@ async def discover_planka_projects(
                 )
                 continue
 
-        # Clean up stale boards - remove registry entries for boards that no longer exist
+        # Clean up stale boards - remove registry entries for boards
+        # that no longer exist in Planka
         valid_board_ids = {
             proj["config"]["board_id"]  # type: ignore[index]
             for proj in projects_to_sync

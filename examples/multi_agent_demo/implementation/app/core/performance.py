@@ -5,15 +5,15 @@ Provides tools to measure, monitor, and optimize query performance
 to achieve <100ms response times for CRUD operations.
 """
 
-from typing import Optional, Callable, Any, TypeVar, ParamSpec, AsyncIterator
-from functools import wraps
-from time import perf_counter
 import logging
 from contextlib import asynccontextmanager
+from functools import wraps
+from time import perf_counter
+from typing import Any, AsyncIterator, Callable, Optional, ParamSpec, TypeVar
 
 # Type variables for generic decorators
-P = ParamSpec('P')
-T = TypeVar('T')
+P = ParamSpec("P")
+T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ class PerformanceTimer:
         self.end_time: Optional[float] = None
         self.elapsed_ms: Optional[float] = None
 
-    def __enter__(self) -> 'PerformanceTimer':
+    def __enter__(self) -> "PerformanceTimer":
         """Start timing."""
         self.start_time = perf_counter()
         return self
@@ -63,7 +63,9 @@ class PerformanceTimer:
 
 
 @asynccontextmanager
-async def async_performance_timer(name: str = "operation") -> AsyncIterator[dict[str, float]]:
+async def async_performance_timer(
+    name: str = "operation",
+) -> AsyncIterator[dict[str, float]]:
     """
     Async context manager for measuring execution time.
 
@@ -97,9 +99,11 @@ async def async_performance_timer(name: str = "operation") -> AsyncIterator[dict
             )
 
 
-def monitor_performance(threshold_ms: float = 100) -> Callable[[Callable[P, T]], Callable[P, T]]:
+def monitor_performance(
+    threshold_ms: float = 100,
+) -> Callable[[Callable[P, T]], Callable[P, T]]:
     """
-    Decorator to monitor function performance.
+    Monitor function performance and log warnings for slow operations.
 
     Logs warning if execution time exceeds threshold.
 
@@ -119,6 +123,7 @@ def monitor_performance(threshold_ms: float = 100) -> Callable[[Callable[P, T]],
     >>> async def get_user(user_id: str):
     ...     return await db.query(User).filter(User.id == user_id).first()
     """
+
     def decorator(func: Callable[P, T]) -> Callable[P, T]:
         @wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
@@ -135,11 +140,10 @@ def monitor_performance(threshold_ms: float = 100) -> Callable[[Callable[P, T]],
                         f"took {elapsed_ms:.2f}ms (threshold: {threshold_ms}ms)"
                     )
                 else:
-                    logger.debug(
-                        f"{func.__name__} completed in {elapsed_ms:.2f}ms"
-                    )
+                    logger.debug(f"{func.__name__} completed in {elapsed_ms:.2f}ms")
 
         return wrapper  # type: ignore[return-value]
+
     return decorator
 
 
@@ -271,9 +275,7 @@ class PerformanceMetrics:
         total = len(sorted_times)
 
         cache_total = self.cache_hits + self.cache_misses
-        cache_hit_rate = (
-            self.cache_hits / cache_total * 100 if cache_total > 0 else 0
-        )
+        cache_hit_rate = self.cache_hits / cache_total * 100 if cache_total > 0 else 0
 
         return {
             "total_queries": total,
@@ -400,6 +402,5 @@ class QueryAnalyzer:
 
         return {
             "plan": plan,
-            "execution_time_ms": plan[0]["Execution Time"]
-            if plan else 0,
+            "execution_time_ms": plan[0]["Execution Time"] if plan else 0,
         }

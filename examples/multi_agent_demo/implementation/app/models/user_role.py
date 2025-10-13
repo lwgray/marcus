@@ -4,8 +4,8 @@ User role model for role-based access control (RBAC).
 Defines user roles and permissions for authorization.
 """
 
-from typing import TYPE_CHECKING
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from app.models.base import Base
 from sqlalchemy import DateTime, ForeignKey, Index, String, UniqueConstraint
@@ -83,7 +83,7 @@ class UserRole(Base):
     )
 
     def __repr__(self) -> str:
-        """String representation of UserRole."""
+        """Return string representation of UserRole."""
         return f"<UserRole(user_id={self.user_id}, role='{self.role}')>"
 
 

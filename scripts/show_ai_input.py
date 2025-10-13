@@ -11,8 +11,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.ai.advanced.prd.advanced_parser import AdvancedPRDParser, ProjectConstraints
-from src.core.models import WorkerStatus
+from src.ai.advanced.prd.advanced_parser import (  # noqa: E402
+    AdvancedPRDParser,
+    ProjectConstraints,
+)
 
 
 async def show_ai_input() -> None:
@@ -21,8 +23,12 @@ async def show_ai_input() -> None:
     parser = AdvancedPRDParser()
     constraints = ProjectConstraints(team_size=1, deployment_target="local")
 
+    description = (
+        "Build a todo app with user authentication, "
+        "CRUD operations for todos, and filtering by status"
+    )
     result = await parser.parse_prd_to_tasks(
-        "Build a todo app with user authentication, CRUD operations for todos, and filtering by status",
+        description,
         constraints,
     )
 

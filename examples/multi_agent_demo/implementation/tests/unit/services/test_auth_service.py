@@ -5,6 +5,7 @@ Tests user registration, login, token operations, and session management.
 """
 
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -19,7 +20,7 @@ from app.services.auth_service import (
 
 
 @pytest.fixture
-def mock_db():
+def mock_db() -> Any:
     """Create mock database session."""
     db = AsyncMock()
     db.add = Mock()
@@ -31,19 +32,19 @@ def mock_db():
 
 
 @pytest.fixture
-def auth_service(mock_db):
+def auth_service(mock_db: Any) -> AuthService:
     """Create AuthService instance with mock database."""
     return AuthService(mock_db)
 
 
 @pytest.fixture
-def sample_user():
+def sample_user() -> User:
     """Create sample user for testing."""
     user = User(
         id=1,
         email="test@example.com",
         username="testuser",
-        password_hash="$2b$12$hashed_password",
+        password_hash="$2b$12$hashed_password",  # pragma: allowlist secret
         is_active=True,
         is_verified=False,
         created_at=datetime.now(timezone.utc),
@@ -58,11 +59,15 @@ class TestUserRegistration:
     """Test suite for user registration."""
 
     @pytest.mark.asyncio
-    async def test_register_user_success(self, auth_service, mock_db):
+    async def test_register_user_success(
+        self, auth_service: AuthService, mock_db: Any
+    ) -> None:
         """Test successful user registration."""
         # Arrange
         user_data = UserRegister(
-            email="new@example.com", username="newuser", password="SecureP@ssw0rd123"
+            email="new@example.com",
+            username="newuser",
+            password="SecureP@ssw0rd123",  # pragma: allowlist secret
         )
 
         # Mock no existing user
@@ -72,7 +77,7 @@ class TestUserRegistration:
 
         # Act
         with patch("app.services.auth_service.hash_password") as mock_hash:
-            mock_hash.return_value = "$2b$12$hashed"
+            mock_hash.return_value = "$2b$12$hashed"  # pragma: allowlist secret
             user, access_token, refresh_token = await auth_service.register_user(
                 user_data, "127.0.0.1", "TestAgent"
             )
@@ -86,12 +91,14 @@ class TestUserRegistration:
 
     @pytest.mark.asyncio
     async def test_register_user_duplicate_email(
-        self, auth_service, mock_db, sample_user
-    ):
+        self, auth_service: AuthService, mock_db: Any, sample_user: User
+    ) -> None:
         """Test registration with existing email."""
         # Arrange
         user_data = UserRegister(
-            email="test@example.com", username="different", password="SecureP@ssw0rd123"
+            email="test@example.com",
+            username="different",
+            password="SecureP@ssw0rd123",  # pragma: allowlist secret
         )
 
         # Mock existing user with same email
@@ -104,11 +111,15 @@ class TestUserRegistration:
             await auth_service.register_user(user_data)
 
     @pytest.mark.asyncio
-    async def test_register_user_duplicate_username(self, auth_service, mock_db):
+    async def test_register_user_duplicate_username(
+        self, auth_service: AuthService, mock_db: Any
+    ) -> None:
         """Test registration with existing username."""
         # Arrange
         user_data = UserRegister(
-            email="new@example.com", username="testuser", password="SecureP@ssw0rd123"
+            email="new@example.com",
+            username="testuser",
+            password="SecureP@ssw0rd123",  # pragma: allowlist secret
         )
 
         # Mock existing user with different email but same username
@@ -116,7 +127,7 @@ class TestUserRegistration:
             id=2,
             email="different@example.com",
             username="testuser",
-            password_hash="hash",
+            password_hash="hash",  # pragma: allowlist secret
         )
 
         mock_result = Mock()
@@ -132,10 +143,15 @@ class TestUserLogin:
     """Test suite for user login."""
 
     @pytest.mark.asyncio
-    async def test_login_success(self, auth_service, mock_db, sample_user):
+    async def test_login_success(
+        self, auth_service: AuthService, mock_db: Any, sample_user: User
+    ) -> None:
         """Test successful login."""
         # Arrange
-        login_data = UserLogin(email="test@example.com", password="SecureP@ssw0rd123")
+        login_data = UserLogin(
+            email="test@example.com",
+            password="SecureP@ssw0rd123",  # pragma: allowlist secret
+        )
 
         mock_result = Mock()
         mock_result.scalar_one_or_none = Mock(return_value=sample_user)
@@ -156,24 +172,36 @@ class TestUserLogin:
         assert sample_user.last_login is not None
 
     @pytest.mark.asyncio
-    async def test_login_invalid_email(self, auth_service, mock_db):
+    async def test_login_invalid_email(
+        self, auth_service: AuthService, mock_db: Any
+    ) -> None:
         """Test login with non-existent email."""
         # Arrange
-        login_data = UserLogin(email="nonexistent@example.com", password="password")
+        login_data = UserLogin(
+            email="nonexistent@example.com",
+            password="password",  # pragma: allowlist secret
+        )
 
         mock_result = Mock()
         mock_result.scalar_one_or_none = Mock(return_value=None)
         mock_db.execute.return_value = mock_result
 
         # Act & Assert
-        with pytest.raises(AuthenticationError, match="Invalid email or password"):
+        with pytest.raises(
+            AuthenticationError, match="Invalid email or password"
+        ):  # pragma: allowlist secret
             await auth_service.login_user(login_data)
 
     @pytest.mark.asyncio
-    async def test_login_invalid_password(self, auth_service, mock_db, sample_user):
+    async def test_login_invalid_password(
+        self, auth_service: AuthService, mock_db: Any, sample_user: User
+    ) -> None:
         """Test login with incorrect password."""
         # Arrange
-        login_data = UserLogin(email="test@example.com", password="WrongPassword123!")
+        login_data = UserLogin(
+            email="test@example.com",
+            password="WrongPassword123!",  # pragma: allowlist secret
+        )
 
         mock_result = Mock()
         mock_result.scalar_one_or_none = Mock(return_value=sample_user)
@@ -182,14 +210,21 @@ class TestUserLogin:
         # Act & Assert
         with patch("app.services.auth_service.verify_password") as mock_verify:
             mock_verify.return_value = False
-            with pytest.raises(AuthenticationError, match="Invalid email or password"):
+            with pytest.raises(
+                AuthenticationError, match="Invalid email or password"
+            ):  # pragma: allowlist secret
                 await auth_service.login_user(login_data)
 
     @pytest.mark.asyncio
-    async def test_login_inactive_account(self, auth_service, mock_db, sample_user):
+    async def test_login_inactive_account(
+        self, auth_service: AuthService, mock_db: Any, sample_user: User
+    ) -> None:
         """Test login with deactivated account."""
         # Arrange
-        login_data = UserLogin(email="test@example.com", password="SecureP@ssw0rd123")
+        login_data = UserLogin(
+            email="test@example.com",
+            password="SecureP@ssw0rd123",  # pragma: allowlist secret
+        )
 
         sample_user.is_active = False
 
@@ -208,16 +243,18 @@ class TestTokenRefresh:
     """Test suite for token refresh operations."""
 
     @pytest.mark.asyncio
-    async def test_refresh_token_success(self, auth_service, mock_db, sample_user):
+    async def test_refresh_token_success(
+        self, auth_service: AuthService, mock_db: Any, sample_user: User
+    ) -> None:
         """Test successful token refresh."""
         # Arrange
-        refresh_token_string = "valid_refresh_token"
+        refresh_token_string = "valid_refresh_token"  # pragma: allowlist secret
 
         # Create mock refresh token
         refresh_token = RefreshToken(
             id=1,
             user_id=sample_user.id,
-            token_hash="hashed_token",
+            token_hash="hashed_token",  # pragma: allowlist secret
             expires_at=datetime.now(timezone.utc) + timedelta(days=7),
             is_revoked=False,
         )
@@ -229,7 +266,7 @@ class TestTokenRefresh:
 
         # Act
         with patch.object(auth_service, "_hash_token") as mock_hash:
-            mock_hash.return_value = "hashed_token"
+            mock_hash.return_value = "hashed_token"  # pragma: allowlist secret
             new_access_token, user = await auth_service.refresh_access_token(
                 refresh_token_string
             )
@@ -239,10 +276,12 @@ class TestTokenRefresh:
         assert user == sample_user
 
     @pytest.mark.asyncio
-    async def test_refresh_token_not_found(self, auth_service, mock_db):
+    async def test_refresh_token_not_found(
+        self, auth_service: AuthService, mock_db: Any
+    ) -> None:
         """Test refresh with invalid token."""
         # Arrange
-        refresh_token_string = "invalid_token"
+        refresh_token_string = "invalid_token"  # pragma: allowlist secret
 
         mock_result = Mock()
         mock_result.scalar_one_or_none = Mock(return_value=None)
@@ -250,19 +289,23 @@ class TestTokenRefresh:
 
         # Act & Assert
         with patch.object(auth_service, "_hash_token"):
-            with pytest.raises(TokenError, match="Invalid refresh token"):
+            with pytest.raises(
+                TokenError, match="Invalid refresh token"
+            ):  # pragma: allowlist secret
                 await auth_service.refresh_access_token(refresh_token_string)
 
     @pytest.mark.asyncio
-    async def test_refresh_token_revoked(self, auth_service, mock_db, sample_user):
+    async def test_refresh_token_revoked(
+        self, auth_service: AuthService, mock_db: Any, sample_user: User
+    ) -> None:
         """Test refresh with revoked token."""
         # Arrange
-        refresh_token_string = "revoked_token"
+        refresh_token_string = "revoked_token"  # pragma: allowlist secret
 
         refresh_token = RefreshToken(
             id=1,
             user_id=sample_user.id,
-            token_hash="hashed_token",
+            token_hash="hashed_token",  # pragma: allowlist secret
             expires_at=datetime.now(timezone.utc) + timedelta(days=7),
             is_revoked=True,
         )
@@ -274,20 +317,24 @@ class TestTokenRefresh:
 
         # Act & Assert
         with patch.object(auth_service, "_hash_token") as mock_hash:
-            mock_hash.return_value = "hashed_token"
-            with pytest.raises(TokenError, match="Refresh token has been revoked"):
+            mock_hash.return_value = "hashed_token"  # pragma: allowlist secret
+            with pytest.raises(
+                TokenError, match="Refresh token has been revoked"
+            ):  # pragma: allowlist secret
                 await auth_service.refresh_access_token(refresh_token_string)
 
     @pytest.mark.asyncio
-    async def test_refresh_token_expired(self, auth_service, mock_db, sample_user):
+    async def test_refresh_token_expired(
+        self, auth_service: AuthService, mock_db: Any, sample_user: User
+    ) -> None:
         """Test refresh with expired token."""
         # Arrange
-        refresh_token_string = "expired_token"
+        refresh_token_string = "expired_token"  # pragma: allowlist secret
 
         refresh_token = RefreshToken(
             id=1,
             user_id=sample_user.id,
-            token_hash="hashed_token",
+            token_hash="hashed_token",  # pragma: allowlist secret
             expires_at=datetime.now(timezone.utc) - timedelta(days=1),  # Expired
             is_revoked=False,
         )
@@ -299,24 +346,26 @@ class TestTokenRefresh:
 
         # Act & Assert
         with patch.object(auth_service, "_hash_token") as mock_hash:
-            mock_hash.return_value = "hashed_token"
-            with pytest.raises(TokenError, match="Refresh token has expired"):
+            mock_hash.return_value = "hashed_token"  # pragma: allowlist secret
+            with pytest.raises(
+                TokenError, match="Refresh token has expired"
+            ):  # pragma: allowlist secret
                 await auth_service.refresh_access_token(refresh_token_string)
 
     @pytest.mark.asyncio
     async def test_refresh_token_inactive_user(
-        self, auth_service, mock_db, sample_user
-    ):
+        self, auth_service: AuthService, mock_db: Any, sample_user: User
+    ) -> None:
         """Test refresh with inactive user account."""
         # Arrange
-        refresh_token_string = "valid_token"
+        refresh_token_string = "valid_token"  # pragma: allowlist secret
 
         sample_user.is_active = False
 
         refresh_token = RefreshToken(
             id=1,
             user_id=sample_user.id,
-            token_hash="hashed_token",
+            token_hash="hashed_token",  # pragma: allowlist secret
             expires_at=datetime.now(timezone.utc) + timedelta(days=7),
             is_revoked=False,
         )
@@ -328,7 +377,7 @@ class TestTokenRefresh:
 
         # Act & Assert
         with patch.object(auth_service, "_hash_token") as mock_hash:
-            mock_hash.return_value = "hashed_token"
+            mock_hash.return_value = "hashed_token"  # pragma: allowlist secret
             with pytest.raises(TokenError, match="User account is deactivated"):
                 await auth_service.refresh_access_token(refresh_token_string)
 
@@ -337,15 +386,17 @@ class TestTokenRevocation:
     """Test suite for token revocation (logout)."""
 
     @pytest.mark.asyncio
-    async def test_revoke_token_success(self, auth_service, mock_db):
+    async def test_revoke_token_success(
+        self, auth_service: AuthService, mock_db: Any
+    ) -> None:
         """Test successful token revocation."""
         # Arrange
-        refresh_token_string = "valid_token"
+        refresh_token_string = "valid_token"  # pragma: allowlist secret
 
         refresh_token = RefreshToken(
             id=1,
             user_id=1,
-            token_hash="hashed_token",
+            token_hash="hashed_token",  # pragma: allowlist secret
             expires_at=datetime.now(timezone.utc) + timedelta(days=7),
             is_revoked=False,
         )
@@ -356,7 +407,7 @@ class TestTokenRevocation:
 
         # Act
         with patch.object(auth_service, "_hash_token") as mock_hash:
-            mock_hash.return_value = "hashed_token"
+            mock_hash.return_value = "hashed_token"  # pragma: allowlist secret
             await auth_service.revoke_refresh_token(refresh_token_string)
 
         # Assert
@@ -365,10 +416,12 @@ class TestTokenRevocation:
         assert mock_db.commit.called
 
     @pytest.mark.asyncio
-    async def test_revoke_token_not_found(self, auth_service, mock_db):
+    async def test_revoke_token_not_found(
+        self, auth_service: AuthService, mock_db: Any
+    ) -> None:
         """Test revoke with invalid token."""
         # Arrange
-        refresh_token_string = "invalid_token"
+        refresh_token_string = "invalid_token"  # pragma: allowlist secret
 
         mock_result = Mock()
         mock_result.scalar_one_or_none = Mock(return_value=None)
@@ -376,7 +429,9 @@ class TestTokenRevocation:
 
         # Act & Assert
         with patch.object(auth_service, "_hash_token"):
-            with pytest.raises(TokenError, match="Invalid refresh token"):
+            with pytest.raises(
+                TokenError, match="Invalid refresh token"
+            ):  # pragma: allowlist secret
                 await auth_service.revoke_refresh_token(refresh_token_string)
 
 
@@ -384,7 +439,9 @@ class TestHelperMethods:
     """Test suite for helper methods."""
 
     @pytest.mark.asyncio
-    async def test_get_user_by_id_found(self, auth_service, mock_db, sample_user):
+    async def test_get_user_by_id_found(
+        self, auth_service: AuthService, mock_db: Any, sample_user: User
+    ) -> None:
         """Test get user by ID when user exists."""
         # Arrange
         mock_result = Mock()
@@ -398,7 +455,9 @@ class TestHelperMethods:
         assert user == sample_user
 
     @pytest.mark.asyncio
-    async def test_get_user_by_id_not_found(self, auth_service, mock_db):
+    async def test_get_user_by_id_not_found(
+        self, auth_service: AuthService, mock_db: Any
+    ) -> None:
         """Test get user by ID when user doesn't exist."""
         # Arrange
         mock_result = Mock()
@@ -411,10 +470,10 @@ class TestHelperMethods:
         # Assert
         assert user is None
 
-    def test_hash_token(self, auth_service):
+    def test_hash_token(self, auth_service: AuthService) -> None:
         """Test token hashing produces consistent results."""
         # Arrange
-        token = "test_token_123"
+        token = "test_token_123"  # pragma: allowlist secret
 
         # Act
         hash1 = auth_service._hash_token(token)
@@ -424,7 +483,9 @@ class TestHelperMethods:
         assert hash1 == hash2
         assert len(hash1) == 64  # SHA-256 produces 64 hex characters
 
-    def test_create_access_token(self, auth_service, sample_user):
+    def test_create_access_token(
+        self, auth_service: AuthService, sample_user: User
+    ) -> None:
         """Test access token creation."""
         # Act
         token = auth_service._create_access_token(sample_user)
@@ -439,19 +500,21 @@ class TestCleanupExpiredTokens:
     """Test suite for token cleanup operations."""
 
     @pytest.mark.asyncio
-    async def test_cleanup_expired_tokens(self, auth_service, mock_db):
+    async def test_cleanup_expired_tokens(
+        self, auth_service: AuthService, mock_db: Any
+    ) -> None:
         """Test cleanup removes expired tokens."""
         # Arrange
         expired_token1 = RefreshToken(
             id=1,
             user_id=1,
-            token_hash="hash1",
+            token_hash="hash1",  # pragma: allowlist secret
             expires_at=datetime.now(timezone.utc) - timedelta(days=1),
         )
         expired_token2 = RefreshToken(
             id=2,
             user_id=1,
-            token_hash="hash2",
+            token_hash="hash2",  # pragma: allowlist secret
             expires_at=datetime.now(timezone.utc) - timedelta(days=2),
         )
 

@@ -48,7 +48,6 @@ repos:
     hooks:
       - id: bandit
         args: ['-c', 'pyproject.toml']
-        exclude: ^tests/
 
   # General pre-commit hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks

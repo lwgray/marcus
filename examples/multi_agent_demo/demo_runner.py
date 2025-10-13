@@ -1,11 +1,10 @@
 """
-Marcus Multi-Agent Demo Runner with Experiment Tracking
+Marcus Multi-Agent Demo Runner with Experiment Tracking.
 
 This script orchestrates the complete multi-agent demo with MLflow experiment tracking.
 """
 
 import asyncio
-import json
 import time
 from datetime import datetime
 from pathlib import Path
@@ -53,11 +52,12 @@ class MultiAgentDemo:
         print("=" * 60)
 
         # Start experiment with Marcus MCP
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         result = await session.call_tool(
             "start_experiment",
             arguments={
                 "experiment_name": "marcus_multi_agent_demo",
-                "run_name": f"task_api_build_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                "run_name": f"task_api_build_{timestamp}",
                 "tags": {
                     "project_type": "rest_api",
                     "language": "python",
@@ -116,25 +116,27 @@ class MultiAgentDemo:
         )
 
         # Extract content from CallToolResult
+        import json
+
         result_dict: Dict[str, Any] = {}
-        if hasattr(result, 'content'):
+        if hasattr(result, "content"):
             content = result.content
             if isinstance(content, list) and len(content) > 0:
                 first_content = content[0]
-                if hasattr(first_content, 'text'):
-                    import json
+                if hasattr(first_content, "text"):
                     result_dict = json.loads(first_content.text)
 
         if result_dict.get("success"):
             self.project_id = result_dict.get("project_id")
             self.board_id = result_dict.get("board", {}).get("board_id")
 
-            print(f"✓ Project created successfully")
+            print("✓ Project created successfully")
             print(f"  Project ID: {self.project_id}")
             print(f"  Board ID: {self.board_id}")
             print(f"  Tasks created: {result_dict.get('tasks_created', 0)}")
         else:
-            print(f"✗ Project creation failed: {result_dict.get('error')}")
+            error_msg = result_dict.get("error")
+            print(f"✗ Project creation failed: {error_msg}")
 
         return result_dict
 
@@ -191,7 +193,7 @@ class MultiAgentDemo:
         for i, config in enumerate(agent_configs[:num_agents], 1):
             print(f"\n[{i}/{num_agents}] Registering {config['name']}...")
 
-            result = await session.call_tool("register_agent", arguments=config)
+            await session.call_tool("register_agent", arguments=config)
 
             agent_id = str(config["agent_id"])
             agent_ids.append(agent_id)
@@ -229,13 +231,14 @@ class MultiAgentDemo:
                 )
 
                 # Extract content from CallToolResult
+                import json
+
                 status: Dict[str, Any] = {}
-                if hasattr(status_result, 'content'):
+                if hasattr(status_result, "content"):
                     content = status_result.content
                     if isinstance(content, list) and len(content) > 0:
                         first_content = content[0]
-                        if hasattr(first_content, 'text'):
-                            import json
+                        if hasattr(first_content, "text"):
                             status = json.loads(first_content.text)
 
                 if status.get("current_task"):
@@ -302,12 +305,13 @@ class MultiAgentDemo:
         # Run validation script
         # (In real implementation, would call validate_api.py)
 
-        print(f"\n Results:")
+        print("\n Results:")
         print(f"  API Compliance: {results['api_compliance']}%")
         print(f"  Test Coverage: {results['test_coverage']}%")
         print(f"  Mypy Errors: {results['mypy_errors']}")
         print(f"  Endpoints Working: {results['endpoints_working']}/15")
-        print(f"  Total Time: {results['total_time_minutes']:.1f} minutes")
+        total_time = results["total_time_minutes"]
+        print(f"  Total Time: {total_time:.1f} minutes")
 
         return results
 
@@ -330,11 +334,11 @@ class MultiAgentDemo:
 
         if self.experiment_active:
             # End experiment via Marcus MCP
-            result = await session.call_tool("end_experiment", arguments={})
+            await session.call_tool("end_experiment", arguments={})
 
-            print(f"✓ Experiment ended")
-            print(f"  MLflow tracking complete")
-            print(f"  View results in MLflow UI")
+            print("✓ Experiment ended")
+            print("  MLflow tracking complete")
+            print("  View results in MLflow UI")
 
     async def run_demo(self) -> None:
         """Run the complete demo workflow."""
@@ -362,7 +366,7 @@ class MultiAgentDemo:
                 await self.create_project(session)
 
                 # Phase 3: Deploy agents
-                agent_ids = await self.deploy_agents(session, num_agents=4)
+                await self.deploy_agents(session, num_agents=4)
 
                 # Phase 4: Monitor progress (in real demo, agents would be working)
                 # await self.monitor_progress(session, agent_ids)
@@ -379,7 +383,7 @@ class MultiAgentDemo:
 
 
 async def main() -> None:
-    """Main entry point for demo runner."""
+    """Run the multi-agent demo."""
     demo_root = Path(__file__).parent
     demo = MultiAgentDemo(demo_root)
     await demo.run_demo()

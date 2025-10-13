@@ -1,8 +1,9 @@
 """
 Marcus AI Engine - Core AI coordination engine.
 
-This module implements hybrid intelligence that combines rule-based safety with AI enhancement.
-Key principle: Rules provide safety guarantees, AI provides intelligence enhancement.
+This module implements hybrid intelligence that combines rule-based safety
+with AI enhancement. Key principle: Rules provide safety guarantees, AI
+provides intelligence enhancement.
 
 The engine consists of two main components:
 1. RuleBasedEngine: Provides deterministic, safety-critical validation
@@ -214,7 +215,10 @@ class RuleBasedEngine:
                 if incomplete_tests:
                     return {
                         "valid": False,
-                        "reason": f"Deployment blocked: {len(incomplete_tests)} testing tasks incomplete",
+                        "reason": (
+                            f"Deployment blocked: {len(incomplete_tests)} "
+                            f"testing tasks incomplete"
+                        ),
                     }
 
         return {"valid": True, "reason": "All mandatory dependencies satisfied"}
@@ -409,10 +413,18 @@ class MarcusAIEngine:
             "ai_component": ai_confidence or 0.0,
         }
 
+        # Build reason string
+        ai_part = (
+            f"AI confidence: {ai_confidence:.2f}"
+            if ai_confidence
+            else "Rule-based only"
+        )
+        reason = f"Rules passed. {ai_part}"
+
         return HybridAnalysis(
             allow_assignment=True,
             confidence=final_confidence,
-            reason=f"Rules passed. {f'AI confidence: {ai_confidence:.2f}' if ai_confidence else 'Rule-based only'}",
+            reason=reason,
             ai_confidence=ai_confidence,
             ai_insights=ai_insights,
             fallback_mode=fallback_mode,

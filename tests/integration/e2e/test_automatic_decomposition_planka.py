@@ -5,10 +5,11 @@ Tests the complete workflow from project creation through task decomposition
 to checklist item creation and completion in Planka.
 """
 
-import pytest
 from datetime import datetime
-from unittest.mock import AsyncMock, Mock, MagicMock, patch
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
+import pytest
 
 from src.core.models import Priority, Task, TaskStatus
 
@@ -177,16 +178,13 @@ class TestAutomaticDecompositionPlanka:
         mock_kanban_client.create_task.side_effect = created_tasks
 
         # Mock AI decomposition
-        mock_ai_engine.generate_structured_response.return_value = (
-            sample_decomposition
-        )
+        mock_ai_engine.generate_structured_response.return_value = sample_decomposition
 
         # Mock MCP client for checklist items
-        with patch(
-            "mcp.client.stdio.stdio_client"
-        ) as mock_stdio, patch(
-            "mcp.ClientSession"
-        ) as mock_session_class:
+        with (
+            patch("mcp.client.stdio.stdio_client") as mock_stdio,
+            patch("mcp.ClientSession") as mock_session_class,
+        ):
             # Setup the context manager for stdio_client
             mock_read = AsyncMock()
             mock_write = AsyncMock()
@@ -307,14 +305,13 @@ class TestAutomaticDecompositionPlanka:
         )
 
         mock_kanban_client.create_task.return_value = created_task
-        mock_ai_engine.generate_structured_response.return_value = (
-            sample_decomposition
-        )
+        mock_ai_engine.generate_structured_response.return_value = sample_decomposition
 
         # Mock MCP client
-        with patch("mcp.client.stdio.stdio_client") as mock_stdio, patch(
-            "mcp.ClientSession"
-        ) as mock_session_class:
+        with (
+            patch("mcp.client.stdio.stdio_client") as mock_stdio,
+            patch("mcp.ClientSession") as mock_session_class,
+        ):
             # Setup the context manager for stdio_client
             mock_read = AsyncMock()
             mock_write = AsyncMock()
@@ -339,15 +336,16 @@ class TestAutomaticDecompositionPlanka:
                 "Integrate and validate Build authentication system",  # Auto integration
             ]
 
-            actual_names = [
-                call_args[0][1]["name"] for call_args in call_args_list
-            ]
+            actual_names = [call_args[0][1]["name"] for call_args in call_args_list]
 
             # Check that we got all expected names (4 total, with integration appearing twice)
             assert len(actual_names) == 4
             assert "Create User model" in actual_names
             assert "Build login endpoint" in actual_names
-            assert actual_names.count("Integrate and validate Build authentication system") == 2
+            assert (
+                actual_names.count("Integrate and validate Build authentication system")
+                == 2
+            )
 
     @pytest.mark.asyncio
     async def test_decomposition_error_handling(
@@ -408,14 +406,10 @@ class TestAutomaticDecompositionPlanka:
         )
 
         mock_kanban_client.create_task.return_value = created_task
-        mock_ai_engine.generate_structured_response.return_value = (
-            sample_decomposition
-        )
+        mock_ai_engine.generate_structured_response.return_value = sample_decomposition
 
         # Mock MCP client to raise error
-        with patch(
-            "mcp.client.stdio.stdio_client", side_effect=Exception("MCP error")
-        ):
+        with patch("mcp.client.stdio.stdio_client", side_effect=Exception("MCP error")):
             # Act - Should not raise exception
             result_tasks = await creator.create_tasks_on_board([sample_tasks[0]])
 

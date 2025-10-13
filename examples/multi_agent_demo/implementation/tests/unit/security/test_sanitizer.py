@@ -21,7 +21,9 @@ class TestSanitizeHTML:
     def test_sanitize_html_removes_script_tags(self) -> None:
         """Test that <script> tags are removed/escaped."""
         # Arrange
-        dangerous_html = "<p>Hello</p><script>alert('xss')</script>"
+        dangerous_html = (
+            "<p>Hello</p><script>alert('xss')</script>"  # pragma: allowlist secret
+        )
 
         # Act
         safe_html = sanitize_html(dangerous_html)
@@ -44,25 +46,27 @@ class TestSanitizeHTML:
     def test_sanitize_html_removes_dangerous_attributes(self) -> None:
         """Test that dangerous attributes like onclick are removed."""
         # Arrange
-        html = '<a href="#" onclick="alert(\'xss\')">Link</a>'
+        html = (
+            '<a href="#" onclick="alert(\'xss\')">Link</a>'  # pragma: allowlist secret
+        )
 
         # Act
         result = sanitize_html(html)
 
         # Assert
-        assert "onclick" not in result
+        assert "onclick" not in result  # pragma: allowlist secret
         assert '<a href="#">Link</a>' == result
 
     def test_sanitize_html_strip_mode(self) -> None:
         """Test strip mode removes disallowed tags entirely."""
         # Arrange
-        html = "<p>Keep</p><script>Remove</script>"
+        html = "<p>Keep</p><script>Remove</script>"  # pragma: allowlist secret
 
         # Act
         result = sanitize_html(html, strip=True)
 
         # Assert
-        assert "script" not in result.lower()
+        assert "script" not in result.lower()  # pragma: allowlist secret
         assert "<p>Keep</p>" in result
 
 
@@ -111,7 +115,7 @@ class TestSanitizeFilename:
     def test_sanitize_filename_removes_path_separators(self) -> None:
         """Test that path separators are removed."""
         # Arrange
-        filename = "../../etc/passwd"
+        filename = "../../etc/passwd"  # pragma: allowlist secret
 
         # Act
         result = sanitize_filename(filename)
@@ -229,7 +233,7 @@ class TestSanitizeURL:
         """Test that javascript: URLs are blocked."""
         # Act & Assert
         with pytest.raises(ValueError, match="not allowed"):
-            sanitize_url("javascript:alert('xss')")
+            sanitize_url("javascript:alert('xss')")  # pragma: allowlist secret
 
     def test_sanitize_url_requires_domain(self) -> None:
         """Test that URL must include domain."""

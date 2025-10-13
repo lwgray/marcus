@@ -8,12 +8,11 @@ database load and achieve <100ms response times.
 import hashlib
 import json
 import os
-from datetime import timedelta
 from functools import wraps
 from typing import Any, Callable, Optional, ParamSpec, TypeVar
 
 try:
-    import redis.asyncio as redis  # type: ignore[import-untyped]
+    import redis.asyncio as redis
 
     REDIS_AVAILABLE = True
 except ImportError:
@@ -40,7 +39,9 @@ class CacheClient:
     Examples
     --------
     >>> cache = CacheClient()
-    >>> await cache.set("user:123", {"name": "John", "email": "john@example.com"}, ttl=300)
+    >>> await cache.set(
+    ...     "user:123", {"name": "John", "email": "john@example.com"}, ttl=300
+    ... )
     >>> user = await cache.get("user:123")
     >>> print(user["name"])  # "John"
     """
@@ -264,7 +265,7 @@ def cached(
     key_builder: Optional[Callable[..., str]] = None,
 ) -> Callable[[Callable[P, T]], Callable[P, T]]:
     """
-    Decorator to cache function results.
+    Decorate function to cache results.
 
     Automatically caches function return values in Redis with the specified TTL.
     Subsequent calls with the same arguments return cached result.

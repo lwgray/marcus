@@ -2,19 +2,20 @@
 Unit tests for project stall analyzer.
 """
 
-import pytest
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, Mock, patch, MagicMock
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
+import pytest
+
+from src.core.models import Priority, Task, TaskStatus
 from src.marcus_mcp.tools.project_stall_analyzer import (
-    ConversationReplayAnalyzer,
-    TaskCompletionAnalyzer,
-    DependencyLockVisualizer,
     ConversationEvent,
+    ConversationReplayAnalyzer,
+    DependencyLockVisualizer,
+    TaskCompletionAnalyzer,
     TaskCompletionEvent,
 )
-from src.core.models import Task, TaskStatus, Priority
 
 
 @pytest.fixture
@@ -93,7 +94,7 @@ def sample_tasks():
     # Set completion timestamps
     for i, task in enumerate(tasks):
         if task.status == TaskStatus.DONE:
-            task.completed_at = now - timedelta(days=4-i)
+            task.completed_at = now - timedelta(days=4 - i)
 
     return tasks
 
@@ -130,15 +131,14 @@ class TestTaskCompletionAnalyzer:
 
         # Find the "Project Success" early completion
         success_completion = next(
-            (ec for ec in early_completions if "Success" in ec['task_name']),
-            None
+            (ec for ec in early_completions if "Success" in ec["task_name"]), None
         )
         assert success_completion is not None
 
         # It was 3rd of 5 tasks = 60% progress
-        assert success_completion['completion_percentage'] == 60.0
-        assert success_completion['completion_percentage'] < 80  # Threshold
-        assert success_completion['severity'] == "high"
+        assert success_completion["completion_percentage"] == 60.0
+        assert success_completion["completion_percentage"] < 80  # Threshold
+        assert success_completion["severity"] == "high"
 
 
 class TestConversationReplayAnalyzer:
@@ -199,10 +199,11 @@ class TestConversationReplayAnalyzer:
             },
         ]
 
-        with open(log_file, 'w') as f:
+        with open(log_file, "w") as f:
             for event in events:
                 import json
-                f.write(json.dumps(event) + '\n')
+
+                f.write(json.dumps(event) + "\n")
 
         return log_dir
 
@@ -229,12 +230,11 @@ class TestConversationReplayAnalyzer:
 
         # Should detect repeated "no tasks" pattern
         no_task_pattern = next(
-            (p for p in patterns if p['pattern'] == 'repeated_no_tasks'),
-            None
+            (p for p in patterns if p["pattern"] == "repeated_no_tasks"), None
         )
         assert no_task_pattern is not None
-        assert no_task_pattern['count'] == 3  # 3 "no_task_available" events
-        assert no_task_pattern['severity'] == 'high'
+        assert no_task_pattern["count"] == 3  # 3 "no_task_available" events
+        assert no_task_pattern["severity"] == "high"
 
     def test_identify_repeated_failure_pattern(self, temp_log_dir):
         """Test detection of repeated task failure pattern."""
@@ -244,13 +244,12 @@ class TestConversationReplayAnalyzer:
 
         # Should detect repeated task failure
         failure_pattern = next(
-            (p for p in patterns if p['pattern'] == 'repeated_task_failure'),
-            None
+            (p for p in patterns if p["pattern"] == "repeated_task_failure"), None
         )
         assert failure_pattern is not None
-        assert failure_pattern['task_id'] == 'task_x'
-        assert failure_pattern['count'] == 2  # Failed twice
-        assert failure_pattern['severity'] == 'high'
+        assert failure_pattern["task_id"] == "task_x"
+        assert failure_pattern["count"] == 2  # Failed twice
+        assert failure_pattern["severity"] == "high"
 
 
 class TestDependencyLockVisualizer:
@@ -266,18 +265,18 @@ class TestDependencyLockVisualizer:
         viz = visualizer.generate_lock_visualization()
 
         # Should have 1 lock (task5 blocked by task4)
-        assert viz['total_locks'] == 1
+        assert viz["total_locks"] == 1
 
         # Check lock details
-        lock = viz['locks'][0]
-        assert lock['blocked_task']['name'] == 'Documentation'
-        assert len(lock['blocking_tasks']) == 1
-        assert lock['blocking_tasks'][0]['name'] == 'Add Tests'
+        lock = viz["locks"][0]
+        assert lock["blocked_task"]["name"] == "Documentation"
+        assert len(lock["blocking_tasks"]) == 1
+        assert lock["blocking_tasks"][0]["name"] == "Add Tests"
 
         # Should have ASCII visualization
-        assert 'Dependency Lock Visualization' in viz['ascii_visualization']
-        assert 'Documentation' in viz['ascii_visualization']
-        assert 'Add Tests' in viz['ascii_visualization']
+        assert "Dependency Lock Visualization" in viz["ascii_visualization"]
+        assert "Documentation" in viz["ascii_visualization"]
+        assert "Add Tests" in viz["ascii_visualization"]
 
     def test_lock_metrics(self, sample_tasks):
         """Test lock metrics calculation."""
@@ -289,9 +288,9 @@ class TestDependencyLockVisualizer:
         viz = visualizer.generate_lock_visualization()
 
         # Check metrics
-        assert 'metrics' in viz
-        assert viz['metrics']['average_lock_depth'] == 1.0
-        assert viz['metrics']['max_lock_depth'] == 1
+        assert "metrics" in viz
+        assert viz["metrics"]["average_lock_depth"] == 1.0
+        assert viz["metrics"]["max_lock_depth"] == 1
 
 
 @pytest.mark.asyncio
@@ -316,13 +315,15 @@ class TestCaptureStallSnapshot:
 
     async def test_capture_snapshot_success(self, mock_state, sample_tasks, tmp_path):
         """Test successful snapshot capture."""
-        from src.marcus_mcp.tools.project_stall_analyzer import capture_project_stall_snapshot
+        from src.marcus_mcp.tools.project_stall_analyzer import (
+            capture_project_stall_snapshot,
+        )
 
         # Mock task retrieval
         mock_state.kanban_client.get_all_tasks = AsyncMock(return_value=sample_tasks)
 
         # Mock log directory to use temp path
-        with patch('src.marcus_mcp.tools.project_stall_analyzer.Path') as mock_path:
+        with patch("src.marcus_mcp.tools.project_stall_analyzer.Path") as mock_path:
             # Make snapshot dir point to temp path
             snapshot_dir = tmp_path / "stall_snapshots"
             snapshot_dir.mkdir()
@@ -336,24 +337,28 @@ class TestCaptureStallSnapshot:
             log_file = log_dir / "realtime_test.jsonl"
             log_file.write_text("")
 
-            with patch('src.marcus_mcp.tools.project_stall_analyzer.ConversationReplayAnalyzer') as MockAnalyzer:
+            with patch(
+                "src.marcus_mcp.tools.project_stall_analyzer.ConversationReplayAnalyzer"
+            ) as MockAnalyzer:
                 mock_analyzer = MockAnalyzer.return_value
                 mock_analyzer.load_recent_events = Mock(return_value=[])
                 mock_analyzer.identify_stall_patterns = Mock(return_value=[])
 
-                result = await capture_project_stall_snapshot(mock_state, include_conversation_hours=24)
+                result = await capture_project_stall_snapshot(
+                    mock_state, include_conversation_hours=24
+                )
 
         # Should succeed
-        assert result['success'] is True
-        assert 'snapshot' in result
-        assert 'summary' in result
+        assert result["success"] is True
+        assert "snapshot" in result
+        assert "summary" in result
 
         # Check summary
-        summary = result['summary']
-        assert 'stall_reason' in summary
-        assert 'total_issues' in summary
-        assert 'dependency_locks' in summary
-        assert 'early_completions' in summary
+        summary = result["summary"]
+        assert "stall_reason" in summary
+        assert "total_issues" in summary
+        assert "dependency_locks" in summary
+        assert "early_completions" in summary
 
         # Should detect early completion of "Project Success"
-        assert summary['early_completions'] >= 1
+        assert summary["early_completions"] >= 1

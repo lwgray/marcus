@@ -5,8 +5,9 @@ Tests that subtasks inherit the correct task type from their parent task
 when generating instructions.
 """
 
-import pytest
 from unittest.mock import AsyncMock, Mock
+
+import pytest
 
 from src.core.models import Priority, Task, TaskStatus
 from src.integrations.ai_analysis_engine import AIAnalysisEngine
@@ -95,20 +96,28 @@ class TestSubtaskInstructionType:
         agent_mock.skills = ["api", "design"]
 
         # Act
-        instructions = await ai_engine_mock.generate_task_instructions(
-            task, agent_mock
-        )
+        instructions = await ai_engine_mock.generate_task_instructions(task, agent_mock)
 
         # Assert - Design instructions should focus on planning, not coding
         instructions_lower = instructions.lower()
 
         # Should contain design-related keywords
-        design_keywords = ["design", "specification", "document", "plan", "architecture"]
-        has_design_keyword = any(keyword in instructions_lower for keyword in design_keywords)
+        design_keywords = [
+            "design",
+            "specification",
+            "document",
+            "plan",
+            "architecture",
+        ]
+        has_design_keyword = any(
+            keyword in instructions_lower for keyword in design_keywords
+        )
 
         # Should NOT contain implementation-related keywords
         impl_keywords = ["implement", "write code", "build", "coding"]
-        has_impl_keyword = any(keyword in instructions_lower for keyword in impl_keywords)
+        has_impl_keyword = any(
+            keyword in instructions_lower for keyword in impl_keywords
+        )
 
         assert has_design_keyword, (
             f"Design subtask should have design-focused instructions. "
@@ -166,16 +175,16 @@ class TestSubtaskInstructionType:
         agent_mock.skills = ["api", "python"]
 
         # Act
-        instructions = await ai_engine_mock.generate_task_instructions(
-            task, agent_mock
-        )
+        instructions = await ai_engine_mock.generate_task_instructions(task, agent_mock)
 
         # Assert - Implementation instructions should focus on coding
         instructions_lower = instructions.lower()
 
         # Should contain implementation-related keywords
         impl_keywords = ["implement", "code", "build", "create"]
-        has_impl_keyword = any(keyword in instructions_lower for keyword in impl_keywords)
+        has_impl_keyword = any(
+            keyword in instructions_lower for keyword in impl_keywords
+        )
 
         assert has_impl_keyword, (
             f"Implementation subtask should have implementation instructions. "
@@ -229,16 +238,16 @@ class TestSubtaskInstructionType:
         agent_mock.skills = ["testing", "pytest"]
 
         # Act
-        instructions = await ai_engine_mock.generate_task_instructions(
-            task, agent_mock
-        )
+        instructions = await ai_engine_mock.generate_task_instructions(task, agent_mock)
 
         # Assert - Testing instructions should focus on writing tests
         instructions_lower = instructions.lower()
 
         # Should contain testing-related keywords
         test_keywords = ["test", "coverage", "unit", "integration"]
-        has_test_keyword = any(keyword in instructions_lower for keyword in test_keywords)
+        has_test_keyword = any(
+            keyword in instructions_lower for keyword in test_keywords
+        )
 
         assert has_test_keyword, (
             f"Testing subtask should have testing instructions. "

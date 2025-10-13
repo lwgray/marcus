@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Quick Start Script for Marcus Multi-Agent Demo
+Quick Start Script for Marcus Multi-Agent Demo.
 
 This script helps you quickly create the project in Marcus and get started.
 """
@@ -72,21 +72,24 @@ async def create_marcus_project() -> None:
 
                 # Extract content from CallToolResult
                 result_dict = {}
-                if hasattr(result, 'content'):
+                if hasattr(result, "content"):
                     content = result.content
                     if isinstance(content, list) and len(content) > 0:
                         first_content = content[0]
-                        if hasattr(first_content, 'text'):
+                        if hasattr(first_content, "text"):
                             import json
+
                             result_dict = json.loads(first_content.text)
 
                 print("\n" + "=" * 60)
                 if result_dict.get("success"):
                     print("✅ PROJECT CREATED SUCCESSFULLY!")
                     print("=" * 60)
-                    print(f"\n📊 Project Details:")
+                    print("\n📊 Project Details:")
                     print(f"   Project ID: {result_dict.get('project_id')}")
-                    print(f"   Board ID: {result_dict.get('board', {}).get('board_id')}")
+                    print(
+                        f"   Board ID: {result_dict.get('board', {}).get('board_id')}"
+                    )
                     print(f"   Tasks Created: {result_dict.get('tasks_created', 0)}")
 
                     board_info = result_dict.get("board", {})
@@ -154,11 +157,12 @@ async def start_experiment_tracking() -> None:
             async with ClientSession(read, write) as session:
                 await session.initialize()
 
-                result = await session.call_tool(
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                await session.call_tool(
                     "start_experiment",
                     arguments={
                         "experiment_name": "marcus_multi_agent_demo",
-                        "run_name": f"task_api_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                        "run_name": f"task_api_{timestamp}",
                         "tags": {
                             "project_type": "rest_api",
                             "framework": "fastapi",
@@ -173,7 +177,7 @@ async def start_experiment_tracking() -> None:
                 )
 
                 print("✓ Experiment tracking started")
-                print(f"  View in MLflow UI: http://localhost:5000")
+                print("  View in MLflow UI: http://localhost:5000")
 
     except Exception as e:
         print(f"⚠️  Experiment tracking failed: {e}")
@@ -181,7 +185,11 @@ async def start_experiment_tracking() -> None:
 
 
 async def main() -> None:
-    """Main entry point."""
+    """
+    Run quick start script.
+
+    Creates project and optionally starts experiment tracking.
+    """
     import argparse
 
     parser = argparse.ArgumentParser(

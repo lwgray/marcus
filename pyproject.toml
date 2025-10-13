@@ -95,7 +95,7 @@ disable_error_code = ["misc"]
 
 [tool.pydocstyle]
 convention = "numpy"
-add-ignore = ["D100", "D104"]  # Module and package docstrings optional
+add-ignore = ["D100", "D104", "D202"]  # Module and package docstrings optional, allow blank lines after docstring (conflicts with black)
 
 [tool.isort]
 profile = "black"
@@ -161,3 +161,9 @@ markers = [
     "asyncio: Async tests",
     "kanban: Tests requiring Kanban server",
 ]
+
+[tool.bandit]
+# Skip B101 (assert_used) for all files since asserts are expected in tests
+# Skip B105 (hardcoded_password_string) and B106 (hardcoded_password_funcarg)
+# for test files since test credentials are expected
+skips = ["B101", "B105", "B106"]

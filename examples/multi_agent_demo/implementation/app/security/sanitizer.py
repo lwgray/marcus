@@ -50,7 +50,7 @@ def sanitize_html(
     allowed_attributes: Optional[dict[str, List[str]]] = None,
     strip: bool = False,
 ) -> str:
-    """
+    r"""
     Sanitize HTML content to prevent XSS attacks.
 
     Parameters
@@ -151,7 +151,7 @@ def sanitize_text(text: str, max_length: Optional[int] = None) -> str:
 
 
 def sanitize_filename(filename: str, replacement: str = "_") -> str:
-    """
+    r"""
     Sanitize a filename to prevent path traversal attacks.
 
     Parameters
@@ -319,7 +319,7 @@ def sanitize_url(url: str, allowed_schemes: Optional[List[str]] = None) -> str:
 
 
 def escape_sql_like(value: str, escape_char: str = "\\") -> str:
-    """
+    r"""
     Escape special characters for SQL LIKE queries.
 
     Parameters
@@ -340,7 +340,9 @@ def escape_sql_like(value: str, escape_char: str = "\\") -> str:
     '50\\\\%\\\\_discount'
 
     >>> # Use in SQLAlchemy query
-    >>> # User.query.filter(User.username.like(f"%{escape_sql_like(search)}%", escape="\\\\"))
+    >>> # User.query.filter(
+    >>> #     User.username.like(f"%{escape_sql_like(search)}%", escape="\\\\")
+    >>> # )
 
     Notes
     -----

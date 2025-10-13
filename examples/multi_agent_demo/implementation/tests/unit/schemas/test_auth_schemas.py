@@ -23,144 +23,159 @@ from pydantic import ValidationError
 class TestUserRegisterSchema:
     """Test suite for user registration schema validation."""
 
-    def test_valid_registration(self):
+    def test_valid_registration(self) -> None:
         """Test valid registration data."""
         # Arrange & Act
         user = UserRegister(
-            email="test@example.com", username="testuser", password="SecureP@ssw0rd123"
+            email="test@example.com",
+            username="testuser",
+            password="SecureP@ssw0rd123",  # pragma: allowlist secret
         )
 
         # Assert
         assert user.email == "test@example.com"
         assert user.username == "testuser"
-        assert user.password == "SecureP@ssw0rd123"
+        assert user.password == "SecureP@ssw0rd123"  # pragma: allowlist secret
 
-    def test_invalid_email_format(self):
+    def test_invalid_email_format(self) -> None:
         """Test registration with invalid email."""
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
             UserRegister(
-                email="invalid-email", username="testuser", password="SecureP@ssw0rd123"
+                email="invalid-email",
+                username="testuser",
+                password="SecureP@ssw0rd123",  # pragma: allowlist secret
             )
 
         assert "email" in str(exc_info.value)
 
-    def test_username_too_short(self):
+    def test_username_too_short(self) -> None:
         """Test registration with username < 3 characters."""
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
             UserRegister(
-                email="test@example.com", username="ab", password="SecureP@ssw0rd123"
+                email="test@example.com",
+                username="ab",
+                password="SecureP@ssw0rd123",  # pragma: allowlist secret
             )
 
         assert "username" in str(exc_info.value)
 
-    def test_username_too_long(self):
+    def test_username_too_long(self) -> None:
         """Test registration with username > 50 characters."""
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
             UserRegister(
                 email="test@example.com",
                 username="a" * 51,
-                password="SecureP@ssw0rd123",
+                password="SecureP@ssw0rd123",  # pragma: allowlist secret
             )
 
         assert "username" in str(exc_info.value)
 
-    def test_username_invalid_characters(self):
+    def test_username_invalid_characters(self) -> None:
         """Test registration with invalid username characters."""
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
             UserRegister(
                 email="test@example.com",
                 username="test-user!",
-                password="SecureP@ssw0rd123",
+                password="SecureP@ssw0rd123",  # pragma: allowlist secret
             )
 
         assert "username" in str(exc_info.value)
 
-    def test_password_too_short(self):
+    def test_password_too_short(self) -> None:
         """Test registration with password < 8 characters."""
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
             UserRegister(
-                email="test@example.com", username="testuser", password="Short1!"
+                email="test@example.com",
+                username="testuser",
+                password="Short1!",  # pragma: allowlist secret
             )
 
         assert "password" in str(exc_info.value)
 
-    def test_password_too_long(self):
+    def test_password_too_long(self) -> None:
         """Test registration with password > 128 characters."""
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
             UserRegister(
                 email="test@example.com",
                 username="testuser",
-                password="A1!" + "a" * 126,
+                password="A1!" + "a" * 126,  # pragma: allowlist secret
             )
 
         assert "password" in str(exc_info.value)
 
-    def test_password_missing_uppercase(self):
+    def test_password_missing_uppercase(self) -> None:
         """Test password without uppercase letter."""
         # Act & Assert
         with pytest.raises(ValidationError, match="uppercase"):
             UserRegister(
                 email="test@example.com",
                 username="testuser",
-                password="securep@ssw0rd123",
+                password="securep@ssw0rd123",  # pragma: allowlist secret
             )
 
-    def test_password_missing_lowercase(self):
+    def test_password_missing_lowercase(self) -> None:
         """Test password without lowercase letter."""
         # Act & Assert
         with pytest.raises(ValidationError, match="lowercase"):
             UserRegister(
                 email="test@example.com",
                 username="testuser",
-                password="SECUREP@SSW0RD123",
+                password="SECUREP@SSW0RD123",  # pragma: allowlist secret
             )
 
-    def test_password_missing_digit(self):
+    def test_password_missing_digit(self) -> None:
         """Test password without digit."""
         # Act & Assert
         with pytest.raises(ValidationError, match="digit"):
             UserRegister(
-                email="test@example.com", username="testuser", password="SecureP@ssword"
+                email="test@example.com",
+                username="testuser",
+                password="SecureP@ssword",  # pragma: allowlist secret
             )
 
-    def test_password_missing_special(self):
+    def test_password_missing_special(self) -> None:
         """Test password without special character."""
         # Act & Assert
         with pytest.raises(ValidationError, match="special character"):
             UserRegister(
                 email="test@example.com",
                 username="testuser",
-                password="SecurePassword123",
+                password="SecurePassword123",  # pragma: allowlist secret
             )
 
 
 class TestUserLoginSchema:
     """Test suite for user login schema validation."""
 
-    def test_valid_login(self):
+    def test_valid_login(self) -> None:
         """Test valid login data."""
         # Arrange & Act
-        login = UserLogin(email="test@example.com", password="any_password")
+        login = UserLogin(
+            email="test@example.com",
+            password="any_password",  # pragma: allowlist secret
+        )
 
         # Assert
         assert login.email == "test@example.com"
-        assert login.password == "any_password"
+        assert login.password == "any_password"  # pragma: allowlist secret
 
-    def test_invalid_email(self):
+    def test_invalid_email(self) -> None:
         """Test login with invalid email format."""
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
-            UserLogin(email="not-an-email", password="password")
+            UserLogin(
+                email="not-an-email", password="password"  # pragma: allowlist secret
+            )
 
         assert "email" in str(exc_info.value)
 
-    def test_missing_password(self):
+    def test_missing_password(self) -> None:
         """Test login without password."""
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
@@ -172,15 +187,17 @@ class TestUserLoginSchema:
 class TestTokenRefreshSchema:
     """Test suite for token refresh schema validation."""
 
-    def test_valid_refresh_token(self):
+    def test_valid_refresh_token(self) -> None:
         """Test valid refresh token data."""
         # Arrange & Act
-        refresh = TokenRefresh(refresh_token="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...")
+        refresh = TokenRefresh(
+            refresh_token="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        )  # pragma: allowlist secret
 
         # Assert
         assert refresh.refresh_token.startswith("eyJh")
 
-    def test_missing_refresh_token(self):
+    def test_missing_refresh_token(self) -> None:
         """Test refresh without token."""
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
@@ -192,7 +209,7 @@ class TestTokenRefreshSchema:
 class TestUserResponseSchema:
     """Test suite for user response schema."""
 
-    def test_valid_user_response(self):
+    def test_valid_user_response(self) -> None:
         """Test valid user response data."""
         # Arrange & Act
         user = UserResponse(
@@ -213,7 +230,7 @@ class TestUserResponseSchema:
         assert user.is_verified is False
         assert user.last_login is None
 
-    def test_user_response_with_last_login(self):
+    def test_user_response_with_last_login(self) -> None:
         """Test user response with last login timestamp."""
         # Arrange
         now = datetime.now()
@@ -236,7 +253,7 @@ class TestUserResponseSchema:
 class TestTokenDataSchema:
     """Test suite for token data schema."""
 
-    def test_valid_token_data(self):
+    def test_valid_token_data(self) -> None:
         """Test valid token data structure."""
         # Arrange
         user = UserResponse(
@@ -250,21 +267,25 @@ class TestTokenDataSchema:
 
         # Act
         token_data = TokenData(
-            access_token="access_token_string",
-            refresh_token="refresh_token_string",
+            access_token="access_token_string",  # pragma: allowlist secret
+            refresh_token="refresh_token_string",  # pragma: allowlist secret
             token_type="Bearer",
             expires_in=900,
             user=user,
         )
 
         # Assert
-        assert token_data.access_token == "access_token_string"
-        assert token_data.refresh_token == "refresh_token_string"
+        assert (
+            token_data.access_token == "access_token_string"
+        )  # pragma: allowlist secret
+        assert (
+            token_data.refresh_token == "refresh_token_string"
+        )  # pragma: allowlist secret
         assert token_data.token_type == "Bearer"
         assert token_data.expires_in == 900
         assert token_data.user.id == 1
 
-    def test_token_data_default_type(self):
+    def test_token_data_default_type(self) -> None:
         """Test token data with default Bearer type."""
         # Arrange
         user = UserResponse(
@@ -278,7 +299,10 @@ class TestTokenDataSchema:
 
         # Act
         token_data = TokenData(
-            access_token="access", refresh_token="refresh", expires_in=900, user=user
+            access_token="access",
+            refresh_token="refresh",
+            expires_in=900,
+            user=user,  # pragma: allowlist secret
         )
 
         # Assert
@@ -288,7 +312,7 @@ class TestTokenDataSchema:
 class TestTokenResponseSchema:
     """Test suite for token response schema."""
 
-    def test_valid_token_response(self):
+    def test_valid_token_response(self) -> None:
         """Test valid token response structure."""
         # Arrange
         user = UserResponse(
@@ -301,8 +325,8 @@ class TestTokenResponseSchema:
         )
 
         token_data = TokenData(
-            access_token="access",
-            refresh_token="refresh",
+            access_token="access",  # pragma: allowlist secret
+            refresh_token="refresh",  # pragma: allowlist secret
             token_type="Bearer",
             expires_in=900,
             user=user,
@@ -316,13 +340,13 @@ class TestTokenResponseSchema:
         # Assert
         assert response.success is True
         assert response.message == "Login successful"
-        assert response.data.access_token == "access"
+        assert response.data.access_token == "access"  # pragma: allowlist secret
 
 
 class TestErrorResponseSchema:
     """Test suite for error response schema."""
 
-    def test_error_response_basic(self):
+    def test_error_response_basic(self) -> None:
         """Test basic error response."""
         # Act
         error = ErrorResponse(success=False, error="Something went wrong")
@@ -332,7 +356,7 @@ class TestErrorResponseSchema:
         assert error.error == "Something went wrong"
         assert error.details is None
 
-    def test_error_response_with_details(self):
+    def test_error_response_with_details(self) -> None:
         """Test error response with details."""
         # Act
         error = ErrorResponse(
@@ -349,15 +373,17 @@ class TestErrorResponseSchema:
 class TestLogoutRequestSchema:
     """Test suite for logout request schema."""
 
-    def test_valid_logout_request(self):
+    def test_valid_logout_request(self) -> None:
         """Test valid logout request."""
         # Act
-        logout = LogoutRequest(refresh_token="token_to_revoke")
+        logout = LogoutRequest(
+            refresh_token="token_to_revoke"
+        )  # pragma: allowlist secret
 
         # Assert
-        assert logout.refresh_token == "token_to_revoke"
+        assert logout.refresh_token == "token_to_revoke"  # pragma: allowlist secret
 
-    def test_missing_refresh_token(self):
+    def test_missing_refresh_token(self) -> None:
         """Test logout without token."""
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:

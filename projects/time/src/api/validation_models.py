@@ -8,7 +8,7 @@ helpful error messages that guide users to provide correct input.
 import re
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -271,7 +271,8 @@ class TaskCreate(BaseModel):
                 if not re.match(r"^[a-zA-Z0-9_-]+$", tag):
                     raise ValueError(
                         f"Tag '{tag}' contains invalid characters. "
-                        "Tags can only contain letters, numbers, hyphens, and underscores."
+                        "Tags can only contain letters, numbers, "
+                        "hyphens, and underscores."
                     )
 
             return cleaned_tags
@@ -412,8 +413,7 @@ class TaskUpdate(BaseModel):
     def at_least_one_field(self) -> "TaskUpdate":
         """Ensure at least one field is being updated."""
         if not any(
-            getattr(self, field) is not None
-            for field in self.model_fields.keys()
+            getattr(self, field) is not None for field in self.model_fields.keys()
         ):
             raise ValueError(
                 "Please provide at least one field to update. "
@@ -598,7 +598,7 @@ class UserRegistration(BaseModel):
             "example": {
                 "email": "user@example.com",
                 "username": "johndoe",
-                "password": "SecurePass123!",
+                "password": "SecurePass123!",  # pragma: allowlist secret
                 "full_name": "John Doe",
                 "timezone": "America/New_York",
             }

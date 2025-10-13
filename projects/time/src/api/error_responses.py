@@ -116,7 +116,7 @@ class UserFriendlyError:
         Dict[str, Any]
             Error data as dictionary
         """
-        response = {
+        response: Dict[str, Any] = {
             "error": self.error,
             "message": self.message,
             "request_id": self.request_id,
@@ -427,16 +427,26 @@ def make_field_error_user_friendly(field: str, error_type: str) -> str:
     field_label = field.replace("_", " ").title()
 
     error_messages = {
-        "value_error.missing": f"{field_label} is required and cannot be empty.",
+        "value_error.missing": (f"{field_label} is required and cannot be empty."),
         "type_error.integer": f"{field_label} must be a valid number.",
         "type_error.string": f"{field_label} must be text.",
-        "type_error.datetime": f"{field_label} must be a valid date and time.",
-        "value_error.email": "Please enter a valid email address (e.g., user@example.com).",
-        "value_error.url": "Please enter a valid URL (e.g., https://example.com).",
-        "value_error.number.not_ge": f"{field_label} must be greater than or equal to the minimum value.",
-        "value_error.number.not_le": f"{field_label} must be less than or equal to the maximum value.",
-        "value_error.str.max_length": f"{field_label} is too long. Please shorten it.",
-        "value_error.str.min_length": f"{field_label} is too short. Please add more detail.",
+        "type_error.datetime": (f"{field_label} must be a valid date and time."),
+        "value_error.email": (
+            "Please enter a valid email address (e.g., user@example.com)."
+        ),
+        "value_error.url": ("Please enter a valid URL (e.g., https://example.com)."),
+        "value_error.number.not_ge": (
+            f"{field_label} must be greater than or equal to " "the minimum value."
+        ),
+        "value_error.number.not_le": (
+            f"{field_label} must be less than or equal to " "the maximum value."
+        ),
+        "value_error.str.max_length": (
+            f"{field_label} is too long. Please shorten it."
+        ),
+        "value_error.str.min_length": (
+            f"{field_label} is too short. Please add more detail."
+        ),
     }
 
     return error_messages.get(

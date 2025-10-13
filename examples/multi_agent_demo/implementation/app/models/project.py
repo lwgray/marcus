@@ -102,7 +102,7 @@ class Project(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        """String representation of Project."""
+        """Return string representation of Project."""
         return (
             f"<Project(id={self.id}, name='{self.name}', created_by={self.created_by})>"
         )

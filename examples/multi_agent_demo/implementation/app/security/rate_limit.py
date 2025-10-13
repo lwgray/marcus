@@ -19,7 +19,9 @@ RATE_LIMIT_STORAGE_URL = os.getenv("RATE_LIMIT_STORAGE_URL", "memory://")
 # Default rate limits
 DEFAULT_RATE_LIMIT = "200 per hour"
 AUTH_RATE_LIMIT = "5 per minute"  # Strict for login/register
-PASSWORD_RESET_LIMIT = "3 per hour"  # Very strict for password reset
+PASSWORD_RESET_LIMIT = (  # nosec B105
+    "3 per hour"  # Very strict for password reset  # pragma: allowlist secret
+)
 
 
 def get_identifier(request: Optional[Request] = None) -> str:
@@ -96,7 +98,7 @@ def configure_rate_limiting(app: Flask) -> Limiter:
 
 def auth_rate_limit() -> Callable[..., Any]:
     """
-    Decorator for authentication endpoints with strict rate limiting.
+    Decorate authentication endpoints with strict rate limiting.
 
     Returns
     -------
@@ -117,12 +119,12 @@ def auth_rate_limit() -> Callable[..., Any]:
     - Prevents brute-force password attacks
     - Applies per IP address or user
     """
-    return limiter.limit(AUTH_RATE_LIMIT)
+    return limiter.limit(AUTH_RATE_LIMIT)  # type: ignore[no-any-return]
 
 
 def password_reset_rate_limit() -> Callable[..., Any]:
     """
-    Decorator for password reset endpoints with very strict rate limiting.
+    Decorate password reset endpoints with very strict rate limiting.
 
     Returns
     -------
@@ -143,7 +145,7 @@ def password_reset_rate_limit() -> Callable[..., Any]:
     - Prevents email flooding and abuse
     - Very strict to protect against DoS
     """
-    return limiter.limit(PASSWORD_RESET_LIMIT)
+    return limiter.limit(PASSWORD_RESET_LIMIT)  # type: ignore[no-any-return]
 
 
 def custom_rate_limit(limit_string: str) -> Callable[..., Any]:
@@ -175,7 +177,7 @@ def custom_rate_limit(limit_string: str) -> Callable[..., Any]:
     - Supports: second, minute, hour, day units
     - Can combine multiple limits: "5/minute;100/hour"
     """
-    return limiter.limit(limit_string)
+    return limiter.limit(limit_string)  # type: ignore[no-any-return]
 
 
 def exempt_from_rate_limit(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -205,7 +207,7 @@ def exempt_from_rate_limit(func: Callable[..., Any]) -> Callable[..., Any]:
     - Does not apply default or custom limits
     - Still counts towards storage if using shared backend
     """
-    return limiter.exempt(func)
+    return limiter.exempt(func)  # type: ignore[no-any-return]
 
 
 class RateLimitExceeded(Exception):

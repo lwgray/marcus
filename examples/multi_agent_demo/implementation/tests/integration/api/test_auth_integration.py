@@ -8,17 +8,18 @@ Tests end-to-end authentication flows including:
 - Protected endpoint access with JWT verification
 """
 
-from datetime import timedelta
+from typing import Dict
 
 import pytest
 from app.schemas.auth import UserLogin, UserRegister
-from app.security.jwt_handler import TokenExpiredError, verify_token
+from app.security.jwt_handler import verify_token
 from app.security.password import verify_password
 from app.services.auth_service import (
     AuthenticationError,
     AuthService,
     UserAlreadyExistsError,
 )
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class TestUserRegistrationIntegration:
@@ -27,8 +28,8 @@ class TestUserRegistrationIntegration:
     @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_register_user_creates_database_record(
-        self, db_session, sample_user_data
-    ):
+        self, db_session: AsyncSession, sample_user_data: Dict[str, str]
+    ) -> None:
         """
         Test that user registration creates a valid database record.
 
@@ -43,9 +44,13 @@ class TestUserRegistrationIntegration:
         user_data = UserRegister(**sample_user_data)
 
         # Act
-        user, access_token, refresh_token = await auth_service.register_user(
-            user_data, ip_address="127.0.0.1", user_agent="TestAgent/1.0"
-        )
+        user, access_token, refresh_token = (
+            await auth_service.register_user(  # pragma: allowlist secret
+                user_data,
+                ip_address="127.0.0.1",
+                user_agent="TestAgent/1.0",  # pragma: allowlist secret
+            )
+        )  # pragma: allowlist secret
 
         # Assert - User was created
         assert user.id is not None
@@ -55,15 +60,19 @@ class TestUserRegistrationIntegration:
         assert user.is_verified is False
 
         # Assert - Password was hashed
-        assert user.password_hash != sample_user_data["password"]
-        assert verify_password(sample_user_data["password"], user.password_hash)
+        assert (
+            user.password_hash != sample_user_data["password"]
+        )  # pragma: allowlist secret
+        assert verify_password(
+            sample_user_data["password"], user.password_hash
+        )  # pragma: allowlist secret
 
         # Assert - Tokens were generated
-        assert access_token is not None
-        assert refresh_token is not None
+        assert access_token is not None  # pragma: allowlist secret
+        assert refresh_token is not None  # pragma: allowlist secret
 
         # Assert - Access token contains user data
-        payload = verify_token(access_token)
+        payload = verify_token(access_token)  # pragma: allowlist secret
         assert payload["user_id"] == user.id
         assert payload["sub"] == user.username
 
@@ -74,7 +83,9 @@ class TestUserRegistrationIntegration:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    async def test_register_duplicate_email_fails(self, db_session, sample_user_data):
+    async def test_register_duplicate_email_fails(
+        self, db_session: AsyncSession, sample_user_data: Dict[str, str]
+    ) -> None:
         """
         Test that duplicate email registration fails.
 
@@ -94,8 +105,8 @@ class TestUserRegistrationIntegration:
     @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_register_duplicate_username_fails(
-        self, db_session, sample_user_data
-    ):
+        self, db_session: AsyncSession, sample_user_data: Dict[str, str]
+    ) -> None:
         """
         Test that duplicate username registration fails.
 
@@ -124,8 +135,11 @@ class TestUserLoginIntegration:
     @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_login_with_valid_credentials(
-        self, db_session, sample_user_data, sample_login_data
-    ):
+        self,
+        db_session: AsyncSession,
+        sample_user_data: Dict[str, str],
+        sample_login_data: Dict[str, str],
+    ) -> None:
         """
         Test successful login with valid credentials.
 
@@ -137,45 +151,58 @@ class TestUserLoginIntegration:
         # Arrange - Register user first
         auth_service = AuthService(db_session)
         user_reg_data = UserRegister(**sample_user_data)
-        registered_user, _, _ = await auth_service.register_user(user_reg_data)
+        registered_user, _, _ = await auth_service.register_user(
+            user_reg_data
+        )  # pragma: allowlist secret
 
         login_data = UserLogin(**sample_login_data)
 
         # Act - Login
-        user, access_token, refresh_token = await auth_service.login_user(
-            login_data, ip_address="127.0.0.1", user_agent="TestAgent/1.0"
-        )
+        user, access_token, refresh_token = (
+            await auth_service.login_user(  # pragma: allowlist secret
+                login_data,
+                ip_address="127.0.0.1",
+                user_agent="TestAgent/1.0",  # pragma: allowlist secret
+            )
+        )  # pragma: allowlist secret
 
         # Assert - Login successful
         assert user.id == registered_user.id
         assert user.email == sample_login_data["email"]
-        assert access_token is not None
-        assert refresh_token is not None
+        assert access_token is not None  # pragma: allowlist secret
+        assert refresh_token is not None  # pragma: allowlist secret
 
         # Assert - Last login was updated
         assert user.last_login is not None
 
         # Assert - Token contains correct user data
-        payload = verify_token(access_token)
+        payload = verify_token(access_token)  # pragma: allowlist secret
         assert payload["user_id"] == user.id
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    async def test_login_with_invalid_email(self, db_session, sample_login_data):
+    async def test_login_with_invalid_email(
+        self, db_session: AsyncSession, sample_login_data: Dict[str, str]
+    ) -> None:
         """Test login fails with non-existent email."""
         # Arrange
         auth_service = AuthService(db_session)
         login_data = UserLogin(**sample_login_data)
 
         # Act & Assert
-        with pytest.raises(AuthenticationError, match="Invalid email or password"):
+        with pytest.raises(
+            AuthenticationError, match="Invalid email or password"
+        ):  # pragma: allowlist secret
             await auth_service.login_user(login_data)
 
     @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_login_with_incorrect_password(
-        self, db_session, sample_user_data, sample_login_data
-    ):
+        self,
+        db_session: AsyncSession,
+        sample_user_data: Dict[str, str],
+        sample_login_data: Dict[str, str],
+    ) -> None:
         """Test login fails with incorrect password."""
         # Arrange - Register user
         auth_service = AuthService(db_session)
@@ -188,19 +215,26 @@ class TestUserLoginIntegration:
         login_data = UserLogin(**wrong_login_data)
 
         # Act & Assert
-        with pytest.raises(AuthenticationError, match="Invalid email or password"):
+        with pytest.raises(
+            AuthenticationError, match="Invalid email or password"
+        ):  # pragma: allowlist secret
             await auth_service.login_user(login_data)
 
     @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_login_inactive_user_fails(
-        self, db_session, sample_user_data, sample_login_data
-    ):
+        self,
+        db_session: AsyncSession,
+        sample_user_data: Dict[str, str],
+        sample_login_data: Dict[str, str],
+    ) -> None:
         """Test login fails for deactivated user."""
         # Arrange - Register and deactivate user
         auth_service = AuthService(db_session)
         user_reg_data = UserRegister(**sample_user_data)
-        user, _, _ = await auth_service.register_user(user_reg_data)
+        user, _, _ = await auth_service.register_user(
+            user_reg_data
+        )  # pragma: allowlist secret
 
         # Deactivate user
         user.is_active = False
@@ -219,8 +253,8 @@ class TestTokenRefreshIntegration:
     @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_refresh_token_generates_new_access_token(
-        self, db_session, sample_user_data
-    ):
+        self, db_session: AsyncSession, sample_user_data: Dict[str, str]
+    ) -> None:
         """
         Test that refresh token generates a new access token.
 
@@ -232,18 +266,22 @@ class TestTokenRefreshIntegration:
         # Arrange - Register user
         auth_service = AuthService(db_session)
         user_reg_data = UserRegister(**sample_user_data)
-        user, _, refresh_token = await auth_service.register_user(user_reg_data)
+        user, _, refresh_token = await auth_service.register_user(
+            user_reg_data
+        )  # pragma: allowlist secret
 
         # Act - Refresh access token
-        new_access_token, refreshed_user = await auth_service.refresh_access_token(
-            refresh_token
-        )
+        new_access_token, refreshed_user = (
+            await auth_service.refresh_access_token(  # pragma: allowlist secret
+                refresh_token  # pragma: allowlist secret
+            )
+        )  # pragma: allowlist secret
 
         # Assert - New token was generated
-        assert new_access_token is not None
+        assert new_access_token is not None  # pragma: allowlist secret
 
         # Assert - New token is valid
-        payload = verify_token(new_access_token)
+        payload = verify_token(new_access_token)  # pragma: allowlist secret
         assert payload["user_id"] == user.id
         assert payload["sub"] == user.username
 
@@ -252,21 +290,29 @@ class TestTokenRefreshIntegration:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    async def test_revoked_refresh_token_fails(self, db_session, sample_user_data):
+    async def test_revoked_refresh_token_fails(
+        self, db_session: AsyncSession, sample_user_data: Dict[str, str]
+    ) -> None:
         """Test that revoked refresh tokens cannot be used."""
         # Arrange - Register user
         auth_service = AuthService(db_session)
         user_reg_data = UserRegister(**sample_user_data)
-        user, _, refresh_token = await auth_service.register_user(user_reg_data)
+        user, _, refresh_token = await auth_service.register_user(
+            user_reg_data
+        )  # pragma: allowlist secret
 
         # Revoke the token
-        await auth_service.revoke_refresh_token(refresh_token)
+        await auth_service.revoke_refresh_token(
+            refresh_token
+        )  # pragma: allowlist secret
 
         # Act & Assert - Try to use revoked token
         from app.services.auth_service import TokenError
 
         with pytest.raises(TokenError, match="revoked"):
-            await auth_service.refresh_access_token(refresh_token)
+            await auth_service.refresh_access_token(
+                refresh_token
+            )  # pragma: allowlist secret
 
 
 class TestTokenRevocationIntegration:
@@ -274,7 +320,9 @@ class TestTokenRevocationIntegration:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    async def test_logout_revokes_refresh_token(self, db_session, sample_user_data):
+    async def test_logout_revokes_refresh_token(
+        self, db_session: AsyncSession, sample_user_data: Dict[str, str]
+    ) -> None:
         """
         Test that logout properly revokes refresh token.
 
@@ -285,16 +333,22 @@ class TestTokenRevocationIntegration:
         # Arrange - Register user
         auth_service = AuthService(db_session)
         user_reg_data = UserRegister(**sample_user_data)
-        user, _, refresh_token = await auth_service.register_user(user_reg_data)
+        user, _, refresh_token = await auth_service.register_user(
+            user_reg_data
+        )  # pragma: allowlist secret
 
         # Act - Logout (revoke token)
-        await auth_service.revoke_refresh_token(refresh_token)
+        await auth_service.revoke_refresh_token(
+            refresh_token
+        )  # pragma: allowlist secret
 
         # Assert - Token is revoked and cannot be used
         from app.services.auth_service import TokenError
 
         with pytest.raises(TokenError, match="revoked"):
-            await auth_service.refresh_access_token(refresh_token)
+            await auth_service.refresh_access_token(
+                refresh_token
+            )  # pragma: allowlist secret
 
 
 class TestEndToEndAuthFlow:
@@ -303,8 +357,11 @@ class TestEndToEndAuthFlow:
     @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_complete_authentication_workflow(
-        self, db_session, sample_user_data, sample_login_data
-    ):
+        self,
+        db_session: AsyncSession,
+        sample_user_data: Dict[str, str],
+        sample_login_data: Dict[str, str],
+    ) -> None:
         """
         Test complete authentication workflow: register → login → refresh → logout.
 
@@ -315,32 +372,44 @@ class TestEndToEndAuthFlow:
 
         # Step 1: Register
         user_reg_data = UserRegister(**sample_user_data)
-        user, reg_access_token, reg_refresh_token = await auth_service.register_user(
-            user_reg_data
-        )
+        user, reg_access_token, reg_refresh_token = (
+            await auth_service.register_user(  # pragma: allowlist secret
+                user_reg_data  # pragma: allowlist secret
+            )
+        )  # pragma: allowlist secret
         assert user.id is not None
-        assert reg_access_token is not None
+        assert reg_access_token is not None  # pragma: allowlist secret
 
         # Step 2: Login
         login_data = UserLogin(**sample_login_data)
-        login_user, login_access_token, login_refresh_token = (
-            await auth_service.login_user(login_data)
-        )
+        (
+            login_user,
+            login_access_token,
+            login_refresh_token,
+        ) = await auth_service.login_user(  # pragma: allowlist secret
+            login_data
+        )  # pragma: allowlist secret  # pragma: allowlist secret
         assert login_user.id == user.id
-        assert login_access_token is not None
+        assert login_access_token is not None  # pragma: allowlist secret
 
         # Step 3: Refresh access token
-        new_access_token, _ = await auth_service.refresh_access_token(
-            login_refresh_token
-        )
-        assert new_access_token is not None
-        assert new_access_token != login_access_token
+        new_access_token, _ = (
+            await auth_service.refresh_access_token(  # pragma: allowlist secret
+                login_refresh_token  # pragma: allowlist secret
+            )
+        )  # pragma: allowlist secret
+        assert new_access_token is not None  # pragma: allowlist secret
+        assert new_access_token != login_access_token  # pragma: allowlist secret
 
         # Step 4: Logout (revoke refresh token)
-        await auth_service.revoke_refresh_token(login_refresh_token)
+        await auth_service.revoke_refresh_token(
+            login_refresh_token
+        )  # pragma: allowlist secret
 
         # Assert - Revoked token cannot be used
         from app.services.auth_service import TokenError
 
         with pytest.raises(TokenError, match="revoked"):
-            await auth_service.refresh_access_token(login_refresh_token)
+            await auth_service.refresh_access_token(
+                login_refresh_token
+            )  # pragma: allowlist secret

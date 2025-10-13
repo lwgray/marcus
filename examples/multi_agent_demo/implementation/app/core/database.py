@@ -7,10 +7,15 @@ and query optimization settings to achieve <100ms response times for CRUD operat
 
 import os
 from pathlib import Path
-from typing import Any, AsyncGenerator, Optional, Type, Union
+from typing import AsyncGenerator, Optional, Type
 
 from dotenv import load_dotenv
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.pool import NullPool, Pool, QueuePool
 
@@ -219,6 +224,7 @@ class DatabaseHealthCheck:
         ...     logger.error("Database connection unhealthy")
         """
         from sqlalchemy import text
+
         try:
             async with AsyncSessionLocal() as session:
                 await session.execute(text("SELECT 1"))

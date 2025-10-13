@@ -89,7 +89,8 @@ class AgentSpawner:
 
         options_str = json.dumps(self.config.project_options)
 
-        prompt = f"""You are an autonomous Project Creator Agent. Execute these steps IMMEDIATELY without asking for permission.
+        prompt = f"""You are an autonomous Project Creator Agent. Execute these \
+steps IMMEDIATELY without asking for permission.
 
 WORKING DIRECTORY: {self.config.implementation_dir}
 
@@ -115,11 +116,15 @@ PROJECT SPECIFICATION:
 
 4. IMMEDIATELY start MLflow experiment tracking:
    - Call mcp__marcus__start_experiment with:
-     - experiment_name: "{self.config.project_name.lower().replace(' ', '_')}_experiment"
-     - run_name: "{self.config.project_name.lower().replace(' ', '_')}_{{timestamp}}"
+     - experiment_name: "\
+{self.config.project_name.lower().replace(' ', '_')}_experiment"
+     - run_name: "\
+{self.config.project_name.lower().replace(' ', '_')}_{{timestamp}}"
      - project_id: (the project_id from step 2)
      - board_id: (the board_id from step 2)
-     - tags: {{"project_type": "{self.config.project_options.get('complexity', 'standard')}", "provider": "{self.config.project_options.get('provider', 'planka')}"}}
+     - tags: {{"project_type": \
+"{self.config.project_options.get('complexity', 'standard')}", \
+"provider": "{self.config.project_options.get('provider', 'planka')}"}}
      - params: {{"num_agents": {len(self.config.agents)}}}
    - Print: "EXPERIMENT STARTED: <experiment_name>"
    - Exit

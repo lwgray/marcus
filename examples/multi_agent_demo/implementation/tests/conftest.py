@@ -7,20 +7,34 @@ Provides fixtures for:
 - Sample data factories
 """
 
-from typing import Any, AsyncGenerator, Dict, Generator
-import pytest
-import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import NullPool
-
-# Import the actual Base and models from the app
-from app.models.base import Base
-from app.models import User, RefreshToken, Project, Task, Comment, UserRole  # noqa: F401
+import os
 
 # Test database URL (file-based SQLite for async compatibility)
 # Use a temp file that gets cleaned up after tests
 import tempfile
-import os
+from typing import Any, AsyncGenerator, Dict, Generator
+
+import pytest
+import pytest_asyncio
+from app.models import (  # noqa: F401
+    Comment,
+    Project,
+    RefreshToken,
+    Task,
+    User,
+    UserRole,
+)
+
+# Import the actual Base and models from the app
+from app.models.base import Base
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+from sqlalchemy.pool import NullPool
+
 TEST_DB_FILE = os.path.join(tempfile.gettempdir(), "test_db.sqlite")
 TEST_DATABASE_URL = f"sqlite+aiosqlite:///{TEST_DB_FILE}"
 

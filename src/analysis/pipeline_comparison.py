@@ -501,7 +501,8 @@ class PipelineComparator:
         perf = self._compare_performance(flows)
         if perf["cost"]["max"] > perf["cost"]["avg"] * 1.5:
             recommendations.append(
-                f"Consider optimizing costs - highest cost (${perf['cost']['max']:.2f}) "
+                f"Consider optimizing costs - highest cost "
+                f"(${perf['cost']['max']:.2f}) "
                 f"is 50% above average (${perf['cost']['avg']:.2f})"
             )
 
@@ -602,9 +603,17 @@ class PipelineComparator:
             <style>
                 body { font-family: Arial, sans-serif; margin: 20px; }
                 table { border-collapse: collapse; width: 100%; }
-                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th, td {
+                    border: 1px solid #ddd;
+                    padding: 8px;
+                    text-align: left;
+                }
                 th { background-color: #f2f2f2; }
-                .recommendation { background-color: #fff3cd; padding: 10px; margin: 10px 0; }
+                .recommendation {
+                    background-color: #fff3cd;
+                    padding: 10px;
+                    margin: 10px 0;
+                }
             </style>
         </head>
         <body>

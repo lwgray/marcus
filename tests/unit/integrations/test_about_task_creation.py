@@ -5,9 +5,10 @@ Tests the _create_about_task method in NaturalLanguageProjectCreator
 to ensure proper hierarchical formatting when tasks have subtasks.
 """
 
-import pytest
 from datetime import datetime
-from unittest.mock import Mock, MagicMock
+from unittest.mock import MagicMock, Mock
+
+import pytest
 
 from src.core.models import Priority, Task, TaskStatus
 from src.integrations.nlp_tools import NaturalLanguageProjectCreator
@@ -39,12 +40,14 @@ class TestAboutTaskCreation:
         return manager
 
     @pytest.fixture
-    def creator_with_subtasks(self, mock_kanban_client, mock_ai_engine, mock_subtask_manager):
+    def creator_with_subtasks(
+        self, mock_kanban_client, mock_ai_engine, mock_subtask_manager
+    ):
         """Create NaturalLanguageProjectCreator with subtask manager."""
         creator = NaturalLanguageProjectCreator(
             kanban_client=mock_kanban_client,
             ai_engine=mock_ai_engine,
-            subtask_manager=mock_subtask_manager
+            subtask_manager=mock_subtask_manager,
         )
         return creator
 
@@ -54,7 +57,7 @@ class TestAboutTaskCreation:
         creator = NaturalLanguageProjectCreator(
             kanban_client=mock_kanban_client,
             ai_engine=mock_ai_engine,
-            subtask_manager=None
+            subtask_manager=None,
         )
         return creator
 
@@ -134,7 +137,9 @@ class TestAboutTaskCreation:
         assert "### 1. Setup Database" in about_task.description
         assert "### 2. Create API Endpoints" in about_task.description
         assert "### 3. Write Documentation" in about_task.description
-        assert "**Description:** Configure PostgreSQL database" in about_task.description
+        assert (
+            "**Description:** Configure PostgreSQL database" in about_task.description
+        )
         assert "**Estimated Hours:** 4.0" in about_task.description
         assert "**Labels:** backend, database" in about_task.description
 
@@ -433,7 +438,9 @@ class TestAboutTaskCreation:
 
         # First task: standalone (no subtasks marker)
         assert "### 1. Setup Database" in about_task.description
-        assert "**Description:** Configure PostgreSQL database" in about_task.description
+        assert (
+            "**Description:** Configure PostgreSQL database" in about_task.description
+        )
 
         # Second task: has subtasks
         assert "### 2. Create API Endpoints" in about_task.description
@@ -452,7 +459,7 @@ class TestAboutTaskCreation:
         creator = NaturalLanguageProjectCreator(
             kanban_client=mock_kanban_client,
             ai_engine=mock_ai_engine,
-            subtask_manager=None
+            subtask_manager=None,
         )
 
         description = "Test without subtask manager"

@@ -9,13 +9,11 @@ Provides dependency injection for:
 
 from typing import Annotated, Callable, Generator
 
+from app.models import Role, User, UserRole
+from app.security.jwt_handler import TokenExpiredError, TokenInvalidError, verify_token
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
-
-from app.models import User, UserRole, Role
-from app.security.jwt_handler import verify_token, TokenExpiredError, TokenInvalidError
-
 
 # Security scheme for Bearer token
 security = HTTPBearer()
@@ -125,7 +123,7 @@ async def get_current_user(
 
 
 async def get_current_active_user(
-    current_user: Annotated[User, Depends(get_current_user)]
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> User:
     """
     Dependency to get current active user (convenience wrapper).
@@ -174,11 +172,14 @@ def require_roles(*required_roles: str) -> Callable[..., User]:
 
     @app.get("/api/admin/dashboard")
     async def admin_dashboard(
-        current_user: Annotated[User, Depends(require_roles(Role.ADMIN, Role.SUPER_ADMIN))],
+        current_user: Annotated[
+            User, Depends(require_roles(Role.ADMIN, Role.SUPER_ADMIN))
+        ],
     ):
         # Admins and super_admins can access
         ...
     """
+
     async def check_roles(
         current_user: Annotated[User, Depends(get_current_user)],
         db: Annotated[Session, Depends(get_db)],
@@ -204,17 +205,18 @@ def require_roles(*required_roles: str) -> Callable[..., User]:
             403 if user doesn't have required roles
         """
         # Fetch user's roles from database
-        user_role_records = db.query(UserRole).filter(
-            UserRole.user_id == current_user.id
-        ).all()
+        user_role_records = (
+            db.query(UserRole).filter(UserRole.user_id == current_user.id).all()
+        )
 
         user_roles = {record.role for record in user_role_records}
 
         # Check if user has any of the required roles
         if not any(role in user_roles for role in required_roles):
+            roles_str = ", ".join(required_roles)
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Insufficient permissions. Required roles: {', '.join(required_roles)}",
+                detail=f"Insufficient permissions. Required: {roles_str}",
             )
 
         return current_user

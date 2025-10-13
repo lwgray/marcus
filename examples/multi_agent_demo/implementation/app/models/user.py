@@ -145,5 +145,5 @@ class User(Base, TimestampMixin):
     __table_args__ = (Index("ix_users_username_email", "username", "email"),)
 
     def __repr__(self) -> str:
-        """String representation of User."""
+        """Return string representation of User."""
         return f"<User(id={self.id}, username='{self.username}', email='{self.email}')>"
