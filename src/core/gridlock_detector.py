@@ -55,7 +55,7 @@ class GridlockDetector:
         self.alert_cooldown = timedelta(minutes=alert_cooldown_minutes)
 
         # Track recent task requests that got no task
-        self.recent_no_task_requests: deque = deque(maxlen=20)
+        self.recent_no_task_requests: deque[Dict[str, Any]] = deque(maxlen=20)
 
         # Track last alert time
         self.last_alert_time: Optional[datetime] = None
