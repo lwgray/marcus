@@ -51,7 +51,8 @@ class APIValidator:
     def _load_spec(self) -> Dict[str, Any]:
         """Load OpenAPI specification from YAML file."""
         with open(self.spec_path, "r") as f:
-            return yaml.safe_load(f)
+            spec: Dict[str, Any] = yaml.safe_load(f)
+            return spec
 
     async def validate_endpoint(
         self,
@@ -311,7 +312,8 @@ class QualityMetrics:
             if cov_file.exists():
                 with open(cov_file, "r") as f:
                     cov_data = json.load(f)
-                    coverage = cov_data.get("totals", {}).get("percent_covered", 0.0)
+                    percent_covered = cov_data.get("totals", {}).get("percent_covered", 0.0)
+                    coverage: float = float(percent_covered)
                     self.metrics["test_coverage"] = coverage
                     return coverage
 
@@ -379,7 +381,7 @@ Quality Benchmarks:
         return report
 
 
-async def main():
+async def main() -> None:
     """Run the complete validation and quality suite."""
     print("=" * 60)
     print("Marcus Multi-Agent Demo - API Validation Suite")

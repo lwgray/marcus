@@ -228,7 +228,7 @@ class CacheClient:
 
         try:
             result: int = await self._client.exists(key)
-            return result > 0  # type: ignore[no-any-return]
+            return result > 0
         except Exception:
             return False
 

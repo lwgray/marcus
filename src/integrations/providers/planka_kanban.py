@@ -43,7 +43,7 @@ def _extract_text_content(result: Any) -> Optional[str]:
     return None
 
 
-class PlankaKanban(KanbanInterface):  # type: ignore[misc]
+class PlankaKanban(KanbanInterface):
     """Planka kanban board implementation."""
 
     def __init__(self, config: Dict[str, Any]):
@@ -107,7 +107,7 @@ class PlankaKanban(KanbanInterface):  # type: ignore[misc]
             await self.connect()
 
         tasks = await self.client.get_available_tasks()
-        return tasks  # type: ignore[no-any-return]
+        return tasks
 
     async def get_all_tasks(self) -> List[Task]:
         """
@@ -122,7 +122,7 @@ class PlankaKanban(KanbanInterface):  # type: ignore[misc]
             await self.connect()
 
         tasks = await self.client.get_all_tasks()
-        return tasks  # type: ignore[no-any-return]
+        return tasks
 
     async def get_task_by_id(self, task_id: str) -> Optional[Task]:
         """

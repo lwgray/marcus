@@ -107,9 +107,10 @@ async def find_optimal_task_with_subtasks(
 
             # Add metadata to help identify this as a subtask
             # This will help with instruction generation
-            task._is_subtask = True
-            task._parent_task_id = parent_task.id
-            task._parent_task_name = parent_task.name
+            # These are dynamic attributes added at runtime
+            task._is_subtask = True  # type: ignore[attr-defined]
+            task._parent_task_id = parent_task.id  # type: ignore[attr-defined]
+            task._parent_task_name = parent_task.name  # type: ignore[attr-defined]
 
             logger.info(
                 f"Assigning subtask {subtask.name} "
