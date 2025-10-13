@@ -436,12 +436,14 @@ Duration: {duration:.0f} seconds
 
 Agent Metrics:
 - Total Registered: {len(self.registered_agents)}
-- Active Agents: {len([a for a in self.registered_agents.values() if a['tasks_completed'] > 0])}
+- Active Agents: {len([a for a in self.registered_agents.values()
+                        if a['tasks_completed'] > 0])}
 
 Task Metrics:
 - Total Assignments: {len(self.task_assignments)}
 - Total Completions: {len(self.task_completions)}
-- Completion Rate: {len(self.task_completions) / max(len(self.task_assignments), 1) * 100:.1f}%
+- Completion Rate: {len(self.task_completions) / max(
+    len(self.task_assignments), 1) * 100:.1f}%
 
 Condition Metrics:
 - Blockers Reported: {self.blockers_reported}

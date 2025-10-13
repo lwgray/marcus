@@ -40,7 +40,6 @@ import json
 import logging
 import os
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import mlflow
@@ -511,6 +510,9 @@ class MarcusExperiment:
         if run_ids is None:
             # Get all runs from this experiment
             experiment = self.client.get_experiment_by_name(self.experiment_name)
+            if experiment is None:
+                logger.warning(f"Experiment '{self.experiment_name}' not found")
+                return {}
             runs = self.client.search_runs(experiment.experiment_id)
             run_ids = [run.info.run_id for run in runs]
 
