@@ -24,6 +24,10 @@ class TestDiscoverPlankaProjects:
                 "email": "demo@demo.demo",
             }
         )
+        # Mock project registry with async methods
+        server.project_registry = Mock()
+        server.project_registry.list_projects = AsyncMock(return_value=[])
+        server.project_registry.delete_project = AsyncMock()
         return server
 
     @pytest.fixture

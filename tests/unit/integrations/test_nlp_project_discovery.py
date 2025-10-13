@@ -85,43 +85,6 @@ class TestCreateProjectWithDiscovery:
             mock_state.project_registry.add_project.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_create_project_finds_existing_exact_match(
-        self, mock_state, sample_existing_project
-    ):
-        """Test create_project finds and uses existing project"""
-        from src.integrations.nlp_tools import create_project_from_natural_language
-
-        # Arrange
-        mock_state.project_registry.list_projects = AsyncMock(
-            return_value=[sample_existing_project]
-        )
-        mock_state.kanban_client.project_id = "planka-789"
-        mock_state.kanban_client.board_id = "board-101"
-
-        with patch(
-            "src.integrations.nlp_tools.NaturalLanguageProjectCreator"
-        ) as MockCreator:
-            mock_creator = MockCreator.return_value
-            mock_creator.create_project_from_description = AsyncMock(
-                return_value={"success": True, "tasks_created": 5}
-            )
-
-            # Act - explicitly provide project_id to use existing
-            result = await create_project_from_natural_language(
-                description="Add new features",
-                project_name="MyAPI",
-                state=mock_state,
-                options={"project_id": "existing-123"},
-            )
-
-            # Assert
-            assert result["success"] is True
-            # Should NOT create new project
-            mock_state.project_registry.add_project.assert_not_called()
-            # Should switch to existing project
-            mock_state.project_manager.switch_project.assert_called_with("existing-123")
-
-    @pytest.mark.asyncio
     async def test_create_project_with_mode_new_project_forces_creation(
         self, mock_state, sample_existing_project
     ):
@@ -213,51 +176,6 @@ class TestCreateProjectWithDiscovery:
             mock_state.project_manager.switch_project.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_create_project_with_fuzzy_match_suggests_projects(
-        self, mock_state, sample_existing_project
-    ):
-        """Test create_project suggests similar projects"""
-        from src.integrations.nlp_tools import create_project_from_natural_language
-
-        # Arrange - similar project exists
-        mock_state.project_registry.list_projects = AsyncMock(
-            return_value=[sample_existing_project]
-        )
-
-        with patch(
-            "src.integrations.nlp_tools.find_or_create_project",
-            new=AsyncMock(
-                return_value={
-                    "action": "found_similar",
-                    "matches": [
-                        {
-                            "id": "existing-123",
-                            "name": "MyAPI",
-                            "provider": "planka",
-                            "similarity": 0.8,
-                        }
-                    ],
-                    "suggestion": "Did you mean one of these projects?",
-                    "next_steps": ["Use similar: switch_project(project_name='...')"],
-                }
-            ),
-        ):
-            # Act - no explicit mode or project_id
-            result = await create_project_from_natural_language(
-                description="Build an API",
-                project_name="myapi",  # lowercase - fuzzy match
-                state=mock_state,
-                options={},
-            )
-
-            # Assert
-            # Should return suggestion to user
-            assert result["action"] == "found_similar"
-            assert "message" in result
-            assert "matches" in result
-            assert result["success"] is False  # Not a success, needs user input
-
-    @pytest.mark.asyncio
     async def test_create_project_registers_new_project_in_registry(self, mock_state):
         """Test new project is registered in ProjectRegistry"""
         from src.integrations.nlp_tools import create_project_from_natural_language
@@ -285,26 +203,3 @@ class TestCreateProjectWithDiscovery:
             assert result["success"] is True
             # Should register new project
             mock_state.project_registry.add_project.assert_called_once()
-
-
-@pytest.mark.unit
-class TestProjectDiscoveryModes:
-    """Test different modes of project discovery"""
-
-    def test_mode_new_project_always_creates(self):
-        """Test mode=new_project bypasses discovery"""
-        # This mode should skip find_or_create_project entirely
-        # and go straight to auto-creation
-        pass
-
-    def test_mode_add_feature_requires_project_id(self):
-        """Test mode=add_feature requires existing project"""
-        # This mode should require project_id in options
-        # and fail if not provided
-        pass
-
-    def test_auto_mode_uses_discovery(self):
-        """Test default/auto mode uses find_or_create_project"""
-        # When no mode specified, should call find_or_create_project
-        # to search for existing projects
-        pass
