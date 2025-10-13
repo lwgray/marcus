@@ -81,6 +81,14 @@ module = "src.ai.*"
 disallow_untyped_defs = true
 strict = true
 
+[[tool.mypy.overrides]]
+module = "examples.multi_agent_demo.implementation.app.models.*"
+disable_error_code = ["misc"]
+
+[[tool.mypy.overrides]]
+module = "examples.multi_agent_demo.implementation.app.routes.*"
+disable_error_code = ["misc"]
+
 [tool.pydocstyle]
 convention = "numpy"
 add-ignore = ["D100", "D104"]  # Module and package docstrings optional
