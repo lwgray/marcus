@@ -44,6 +44,9 @@ class Subtask:
         Estimated time to complete in hours
     dependencies : List[str], optional
         List of other subtask IDs that must be completed first
+    dependency_types : List[str], optional
+        Type of each dependency: "hard" (blocks start) or "soft" (can use mock/contract)
+        Must match length of dependencies list
     file_artifacts : List[str], optional
         Expected file outputs from this subtask
     provides : Optional[str]
@@ -62,6 +65,7 @@ class Subtask:
     created_at: datetime
     estimated_hours: float
     dependencies: List[str] = field(default_factory=list)
+    dependency_types: List[str] = field(default_factory=list)
     file_artifacts: List[str] = field(default_factory=list)
     provides: Optional[str] = None
     requires: Optional[str] = None
@@ -153,6 +157,17 @@ class SubtaskManager:
             # Generate unique subtask ID
             subtask_id = f"{parent_task_id}_sub_{idx + 1}"
 
+            # Get dependencies and dependency_types with migration fallback
+            dependencies = subtask_data.get("dependencies", [])
+            dependency_types = subtask_data.get("dependency_types", [])
+
+            # Migration: if dependency_types not provided, default all to "hard"
+            if not dependency_types and dependencies:
+                dependency_types = ["hard"] * len(dependencies)
+                logger.debug(
+                    f"Migration: defaulting all dependencies to 'hard' for {subtask_id}"
+                )
+
             subtask = Subtask(
                 id=subtask_id,
                 parent_task_id=parent_task_id,
@@ -163,7 +178,8 @@ class SubtaskManager:
                 assigned_to=None,
                 created_at=datetime.now(),
                 estimated_hours=subtask_data.get("estimated_hours", 1.0),
-                dependencies=subtask_data.get("dependencies", []),
+                dependencies=dependencies,
+                dependency_types=dependency_types,
                 file_artifacts=subtask_data.get("file_artifacts", []),
                 provides=subtask_data.get("provides"),
                 requires=subtask_data.get("requires"),
@@ -452,6 +468,18 @@ class SubtaskManager:
 
             # Load subtasks
             for sid, data in state.get("subtasks", {}).items():
+                # Migration: add dependency_types if not present
+                if "dependency_types" not in data:
+                    dependencies = data.get("dependencies", [])
+                    if dependencies:
+                        data["dependency_types"] = ["hard"] * len(dependencies)
+                        logger.debug(
+                            f"Migration: adding dependency_types for "
+                            f"loaded subtask {sid}"
+                        )
+                    else:
+                        data["dependency_types"] = []
+
                 self.subtasks[sid] = Subtask(
                     **{
                         **data,

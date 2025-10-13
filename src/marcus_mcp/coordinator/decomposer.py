@@ -149,6 +149,18 @@ async def decompose_task(
                                     "type": "array",
                                     "items": {"type": "integer"},
                                 },
+                                "dependency_types": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string",
+                                        "enum": ["hard", "soft"],
+                                    },
+                                    "description": (
+                                        "Type for each dependency: 'hard' "
+                                        "(blocks start) or 'soft' "
+                                        "(can use mock/contract)"
+                                    ),
+                                },
                                 "file_artifacts": {
                                     "type": "array",
                                     "items": {"type": "string"},
@@ -160,6 +172,7 @@ async def decompose_task(
                                 "name",
                                 "description",
                                 "estimated_hours",
+                                "dependency_types",
                             ],
                         },
                     },
@@ -207,12 +220,33 @@ async def decompose_task(
         # Adjust subtask dependencies to use subtask IDs
         decomposition = _adjust_subtask_dependencies(task.id, decomposition)
 
+        # Analyze parallelism potential
+        parallelism_analysis = _analyze_parallelism(decomposition)
+        decomposition["parallelism_analysis"] = parallelism_analysis
+
         # DEBUG: Log what dependencies look like AFTER fixing
         logger.info(f"After adjustment for {task.name}:")
         for idx, st in enumerate(decomposition.get("subtasks", [])):
             deps = st.get("dependencies", [])
             dep_types = [type(d).__name__ for d in deps]
             logger.info(f"  Subtask {idx}: deps={deps} (types: {dep_types})")
+
+        # Log parallelism metrics
+        logger.info(f"Parallelism analysis for {task.name}:")
+        logger.info(
+            f"  Parallelizable: {parallelism_analysis['parallelizable_percentage']}%"
+        )
+        logger.info(
+            f"  Max parallel workers: {parallelism_analysis['max_parallel_workers']}"
+        )
+        logger.info(f"  Chain depth: {parallelism_analysis['dependency_chain_depth']}")
+        logger.info(
+            f"  Soft deps: {parallelism_analysis['soft_dependency_count']}, "
+            f"Hard deps: {parallelism_analysis['hard_dependency_count']}"
+        )
+        logger.info(
+            f"  Parallelism score: {parallelism_analysis['parallelism_score']}/100"
+        )
 
         logger.info(
             f"Successfully decomposed task {task.name} into "
@@ -251,6 +285,36 @@ def _build_decomposition_prompt(
     if project_context:
         prompt += f"\n\n**Project Context:**\n{json.dumps(project_context, indent=2)}\n"
 
+    # Add parallelization strategy guidance
+    prompt += """
+
+**PARALLELIZATION STRATEGY:**
+
+When breaking down this task, follow these principles to maximize parallelism:
+
+1. **Interface-First Approach**: Use Design specifications as contracts
+   - Subtasks should depend on DESIGN SPECIFICATIONS, not each other
+   - If Design phase produced API specs/schemas, use those contracts directly
+   - Example: Multiple API endpoints can be built in parallel using the same API spec
+
+2. **Minimize Hard Dependencies**: Create independent subtasks where possible
+   - Hard dependency = Must complete before work can start
+   - Soft dependency = Can start using mock/contract, integrate later
+   - Aim for 70%+ of subtasks having 0-1 dependencies
+
+3. **Component Boundaries**: Separate concerns cleanly
+   - Database models vs API logic vs UI components
+   - Each subtask focuses on one component with clear interface
+   - Integration happens in final subtask
+
+4. **Shared Conventions**: Define upfront to avoid integration issues
+   - Standard response formats, error handling patterns
+   - Naming conventions, file structure
+   - This enables parallel work without conflicts
+
+**TARGET**: Break task so that 70%+ subtasks can run in parallel
+"""
+
     # Add type-specific guidance
     if task_type == "test":
         prompt += """
@@ -259,6 +323,14 @@ def _build_decomposition_prompt(
 
 Break this TESTING task into 3-5 testing subtasks. Each subtask must focus
 on writing tests, NOT implementing features.
+
+**PARALLELIZATION FOCUS FOR TESTING:**
+- Test suites can often run in parallel (unit, integration, e2e)
+- Break by test type or component being tested
+- Most test subtasks should be independent (0 dependencies)
+- Example: Unit tests for Model A, Model B, API endpoints can all be
+  written in parallel
+- Only sequential when tests build on each other (unit → integration → e2e)
 
 Valid testing subtask types:
 - Write unit tests for specific components
@@ -306,6 +378,14 @@ implementation-related:**
 Break this IMPLEMENTATION task into 3-5 implementation subtasks. Each
 subtask must focus on building features, NOT testing or design.
 
+**PARALLELIZATION FOCUS FOR IMPLEMENTATION:**
+- Use Design specifications as contracts - don't wait for other subtasks
+- Break by component boundaries (models, API, business logic, UI)
+- Each subtask should be independently implementable using Design specs
+- Example: All API endpoints can be built in parallel if they follow
+  the same API specification from Design phase
+- Minimize sequential dependencies - most subtasks should have 0-1 deps
+
 Valid implementation subtask types:
 - Create/implement data models or database schemas
 - Build API endpoints or services
@@ -332,9 +412,14 @@ For each subtask, specify:
 3. **estimated_hours**: Time estimate (0.5-3 hours per subtask)
 4. **dependencies**: List of subtask indices that must complete first
    (use 0-based indexing)
-5. **file_artifacts**: List of files this subtask will create/modify
-6. **provides**: What interface/functionality this subtask provides for others
-7. **requires**: What this subtask needs from dependencies
+5. **dependency_types**: REQUIRED - For each dependency, specify type:
+   - "hard": Must wait for subtask to complete before starting (blocks execution)
+   - "soft": Can start using Design specs as contract, integrate at final step
+   MUST have same length as dependencies array. Empty array if no dependencies.
+   Prefer "soft" when Design phase provided clear specifications/contracts.
+6. **file_artifacts**: List of files this subtask will create/modify
+7. **provides**: What interface/functionality this subtask provides for others
+8. **requires**: What this subtask needs from dependencies
 
 Also define **shared_conventions** that all subtasks must follow:
 - **base_path**: Base directory for file outputs
@@ -363,6 +448,7 @@ Also define **shared_conventions** that all subtasks must follow:
       "description": "Create unit tests for login, logout, and token validation",
       "estimated_hours": 2.0,
       "dependencies": [],
+      "dependency_types": [],
       "file_artifacts": ["tests/unit/test_auth.py"],
       "provides": "Unit test coverage for auth functions",
       "requires": "None"
@@ -372,9 +458,10 @@ Also define **shared_conventions** that all subtasks must follow:
       "description": "Test POST /api/login and /api/logout with various scenarios",
       "estimated_hours": 2.5,
       "dependencies": [0],
+      "dependency_types": ["soft"],
       "file_artifacts": ["tests/integration/test_auth_endpoints.py"],
       "provides": "Integration tests for auth API",
-      "requires": "Unit tests passing from subtask 1"
+      "requires": "Unit test patterns from subtask 1"
     }
   ],
   "shared_conventions": {
@@ -401,6 +488,7 @@ Also define **shared_conventions** that all subtasks must follow:
       "description": "Research OAuth2, JWT, and security best practices for auth",
       "estimated_hours": 1.5,
       "dependencies": [],
+      "dependency_types": [],
       "file_artifacts": ["docs/research/auth_research.md"],
       "provides": "Research findings and recommendations",
       "requires": "None"
@@ -410,6 +498,7 @@ Also define **shared_conventions** that all subtasks must follow:
       "description": "Define API endpoints, request/response, and error handling",
       "estimated_hours": 2.0,
       "dependencies": [0],
+      "dependency_types": ["hard"],
       "file_artifacts": ["docs/design/auth_api_spec.md"],
       "provides": "Complete API specification with examples",
       "requires": "Research findings from subtask 1"
@@ -438,6 +527,7 @@ Also define **shared_conventions** that all subtasks must follow:
       "description": "Define User model in src/models/user.py with email validation",
       "estimated_hours": 2.0,
       "dependencies": [],
+      "dependency_types": [],
       "file_artifacts": ["src/models/user.py"],
       "provides": "User model with fields: id, email, password_hash",
       "requires": "None"
@@ -447,9 +537,20 @@ Also define **shared_conventions** that all subtasks must follow:
       "description": "Create POST /api/login endpoint that authenticates users",
       "estimated_hours": 2.5,
       "dependencies": [0],
+      "dependency_types": ["soft"],
       "file_artifacts": ["src/api/auth/login.py"],
       "provides": "POST /api/login returning {token, user}",
-      "requires": "User model from subtask 1"
+      "requires": "User model schema from Design phase"
+    },
+    {
+      "name": "Build registration endpoint",
+      "description": "Create POST /api/register endpoint for new users",
+      "estimated_hours": 2.5,
+      "dependencies": [0],
+      "dependency_types": ["soft"],
+      "file_artifacts": ["src/api/auth/register.py"],
+      "provides": "POST /api/register returning {token, user}",
+      "requires": "User model schema from Design phase"
     }
   ],
   "shared_conventions": {
@@ -467,6 +568,8 @@ Also define **shared_conventions** that all subtasks must follow:
   }
 }
 ```
+NOTE: Subtasks 1 and 2 both have "soft" dependencies on subtask 0, meaning they
+can start in parallel using the Design phase's data model specification.
 """
 
     return prompt
@@ -475,18 +578,21 @@ Also define **shared_conventions** that all subtasks must follow:
 def _get_decomposition_system_prompt(task_type: str = "implement") -> str:
     """Get system prompt for decomposition with type-specific constraints."""
     base_prompt = """You are an expert software architect specializing in
-task decomposition.
+task decomposition and parallel work optimization.
 
 Your goal is to break complex tasks into manageable, well-defined
-subtasks that can be implemented by different agents.
+subtasks that can be implemented by different agents IN PARALLEL.
 
 Key principles:
-1. **Clear Interfaces**: Each subtask must have clear inputs and outputs
-2. **Minimal Dependencies**: Reduce coupling where possible
-3. **Sequential When Needed**: Don't parallelize tightly coupled work
-4. **File Ownership**: Each subtask should primarily work on its own files
-5. **Consistent Patterns**: Use shared conventions to avoid integration issues
-"""
+1. **Maximize Parallelism**: Target 70%+ subtasks with 0-1 dependencies
+2. **Clear Interfaces**: Each subtask must have clear inputs and outputs
+3. **Interface-First**: Subtasks depend on Design specs, not each other
+4. **Minimal Hard Dependencies**: Use contracts/mocks to enable parallel work
+5. **File Ownership**: Each subtask should primarily work on its own files
+6. **Consistent Patterns**: Use shared conventions to avoid integration issues
+
+CRITICAL: Always prefer independent subtasks over sequential chains.
+Break work by component boundaries (models/API/UI), not by sequence."""
 
     # Add type-specific constraints
     if task_type == "test":
@@ -555,6 +661,8 @@ def _create_integration_subtask(
 
     # Dependencies: all previous subtasks
     all_deps = list(range(len(subtasks)))
+    # All dependencies for integration are hard (must complete before integration)
+    all_dep_types = ["hard"] * len(all_deps)
     component_list = ", ".join([s["name"] for s in subtasks])
 
     integration_subtask = {
@@ -570,6 +678,7 @@ def _create_integration_subtask(
         # 20% of total, capped at 1.5 hours
         "estimated_hours": min(1.5, task.estimated_hours * 0.2),
         "dependencies": all_deps,
+        "dependency_types": all_dep_types,
         "file_artifacts": [
             "docs/integration_report.md",
             "tests/integration/test_integration.py",
@@ -627,6 +736,156 @@ def _validate_decomposition(decomposition: Dict[str, Any]) -> bool:
                     return False
 
     return True
+
+
+def _analyze_parallelism(decomposition: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Analyze parallelism potential of the decomposition.
+
+    Calculates metrics about how parallelizable the subtasks are based on
+    their dependencies and dependency types.
+
+    Parameters
+    ----------
+    decomposition : Dict[str, Any]
+        Decomposition with subtasks and dependencies
+
+    Returns
+    -------
+    Dict[str, Any]
+        Parallelism analysis with metrics:
+        - parallelizable_percentage: % of subtasks with 0-1 dependencies
+        - max_parallel_workers: Max subtasks that can run simultaneously
+        - dependency_chain_depth: Longest sequential chain
+        - soft_dependency_count: Number of soft dependencies
+        - hard_dependency_count: Number of hard dependencies
+        - parallelism_score: Overall score (0-100)
+    """
+    subtasks = decomposition.get("subtasks", [])
+    if not subtasks:
+        return {
+            "parallelizable_percentage": 0.0,
+            "max_parallel_workers": 0,
+            "dependency_chain_depth": 0,
+            "soft_dependency_count": 0,
+            "hard_dependency_count": 0,
+            "parallelism_score": 0.0,
+        }
+
+    # Count subtasks by dependency count
+    zero_deps = sum(1 for st in subtasks if len(st.get("dependencies", [])) == 0)
+    one_dep = sum(1 for st in subtasks if len(st.get("dependencies", [])) == 1)
+    parallelizable = zero_deps + one_dep
+    parallelizable_percentage = (parallelizable / len(subtasks)) * 100
+
+    # Count dependency types
+    soft_count = 0
+    hard_count = 0
+    for subtask in subtasks:
+        dep_types = subtask.get("dependency_types", [])
+        soft_count += sum(1 for dt in dep_types if dt == "soft")
+        hard_count += sum(1 for dt in dep_types if dt == "hard")
+
+    # Calculate max parallel workers (subtasks at each level)
+    # Level 0: tasks with no dependencies
+    # Level 1: tasks with only level 0 dependencies
+    # etc.
+    levels = _calculate_dependency_levels(subtasks)
+    max_parallel = max((len(tasks) for tasks in levels.values()), default=0)
+
+    # Calculate dependency chain depth (longest path)
+    chain_depth = len(levels)
+
+    # Calculate parallelism score (0-100)
+    # Factors:
+    # - 40% weight: parallelizable percentage (70%+ target)
+    # - 30% weight: max parallel workers (higher is better)
+    # - 20% weight: short chains (fewer levels is better)
+    # - 10% weight: soft vs hard ratio (more soft is better)
+
+    parallelizable_score = min(parallelizable_percentage / 70.0, 1.0) * 40
+    parallel_worker_score = min(max_parallel / max(len(subtasks) * 0.5, 1), 1.0) * 30
+    chain_score = (1 - min(chain_depth / max(len(subtasks), 1), 1.0)) * 20
+
+    total_deps = soft_count + hard_count
+    soft_ratio = soft_count / total_deps if total_deps > 0 else 0.5
+    soft_score = soft_ratio * 10
+
+    parallelism_score = (
+        parallelizable_score + parallel_worker_score + chain_score + soft_score
+    )
+
+    return {
+        "parallelizable_percentage": round(parallelizable_percentage, 1),
+        "max_parallel_workers": max_parallel,
+        "dependency_chain_depth": chain_depth,
+        "soft_dependency_count": soft_count,
+        "hard_dependency_count": hard_count,
+        "parallelism_score": round(parallelism_score, 1),
+    }
+
+
+def _calculate_dependency_levels(
+    subtasks: List[Dict[str, Any]],
+) -> Dict[int, List[int]]:
+    """
+    Calculate dependency levels for subtasks.
+
+    Level 0: No dependencies
+    Level N: Depends only on tasks at level < N
+
+    Parameters
+    ----------
+    subtasks : List[Dict[str, Any]]
+        List of subtasks with dependencies
+
+    Returns
+    -------
+    Dict[int, List[int]]
+        Mapping of level -> list of subtask indices at that level
+    """
+    levels: Dict[int, List[int]] = {}
+    task_levels: Dict[int, int] = {}
+
+    # Iteratively assign levels
+    max_iterations = len(subtasks)
+    iteration = 0
+
+    while len(task_levels) < len(subtasks) and iteration < max_iterations:
+        iteration += 1
+
+        for idx, subtask in enumerate(subtasks):
+            if idx in task_levels:
+                continue  # Already assigned
+
+            deps = subtask.get("dependencies", [])
+
+            if not deps:
+                # No dependencies -> level 0
+                task_levels[idx] = 0
+                if 0 not in levels:
+                    levels[0] = []
+                levels[0].append(idx)
+            else:
+                # Check if all dependencies have been assigned levels
+                dep_indices = []
+                # Dependencies might be indices (int) during processing
+                for dep in deps:
+                    if isinstance(dep, int):
+                        dep_indices.append(dep)
+
+                if dep_indices and all(
+                    dep_idx in task_levels for dep_idx in dep_indices
+                ):
+                    # All deps assigned -> this task's level is max(dep_levels) + 1
+                    max_dep_level = max(task_levels[dep_idx] for dep_idx in dep_indices)
+                    level = max_dep_level + 1
+                    task_levels[idx] = level
+                    if level not in levels:
+                        levels[level] = []
+                    levels[level].append(idx)
+
+    return levels
 
 
 def _adjust_subtask_dependencies(
