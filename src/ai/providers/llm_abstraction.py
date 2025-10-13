@@ -165,7 +165,8 @@ class LLMAbstraction:
                 logger.warning(f"Failed to initialize Anthropic provider: {e}")
         else:
             logger.debug(
-                f"Skipping Anthropic provider - no valid API key configured (key present: {bool(anthropic_key)})"
+                f"Skipping Anthropic provider - no valid API key configured "
+                f"(key present: {bool(anthropic_key)})"
             )
 
         # Only try OpenAI if we have a valid API key
@@ -196,7 +197,8 @@ class LLMAbstraction:
                 logger.warning(f"Failed to initialize OpenAI provider: {e}")
         else:
             logger.debug(
-                f"Skipping OpenAI provider - no valid API key configured (key present: {bool(openai_key)})"
+                f"Skipping OpenAI provider - no valid API key configured "
+                f"(key present: {bool(openai_key)})"
             )
 
         # Add local provider if configured
@@ -216,7 +218,8 @@ class LLMAbstraction:
                 self.providers["local"] = LocalLLMProvider(local_model_path)
                 self.fallback_providers.append("local")
                 logger.info(
-                    f"Successfully initialized local LLM provider with model: {local_model_path}"
+                    f"Successfully initialized local LLM provider "
+                    f"with model: {local_model_path}"
                 )
             except Exception as e:
                 logger.warning(f"Failed to initialize local LLM provider: {e}")
