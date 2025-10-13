@@ -149,7 +149,7 @@ class ExperimentRunner:
         shutil.copy(config_file, exp_dir / "config.yaml")
         desc_file = project_dir / "project_description.txt"
         if desc_file.exists():
-            shutil.copy(desc_file, exp_dir / "project_spec.md")
+            shutil.copy(desc_file, exp_dir / "project_description.txt")
 
         # Run the experiment
         try:
