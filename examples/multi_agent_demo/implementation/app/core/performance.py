@@ -124,8 +124,8 @@ def monitor_performance(threshold_ms: float = 100) -> Callable[[Callable[P, T]],
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             start = perf_counter()
             try:
-                result = await func(*args, **kwargs)
-                return result
+                result = await func(*args, **kwargs)  # type: ignore[misc]
+                return result  # type: ignore[no-any-return]
             finally:
                 elapsed_ms = (perf_counter() - start) * 1000
 

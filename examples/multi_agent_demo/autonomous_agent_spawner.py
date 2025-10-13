@@ -17,7 +17,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
 
 class AgentConfig:
@@ -121,7 +121,7 @@ class AutonomousAgentSpawner:
 
         self.project_id: Optional[str] = None
         self.board_id: Optional[str] = None
-        self.processes: List[subprocess.Popen] = []
+        self.processes: List[subprocess.Popen[Any]] = []
 
     def create_project_creator_prompt(self) -> str:
         """
@@ -238,13 +238,13 @@ START NOW!
 """
         return worker_prompt
 
-    def spawn_project_creator(self) -> subprocess.Popen:
+    def spawn_project_creator(self) -> subprocess.Popen[Any]:
         """
         Spawn the project creator agent in a new terminal window.
 
         Returns
         -------
-        subprocess.Popen
+        subprocess.Popen[Any]
             Process handle
         """
         print("=" * 60)
@@ -293,7 +293,7 @@ read -n 1
         print(f"  Prompt: {prompt_file}")
         return process
 
-    def spawn_worker(self, agent: AgentConfig) -> subprocess.Popen:
+    def spawn_worker(self, agent: AgentConfig) -> subprocess.Popen[Any]:
         """
         Spawn a worker agent in a new terminal window.
 
@@ -304,7 +304,7 @@ read -n 1
 
         Returns
         -------
-        subprocess.Popen
+        subprocess.Popen[Any]
             Process handle
         """
         print(f"\nSpawning {agent.name} ({agent.agent_id})")
@@ -360,7 +360,7 @@ echo "=========================================="
         print(f"  Subagents: {agent.num_subagents}")
         return process
 
-    async def run(self):
+    async def run(self) -> None:
         """Run the autonomous multi-agent demo."""
         print("\n" + "=" * 60)
         print("Marcus Autonomous Multi-Agent Demo")
@@ -384,14 +384,12 @@ echo "=========================================="
         while not project_info_file.exists():
             if time.time() - start_time > timeout:
                 print("✗ Project creation timed out!")
-                self.cleanup()
                 sys.exit(1)
 
             # Check if creator process failed
             if creator_process.poll() is not None:
                 if creator_process.returncode != 0:
                     print("✗ Project creator failed!")
-                    self.cleanup()
                     sys.exit(1)
                 # Process exited successfully, check for file
                 if not project_info_file.exists():
@@ -447,7 +445,7 @@ echo "=========================================="
 
 
 
-async def main():
+async def main() -> None:
     """Main entry point."""
     demo_root = Path(__file__).parent
     project_root = demo_root / "implementation"

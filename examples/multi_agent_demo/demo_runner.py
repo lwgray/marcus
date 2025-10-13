@@ -115,18 +115,28 @@ class MultiAgentDemo:
             },
         )
 
-        if result.get("success"):
-            self.project_id = result.get("project_id")
-            self.board_id = result.get("board", {}).get("board_id")
+        # Extract content from CallToolResult
+        result_dict: Dict[str, Any] = {}
+        if hasattr(result, 'content'):
+            content = result.content
+            if isinstance(content, list) and len(content) > 0:
+                first_content = content[0]
+                if hasattr(first_content, 'text'):
+                    import json
+                    result_dict = json.loads(first_content.text)
+
+        if result_dict.get("success"):
+            self.project_id = result_dict.get("project_id")
+            self.board_id = result_dict.get("board", {}).get("board_id")
 
             print(f"✓ Project created successfully")
             print(f"  Project ID: {self.project_id}")
             print(f"  Board ID: {self.board_id}")
-            print(f"  Tasks created: {result.get('tasks_created', 0)}")
+            print(f"  Tasks created: {result_dict.get('tasks_created', 0)}")
         else:
-            print(f"✗ Project creation failed: {result.get('error')}")
+            print(f"✗ Project creation failed: {result_dict.get('error')}")
 
-        return result
+        return result_dict
 
     async def deploy_agents(
         self, session: ClientSession, num_agents: int = 4
@@ -177,14 +187,15 @@ class MultiAgentDemo:
             },
         ]
 
-        agent_ids = []
+        agent_ids: List[str] = []
         for i, config in enumerate(agent_configs[:num_agents], 1):
             print(f"\n[{i}/{num_agents}] Registering {config['name']}...")
 
             result = await session.call_tool("register_agent", arguments=config)
 
-            agent_ids.append(config["agent_id"])
-            print(f"  ✓ {config['agent_id']} registered")
+            agent_id = str(config["agent_id"])
+            agent_ids.append(agent_id)
+            print(f"  ✓ {agent_id} registered")
 
         return agent_ids
 
@@ -210,12 +221,22 @@ class MultiAgentDemo:
 
             # Get status for each agent
             all_complete = True
-            progress_summary = {}
+            progress_summary: Dict[str, Dict[str, Any]] = {}
 
             for agent_id in agent_ids:
-                status = await session.call_tool(
+                status_result = await session.call_tool(
                     "get_agent_status", arguments={"agent_id": agent_id}
                 )
+
+                # Extract content from CallToolResult
+                status: Dict[str, Any] = {}
+                if hasattr(status_result, 'content'):
+                    content = status_result.content
+                    if isinstance(content, list) and len(content) > 0:
+                        first_content = content[0]
+                        if hasattr(first_content, 'text'):
+                            import json
+                            status = json.loads(first_content.text)
 
                 if status.get("current_task"):
                     all_complete = False
@@ -276,7 +297,7 @@ class MultiAgentDemo:
         }
 
         if self.start_time:
-            results["total_time_minutes"] = (time.time() - self.start_time) / 60
+            results["total_time_minutes"] = int((time.time() - self.start_time) / 60)
 
         # Run validation script
         # (In real implementation, would call validate_api.py)
@@ -357,7 +378,7 @@ class MultiAgentDemo:
                 print("=" * 60)
 
 
-async def main():
+async def main() -> None:
     """Main entry point for demo runner."""
     demo_root = Path(__file__).parent
     demo = MultiAgentDemo(demo_root)

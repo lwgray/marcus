@@ -12,6 +12,7 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import Dict
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -79,7 +80,7 @@ async def main() -> None:
                     print(f"  ✓ Found {len(tasks)} tasks on board")
 
                     # Group by status
-                    by_status = {}
+                    by_status: Dict[str, int] = {}
                     for task in tasks:
                         status = task.get("status", "unknown")
                         by_status[status] = by_status.get(status, 0) + 1
