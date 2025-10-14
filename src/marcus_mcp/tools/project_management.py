@@ -523,6 +523,9 @@ async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
             await server.project_manager.switch_project(project_id)
             server.kanban_client = await server.project_manager.get_kanban_client()
 
+            # Refresh project state to load tasks from the new project
+            await server.refresh_project_state()
+
             # Get project details
             current = await server.project_registry.get_active_project()
             task_count = (
@@ -585,6 +588,9 @@ async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
             await server.project_manager.switch_project(selected_project.id)
             server.kanban_client = await server.project_manager.get_kanban_client()
 
+            # Refresh project state to load tasks from the new project
+            await server.refresh_project_state()
+
             task_count = (
                 len(server.project_tasks) if hasattr(server, "project_tasks") else 0
             )
@@ -614,6 +620,9 @@ async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
         # Switch to the found project
         await server.project_manager.switch_project(discovery_result["project"]["id"])
         server.kanban_client = await server.project_manager.get_kanban_client()
+
+        # Refresh project state to load tasks from the new project
+        await server.refresh_project_state()
 
         # Add task count
         project_info = discovery_result["project"].copy()

@@ -23,6 +23,7 @@ class TestSelectProject:
         server.project_manager.get_kanban_client = AsyncMock(return_value=Mock())
         server.project_registry = Mock()
         server.project_tasks = []
+        server.refresh_project_state = AsyncMock()
         return server
 
     @pytest.fixture
