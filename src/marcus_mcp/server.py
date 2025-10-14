@@ -290,8 +290,28 @@ class MarcusServer:
         async def handle_call_tool(
             name: str, arguments: Optional[Dict[str, Any]]
         ) -> List[types.TextContent | types.ImageContent | types.EmbeddedResource]:
-            """Handle tool calls."""
-            return await handle_tool_call(name, arguments, self)
+            """Handle tool calls with graceful handling of cancelled operations."""
+            try:
+                return await handle_tool_call(name, arguments, self)
+            except Exception as e:
+                # Gracefully handle connection errors from aborted operations
+                # These occur when clients cancel requests mid-flight (e.g., Ctrl+C)
+                error_type = type(e).__name__
+                if (
+                    "BrokenResourceError" in error_type
+                    or "ClosedResourceError" in error_type
+                ):
+                    logger.warning(
+                        f"Client connection closed during tool call '{name}' "
+                        f"(likely aborted by user). This is expected behavior and "
+                        f"does not indicate a problem."
+                    )
+                    # Don't try to return a response - the connection is closed
+                    # Return empty list to satisfy the type signature
+                    return []
+                else:
+                    # For other exceptions, re-raise so they're handled normally
+                    raise
 
         @self.server.list_prompts()  # type: ignore[misc]
         async def handle_list_prompts() -> List[types.Prompt]:
@@ -814,6 +834,10 @@ class MarcusServer:
             # Get all tasks from the board
             if self.kanban_client is not None:
                 self.project_tasks = await self.kanban_client.get_all_tasks()
+
+            # Migrate subtasks from SubtaskManager to unified project_tasks storage
+            if self.subtask_manager and self.project_tasks is not None:
+                self.subtask_manager.migrate_to_unified_storage(self.project_tasks)
 
             # Update memory system with project tasks for cascade analysis
             if self.memory and self.project_tasks:
@@ -2068,6 +2092,21 @@ class MarcusServer:
                 from .tools.board_health import check_board_health as impl
 
                 return await impl(state=server)
+
+        # Scheduling tools
+        if "get_optimal_agent_count" in allowed_tools:
+
+            @app.tool()  # type: ignore[misc]
+            async def get_optimal_agent_count(
+                include_details: bool = False,
+            ) -> Dict[str, Any]:
+                """Calculate optimal number of agents using CPM analysis."""
+                from .tools.scheduling import get_optimal_agent_count as impl
+
+                return await impl(
+                    include_details=include_details,
+                    state=server,
+                )
 
     async def run(self) -> None:
         """Run the MCP server."""
