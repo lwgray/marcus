@@ -523,6 +523,9 @@ async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
             await server.project_manager.switch_project(project_id)
             server.kanban_client = await server.project_manager.get_kanban_client()
 
+            # Reset subtask migration flag for new project
+            server._subtasks_migrated = False
+
             # Refresh project state to load tasks from the new project
             await server.refresh_project_state()
 
@@ -588,6 +591,9 @@ async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
             await server.project_manager.switch_project(selected_project.id)
             server.kanban_client = await server.project_manager.get_kanban_client()
 
+            # Reset subtask migration flag for new project
+            server._subtasks_migrated = False
+
             # Refresh project state to load tasks from the new project
             await server.refresh_project_state()
 
@@ -620,6 +626,9 @@ async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
         # Switch to the found project
         await server.project_manager.switch_project(discovery_result["project"]["id"])
         server.kanban_client = await server.project_manager.get_kanban_client()
+
+        # Reset subtask migration flag for new project
+        server._subtasks_migrated = False
 
         # Refresh project state to load tasks from the new project
         await server.refresh_project_state()

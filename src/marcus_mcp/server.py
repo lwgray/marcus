@@ -131,6 +131,7 @@ class MarcusServer:
         from src.marcus_mcp.coordinator import SubtaskManager
 
         self.subtask_manager = SubtaskManager()
+        self._subtasks_migrated = False  # Track if migration has been done
 
         # Assignment monitoring
         self.assignment_monitor: Optional[AssignmentMonitor] = None
@@ -836,8 +837,14 @@ class MarcusServer:
                 self.project_tasks = await self.kanban_client.get_all_tasks()
 
             # Migrate subtasks from SubtaskManager to unified project_tasks storage
-            if self.subtask_manager and self.project_tasks is not None:
+            # ONLY run migration once to avoid duplicate subtasks
+            if (
+                self.subtask_manager
+                and self.project_tasks is not None
+                and not self._subtasks_migrated
+            ):
                 self.subtask_manager.migrate_to_unified_storage(self.project_tasks)
+                self._subtasks_migrated = True
 
             # Update memory system with project tasks for cascade analysis
             if self.memory and self.project_tasks:
