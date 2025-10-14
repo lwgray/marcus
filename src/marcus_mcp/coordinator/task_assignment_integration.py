@@ -10,7 +10,7 @@ from typing import Any, Awaitable, Callable, Optional
 
 from src.core.models import Task
 from src.marcus_mcp.coordinator.subtask_assignment import (
-    convert_subtask_to_task,
+    _determine_task_type,
     find_next_available_subtask,
 )
 
@@ -64,18 +64,19 @@ async def find_optimal_task_with_subtasks(
         assigned_task_ids | persisted_assigned_ids | state.tasks_being_assigned
     )
 
-    # Try to find available subtask
-    subtask = find_next_available_subtask(
+    # Try to find available subtask (now returns Task directly from unified graph)
+    subtask_task = find_next_available_subtask(
         agent_id,
         state.project_tasks,
         state.subtask_manager,
         all_assigned_ids,
     )
 
-    if subtask:
+    if subtask_task:
+        # SIMPLIFIED: Subtask is already a Task object from unified graph!
         # Find parent task for context
         parent_task = next(
-            (t for t in state.project_tasks if t.id == subtask.parent_task_id),
+            (t for t in state.project_tasks if t.id == subtask_task.parent_task_id),
             None,
         )
 
@@ -102,25 +103,22 @@ async def find_optimal_task_with_subtasks(
                         exc_info=True,
                     )
 
-            # Convert subtask to Task for assignment
-            task = convert_subtask_to_task(subtask, parent_task)
-
-            # Add metadata to help identify this as a subtask
-            # This will help with instruction generation
-            # These are dynamic attributes added at runtime
-            task._is_subtask = True  # type: ignore[attr-defined]
-            task._parent_task_id = parent_task.id  # type: ignore[attr-defined]
-            task._parent_task_name = parent_task.name  # type: ignore[attr-defined]
+            # Add metadata to help identify parent task type
+            # for instruction generation
+            parent_task_type = _determine_task_type(parent_task)
+            subtask_task._parent_task_type = parent_task_type  # type: ignore
+            subtask_task._is_subtask = True  # type: ignore
+            subtask_task._parent_task_name = parent_task.name  # type: ignore
 
             logger.info(
-                f"Assigning subtask {subtask.name} "
+                f"Assigning subtask {subtask_task.name} "
                 f"(parent: {parent_task.name}) to {agent_id}"
             )
-            return task
+            return subtask_task
         else:
             logger.warning(
-                f"Parent task {subtask.parent_task_id} "
-                f"not found for subtask {subtask.id}"
+                f"Parent task {subtask_task.parent_task_id} "
+                f"not found for subtask {subtask_task.id}"
             )
 
     # No subtasks available, use fallback

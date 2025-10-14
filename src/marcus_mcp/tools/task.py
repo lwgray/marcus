@@ -925,9 +925,12 @@ async def report_task_progress(
                         update_subtask_progress_in_parent,
                     )
 
-                    # Update subtask status
+                    # Update subtask status in unified storage
                     state.subtask_manager.update_subtask_status(
-                        task_id, TaskStatus.DONE, agent_id
+                        task_id,
+                        TaskStatus.DONE,
+                        state.project_tasks,
+                        assigned_to=agent_id,
                     )
 
                     # Get parent task ID
@@ -1033,11 +1036,14 @@ async def report_task_progress(
             if agent_id:
                 update_data["assigned_to"] = agent_id
 
-            # Handle subtask status update
+            # Handle subtask status update in unified storage
             if hasattr(state, "subtask_manager") and state.subtask_manager:
                 if task_id in state.subtask_manager.subtasks:
                     state.subtask_manager.update_subtask_status(
-                        task_id, TaskStatus.IN_PROGRESS, agent_id
+                        task_id,
+                        TaskStatus.IN_PROGRESS,
+                        state.project_tasks,
+                        assigned_to=agent_id,
                     )
 
         elif status == "blocked":
@@ -1324,7 +1330,7 @@ async def _find_optimal_task_original_logic(
             if (
                 hasattr(state, "subtask_manager")
                 and state.subtask_manager
-                and state.subtask_manager.has_subtasks(t.id)
+                and state.subtask_manager.has_subtasks(t.id, state.project_tasks)
             ):
                 logger.debug(
                     f"Skipping parent task '{t.name}' - "

@@ -13,3 +13,4 @@ Systems managing agent coordination and task assignment.
    33-orphan-task-recovery
    35-assignment-lease-system
    36-task-dependency-system
+   37-optimal-agent-scheduling

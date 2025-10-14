@@ -97,6 +97,9 @@ from .tools.project_management import (  # Project management tools
     switch_project,
     update_project,
 )
+from .tools.scheduling import (  # Scheduling tools
+    get_optimal_agent_count,
+)
 
 
 def get_all_tool_definitions() -> Dict[str, types.Tool]:
@@ -535,6 +538,42 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                     },
                 },
                 "required": ["description", "project_name"],
+            },
+        ),
+        # Scheduling and Planning Tools (also available to agents)
+        types.Tool(
+            name="get_optimal_agent_count",
+            description=(
+                "Calculate optimal number of agents using Critical Path "
+                "Method (CPM) analysis.\n\n"
+                "Analyzes the unified dependency graph (including parent "
+                "tasks and subtasks) to determine the optimal agent count "
+                "for maximum efficiency.\n\n"
+                "Returns:\n"
+                "- optimal_agents: Recommended number of agents\n"
+                "- critical_path_hours: Duration of longest dependency "
+                "chain\n"
+                "- max_parallelism: Maximum tasks that can run "
+                "simultaneously\n"
+                "- efficiency_gain: Percentage improvement vs single agent\n"
+                "- estimated_completion_hours: Expected completion time\n\n"
+                "Optionally includes detailed parallel opportunities showing "
+                "when multiple tasks can be worked on simultaneously."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "include_details": {
+                        "type": "boolean",
+                        "description": (
+                            "Include detailed parallel opportunities "
+                            "analysis (shows time points where multiple "
+                            "tasks can run in parallel)"
+                        ),
+                        "default": False,
+                    },
+                },
+                "required": [],
             },
         ),
     ]
@@ -1027,6 +1066,42 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                 "required": ["flow_id"],
             },
         ),
+        # Scheduling and Planning Tools
+        types.Tool(
+            name="get_optimal_agent_count",
+            description=(
+                "Calculate optimal number of agents using Critical Path "
+                "Method (CPM) analysis.\n\n"
+                "Analyzes the unified dependency graph (including parent "
+                "tasks and subtasks) to determine the optimal agent count "
+                "for maximum efficiency.\n\n"
+                "Returns:\n"
+                "- optimal_agents: Recommended number of agents\n"
+                "- critical_path_hours: Duration of longest dependency "
+                "chain\n"
+                "- max_parallelism: Maximum tasks that can run "
+                "simultaneously\n"
+                "- efficiency_gain: Percentage improvement vs single agent\n"
+                "- estimated_completion_hours: Expected completion time\n\n"
+                "Optionally includes detailed parallel opportunities showing "
+                "when multiple tasks can be worked on simultaneously."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "include_details": {
+                        "type": "boolean",
+                        "description": (
+                            "Include detailed parallel opportunities "
+                            "analysis (shows time points where multiple "
+                            "tasks can run in parallel)"
+                        ),
+                        "default": False,
+                    },
+                },
+                "required": [],
+            },
+        ),
         # Pattern Learning Tools removed - only accessible via visualization UI API
         # Audit and analytics tools
         USAGE_REPORT_TOOL,
@@ -1514,6 +1589,13 @@ async def handle_tool_call(
                     branch=arguments.get("branch", "main"),
                     state=state,
                 )
+
+        # Scheduling and Planning Tools
+        elif name == "get_optimal_agent_count":
+            result = await get_optimal_agent_count(
+                include_details=arguments.get("include_details", False),
+                state=state,
+            )
 
         # Pattern Learning Tools removed - only accessible via visualization UI API
         elif name in [
