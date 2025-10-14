@@ -26,6 +26,8 @@ ROLE_TOOLS = {
         # Read-only board health monitoring
         "check_board_health",
         "check_task_dependencies",
+        # Scheduling and resource planning
+        "get_optimal_agent_count",  # Calculate optimal agent count using CPM
         # Analytics and monitoring (Seneca use case)
         "pipeline_monitor_dashboard",
         "pipeline_monitor_flow",
@@ -71,6 +73,8 @@ ROLE_TOOLS = {
         "get_agent_status",
         "check_board_health",
         "check_task_dependencies",
+        # Scheduling and resource planning
+        "get_optimal_agent_count",  # Calculate optimal agent count using CPM
         # Project creation and management
         "create_project",  # NLP project creation
         "add_feature",  # NLP feature addition
@@ -97,6 +101,8 @@ ROLE_TOOLS = {
         "log_artifact",  # Store outputs
         # Dependency awareness
         "check_task_dependencies",  # Understand relationships
+        # Scheduling and resource planning
+        "get_optimal_agent_count",  # Calculate optimal agent count using CPM
     ],
     "admin": [
         # Admins get all tools

@@ -6,7 +6,6 @@ and project timelines using the Critical Path Method.
 """
 
 import logging
-import math
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
@@ -263,10 +262,14 @@ def calculate_optimal_agents(tasks: List[Task]) -> ProjectSchedule:
     # Calculate total work
     total_work = sum(task.estimated_hours for task in tasks)
 
-    # Optimal agents = minimum of:
-    # 1. Max parallelism (more agents = idle agents)
-    # 2. Total work / critical path (theoretical maximum)
-    optimal = min(max_parallelism, math.ceil(total_work / critical_path))
+    # CRITICAL: Since agents cannot be dynamically scaled after start,
+    # we must provision for PEAK parallelism, not average.
+    # Idle agents have low cost (just polling), but insufficient agents
+    # create a bottleneck that cannot be resolved without user intervention.
+    #
+    # Strategy: Use max_parallelism directly to handle peak demand.
+    # Agents will idle during low-demand periods, which is acceptable.
+    optimal = max_parallelism
 
     # Calculate efficiency gain
     single_agent_time = total_work
@@ -278,16 +281,20 @@ def calculate_optimal_agents(tasks: List[Task]) -> ProjectSchedule:
     )
 
     # Find parallel opportunities (for reporting)
+    # Include ALL time slices to show utilization over time
     parallel_opportunities = []
     for time, task_ids in sorted(time_slices.items()):
-        if len(task_ids) > 1:
-            parallel_opportunities.append(
-                {
-                    "time": time,
-                    "task_count": len(task_ids),
-                    "tasks": [task_times[tid]["task"].name for tid in task_ids],
-                }
-            )
+        parallel_opportunities.append(
+            {
+                "time": time,
+                "task_count": len(task_ids),
+                "utilization_percent": (
+                    round((len(task_ids) / optimal * 100), 1) if optimal > 0 else 0
+                ),
+                "idle_agents": optimal - len(task_ids),
+                "tasks": [task_times[tid]["task"].name for tid in task_ids],
+            }
+        )
 
     logger.info(f"Calculated optimal agents: {optimal} agents for {len(tasks)} tasks")
     logger.info(f"Critical path: {critical_path}h, Max parallelism: {max_parallelism}")
