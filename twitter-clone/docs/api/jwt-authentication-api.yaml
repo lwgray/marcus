@@ -1,0 +1,771 @@
+openapi: 3.0.3
+info:
+  title: Twitter Clone - Authentication API
+  description: |
+    JWT-based authentication API for Twitter Clone application.
+    
+    ## Security
+    This API implements dual-token authentication with:
+    - Short-lived access tokens (15 minutes)
+    - Long-lived refresh tokens (7 days) with rotation
+    - Token reuse detection
+    - Comprehensive validation per OWASP guidelines
+    
+    ## Token Usage
+    - **Access Token**: Include in `Authorization: Bearer <token>` header for all protected endpoints
+    - **Refresh Token**: Use to obtain new access tokens when expired
+    
+    ## Related Documentation
+    - Design Document: docs/design/jwt-authentication-design.md
+    - Sequence Diagrams: docs/design/jwt-authentication-sequences.md
+  version: 1.0.0
+  contact:
+    name: Worker Agent 05
+    email: dev@twitter-clone.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api.twitter-clone.com
+    description: Production server
+  - url: https://staging-api.twitter-clone.com
+    description: Staging server
+  - url: http://localhost:8000
+    description: Local development server
+
+tags:
+  - name: Authentication
+    description: User authentication and token management operations
+  - name: Users
+    description: User profile and account management (requires authentication)
+
+paths:
+  /api/auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user account
+      description: |
+        Create a new user account with username, email, and password.
+        Password must meet complexity requirements:
+        - Minimum 8 characters
+        - At least 1 uppercase letter
+        - At least 1 lowercase letter
+        - At least 1 digit
+        - At least 1 special character
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRegister'
+            examples:
+              validRegistration:
+                summary: Valid registration
+                value:
+                  username: john_doe
+                  email: john@example.com
+                  password: SecurePassword123!
+      responses:
+        '201':
+          description: User successfully registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/UserResponse'
+                  message:
+                    type: string
+                    example: Registration successful. Please verify your email.
+        '400':
+          description: Invalid input (validation error)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                weakPassword:
+                  summary: Weak password
+                  value:
+                    detail: Password must be at least 8 characters and contain uppercase, lowercase, digit, and special character
+                invalidEmail:
+                  summary: Invalid email format
+                  value:
+                    detail: Invalid email format
+        '409':
+          description: Username or email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                duplicateUsername:
+                  summary: Username taken
+                  value:
+                    detail: Username already registered
+                duplicateEmail:
+                  summary: Email taken
+                  value:
+                    detail: Email already registered
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                rateLimited:
+                  summary: Too many registration attempts
+                  value:
+                    detail: Rate limit exceeded. Try again in 60 minutes.
+
+  /api/auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Authenticate user and receive JWT tokens
+      description: |
+        Login with username and password to receive access and refresh tokens.
+        
+        **Rate Limit**: 5 attempts per minute per IP address.
+        
+        **Response includes**:
+        - Access token (valid for 15 minutes)
+        - Refresh token (valid for 7 days)
+        - Token type (always "bearer")
+        - Expiration time in seconds
+        
+        Refresh token is also set as HTTP-only cookie for web clients.
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserLogin'
+            examples:
+              validLogin:
+                summary: Valid login credentials
+                value:
+                  username: john_doe
+                  password: SecurePassword123!
+      responses:
+        '200':
+          description: Authentication successful
+          headers:
+            Set-Cookie:
+              description: HTTP-only cookie containing refresh token
+              schema:
+                type: string
+                example: refresh_token=eyJhbGc...; HttpOnly; Secure; SameSite=Strict; Max-Age=604800; Path=/api/auth
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Token'
+              examples:
+                successfulLogin:
+                  summary: Successful login response
+                  value:
+                    access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1NTBlODQwMC1lMjliLTQxZDQtYTcxNi00NDY2NTU0NDAwMDAiLCJ1c2VybmFtZSI6ImpvaG5fZG9lIiwiZW1haWwiOiJqb2huQGV4YW1wbGUuY29tIiwiaWF0IjoxNzI4ODQ5NjAwLCJleHAiOjE3Mjg4NTA1MDAsImlzcyI6InR3aXR0ZXItY2xvbmUtYXBpIiwiYXVkIjoidHdpdHRlci1jbG9uZS1jbGllbnQiLCJ0eXBlIjoiYWNjZXNzIiwianRpIjoidG9rZW4tdW5pcXVlLWlkIn0.signature
+                    refresh_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1NTBlODQwMC1lMjliLTQxZDQtYTcxNi00NDY2NTU0NDAwMDAiLCJpYXQiOjE3Mjg4NDk2MDAsImV4cCI6MTcyOTQ1NDQwMCwiaXNzIjoidHdpdHRlci1jbG9uZS1hcGkiLCJhdWQiOiJ0d2l0dGVyLWNsb25lLWNsaWVudCIsInR5cGUiOiJyZWZyZXNoIiwianRpIjoicmVmcmVzaC10b2tlbi11bmlxdWUtaWQiLCJmYW1pbHkiOiJ0b2tlbi1mYW1pbHktdXVpZCJ9.signature
+                    token_type: bearer
+                    expires_in: 900
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  summary: Wrong username or password
+                  value:
+                    detail: Invalid username or password
+        '403':
+          description: Account disabled or unverified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                accountDisabled:
+                  summary: Account is disabled
+                  value:
+                    detail: Account has been disabled. Contact support.
+                accountUnverified:
+                  summary: Email not verified
+                  value:
+                    detail: Please verify your email before logging in.
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                rateLimited:
+                  summary: Too many login attempts
+                  value:
+                    detail: Too many login attempts. Try again in 1 minute.
+
+  /api/auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh access token using refresh token
+      description: |
+        Exchange a valid refresh token for new access and refresh tokens.
+        
+        **Token Rotation**: Each refresh invalidates the old refresh token and issues a new one.
+        This prevents token reuse attacks.
+        
+        **Reuse Detection**: If a previously-used refresh token is submitted, the entire
+        token family is invalidated as a security measure.
+        
+        **Rate Limit**: 20 requests per minute per user.
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+            examples:
+              validRefresh:
+                summary: Valid refresh request
+                value:
+                  refresh_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+      responses:
+        '200':
+          description: Tokens successfully refreshed
+          headers:
+            Set-Cookie:
+              description: HTTP-only cookie with new refresh token
+              schema:
+                type: string
+                example: refresh_token=eyJhbGc...; HttpOnly; Secure; SameSite=Strict; Max-Age=604800; Path=/api/auth
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Token'
+              examples:
+                successfulRefresh:
+                  summary: New tokens issued
+                  value:
+                    access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                    refresh_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                    token_type: bearer
+                    expires_in: 900
+        '401':
+          description: Invalid or expired refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidToken:
+                  summary: Invalid refresh token
+                  value:
+                    detail: Invalid or expired refresh token
+                expiredToken:
+                  summary: Refresh token expired
+                  value:
+                    detail: Refresh token has expired. Please log in again.
+        '403':
+          description: Token reuse detected (security breach)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                tokenReuse:
+                  summary: Security breach detected
+                  value:
+                    detail: Token reuse detected. All sessions have been invalidated. Please log in again.
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Logout user and invalidate tokens
+      description: |
+        Logout the current user by:
+        1. Blacklisting the access token (immediate invalidation)
+        2. Revoking the refresh token family (prevents future refreshes)
+        3. Clearing the HTTP-only cookie
+        
+        After logout, the user must log in again to obtain new tokens.
+      operationId: logoutUser
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+            examples:
+              logoutRequest:
+                summary: Logout with refresh token
+                value:
+                  refresh_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+      responses:
+        '200':
+          description: Logout successful
+          headers:
+            Set-Cookie:
+              description: Cookie cleared
+              schema:
+                type: string
+                example: refresh_token=; HttpOnly; Secure; Max-Age=0; Path=/api/auth
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Logout successful
+        '401':
+          description: Unauthorized (invalid or missing access token)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/me:
+    get:
+      tags:
+        - Authentication
+      summary: Get current authenticated user
+      description: |
+        Retrieve the profile information of the currently authenticated user.
+        
+        This endpoint is useful for:
+        - Verifying token validity
+        - Retrieving user information after login
+        - Displaying user profile in UI
+      operationId: getCurrentUser
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+              examples:
+                currentUser:
+                  summary: Authenticated user
+                  value:
+                    id: 550e8400-e29b-41d4-a716-446655440000
+                    username: john_doe
+                    email: john@example.com
+                    is_active: true
+                    is_verified: true
+                    created_at: '2025-10-13T18:00:00Z'
+        '401':
+          description: Unauthorized (invalid or missing token)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidToken:
+                  summary: Invalid access token
+                  value:
+                    detail: Could not validate credentials
+                expiredToken:
+                  summary: Token expired
+                  value:
+                    detail: Token expired
+
+  /api/auth/change-password:
+    post:
+      tags:
+        - Authentication
+      summary: Change user password
+      description: |
+        Change the password for the currently authenticated user.
+        
+        **Security measures**:
+        - Requires current password verification
+        - New password must meet complexity requirements
+        - All existing refresh tokens are invalidated
+        - User remains logged in with current session
+      operationId: changePassword
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - current_password
+                - new_password
+              properties:
+                current_password:
+                  type: string
+                  format: password
+                  description: Current password for verification
+                new_password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  maxLength: 100
+                  description: New password (must meet complexity requirements)
+            examples:
+              validChange:
+                summary: Valid password change
+                value:
+                  current_password: OldPassword123!
+                  new_password: NewSecurePassword456!
+      responses:
+        '200':
+          description: Password changed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Password changed successfully. Please log in on other devices.
+        '401':
+          description: Current password is incorrect
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                wrongPassword:
+                  summary: Incorrect current password
+                  value:
+                    detail: Current password is incorrect
+        '400':
+          description: New password doesn't meet requirements
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/tweets:
+    get:
+      tags:
+        - Users
+      summary: Get user's tweet timeline (example protected endpoint)
+      description: |
+        Example of a protected endpoint that requires authentication.
+        
+        Returns the authenticated user's tweet timeline.
+      operationId: getTweets
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          description: Number of tweets to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of tweets to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Tweet timeline
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tweets:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        content:
+                          type: string
+                        created_at:
+                          type: string
+                          format: date-time
+                  pagination:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      limit:
+                        type: integer
+                      offset:
+                        type: integer
+        '401':
+          description: Unauthorized (missing or invalid token)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (account suspended)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT access token obtained from /api/auth/login or /api/auth/refresh.
+        
+        Include in Authorization header as: `Authorization: Bearer <token>`
+
+  schemas:
+    UserRegister:
+      type: object
+      required:
+        - username
+        - email
+        - password
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+          pattern: '^[a-zA-Z0-9_]+$'
+          description: Username (alphanumeric and underscore only)
+          example: john_doe
+        email:
+          type: string
+          format: email
+          description: Valid email address
+          example: john@example.com
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 100
+          description: Password (min 8 chars, must include uppercase, lowercase, digit, special char)
+          example: SecurePassword123!
+
+    UserLogin:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          description: Username or email
+          example: john_doe
+        password:
+          type: string
+          format: password
+          description: User password
+          example: SecurePassword123!
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique user identifier
+          example: 550e8400-e29b-41d4-a716-446655440000
+        username:
+          type: string
+          description: Username
+          example: john_doe
+        email:
+          type: string
+          format: email
+          description: Email address
+          example: john@example.com
+        is_active:
+          type: boolean
+          description: Whether the account is active
+          example: true
+        is_verified:
+          type: boolean
+          description: Whether the email is verified
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          description: Account creation timestamp
+          example: '2025-10-13T18:00:00Z'
+
+    Token:
+      type: object
+      required:
+        - access_token
+        - refresh_token
+        - token_type
+        - expires_in
+      properties:
+        access_token:
+          type: string
+          description: JWT access token (valid for 15 minutes)
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1NTBlODQwMC1lMjliLTQxZDQtYTcxNi00NDY2NTU0NDAwMDAiLCJ1c2VybmFtZSI6ImpvaG5fZG9lIiwiZW1haWwiOiJqb2huQGV4YW1wbGUuY29tIiwiaWF0IjoxNzI4ODQ5NjAwLCJleHAiOjE3Mjg4NTA1MDAsImlzcyI6InR3aXR0ZXItY2xvbmUtYXBpIiwiYXVkIjoidHdpdHRlci1jbG9uZS1jbGllbnQiLCJ0eXBlIjoiYWNjZXNzIiwianRpIjoidG9rZW4tdW5pcXVlLWlkIn0.signature
+        refresh_token:
+          type: string
+          description: JWT refresh token (valid for 7 days, rotates on use)
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1NTBlODQwMC1lMjliLTQxZDQtYTcxNi00NDY2NTU0NDAwMDAiLCJpYXQiOjE3Mjg4NDk2MDAsImV4cCI6MTcyOTQ1NDQwMCwiaXNzIjoidHdpdHRlci1jbG9uZS1hcGkiLCJhdWQiOiJ0d2l0dGVyLWNsb25lLWNsaWVudCIsInR5cGUiOiJyZWZyZXNoIiwianRpIjoicmVmcmVzaC10b2tlbi11bmlxdWUtaWQiLCJmYW1pbHkiOiJ0b2tlbi1mYW1pbHktdXVpZCJ9.signature
+        token_type:
+          type: string
+          enum: [bearer]
+          description: Token type (always "bearer")
+          example: bearer
+        expires_in:
+          type: integer
+          description: Access token expiration time in seconds
+          example: 900
+
+    RefreshTokenRequest:
+      type: object
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
+          type: string
+          description: Valid refresh token
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+    TokenPayload:
+      type: object
+      description: Decoded JWT payload (for documentation purposes, not sent in API)
+      properties:
+        sub:
+          type: string
+          format: uuid
+          description: Subject (user ID)
+          example: 550e8400-e29b-41d4-a716-446655440000
+        username:
+          type: string
+          description: Username
+          example: john_doe
+        email:
+          type: string
+          format: email
+          description: Email address
+          example: john@example.com
+        iat:
+          type: integer
+          description: Issued at timestamp (Unix epoch)
+          example: 1728849600
+        exp:
+          type: integer
+          description: Expiration timestamp (Unix epoch)
+          example: 1728850500
+        iss:
+          type: string
+          description: Issuer
+          example: twitter-clone-api
+        aud:
+          type: string
+          description: Audience
+          example: twitter-clone-client
+        type:
+          type: string
+          enum: [access, refresh]
+          description: Token type
+          example: access
+        jti:
+          type: string
+          description: JWT ID (unique identifier for blacklisting)
+          example: token-unique-id
+        family:
+          type: string
+          format: uuid
+          description: Token family ID (refresh tokens only, for rotation tracking)
+          example: token-family-uuid
+
+    Error:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
+          description: Error message
+          example: Invalid credentials
+        code:
+          type: string
+          description: Error code (optional)
+          example: AUTH_INVALID_CREDENTIALS
+        timestamp:
+          type: string
+          format: date-time
+          description: Error timestamp
+          example: '2025-10-13T18:00:00Z'
+
+  responses:
+    Unauthorized:
+      description: Unauthorized - Invalid or missing authentication token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            missingToken:
+              summary: Missing token
+              value:
+                detail: Not authenticated
+            invalidToken:
+              summary: Invalid token
+              value:
+                detail: Could not validate credentials
+            expiredToken:
+              summary: Expired token
+              value:
+                detail: Token expired
+
+    Forbidden:
+      description: Forbidden - Valid authentication but insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            accountDisabled:
+              summary: Account disabled
+              value:
+                detail: Account has been disabled
+
+    RateLimitExceeded:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            rateLimited:
+              summary: Too many requests
+              value:
+                detail: Rate limit exceeded. Try again later.
+
+security: []  # Default: No authentication required (only specific endpoints require it)
