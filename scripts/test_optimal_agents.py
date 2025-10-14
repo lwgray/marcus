@@ -9,21 +9,25 @@ agent count calculation in action.
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.core.models import Priority, Task, TaskStatus
-from src.marcus_mcp.coordinator.scheduler import calculate_optimal_agents
+from src.core.models import Priority, Task, TaskStatus  # noqa: E402
+from src.marcus_mcp.coordinator.scheduler import (  # noqa: E402
+    ProjectSchedule,
+    calculate_optimal_agents,
+)
 
 
 def create_task(
     task_id: str,
     name: str,
     hours: float,
-    dependencies: list[str] = None,
+    dependencies: Optional[list[str]] = None,
     is_subtask: bool = False,
-    parent_task_id: str = None,
+    parent_task_id: Optional[str] = None,
 ) -> Task:
     """Helper to create a task quickly."""
     return Task(
@@ -43,7 +47,7 @@ def create_task(
     )
 
 
-def print_schedule(schedule, scenario_name: str):
+def print_schedule(schedule: ProjectSchedule, scenario_name: str) -> None:
     """Pretty print the schedule results."""
     print("\n" + "=" * 70)
     print(f"  {scenario_name}")
@@ -58,16 +62,14 @@ def print_schedule(schedule, scenario_name: str):
     if schedule.parallel_opportunities:
         print(f"\n  Parallel Opportunities: {len(schedule.parallel_opportunities)}")
         for opp in schedule.parallel_opportunities[:3]:  # Show first 3
-            print(
-                f"    - At hour {opp['time']:.1f}: {opp['task_count']} tasks can run"
-            )
+            print(f"    - At hour {opp['time']:.1f}: {opp['task_count']} tasks can run")
             for task_name in opp["tasks"][:3]:  # Show first 3 tasks
                 print(f"      • {task_name}")
 
     print()
 
 
-def scenario_1_sequential():
+def scenario_1_sequential() -> None:
     """Test case 1: Fully sequential tasks (should need 1 agent)."""
     tasks = [
         create_task("A", "Design Database Schema", 2.0),
@@ -81,7 +83,7 @@ def scenario_1_sequential():
     print("  Expected: 1 agent (no parallelism possible)")
 
 
-def scenario_2_fully_parallel():
+def scenario_2_fully_parallel() -> None:
     """Test case 2: Fully parallel tasks (should need N agents)."""
     tasks = [
         create_task("A", "Build User API", 3.0),
@@ -95,14 +97,18 @@ def scenario_2_fully_parallel():
     print("  Expected: 4 agents (all can work simultaneously)")
 
 
-def scenario_3_mixed():
+def scenario_3_mixed() -> None:
     """Test case 3: Mixed dependencies (realistic scenario)."""
     tasks = [
         # Parent task
         create_task("auth", "Build Authentication System", 12.0, is_subtask=False),
         # Subtasks with mixed dependencies
         create_task(
-            "auth_sub_1", "Create User Model", 2.0, is_subtask=True, parent_task_id="auth"
+            "auth_sub_1",
+            "Create User Model",
+            2.0,
+            is_subtask=True,
+            parent_task_id="auth",
         ),
         create_task(
             "auth_sub_2",
@@ -139,13 +145,11 @@ def scenario_3_mixed():
     ]
 
     schedule = calculate_optimal_agents(tasks)
-    print_schedule(
-        schedule, "Scenario 3: Auth System (1 → 3 parallel → 1 integration)"
-    )
+    print_schedule(schedule, "Scenario 3: Auth System (1 → 3 parallel → 1 integration)")
     print("  Expected: ~3 agents (subtasks 2, 3, 4 can run in parallel)")
 
 
-def scenario_4_complex_project():
+def scenario_4_complex_project() -> None:
     """Test case 4: Complex multi-module project."""
     tasks = [
         # Backend tasks
@@ -166,11 +170,13 @@ def scenario_4_complex_project():
     ]
 
     schedule = calculate_optimal_agents(tasks)
-    print_schedule(schedule, "Scenario 4: Full-Stack Project (Backend + Frontend + DevOps)")
+    print_schedule(
+        schedule, "Scenario 4: Full-Stack Project (Backend + Frontend + DevOps)"
+    )
     print("  Expected: ~3 agents (backend, frontend, devops streams)")
 
 
-def scenario_5_diamond():
+def scenario_5_diamond() -> None:
     """Test case 5: Diamond dependency pattern."""
     tasks = [
         create_task("A", "Define Requirements", 2.0),
@@ -184,7 +190,7 @@ def scenario_5_diamond():
     print("  Expected: 2 agents (B and C can run in parallel)")
 
 
-def scenario_6_current_system():
+def scenario_6_current_system() -> None:
     """Test case 6: Without subtask visibility (current Marcus behavior)."""
     # This shows what Marcus sees NOW (parent tasks only)
     parent_tasks = [
@@ -198,7 +204,7 @@ def scenario_6_current_system():
     print("  Current Marcus sees: 3 sequential tasks → 1 agent")
 
 
-def scenario_7_with_subtask_visibility():
+def scenario_7_with_subtask_visibility() -> None:
     """Test case 7: With subtask visibility (after unified graph)."""
     # This shows what Marcus WILL see (all tasks including subtasks)
     tasks = [
@@ -215,15 +221,13 @@ def scenario_7_with_subtask_visibility():
     ]
 
     schedule = calculate_optimal_agents(tasks)
-    print_schedule(
-        schedule, "Scenario 7: With Subtask Visibility (Unified Graph View)"
-    )
+    print_schedule(schedule, "Scenario 7: With Subtask Visibility (Unified Graph View)")
     print(
         "  Future Marcus sees: subtasks with parallel opportunities → 2 agents optimal"
     )
 
 
-def compare_scenarios():
+def compare_scenarios() -> None:
     """Compare current vs future for the same project."""
     print("\n" + "=" * 70)
     print("  COMPARISON: Current vs Future Marcus")
@@ -236,16 +240,14 @@ def compare_scenarios():
     scenario_7_with_subtask_visibility()
 
     print("\n  💡 Key Insight:")
-    print(
-        "     Without subtask visibility: Marcus recommends 1 agent (18h total time)"
-    )
+    print("     Without subtask visibility: Marcus recommends 1 agent (18h total time)")
     print(
         "     With subtask visibility:    Marcus recommends 2 agents (11h total time)"
     )
     print("     Efficiency gain: ~35% faster with proper agent allocation!")
 
 
-def main():
+def main() -> None:
     """Run all test scenarios."""
     import sys
 
