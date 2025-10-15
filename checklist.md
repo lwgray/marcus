@@ -20,6 +20,7 @@
 - [ ] [Artifact discovery needs session/project isolation](https://github.com/lwgray/marcus/issues/39) (#39)
 - [ ] [Performance: Double AI bottleneck in project creation (descriptions + decomposition)](https://github.com/lwgray/marcus/issues/61) (#61) - 🟡 Parallelize task description generation AND subtask decomposition to reduce 68-80s overhead
 - [ ] [Implement coordinator-controlled backoff to reduce polling overhead](https://github.com/lwgray/marcus/issues/74) (#74) - 🟡 Reduce empty polling requests by 40-60% with intelligent backoff
+- [ ] [Persist cross-parent dependencies to avoid expensive recalculation](https://github.com/lwgray/marcus/issues/80) (#80) - 🔴 High Priority: Save 20+ seconds and API costs on every project selection
 
 ## ✅ Testing & Quality
 
