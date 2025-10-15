@@ -91,7 +91,7 @@ class TestSelectProject:
             ),
         ):
             # Act
-            result = await select_project(mock_server, {"project_name": "MyAPI"})
+            result = await select_project(mock_server, {"name": "MyAPI"})
 
             # Assert
             assert result["success"] is True
@@ -115,7 +115,7 @@ class TestSelectProject:
             ),
         ):
             # Act
-            result = await select_project(mock_server, {"project_name": "NonExistent"})
+            result = await select_project(mock_server, {"name": "NonExistent"})
 
             # Assert
             assert result["success"] is False
@@ -132,4 +132,4 @@ class TestSelectProject:
 
         # Assert
         assert result["success"] is False
-        assert "Either project_name or project_id must be provided" in result["error"]
+        assert "Either 'name' or 'project_id' must be provided" in result["error"]

@@ -487,9 +487,7 @@ class MarcusServer:
             try:
                 from src.marcus_mcp.tools.project_management import select_project
 
-                result = await select_project(
-                    self, {"project_name": default_project_name}
-                )
+                result = await select_project(self, {"name": default_project_name})
                 if result.get("success"):
                     logger.info(
                         f"Successfully selected default project: {default_project_name}"
@@ -1474,14 +1472,12 @@ class MarcusServer:
 
             @app.tool()  # type: ignore[misc]
             async def select_project(
-                project_name: Optional[str] = None, project_id: Optional[str] = None
+                name: Optional[str] = None, project_id: Optional[str] = None
             ) -> Dict[str, Any]:
                 """Select an existing project to work on."""
                 from .tools.project_management import select_project as impl
 
-                return await impl(
-                    server, {"project_name": project_name, "project_id": project_id}
-                )
+                return await impl(server, {"name": name, "project_id": project_id})
 
         if "discover_planka_projects" in allowed_tools:
 

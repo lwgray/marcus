@@ -100,7 +100,7 @@ async def switch_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
         MarcusServer instance
     arguments : Dict[str, Any]
         - project_id: ID of project to switch to
-        - project_name: Alternative - name of project (if unique)
+        - name: Alternative - full project name from list_projects (if unique)
 
     Returns
     -------
@@ -108,28 +108,28 @@ async def switch_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
         Success status and project details
     """
     project_id = arguments.get("project_id")
-    project_name = arguments.get("project_name")
+    name = arguments.get("name")
 
-    if not project_id and not project_name:
+    if not project_id and not name:
         return {
             "success": False,
-            "error": "Either project_id or project_name must be provided",
+            "error": "Either project_id or name must be provided",
         }
 
     # Find project by name if ID not provided
-    if not project_id and project_name:
+    if not project_id and name:
         projects = await server.project_registry.list_projects()
-        matching = [p for p in projects if p.name.lower() == project_name.lower()]
+        matching = [p for p in projects if p.name.lower() == name.lower()]
 
         if not matching:
             return {
                 "success": False,
-                "error": f"No project found with name: {project_name}",
+                "error": f"No project found with name: {name}",
             }
         elif len(matching) > 1:
             return {
                 "success": False,
-                "error": f"Multiple projects found with name: {project_name}",
+                "error": f"Multiple projects found with name: {name}",
                 "matching_projects": [
                     {"id": p.id, "name": p.name, "provider": p.provider}
                     for p in matching
@@ -484,9 +484,10 @@ async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
     server : Any
         MarcusServer instance
     arguments : Dict[str, Any]
-        - project_name: Name to search for (optional if project_id provided)
-        - board_name: Board name to filter by (optional, used with project_name)
-        - project_id: Exact project ID (optional if project_name provided)
+        - name: Full project name from list_projects (e.g., "Test API Fix - Main Board")
+               (optional if project_id provided)
+        - board_name: Board name to filter by (optional)
+        - project_id: Exact project ID (optional if name provided)
 
     Returns
     -------
@@ -495,26 +496,20 @@ async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
 
     Examples
     --------
-    >>> # Select by name
-    >>> result = await select_project(server, {"project_name": "MyAPI"})
-
-    >>> # Select by project and board name
-    >>> result = await select_project(server, {
-    ...     "project_name": "Engineering",
-    ...     "board_name": "Sprint 1"
-    ... })
+    >>> # Select by full name (from list_projects)
+    >>> result = await select_project(server, {"name": "Test API Fix - Main Board"})
 
     >>> # Select by ID
     >>> result = await select_project(server, {"project_id": "proj-123"})
     """
-    project_name = arguments.get("project_name")
+    name = arguments.get("name")
     board_name = arguments.get("board_name")
     project_id = arguments.get("project_id")
 
-    if not project_name and not project_id:
+    if not name and not project_id:
         return {
             "success": False,
-            "error": "Either project_name or project_id must be provided",
+            "error": "Either 'name' or 'project_id' must be provided",
         }
 
     # If project_id provided, use it directly
@@ -556,7 +551,7 @@ async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
         matching_projects = [
             p
             for p in all_projects
-            if p.provider_config.get("project_name") == project_name
+            if p.provider_config.get("project_name") == name
             and p.provider_config.get("board_name") == board_name
         ]
 
@@ -564,7 +559,7 @@ async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
             return {
                 "success": False,
                 "error": (
-                    f"No project found with project_name='{project_name}' "
+                    f"No project found with name='{name}' "
                     f"and board_name='{board_name}'"
                 ),
                 "hint": (
@@ -576,7 +571,7 @@ async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
             return {
                 "success": False,
                 "error": (
-                    f"Multiple projects found with project_name='{project_name}' "
+                    f"Multiple projects found with name='{name}' "
                     f"and board_name='{board_name}'"
                 ),
                 "matches": [
@@ -619,7 +614,7 @@ async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
     # Otherwise, search by name using find_or_create_project
     discovery_result = await find_or_create_project(
         server=server,
-        arguments={"project_name": project_name, "create_if_missing": False},
+        arguments={"name": name, "create_if_missing": False},
     )
 
     if discovery_result["action"] == "found_existing":
@@ -667,7 +662,7 @@ async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
 
         if auto_sync_enabled:
             hint = (
-                f"Project '{project_name}' not found in Marcus registry. "
+                f"Project '{name}' not found in Marcus registry. "
                 "Since auto_sync_projects is enabled, you may need to run "
                 "sync_projects to import projects from Planka. Use "
                 "list_projects to see currently registered projects."
@@ -681,7 +676,7 @@ async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
         return {
             "success": False,
             "action": "not_found",
-            "message": f"Project '{project_name}' not found in Marcus registry",
+            "message": f"Project '{name}' not found in Marcus registry",
             "hint": hint,
         }
 
@@ -1118,7 +1113,7 @@ async def find_or_create_project(
     server : Any
         MarcusServer instance
     arguments : Dict[str, Any]
-        - project_name: Name to search for (required)
+        - name: Name to search for (required)
         - create_if_missing: Auto-create if not found (default: False)
         - provider: Provider for auto-creation (default: "planka")
 
@@ -1136,7 +1131,7 @@ async def find_or_create_project(
     >>> # Search for exact project
     >>> result = await find_or_create_project(
     ...     server,
-    ...     {"project_name": "MyAPI"}
+    ...     {"name": "Test API Fix - Main Board"}
     ... )
     >>> if result["action"] == "found_existing":
     ...     project_id = result["project"]["id"]
@@ -1144,28 +1139,26 @@ async def find_or_create_project(
     >>> # Get creation guidance
     >>> result = await find_or_create_project(
     ...     server,
-    ...     {"project_name": "NewProject", "create_if_missing": True}
+    ...     {"name": "NewProject", "create_if_missing": True}
     ... )
     >>> if result["action"] == "guide_creation":
     ...     print(result["options"])
     """
-    project_name = arguments.get("project_name")
+    name = arguments.get("name")
     create_if_missing = arguments.get("create_if_missing", False)
 
-    if not project_name:
+    if not name:
         return {
             "success": False,
-            "error": "project_name is required",
-            "usage": "find_or_create_project(project_name='MyProject')",
+            "error": "name is required",
+            "usage": "find_or_create_project(name='Test API Fix - Main Board')",
         }
 
     # Search for existing projects
     projects = await server.project_registry.list_projects()
-    exact_matches = [p for p in projects if p.name == project_name]
+    exact_matches = [p for p in projects if p.name == name]
     fuzzy_matches = [
-        p
-        for p in projects
-        if project_name.lower() in p.name.lower() and p not in exact_matches
+        p for p in projects if name.lower() in p.name.lower() and p not in exact_matches
     ]
 
     if exact_matches:
@@ -1199,14 +1192,14 @@ async def find_or_create_project(
                     "id": p.id,
                     "name": p.name,
                     "provider": p.provider,
-                    "similarity": calculate_similarity(project_name, p.name),
+                    "similarity": calculate_similarity(name, p.name),
                 }
                 for p in fuzzy_matches
             ],
             "suggestion": "Did you mean one of these projects?",
             "next_steps": [
-                "Use similar: switch_project(project_name='...')",
-                (f"Create new: create_project(..., " f"project_name='{project_name}')"),
+                "Use similar: switch_project(name='...')",
+                (f"Create new: create_project(..., " f"project_name='{name}')"),
             ],
         }
 
@@ -1215,21 +1208,21 @@ async def find_or_create_project(
         if create_if_missing:
             return {
                 "action": "guide_creation",
-                "message": f"No project '{project_name}' found. Ready to create.",
+                "message": f"No project '{name}' found. Ready to create.",
                 "options": [
                     {
                         "option": "Create from description",
                         "tool": "create_project",
                         "example": (
                             f"create_project(description='...', "
-                            f"project_name='{project_name}')"
+                            f"project_name='{name}')"
                         ),
                     },
                     {
                         "option": "Connect existing Planka/GitHub project",
                         "tool": "add_project",
                         "example": (
-                            f"add_project(name='{project_name}', "
+                            f"add_project(name='{name}', "
                             f"provider='planka', config={{...}})"
                         ),
                     },
@@ -1238,7 +1231,7 @@ async def find_or_create_project(
         else:
             return {
                 "action": "not_found",
-                "message": f"No project named '{project_name}' found in Marcus",
+                "message": f"No project named '{name}' found in Marcus",
                 "total_projects": len(projects),
                 "suggestion": "List all projects with: list_projects()",
                 "next_steps": [
