@@ -10,7 +10,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
-from src.core.models import Task
+from src.core.models import Task, TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -242,12 +242,31 @@ def calculate_optimal_agents(tasks: List[Task]) -> ProjectSchedule:
             parallel_opportunities=[],
         )
 
-    # Check for cycles first
-    if detect_cycles(tasks):
+    # Filter to only workable tasks:
+    # 1. Subtasks only (not parent containers)
+    # 2. Not already completed
+    workable_tasks = [
+        task for task in tasks if task.is_subtask and task.status != TaskStatus.DONE
+    ]
+
+    if not workable_tasks:
+        logger.info("No workable tasks found (all tasks are parents or done)")
+        return ProjectSchedule(
+            optimal_agents=0,
+            critical_path_hours=0.0,
+            max_parallelism=0,
+            estimated_completion_hours=0.0,
+            single_agent_hours=0.0,
+            efficiency_gain=0.0,
+            parallel_opportunities=[],
+        )
+
+    # Check for cycles in workable tasks
+    if detect_cycles(workable_tasks):
         raise ValueError("Dependency graph contains cycles - cannot schedule")
 
-    # Calculate task times
-    task_times = calculate_task_times(tasks)
+    # Calculate task times using workable tasks only
+    task_times = calculate_task_times(workable_tasks)
 
     # Find critical path (longest path)
     critical_path = max(times["finish"] for times in task_times.values())
@@ -259,8 +278,8 @@ def calculate_optimal_agents(tasks: List[Task]) -> ProjectSchedule:
 
     max_parallelism = max(len(task_ids) for task_ids in time_slices.values())
 
-    # Calculate total work
-    total_work = sum(task.estimated_hours for task in tasks)
+    # Calculate total work from workable tasks only
+    total_work = sum(task.estimated_hours for task in workable_tasks)
 
     # CRITICAL: Since agents cannot be dynamically scaled after start,
     # we must provision for PEAK parallelism, not average.
@@ -296,7 +315,11 @@ def calculate_optimal_agents(tasks: List[Task]) -> ProjectSchedule:
             }
         )
 
-    logger.info(f"Calculated optimal agents: {optimal} agents for {len(tasks)} tasks")
+    logger.info(
+        f"Calculated optimal agents: {optimal} agents for "
+        f"{len(workable_tasks)} workable tasks "
+        f"({len(tasks) - len(workable_tasks)} parents/done filtered out)"
+    )
     logger.info(f"Critical path: {critical_path}h, Max parallelism: {max_parallelism}")
     logger.info(
         f"Efficiency gain: {efficiency_gain:.1%} "

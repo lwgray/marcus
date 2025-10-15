@@ -537,6 +537,7 @@ class TestCalculateOptimalAgents:
                 due_date=None,
                 estimated_hours=2.0,
                 dependencies=[],
+                is_subtask=True,
             ),
             Task(
                 id="B",
@@ -550,6 +551,7 @@ class TestCalculateOptimalAgents:
                 due_date=None,
                 estimated_hours=3.0,
                 dependencies=["A"],
+                is_subtask=True,
             ),
             Task(
                 id="C",
@@ -563,6 +565,7 @@ class TestCalculateOptimalAgents:
                 due_date=None,
                 estimated_hours=2.0,
                 dependencies=["B"],
+                is_subtask=True,
             ),
         ]
 
@@ -592,6 +595,7 @@ class TestCalculateOptimalAgents:
                 due_date=None,
                 estimated_hours=2.0,
                 dependencies=[],
+                is_subtask=True,
             ),
             Task(
                 id="B",
@@ -605,6 +609,7 @@ class TestCalculateOptimalAgents:
                 due_date=None,
                 estimated_hours=3.0,
                 dependencies=[],
+                is_subtask=True,
             ),
             Task(
                 id="C",
@@ -618,6 +623,7 @@ class TestCalculateOptimalAgents:
                 due_date=None,
                 estimated_hours=2.0,
                 dependencies=[],
+                is_subtask=True,
             ),
         ]
 
@@ -653,6 +659,7 @@ class TestCalculateOptimalAgents:
                 due_date=None,
                 estimated_hours=2.0,
                 dependencies=[],
+                is_subtask=True,
             ),
             Task(
                 id="B",
@@ -666,6 +673,7 @@ class TestCalculateOptimalAgents:
                 due_date=None,
                 estimated_hours=3.0,
                 dependencies=["A"],
+                is_subtask=True,
             ),
             Task(
                 id="C",
@@ -679,6 +687,7 @@ class TestCalculateOptimalAgents:
                 due_date=None,
                 estimated_hours=2.0,
                 dependencies=["A"],
+                is_subtask=True,
             ),
             Task(
                 id="D",
@@ -692,6 +701,7 @@ class TestCalculateOptimalAgents:
                 due_date=None,
                 estimated_hours=2.0,
                 dependencies=["A"],
+                is_subtask=True,
             ),
             Task(
                 id="E",
@@ -705,6 +715,7 @@ class TestCalculateOptimalAgents:
                 due_date=None,
                 estimated_hours=1.0,
                 dependencies=["B", "C"],
+                is_subtask=True,
             ),
         ]
 
