@@ -990,6 +990,10 @@ async def sync_projects(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any
             ),
         }
 
+    # Save the currently active project to restore after sync
+    active_project_before = await server.project_registry.get_active_project()
+    active_project_id_before = active_project_before.id if active_project_before else None
+
     # First, automatically deduplicate the registry
     dedup_result = await _deduplicate_registry(server)
 
@@ -1061,11 +1065,25 @@ async def sync_projects(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+    # Restore the active project if it still exists
+    # This prevents sync from inadvertently changing the active project
+    if active_project_id_before:
+        # Check if the previously active project still exists
+        restored_project = await server.project_registry.get_project(active_project_id_before)
+        if restored_project:
+            # Restore it as active
+            await server.project_registry.set_active_project(active_project_id_before)
+            logger.info(f"Restored active project after sync: {restored_project.name}")
+        else:
+            logger.warning(
+                f"Previously active project {active_project_id_before} was deleted during sync"
+            )
+
     # Log the sync operation
     dedup_count = dedup_result.get("removed_count", 0)
     log_message = (
-        f"Synced {len(added)} new projects, updated {len(updated)}, "
-        f"skipped {len(skipped)}"
+        f"Synced {len(added)} new projects, "
+        f"updated {len(updated)}, skipped {len(skipped)}"
     )
     if dedup_count > 0:
         log_message += f", removed {dedup_count} duplicates"
@@ -1078,6 +1096,7 @@ async def sync_projects(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any
             "updated_count": len(updated),
             "skipped_count": len(skipped),
             "duplicates_removed": dedup_count,
+            "active_project_preserved": active_project_id_before is not None,
         },
     )
 
