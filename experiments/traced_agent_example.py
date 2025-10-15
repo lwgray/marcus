@@ -1,52 +1,73 @@
 #!/usr/bin/env python3
-"""
-MLflow Traced Agent Example for Marcus Experiments
+"""MLflow Traced Agent Example for Marcus Experiments.
 
 This example shows how to integrate MLflow Trace into your
 agent spawning experiments.
 
-Usage:
-    python experiments/traced_agent_example.py
+Usage
+-----
+python experiments/traced_agent_example.py
 """
 
-import sys
+import asyncio
 import os
+import sys
+import time
+from typing import Any, Dict, List
+
+# Add parent directory to path before other imports (required for standalone execution)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import mlflow
-from mlflow.entities import SpanType
-import time
-import asyncio
-from src.utils.mlflow_tracing import trace_agent_task, trace_llm_call, TracedExperiment
+import mlflow  # noqa: E402
+from mlflow.entities import SpanType  # noqa: E402
+
+from src.utils.mlflow_tracing import (  # noqa: E402
+    TracedExperiment,
+    trace_agent_task,
+    trace_llm_call,
+)
 
 
 class TracedMarcusAgent:
-    """
-    Example Marcus agent with MLflow Trace integration.
+    """Example Marcus agent with MLflow Trace integration.
 
-    This demonstrates how to add tracing to agent workflows
+    Demonstrates how to add tracing to agent workflows
     in the experiments/ directory.
+
+    Parameters
+    ----------
+    agent_id : str
+        Unique identifier for the agent.
+    skills : list
+        List of skills the agent possesses.
     """
 
-    def __init__(self, agent_id: str, skills: list):
+    def __init__(self, agent_id: str, skills: List[str]) -> None:
+        """Initialize the TracedMarcusAgent."""
         self.agent_id = agent_id
         self.skills = skills
         self.tasks_completed = 0
 
     @trace_agent_task("task_execution")
-    def execute_task(self, task: dict):
-        """
-        Execute a task with automatic tracing.
+    def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute a task with automatic tracing.
 
         This method is decorated to automatically create MLflow traces
         for each task execution, capturing inputs, outputs, and timing.
+
+        Parameters
+        ----------
+        task : Dict[str, Any]
+            Task definition with name, description, and required skills.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Execution results including status, implementation, and test results.
         """
         print(f"\n🤖 Agent {self.agent_id} executing: {task['name']}")
 
-        with mlflow.start_span(
-            name="task_analysis",
-            span_type=SpanType.CHAIN
-        ) as span:
+        with mlflow.start_span(name="task_analysis", span_type=SpanType.CHAIN) as span:
             # Analyze task
             span.set_attribute("task_id", task.get("id", "unknown"))
             span.set_attribute("task_name", task["name"])
@@ -77,13 +98,26 @@ class TracedMarcusAgent:
             "implementation": implementation,
             "files_written": files_written,
             "test_results": test_results,
-            "tasks_completed": self.tasks_completed
+            "tasks_completed": self.tasks_completed,
         }
 
     @trace_llm_call(model="claude-sonnet-4-5", operation="implementation_generation")
-    def _generate_implementation(self, task: dict):
-        """Generate code implementation using LLM."""
-        prompt = f"Implement: {task['name']}\nDescription: {task.get('description', '')}"
+    def _generate_implementation(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate code implementation using LLM.
+
+        Parameters
+        ----------
+        task : Dict[str, Any]
+            Task definition.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Generated code, explanation, and token usage.
+        """
+        prompt = (
+            f"Implement: {task['name']}\nDescription: {task.get('description', '')}"
+        )
 
         # Simulate LLM call (in real use, call actual LLM API)
         time.sleep(0.5)  # Simulate API latency
@@ -94,18 +128,28 @@ class TracedMarcusAgent:
             "usage": {
                 "prompt_tokens": len(prompt.split()),
                 "completion_tokens": 50,
-                "total_tokens": len(prompt.split()) + 50
-            }
+                "total_tokens": len(prompt.split()) + 50,
+            },
         }
 
         return implementation
 
     @trace_agent_task("file_writing")
-    def _write_files(self, implementation: dict):
-        """Write implementation to files."""
+    def _write_files(self, implementation: Dict[str, Any]) -> List[str]:
+        """Write implementation to files.
+
+        Parameters
+        ----------
+        implementation : Dict[str, Any]
+            Implementation details to write.
+
+        Returns
+        -------
+        List[str]
+            List of file paths written.
+        """
         with mlflow.start_span(
-            name="filesystem_operations",
-            span_type=SpanType.TOOL
+            name="filesystem_operations", span_type=SpanType.TOOL
         ) as span:
             files = ["main.py", "test_main.py"]
             span.set_attribute("files_to_write", len(files))
@@ -117,12 +161,20 @@ class TracedMarcusAgent:
             return files
 
     @trace_agent_task("testing")
-    def _run_tests(self, files: list):
-        """Run tests on implementation."""
-        with mlflow.start_span(
-            name="test_execution",
-            span_type=SpanType.TOOL
-        ) as span:
+    def _run_tests(self, files: List[str]) -> Dict[str, Any]:
+        """Run tests on implementation.
+
+        Parameters
+        ----------
+        files : List[str]
+            List of files to test.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Test results including counts and coverage.
+        """
+        with mlflow.start_span(name="test_execution", span_type=SpanType.TOOL) as span:
             span.set_attribute("test_files", len(files))
 
             # Simulate test execution
@@ -132,16 +184,15 @@ class TracedMarcusAgent:
                 "tests_run": 5,
                 "tests_passed": 5,
                 "tests_failed": 0,
-                "coverage": 85.5
+                "coverage": 85.5,
             }
 
             span.set_outputs(results)
             return results
 
 
-def run_traced_experiment():
-    """
-    Run a complete traced experiment with multiple agents.
+def run_traced_experiment() -> None:
+    """Run a complete traced experiment with multiple agents.
 
     This example shows how to structure experiments with MLflow Trace
     to capture the entire workflow including agent interactions.
@@ -155,8 +206,8 @@ def run_traced_experiment():
         tags={
             "experiment_type": "traced_agents",
             "framework": "marcus_mcp",
-            "agent_count": "3"
-        }
+            "agent_count": "3",
+        },
     ) as exp:
 
         print(f"\n{'='*80}")
@@ -172,7 +223,7 @@ def run_traced_experiment():
         agents = [
             TracedMarcusAgent("agent-1", ["python", "fastapi", "testing"]),
             TracedMarcusAgent("agent-2", ["javascript", "react", "ui"]),
-            TracedMarcusAgent("agent-3", ["database", "sql", "postgresql"])
+            TracedMarcusAgent("agent-3", ["database", "sql", "postgresql"]),
         ]
 
         # Define tasks
@@ -181,26 +232,26 @@ def run_traced_experiment():
                 "id": "task-1",
                 "name": "Create API endpoint",
                 "description": "Build REST API for user registration",
-                "required_skills": ["python", "fastapi"]
+                "required_skills": ["python", "fastapi"],
             },
             {
                 "id": "task-2",
                 "name": "Create UI components",
                 "description": "Build React components for user interface",
-                "required_skills": ["javascript", "react"]
+                "required_skills": ["javascript", "react"],
             },
             {
                 "id": "task-3",
                 "name": "Design database schema",
                 "description": "Create tables for user data",
-                "required_skills": ["database", "sql"]
+                "required_skills": ["database", "sql"],
             },
             {
                 "id": "task-4",
                 "name": "Write integration tests",
                 "description": "Test API and UI integration",
-                "required_skills": ["python", "testing"]
-            }
+                "required_skills": ["python", "testing"],
+            },
         ]
 
         # Execute tasks with tracing
@@ -210,8 +261,7 @@ def run_traced_experiment():
         for task in tasks:
             # Create a span for each task assignment
             with mlflow.start_span(
-                name=f"assign_task_{task['id']}",
-                span_type=SpanType.AGENT
+                name=f"assign_task_{task['id']}", span_type=SpanType.AGENT
             ) as span:
 
                 span.set_attribute("task_name", task["name"])
@@ -219,7 +269,10 @@ def run_traced_experiment():
                 # Find best agent for task
                 best_agent = None
                 for agent in agents:
-                    if all(skill in agent.skills for skill in task.get("required_skills", [])):
+                    if all(
+                        skill in agent.skills
+                        for skill in task.get("required_skills", [])
+                    ):
                         best_agent = agent
                         break
 
@@ -258,28 +311,41 @@ def run_traced_experiment():
 
         # Log agent performance
         for agent in agents:
-            exp.log_metric(f"agent_{agent.agent_id}_tasks_completed", agent.tasks_completed)
+            exp.log_metric(
+                f"agent_{agent.agent_id}_tasks_completed", agent.tasks_completed
+            )
 
         print(f"\n{'='*80}")
-        print(f"Experiment Complete!")
+        print("Experiment Complete!")
         print(f"Total tokens used: {total_tokens}")
         print(f"Total tests passed: {total_tests_passed}")
         print(f"{'='*80}\n")
 
 
-def run_async_traced_experiment():
-    """
-    Example of tracing async agent workflows.
+def run_async_traced_experiment() -> None:
+    """Trace async agent workflows.
 
     Shows how to use MLflow Trace with async/await patterns
     common in agent systems.
     """
 
-    async def async_agent_task(agent_id: str, task: dict):
-        """Simulated async agent task."""
+    async def async_agent_task(agent_id: str, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Simulate async agent task.
+
+        Parameters
+        ----------
+        agent_id : str
+            Agent identifier.
+        task : Dict[str, Any]
+            Task definition.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Task result.
+        """
         with mlflow.start_span(
-            name=f"async_task_{task['id']}",
-            span_type=SpanType.AGENT
+            name=f"async_task_{task['id']}", span_type=SpanType.AGENT
         ) as span:
             span.set_attribute("agent_id", agent_id)
             span.set_attribute("task_name", task["name"])
@@ -291,7 +357,7 @@ def run_async_traced_experiment():
             span.set_outputs(result)
             return result
 
-    async def run_async_agents():
+    async def run_async_agents() -> None:
         """Run multiple agents concurrently."""
         with TracedExperiment("async_agent_experiment") as exp:
             exp.log_param("execution_mode", "async")
@@ -299,14 +365,13 @@ def run_async_traced_experiment():
             tasks = [
                 {"id": "t1", "name": "Task 1"},
                 {"id": "t2", "name": "Task 2"},
-                {"id": "t3", "name": "Task 3"}
+                {"id": "t3", "name": "Task 3"},
             ]
 
             # Run agents concurrently
-            results = await asyncio.gather(*[
-                async_agent_task(f"agent-{i}", task)
-                for i, task in enumerate(tasks)
-            ])
+            results = await asyncio.gather(
+                *[async_agent_task(f"agent-{i}", task) for i, task in enumerate(tasks)]
+            )
 
             exp.log_metric("tasks_completed", len(results))
             print(f"Async execution completed: {len(results)} tasks")
@@ -322,9 +387,9 @@ if __name__ == "__main__":
     run_traced_experiment()
 
     # Run async traced experiment
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("Running Async Experiment...")
-    print("="*80 + "\n")
+    print("=" * 80 + "\n")
     run_async_traced_experiment()
 
     print("\n✅ All experiments complete!")

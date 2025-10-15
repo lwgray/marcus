@@ -21,41 +21,53 @@ Usage:
         pass
 """
 
+import functools
+import json
+import time
+import traceback
+from datetime import datetime
+from typing import Any, Callable, Dict, Optional
+
 import mlflow
 from mlflow.entities import SpanType
-import functools
-import time
-import json
-from typing import Any, Dict, Optional, Callable
-from datetime import datetime
-import traceback
-
 
 # Configure MLflow
 mlflow.set_tracking_uri("file:./mlruns")
 
 
-def trace_agent_task(task_name: str, metadata: Optional[Dict] = None):
-    """
-    Decorator to trace an entire agent task execution.
+def trace_agent_task(
+    task_name: str, metadata: Optional[Dict[str, Any]] = None
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Trace an entire agent task execution.
 
-    Args:
-        task_name: Name of the task being executed
-        metadata: Additional metadata to attach to the trace
+    Decorator that automatically creates MLflow traces for agent tasks,
+    capturing inputs, outputs, timing, and metadata.
 
-    Example:
-        @trace_agent_task("implement_login", {"priority": "high"})
-        def implement_login(task_data):
-            # Agent implementation
-            return result
+    Parameters
+    ----------
+    task_name : str
+        Name of the task being executed.
+    metadata : dict, optional
+        Additional metadata to attach to the trace.
+
+    Returns
+    -------
+    Callable
+        Decorated function with automatic tracing.
+
+    Examples
+    --------
+    >>> @trace_agent_task("implement_login", {"priority": "high"})
+    ... def implement_login(task_data):
+    ...     return {"status": "completed"}
     """
-    def decorator(func: Callable) -> Callable:
+
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             # Start the trace
             with mlflow.start_span(
-                name=f"task_{task_name}",
-                span_type=SpanType.AGENT
+                name=f"task_{task_name}", span_type=SpanType.AGENT
             ) as span:
                 # Add metadata
                 if metadata:
@@ -85,7 +97,9 @@ def trace_agent_task(task_name: str, metadata: Optional[Dict] = None):
 
                     # Add result summary
                     if isinstance(result, dict):
-                        span.set_attribute("result_summary", json.dumps(result, default=str)[:500])
+                        span.set_attribute(
+                            "result_summary", json.dumps(result, default=str)[:500]
+                        )
 
                     return result
 
@@ -98,29 +112,42 @@ def trace_agent_task(task_name: str, metadata: Optional[Dict] = None):
                     raise
 
         return wrapper
+
     return decorator
 
 
-def trace_llm_call(model: str = "claude-sonnet-4-5", operation: str = "generate"):
-    """
-    Decorator to trace LLM API calls with detailed prompt/response tracking.
+def trace_llm_call(
+    model: str = "claude-sonnet-4-5", operation: str = "generate"
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Trace LLM API calls with detailed prompt/response tracking.
 
-    Args:
-        model: Name of the LLM model being used
-        operation: Type of operation (generate, chat, embed, etc.)
+    Decorator that automatically tracks LLM calls, capturing prompts,
+    responses, token usage, and latency.
 
-    Example:
-        @trace_llm_call(model="claude-sonnet-4-5", operation="code_generation")
-        def generate_code(prompt):
-            response = llm.generate(prompt)
-            return response
+    Parameters
+    ----------
+    model : str, optional
+        Name of the LLM model being used, by default "claude-sonnet-4-5".
+    operation : str, optional
+        Type of operation (generate, chat, embed, etc.), by default "generate".
+
+    Returns
+    -------
+    Callable
+        Decorated function with automatic LLM call tracing.
+
+    Examples
+    --------
+    >>> @trace_llm_call(model="claude-sonnet-4-5", operation="code_generation")
+    ... def generate_code(prompt):
+    ...     return {"content": "code", "usage": {"total_tokens": 150}}
     """
-    def decorator(func: Callable) -> Callable:
+
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             with mlflow.start_span(
-                name=f"llm_{operation}",
-                span_type=SpanType.LLM
+                name=f"llm_{operation}", span_type=SpanType.LLM
             ) as span:
                 # Track model info
                 span.set_attribute("model", model)
@@ -153,13 +180,22 @@ def trace_llm_call(model: str = "claude-sonnet-4-5", operation: str = "generate"
 
                         # Track token usage if available
                         if "usage" in result:
-                            span.set_attribute("prompt_tokens", result["usage"].get("prompt_tokens", 0))
-                            span.set_attribute("completion_tokens", result["usage"].get("completion_tokens", 0))
-                            span.set_attribute("total_tokens", result["usage"].get("total_tokens", 0))
+                            span.set_attribute(
+                                "prompt_tokens", result["usage"].get("prompt_tokens", 0)
+                            )
+                            span.set_attribute(
+                                "completion_tokens",
+                                result["usage"].get("completion_tokens", 0),
+                            )
+                            span.set_attribute(
+                                "total_tokens", result["usage"].get("total_tokens", 0)
+                            )
 
                         # Track response content
                         if "content" in result:
-                            span.set_attribute("response_length", len(str(result["content"])))
+                            span.set_attribute(
+                                "response_length", len(str(result["content"]))
+                            )
 
                     return result
 
@@ -169,28 +205,42 @@ def trace_llm_call(model: str = "claude-sonnet-4-5", operation: str = "generate"
                     raise
 
         return wrapper
+
     return decorator
 
 
-def trace_tool_call(tool_name: str, tool_type: str = "function"):
-    """
-    Decorator to trace tool/function calls within agent workflows.
+def trace_tool_call(
+    tool_name: str, tool_type: str = "function"
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Trace tool/function calls within agent workflows.
 
-    Args:
-        tool_name: Name of the tool being called
-        tool_type: Type of tool (function, api, database, etc.)
+    Decorator that automatically tracks tool usage, capturing inputs,
+    outputs, and execution time.
 
-    Example:
-        @trace_tool_call("database_query", "database")
-        def query_users(email):
-            return db.query(User).filter_by(email=email).first()
+    Parameters
+    ----------
+    tool_name : str
+        Name of the tool being called.
+    tool_type : str, optional
+        Type of tool (function, api, database, etc.), by default "function".
+
+    Returns
+    -------
+    Callable
+        Decorated function with automatic tool call tracing.
+
+    Examples
+    --------
+    >>> @trace_tool_call("database_query", "database")
+    ... def query_users(email):
+    ...     return {"user_id": "123", "email": email}
     """
-    def decorator(func: Callable) -> Callable:
+
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             with mlflow.start_span(
-                name=f"tool_{tool_name}",
-                span_type=SpanType.TOOL
+                name=f"tool_{tool_name}", span_type=SpanType.TOOL
             ) as span:
                 span.set_attribute("tool_name", tool_name)
                 span.set_attribute("tool_type", tool_type)
@@ -199,7 +249,9 @@ def trace_tool_call(tool_name: str, tool_type: str = "function"):
                 if args or kwargs:
                     inputs = {
                         "args": [str(arg) for arg in args] if args else [],
-                        "kwargs": {k: str(v) for k, v in kwargs.items()} if kwargs else {}
+                        "kwargs": (
+                            {k: str(v) for k, v in kwargs.items()} if kwargs else {}
+                        ),
                     }
                     span.set_inputs(inputs)
 
@@ -224,27 +276,47 @@ def trace_tool_call(tool_name: str, tool_type: str = "function"):
                     raise
 
         return wrapper
+
     return decorator
 
 
 class TracedExperiment:
-    """
-    Context manager for MLflow traced experiments.
+    """Context manager for MLflow traced experiments.
 
-    Usage:
-        with TracedExperiment("my_experiment", run_name="test_run") as exp:
-            exp.log_param("learning_rate", 0.001)
-            result = my_traced_function()
-            exp.log_metric("accuracy", result)
+    Provides a convenient way to manage MLflow experiment lifecycle,
+    automatically handling experiment creation, run management, and cleanup.
+
+    Parameters
+    ----------
+    experiment_name : str
+        Name of the MLflow experiment.
+    run_name : str, optional
+        Name for the specific run. Auto-generated if not provided.
+    tags : dict, optional
+        Tags to attach to the run.
+
+    Examples
+    --------
+    >>> with TracedExperiment("my_experiment", run_name="test_run") as exp:
+    ...     exp.log_param("learning_rate", 0.001)
+    ...     result = my_traced_function()
+    ...     exp.log_metric("accuracy", result)
     """
 
-    def __init__(self, experiment_name: str, run_name: Optional[str] = None, tags: Optional[Dict] = None):
+    def __init__(
+        self,
+        experiment_name: str,
+        run_name: Optional[str] = None,
+        tags: Optional[Dict[str, str]] = None,
+    ) -> None:
+        """Initialize TracedExperiment context manager."""
         self.experiment_name = experiment_name
         self.run_name = run_name or f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         self.tags = tags or {}
-        self.run = None
+        self.run: Optional[Any] = None
 
-    def __enter__(self):
+    def __enter__(self) -> "TracedExperiment":
+        """Enter the context manager and start MLflow run."""
         # Set or create experiment
         mlflow.set_experiment(self.experiment_name)
 
@@ -256,7 +328,13 @@ class TracedExperiment:
 
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: Optional[type],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[Any],
+    ) -> None:
+        """Exit the context manager and end MLflow run."""
         if exc_type:
             # Log the error
             mlflow.log_param("error_occurred", True)
@@ -267,62 +345,106 @@ class TracedExperiment:
 
         mlflow.end_run()
 
-        # Don't suppress exceptions
-        return False
+    def log_param(self, key: str, value: Any) -> None:
+        """Log a parameter to MLflow.
 
-    def log_param(self, key: str, value: Any):
-        """Log a parameter."""
+        Parameters
+        ----------
+        key : str
+            Parameter name.
+        value : Any
+            Parameter value.
+        """
         mlflow.log_param(key, value)
 
-    def log_metric(self, key: str, value: float, step: Optional[int] = None):
-        """Log a metric."""
+    def log_metric(self, key: str, value: float, step: Optional[int] = None) -> None:
+        """Log a metric to MLflow.
+
+        Parameters
+        ----------
+        key : str
+            Metric name.
+        value : float
+            Metric value.
+        step : int, optional
+            Step number for the metric.
+        """
         mlflow.log_metric(key, value, step=step)
 
-    def log_artifact(self, local_path: str):
-        """Log an artifact file."""
+    def log_artifact(self, local_path: str) -> None:
+        """Log an artifact file to MLflow.
+
+        Parameters
+        ----------
+        local_path : str
+            Path to the artifact file to log.
+        """
         mlflow.log_artifact(local_path)
 
-    def set_tag(self, key: str, value: str):
-        """Set a tag."""
+    def set_tag(self, key: str, value: str) -> None:
+        """Set a tag in MLflow.
+
+        Parameters
+        ----------
+        key : str
+            Tag name.
+        value : str
+            Tag value.
+        """
         mlflow.set_tag(key, value)
 
 
-def create_trace_example():
-    """
-    Example showing how to use MLflow tracing with Marcus agents.
+def create_trace_example() -> None:
+    """Demonstrate MLflow tracing with Marcus agents.
+
+    Shows how to use MLflow Trace decorators and context managers
+    with a simulated agent workflow including LLM calls and tool usage.
     """
 
     @trace_agent_task("example_task", metadata={"complexity": "medium"})
-    def example_agent_workflow(task_description: str):
-        """Example of a traced agent workflow."""
+    def example_agent_workflow(task_description: str) -> Dict[str, Any]:
+        """Execute a traced agent workflow.
+
+        Parameters
+        ----------
+        task_description : str
+            Description of the task to execute.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Status and metrics from the workflow execution.
+        """
 
         # Simulated LLM call
         @trace_llm_call(model="claude-sonnet-4-5", operation="code_generation")
-        def generate_code(prompt: str):
+        def generate_code(prompt: str) -> Dict[str, Any]:
+            """Generate code using LLM (simulated)."""
             # In real usage, this would call the actual LLM
             return {
                 "content": "# Generated code here",
                 "usage": {
                     "prompt_tokens": 100,
                     "completion_tokens": 50,
-                    "total_tokens": 150
-                }
+                    "total_tokens": 150,
+                },
             }
 
         # Simulated tool call
         @trace_tool_call("file_writer", "filesystem")
-        def write_code_to_file(code: str, filename: str):
+        def write_code_to_file(code: str, filename: str) -> str:
+            """Write code to file (simulated)."""
             # In real usage, this would write the file
             return f"Written to {filename}"
 
         # Execute workflow
         code_result = generate_code(task_description)
-        file_result = write_code_to_file(code_result["content"], "output.py")
+        write_code_to_file(code_result["content"], "output.py")
 
         return {
             "status": "success",
             "files_created": 1,
-            "tokens_used": code_result["usage"]["total_tokens"]
+            "tokens_used": code_result["usage"]["total_tokens"],
         }
 
     # Run the example
