@@ -12,6 +12,7 @@
 - [ ] [Task execution order not respecting dependencies](https://github.com/lwgray/marcus/issues/7) (#7) - Tests assigned before Implementation
 - [ ] [KanbanInterface.update_task() None returns not handled](https://github.com/lwgray/marcus/issues/50) (#50) - Potential for silent failures
 - [ ] [Improve Planka Board Handling in Multi-Project Mode](https://github.com/lwgray/marcus/issues/11) (#11)
+- [ ] [Optimal agent count calculation includes non-workable tasks](https://github.com/lwgray/marcus/issues/81) (#81) - 🔴 Includes parent/done tasks causing over-provisioning
 
 ## 🚀 Enhancements In Progress
 
