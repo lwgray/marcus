@@ -846,6 +846,47 @@ class MarcusServer:
                 self.subtask_manager.migrate_to_unified_storage(self.project_tasks)
                 self._subtasks_migrated = True
 
+                # Wire cross-parent dependencies after migration completes
+                # Creates fine-grained dependencies between different parents
+                try:
+                    from src.marcus_mcp.coordinator import (
+                        wire_cross_parent_dependencies,
+                    )
+
+                    logger.info("Wiring cross-parent dependencies...")
+
+                    # Try to load embedding model for candidate filtering
+                    embedding_model = None
+                    try:
+                        from sentence_transformers import SentenceTransformer
+
+                        embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+                        logger.debug("Loaded embedding model for dependency matching")
+                    except ImportError:
+                        logger.debug(
+                            "sentence-transformers not available, "
+                            "using LLM-only matching"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to load embedding model: {e}")
+
+                    # Wire dependencies
+                    stats = await wire_cross_parent_dependencies(
+                        self.project_tasks, self.ai_engine, embedding_model
+                    )
+
+                    logger.info(
+                        f"Cross-parent dependency wiring complete: "
+                        f"{stats.get('dependencies_created', 0)} dependencies created, "
+                        f"{stats.get('subtasks_analyzed', 0)} subtasks analyzed"
+                    )
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to wire cross-parent dependencies: {e}", exc_info=True
+                    )
+                    # Don't fail the refresh if dependency wiring fails
+
             # Update memory system with project tasks for cascade analysis
             if self.memory and self.project_tasks:
                 self.memory.update_project_tasks(self.project_tasks)

@@ -214,6 +214,9 @@ class SubtaskManager:
                 is_subtask=True,
                 parent_task_id=parent_task_id,
                 subtask_index=idx,
+                # Cross-parent dependency wiring fields
+                provides=subtask_data.get("provides"),
+                requires=subtask_data.get("requires"),
             )
 
             # Add to unified storage if provided
@@ -291,6 +294,8 @@ class SubtaskManager:
                     is_subtask=True,
                     parent_task_id=subtask.parent_task_id,
                     subtask_index=subtask.order,
+                    provides=subtask.provides,
+                    requires=subtask.requires,
                 )
                 tasks.append(task)
             return tasks
@@ -713,6 +718,9 @@ class SubtaskManager:
                 is_subtask=True,
                 parent_task_id=subtask.parent_task_id,
                 subtask_index=subtask.order,
+                # Cross-parent dependency wiring fields
+                provides=subtask.provides,
+                requires=subtask.requires,
             )
 
             project_tasks.append(task)
