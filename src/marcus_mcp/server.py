@@ -131,6 +131,7 @@ class MarcusServer:
         from src.marcus_mcp.coordinator import SubtaskManager
 
         self.subtask_manager = SubtaskManager()
+        self._subtasks_migrated = False  # Track if migration has been done
 
         # Assignment monitoring
         self.assignment_monitor: Optional[AssignmentMonitor] = None
@@ -290,8 +291,28 @@ class MarcusServer:
         async def handle_call_tool(
             name: str, arguments: Optional[Dict[str, Any]]
         ) -> List[types.TextContent | types.ImageContent | types.EmbeddedResource]:
-            """Handle tool calls."""
-            return await handle_tool_call(name, arguments, self)
+            """Handle tool calls with graceful handling of cancelled operations."""
+            try:
+                return await handle_tool_call(name, arguments, self)
+            except Exception as e:
+                # Gracefully handle connection errors from aborted operations
+                # These occur when clients cancel requests mid-flight (e.g., Ctrl+C)
+                error_type = type(e).__name__
+                if (
+                    "BrokenResourceError" in error_type
+                    or "ClosedResourceError" in error_type
+                ):
+                    logger.warning(
+                        f"Client connection closed during tool call '{name}' "
+                        f"(likely aborted by user). This is expected behavior and "
+                        f"does not indicate a problem."
+                    )
+                    # Don't try to return a response - the connection is closed
+                    # Return empty list to satisfy the type signature
+                    return []
+                else:
+                    # For other exceptions, re-raise so they're handled normally
+                    raise
 
         @self.server.list_prompts()  # type: ignore[misc]
         async def handle_list_prompts() -> List[types.Prompt]:
@@ -466,9 +487,7 @@ class MarcusServer:
             try:
                 from src.marcus_mcp.tools.project_management import select_project
 
-                result = await select_project(
-                    self, {"project_name": default_project_name}
-                )
+                result = await select_project(self, {"name": default_project_name})
                 if result.get("success"):
                     logger.info(
                         f"Successfully selected default project: {default_project_name}"
@@ -814,6 +833,57 @@ class MarcusServer:
             # Get all tasks from the board
             if self.kanban_client is not None:
                 self.project_tasks = await self.kanban_client.get_all_tasks()
+
+            # Migrate subtasks from SubtaskManager to unified project_tasks storage
+            # ONLY run migration once to avoid duplicate subtasks
+            if (
+                self.subtask_manager
+                and self.project_tasks is not None
+                and not self._subtasks_migrated
+            ):
+                self.subtask_manager.migrate_to_unified_storage(self.project_tasks)
+                self._subtasks_migrated = True
+
+                # Wire cross-parent dependencies after migration completes
+                # Creates fine-grained dependencies between different parents
+                try:
+                    from src.marcus_mcp.coordinator import (
+                        wire_cross_parent_dependencies,
+                    )
+
+                    logger.info("Wiring cross-parent dependencies...")
+
+                    # Try to load embedding model for candidate filtering
+                    embedding_model = None
+                    try:
+                        from sentence_transformers import SentenceTransformer
+
+                        embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+                        logger.debug("Loaded embedding model for dependency matching")
+                    except ImportError:
+                        logger.debug(
+                            "sentence-transformers not available, "
+                            "using LLM-only matching"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to load embedding model: {e}")
+
+                    # Wire dependencies
+                    stats = await wire_cross_parent_dependencies(
+                        self.project_tasks, self.ai_engine, embedding_model
+                    )
+
+                    logger.info(
+                        f"Cross-parent dependency wiring complete: "
+                        f"{stats.get('dependencies_created', 0)} dependencies created, "
+                        f"{stats.get('subtasks_analyzed', 0)} subtasks analyzed"
+                    )
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to wire cross-parent dependencies: {e}", exc_info=True
+                    )
+                    # Don't fail the refresh if dependency wiring fails
 
             # Update memory system with project tasks for cascade analysis
             if self.memory and self.project_tasks:
@@ -1402,14 +1472,12 @@ class MarcusServer:
 
             @app.tool()  # type: ignore[misc]
             async def select_project(
-                project_name: Optional[str] = None, project_id: Optional[str] = None
+                name: Optional[str] = None, project_id: Optional[str] = None
             ) -> Dict[str, Any]:
                 """Select an existing project to work on."""
                 from .tools.project_management import select_project as impl
 
-                return await impl(
-                    server, {"project_name": project_name, "project_id": project_id}
-                )
+                return await impl(server, {"name": name, "project_id": project_id})
 
         if "discover_planka_projects" in allowed_tools:
 
@@ -2068,6 +2136,21 @@ class MarcusServer:
                 from .tools.board_health import check_board_health as impl
 
                 return await impl(state=server)
+
+        # Scheduling tools
+        if "get_optimal_agent_count" in allowed_tools:
+
+            @app.tool()  # type: ignore[misc]
+            async def get_optimal_agent_count(
+                include_details: bool = False,
+            ) -> Dict[str, Any]:
+                """Calculate optimal number of agents using CPM analysis."""
+                from .tools.scheduling import get_optimal_agent_count as impl
+
+                return await impl(
+                    include_details=include_details,
+                    state=server,
+                )
 
     async def run(self) -> None:
         """Run the MCP server."""

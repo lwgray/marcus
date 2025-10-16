@@ -120,6 +120,10 @@ class Task:
         ID of the parent task if this is a subtask
     subtask_index : Optional[int]
         Position within parent task's subtasks (for ordering)
+    provides : Optional[str]
+        What interface/functionality this task provides for dependent tasks
+    requires : Optional[str]
+        What this task needs from its dependencies
 
     Notes
     -----
@@ -128,6 +132,8 @@ class Task:
     The unified dependency graph fields (is_subtask, parent_task_id, subtask_index)
     enable subtasks to be first-class citizens in the dependency graph while
     preserving organizational hierarchy.
+    The provides/requires fields enable automatic cross-parent dependency wiring
+    by matching semantic contracts between subtasks.
     """
 
     id: str
@@ -156,6 +162,10 @@ class Task:
     is_subtask: bool = False  # True if this is a subtask of a parent task
     parent_task_id: Optional[str] = None  # ID of parent task if is_subtask=True
     subtask_index: Optional[int] = None  # Position within parent (for ordering)
+
+    # Fields for cross-parent dependency wiring
+    provides: Optional[str] = None  # What interface/functionality this task provides
+    requires: Optional[str] = None  # What this task needs from dependencies
 
 
 @dataclass

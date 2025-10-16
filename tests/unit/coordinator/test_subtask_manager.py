@@ -66,7 +66,7 @@ class TestSubtaskManager:
         assert manager.state_file == temp_state_file
 
     def test_add_subtasks_creates_subtasks_correctly(self, manager, sample_subtasks):
-        """Test adding subtasks creates correct Subtask objects."""
+        """Test adding subtasks creates correct Task objects with subtask fields."""
         # Arrange
         parent_id = "task-1"
 
@@ -79,7 +79,8 @@ class TestSubtaskManager:
         assert created_subtasks[0].parent_task_id == parent_id
         assert created_subtasks[0].id == "task-1_sub_1"
         assert created_subtasks[0].status == TaskStatus.TODO
-        assert created_subtasks[0].file_artifacts == ["src/models/user.py"]
+        # file_artifacts is stored in legacy Subtask, check there
+        assert manager.subtasks["task-1_sub_1"].file_artifacts == ["src/models/user.py"]
 
     def test_add_subtasks_tracks_parent_relationship(self, manager, sample_subtasks):
         """Test subtasks are properly linked to parent task."""
@@ -106,8 +107,8 @@ class TestSubtaskManager:
 
         # Assert
         assert len(subtasks) == 2
-        assert subtasks[0].order == 0
-        assert subtasks[1].order == 1
+        assert subtasks[0].subtask_index == 0  # Task uses subtask_index, not order
+        assert subtasks[1].subtask_index == 1
         assert subtasks[0].name == "Create User model"
 
     def test_get_subtasks_returns_empty_for_unknown_parent(self, manager):
@@ -253,7 +254,10 @@ class TestSubtaskManager:
                 "response_format": {"status": "success"},
             }
         )
-        manager.add_subtasks(parent_id, sample_subtasks, metadata)
+        # Pass project_tasks=None (legacy mode), then metadata
+        manager.add_subtasks(
+            parent_id, sample_subtasks, project_tasks=None, metadata=metadata
+        )
 
         # Act
         context = manager.get_subtask_context("task-1_sub_2")
@@ -368,9 +372,9 @@ class TestSubtaskDependencyTypes:
         # Act
         created_subtasks = manager.add_subtasks(parent_id, subtasks)
 
-        # Assert
-        assert created_subtasks[0].dependency_types == []
-        assert created_subtasks[1].dependency_types == ["soft"]
+        # Assert - dependency_types stored in legacy Subtask
+        assert manager.subtasks["task-1_sub_1"].dependency_types == []
+        assert manager.subtasks["task-1_sub_2"].dependency_types == ["soft"]
 
     def test_add_subtasks_migrates_missing_dependency_types(self, manager):
         """Test migration defaults missing dependency_types to hard."""
@@ -396,9 +400,13 @@ class TestSubtaskDependencyTypes:
         # Act
         created_subtasks = manager.add_subtasks(parent_id, subtasks)
 
-        # Assert
-        assert created_subtasks[0].dependency_types == []  # No deps, empty list
-        assert created_subtasks[1].dependency_types == ["hard"]  # Defaulted to hard
+        # Assert - dependency_types stored in legacy Subtask
+        assert (
+            manager.subtasks["task-1_sub_1"].dependency_types == []
+        )  # No deps, empty list
+        assert manager.subtasks["task-1_sub_2"].dependency_types == [
+            "hard"
+        ]  # Defaulted to hard
 
     def test_load_state_migrates_old_format_without_dependency_types(
         self, temp_state_file

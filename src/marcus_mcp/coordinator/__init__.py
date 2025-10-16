@@ -8,6 +8,9 @@ from src.marcus_mcp.coordinator.decomposer import (
     decompose_task,
     should_decompose,
 )
+from src.marcus_mcp.coordinator.dependency_wiring import (
+    wire_cross_parent_dependencies,
+)
 from src.marcus_mcp.coordinator.subtask_manager import (
     Subtask,
     SubtaskManager,
@@ -20,4 +23,5 @@ __all__ = [
     "SubtaskMetadata",
     "should_decompose",
     "decompose_task",
+    "wire_cross_parent_dependencies",
 ]

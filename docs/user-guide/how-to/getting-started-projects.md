@@ -101,7 +101,7 @@ create_project(
 projects = list_projects()
 
 # Step 2: Select a project to work on (NO task creation)
-result = select_project(project_name="UserAuthAPI")
+result = select_project(name="UserAuthAPI - Main Board")
 
 # Result:
 {
@@ -159,7 +159,7 @@ create_project(
 
 **What happens:**
 1. Marcus starts
-2. Auto-runs `select_project(project_name="MainProject")`
+2. Auto-runs `select_project(name="MainProject")`
 3. All agents immediately have the right project context
 4. No manual selection needed
 

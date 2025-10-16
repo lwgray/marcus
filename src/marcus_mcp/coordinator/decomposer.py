@@ -355,6 +355,33 @@ design/planning-related:**
 Break this DESIGN task into 3-5 design subtasks. Each subtask must focus
 on planning and documentation, NOT implementation.
 
+**CRITICAL PARALLELIZATION PRINCIPLE FOR DESIGN TASKS:**
+
+After research/analysis completes, design artifacts should be created IN PARALLEL.
+Design artifacts represent DIFFERENT CONCERNS that can be explored concurrently:
+
+- API specifications (what endpoints/operations)
+- Data schemas (what data structures)
+- Error handling patterns (what error cases)
+- Architectural patterns (what system structure)
+
+These are independent design aspects that don't need to wait for each other.
+They all use the RESEARCH FINDINGS as their input and can be drafted in parallel.
+
+**Pattern for Design subtasks:**
+```
+Research (gather requirements/best practices)
+  ↓
+[API Spec + Data Schema + Error Handling + Architecture] ← ALL IN PARALLEL
+  ↓
+Integration (validate designs work together)
+```
+
+**NOT this (artificial sequential chain):**
+```
+Research → API Spec → Data Schema → Error Handling ← WRONG
+```
+
 Valid design subtask types:
 - Research existing solutions and best practices
 - Create wireframes, mockups, or diagrams

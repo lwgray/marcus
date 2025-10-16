@@ -86,67 +86,84 @@ def find_next_available_subtask(
     project_tasks: List[Task],
     subtask_manager: SubtaskManager,
     assigned_task_ids: set[str],
-) -> Optional[Subtask]:
+) -> Optional[Task]:
     """
-    Find the next available subtask for an agent.
+    Find the next available subtask for an agent using unified graph.
 
-    Checks all tasks with subtasks to find one that:
-    - Has incomplete subtasks
-    - Has subtasks with satisfied dependencies
-    - Is not already assigned
+    SIMPLIFIED: Since subtasks are now Task objects in project_tasks with
+    is_subtask=True, we can directly filter and check dependencies.
 
     Parameters
     ----------
     agent_id : str
         ID of the requesting agent
     project_tasks : List[Task]
-        All tasks in the project
+        All tasks in the project (including subtasks)
     subtask_manager : SubtaskManager
-        Manager tracking all subtasks
+        Manager tracking all subtasks (for legacy compatibility)
     assigned_task_ids : set[str]
         IDs of tasks/subtasks already assigned
 
     Returns
     -------
-    Optional[Subtask]
-        Next available subtask or None
+    Optional[Task]
+        Next available subtask Task or None
     """
-    # Find all tasks that have been decomposed
-    for task in project_tasks:
-        if not subtask_manager.has_subtasks(task.id):
+    # Filter to only subtasks (Task objects with is_subtask=True)
+    subtasks = [t for t in project_tasks if t.is_subtask]
+
+    # Sort by subtask_index for consistent ordering within parents
+    subtasks = sorted(
+        subtasks, key=lambda t: (t.parent_task_id or "", t.subtask_index or 0)
+    )
+
+    for subtask in subtasks:
+        # Skip if already assigned
+        if subtask.id in assigned_task_ids:
             continue
 
-        # Skip if parent task is already DONE (allow TODO and IN_PROGRESS)
-        # This enables parallel assignment of multiple subtasks from the same parent
-        if task.status == TaskStatus.DONE:
+        # Skip if already complete
+        if subtask.status == TaskStatus.DONE:
             continue
 
-        # GH-64: Check if parent task dependencies are satisfied
-        # Subtasks should only be available after parent's dependencies complete
-        if not _are_dependencies_satisfied(task, project_tasks):
-            logger.debug(
-                f"Skipping subtasks for '{task.name}' - "
-                "parent dependencies not satisfied"
-            )
-            continue
-
-        # Get all subtasks for this parent
-        subtasks = subtask_manager.get_subtasks(task.id)
-
-        # Get completed subtask IDs
-        completed_subtask_ids = {s.id for s in subtasks if s.status == TaskStatus.DONE}
-
-        # Find next available subtask
-        next_subtask = subtask_manager.get_next_available_subtask(
-            task.id, completed_subtask_ids
+        # Find parent task
+        parent_task = next(
+            (t for t in project_tasks if t.id == subtask.parent_task_id), None
         )
 
-        if next_subtask and next_subtask.id not in assigned_task_ids:
-            logger.info(
-                f"Found available subtask {next_subtask.name} "
-                f"for parent task {task.name}"
+        if not parent_task:
+            logger.warning(
+                f"Parent task {subtask.parent_task_id} not found "
+                f"for subtask {subtask.id}"
             )
-            return next_subtask
+            continue
+
+        # Skip if parent task is DONE
+        if parent_task.status == TaskStatus.DONE:
+            continue
+
+        # Check if parent task dependencies are satisfied
+        # Subtasks should only be available after parent's dependencies complete
+        if not _are_dependencies_satisfied(parent_task, project_tasks):
+            logger.debug(
+                f"Skipping subtask '{subtask.name}' - "
+                f"parent '{parent_task.name}' dependencies not satisfied"
+            )
+            continue
+
+        # Check if subtask's own dependencies are satisfied
+        if not _are_dependencies_satisfied(subtask, project_tasks):
+            logger.debug(
+                f"Skipping subtask '{subtask.name}' - "
+                "subtask dependencies not satisfied"
+            )
+            continue
+
+        # Found an available subtask!
+        logger.info(
+            f"Found available subtask {subtask.name} " f"(parent: {parent_task.name})"
+        )
+        return subtask
 
     logger.debug("No available subtasks found")
     return None
@@ -154,15 +171,16 @@ def find_next_available_subtask(
 
 def convert_subtask_to_task(subtask: Subtask, parent_task: Task) -> Task:
     """
-    Convert a Subtask to a Task object for assignment.
+    Convert a legacy Subtask to a Task object for assignment.
 
-    This allows subtasks to be assigned using the existing
-    task assignment infrastructure.
+    LEGACY COMPATIBILITY: This function is only needed for backwards compatibility
+    with code that still uses Subtask objects. With unified storage, subtasks are
+    already Task objects and don't need conversion.
 
     Parameters
     ----------
     subtask : Subtask
-        The subtask to convert
+        The legacy subtask to convert
     parent_task : Task
         The parent task this subtask belongs to
 
@@ -174,7 +192,7 @@ def convert_subtask_to_task(subtask: Subtask, parent_task: Task) -> Task:
     # Determine parent task type
     parent_task_type = _determine_task_type(parent_task)
 
-    # Create a Task object from the Subtask
+    # Create a Task object from the legacy Subtask
     task = Task(
         id=subtask.id,
         name=subtask.name,
@@ -197,7 +215,8 @@ def convert_subtask_to_task(subtask: Subtask, parent_task: Task) -> Task:
     task._parent_task_type = parent_task_type  # type: ignore[attr-defined]
 
     logger.debug(
-        f"Converted subtask '{subtask.name}' with parent task type: {parent_task_type}"
+        f"Converted legacy subtask '{subtask.name}' "
+        f"with parent task type: {parent_task_type}"
     )
 
     return task
@@ -231,7 +250,9 @@ async def check_and_complete_parent_task(
     bool
         True if parent was auto-completed
     """
-    if subtask_manager.is_parent_complete(parent_task_id):
+    # Check if parent is complete using unified storage
+    project_tasks = state.project_tasks if state else None
+    if subtask_manager.is_parent_complete(parent_task_id, project_tasks):
         logger.info(
             f"All subtasks complete for {parent_task_id} " "- auto-completing parent"
         )
@@ -255,8 +276,8 @@ async def check_and_complete_parent_task(
             },
         )
 
-        # Add completion comment
-        subtasks = subtask_manager.get_subtasks(parent_task_id)
+        # Add completion comment (query from unified storage)
+        subtasks = subtask_manager.get_subtasks(parent_task_id, project_tasks)
         completion_comment = (
             f"✅ **Auto-completed**: All {len(subtasks)} "
             "subtasks completed\n\n"
@@ -293,7 +314,8 @@ async def _rollup_subtask_artifacts_to_parent(
     if not hasattr(state, "task_artifacts"):
         return
 
-    subtasks = subtask_manager.get_subtasks(parent_task_id)
+    # Query subtasks from unified storage
+    subtasks = subtask_manager.get_subtasks(parent_task_id, state.project_tasks)
     if not subtasks:
         return
 
@@ -347,7 +369,8 @@ async def _rollup_subtask_decisions_to_parent(
     if not hasattr(state, "context") or not state.context:
         return
 
-    subtasks = subtask_manager.get_subtasks(parent_task_id)
+    # Query subtasks from unified storage
+    subtasks = subtask_manager.get_subtasks(parent_task_id, state.project_tasks)
     if not subtasks:
         return
 
@@ -408,8 +431,10 @@ async def update_subtask_progress_in_parent(
     # Mark checklist item as complete in Planka
     await _mark_checklist_item_complete(parent_task_id, subtask.name)
 
-    # Calculate parent task progress
-    progress = subtask_manager.get_completion_percentage(parent_task_id)
+    # Calculate parent task progress (query from unified storage if available)
+    # Note: This function is called from task.py where state might not be passed
+    # For now, use legacy storage (None) but should be updated to pass project_tasks
+    progress = subtask_manager.get_completion_percentage(parent_task_id, None)
 
     # Update parent task progress
     await kanban_client.update_task_progress(
@@ -421,8 +446,8 @@ async def update_subtask_progress_in_parent(
         },
     )
 
-    # Add progress comment
-    subtasks = subtask_manager.get_subtasks(parent_task_id)
+    # Add progress comment (using legacy storage for now)
+    subtasks = subtask_manager.get_subtasks(parent_task_id, None)
     completed = sum(1 for s in subtasks if s.status == TaskStatus.DONE)
 
     progress_comment = (

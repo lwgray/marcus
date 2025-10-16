@@ -206,6 +206,9 @@ class NaturalLanguageTaskCreator(ABC):
         # Decompose tasks that meet criteria and add as checklist items
         await self._decompose_and_add_subtasks(created_tasks, tasks)
 
+        # Wire cross-parent dependencies after decomposition completes
+        await self._wire_cross_parent_dependencies()
+
         return created_tasks
 
     async def _decompose_and_add_subtasks(
@@ -385,6 +388,29 @@ class NaturalLanguageTaskCreator(ABC):
         logger.info(
             f"Task decomposition complete: {successful_count} succeeded, "
             f"{failed_count} failed"
+        )
+
+    async def _wire_cross_parent_dependencies(self) -> None:
+        """
+        Wire cross-parent dependencies after decomposition completes.
+
+        This is called after all tasks have been decomposed to create
+        fine-grained dependencies between subtasks of different parent tasks.
+        """
+        # Skip if no subtask manager or AI engine
+        if not self.subtask_manager or not self.ai_engine:
+            logger.debug(
+                "Skipping cross-parent dependency wiring - "
+                "required components not available"
+            )
+            return
+
+        # Note: Cross-parent dependency wiring is implemented in
+        # server.refresh_project_state() where we have access to unified
+        # project_tasks storage
+        logger.info(
+            "Cross-parent dependency wiring will be performed "
+            "during project state refresh"
         )
 
     async def _add_subtasks_as_checklist(

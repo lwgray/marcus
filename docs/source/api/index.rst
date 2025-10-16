@@ -40,3 +40,4 @@ Marcus provides multiple APIs for different use cases:
    python_api
    data_models
    error_handling
+   cpm-function-reference
