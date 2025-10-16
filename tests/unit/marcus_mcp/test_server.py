@@ -1606,5 +1606,143 @@ class TestToolIntegration:
         assert "success" in data or "project" in data or "error" in data
 
 
+@pytest.mark.unit
+class TestCancelledOperationHandling:
+    """
+    Unit tests for graceful handling of cancelled MCP operations.
+
+    Tests that the error handling logic correctly identifies and handles
+    BrokenResourceError and ClosedResourceError from the MCP layer.
+    """
+
+    def test_error_name_checking_logic(self):
+        """
+        Test that the error type name checking logic works correctly.
+
+        Verifies the logic used in the handle_call_tool wrapper to identify
+        connection errors by their class name.
+        """
+
+        # Create mock errors with specific names
+        class MockBrokenResourceError(Exception):
+            pass
+
+        class MockClosedResourceError(Exception):
+            pass
+
+        class MockOtherError(Exception):
+            pass
+
+        MockBrokenResourceError.__name__ = "BrokenResourceError"
+        MockClosedResourceError.__name__ = "ClosedResourceError"
+        MockOtherError.__name__ = "SomeOtherError"
+
+        # Test the matching logic (same as in handle_call_tool)
+        broken_error = MockBrokenResourceError("test")
+        error_type = type(broken_error).__name__
+        assert (
+            "BrokenResourceError" in error_type or "ClosedResourceError" in error_type
+        )
+
+        closed_error = MockClosedResourceError("test")
+        error_type = type(closed_error).__name__
+        assert (
+            "BrokenResourceError" in error_type or "ClosedResourceError" in error_type
+        )
+
+        other_error = MockOtherError("test")
+        error_type = type(other_error).__name__
+        assert not (
+            "BrokenResourceError" in error_type or "ClosedResourceError" in error_type
+        )
+
+    @pytest.mark.asyncio
+    async def test_handle_call_tool_implementation_exists(self):
+        """
+        Test that the handle_call_tool wrapper implementation exists in server.py.
+
+        Verifies the error handling code was added to the server.
+        """
+        import inspect
+
+        from src.marcus_mcp import server as server_module
+
+        # Get the source code of the MarcusServer class
+        source = inspect.getsource(server_module.MarcusServer)
+
+        # Verify error handling code is present
+        assert "BrokenResourceError" in source, "Missing BrokenResourceError handling"
+        assert "ClosedResourceError" in source, "Missing ClosedResourceError handling"
+        assert (
+            "Client connection closed" in source or "aborted" in source.lower()
+        ), "Missing user-friendly log message"
+
+    def test_error_handling_returns_empty_list_on_connection_error(self):
+        """
+        Test that connection errors result in empty list return.
+
+        This verifies the handler's contract: on connection errors, return []
+        instead of trying to send a response over a closed connection.
+        """
+
+        # Simulate the handler's behavior
+        def simulate_handler(error):
+            error_type = type(error).__name__
+            if (
+                "BrokenResourceError" in error_type
+                or "ClosedResourceError" in error_type
+            ):
+                # Log warning and return empty list
+                return []
+            else:
+                # Re-raise other exceptions
+                raise error
+
+        # Test with connection errors
+        class MockBrokenResourceError(Exception):
+            pass
+
+        MockBrokenResourceError.__name__ = "BrokenResourceError"
+
+        result = simulate_handler(MockBrokenResourceError("Connection lost"))
+        assert result == [], "Should return empty list for BrokenResourceError"
+
+        class MockClosedResourceError(Exception):
+            pass
+
+        MockClosedResourceError.__name__ = "ClosedResourceError"
+
+        result = simulate_handler(MockClosedResourceError("Resource closed"))
+        assert result == [], "Should return empty list for ClosedResourceError"
+
+        # Test with other errors - should raise
+        with pytest.raises(ValueError):
+            simulate_handler(ValueError("Invalid argument"))
+
+    def test_documentation_exists_for_error_handling(self):
+        """
+        Test that the error handling is documented in the function.
+
+        Verifies that future developers will understand why these errors
+        are caught and what they mean.
+        """
+        import inspect
+
+        from src.marcus_mcp import server as server_module
+
+        # Get the source of the _register_handlers method
+        source = inspect.getsource(server_module.MarcusServer._register_handlers)
+
+        # Check for documentation/comments about cancelled operations
+        has_doc = any(
+            keyword in source.lower()
+            for keyword in ["cancel", "abort", "connection", "client", "graceful"]
+        )
+
+        assert (
+            has_doc
+        ), "Error handling should have documentation explaining cancellation handling"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -12,6 +12,7 @@
 - [ ] [Task execution order not respecting dependencies](https://github.com/lwgray/marcus/issues/7) (#7) - Tests assigned before Implementation
 - [ ] [KanbanInterface.update_task() None returns not handled](https://github.com/lwgray/marcus/issues/50) (#50) - Potential for silent failures
 - [ ] [Improve Planka Board Handling in Multi-Project Mode](https://github.com/lwgray/marcus/issues/11) (#11)
+- [ ] [Optimal agent count calculation includes non-workable tasks](https://github.com/lwgray/marcus/issues/81) (#81) - 🔴 Includes parent/done tasks causing over-provisioning
 
 ## 🚀 Enhancements In Progress
 
@@ -20,6 +21,7 @@
 - [ ] [Artifact discovery needs session/project isolation](https://github.com/lwgray/marcus/issues/39) (#39)
 - [ ] [Performance: Double AI bottleneck in project creation (descriptions + decomposition)](https://github.com/lwgray/marcus/issues/61) (#61) - 🟡 Parallelize task description generation AND subtask decomposition to reduce 68-80s overhead
 - [ ] [Implement coordinator-controlled backoff to reduce polling overhead](https://github.com/lwgray/marcus/issues/74) (#74) - 🟡 Reduce empty polling requests by 40-60% with intelligent backoff
+- [ ] [Persist cross-parent dependencies to avoid expensive recalculation](https://github.com/lwgray/marcus/issues/80) (#80) - 🔴 High Priority: Save 20+ seconds and API costs on every project selection
 
 ## ✅ Testing & Quality
 

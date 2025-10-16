@@ -151,7 +151,7 @@ class TestAboutTaskCreation:
         project_name = "Task Manager API"
 
         # Configure mock: task_1 has subtasks, others don't
-        def has_subtasks_side_effect(task_id):
+        def has_subtasks_side_effect(task_id, project_tasks=None):
             return task_id == "task_1"
 
         mock_subtask_manager.has_subtasks.side_effect = has_subtasks_side_effect
@@ -196,7 +196,7 @@ class TestAboutTaskCreation:
             ),
         ]
 
-        def get_subtasks_side_effect(task_id):
+        def get_subtasks_side_effect(task_id, project_tasks=None):
             if task_id == "task_1":
                 return mock_subtasks
             return []
@@ -229,7 +229,7 @@ class TestAboutTaskCreation:
 
         # Verify get_subtasks was called only for task_1
         assert mock_subtask_manager.get_subtasks.call_count == 1
-        mock_subtask_manager.get_subtasks.assert_called_with("task_1")
+        mock_subtask_manager.get_subtasks.assert_called_with("task_1", None)
 
     def test_create_about_task_all_tasks_have_subtasks(
         self, creator_with_subtasks, sample_tasks, mock_subtask_manager
@@ -242,7 +242,7 @@ class TestAboutTaskCreation:
         mock_subtask_manager.has_subtasks.return_value = True
 
         # Create subtasks for each parent
-        def get_subtasks_side_effect(task_id):
+        def get_subtasks_side_effect(task_id, project_tasks=None):
             return [
                 Subtask(
                     id=f"{task_id}_sub_1",
@@ -412,7 +412,7 @@ class TestAboutTaskCreation:
         project_name = "Mixed Project"
 
         # Only middle task has subtasks
-        def has_subtasks_side_effect(task_id):
+        def has_subtasks_side_effect(task_id, project_tasks=None):
             return task_id == "task_2"
 
         mock_subtask_manager.has_subtasks.side_effect = has_subtasks_side_effect

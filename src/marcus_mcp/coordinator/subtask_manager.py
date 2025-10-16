@@ -214,6 +214,9 @@ class SubtaskManager:
                 is_subtask=True,
                 parent_task_id=parent_task_id,
                 subtask_index=idx,
+                # Cross-parent dependency wiring fields
+                provides=subtask_data.get("provides"),
+                requires=subtask_data.get("requires"),
             )
 
             # Add to unified storage if provided
@@ -291,6 +294,8 @@ class SubtaskManager:
                     is_subtask=True,
                     parent_task_id=subtask.parent_task_id,
                     subtask_index=subtask.order,
+                    provides=subtask.provides,
+                    requires=subtask.requires,
                 )
                 tasks.append(task)
             return tasks
@@ -665,6 +670,10 @@ class SubtaskManager:
         Converts legacy Subtask objects stored in self.subtasks to Task
         objects with is_subtask=True and appends them to project_tasks.
 
+        IMPORTANT: Only migrates subtasks whose parent tasks exist in
+        project_tasks. This ensures subtasks from other projects don't
+        leak into the current project.
+
         This method is called during initialization to handle backwards
         compatibility with old state files.
 
@@ -677,9 +686,20 @@ class SubtaskManager:
             logger.debug("No subtasks to migrate")
             return
 
-        logger.info(f"Migrating {len(self.subtasks)} subtasks to unified storage")
+        # Get set of parent task IDs that exist in current project_tasks
+        parent_task_ids = {t.id for t in project_tasks if not t.is_subtask}
 
+        logger.info(
+            f"Migrating subtasks for {len(parent_task_ids)} parent tasks "
+            f"from {len(self.subtasks)} total subtasks in legacy storage"
+        )
+
+        migrated_count = 0
         for subtask_id, subtask in self.subtasks.items():
+            # Only migrate if parent task exists in current project
+            if subtask.parent_task_id not in parent_task_ids:
+                continue
+
             # Convert Subtask to Task with subtask fields
             task = Task(
                 id=subtask.id,
@@ -698,10 +718,15 @@ class SubtaskManager:
                 is_subtask=True,
                 parent_task_id=subtask.parent_task_id,
                 subtask_index=subtask.order,
+                # Cross-parent dependency wiring fields
+                provides=subtask.provides,
+                requires=subtask.requires,
             )
 
             project_tasks.append(task)
+            migrated_count += 1
 
         logger.info(
-            f"Successfully migrated {len(self.subtasks)} subtasks to unified storage"
+            f"Successfully migrated {migrated_count} subtasks to unified storage "
+            f"(filtered from {len(self.subtasks)} total legacy subtasks)"
         )

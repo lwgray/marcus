@@ -394,13 +394,38 @@ class TestUnifiedSubtaskStorage:
             json.dump(old_state, f)
 
         # Act - Load with new manager (should migrate to unified storage)
-        project_tasks: List[Task] = []
+        # In production, parent tasks are loaded from Kanban before migration
+        project_tasks: List[Task] = [
+            Task(
+                id="task-1",
+                name="Parent task",
+                description="Parent for old subtask",
+                status=TaskStatus.TODO,
+                priority=Priority.MEDIUM,
+                estimated_hours=5.0,
+                dependencies=[],
+                labels=[],
+                assigned_to=None,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                due_date=None,
+                is_subtask=False,
+            )
+        ]
         manager = SubtaskManager(state_file=temp_state_file)
         manager.migrate_to_unified_storage(project_tasks)
 
         # Assert - Old subtask migrated to project_tasks as Task
-        assert len(project_tasks) == 1
-        subtask = project_tasks[0]
+        # Should have 1 parent + 1 subtask = 2 tasks
+        assert len(project_tasks) == 2
+
+        # First task should be the parent
+        parent = project_tasks[0]
+        assert parent.id == "task-1"
+        assert parent.is_subtask is False
+
+        # Second task should be the migrated subtask
+        subtask = project_tasks[1]
         assert isinstance(subtask, Task)
         assert subtask.id == "task-1_sub_1"
         assert subtask.is_subtask is True

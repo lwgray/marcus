@@ -22,9 +22,13 @@ class TestWorkspaceManager:
         """Test that Marcus root is correctly detected"""
         manager = WorkspaceManager()
 
-        # Should detect the Marcus root directory (can be "marcus" or "marcus-*")
-        assert "marcus" in manager.marcus_root.lower()
+        # Should detect the Marcus root directory (validates by structure, not name)
+        # The root must exist and should contain expected marker files/directories
         assert os.path.exists(manager.marcus_root)
+        assert os.path.isdir(manager.marcus_root)
+
+        # Check for at least one expected marker (src directory should always exist)
+        assert os.path.exists(os.path.join(manager.marcus_root, "src"))
 
         # Marcus root should be in forbidden paths
         assert manager.marcus_root in manager.forbidden_paths

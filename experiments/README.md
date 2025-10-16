@@ -86,7 +86,42 @@ Build a web app that generates podcast scripts using AI...
 - Database: PostgreSQL
 ```
 
-### 3. Run the Experiment
+### 3. Test Optimal Agent Count (Recommended)
+
+**⚠️ IMPORTANT**: Before running your experiment, test optimal agent configuration to avoid:
+- Spawning too many agents (wasted resources)
+- Spawning too few agents (missed parallelism opportunities)
+- Agents dying while waiting for dependencies
+
+```bash
+python test_optimal_agents.py ~/my-experiments/podcast-generator
+```
+
+This will:
+1. Create the project in Marcus/Planka
+2. Analyze task dependency graph
+3. Calculate maximum parallelism
+4. Show optimal agent count and utilization timeline
+5. Offer to update `config.yaml` with optimal settings
+
+**Example output:**
+```
+📊 Project Analysis:
+   Total tasks: 87
+   Critical path: 12.50 hours
+   Max parallelism: 12 tasks can run simultaneously
+
+✅ RECOMMENDED: 12 agents
+
+⚠️  WARNING: You have 6 more agents than needed
+   Extra agents will be idle, wasting resources
+
+💾 Update config.yaml with optimal settings? [y/N]: y
+```
+
+See [OPTIMAL_AGENTS.md](OPTIMAL_AGENTS.md) for detailed explanation.
+
+### 4. Run the Experiment
 
 ```bash
 python run_experiment.py ~/my-experiments/podcast-generator
@@ -99,7 +134,7 @@ This will:
 4. Agents request tasks, complete them, and request more
 5. All work committed to `main` branch in `implementation/`
 
-### 4. Monitor Progress
+### 5. Monitor Progress
 
 Watch the terminal windows to see:
 - Project creation and task breakdown

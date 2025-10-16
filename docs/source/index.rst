@@ -151,6 +151,7 @@ Here's how an agent works with Marcus:
    :maxdepth: 1
    :caption: Developer Guide
 
+   developer/contributing
    developer/local-development
    developer/development-workflow
    developer/configuration

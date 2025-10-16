@@ -1006,12 +1006,15 @@ async def create_project_from_natural_language(
             )
 
             # Register new project in ProjectRegistry
+            marcus_project_id = None
             if hasattr(state, "project_registry"):
-                project_id = await state.project_registry.add_project(project_config)
-                logger.info(f"Registered new project in registry: {project_id}")
+                marcus_project_id = await state.project_registry.add_project(
+                    project_config
+                )
+                logger.info(f"Registered new project in registry: {marcus_project_id}")
 
                 # Switch to new project
-                await state.project_manager.switch_project(project_id)
+                await state.project_manager.switch_project(marcus_project_id)
                 state.kanban_client = await state.project_manager.get_kanban_client()
             else:
                 logger.warning("ProjectRegistry not available - project not registered")
@@ -1046,6 +1049,10 @@ async def create_project_from_natural_language(
         result = await creator.create_project_from_description(
             description=description, project_name=project_name, options=options
         )
+
+        # Add Marcus project_id to result for auto-select functionality
+        if result.get("success") and marcus_project_id:
+            result["project_id"] = marcus_project_id
 
         # Update Marcus state if successful
         if result.get("success"):

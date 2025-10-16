@@ -71,7 +71,7 @@ class TestFindOrCreateProject:
             "src.marcus_mcp.tools.project_management.get_task_count",
             new=AsyncMock(return_value=12),
         ):
-            arguments = {"project_name": "MyAPI"}
+            arguments = {"name": "MyAPI"}
 
             # Act
             result = await find_or_create_project(mock_server, arguments)
@@ -94,7 +94,7 @@ class TestFindOrCreateProject:
         mock_server.project_registry.list_projects = AsyncMock(
             return_value=sample_projects
         )
-        arguments = {"project_name": "myapi"}  # lowercase
+        arguments = {"name": "myapi"}  # lowercase
 
         # Act
         result = await find_or_create_project(mock_server, arguments)
@@ -113,7 +113,7 @@ class TestFindOrCreateProject:
         mock_server.project_registry.list_projects = AsyncMock(
             return_value=sample_projects
         )
-        arguments = {"project_name": "NonExistentProject"}
+        arguments = {"name": "NonExistentProject"}
 
         # Act
         result = await find_or_create_project(mock_server, arguments)
@@ -133,7 +133,7 @@ class TestFindOrCreateProject:
         mock_server.project_registry.list_projects = AsyncMock(
             return_value=sample_projects
         )
-        arguments = {"project_name": "NewProject", "create_if_missing": True}
+        arguments = {"name": "NewProject", "create_if_missing": True}
 
         # Act
         result = await find_or_create_project(mock_server, arguments)
@@ -153,7 +153,7 @@ class TestFindOrCreateProject:
         """Test behavior when no projects exist"""
         # Arrange
         mock_server.project_registry.list_projects = AsyncMock(return_value=[])
-        arguments = {"project_name": "FirstProject"}
+        arguments = {"name": "FirstProject"}
 
         # Act
         result = await find_or_create_project(mock_server, arguments)
@@ -170,7 +170,7 @@ class TestFindOrCreateProject:
         mock_server.project_registry.list_projects = AsyncMock(
             return_value=sample_projects
         )
-        arguments = {"project_name": "MYAPI"}  # ALL CAPS
+        arguments = {"name": "MYAPI"}  # ALL CAPS
 
         # Act
         result = await find_or_create_project(mock_server, arguments)
@@ -190,7 +190,7 @@ class TestFindOrCreateProject:
         mock_server.project_registry.list_projects = AsyncMock(
             return_value=sample_projects
         )
-        arguments = {"project_name": "API"}  # Partial match
+        arguments = {"name": "API"}  # Partial match
 
         # Act
         result = await find_or_create_project(mock_server, arguments)
@@ -204,9 +204,9 @@ class TestFindOrCreateProject:
 
     @pytest.mark.asyncio
     async def test_missing_project_name_returns_error(self, mock_server):
-        """Test that missing project_name parameter returns appropriate error"""
+        """Test that missing name parameter returns appropriate error"""
         # Arrange
-        arguments = {}  # Missing project_name
+        arguments = {}  # Missing name
 
         # Act & Assert
         # Should handle gracefully - implementation will define exact behavior
@@ -217,7 +217,7 @@ class TestFindOrCreateProject:
             assert isinstance(result, dict)
         except (KeyError, ValueError) as e:
             # Expected to raise an error for missing required param
-            assert "project_name" in str(e).lower()
+            assert "name" in str(e).lower()
 
 
 @pytest.mark.unit

@@ -73,6 +73,11 @@ async def find_optimal_task_with_subtasks(
     )
 
     if subtask_task:
+        # CRITICAL: Reserve the task IMMEDIATELY to prevent race conditions
+        # Multiple agents calling simultaneously must not get the same task
+        state.tasks_being_assigned.add(subtask_task.id)
+        logger.debug(f"Reserved subtask {subtask_task.id} for {agent_id}")
+
         # SIMPLIFIED: Subtask is already a Task object from unified graph!
         # Find parent task for context
         parent_task = next(

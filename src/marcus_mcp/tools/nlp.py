@@ -530,7 +530,7 @@ async def create_tasks(
         from .project_management import select_project
 
         select_result = await select_project(
-            state, {"project_name": project_name, "board_name": board_name}
+            state, {"name": project_name, "board_name": board_name}
         )
         if not select_result.get("success"):
             return select_result
@@ -541,7 +541,7 @@ async def create_tasks(
             return {
                 "success": False,
                 "error": "No active project. Please select a project first.",
-                "hint": "Use select_project or provide project_name parameter",
+                "hint": "Use select_project or provide name parameter",
             }
 
     # Get current project info

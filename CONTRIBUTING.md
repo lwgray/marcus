@@ -585,6 +585,87 @@ To use GitHub as your kanban provider, follow these steps:
 You need a token and project URL. Set them in the environment.
 ```
 
+## 🔍 Code Review Guidelines
+
+Effective code review benefits both the reviewer and the author. Here's how to make the most of it:
+
+### For Reviewers
+
+**Review Priorities (in order):**
+
+1. **Correctness**: Does the code solve the intended problem?
+2. **Tests**: Are edge cases and error conditions covered?
+3. **Clarity**: Is the code understandable to others?
+4. **Performance**: Are there obvious inefficiencies?
+5. **Security**: Any potential vulnerabilities?
+6. **Compatibility**: Does it break existing functionality?
+
+**Giving Constructive Feedback:**
+
+✅ **Do:**
+- Be respectful and constructive
+- Explain the "why" behind suggestions
+- Distinguish between "must fix" and "nice to have"
+- Acknowledge good work and clever solutions
+- Ask questions rather than making demands
+- Provide examples or references when possible
+
+❌ **Don't:**
+- Make personal comments
+- Be dismissive of different approaches
+- Nitpick trivial style issues (we have pre-commit for that)
+- Block PRs without clear rationale
+
+**Example feedback:**
+
+```markdown
+# Good
+"This could be more efficient using a dictionary lookup instead of a
+list search. For large datasets, this would be O(1) vs O(n). See
+example: [link]"
+
+# Not helpful
+"This is slow and wrong."
+```
+
+### For Authors
+
+**Receiving Feedback:**
+
+✅ **Do:**
+- Assume good intentions from reviewers
+- Ask for clarification if feedback is unclear
+- Discuss disagreements professionally with technical reasoning
+- Learn from suggestions and apply patterns to future work
+- Thank reviewers for their time
+- Update the PR promptly to address feedback
+
+❌ **Don't:**
+- Take feedback personally
+- Ignore or dismiss comments without discussion
+- Make changes without understanding why
+- Get defensive about your approach
+
+**Responding to Reviews:**
+
+```markdown
+# Good responses
+"Great point! I've updated to use the dictionary approach. Much cleaner."
+"I kept the list approach here because X, Y, Z. What do you think?"
+"I'm not sure I understand this suggestion. Could you clarify?"
+
+# Not helpful
+"Whatever, I'll change it."
+"This is fine."
+```
+
+### Review Etiquette
+
+- **Response Time**: We aim to review PRs within 3-5 business days
+- **Review Iterations**: Expect 1-3 rounds of feedback for most PRs
+- **Stale PRs**: PRs without activity for 6 weeks may be closed (you can reopen later)
+- **Breaking the Ice**: First-time contributors may need extra guidance - be patient and welcoming!
+
 ## 🔄 Pull Request Process
 
 ### Before Submitting
