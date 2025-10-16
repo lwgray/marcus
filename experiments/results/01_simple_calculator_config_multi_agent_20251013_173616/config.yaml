@@ -1,0 +1,54 @@
+# Simple Calculator API - Multi-Agent Configuration
+# Experiment: 4 agents working in parallel
+
+project_name: "Simple Calculator API - Multi Agent"
+project_spec_file: "project_description.txt"
+
+project_options:
+  complexity: "prototype"
+  provider: "planka"
+  mode: "new_project"
+
+# Four agents splitting work
+agents:
+  - id: "agent_api"
+    name: "API Developer Agent"
+    role: "backend"
+    skills:
+      - "python"
+      - "fastapi"
+      - "rest-api"
+      - "pydantic"
+    subagents: 2
+
+  - id: "agent_logic"
+    name: "Business Logic Agent"
+    role: "backend"
+    skills:
+      - "python"
+      - "algorithms"
+      - "error-handling"
+    subagents: 1
+
+  - id: "agent_test"
+    name: "Testing Agent"
+    role: "qa"
+    skills:
+      - "python"
+      - "pytest"
+      - "testing"
+      - "test-coverage"
+    subagents: 1
+
+  - id: "agent_docs"
+    name: "Documentation Agent"
+    role: "documentation"
+    skills:
+      - "documentation"
+      - "openapi"
+      - "markdown"
+    subagents: 0
+
+timeouts:
+  project_creation: 300
+  agent_startup: 60

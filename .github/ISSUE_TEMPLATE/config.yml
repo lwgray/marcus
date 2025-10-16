@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 💬 GitHub Discussions
+    url: https://github.com/lwgray/marcus/discussions
+    about: Ask questions, share ideas, or discuss Marcus with the community
+  - name: 📚 Documentation
+    url: https://marcus-docs.readthedocs.io/
+    about: Read the Marcus documentation for guides and API reference
+  - name: 💡 Feature Ideas & Feedback
+    url: https://github.com/lwgray/marcus/discussions/categories/ideas
+    about: Share and discuss feature ideas with the community before creating a formal request

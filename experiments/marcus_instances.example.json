@@ -1,0 +1,14 @@
+[
+  {
+    "url": "http://localhost:4298",
+    "board_id": "board_experimental_1"
+  },
+  {
+    "url": "http://localhost:4299",
+    "board_id": "board_experimental_2"
+  },
+  {
+    "url": "http://localhost:4300",
+    "board_id": "board_experimental_3"
+  }
+]

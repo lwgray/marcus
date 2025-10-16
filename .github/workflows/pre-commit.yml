@@ -67,16 +67,22 @@ jobs:
         pip install -r requirements-dev.txt
 
     - name: Type check with MyPy
-      run: mypy src/ --ignore-missing-imports --check-untyped-defs
+      run: mypy src/ --config-file=pyproject.toml
 
-    - name: Lint with Ruff
-      run: ruff check src/ --output-format=github
+    - name: Check docstrings with pydocstyle
+      run: pydocstyle src/ --config=pyproject.toml
 
     - name: Check code formatting with Black
       run: black --check src/
 
     - name: Check import sorting with isort
-      run: isort --check-only src/
+      run: isort --check-only --profile black src/
+
+    - name: Lint with flake8
+      run: flake8 src/ --max-line-length=88 --extend-ignore=E203
+
+    - name: Security scan with bandit
+      run: bandit -r src/ -c pyproject.toml
 
     - name: Security scan with detect-secrets
       run: detect-secrets scan --baseline .secrets.baseline
@@ -89,17 +95,17 @@ jobs:
         echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
 
         # MyPy check
-        if mypy src/ --ignore-missing-imports --check-untyped-defs > /dev/null 2>&1; then
+        if mypy src/ --config-file=pyproject.toml > /dev/null 2>&1; then
           echo "| MyPy Type Check | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
         else
           echo "| MyPy Type Check | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
         fi
 
-        # Ruff check
-        if ruff check src/ > /dev/null 2>&1; then
-          echo "| Ruff Linting | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+        # pydocstyle check
+        if pydocstyle src/ --config=pyproject.toml > /dev/null 2>&1; then
+          echo "| Docstring Check | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
         else
-          echo "| Ruff Linting | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          echo "| Docstring Check | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
         fi
 
         # Black check
@@ -110,15 +116,29 @@ jobs:
         fi
 
         # isort check
-        if isort --check-only src/ > /dev/null 2>&1; then
+        if isort --check-only --profile black src/ > /dev/null 2>&1; then
           echo "| isort Import Order | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
         else
           echo "| isort Import Order | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
         fi
 
+        # flake8 check
+        if flake8 src/ --max-line-length=88 --extend-ignore=E203 > /dev/null 2>&1; then
+          echo "| flake8 Linting | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| flake8 Linting | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        # bandit check
+        if bandit -r src/ -c pyproject.toml > /dev/null 2>&1; then
+          echo "| Bandit Security | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| Bandit Security | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+        fi
+
         # detect-secrets check
         if detect-secrets scan --baseline .secrets.baseline > /dev/null 2>&1; then
-          echo "| Security Scan | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "| Secrets Detection | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
         else
-          echo "| Security Scan | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          echo "| Secrets Detection | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
         fi

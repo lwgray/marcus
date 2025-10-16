@@ -139,16 +139,35 @@ def validate_experiment(experiment_dir: Path) -> bool:
     bool
         True if valid, False otherwise
     """
+    import yaml
+
     config_file = experiment_dir / "config.yaml"
-    spec_file = experiment_dir / "project_spec.md"
 
     errors = []
 
     if not config_file.exists():
         errors.append(f"Missing config.yaml at {config_file}")
+        print("Validation errors:")
+        for error in errors:
+            print(f"  ✗ {error}")
+        return False
+
+    # Read config to get the project spec file name
+    try:
+        with open(config_file, "r") as f:
+            config = yaml.safe_load(f)
+            spec_filename = config.get("project_spec_file", "project_spec.md")
+    except Exception as e:
+        errors.append(f"Error reading config.yaml: {e}")
+        print("Validation errors:")
+        for error in errors:
+            print(f"  ✗ {error}")
+        return False
+
+    spec_file = experiment_dir / spec_filename
 
     if not spec_file.exists():
-        errors.append(f"Missing project_spec.md at {spec_file}")
+        errors.append(f"Missing {spec_filename} at {spec_file}")
 
     if errors:
         print("Validation errors:")
