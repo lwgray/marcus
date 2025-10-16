@@ -739,6 +739,61 @@ git push origin develop
 # 3. Celebrate! You've contributed to Marcus! 🎉
 ```
 
+## 🔄 Backwards Compatibility and Deprecation
+
+Marcus is committed to maintaining backwards compatibility for our users while continuing to evolve the project.
+
+### Breaking Changes Policy
+
+- **Major versions** (1.0 → 2.0): May include breaking changes
+- **Minor versions** (1.1 → 1.2): No breaking changes to public APIs
+- **Patch versions** (1.1.1 → 1.1.2): Bug fixes only, no breaking changes
+
+### Deprecation Process
+
+When we need to remove or change functionality:
+
+1. **Announce Deprecation** (Release N):
+   - Add deprecation warning to the function/feature
+   - Document in CHANGELOG.md and release notes
+   - Update documentation with migration guide
+
+2. **Maintain Deprecated Code** (Release N+1):
+   - Keep functionality working with warnings
+   - Continue to support users during transition
+
+3. **Remove Deprecated Code** (Release N+2):
+   - After two minor versions, remove deprecated code
+   - Document removal in breaking changes section
+
+**Example:**
+
+```python
+import warnings
+
+def old_function():
+    """
+    Deprecated: Use new_function() instead.
+
+    .. deprecated:: 0.5.0
+        `old_function` will be removed in version 0.7.0.
+        Use `new_function` instead.
+    """
+    warnings.warn(
+        "old_function is deprecated and will be removed in version 0.7.0. "
+        "Use new_function instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    # ... existing implementation
+```
+
+### API Stability
+
+- **Public API**: Methods, classes, and functions in main modules (guaranteed stable)
+- **Internal API**: Anything in `_internal` or prefixed with `_` (may change without notice)
+- **Experimental**: Clearly marked features (may change based on feedback)
+
 ## 🎯 Areas Needing Help
 
 Looking for something to work on? These areas need attention:
