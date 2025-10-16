@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from src.core.models import Priority, TaskStatus
+from src.core.models import Priority, Task, TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +44,9 @@ class Subtask:
         Estimated time to complete in hours
     dependencies : List[str], optional
         List of other subtask IDs that must be completed first
+    dependency_types : List[str], optional
+        Type of each dependency: "hard" (blocks start) or "soft" (can use mock/contract)
+        Must match length of dependencies list
     file_artifacts : List[str], optional
         Expected file outputs from this subtask
     provides : Optional[str]
@@ -62,6 +65,7 @@ class Subtask:
     created_at: datetime
     estimated_hours: float
     dependencies: List[str] = field(default_factory=list)
+    dependency_types: List[str] = field(default_factory=list)
     file_artifacts: List[str] = field(default_factory=list)
     provides: Optional[str] = None
     requires: Optional[str] = None
@@ -127,10 +131,14 @@ class SubtaskManager:
         self,
         parent_task_id: str,
         subtasks: List[Dict[str, Any]],
+        project_tasks: Optional[List[Task]] = None,
         metadata: Optional[SubtaskMetadata] = None,
-    ) -> List[Subtask]:
+    ) -> List[Task]:
         """
-        Add subtasks for a parent task.
+        Add subtasks for a parent task to unified project_tasks storage.
+
+        Creates Task objects with is_subtask=True and appends them to
+        project_tasks list for unified dependency graph.
 
         Parameters
         ----------
@@ -139,21 +147,35 @@ class SubtaskManager:
         subtasks : List[Dict[str, Any]]
             List of subtask dictionaries with fields:
             - name, description, estimated_hours, dependencies, etc.
+        project_tasks : Optional[List[Task]]
+            Unified task storage (server.project_tasks). If None, uses legacy mode.
         metadata : Optional[SubtaskMetadata]
             Metadata about the decomposition
 
         Returns
         -------
-        List[Subtask]
-            Created Subtask objects
+        List[Task]
+            Created Task objects (with is_subtask=True)
         """
-        created_subtasks = []
+        created_tasks = []
 
         for idx, subtask_data in enumerate(subtasks):
             # Generate unique subtask ID
             subtask_id = f"{parent_task_id}_sub_{idx + 1}"
 
-            subtask = Subtask(
+            # Get dependencies and dependency_types with migration fallback
+            dependencies = subtask_data.get("dependencies", [])
+            dependency_types = subtask_data.get("dependency_types", [])
+
+            # Migration: if dependency_types not provided, default all to "hard"
+            if not dependency_types and dependencies:
+                dependency_types = ["hard"] * len(dependencies)
+                logger.debug(
+                    f"Migration: defaulting all dependencies to 'hard' for {subtask_id}"
+                )
+
+            # Store in legacy format (always needed for backwards compatibility)
+            legacy_subtask = Subtask(
                 id=subtask_id,
                 parent_task_id=parent_task_id,
                 name=subtask_data["name"],
@@ -163,18 +185,45 @@ class SubtaskManager:
                 assigned_to=None,
                 created_at=datetime.now(),
                 estimated_hours=subtask_data.get("estimated_hours", 1.0),
-                dependencies=subtask_data.get("dependencies", []),
+                dependencies=dependencies,
+                dependency_types=dependency_types,
                 file_artifacts=subtask_data.get("file_artifacts", []),
                 provides=subtask_data.get("provides"),
                 requires=subtask_data.get("requires"),
                 order=idx,
             )
 
-            self.subtasks[subtask_id] = subtask
-            created_subtasks.append(subtask)
+            # Keep legacy storage
+            self.subtasks[subtask_id] = legacy_subtask
+
+            # Create Task object for return and unified storage
+            task = Task(
+                id=subtask_id,
+                name=subtask_data["name"],
+                description=subtask_data["description"],
+                status=TaskStatus.TODO,
+                priority=subtask_data.get("priority", Priority.MEDIUM),
+                estimated_hours=subtask_data.get("estimated_hours", 1.0),
+                dependencies=dependencies,
+                labels=subtask_data.get("labels", []),
+                assigned_to=None,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                due_date=None,
+                # Subtask-specific fields
+                is_subtask=True,
+                parent_task_id=parent_task_id,
+                subtask_index=idx,
+            )
+
+            # Add to unified storage if provided
+            if project_tasks is not None:
+                project_tasks.append(task)
+
+            created_tasks.append(task)
 
         # Track parent relationship
-        self.parent_to_subtasks[parent_task_id] = [s.id for s in created_subtasks]
+        self.parent_to_subtasks[parent_task_id] = [t.id for t in created_tasks]
 
         # Store metadata
         if metadata is None:
@@ -185,32 +234,73 @@ class SubtaskManager:
         self._save_state()
 
         logger.info(
-            f"Created {len(created_subtasks)} subtasks for parent task {parent_task_id}"
+            f"Created {len(created_tasks)} subtasks for parent task {parent_task_id}"
         )
 
-        return created_subtasks
+        return created_tasks
 
-    def get_subtasks(self, parent_task_id: str) -> List[Subtask]:
+    def get_subtasks(
+        self, parent_task_id: str, project_tasks: Optional[List[Task]] = None
+    ) -> List[Task]:
         """
-        Get all subtasks for a parent task.
+        Get all subtasks for a parent task from unified storage.
 
         Parameters
         ----------
         parent_task_id : str
             ID of the parent task
+        project_tasks : Optional[List[Task]]
+            Unified task storage. If None, falls back to legacy storage.
 
         Returns
         -------
-        List[Subtask]
-            List of Subtask objects ordered by execution order
+        List[Task]
+            List of Task objects (with is_subtask=True) ordered by subtask_index
         """
-        subtask_ids = self.parent_to_subtasks.get(parent_task_id, [])
-        subtasks = [self.subtasks[sid] for sid in subtask_ids if sid in self.subtasks]
-        return sorted(subtasks, key=lambda s: s.order)
+        if project_tasks is not None:
+            # Query from unified storage
+            subtasks = [
+                t
+                for t in project_tasks
+                if t.is_subtask and t.parent_task_id == parent_task_id
+            ]
+            return sorted(subtasks, key=lambda t: t.subtask_index or 0)
+        else:
+            # Fall back to legacy storage for backwards compatibility
+            subtask_ids = self.parent_to_subtasks.get(parent_task_id, [])
+            # Get Subtask objects from legacy storage
+            legacy_subtask_list = [
+                self.subtasks[sid] for sid in subtask_ids if sid in self.subtasks
+            ]
+            # Convert Subtask to Task for consistent return type
+            tasks: List[Task] = []
+            for subtask in sorted(legacy_subtask_list, key=lambda s: s.order):
+                task = Task(
+                    id=subtask.id,
+                    name=subtask.name,
+                    description=subtask.description,
+                    status=subtask.status,
+                    priority=subtask.priority,
+                    estimated_hours=subtask.estimated_hours,
+                    dependencies=subtask.dependencies,
+                    labels=[],
+                    assigned_to=subtask.assigned_to,
+                    created_at=subtask.created_at,
+                    updated_at=subtask.created_at,
+                    due_date=None,
+                    is_subtask=True,
+                    parent_task_id=subtask.parent_task_id,
+                    subtask_index=subtask.order,
+                )
+                tasks.append(task)
+            return tasks
 
     def get_next_available_subtask(
-        self, parent_task_id: str, completed_subtask_ids: set[str]
-    ) -> Optional[Subtask]:
+        self,
+        parent_task_id: str,
+        completed_subtask_ids: set[str],
+        project_tasks: Optional[List[Task]] = None,
+    ) -> Optional[Task]:
         """
         Get the next available subtask that has all dependencies completed.
 
@@ -220,13 +310,15 @@ class SubtaskManager:
             ID of the parent task
         completed_subtask_ids : set
             Set of completed subtask IDs
+        project_tasks : Optional[List[Task]]
+            Unified task storage. If None, falls back to legacy storage.
 
         Returns
         -------
-        Optional[Subtask]
+        Optional[Task]
             Next available subtask or None if all complete or blocked
         """
-        subtasks = self.get_subtasks(parent_task_id)
+        subtasks = self.get_subtasks(parent_task_id, project_tasks)
 
         for subtask in subtasks:
             # Skip if already completed or in progress
@@ -244,10 +336,14 @@ class SubtaskManager:
         return None
 
     def update_subtask_status(
-        self, subtask_id: str, status: TaskStatus, assigned_to: Optional[str] = None
+        self,
+        subtask_id: str,
+        status: TaskStatus,
+        project_tasks: Optional[List[Task]] = None,
+        assigned_to: Optional[str] = None,
     ) -> bool:
         """
-        Update the status of a subtask.
+        Update the status of a subtask in unified storage.
 
         Parameters
         ----------
@@ -255,6 +351,8 @@ class SubtaskManager:
             ID of the subtask
         status : TaskStatus
             New status
+        project_tasks : Optional[List[Task]]
+            Unified task storage. If None, falls back to legacy storage.
         assigned_to : Optional[str]
             Agent assigned to the subtask
 
@@ -263,19 +361,43 @@ class SubtaskManager:
         bool
             True if update successful
         """
-        if subtask_id not in self.subtasks:
-            logger.warning(f"Subtask {subtask_id} not found")
-            return False
+        if project_tasks is not None:
+            # Update in unified storage
+            task = next((t for t in project_tasks if t.id == subtask_id), None)
+            if task is None:
+                logger.warning(f"Subtask {subtask_id} not found in project_tasks")
+                return False
 
-        subtask = self.subtasks[subtask_id]
-        subtask.status = status
-        if assigned_to:
-            subtask.assigned_to = assigned_to
+            task.status = status
+            task.updated_at = datetime.now()
+            if assigned_to:
+                task.assigned_to = assigned_to
 
-        self._save_state()
-        return True
+            # Also update legacy storage for backwards compatibility
+            if subtask_id in self.subtasks:
+                self.subtasks[subtask_id].status = status
+                if assigned_to:
+                    self.subtasks[subtask_id].assigned_to = assigned_to
 
-    def is_parent_complete(self, parent_task_id: str) -> bool:
+            self._save_state()
+            return True
+        else:
+            # Fall back to legacy storage
+            if subtask_id not in self.subtasks:
+                logger.warning(f"Subtask {subtask_id} not found")
+                return False
+
+            subtask = self.subtasks[subtask_id]
+            subtask.status = status
+            if assigned_to:
+                subtask.assigned_to = assigned_to
+
+            self._save_state()
+            return True
+
+    def is_parent_complete(
+        self, parent_task_id: str, project_tasks: Optional[List[Task]] = None
+    ) -> bool:
         """
         Check if all subtasks of a parent are complete.
 
@@ -283,19 +405,23 @@ class SubtaskManager:
         ----------
         parent_task_id : str
             ID of the parent task
+        project_tasks : Optional[List[Task]]
+            Unified task storage. If None, falls back to legacy storage.
 
         Returns
         -------
         bool
             True if all subtasks are complete
         """
-        subtasks = self.get_subtasks(parent_task_id)
+        subtasks = self.get_subtasks(parent_task_id, project_tasks)
         if not subtasks:
             return False
 
         return all(s.status == TaskStatus.DONE for s in subtasks)
 
-    def get_completion_percentage(self, parent_task_id: str) -> float:
+    def get_completion_percentage(
+        self, parent_task_id: str, project_tasks: Optional[List[Task]] = None
+    ) -> float:
         """
         Get completion percentage for a parent task based on subtasks.
 
@@ -303,13 +429,15 @@ class SubtaskManager:
         ----------
         parent_task_id : str
             ID of the parent task
+        project_tasks : Optional[List[Task]]
+            Unified task storage. If None, falls back to legacy storage.
 
         Returns
         -------
         float
             Completion percentage (0-100)
         """
-        subtasks = self.get_subtasks(parent_task_id)
+        subtasks = self.get_subtasks(parent_task_id, project_tasks)
         if not subtasks:
             return 0.0
 
@@ -363,7 +491,9 @@ class SubtaskManager:
             ],
         }
 
-    def has_subtasks(self, task_id: str) -> bool:
+    def has_subtasks(
+        self, task_id: str, project_tasks: Optional[List[Task]] = None
+    ) -> bool:
         """
         Check if a task has been decomposed into subtasks.
 
@@ -371,44 +501,83 @@ class SubtaskManager:
         ----------
         task_id : str
             ID of the task to check
+        project_tasks : Optional[List[Task]]
+            Unified task storage. If None, falls back to legacy storage.
 
         Returns
         -------
         bool
             True if task has subtasks
         """
-        return task_id in self.parent_to_subtasks
+        if project_tasks is not None:
+            # Check unified storage
+            return any(
+                t.is_subtask and t.parent_task_id == task_id for t in project_tasks
+            )
+        else:
+            # Fall back to legacy storage
+            return task_id in self.parent_to_subtasks
 
-    def remove_subtasks(self, parent_task_id: str) -> bool:
+    def remove_subtasks(
+        self, parent_task_id: str, project_tasks: Optional[List[Task]] = None
+    ) -> bool:
         """
-        Remove all subtasks for a parent task.
+        Remove all subtasks for a parent task from unified storage.
 
         Parameters
         ----------
         parent_task_id : str
             ID of the parent task
+        project_tasks : Optional[List[Task]]
+            Unified task storage. If None, falls back to legacy storage.
 
         Returns
         -------
         bool
             True if removal successful
         """
-        if parent_task_id not in self.parent_to_subtasks:
-            return False
+        if project_tasks is not None:
+            # Remove from unified storage
+            initial_len = len(project_tasks)
+            # Filter out subtasks with matching parent_task_id
+            project_tasks[:] = [
+                t
+                for t in project_tasks
+                if not (t.is_subtask and t.parent_task_id == parent_task_id)
+            ]
+            removed_any = len(project_tasks) < initial_len
 
-        # Remove all subtasks
-        subtask_ids = self.parent_to_subtasks[parent_task_id]
-        for sid in subtask_ids:
-            if sid in self.subtasks:
-                del self.subtasks[sid]
+            # Also remove from legacy storage
+            if parent_task_id in self.parent_to_subtasks:
+                subtask_ids = self.parent_to_subtasks[parent_task_id]
+                for sid in subtask_ids:
+                    if sid in self.subtasks:
+                        del self.subtasks[sid]
+                del self.parent_to_subtasks[parent_task_id]
 
-        del self.parent_to_subtasks[parent_task_id]
+            if parent_task_id in self.metadata:
+                del self.metadata[parent_task_id]
 
-        if parent_task_id in self.metadata:
-            del self.metadata[parent_task_id]
+            self._save_state()
+            return removed_any
+        else:
+            # Fall back to legacy storage
+            if parent_task_id not in self.parent_to_subtasks:
+                return False
 
-        self._save_state()
-        return True
+            # Remove all subtasks
+            subtask_ids = self.parent_to_subtasks[parent_task_id]
+            for sid in subtask_ids:
+                if sid in self.subtasks:
+                    del self.subtasks[sid]
+
+            del self.parent_to_subtasks[parent_task_id]
+
+            if parent_task_id in self.metadata:
+                del self.metadata[parent_task_id]
+
+            self._save_state()
+            return True
 
     def _save_state(self) -> None:
         """Persist subtask state to JSON file."""
@@ -452,6 +621,18 @@ class SubtaskManager:
 
             # Load subtasks
             for sid, data in state.get("subtasks", {}).items():
+                # Migration: add dependency_types if not present
+                if "dependency_types" not in data:
+                    dependencies = data.get("dependencies", [])
+                    if dependencies:
+                        data["dependency_types"] = ["hard"] * len(dependencies)
+                        logger.debug(
+                            f"Migration: adding dependency_types for "
+                            f"loaded subtask {sid}"
+                        )
+                    else:
+                        data["dependency_types"] = []
+
                 self.subtasks[sid] = Subtask(
                     **{
                         **data,
@@ -476,3 +657,51 @@ class SubtaskManager:
 
         except Exception as e:
             logger.error(f"Error loading subtask state: {e}")
+
+    def migrate_to_unified_storage(self, project_tasks: List[Task]) -> None:
+        """
+        Migrate old Subtask objects to unified Task storage.
+
+        Converts legacy Subtask objects stored in self.subtasks to Task
+        objects with is_subtask=True and appends them to project_tasks.
+
+        This method is called during initialization to handle backwards
+        compatibility with old state files.
+
+        Parameters
+        ----------
+        project_tasks : List[Task]
+            Unified task storage to migrate subtasks into
+        """
+        if not self.subtasks:
+            logger.debug("No subtasks to migrate")
+            return
+
+        logger.info(f"Migrating {len(self.subtasks)} subtasks to unified storage")
+
+        for subtask_id, subtask in self.subtasks.items():
+            # Convert Subtask to Task with subtask fields
+            task = Task(
+                id=subtask.id,
+                name=subtask.name,
+                description=subtask.description,
+                status=subtask.status,
+                priority=subtask.priority,
+                estimated_hours=subtask.estimated_hours,
+                dependencies=subtask.dependencies,
+                labels=[],  # Legacy subtasks didn't have labels
+                assigned_to=subtask.assigned_to,
+                created_at=subtask.created_at,
+                updated_at=subtask.created_at,
+                due_date=None,
+                # Subtask-specific fields
+                is_subtask=True,
+                parent_task_id=subtask.parent_task_id,
+                subtask_index=subtask.order,
+            )
+
+            project_tasks.append(task)
+
+        logger.info(
+            f"Successfully migrated {len(self.subtasks)} subtasks to unified storage"
+        )

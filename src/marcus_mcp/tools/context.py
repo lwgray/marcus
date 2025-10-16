@@ -360,8 +360,8 @@ async def _collect_sibling_subtask_context(
     if not hasattr(state, "subtask_manager") or not state.subtask_manager:
         return {"artifacts": sibling_artifacts, "decisions": sibling_decisions}
 
-    # Get all subtasks for this parent
-    subtasks = state.subtask_manager.get_subtasks(parent_task_id)
+    # Get all subtasks for this parent from unified storage
+    subtasks = state.subtask_manager.get_subtasks(parent_task_id, state.project_tasks)
 
     # Single pass: collect both artifacts and decisions from siblings
     for subtask in subtasks:

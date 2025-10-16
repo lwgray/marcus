@@ -858,14 +858,17 @@ Requirement: {base_description}
 Generate a clear, specific description for a **{task_type.upper()}** task.
 
 Guidelines:
-- For DESIGN tasks: Focus on planning, architecture, API
-  specifications, data models, wireframes, user flows
+- For DESIGN tasks: Create COMPLETE specifications that enable parallel
+  implementation. Must produce: interface contracts (API specs, data schemas,
+  component interfaces), component boundaries, integration points, error
+  handling specifications, and shared conventions. The goal is to enable
+  developers to implement ANY component in parallel using ONLY these specs.
 - For IMPLEMENT tasks: Focus on coding, building features, integrating
-  components, writing the actual code
+  components, writing the actual code based on Design specifications.
 - For TEST tasks: Focus on writing tests, creating test scenarios,
-  validation, test coverage, quality assurance
+  validation, test coverage, quality assurance.
 
-Provide ONLY the description (2-3 sentences), no preamble or
+Provide ONLY the description (3-4 sentences), no preamble or
 explanation."""
 
         try:

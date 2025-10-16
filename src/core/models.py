@@ -114,11 +114,20 @@ class Task:
         ID of the project this task belongs to
     project_name : Optional[str]
         Name of the project this task belongs to
+    is_subtask : bool, default=False
+        Whether this task is a subtask of a parent task
+    parent_task_id : Optional[str]
+        ID of the parent task if this is a subtask
+    subtask_index : Optional[int]
+        Position within parent task's subtasks (for ordering)
 
     Notes
     -----
     Dependencies and labels are initialized as empty lists if not provided.
     Project context fields are optional for backwards compatibility.
+    The unified dependency graph fields (is_subtask, parent_task_id, subtask_index)
+    enable subtasks to be first-class citizens in the dependency graph while
+    preserving organizational hierarchy.
     """
 
     id: str
@@ -142,6 +151,11 @@ class Task:
     source_context: Optional[Dict[str, Any]] = None  # Original context data
     completion_criteria: Optional[Dict[str, Any]] = None  # Success conditions
     validation_spec: Optional[str] = None  # How to validate completion
+
+    # Fields for unified dependency graph
+    is_subtask: bool = False  # True if this is a subtask of a parent task
+    parent_task_id: Optional[str] = None  # ID of parent task if is_subtask=True
+    subtask_index: Optional[int] = None  # Position within parent (for ordering)
 
 
 @dataclass

@@ -553,9 +553,10 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             task_list_md += f"**Estimated Hours:** {task.estimated_hours}\n"
             task_list_md += f"**Labels:** {', '.join(task.labels)}\n"
 
-            # Add subtasks if they exist
-            if subtask_manager and subtask_manager.has_subtasks(task.id):
-                subtasks = subtask_manager.get_subtasks(task.id)
+            # Add subtasks if they exist (using legacy storage since
+            # we don't have project_tasks here)
+            if subtask_manager and subtask_manager.has_subtasks(task.id, None):
+                subtasks = subtask_manager.get_subtasks(task.id, None)
                 if subtasks:
                     task_list_md += "\n**Subtasks:**\n"
                     for sub_idx, subtask in enumerate(subtasks, 1):

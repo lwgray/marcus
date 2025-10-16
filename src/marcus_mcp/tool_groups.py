@@ -25,6 +25,8 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "add_feature",  # NLP feature addition
         "get_usage_report",
         "unassign_task",  # Manually unassign stuck tasks
+        # Scheduling
+        "get_optimal_agent_count",  # Calculate optimal agent count using CPM
         # Diagnostics
         "diagnose_project",  # Diagnose project issues
         "capture_stall_snapshot",  # Capture snapshot when development stalls
@@ -53,6 +55,8 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "select_project",  # Select project to work on
         "create_project",  # NLP project creation for autonomous agents
         "create_tasks",  # Create tasks on existing project/board
+        # Scheduling
+        "get_optimal_agent_count",  # Calculate optimal agent count using CPM
         # Diagnostics
         "diagnose_project",  # Diagnose project issues
         "capture_stall_snapshot",  # Capture snapshot when development stalls
@@ -97,6 +101,8 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "create_project",
         "create_tasks",
         "add_feature",
+        # Scheduling
+        "get_optimal_agent_count",  # Calculate optimal agent count using CPM
         # System health
         "check_assignment_health",
         "check_board_health",

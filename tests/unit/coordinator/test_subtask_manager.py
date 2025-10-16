@@ -66,7 +66,7 @@ class TestSubtaskManager:
         assert manager.state_file == temp_state_file
 
     def test_add_subtasks_creates_subtasks_correctly(self, manager, sample_subtasks):
-        """Test adding subtasks creates correct Subtask objects."""
+        """Test adding subtasks creates correct Task objects with subtask fields."""
         # Arrange
         parent_id = "task-1"
 
@@ -79,7 +79,8 @@ class TestSubtaskManager:
         assert created_subtasks[0].parent_task_id == parent_id
         assert created_subtasks[0].id == "task-1_sub_1"
         assert created_subtasks[0].status == TaskStatus.TODO
-        assert created_subtasks[0].file_artifacts == ["src/models/user.py"]
+        # file_artifacts is stored in legacy Subtask, check there
+        assert manager.subtasks["task-1_sub_1"].file_artifacts == ["src/models/user.py"]
 
     def test_add_subtasks_tracks_parent_relationship(self, manager, sample_subtasks):
         """Test subtasks are properly linked to parent task."""
@@ -106,8 +107,8 @@ class TestSubtaskManager:
 
         # Assert
         assert len(subtasks) == 2
-        assert subtasks[0].order == 0
-        assert subtasks[1].order == 1
+        assert subtasks[0].subtask_index == 0  # Task uses subtask_index, not order
+        assert subtasks[1].subtask_index == 1
         assert subtasks[0].name == "Create User model"
 
     def test_get_subtasks_returns_empty_for_unknown_parent(self, manager):
@@ -253,7 +254,10 @@ class TestSubtaskManager:
                 "response_format": {"status": "success"},
             }
         )
-        manager.add_subtasks(parent_id, sample_subtasks, metadata)
+        # Pass project_tasks=None (legacy mode), then metadata
+        manager.add_subtasks(
+            parent_id, sample_subtasks, project_tasks=None, metadata=metadata
+        )
 
         # Act
         context = manager.get_subtask_context("task-1_sub_2")
@@ -327,3 +331,184 @@ class TestSubtaskManager:
         assert "parent_to_subtasks" in state
         assert "metadata" in state
         assert "task-1_sub_1" in state["subtasks"]
+
+
+class TestSubtaskDependencyTypes:
+    """Test suite for dependency_types field functionality."""
+
+    @pytest.fixture
+    def temp_state_file(self):
+        """Create temporary state file for testing."""
+        with TemporaryDirectory() as tmpdir:
+            state_file = Path(tmpdir) / "subtasks.json"
+            yield state_file
+
+    @pytest.fixture
+    def manager(self, temp_state_file):
+        """Create SubtaskManager instance for testing."""
+        return SubtaskManager(state_file=temp_state_file)
+
+    def test_add_subtasks_with_dependency_types(self, manager):
+        """Test subtasks with dependency_types are created correctly."""
+        # Arrange
+        parent_id = "task-1"
+        subtasks = [
+            {
+                "name": "Task 1",
+                "description": "First task",
+                "estimated_hours": 2.0,
+                "dependencies": [],
+                "dependency_types": [],
+            },
+            {
+                "name": "Task 2",
+                "description": "Second task",
+                "estimated_hours": 3.0,
+                "dependencies": ["task-1_sub_1"],
+                "dependency_types": ["soft"],
+            },
+        ]
+
+        # Act
+        created_subtasks = manager.add_subtasks(parent_id, subtasks)
+
+        # Assert - dependency_types stored in legacy Subtask
+        assert manager.subtasks["task-1_sub_1"].dependency_types == []
+        assert manager.subtasks["task-1_sub_2"].dependency_types == ["soft"]
+
+    def test_add_subtasks_migrates_missing_dependency_types(self, manager):
+        """Test migration defaults missing dependency_types to hard."""
+        # Arrange
+        parent_id = "task-1"
+        subtasks = [
+            {
+                "name": "Task 1",
+                "description": "First task",
+                "estimated_hours": 2.0,
+                "dependencies": [],
+                # No dependency_types field (old format)
+            },
+            {
+                "name": "Task 2",
+                "description": "Second task",
+                "estimated_hours": 3.0,
+                "dependencies": ["task-1_sub_1"],
+                # No dependency_types field (old format)
+            },
+        ]
+
+        # Act
+        created_subtasks = manager.add_subtasks(parent_id, subtasks)
+
+        # Assert - dependency_types stored in legacy Subtask
+        assert (
+            manager.subtasks["task-1_sub_1"].dependency_types == []
+        )  # No deps, empty list
+        assert manager.subtasks["task-1_sub_2"].dependency_types == [
+            "hard"
+        ]  # Defaulted to hard
+
+    def test_load_state_migrates_old_format_without_dependency_types(
+        self, temp_state_file
+    ):
+        """Test loading old state file without dependency_types migrates correctly."""
+        # Arrange - Create old format state file
+        old_state = {
+            "subtasks": {
+                "task-1_sub_1": {
+                    "id": "task-1_sub_1",
+                    "parent_task_id": "task-1",
+                    "name": "Task 1",
+                    "description": "First task",
+                    "status": "todo",
+                    "priority": "medium",
+                    "assigned_to": None,
+                    "created_at": datetime.now().isoformat(),
+                    "estimated_hours": 2.0,
+                    "dependencies": [],
+                    "file_artifacts": [],
+                    "provides": None,
+                    "requires": None,
+                    "order": 0,
+                    # Note: No dependency_types field
+                },
+                "task-1_sub_2": {
+                    "id": "task-1_sub_2",
+                    "parent_task_id": "task-1",
+                    "name": "Task 2",
+                    "description": "Second task",
+                    "status": "todo",
+                    "priority": "medium",
+                    "assigned_to": None,
+                    "created_at": datetime.now().isoformat(),
+                    "estimated_hours": 3.0,
+                    "dependencies": ["task-1_sub_1"],
+                    "file_artifacts": [],
+                    "provides": None,
+                    "requires": None,
+                    "order": 1,
+                    # Note: No dependency_types field
+                },
+            },
+            "parent_to_subtasks": {"task-1": ["task-1_sub_1", "task-1_sub_2"]},
+            "metadata": {
+                "task-1": {
+                    "shared_conventions": {},
+                    "decomposed_at": datetime.now().isoformat(),
+                    "decomposed_by": "ai",
+                }
+            },
+        }
+
+        with open(temp_state_file, "w") as f:
+            json.dump(old_state, f)
+
+        # Act - Load state with new manager
+        manager = SubtaskManager(state_file=temp_state_file)
+
+        # Assert
+        assert "task-1_sub_1" in manager.subtasks
+        assert "task-1_sub_2" in manager.subtasks
+        # First subtask has no dependencies, should get empty list
+        assert manager.subtasks["task-1_sub_1"].dependency_types == []
+        # Second subtask has 1 dependency, should get ["hard"]
+        assert manager.subtasks["task-1_sub_2"].dependency_types == ["hard"]
+
+    def test_dependency_types_persisted_correctly(self, temp_state_file):
+        """Test dependency_types are saved and loaded correctly."""
+        # Arrange
+        parent_id = "task-1"
+        subtasks = [
+            {
+                "name": "Task 1",
+                "description": "First",
+                "estimated_hours": 2.0,
+                "dependencies": [],
+                "dependency_types": [],
+            },
+            {
+                "name": "Task 2",
+                "description": "Second",
+                "estimated_hours": 3.0,
+                "dependencies": ["task-1_sub_1"],
+                "dependency_types": ["soft"],
+            },
+            {
+                "name": "Task 3",
+                "description": "Third",
+                "estimated_hours": 2.5,
+                "dependencies": ["task-1_sub_1", "task-1_sub_2"],
+                "dependency_types": ["hard", "soft"],
+            },
+        ]
+
+        manager1 = SubtaskManager(state_file=temp_state_file)
+        manager1.add_subtasks(parent_id, subtasks)
+
+        # Act - Reload from disk
+        manager2 = SubtaskManager(state_file=temp_state_file)
+
+        # Assert
+        assert manager2.subtasks["task-1_sub_1"].dependency_types == []
+        assert manager2.subtasks["task-1_sub_2"].dependency_types == ["soft"]
+        assert manager2.subtasks["task-1_sub_3"].dependency_types == ["hard", "soft"]

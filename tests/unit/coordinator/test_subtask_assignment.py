@@ -80,7 +80,10 @@ class TestSubtaskAssignment:
 
     def test_find_subtask_from_todo_parent(self, subtask_manager, parent_task_todo):
         """Test finding subtask from parent in TODO status."""
-        # Add subtasks to parent
+        # Create project_tasks list for unified storage
+        project_tasks = [parent_task_todo]
+
+        # Add subtasks to parent using unified storage
         subtasks_data = [
             {
                 "name": "Subtask 1",
@@ -95,12 +98,12 @@ class TestSubtaskAssignment:
                 "dependencies": [],
             },
         ]
-        subtask_manager.add_subtasks(parent_task_todo.id, subtasks_data)
+        subtask_manager.add_subtasks(parent_task_todo.id, subtasks_data, project_tasks)
 
-        # Find next available subtask
+        # Find next available subtask from unified storage
         subtask = find_next_available_subtask(
             agent_id="agent-1",
-            project_tasks=[parent_task_todo],
+            project_tasks=project_tasks,
             subtask_manager=subtask_manager,
             assigned_task_ids=set(),
         )
@@ -118,7 +121,10 @@ class TestSubtaskAssignment:
         This is the critical bug fix test - previously this would fail
         because IN_PROGRESS parents were skipped.
         """
-        # Add subtasks to parent
+        # Create project_tasks list for unified storage
+        project_tasks = [parent_task_in_progress]
+
+        # Add subtasks to parent using unified storage
         subtasks_data = [
             {
                 "name": "Subtask 1",
@@ -134,19 +140,22 @@ class TestSubtaskAssignment:
             },
         ]
         created_subtasks = subtask_manager.add_subtasks(
-            parent_task_in_progress.id, subtasks_data
+            parent_task_in_progress.id, subtasks_data, project_tasks
         )
 
         # Mark first subtask as IN_PROGRESS (simulating it being assigned)
         subtask_manager.update_subtask_status(
-            created_subtasks[0].id, TaskStatus.IN_PROGRESS, "agent-1"
+            created_subtasks[0].id,
+            TaskStatus.IN_PROGRESS,
+            project_tasks,
+            assigned_to="agent-1",
         )
 
-        # Try to find next available subtask
+        # Try to find next available subtask from unified storage
         # This should return Subtask 2, not None
         subtask = find_next_available_subtask(
             agent_id="agent-2",
-            project_tasks=[parent_task_in_progress],
+            project_tasks=project_tasks,
             subtask_manager=subtask_manager,
             assigned_task_ids={created_subtasks[0].id},  # First subtask assigned
         )
@@ -209,7 +218,7 @@ class TestSubtaskAssignment:
             )
             parent_tasks.append(parent)
 
-            # Add 5 subtasks
+            # Add 5 subtasks using unified storage
             subtasks_data = [
                 {
                     "name": f"Subtask {j+1}",
@@ -219,7 +228,9 @@ class TestSubtaskAssignment:
                 }
                 for j in range(5)
             ]
-            created = subtask_manager.add_subtasks(parent.id, subtasks_data)
+            created = subtask_manager.add_subtasks(
+                parent.id, subtasks_data, parent_tasks
+            )
             all_subtask_ids.extend([s.id for s in created])
 
         # Simulate 15 workers requesting tasks
@@ -237,9 +248,12 @@ class TestSubtaskAssignment:
             if subtask:
                 assigned_subtasks.append(subtask)
                 assigned_ids.add(subtask.id)
-                # Mark as IN_PROGRESS
+                # Mark as IN_PROGRESS in unified storage
                 subtask_manager.update_subtask_status(
-                    subtask.id, TaskStatus.IN_PROGRESS, f"agent-{worker_num}"
+                    subtask.id,
+                    TaskStatus.IN_PROGRESS,
+                    parent_tasks,
+                    assigned_to=f"agent-{worker_num}",
                 )
                 # Update parent to IN_PROGRESS after first assignment
                 parent = next(p for p in parent_tasks if p.id == subtask.parent_task_id)
@@ -286,6 +300,9 @@ class TestSubtaskAssignment:
         self, subtask_manager, parent_task_todo
     ):
         """Test that already assigned subtasks are skipped."""
+        # Create project_tasks list for unified storage
+        project_tasks = [parent_task_todo]
+
         subtasks_data = [
             {
                 "name": "Subtask 1",
@@ -301,13 +318,13 @@ class TestSubtaskAssignment:
             },
         ]
         created_subtasks = subtask_manager.add_subtasks(
-            parent_task_todo.id, subtasks_data
+            parent_task_todo.id, subtasks_data, project_tasks
         )
 
         # First assignment
         subtask1 = find_next_available_subtask(
             agent_id="agent-1",
-            project_tasks=[parent_task_todo],
+            project_tasks=project_tasks,
             subtask_manager=subtask_manager,
             assigned_task_ids=set(),
         )
@@ -317,14 +334,17 @@ class TestSubtaskAssignment:
 
         # Mark first subtask as IN_PROGRESS and update parent status
         subtask_manager.update_subtask_status(
-            created_subtasks[0].id, TaskStatus.IN_PROGRESS, "agent-1"
+            created_subtasks[0].id,
+            TaskStatus.IN_PROGRESS,
+            project_tasks,
+            assigned_to="agent-1",
         )
         parent_task_todo.status = TaskStatus.IN_PROGRESS
 
         # Second assignment - should skip already assigned subtask
         subtask2 = find_next_available_subtask(
             agent_id="agent-2",
-            project_tasks=[parent_task_todo],
+            project_tasks=project_tasks,
             subtask_manager=subtask_manager,
             assigned_task_ids={created_subtasks[0].id},  # First subtask assigned
         )
@@ -528,7 +548,10 @@ class TestDependencyChecking:
             dependencies=["design1", "implement1"],
         )
 
-        # Add subtasks to each
+        # Create unified project_tasks list
+        all_tasks = [design_task, implement_task, test_task]
+
+        # Add subtasks to each using unified storage
         design_subtasks = [
             {
                 "name": "Design Subtask 1",
@@ -554,11 +577,9 @@ class TestDependencyChecking:
             }
         ]
 
-        subtask_manager.add_subtasks(design_task.id, design_subtasks)
-        subtask_manager.add_subtasks(implement_task.id, implement_subtasks)
-        subtask_manager.add_subtasks(test_task.id, test_subtasks)
-
-        all_tasks = [design_task, implement_task, test_task]
+        subtask_manager.add_subtasks(design_task.id, design_subtasks, all_tasks)
+        subtask_manager.add_subtasks(implement_task.id, implement_subtasks, all_tasks)
+        subtask_manager.add_subtasks(test_task.id, test_subtasks, all_tasks)
 
         # Phase 1: Only design subtasks should be available
         result = find_next_available_subtask(
@@ -655,7 +676,10 @@ class TestSubtaskWorkflowFixes:
             find_optimal_task_with_subtasks,
         )
 
-        # Add subtasks to parent
+        # Setup state with project_tasks list
+        mock_state.project_tasks = [parent_task]
+
+        # Add subtasks to parent using unified storage
         subtasks_data = [
             {
                 "name": "Subtask 1",
@@ -670,10 +694,9 @@ class TestSubtaskWorkflowFixes:
                 "dependencies": [],
             },
         ]
-        subtask_manager.add_subtasks(parent_task.id, subtasks_data)
-
-        # Setup state
-        mock_state.project_tasks = [parent_task]
+        subtask_manager.add_subtasks(
+            parent_task.id, subtasks_data, mock_state.project_tasks
+        )
         mock_state.agent_tasks = {}
         mock_state.tasks_being_assigned = set()
         mock_state.assignment_persistence = Mock()
@@ -735,7 +758,10 @@ class TestSubtaskWorkflowFixes:
             project_name="Test Project",
         )
 
-        # Add subtasks to parent
+        # Setup state with project_tasks list
+        mock_state.project_tasks = [parent_task]
+
+        # Add subtasks to parent using unified storage
         subtasks_data = [
             {
                 "name": "Subtask 1",
@@ -750,15 +776,17 @@ class TestSubtaskWorkflowFixes:
                 "dependencies": [],
             },
         ]
-        created_subtasks = subtask_manager.add_subtasks(parent_task.id, subtasks_data)
+        created_subtasks = subtask_manager.add_subtasks(
+            parent_task.id, subtasks_data, mock_state.project_tasks
+        )
 
         # Mark first subtask as already assigned
         subtask_manager.update_subtask_status(
-            created_subtasks[0].id, TaskStatus.IN_PROGRESS, "agent1"
+            created_subtasks[0].id,
+            TaskStatus.IN_PROGRESS,
+            mock_state.project_tasks,
+            assigned_to="agent1",
         )
-
-        # Setup state
-        mock_state.project_tasks = [parent_task]
         mock_state.agent_tasks = {}
         mock_state.tasks_being_assigned = {created_subtasks[0].id}
         mock_state.assignment_persistence = Mock()
@@ -966,7 +994,10 @@ class TestSubtaskConfigSwitch:
             find_optimal_task_with_subtasks,
         )
 
-        # Add subtasks to parent
+        # Setup state with project_tasks list
+        mock_state.project_tasks = [parent_task]
+
+        # Add subtasks to parent using unified storage
         subtasks_data = [
             {
                 "name": "Subtask 1",
@@ -975,10 +1006,9 @@ class TestSubtaskConfigSwitch:
                 "dependencies": [],
             },
         ]
-        subtask_manager.add_subtasks(parent_task.id, subtasks_data)
-
-        # Setup state
-        mock_state.project_tasks = [parent_task]
+        subtask_manager.add_subtasks(
+            parent_task.id, subtasks_data, mock_state.project_tasks
+        )
 
         # Create settings with subtasks enabled
         from src.config.settings import Settings
