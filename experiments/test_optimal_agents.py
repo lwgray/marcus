@@ -54,15 +54,19 @@ def create_test_script(
     experiment_dir: Path, project_name: str, description: str, options: Dict[str, Any]
 ) -> Path:
     """Create a script that uses Claude Code to create project and query agents."""
-    # Pre-format the options JSON and escape the description to avoid quote issues
+    # Pre-format the options JSON
     options_json = json.dumps(options)
-    # Escape any triple quotes in the description
-    escaped_description = description.replace('"""', r"\"\"\"")
+    # Escape the description for safe embedding in Python string
+    escaped_description = json.dumps(description)
 
+    # Build script using concatenation to avoid quote nesting
     script_content = f'''#!/usr/bin/env python3
 """Auto-generated test script for optimal agent calculation."""
 
 import json
+
+# Project description (JSON-encoded to avoid quote issues)
+DESCRIPTION = {escaped_description}
 
 # Print instructions for Claude Code
 print("""
@@ -76,9 +80,7 @@ You are testing optimal agent count. Follow these steps WITHOUT asking permissio
 2. Create the project:
    mcp__marcus__create_project(
        project_name="{project_name}",
-       description="""
-{escaped_description}
-""",
+       description=DESCRIPTION,
        options={options_json}
    )
 
