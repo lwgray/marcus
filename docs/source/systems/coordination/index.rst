@@ -14,3 +14,5 @@ Systems managing agent coordination and task assignment.
    35-assignment-lease-system
    36-task-dependency-system
    37-optimal-agent-scheduling
+   cpm-analysis-overview
+   cpm-subtask-timing-analysis
