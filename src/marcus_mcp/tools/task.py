@@ -1067,12 +1067,28 @@ async def report_task_progress(
                     blockers=[message],
                 )
 
-        await state.kanban_client.update_task(task_id, update_data)
-
-        # Update task progress (including checklist items)
-        await state.kanban_client.update_task_progress(
-            task_id, {"progress": progress, "status": status, "message": message}
+        # CRITICAL FIX: Skip Kanban card update for subtasks
+        # Subtasks are checklist items on the parent card, not separate cards
+        # They're updated via _mark_checklist_item_complete in subtask completion flow
+        is_subtask = (
+            hasattr(state, "subtask_manager")
+            and state.subtask_manager
+            and task_id in state.subtask_manager.subtasks
         )
+
+        if not is_subtask:
+            # Only update the card if this is a regular task (not a subtask)
+            await state.kanban_client.update_task(task_id, update_data)
+
+            # Update task progress (including checklist items)
+            await state.kanban_client.update_task_progress(
+                task_id, {"progress": progress, "status": status, "message": message}
+            )
+        else:
+            logger.debug(
+                f"Skipping Kanban card update for subtask {task_id} "
+                "(subtasks are checklist items, not cards)"
+            )
 
         # Renew lease on progress update (except for completed tasks)
         if (
