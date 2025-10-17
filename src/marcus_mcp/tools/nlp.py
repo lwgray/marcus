@@ -356,6 +356,16 @@ async def create_project(
             if "tasks_created" in result and "task_count" not in result:
                 result["task_count"] = result["tasks_created"]
 
+            # Add Marcus project_id from registry for auto-select
+            if result.get("success") and "project_id" not in result:
+                if hasattr(state, "project_registry"):
+                    active_project = await state.project_registry.get_active_project()
+                    if active_project:
+                        result["project_id"] = active_project.id
+                        logger.info(
+                            f"Added project_id to result: {result['project_id']}"
+                        )
+
         # Final log before return
         state.log_event(
             "create_project_final_return",
