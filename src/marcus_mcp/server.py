@@ -844,6 +844,24 @@ class MarcusServer:
                 self.subtask_manager.migrate_to_unified_storage(self.project_tasks)
                 self._subtasks_migrated = True
 
+                # CRITICAL: Remove parent tasks that have subtasks from project_tasks
+                # Parent tasks should NOT be assignable - only their subtasks should be
+                parent_task_ids = set()
+                for task in self.project_tasks:
+                    if task.is_subtask and task.parent_task_id:
+                        parent_task_ids.add(task.parent_task_id)
+
+                if parent_task_ids:
+                    initial_count = len(self.project_tasks)
+                    self.project_tasks[:] = [
+                        t for t in self.project_tasks if t.id not in parent_task_ids
+                    ]
+                    removed_count = initial_count - len(self.project_tasks)
+                    logger.info(
+                        f"Removed {removed_count} parent tasks from unified storage "
+                        f"(they have subtasks and should not be assigned directly)"
+                    )
+
                 # Wire cross-parent dependencies after migration completes
                 # Creates fine-grained dependencies between different parents
                 try:
