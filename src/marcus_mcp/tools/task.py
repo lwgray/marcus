@@ -1067,28 +1067,13 @@ async def report_task_progress(
                     blockers=[message],
                 )
 
-        # CRITICAL FIX: Skip Kanban card update for subtasks
-        # Subtasks are checklist items on the parent card, not separate cards
-        # They're updated via _mark_checklist_item_complete in subtask completion flow
-        is_subtask = (
-            hasattr(state, "subtask_manager")
-            and state.subtask_manager
-            and task_id in state.subtask_manager.subtasks
+        # Update Kanban card
+        await state.kanban_client.update_task(task_id, update_data)
+
+        # Update task progress (including checklist items)
+        await state.kanban_client.update_task_progress(
+            task_id, {"progress": progress, "status": status, "message": message}
         )
-
-        if not is_subtask:
-            # Only update the card if this is a regular task (not a subtask)
-            await state.kanban_client.update_task(task_id, update_data)
-
-            # Update task progress (including checklist items)
-            await state.kanban_client.update_task_progress(
-                task_id, {"progress": progress, "status": status, "message": message}
-            )
-        else:
-            logger.debug(
-                f"Skipping Kanban card update for subtask {task_id} "
-                "(subtasks are checklist items, not cards)"
-            )
 
         # Renew lease on progress update (except for completed tasks)
         if (
@@ -1343,16 +1328,51 @@ async def _find_optimal_task_original_logic(
 
             # GH-XX: Skip parent tasks that have subtasks
             # Parent tasks should not be assigned - only their subtasks
-            if (
-                hasattr(state, "subtask_manager")
-                and state.subtask_manager
-                and state.subtask_manager.has_subtasks(t.id, state.project_tasks)
-            ):
-                logger.debug(
-                    f"Skipping parent task '{t.name}' - "
-                    "has subtasks that should be assigned instead"
+            if hasattr(state, "subtask_manager") and state.subtask_manager:
+                has_subtasks_result = state.subtask_manager.has_subtasks(
+                    t.id, state.project_tasks
                 )
-                continue
+
+                # CRITICAL DEBUG: Log subtask check for every task
+                logger.info(
+                    f"🔍 SUBTASK CHECK for task '{t.name}' (ID: {t.id}): "
+                    f"has_subtasks={has_subtasks_result}"
+                )
+
+                # DEBUG: If this is "Design Display Game Board", log detailed info
+                if "Display Game Board" in t.name:
+                    subtasks_in_unified = [
+                        st
+                        for st in state.project_tasks
+                        if st.is_subtask and st.parent_task_id == t.id
+                    ]
+                    subtasks_in_legacy = (
+                        t.id in state.subtask_manager.parent_to_subtasks
+                    )
+                    legacy_count = (
+                        len(state.subtask_manager.parent_to_subtasks.get(t.id, []))
+                        if subtasks_in_legacy
+                        else 0
+                    )
+
+                    logger.critical(
+                        f"🚨 CRITICAL DEBUG - 'Design Display Game Board':\n"
+                        f"  Task ID: {t.id}\n"
+                        f"  has_subtasks() returned: {has_subtasks_result}\n"
+                        f"  Subtasks in unified storage: {len(subtasks_in_unified)}\n"
+                        f"  Subtasks in legacy storage: {legacy_count}\n"
+                        f"  Unified subtasks: {[st.id for st in subtasks_in_unified]}\n"
+                        f"  Total tasks in project_tasks: {len(state.project_tasks)}\n"
+                        f"  Total with is_subtask=True: "
+                        f"{sum(1 for t in state.project_tasks if t.is_subtask)}"
+                    )
+
+                if has_subtasks_result:
+                    logger.debug(
+                        f"Skipping parent task '{t.name}' - "
+                        "has subtasks that should be assigned instead"
+                    )
+                    continue
 
             # Check dependencies
             deps = t.dependencies or []
