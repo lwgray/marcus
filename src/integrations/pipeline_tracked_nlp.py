@@ -353,7 +353,7 @@ async def create_project_from_natural_language_tracked(
             ):
                 from datetime import datetime
 
-                from src.core.project_models import ProjectConfig
+                from src.core.project_registry import ProjectConfig
 
                 provider = options.get("provider", "planka")
 
