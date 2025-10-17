@@ -313,6 +313,18 @@ async def create_project_from_natural_language_tracked(
     # Get subtask_manager if available (GH-62 fix)
     subtask_manager = getattr(state, "subtask_manager", None)
 
+    # Clear stale project/board IDs to force new project creation
+    # The creator checks if these are set and skips creation if they are
+    if state.kanban_client:
+        # Clear on the underlying client if wrapped
+        if hasattr(state.kanban_client, "client"):
+            state.kanban_client.client.project_id = None
+            state.kanban_client.client.board_id = None
+        else:
+            state.kanban_client.project_id = None
+            state.kanban_client.board_id = None
+        logger.info(f"Creating NEW project '{project_name}' (tracked)")
+
     # Initialize tracked creator
     tracked_creator = PipelineTrackedProjectCreator(
         kanban_client=state.kanban_client,
