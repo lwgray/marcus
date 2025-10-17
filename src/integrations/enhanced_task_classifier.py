@@ -500,11 +500,10 @@ class EnhancedTaskClassifier:
             # (conflicting indicators)
             competing_scores = [score for score in scores.values() if score > 1.0]
             if len(competing_scores) > 1:
-                max_competing = (
-                    max(s for s in competing_scores if s != best_score)
-                    if len(competing_scores) > 1
-                    else 0
-                )
+                # Get competing scores that aren't the best score
+                other_scores = [s for s in competing_scores if s != best_score]
+                # Handle edge case where all competing scores equal best_score (ties)
+                max_competing = max(other_scores) if other_scores else 0
                 if (
                     max_competing > 0 and best_score / max_competing < 3.0
                 ):  # More lenient threshold for conflict
