@@ -136,8 +136,19 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             logger.debug(f"Description: {description[:200]}...")
             logger.debug(f"Options: {options}")
 
-            # Clear project/board IDs if mode is "new_project" to force new creation
-            if options and options.get("mode") == "new_project":
+            # Check if project/board already set up (by tracked version)
+            # If so, skip project creation to avoid duplication
+            if self.kanban_client and (
+                self.kanban_client.project_id and self.kanban_client.board_id
+            ):
+                proj_id = self.kanban_client.project_id
+                bd_id = self.kanban_client.board_id
+                logger.info(
+                    f"Project already created: project_id={proj_id}, "
+                    f"board_id={bd_id}"
+                )
+            elif options and options.get("mode") == "new_project":
+                # Only create project if not already created
                 if self.kanban_client:
                     logger.info(
                         f"Clearing project/board IDs for new_project mode "
