@@ -394,6 +394,7 @@ async def create_project_from_natural_language_tracked(
                     )
 
                     # Switch to new project
+                    # (this also refreshes state and wires dependencies)
                     await state.project_manager.switch_project(marcus_project_id)
                     state.kanban_client = (
                         await state.project_manager.get_kanban_client()
@@ -414,13 +415,5 @@ async def create_project_from_natural_language_tracked(
         except Exception as e:
             # Log but don't fail the operation
             logger.warning(f"Failed to register project with Marcus: {str(e)}")
-
-    # Update Marcus state if successful
-    if result.get("success"):
-        try:
-            await state.refresh_project_state()
-        except Exception as e:
-            # Log but don't fail the operation
-            logger.warning(f"Failed to refresh project state: {str(e)}")
 
     return result
