@@ -502,26 +502,34 @@ class SubtaskManager:
         """
         Check if a task has been decomposed into subtasks.
 
+        Checks both unified storage (project_tasks) and legacy storage
+        (parent_to_subtasks dict). This ensures correct behavior both
+        before and after migration to unified storage.
+
         Parameters
         ----------
         task_id : str
             ID of the task to check
         project_tasks : Optional[List[Task]]
-            Unified task storage. If None, falls back to legacy storage.
+            Unified task storage. If provided, checks here first.
 
         Returns
         -------
         bool
-            True if task has subtasks
+            True if task has subtasks in either storage
         """
+        # Check unified storage first (post-migration state)
         if project_tasks is not None:
-            # Check unified storage
-            return any(
+            unified_has_subtasks = any(
                 t.is_subtask and t.parent_task_id == task_id for t in project_tasks
             )
-        else:
-            # Fall back to legacy storage
-            return task_id in self.parent_to_subtasks
+            if unified_has_subtasks:
+                return True
+
+        # Always check legacy storage as fallback (pre-migration state)
+        # This ensures parent tasks are filtered even if subtasks haven't
+        # been migrated to unified storage yet
+        return task_id in self.parent_to_subtasks
 
     def remove_subtasks(
         self, parent_task_id: str, project_tasks: Optional[List[Task]] = None

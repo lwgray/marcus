@@ -432,3 +432,94 @@ class TestUnifiedSubtaskStorage:
         assert subtask.parent_task_id == "task-1"
         assert subtask.subtask_index == 0
         assert subtask.status == TaskStatus.IN_PROGRESS
+
+    def test_has_subtasks_checks_legacy_storage_when_unified_empty(
+        self, temp_state_file, project_tasks, parent_task
+    ):
+        """
+        Test that has_subtasks falls back to legacy storage when unified is empty.
+
+        This is the critical test for the parent task assignment bug fix.
+        Before the fix, has_subtasks would return False when:
+        - Subtasks were in legacy storage (after decomposition)
+        - Unified storage (project_tasks) was checked but didn't contain subtasks yet
+        - This caused parent tasks to be assigned incorrectly
+
+        After the fix, has_subtasks checks both storages:
+        1. Checks unified storage first (post-migration state)
+        2. Falls back to legacy storage (pre-migration state)
+        """
+        # Arrange - Add subtasks to legacy storage only (simulating post-decomposition,
+        # pre-migration state)
+        manager = SubtaskManager(state_file=temp_state_file)
+        subtask_data = [
+            {"name": "Subtask 1", "description": "First", "estimated_hours": 2.0},
+            {"name": "Subtask 2", "description": "Second", "estimated_hours": 3.0},
+        ]
+
+        # Add to legacy storage only (don't pass project_tasks)
+        manager.add_subtasks(parent_task.id, subtask_data, project_tasks=None)
+
+        # Verify subtasks are in legacy storage
+        assert parent_task.id in manager.parent_to_subtasks
+        assert len(manager.parent_to_subtasks[parent_task.id]) == 2
+
+        # Add parent task to project_tasks (simulating what happens after task creation)
+        project_tasks.append(parent_task)
+
+        # Verify subtasks are NOT in unified storage
+        subtasks_in_unified = [
+            t
+            for t in project_tasks
+            if t.is_subtask and t.parent_task_id == parent_task.id
+        ]
+        assert len(subtasks_in_unified) == 0
+
+        # Act & Assert - has_subtasks should return True by checking legacy storage
+        # even though unified storage doesn't have the subtasks yet
+        result = manager.has_subtasks(parent_task.id, project_tasks)
+        assert (
+            result is True
+        ), "has_subtasks should check legacy storage when unified is empty"
+
+    def test_has_subtasks_prefers_unified_over_legacy(
+        self, temp_state_file, project_tasks, parent_task
+    ):
+        """Test that has_subtasks prefers unified storage when available."""
+        # Arrange
+        manager = SubtaskManager(state_file=temp_state_file)
+        subtask_data = [
+            {"name": "Subtask 1", "description": "First", "estimated_hours": 2.0}
+        ]
+
+        # Add subtasks to both storages
+        manager.add_subtasks(parent_task.id, subtask_data, project_tasks)
+
+        # Verify subtasks are in both storages
+        assert parent_task.id in manager.parent_to_subtasks
+        subtasks_in_unified = [
+            t
+            for t in project_tasks
+            if t.is_subtask and t.parent_task_id == parent_task.id
+        ]
+        assert len(subtasks_in_unified) == 1
+
+        # Act & Assert - should return True (using unified storage)
+        result = manager.has_subtasks(parent_task.id, project_tasks)
+        assert result is True
+
+    def test_has_subtasks_returns_false_when_no_subtasks_anywhere(
+        self, temp_state_file, project_tasks, parent_task
+    ):
+        """Test that has_subtasks returns False when task has no subtasks."""
+        # Arrange
+        manager = SubtaskManager(state_file=temp_state_file)
+        project_tasks.append(parent_task)
+
+        # Act & Assert - No subtasks in either storage
+        result = manager.has_subtasks(parent_task.id, project_tasks)
+        assert result is False
+
+        # Also test with None project_tasks
+        result_legacy_only = manager.has_subtasks(parent_task.id, project_tasks=None)
+        assert result_legacy_only is False
