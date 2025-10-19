@@ -88,8 +88,6 @@ ROLE_TOOLS = {
         # Basic connectivity
         "ping",
         "register_client",
-        # Minimal project awareness
-        "get_project_status",
         # Core agent workflow
         "register_agent",  # Register themselves
         "request_next_task",  # Get assignments
@@ -99,8 +97,8 @@ ROLE_TOOLS = {
         "get_task_context",  # Full task context
         "log_decision",  # Document choices
         "log_artifact",  # Store outputs
-        # Dependency awareness
-        "check_task_dependencies",  # Understand relationships
+        # Project creation
+        "create_project",  # NLP project creation
         # Scheduling and resource planning
         "get_optimal_agent_count",  # Calculate optimal agent count using CPM
     ],
