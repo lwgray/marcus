@@ -95,7 +95,7 @@ You are testing optimal agent count. Follow these steps WITHOUT asking permissio
        "critical_path_hours": <number>,
        "max_parallelism": <number>,
        "total_tasks": <number>,
-       "efficiency_gain": <percentage>,
+       "efficiency_gain_percent": <percentage>,
        "parallel_opportunities": [...]
    }}
    OPTIMAL_AGENT_ANALYSIS_END
@@ -190,13 +190,13 @@ def display_results(analysis: Dict[str, Any], current_config: Dict[str, Any]) ->
     critical_path = analysis["critical_path_hours"]
     max_parallel = analysis["max_parallelism"]
     total_tasks = analysis.get("total_tasks", "unknown")
-    efficiency = analysis["efficiency_gain"]
+    efficiency = analysis["efficiency_gain_percent"]
 
     print("\n📊 Project Analysis:")
     print(f"   Total tasks: {total_tasks}")
     print(f"   Critical path: {critical_path:.2f} hours")
     print(f"   Max parallelism: {max_parallel} tasks can run simultaneously")
-    print(f"   Efficiency gain: {efficiency:.1%} vs single agent")
+    print(f"   Efficiency gain: {efficiency:.1f}% vs single agent")
 
     print(f"\n✅ RECOMMENDED: {optimal} agents")
     print(

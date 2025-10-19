@@ -163,6 +163,58 @@ def detect_cycles(tasks: List[Task]) -> bool:
     return False
 
 
+def _calculate_max_parallelism(task_times: Dict[str, Dict[str, Any]]) -> int:
+    """
+    Calculate true maximum parallelism using sweep-line algorithm.
+
+    This correctly counts overlapping task intervals, not just tasks
+    that start at the same time.
+
+    Parameters
+    ----------
+    task_times : Dict[str, Dict[str, Any]]
+        Mapping of task_id to {start, finish, task} times
+
+    Returns
+    -------
+    int
+        Maximum number of tasks running simultaneously at any point
+
+    Examples
+    --------
+    Task A: [0────10]  (starts at 0, ends at 10)
+    Task B:    [5────15]  (starts at 5, ends at 15)
+
+    Returns 2 (both tasks overlap from t=5 to t=10)
+    """
+    if not task_times:
+        return 0
+
+    # Create events for task start (+1) and end (-1) times
+    events = []
+    for times in task_times.values():
+        start = times["start"]
+        finish = times["finish"]
+        events.append((start, 1))  # Task starts (increment counter)
+        events.append((finish, -1))  # Task ends (decrement counter)
+
+    if not events:
+        return 0
+
+    # Sort events by time, with ends (-1) before starts (1) at same time
+    # This ensures we don't double-count when a task ends exactly when another starts
+    events.sort(key=lambda x: (x[0], x[1]))
+
+    max_parallelism = 0
+    current_parallelism = 0
+
+    for time, delta in events:
+        current_parallelism += delta
+        max_parallelism = max(max_parallelism, current_parallelism)
+
+    return max_parallelism
+
+
 def calculate_task_times(tasks: List[Task]) -> Dict[str, Dict[str, Any]]:
     """
     Calculate earliest start and finish times for each task using CPM.
@@ -271,12 +323,15 @@ def calculate_optimal_agents(tasks: List[Task]) -> ProjectSchedule:
     # Find critical path (longest path)
     critical_path = max(times["finish"] for times in task_times.values())
 
-    # Find maximum parallelism (tasks that can run simultaneously)
+    # Find maximum parallelism using sweep-line algorithm
+    # This correctly handles overlapping task intervals
+    max_parallelism = _calculate_max_parallelism(task_times)
+
+    # Build time slices for parallel opportunities reporting
+    # Note: This still groups by start time for visualization purposes
     time_slices = defaultdict(list)
     for task_id, times in task_times.items():
         time_slices[times["start"]].append(task_id)
-
-    max_parallelism = max(len(task_ids) for task_ids in time_slices.values())
 
     # Calculate total work from workable tasks only
     total_work = sum(task.estimated_hours for task in workable_tasks)
