@@ -8,6 +8,7 @@ episodic, semantic, and procedural memory layers.
 
 import asyncio
 import logging
+import statistics
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -870,6 +871,66 @@ class Memory:
         # Sort by similarity and return top N
         similar.sort(key=lambda x: x[0], reverse=True)
         return [outcome for _, outcome in similar[:limit]]
+
+    async def get_global_median_duration(self) -> float:
+        """
+        Get the global median task duration from all completed tasks.
+
+        Returns
+        -------
+        float
+            Median task duration in hours. Returns 1.0 if no historical data.
+
+        Notes
+        -----
+        Uses SQL-based median calculation for efficiency and scalability.
+        Queries ALL historical data from persistence layer, not just in-memory cache.
+        Uses median instead of mean to be more robust to outliers.
+        """
+        # Prefer persistence layer calculation (SQL-based, more efficient)
+        if self.persistence and hasattr(
+            self.persistence.backend, "calculate_median_task_duration"
+        ):
+            try:
+                median_hours = float(
+                    await self.persistence.backend.calculate_median_task_duration()
+                )
+                logger.debug(
+                    f"Global median duration from persistence: {median_hours:.2f} hours"
+                )
+                return median_hours
+            except Exception as e:
+                logger.warning(
+                    f"Failed to calculate median from persistence: {e}, "
+                    "falling back to in-memory calculation"
+                )
+
+        # Fallback: in-memory calculation (less efficient, limited to loaded outcomes)
+        outcomes = self.episodic.get("outcomes", [])
+
+        if not outcomes:
+            logger.debug("No historical task outcomes - returning default 1.0 hours")
+            return 1.0
+
+        # Filter to successful completions only
+        successful_outcomes = [o for o in outcomes if o.success and o.actual_hours > 0]
+
+        if not successful_outcomes:
+            logger.debug(
+                "No successful outcomes with duration - returning default 1.0 hours"
+            )
+            return 1.0
+
+        # Calculate median (more robust to outliers than mean)
+        durations = [o.actual_hours for o in successful_outcomes]
+        median_hours = float(statistics.median(durations))
+
+        logger.debug(
+            f"In-memory median duration: {median_hours:.2f} hours "
+            f"(from {len(successful_outcomes)} successful tasks)"
+        )
+
+        return median_hours
 
     def get_working_memory_summary(self) -> Dict[str, Any]:
         """Get current working memory state."""
