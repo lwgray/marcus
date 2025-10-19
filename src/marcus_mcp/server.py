@@ -831,7 +831,10 @@ class MarcusServer:
 
         try:
             # Get all tasks from the board
-            if self.kanban_client is not None:
+            # CRITICAL: Skip if subtasks already migrated to avoid losing them
+            # (get_all_tasks only returns parent tasks from Planka,
+            # not migrated subtasks)
+            if self.kanban_client is not None and not self._subtasks_migrated:
                 self.project_tasks = await self.kanban_client.get_all_tasks()
 
             # Migrate subtasks from SubtaskManager to unified project_tasks storage
