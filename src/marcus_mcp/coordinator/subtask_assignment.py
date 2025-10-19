@@ -112,9 +112,10 @@ def find_next_available_subtask(
     # Filter to only subtasks (Task objects with is_subtask=True)
     subtasks = [t for t in project_tasks if t.is_subtask]
 
-    # Sort by subtask_index for consistent ordering within parents
+    # Sort by subtask_index FIRST for maximum parallelism across parents
+    # This ensures we process 1.1, 2.1, 3.1 (parallel) before 1.2, 2.2, 3.2
     subtasks = sorted(
-        subtasks, key=lambda t: (t.parent_task_id or "", t.subtask_index or 0)
+        subtasks, key=lambda t: (t.subtask_index or 0, t.parent_task_id or "")
     )
 
     for subtask in subtasks:

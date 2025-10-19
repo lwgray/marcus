@@ -4,6 +4,7 @@ Unit tests for the Memory system
 
 import asyncio
 from datetime import datetime, timedelta
+from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -11,6 +12,7 @@ import pytest
 from src.core.events import Events, EventTypes
 from src.core.memory import AgentProfile, Memory, TaskOutcome, TaskPattern
 from src.core.models import Priority, Task, TaskStatus
+from src.core.persistence import Persistence, SQLitePersistence
 
 
 class TestTaskOutcome:
@@ -392,3 +394,137 @@ class TestMemory:
 
         assert stats["episodic_memory"]["total_outcomes"] == 1
         assert stats["semantic_memory"]["agent_profiles"] == 1
+
+    @pytest.mark.asyncio
+    async def test_get_global_median_duration_no_data(self, memory):
+        """Test global median duration returns default when no data"""
+        result = await memory.get_global_median_duration()
+        assert result == 1.0  # Default fallback
+
+    @pytest.mark.asyncio
+    async def test_get_global_median_duration_with_data(self, memory):
+        """Test global median duration calculates median correctly"""
+        # Create tasks with varied durations
+        durations = [1.0, 2.0, 3.0, 10.0, 100.0]  # Median should be 3.0
+
+        for i, duration in enumerate(durations):
+            task = Task(
+                id=f"task_{i}",
+                name=f"Task {i}",
+                description="Test",
+                status=TaskStatus.TODO,
+                priority=Priority.MEDIUM,
+                assigned_to=None,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                due_date=None,
+                estimated_hours=duration,
+            )
+            await memory.record_task_start("agent_1", task)
+            await memory.record_task_completion(
+                "agent_1", f"task_{i}", success=True, actual_hours=duration
+            )
+
+        median = await memory.get_global_median_duration()
+        assert median == 3.0  # Median of [1, 2, 3, 10, 100]
+
+    @pytest.mark.asyncio
+    async def test_get_global_median_duration_filters_failures(self, memory):
+        """Test global median duration only uses successful tasks"""
+        # Add successful and failed tasks
+        durations = [(1.0, True), (2.0, False), (3.0, True), (4.0, False), (5.0, True)]
+
+        for i, (duration, success) in enumerate(durations):
+            task = Task(
+                id=f"task_{i}",
+                name=f"Task {i}",
+                description="Test",
+                status=TaskStatus.TODO,
+                priority=Priority.MEDIUM,
+                assigned_to=None,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                due_date=None,
+                estimated_hours=duration,
+            )
+            await memory.record_task_start("agent_1", task)
+            await memory.record_task_completion(
+                "agent_1", f"task_{i}", success=success, actual_hours=duration
+            )
+
+        median = await memory.get_global_median_duration()
+        # Should only include successful tasks: [1.0, 3.0, 5.0]
+        # Median of [1, 3, 5] = 3.0
+        assert median == 3.0
+
+    @pytest.mark.asyncio
+    async def test_get_global_median_duration_with_sql_persistence(self, tmp_path):
+        """Test SQL-based median calculation with SQLitePersistence"""
+        # Create temp database
+        db_path = tmp_path / "test_median.db"
+        sql_backend = SQLitePersistence(db_path)
+        persistence = Persistence(backend=sql_backend)
+        memory = Memory(persistence=persistence)
+
+        # Create tasks with varied durations: [1, 2, 3, 10, 100]
+        durations = [1.0, 2.0, 3.0, 10.0, 100.0]
+
+        for i, duration in enumerate(durations):
+            task = Task(
+                id=f"task_{i}",
+                name=f"Task {i}",
+                description="Test",
+                status=TaskStatus.TODO,
+                priority=Priority.MEDIUM,
+                assigned_to=None,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                due_date=None,
+                estimated_hours=duration,
+            )
+            await memory.record_task_start("agent_1", task)
+            await memory.record_task_completion(
+                "agent_1", f"task_{i}", success=True, actual_hours=duration
+            )
+
+        # Calculate median using SQL
+        median = await memory.get_global_median_duration()
+
+        # Median of [1, 2, 3, 10, 100] = 3.0
+        assert median == 3.0
+
+    @pytest.mark.asyncio
+    async def test_get_global_median_duration_sql_with_even_count(self, tmp_path):
+        """Test SQL-based median with even number of values (average of two middle)"""
+        # Create temp database
+        db_path = tmp_path / "test_median_even.db"
+        sql_backend = SQLitePersistence(db_path)
+        persistence = Persistence(backend=sql_backend)
+        memory = Memory(persistence=persistence)
+
+        # Create tasks with even count: [1, 2, 3, 4]
+        durations = [1.0, 2.0, 3.0, 4.0]
+
+        for i, duration in enumerate(durations):
+            task = Task(
+                id=f"task_{i}",
+                name=f"Task {i}",
+                description="Test",
+                status=TaskStatus.TODO,
+                priority=Priority.MEDIUM,
+                assigned_to=None,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                due_date=None,
+                estimated_hours=duration,
+            )
+            await memory.record_task_start("agent_1", task)
+            await memory.record_task_completion(
+                "agent_1", f"task_{i}", success=True, actual_hours=duration
+            )
+
+        # Calculate median using SQL
+        median = await memory.get_global_median_duration()
+
+        # Median of [1, 2, 3, 4] = (2 + 3) / 2 = 2.5
+        assert median == 2.5

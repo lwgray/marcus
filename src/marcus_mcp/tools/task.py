@@ -279,6 +279,115 @@ def build_tiered_instructions(
     return "\n".join(instructions_parts)
 
 
+async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
+    """
+    Calculate intelligent wait time before next task request.
+
+    Uses:
+    - Current progress of IN_PROGRESS tasks
+    - Historical median task duration
+    - Task dependencies to find soonest unblocking event
+
+    Parameters
+    ----------
+    state : Any
+        Marcus server state instance
+
+    Returns
+    -------
+    Dict[str, Any]
+        Dictionary with:
+        - retry_after_seconds: int (wait time in seconds)
+        - reason: str (explanation for the wait time)
+    """
+    # Get all IN_PROGRESS tasks with their assignments
+    in_progress_tasks = []
+    for agent_id, assignment in state.agent_tasks.items():
+        task = next(
+            (t for t in state.project_tasks if t.id == assignment.task_id), None
+        )
+        if task and task.status == TaskStatus.IN_PROGRESS:
+            in_progress_tasks.append({"task": task, "assignment": assignment})
+
+    # If no tasks in progress, use default wait time
+    if not in_progress_tasks:
+        return {
+            "retry_after_seconds": 300,  # 5 minutes
+            "reason": "No tasks currently in progress - check back soon",
+        }
+
+    # Get historical median duration
+    global_median_hours = 1.0  # Default fallback
+    if hasattr(state, "memory") and state.memory:
+        global_median_hours = await state.memory.get_global_median_duration()
+
+    # Calculate ETA for each in-progress task
+    completion_estimates = []
+    now = datetime.now()
+
+    for item in in_progress_tasks:
+        task = item["task"]
+        assignment = item["assignment"]
+
+        # Get current progress (0-100)
+        progress = getattr(task, "progress", 0) or 0
+
+        # Calculate elapsed time in seconds
+        elapsed_seconds = (now - assignment.assigned_at).total_seconds()
+
+        # Estimate remaining time
+        if progress > 0 and progress < 100:
+            # Use actual progress to estimate
+            estimated_total_seconds = (elapsed_seconds / progress) * 100
+            remaining_seconds = estimated_total_seconds - elapsed_seconds
+        else:
+            # Fall back to historical median
+            remaining_seconds = global_median_hours * 3600  # Convert hours to seconds
+
+        # Ensure non-negative
+        remaining_seconds = max(0, remaining_seconds)
+
+        # Check how many tasks this will unblock
+        dependent_task_ids = [
+            t.id for t in state.project_tasks if task.id in (t.dependencies or [])
+        ]
+
+        completion_estimates.append(
+            {
+                "task_id": task.id,
+                "task_name": task.name,
+                "progress": progress,
+                "eta_seconds": remaining_seconds,
+                "unlocks_count": len(dependent_task_ids),
+            }
+        )
+
+    # Sort by ETA (soonest first)
+    completion_estimates.sort(key=lambda x: x["eta_seconds"])
+
+    # Get the soonest completion
+    soonest = completion_estimates[0]
+
+    # Add a buffer (minimum 30 seconds, or 10% of estimate)
+    buffer_seconds = max(30, soonest["eta_seconds"] * 0.1)
+    retry_after = int(soonest["eta_seconds"] + buffer_seconds)
+
+    # Cap maximum wait time at 1 hour
+    retry_after = min(retry_after, 3600)
+
+    # Format reason
+    eta_minutes = int(soonest["eta_seconds"] / 60)
+    reason = (
+        f"Waiting for '{soonest['task_name']}' to complete "
+        f"(~{eta_minutes} min, {soonest['progress']}% done)"
+    )
+
+    return {
+        "retry_after_seconds": retry_after,
+        "reason": reason,
+    }
+
+
 async def request_next_task(agent_id: str, state: Any) -> Any:
     """
     Agents call this to request their next optimal task.
@@ -755,90 +864,41 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                         },
                     )
 
-            # Check if there are any TODO tasks remaining
-            # Only run diagnostics if tasks exist but can't be assigned
+            # Log for debugging
             todo_tasks = [t for t in state.project_tasks if t.status == TaskStatus.TODO]
-
-            diagnostic_summary = None
-
             if todo_tasks:
-                # Tasks exist but can't be assigned - run diagnostics
                 logger.warning(
-                    f"No tasks assignable but {len(todo_tasks)} TODO tasks exist - "
-                    "running diagnostics"
+                    f"No tasks assignable but {len(todo_tasks)} TODO tasks exist"
                 )
-
-                from src.core.task_diagnostics import (
-                    format_diagnostic_report,
-                    run_automatic_diagnostics,
-                )
-
-                # Get completed task IDs for diagnostics
-                completed_task_ids = {
-                    t.id for t in state.project_tasks if t.status == TaskStatus.DONE
-                }
-                assigned_task_ids = {a.task_id for a in state.agent_tasks.values()}
-
-                # Run diagnostics
-                try:
-                    diagnostic_report = await run_automatic_diagnostics(
-                        project_tasks=state.project_tasks,
-                        completed_task_ids=completed_task_ids,
-                        assigned_task_ids=assigned_task_ids,
-                    )
-
-                    # Format report for logging
-                    formatted_report = format_diagnostic_report(diagnostic_report)
-                    logger.info(f"Diagnostic Report:\n{formatted_report}")
-
-                    # Include diagnostic summary in response
-                    diagnostic_summary = {
-                        "total_tasks": diagnostic_report.total_tasks,
-                        "available_tasks": diagnostic_report.available_tasks,
-                        "blocked_tasks": diagnostic_report.blocked_tasks,
-                        "issues_found": len(diagnostic_report.issues),
-                        "top_issues": [
-                            {
-                                "type": issue.issue_type,
-                                "severity": issue.severity,
-                                "description": issue.description,
-                                "recommendation": issue.recommendation,
-                            }
-                            for issue in diagnostic_report.issues[:3]
-                        ],
-                        "recommendations": diagnostic_report.recommendations[:5],
-                    }
-
-                except Exception as diag_error:
-                    logger.error(
-                        f"Diagnostic system error: {diag_error}", exc_info=True
-                    )
-                    diagnostic_summary = {
-                        "error": "Diagnostics failed",
-                        "details": str(diag_error),
-                    }
             else:
-                # No TODO tasks remaining - all tasks are done or in progress
                 logger.info("No TODO tasks remaining - project may be complete")
+
+            # Calculate intelligent retry time
+            retry_info = await calculate_retry_after_seconds(state)
+            retry_seconds = retry_info["retry_after_seconds"]
+
+            # Build explicit message
+            message = (
+                f"No suitable tasks available at this time. "
+                f"Request next task again in {retry_seconds} seconds."
+            )
 
             conversation_logger.log_worker_message(
                 agent_id,
                 "from_pm",
-                "No suitable tasks available at this time",
+                message,
                 {
                     "reason": "no_matching_tasks",
-                    "diagnostics": diagnostic_summary,
+                    "retry_after_seconds": retry_seconds,
                     **project_context,
                 },
             )
 
             response = {
                 "success": False,
-                "message": "No suitable tasks available at this time",
+                "message": message,
+                "retry_after_seconds": retry_seconds,
             }
-
-            if diagnostic_summary:
-                response["diagnostics"] = diagnostic_summary
 
             return response
 

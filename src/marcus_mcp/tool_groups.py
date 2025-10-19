@@ -43,27 +43,13 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "request_next_task",
         "report_task_progress",
         "report_blocker",
-        "unassign_task",  # Manually unassign stuck tasks
         "get_task_context",
-        "get_all_board_tasks",  # Fetch all tasks from a board for validation
         "log_decision",
         "log_artifact",
-        "check_task_dependencies",
-        "get_agent_status",
-        "get_project_status",  # Get current project status and metrics
-        "list_projects",  # List available projects
-        "select_project",  # Select project to work on
+        # Project creation
         "create_project",  # NLP project creation for autonomous agents
-        "create_tasks",  # Create tasks on existing project/board
         # Scheduling
         "get_optimal_agent_count",  # Calculate optimal agent count using CPM
-        # Diagnostics
-        "diagnose_project",  # Diagnose project issues
-        "capture_stall_snapshot",  # Capture snapshot when development stalls
-        # Experiment tracking (temporary until UI is ready)
-        "start_experiment",
-        "end_experiment",
-        "get_experiment_status",
     },
     "analytics": {
         # All tools for comprehensive analytics (Seneca)
