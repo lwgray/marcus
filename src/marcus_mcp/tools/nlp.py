@@ -5,9 +5,12 @@ This module contains tools for natural language project/task creation:
 - add_feature: Add feature to existing project using natural language
 """
 
+import logging
 from typing import Any, Dict, Optional
 
 from src.integrations.nlp_tools import add_feature_natural_language
+
+logger = logging.getLogger(__name__)
 
 # Import PipelineStage with fallback for compatibility
 try:
@@ -353,6 +356,16 @@ async def create_project(
             if "tasks_created" in result and "task_count" not in result:
                 result["task_count"] = result["tasks_created"]
 
+            # Add Marcus project_id from registry for auto-select
+            if result.get("success") and "project_id" not in result:
+                if hasattr(state, "project_registry"):
+                    active_project = await state.project_registry.get_active_project()
+                    if active_project:
+                        result["project_id"] = active_project.id
+                        logger.info(
+                            f"Added project_id to result: {result['project_id']}"
+                        )
+
         # Final log before return
         state.log_event(
             "create_project_final_return",
@@ -370,11 +383,41 @@ async def create_project(
         if result.get("success") and result.get("project_id"):
             from .project_management import select_project
 
+            logger.info(
+                f"🔄 AUTO-SELECT STARTING for project '{project_name}' "
+                f"(ID: {result['project_id']})"
+            )
+            state.log_event(
+                "create_project_auto_select_starting",
+                {
+                    "project_name": project_name,
+                    "project_id": result["project_id"],
+                },
+            )
+
             select_result = await select_project(
                 state, {"project_id": result["project_id"]}
             )
-            # Log if selection failed, but don't fail the whole operation
-            if not select_result.get("success"):
+
+            # Log result - success or failure
+            if select_result.get("success"):
+                logger.info(
+                    f"✅ AUTO-SELECT SUCCEEDED for project '{project_name}' "
+                    f"(ID: {result['project_id']})"
+                )
+                state.log_event(
+                    "create_project_auto_select_succeeded",
+                    {
+                        "project_name": project_name,
+                        "project_id": result["project_id"],
+                    },
+                )
+            else:
+                # Log if selection failed, but don't fail the whole operation
+                logger.warning(
+                    f"⚠️  AUTO-SELECT FAILED for project '{project_name}' "
+                    f"(ID: {result['project_id']}): {select_result.get('error')}"
+                )
                 state.log_event(
                     "create_project_auto_select_failed",
                     {
@@ -383,6 +426,29 @@ async def create_project(
                         "error": select_result.get("error"),
                     },
                 )
+        else:
+            # Log why auto-select was skipped
+            has_success = result.get("success") if isinstance(result, dict) else False
+            has_project_id = (
+                "project_id" in result if isinstance(result, dict) else False
+            )
+            logger.warning(
+                f"⚠️  AUTO-SELECT SKIPPED for project '{project_name}': "
+                f"has_success={has_success}, has_project_id={has_project_id}"
+            )
+            state.log_event(
+                "create_project_auto_select_skipped",
+                {
+                    "project_name": project_name,
+                    "has_success": (
+                        result.get("success") if isinstance(result, dict) else False
+                    ),
+                    "has_project_id": (
+                        "project_id" in result if isinstance(result, dict) else False
+                    ),
+                    "result_type": type(result).__name__,
+                },
+            )
 
         return result
 

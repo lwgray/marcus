@@ -21,9 +21,8 @@ import argparse
 import json
 import subprocess
 import sys
-import time
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import yaml
 
@@ -36,7 +35,8 @@ def read_experiment_config(experiment_dir: Path) -> Dict[str, Any]:
         sys.exit(1)
 
     with open(config_file, "r") as f:
-        return yaml.safe_load(f)
+        config: Dict[str, Any] = yaml.safe_load(f)
+        return config
 
 
 def read_project_spec(experiment_dir: Path, spec_filename: str) -> str:
@@ -54,10 +54,19 @@ def create_test_script(
     experiment_dir: Path, project_name: str, description: str, options: Dict[str, Any]
 ) -> Path:
     """Create a script that uses Claude Code to create project and query agents."""
+    # Pre-format the options JSON
+    options_json = json.dumps(options)
+    # Escape the description for safe embedding in Python string
+    escaped_description = json.dumps(description)
+
+    # Build script using concatenation to avoid quote nesting
     script_content = f'''#!/usr/bin/env python3
 """Auto-generated test script for optimal agent calculation."""
 
 import json
+
+# Project description (JSON-encoded to avoid quote issues)
+DESCRIPTION = {escaped_description}
 
 # Print instructions for Claude Code
 print("""
@@ -71,11 +80,8 @@ You are testing optimal agent count. Follow these steps WITHOUT asking permissio
 2. Create the project:
    mcp__marcus__create_project(
        project_name="{project_name}",
-       description='''"""
-PROJECT SPEC:
-{description}
-"""'''
-       options={json.dumps(options)}
+       description=DESCRIPTION,
+       options={options_json}
    )
 
 3. IMMEDIATELY after project creation, get optimal agent count:
@@ -113,7 +119,9 @@ Just create project, get optimal count, print result, exit.
     return script_file
 
 
-def run_claude_test(script_file: Path, experiment_dir: Path) -> Dict[str, Any]:
+def run_claude_test(
+    script_file: Path, experiment_dir: Path
+) -> Optional[Dict[str, Any]]:
     """Run Claude Code with the test script and parse results."""
     print("\n" + "=" * 70)
     print("Running Claude Code to create project and analyze dependencies...")
@@ -150,7 +158,8 @@ python {script_file} | claude --dangerously-skip-permissions --print
             start_idx = output.index("OPTIMAL_AGENT_ANALYSIS_START")
             end_idx = output.index("OPTIMAL_AGENT_ANALYSIS_END")
             json_str = output[start_idx + len("OPTIMAL_AGENT_ANALYSIS_START") : end_idx]
-            return json.loads(json_str.strip())
+            parsed_result: Dict[str, Any] = json.loads(json_str.strip())
+            return parsed_result
         else:
             print("\n❌ Could not find optimal agent analysis in output")
             print("\nClaude Code output:")
@@ -183,14 +192,16 @@ def display_results(analysis: Dict[str, Any], current_config: Dict[str, Any]) ->
     total_tasks = analysis.get("total_tasks", "unknown")
     efficiency = analysis["efficiency_gain"]
 
-    print(f"\n📊 Project Analysis:")
+    print("\n📊 Project Analysis:")
     print(f"   Total tasks: {total_tasks}")
     print(f"   Critical path: {critical_path:.2f} hours")
     print(f"   Max parallelism: {max_parallel} tasks can run simultaneously")
     print(f"   Efficiency gain: {efficiency:.1%} vs single agent")
 
     print(f"\n✅ RECOMMENDED: {optimal} agents")
-    print(f"   (Based on peak parallelism - agents will idle during low-demand periods)")
+    print(
+        "   (Based on peak parallelism - " "agents will idle during low-demand periods)"
+    )
 
     # Show current configuration
     current_total = sum(agent.get("subagents", 0) for agent in current_config["agents"])
@@ -199,17 +210,19 @@ def display_results(analysis: Dict[str, Any], current_config: Dict[str, Any]) ->
     print(f"\n⚙️  Current config.yaml: {current_total} total agents")
     for agent in current_config["agents"]:
         subagents = agent.get("subagents", 0)
+        total_for_agent = subagents + 1
         print(
-            f"   - {agent['name']}: {subagents} subagents + 1 main = {subagents + 1} total"
+            f"   - {agent['name']}: {subagents} subagents + "
+            f"1 main = {total_for_agent} total"
         )
 
     if current_total < optimal:
-        print(f"\n⚠️  WARNING: You have {optimal - current_total} fewer agents than optimal")
+        diff = optimal - current_total
+        print(f"\n⚠️  WARNING: You have {diff} fewer agents than optimal")
         print("   Some tasks will wait longer than necessary")
     elif current_total > optimal:
-        print(
-            f"\n⚠️  WARNING: You have {current_total - optimal} more agents than needed"
-        )
+        diff = current_total - optimal
+        print(f"\n⚠️  WARNING: You have {diff} more agents than needed")
         print("   Extra agents will be idle, wasting resources")
     else:
         print("\n✅ Your configuration matches the optimal agent count!")
@@ -217,9 +230,7 @@ def display_results(analysis: Dict[str, Any], current_config: Dict[str, Any]) ->
     # Show parallelism timeline
     if "parallel_opportunities" in analysis:
         print("\n📈 Parallelism Timeline:")
-        print(
-            "   (Shows how many tasks can run at different time points)\n"
-        )
+        print("   (Shows how many tasks can run at different time points)\n")
         print("   Time (h) │ Tasks │ Utilization")
         print("   ─────────┼───────┼────────────")
 
@@ -231,7 +242,8 @@ def display_results(analysis: Dict[str, Any], current_config: Dict[str, Any]) ->
             print(f"   {time_h:>7.2f}  │  {count:>3}  │ {util:>3.0f}% {bar}")
 
         if len(analysis["parallel_opportunities"]) > 10:
-            print(f"   ... ({len(analysis['parallel_opportunities']) - 10} more time points)")
+            remaining = len(analysis["parallel_opportunities"]) - 10
+            print(f"   ... ({remaining} more time points)")
 
 
 def generate_optimal_config(
@@ -268,9 +280,7 @@ This will create the project and show you how many agents to configure.
         """,
     )
 
-    parser.add_argument(
-        "experiment_dir", type=str, help="Path to experiment directory"
-    )
+    parser.add_argument("experiment_dir", type=str, help="Path to experiment directory")
 
     parser.add_argument(
         "--skip-create",
