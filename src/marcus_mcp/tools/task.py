@@ -299,7 +299,6 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
         Dictionary with:
         - retry_after_seconds: int (wait time in seconds)
         - reason: str (explanation for the wait time)
-        - blocking_task: Optional[Dict] (task that's blocking progress)
     """
     # Get all IN_PROGRESS tasks with their assignments
     in_progress_tasks = []
@@ -315,7 +314,6 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
         return {
             "retry_after_seconds": 300,  # 5 minutes
             "reason": "No tasks currently in progress - check back soon",
-            "blocking_task": None,
         }
 
     # Get historical median duration
@@ -387,12 +385,6 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
     return {
         "retry_after_seconds": retry_after,
         "reason": reason,
-        "blocking_task": {
-            "id": soonest["task_id"],
-            "name": soonest["task_name"],
-            "progress": soonest["progress"],
-            "eta_seconds": int(soonest["eta_seconds"]),
-        },
     }
 
 
@@ -872,99 +864,41 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                         },
                     )
 
-            # Check if there are any TODO tasks remaining
-            # Only run diagnostics if tasks exist but can't be assigned
+            # Log for debugging
             todo_tasks = [t for t in state.project_tasks if t.status == TaskStatus.TODO]
-
-            diagnostic_summary = None
-
             if todo_tasks:
-                # Tasks exist but can't be assigned - run diagnostics
                 logger.warning(
-                    f"No tasks assignable but {len(todo_tasks)} TODO tasks exist - "
-                    "running diagnostics"
+                    f"No tasks assignable but {len(todo_tasks)} TODO tasks exist"
                 )
-
-                from src.core.task_diagnostics import (
-                    format_diagnostic_report,
-                    run_automatic_diagnostics,
-                )
-
-                # Get completed task IDs for diagnostics
-                completed_task_ids = {
-                    t.id for t in state.project_tasks if t.status == TaskStatus.DONE
-                }
-                assigned_task_ids = {a.task_id for a in state.agent_tasks.values()}
-
-                # Run diagnostics
-                try:
-                    diagnostic_report = await run_automatic_diagnostics(
-                        project_tasks=state.project_tasks,
-                        completed_task_ids=completed_task_ids,
-                        assigned_task_ids=assigned_task_ids,
-                    )
-
-                    # Format report for logging
-                    formatted_report = format_diagnostic_report(diagnostic_report)
-                    logger.info(f"Diagnostic Report:\n{formatted_report}")
-
-                    # Include diagnostic summary in response
-                    diagnostic_summary = {
-                        "total_tasks": diagnostic_report.total_tasks,
-                        "available_tasks": diagnostic_report.available_tasks,
-                        "blocked_tasks": diagnostic_report.blocked_tasks,
-                        "issues_found": len(diagnostic_report.issues),
-                        "top_issues": [
-                            {
-                                "type": issue.issue_type,
-                                "severity": issue.severity,
-                                "description": issue.description,
-                                "recommendation": issue.recommendation,
-                            }
-                            for issue in diagnostic_report.issues[:3]
-                        ],
-                        "recommendations": diagnostic_report.recommendations[:5],
-                    }
-
-                except Exception as diag_error:
-                    logger.error(
-                        f"Diagnostic system error: {diag_error}", exc_info=True
-                    )
-                    diagnostic_summary = {
-                        "error": "Diagnostics failed",
-                        "details": str(diag_error),
-                    }
             else:
-                # No TODO tasks remaining - all tasks are done or in progress
                 logger.info("No TODO tasks remaining - project may be complete")
 
             # Calculate intelligent retry time
             retry_info = await calculate_retry_after_seconds(state)
+            retry_seconds = retry_info["retry_after_seconds"]
+
+            # Build explicit message
+            message = (
+                f"No suitable tasks available at this time. "
+                f"Request next task again in {retry_seconds} seconds."
+            )
 
             conversation_logger.log_worker_message(
                 agent_id,
                 "from_pm",
-                "No suitable tasks available at this time",
+                message,
                 {
                     "reason": "no_matching_tasks",
-                    "diagnostics": diagnostic_summary,
-                    "retry_after_seconds": retry_info["retry_after_seconds"],
+                    "retry_after_seconds": retry_seconds,
                     **project_context,
                 },
             )
 
             response = {
                 "success": False,
-                "message": "No suitable tasks available at this time",
-                "retry_after_seconds": retry_info["retry_after_seconds"],
-                "retry_reason": retry_info["reason"],
+                "message": message,
+                "retry_after_seconds": retry_seconds,
             }
-
-            if retry_info.get("blocking_task"):
-                response["blocking_task"] = retry_info["blocking_task"]
-
-            if diagnostic_summary:
-                response["diagnostics"] = diagnostic_summary
 
             return response
 
