@@ -227,6 +227,43 @@ class FilePersistence(PersistenceBackend):
                 logger.error(f"Error clearing old data from {collection}: {e}")
                 return 0
 
+    async def calculate_median_task_duration(self) -> float:
+        """
+        Calculate median task duration (fallback for file-based persistence).
+
+        Loads task outcomes from file and calculates median in memory.
+        Less efficient than SQL-based approach but works with file backend.
+
+        Returns
+        -------
+        float
+            Median task duration in hours. Returns 1.0 if no data available.
+        """
+        import statistics
+
+        outcomes_data = await self.query("task_outcomes", limit=10000)
+
+        if not outcomes_data:
+            logger.debug("No task outcomes in file persistence")
+            return 1.0
+
+        # Filter successful tasks with actual_hours > 0
+        durations = [
+            o["actual_hours"]
+            for o in outcomes_data
+            if o.get("success") and o.get("actual_hours", 0) > 0
+        ]
+
+        if not durations:
+            logger.debug("No successful task outcomes with duration")
+            return 1.0
+
+        median_value = float(statistics.median(durations))
+        logger.debug(
+            f"File-based median: {median_value:.2f} hours from {len(durations)} tasks"
+        )
+        return median_value
+
 
 class SQLitePersistence(PersistenceBackend):
     """SQLite-based persistence for better performance and queries."""
@@ -356,6 +393,85 @@ class SQLitePersistence(PersistenceBackend):
                 return cursor.rowcount
 
         return await asyncio.get_event_loop().run_in_executor(None, _clear)
+
+    async def calculate_median_task_duration(self) -> float:
+        """
+        Calculate median task duration from all successful completed tasks.
+
+        Uses SQL to efficiently compute median across all historical data.
+        This is more scalable than loading all outcomes into memory.
+
+        Returns
+        -------
+        float
+            Median task duration in hours. Returns 1.0 if no data available.
+        """
+
+        def _calculate_median() -> float:
+            with sqlite3.connect(self.db_path) as conn:
+                # First, get count of successful tasks
+                count_cursor = conn.execute(
+                    """
+                    SELECT COUNT(*) FROM persistence
+                    WHERE collection = 'task_outcomes'
+                      AND json_extract(data, '$.success') = 1
+                      AND CAST(json_extract(data, '$.actual_hours') AS REAL) > 0
+                    """
+                )
+                count = count_cursor.fetchone()[0]
+
+                if count == 0:
+                    return 1.0  # Default fallback
+
+                # Calculate median position
+                # For odd count: middle element
+                # For even count: average of two middle elements
+                is_odd = count % 2 == 1
+                middle_pos = count // 2
+
+                if is_odd:
+                    # Get single middle element
+                    cursor = conn.execute(
+                        """
+                        SELECT CAST(json_extract(data, '$.actual_hours')
+                                    AS REAL) as actual_hours
+                        FROM persistence
+                        WHERE collection = 'task_outcomes'
+                          AND json_extract(data, '$.success') = 1
+                          AND CAST(json_extract(data, '$.actual_hours')
+                                   AS REAL) > 0
+                        ORDER BY actual_hours
+                        LIMIT 1 OFFSET ?
+                        """,
+                        (middle_pos,),
+                    )
+                    result = cursor.fetchone()
+                    return float(result[0]) if result else 1.0
+                else:
+                    # Get two middle elements and average them
+                    cursor = conn.execute(
+                        """
+                        SELECT CAST(json_extract(data, '$.actual_hours')
+                                    AS REAL) as actual_hours
+                        FROM persistence
+                        WHERE collection = 'task_outcomes'
+                          AND json_extract(data, '$.success') = 1
+                          AND CAST(json_extract(data, '$.actual_hours')
+                                   AS REAL) > 0
+                        ORDER BY actual_hours
+                        LIMIT 2 OFFSET ?
+                        """,
+                        (middle_pos - 1,),
+                    )
+                    results = cursor.fetchall()
+                    if len(results) == 2:
+                        return float((results[0][0] + results[1][0]) / 2.0)
+                    elif len(results) == 1:
+                        return float(results[0][0])
+                    else:
+                        return 1.0
+
+        return await asyncio.get_event_loop().run_in_executor(None, _calculate_median)
 
 
 class Persistence:
