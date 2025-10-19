@@ -400,6 +400,9 @@ async def create_project_from_natural_language_tracked(
                         await state.project_manager.get_kanban_client()
                     )
 
+                    # Reset migration flag for new project
+                    state._subtasks_migrated = False
+
                     # Add Marcus project_id to result for auto-select functionality
                     result["project_id"] = marcus_project_id
                 else:
