@@ -28,7 +28,7 @@ class TestCalculateRetryAfterSeconds:
         # Assert
         assert result["retry_after_seconds"] == 300  # 5 minutes
         assert "No tasks currently in progress" in result["reason"]
-        assert "blocking_task" not in result
+        assert result["blocking_task"] is None
 
     @pytest.mark.asyncio
     async def test_calculates_eta_from_progress(self):
@@ -82,7 +82,8 @@ class TestCalculateRetryAfterSeconds:
         # 600 + 60 = 660 seconds = 11 minutes
         assert 600 <= result["retry_after_seconds"] <= 720  # Allow some margin
         assert "Database Setup" in result["reason"]
-        assert "blocking_task" not in result
+        assert result["blocking_task"]["id"] == "task_1"
+        assert result["blocking_task"]["progress"] == 75
 
     @pytest.mark.asyncio
     async def test_uses_historical_median_when_no_progress(self):
@@ -209,9 +210,9 @@ class TestCalculateRetryAfterSeconds:
         result = await calculate_retry_after_seconds(mock_state)
 
         # Assert
-        # Should pick task1 (soonest) - verify by checking the reason contains Quick Task
-        assert "Quick Task" in result["reason"]
-        assert "blocking_task" not in result
+        # Should pick task1 (soonest)
+        assert result["blocking_task"]["id"] == "task_1"
+        assert result["blocking_task"]["name"] == "Quick Task"
 
     @pytest.mark.asyncio
     async def test_caps_maximum_wait_at_one_hour(self):
