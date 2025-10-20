@@ -12,7 +12,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "viz_backend.api:app",
         host="0.0.0.0",  # nosec B104
-        port=8000,
+        port=4300,
         reload=True,  # Enable auto-reload during development
         log_level="info",
     )
