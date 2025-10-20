@@ -332,12 +332,17 @@ START NOW!
                     ],
                     check=True,
                 )
+            # Give tmux time to create the pane
+            time.sleep(0.2)
 
         # Send commands to the pane
         subprocess.run(
             ["tmux", "send-keys", "-t", target, f"bash {script_file}", "Enter"],
             check=True,
         )
+
+        # Give tmux time to process the command before next operation
+        time.sleep(0.1)
 
         # Set pane title
         subprocess.run(
@@ -541,7 +546,7 @@ echo "=========================================="
 
         for agent in self.config.agents:
             self.spawn_worker(agent)
-            time.sleep(1)  # Stagger starts slightly
+            time.sleep(0.5)  # Stagger starts to avoid tmux race conditions
 
         print("\n" + "=" * 60)
         print("All Agents Spawned!")
