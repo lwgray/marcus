@@ -94,6 +94,11 @@ class MarcusDataLoader:
             for task_id, task_data in project_tasks.items():
                 try:
                     # Transform Marcus Task to viz format
+                    # Use timezone-aware datetime for defaults
+                    from datetime import timezone
+
+                    now = datetime.now(timezone.utc).isoformat()
+
                     viz_task = {
                         "id": task_id,
                         "name": task_data.get("name", "Untitled Task"),
@@ -101,12 +106,8 @@ class MarcusDataLoader:
                         "status": task_data.get("status", "todo"),
                         "priority": task_data.get("priority", "medium"),
                         "assigned_to": task_data.get("assigned_to"),
-                        "created_at": task_data.get(
-                            "created_at", datetime.now().isoformat()
-                        ),
-                        "updated_at": task_data.get(
-                            "updated_at", datetime.now().isoformat()
-                        ),
+                        "created_at": task_data.get("created_at", now),
+                        "updated_at": task_data.get("updated_at", now),
                         "due_date": task_data.get("due_date"),
                         "estimated_hours": task_data.get("estimated_hours", 0.0),
                         "actual_hours": task_data.get("actual_hours", 0.0),
@@ -608,8 +609,11 @@ class MarcusDataLoader:
             duration = end_time - start_time
             total_duration_minutes = int(duration.total_seconds() / 60)
         else:
-            start_time = datetime.now()
-            end_time = datetime.now()
+            # Use timezone-aware datetime
+            from datetime import timezone
+
+            start_time = datetime.now(timezone.utc)
+            end_time = datetime.now(timezone.utc)
             total_duration_minutes = 0
 
         # Calculate max concurrent tasks (parallelization level)
