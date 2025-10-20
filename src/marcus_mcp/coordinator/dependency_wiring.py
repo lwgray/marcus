@@ -464,6 +464,23 @@ async def wire_cross_parent_dependencies(
             stats["skipped_no_requires"] += 1
             continue
 
+        # CRITICAL: If parent task has NO dependencies, subtask can't have
+        # cross-parent dependencies (only intra-parent dependencies allowed)
+        parent_task = next(
+            (t for t in project_tasks if t.id == task.parent_task_id), None
+        )
+        if parent_task and (
+            not parent_task.dependencies or len(parent_task.dependencies) == 0
+        ):
+            logger.debug(
+                f"Skipping {task.name} - parent '{parent_task.name}' has no "
+                "dependencies, so this subtask can only have intra-parent dependencies"
+            )
+            if "skipped_parent_no_deps" not in stats:
+                stats["skipped_parent_no_deps"] = 0
+            stats["skipped_parent_no_deps"] += 1
+            continue
+
         stats["subtasks_analyzed"] += 1
 
         logger.debug(f"Analyzing {task.name} (requires: {task.requires})")

@@ -90,9 +90,14 @@ async def find_optimal_task_with_subtasks(
             # (first subtask being assigned)
             from src.core.models import TaskStatus
 
+            logger.info(
+                f"🔍 SUBTASK ASSIGNMENT - Parent task '{parent_task.name}' "
+                f"found with status: {parent_task.status}"
+            )
+
             if parent_task.status == TaskStatus.TODO:
                 logger.info(
-                    f"Moving parent task '{parent_task.name}' to IN_PROGRESS "
+                    f"✅ Moving parent task '{parent_task.name}' to IN_PROGRESS "
                     f"(first subtask assignment)"
                 )
                 try:
@@ -102,11 +107,21 @@ async def find_optimal_task_with_subtasks(
                     )
                     # Update local state
                     parent_task.status = TaskStatus.IN_PROGRESS
+                    logger.info(
+                        f"✅ Successfully moved parent task '{parent_task.name}' "
+                        f"to IN_PROGRESS"
+                    )
                 except Exception as e:
                     logger.error(
-                        f"Failed to update parent task status: {e}",
+                        f"❌ Failed to update parent task status: {e}",
                         exc_info=True,
                     )
+            else:
+                logger.warning(
+                    f"⚠️  Skipping parent task status update - "
+                    f"'{parent_task.name}' status is {parent_task.status}, "
+                    f"expected TODO"
+                )
 
             # Add metadata to help identify parent task type
             # for instruction generation

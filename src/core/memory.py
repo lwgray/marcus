@@ -205,7 +205,11 @@ class Memory:
             else:
                 profiles_data = []
             for data in profiles_data:
-                self.semantic["agent_profiles"][data["agent_id"]] = AgentProfile(**data)
+                # Filter out internal fields (like _key) that Redis adds
+                profile_data = {k: v for k, v in data.items() if not k.startswith("_")}
+                self.semantic["agent_profiles"][data["agent_id"]] = AgentProfile(
+                    **profile_data
+                )
 
             logger.info(
                 f"Loaded {len(self.episodic['outcomes'])} outcomes and "

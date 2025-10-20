@@ -1655,6 +1655,42 @@ async def _find_optimal_task_original_logic(
                         state._active_operations.add(
                             f"task_assignment_{optimal_task.id}"
                         )
+
+                    # GH-96: PATCH - If AI selected a subtask, update parent task status
+                    # This is a workaround for Implementation/Test subtasks bypassing
+                    # the normal subtask flow. Root cause investigation in GH-96.
+                    if getattr(optimal_task, "is_subtask", False):
+                        parent_task_id = getattr(optimal_task, "parent_task_id", None)
+                        if parent_task_id:
+                            parent_task = next(
+                                (
+                                    t
+                                    for t in state.project_tasks
+                                    if t.id == parent_task_id
+                                ),
+                                None,
+                            )
+                            if parent_task and parent_task.status == TaskStatus.TODO:
+                                logger.info(
+                                    f"✅ AI selected subtask - Moving parent task "
+                                    f"'{parent_task.name}' to IN_PROGRESS"
+                                )
+                                try:
+                                    await state.kanban_client.update_task(
+                                        parent_task.id,
+                                        {"status": TaskStatus.IN_PROGRESS},
+                                    )
+                                    parent_task.status = TaskStatus.IN_PROGRESS
+                                    logger.info(
+                                        f"✅ Successfully moved parent task "
+                                        f"'{parent_task.name}' to IN_PROGRESS"
+                                    )
+                                except Exception as e:
+                                    logger.error(
+                                        f"❌ Failed to update parent task status: {e}",
+                                        exc_info=True,
+                                    )
+
                     return optimal_task
             except Exception as e:
                 # Log error using log_pm_thinking instead

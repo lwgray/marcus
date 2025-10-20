@@ -172,13 +172,17 @@ class PhaseDependencyEnforcer:
         """
         Identify which feature/component a task belongs to.
 
+        Uses fine-grained detection to prevent over-grouping independent features.
+        For example, "List Users" and "Get User by ID" should be separate features,
+        not grouped together just because they both contain "user".
+
         Priority:
-        1. Explicit 'feature' label
+        1. Explicit 'feature:' or 'feature-' label (highest priority)
         2. Component-specific labels (e.g., 'authentication', 'payment')
-        3. Extract from task name
-        4. Default to 'general'
+        3. Full task name after removing phase prefix (prevents over-grouping)
+        4. Default to task name as-is
         """
-        # Check for explicit feature label
+        # Priority 1: Check for explicit feature label
         if task.labels:
             for label in task.labels:
                 if label.startswith("feature:"):
@@ -187,7 +191,7 @@ class PhaseDependencyEnforcer:
                 if label.startswith("feature-"):
                     return label
 
-            # Check for component labels
+            # Priority 2: Check for component labels
             component_labels = [
                 "authentication",
                 "auth",
@@ -217,39 +221,31 @@ class PhaseDependencyEnforcer:
                     if component in component_labels:
                         return component
 
-        # Extract from task name
+        # Priority 3: Extract from task name (FINE-GRAINED)
+        # Use full remaining name after phase prefix to maintain specificity
         name_lower = task.name.lower()
 
-        # Common feature patterns
-        feature_patterns = [
-            ("auth", ["login", "logout", "authentication", "password", "token"]),
-            ("user", ["user", "profile", "account", "registration"]),
-            ("payment", ["payment", "billing", "subscription", "checkout"]),
-            ("dashboard", ["dashboard", "analytics", "metrics", "report"]),
-            ("api", ["api", "endpoint", "rest", "graphql"]),
-            ("ui", ["ui", "interface", "frontend", "component", "page"]),
+        # Remove phase prefixes to get the specific feature name
+        phase_prefixes = [
+            "design",
+            "implement",
+            "test",
+            "document",
+            "deploy",
+            "build",
+            "create",
         ]
 
-        for feature, keywords in feature_patterns:
-            if any(keyword in name_lower for keyword in keywords):
-                return feature
+        for prefix in phase_prefixes:
+            if name_lower.startswith(prefix + " "):
+                # Use FULL remaining name as feature ID (fine-grained)
+                # "Design List Users" → "list-users"
+                # "Design Get User by ID" → "get-user-by-id"
+                feature_name = name_lower[len(prefix) :].strip()
+                return feature_name.replace(" ", "-")
 
-        # Extract feature from patterns like "Design X system" or "Implement Y feature"
-        import re
-
-        patterns = [
-            r"(?:design|implement|test|document)\s+(\w+)\s+"
-            r"(?:system|feature|service|component)",
-            r"(?:create|build|develop)\s+(\w+)\s+(?:api|interface|module)",
-        ]
-
-        for pattern in patterns:
-            match = re.search(pattern, name_lower)
-            if match:
-                return match.group(1)
-
-        # Default to general
-        return "general"
+        # No phase prefix found - use full name as feature ID
+        return name_lower.replace(" ", "-")
 
     def _classify_tasks_by_phase(
         self, tasks: List[Task]
@@ -344,23 +340,29 @@ class PhaseDependencyEnforcer:
             dependent_task.dependencies = []
 
         for dep_task in dependency_tasks:
-            if (
-                dep_task.id not in dependent_task.dependencies
-                and dep_task.id != dependent_task.id
-            ):
-                dependent_task.dependencies.append(dep_task.id)
-                added_count += 1
-                violations_found += 1
+            # Skip self-dependencies
+            if dep_task.id == dependent_task.id:
+                continue
 
-                # Add metadata if task supports it
-                if hasattr(dependent_task, "add_dependency"):
-                    dependent_task.add_dependency(dep_task.id, DependencyType.PHASE)
+            # Skip if already has dependency
+            if dep_task.id in dependent_task.dependencies:
+                continue
 
-                logger.debug(
-                    f"Added phase dependency: {dependent_task.name} "
-                    f"({self._get_task_phase_name(dependent_task)}) depends on "
-                    f"{dep_task.name} ({self._get_task_phase_name(dep_task)})"
-                )
+            # Add the dependency
+            # Feature grouping already ensures these are same-feature tasks
+            dependent_task.dependencies.append(dep_task.id)
+            added_count += 1
+            violations_found += 1
+
+            # Add metadata if task supports it
+            if hasattr(dependent_task, "add_dependency"):
+                dependent_task.add_dependency(dep_task.id, DependencyType.PHASE)
+
+            logger.debug(
+                f"Added phase dependency: {dependent_task.name} "
+                f"({self._get_task_phase_name(dependent_task)}) depends on "
+                f"{dep_task.name} ({self._get_task_phase_name(dep_task)})"
+            )
 
         # Note: _phase_dependencies_added not available in base Task model
         # Dependencies are tracked in task.dependencies list instead

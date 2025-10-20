@@ -74,6 +74,12 @@ class AgentSpawner:
         self.templates_dir = templates_dir
         self.agent_prompt_template = templates_dir / "agent_prompt.md"
         self.processes: List[subprocess.Popen[bytes]] = []
+        self.tmux_session = (
+            f"marcus_{self.config.project_name.lower().replace(' ', '_')}"
+        )
+        self.panes_per_window = 4
+        self.current_window = 0
+        self.current_pane = 0
 
     def create_project_creator_prompt(self) -> str:
         """
@@ -223,18 +229,150 @@ START NOW!
 """
         return worker_prompt
 
-    def spawn_project_creator(self) -> subprocess.Popen[bytes]:
+    def create_tmux_session(self) -> None:
+        """Create tmux session for the experiment."""
+        # Kill existing session if it exists
+        subprocess.run(
+            ["tmux", "kill-session", "-t", self.tmux_session],
+            capture_output=True,
+        )
+
+        # Create new session (detached)
+        subprocess.run(
+            ["tmux", "new-session", "-d", "-s", self.tmux_session, "-n", "agents-0"],
+            check=True,
+        )
+        print(f"✓ Created tmux session: {self.tmux_session}")
+
+    def get_next_pane_location(self) -> tuple[int, int]:
         """
-        Spawn the project creator agent in a new terminal window.
+        Get the next window and pane number for an agent.
 
         Returns
         -------
-        subprocess.Popen
-            Process handle
+        tuple[int, int]
+            (window_number, pane_number)
         """
+        window = self.current_pane // self.panes_per_window
+        pane = self.current_pane % self.panes_per_window
+
+        # Create new window if needed
+        if pane == 0 and window > self.current_window:
+            subprocess.run(
+                [
+                    "tmux",
+                    "new-window",
+                    "-t",
+                    f"{self.tmux_session}:{window}",
+                    "-n",
+                    f"agents-{window}",
+                ],
+                check=True,
+            )
+            self.current_window = window
+
+        self.current_pane += 1
+        return window, pane
+
+    def run_in_tmux_pane(
+        self, window: int, pane: int, script_file: Path, title: str
+    ) -> None:
+        """
+        Run a script in a specific tmux pane.
+
+        Parameters
+        ----------
+        window : int
+            Window number
+        pane : int
+            Pane number within the window
+        script_file : Path
+            Path to the script to run
+        title : str
+            Title for the pane
+        """
+        # For first pane in window, use existing pane
+        if pane == 0:
+            target = f"{self.tmux_session}:{window}.0"
+        else:
+            # Split the window and get the new pane's target
+            # Layout: 0=top-left, 1=top-right, 2=bottom-left, 3=bottom-right
+            if pane == 1:
+                # Split window 0 horizontally (right side)
+                split_direction = "-h"
+                split_target = f"{self.tmux_session}:{window}.0"
+            elif pane == 2:
+                # Split window 0 vertically (bottom-left)
+                split_direction = "-v"
+                split_target = f"{self.tmux_session}:{window}.0"
+            elif pane == 3:
+                # Split window 1 vertically (bottom-right)
+                split_direction = "-v"
+                split_target = f"{self.tmux_session}:{window}.1"
+            else:
+                raise ValueError(f"Invalid pane number: {pane}")
+
+            # Split and capture the new pane ID
+            result = subprocess.run(
+                [
+                    "tmux",
+                    "split-window",
+                    split_direction,
+                    "-t",
+                    split_target,
+                    "-P",  # Print new pane ID
+                    "-F",
+                    "#{pane_id}",  # Format: just the pane ID
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            # Use the actual pane ID returned by tmux
+            target = result.stdout.strip()
+            time.sleep(0.2)  # Give tmux time to stabilize
+
+        # Send commands to the pane using its actual ID
+        subprocess.run(
+            ["tmux", "send-keys", "-t", target, f"bash {script_file}", "Enter"],
+            check=True,
+        )
+
+        # Set pane title
+        subprocess.run(
+            ["tmux", "select-pane", "-t", target, "-T", title],
+            check=True,
+        )
+
+        time.sleep(0.1)  # Brief delay before next operation
+
+    def copy_agent_workflow_to_implementation(self) -> None:
+        """
+        Copy agent workflow instructions to CLAUDE.md in implementation directory.
+
+        This ensures agents can reference the workflow throughout their session
+        even after the initial prompt is forgotten.
+        """
+        claude_md_path = self.config.implementation_dir / "CLAUDE.md"
+
+        # Read the agent prompt template
+        with open(self.agent_prompt_template, "r") as f:
+            workflow_content = f.read()
+
+        # Write to CLAUDE.md in implementation directory
+        with open(claude_md_path, "w") as f:
+            f.write(workflow_content)
+
+        print(f"✓ Agent workflow copied to {claude_md_path}")
+
+    def spawn_project_creator(self) -> None:
+        """Spawn the project creator agent in a tmux pane."""
         print("=" * 60)
         print("Spawning Project Creator Agent")
         print("=" * 60)
+
+        # Copy agent workflow to implementation directory
+        self.copy_agent_workflow_to_implementation()
 
         prompt = self.create_project_creator_prompt()
         prompt_file = self.config.prompts_dir / "project_creator.txt"
@@ -242,7 +380,7 @@ START NOW!
         with open(prompt_file, "w") as f:
             f.write(prompt)
 
-        # Create a script to run in the terminal
+        # Create a script to run in tmux
         script = f"""#!/bin/bash
 # Source shell profile to get nvm/claude in PATH
 [ -f ~/.zshrc ] && source ~/.zshrc
@@ -255,7 +393,7 @@ echo "Working Directory: $(pwd)"
 echo "=========================================="
 echo ""
 echo "Configuring Marcus MCP..."
-claude mcp add marcus -t http http://localhost:4298/mcp
+claude mcp add marcus -t http http://localhost:4298/mcp 2>/dev/null || true
 echo ""
 echo "Creating Marcus project: {self.config.project_name}"
 echo ""
@@ -265,43 +403,27 @@ echo ""
 echo "=========================================="
 echo "Project Creator Complete"
 echo "=========================================="
-echo ""
-echo "Press any key to close this window..."
-read -n 1
 """
         script_file = self.config.prompts_dir / "project_creator.sh"
         with open(script_file, "w") as f:
             f.write(script)
         script_file.chmod(0o755)
 
-        # Open in new Terminal window (macOS)
-        cmd = [
-            "osascript",
-            "-e",
-            f'tell application "Terminal" to do script "bash {script_file}"',
-        ]
+        # Get pane location and run
+        window, pane = self.get_next_pane_location()
+        self.run_in_tmux_pane(window, pane, script_file, "Project Creator")
 
-        process = subprocess.Popen(  # nosec B603
-            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-
-        print("✓ Project creator terminal opened")
+        print(f"✓ Project creator in tmux window {window}, pane {pane}")
         print(f"  Prompt: {prompt_file}")
-        return process
 
-    def spawn_worker(self, agent: Dict[str, Any]) -> subprocess.Popen[bytes]:
+    def spawn_worker(self, agent: Dict[str, Any]) -> None:
         """
-        Spawn a worker agent in a new terminal window.
+        Spawn a worker agent in a tmux pane.
 
         Parameters
         ----------
         agent : Dict
             Agent configuration
-
-        Returns
-        -------
-        subprocess.Popen
-            Process handle
         """
         agent_id = agent["id"]
         agent_name = agent["name"]
@@ -317,7 +439,7 @@ read -n 1
         with open(prompt_file, "w") as f:
             f.write(prompt)
 
-        # Create a script to run in the terminal
+        # Create a script to run in tmux
         script = f"""#!/bin/bash
 # Source shell profile to get nvm/claude in PATH
 [ -f ~/.zshrc ] && source ~/.zshrc
@@ -350,21 +472,13 @@ echo "=========================================="
             f.write(script)
         script_file.chmod(0o755)
 
-        # Open in new Terminal window (macOS)
-        cmd = [
-            "osascript",
-            "-e",
-            f'tell application "Terminal" to do script "bash {script_file}"',
-        ]
+        # Get pane location and run
+        window, pane = self.get_next_pane_location()
+        self.run_in_tmux_pane(window, pane, script_file, agent_name)
 
-        process = subprocess.Popen(  # nosec B603
-            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-
-        print("  ✓ Terminal window opened")
+        print(f"  ✓ Spawned in tmux window {window}, pane {pane}")
         print(f"  Prompt: {prompt_file}")
         print(f"  Subagents: {num_subagents}")
-        return process
 
     def run(self) -> bool:
         """Run the multi-agent experiment and return success status."""
@@ -377,12 +491,25 @@ echo "=========================================="
         print(f"Agents: {len(self.config.agents)}")
         total_subagents = sum(a.get("subagents", 0) for a in self.config.agents)
         print(f"Subagents: {total_subagents}")
+
+        # Calculate tmux layout
+        total_agents = 1 + len(self.config.agents)  # creator + workers
+        num_windows = (
+            total_agents + self.panes_per_window - 1
+        ) // self.panes_per_window
+        print(
+            f"Tmux Layout: {num_windows} window(s) with up to "
+            f"{self.panes_per_window} panes each"
+        )
         print("=" * 60)
+
+        # Create tmux session
+        print("\n[Setup] Creating tmux session")
+        self.create_tmux_session()
 
         # Phase 1: Spawn project creator
         print("\n[Phase 1] Creating Project")
-        creator_process = self.spawn_project_creator()
-        self.processes.append(creator_process)
+        self.spawn_project_creator()
 
         # Wait for project creation
         timeout = self.config.get_timeout("project_creation", 300)
@@ -393,16 +520,6 @@ echo "=========================================="
             if time.time() - start_time > timeout:
                 print("✗ Project creation timed out!")
                 return False
-
-            # Check if creator process failed
-            if creator_process.poll() is not None:
-                if creator_process.returncode != 0:
-                    print("✗ Project creator failed!")
-                    return False
-                # Process exited successfully, check for file
-                if not self.config.project_info_file.exists():
-                    time.sleep(2)
-                    continue
 
             time.sleep(5)
 
@@ -424,38 +541,46 @@ echo "=========================================="
         print("=" * 60)
 
         for agent in self.config.agents:
-            worker_process = self.spawn_worker(agent)
-            self.processes.append(worker_process)
-            time.sleep(2)  # Stagger starts slightly
+            self.spawn_worker(agent)
+            time.sleep(0.5)  # Stagger starts to avoid tmux race conditions
 
         print("\n" + "=" * 60)
         print("All Agents Spawned!")
         print("=" * 60)
-        print(f"\n✓ {len(self.processes)} terminal windows opened")
+        print(f"\n✓ All agents running in tmux session: {self.tmux_session}")
         print(f"✓ 1 project creator + {len(self.config.agents)} worker agents")
         print(f"✓ {total_subagents} subagents will be registered by workers")
-        print("\n📺 Watch the terminal windows to see agents working!")
-        print("\nAgent windows:")
-        print("  - Project Creator (will close when done)")
-        for agent in self.config.agents:
-            print(f"  - {agent['name']} ({agent.get('subagents', 0)} subagents)")
         print(
-            "\nAll agents work on the MAIN branch in the same implementation directory."
+            f"\n📺 Tmux layout: {num_windows} window(s), "
+            f"{self.panes_per_window} panes max per window"
+        )
+        print("\nTmux commands:")
+        print(f"  - Attach to session: tmux attach -t {self.tmux_session}")
+        print("  - Switch windows: Ctrl+b n (next) or Ctrl+b p (previous)")
+        print("  - Switch panes: Ctrl+b arrow keys")
+        print("  - Detach: Ctrl+b d")
+        print(f"  - Kill session: tmux kill-session -t {self.tmux_session}")
+        print(
+            "\nAll agents work on the MAIN branch in the same "
+            "implementation directory."
         )
         print("Marcus coordinates task assignment to prevent conflicts.")
-        print(
-            "\nPress Ctrl+C when all agents complete to exit "
-            "(agent terminals remain open)."
-        )
+        print("\nAttaching to tmux session in 3 seconds...")
 
-        # Wait for user interrupt
+        # Give time to read the instructions
+        time.sleep(3)
+
+        # Attach to the tmux session (this blocks until user detaches)
         try:
-            while True:
-                time.sleep(60)
+            subprocess.run(["tmux", "attach", "-t", self.tmux_session])
         except KeyboardInterrupt:
-            print("\n\nExperiment manager shutting down...")
-            print("Agent terminal windows will continue running.")
-            return True
+            print("\n\nDetached from tmux session.")
+
+        print("\nExperiment manager shutting down...")
+        print(f"Tmux session '{self.tmux_session}' is still running.")
+        print(f"To re-attach: tmux attach -t {self.tmux_session}")
+        print(f"To kill session: tmux kill-session -t {self.tmux_session}")
+        return True
 
 
 def main() -> None:
