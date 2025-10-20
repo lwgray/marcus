@@ -7,7 +7,7 @@ into the format expected by the viz-dashboard frontend.
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -95,8 +95,6 @@ class MarcusDataLoader:
                 try:
                     # Transform Marcus Task to viz format
                     # Use timezone-aware datetime for defaults
-                    from datetime import timezone
-
                     now = datetime.now(timezone.utc).isoformat()
 
                     viz_task = {
@@ -610,8 +608,6 @@ class MarcusDataLoader:
             total_duration_minutes = int(duration.total_seconds() / 60)
         else:
             # Use timezone-aware datetime
-            from datetime import timezone
-
             start_time = datetime.now(timezone.utc)
             end_time = datetime.now(timezone.utc)
             total_duration_minutes = 0
