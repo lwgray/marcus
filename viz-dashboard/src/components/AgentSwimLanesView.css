@@ -1,0 +1,240 @@
+.swimlanes-view {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: #0f172a;
+  overflow: hidden;
+}
+
+.swimlanes-container {
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+}
+
+.swimlanes-content {
+  position: relative;
+  min-height: 100%;
+  padding: 2rem 1rem;
+}
+
+.time-axis {
+  position: absolute;
+  top: 0;
+  left: 200px;
+  right: 1rem;
+  height: 30px;
+  border-bottom: 2px solid #334155;
+}
+
+.time-marker {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+}
+
+.time-marker::before {
+  content: '';
+  display: block;
+  width: 1px;
+  height: 8px;
+  background-color: #475569;
+  margin: 0 auto;
+}
+
+.time-marker span {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.current-time-line {
+  position: absolute;
+  top: 30px;
+  bottom: 0;
+  width: 2px;
+  background-color: #f59e0b;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.time-label {
+  position: absolute;
+  top: -25px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #f59e0b;
+  color: #0f172a;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.agent-lane {
+  display: flex;
+  margin-top: 40px;
+  min-height: 80px;
+  border-bottom: 1px solid #334155;
+  padding-bottom: 1rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.agent-lane:hover {
+  background-color: rgba(51, 65, 85, 0.3);
+}
+
+.agent-info {
+  width: 200px;
+  padding-right: 1rem;
+  flex-shrink: 0;
+}
+
+.agent-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin-bottom: 0.25rem;
+}
+
+.agent-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.agent-role {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.agent-autonomy {
+  font-size: 0.7rem;
+  color: #64748b;
+  background-color: #1e293b;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  width: fit-content;
+}
+
+.lane-timeline {
+  flex: 1;
+  position: relative;
+  min-height: 50px;
+}
+
+.task-bar {
+  position: absolute;
+  top: 5px;
+  height: 40px;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  overflow: hidden;
+  border: 2px solid rgba(0, 0, 0, 0.3);
+}
+
+.task-bar:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 5;
+}
+
+.task-bar.active {
+  animation: task-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.6);
+}
+
+@keyframes task-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.task-bar-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 0.5rem;
+  height: 100%;
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.task-bar-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.task-bar-progress {
+  margin-left: 0.5rem;
+  font-size: 0.7rem;
+  opacity: 0.8;
+}
+
+.message-indicator {
+  position: absolute;
+  top: -8px;
+  transform: translateX(-50%);
+  font-size: 12px;
+  z-index: 3;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+
+.message-indicator.question {
+  animation: bounce 1s ease-in-out infinite;
+}
+
+.message-indicator.blocker {
+  animation: shake 0.5s ease-in-out infinite;
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: translateX(-50%) translateY(0);
+  }
+  50% {
+    transform: translateX(-50%) translateY(-4px);
+  }
+}
+
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(-50%) rotate(0deg);
+  }
+  25% {
+    transform: translateX(-50%) rotate(-10deg);
+  }
+  75% {
+    transform: translateX(-50%) rotate(10deg);
+  }
+}
+
+.completion-indicator {
+  position: absolute;
+  right: -10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: #10b981;
+  color: white;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  border: 2px solid #0f172a;
+  z-index: 2;
+}
