@@ -222,36 +222,41 @@ class MarcusDataLoader:
 
                             # Map conversation types to viz message types
                             message_type = self._map_conversation_type(
-                                conversation_type, event_data
+                                conversation_type, log_entry
                             )
 
                             # Extract from/to
-                            from_id = event_data.get(
-                                "worker_id", event_data.get("from", "marcus")
+                            from_id = log_entry.get(
+                                "worker_id", log_entry.get("from", "marcus")
                             )
-                            to_id = event_data.get("to", "marcus")
+                            to_id = log_entry.get("to", "marcus")
                             if conversation_type == "pm_to_worker":
                                 from_id = "marcus"
-                                to_id = event_data.get("worker_id", "unknown")
+                                to_id = log_entry.get("worker_id", "unknown")
 
-                            # Extract message content
+                            # Extract message content from various fields
                             message_text = (
-                                event_data.get("message", "")
-                                or event_data.get("decision", "")
-                                or event_data.get("content", "")
+                                log_entry.get("message", "")
+                                or log_entry.get("decision", "")
+                                or log_entry.get("content", "")
+                                or log_entry.get("action", "")
                             )
 
-                            # Extract task_id
-                            task_id = event_data.get("task_id")
+                            # Extract task_id from various locations
+                            task_id = log_entry.get("task_id")
+                            if not task_id and "data" in log_entry:
+                                task_id = log_entry.get("data", {}).get("task_id")
 
                             # Build metadata
                             metadata = {}
-                            if "progress" in event_data:
-                                metadata["progress"] = event_data["progress"]
-                            if "blocking" in event_data:
-                                metadata["blocking"] = event_data["blocking"]
-                            if "response_time" in event_data:
-                                metadata["response_time"] = event_data["response_time"]
+                            if "progress" in log_entry:
+                                metadata["progress"] = log_entry["progress"]
+                            if "blocking" in log_entry:
+                                metadata["blocking"] = log_entry["blocking"]
+                            if "response_time" in log_entry:
+                                metadata["response_time"] = log_entry["response_time"]
+                            if "confidence_score" in log_entry:
+                                metadata["confidence"] = log_entry["confidence_score"]
 
                             # Create viz message
                             viz_message = {
