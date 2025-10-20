@@ -291,64 +291,60 @@ START NOW!
         title : str
             Title for the pane
         """
-        target = f"{self.tmux_session}:{window}.{pane}"
-
-        # Split pane if not the first pane in the window
-        if pane > 0:
-            # Calculate layout: 0=top-left, 1=top-right, 2=bottom-left, 3=bottom-right
+        # For first pane in window, use existing pane
+        if pane == 0:
+            target = f"{self.tmux_session}:{window}.0"
+        else:
+            # Split the window and get the new pane's target
+            # Layout: 0=top-left, 1=top-right, 2=bottom-left, 3=bottom-right
             if pane == 1:
-                # Split horizontally (right side)
-                subprocess.run(
-                    [
-                        "tmux",
-                        "split-window",
-                        "-h",
-                        "-t",
-                        f"{self.tmux_session}:{window}.0",
-                    ],
-                    check=True,
-                )
+                # Split window 0 horizontally (right side)
+                split_direction = "-h"
+                split_target = f"{self.tmux_session}:{window}.0"
             elif pane == 2:
-                # Split first pane vertically (bottom-left)
-                subprocess.run(
-                    [
-                        "tmux",
-                        "split-window",
-                        "-v",
-                        "-t",
-                        f"{self.tmux_session}:{window}.0",
-                    ],
-                    check=True,
-                )
+                # Split window 0 vertically (bottom-left)
+                split_direction = "-v"
+                split_target = f"{self.tmux_session}:{window}.0"
             elif pane == 3:
-                # Split second pane vertically (bottom-right)
-                subprocess.run(
-                    [
-                        "tmux",
-                        "split-window",
-                        "-v",
-                        "-t",
-                        f"{self.tmux_session}:{window}.1",
-                    ],
-                    check=True,
-                )
-            # Give tmux time to create the pane
-            time.sleep(0.2)
+                # Split window 1 vertically (bottom-right)
+                split_direction = "-v"
+                split_target = f"{self.tmux_session}:{window}.1"
+            else:
+                raise ValueError(f"Invalid pane number: {pane}")
 
-        # Send commands to the pane
+            # Split and capture the new pane ID
+            result = subprocess.run(
+                [
+                    "tmux",
+                    "split-window",
+                    split_direction,
+                    "-t",
+                    split_target,
+                    "-P",  # Print new pane ID
+                    "-F",
+                    "#{pane_id}",  # Format: just the pane ID
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            # Use the actual pane ID returned by tmux
+            target = result.stdout.strip()
+            time.sleep(0.2)  # Give tmux time to stabilize
+
+        # Send commands to the pane using its actual ID
         subprocess.run(
             ["tmux", "send-keys", "-t", target, f"bash {script_file}", "Enter"],
             check=True,
         )
-
-        # Give tmux time to process the command before next operation
-        time.sleep(0.1)
 
         # Set pane title
         subprocess.run(
             ["tmux", "select-pane", "-t", target, "-T", title],
             check=True,
         )
+
+        time.sleep(0.1)  # Brief delay before next operation
 
     def copy_agent_workflow_to_implementation(self) -> None:
         """
