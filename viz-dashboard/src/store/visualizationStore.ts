@@ -1,12 +1,17 @@
 import { create } from 'zustand';
 import { SimulationData, Task, Agent, Message, generateMockData, calculateMetrics } from '../data/mockDataGenerator';
+import { fetchSimulationData, checkApiHealth } from '../services/dataService';
 
 export type ViewLayer = 'network' | 'swimlanes' | 'conversations';
+export type DataMode = 'live' | 'mock';
 
 interface VisualizationState {
   // Data
   data: SimulationData;
   metrics: ReturnType<typeof calculateMetrics>;
+  dataMode: DataMode;
+  isLoading: boolean;
+  loadError: string | null;
 
   // Playback state
   currentTime: number; // milliseconds since simulation start
@@ -26,6 +31,7 @@ interface VisualizationState {
   filteredAgentIds: string[];
 
   // Actions
+  loadData: (mode?: DataMode, projectId?: string) => Promise<void>;
   setCurrentTime: (time: number) => void;
   play: () => void;
   pause: () => void;
@@ -38,6 +44,7 @@ interface VisualizationState {
   toggleShowBlockedTasks: () => void;
   setFilteredAgentIds: (agentIds: string[]) => void;
   reset: () => void;
+  refreshData: () => Promise<void>;
 
   // Derived getters
   getVisibleTasks: () => Task[];
@@ -54,6 +61,9 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => {
   return {
     data,
     metrics,
+    dataMode: 'mock',
+    isLoading: false,
+    loadError: null,
     currentTime: 0,
     isPlaying: false,
     playbackSpeed: 1,
@@ -65,6 +75,68 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => {
     showCompletedTasks: true,
     showBlockedTasks: true,
     filteredAgentIds: [],
+
+    loadData: async (mode?: DataMode, projectId?: string) => {
+      const dataMode = mode || (import.meta.env.VITE_DATA_MODE as DataMode) || 'mock';
+
+      set({ isLoading: true, loadError: null });
+
+      try {
+        let newData: SimulationData;
+
+        if (dataMode === 'live') {
+          // Check if API is available
+          const isApiHealthy = await checkApiHealth();
+
+          if (!isApiHealthy) {
+            console.warn('API not available, falling back to mock data');
+            newData = generateMockData();
+            set({ dataMode: 'mock' });
+          } else {
+            // Fetch live data from API
+            console.log('Fetching live data from API...');
+            newData = await fetchSimulationData(projectId);
+            set({ dataMode: 'live' });
+          }
+        } else {
+          // Use mock data
+          newData = generateMockData();
+          set({ dataMode: 'mock' });
+        }
+
+        // Calculate metrics
+        const newMetrics = calculateMetrics(newData);
+
+        // Update store
+        set({
+          data: newData,
+          metrics: newMetrics,
+          isLoading: false,
+          currentTime: 0,
+        });
+
+        console.log(`Data loaded successfully in ${dataMode} mode`);
+      } catch (error) {
+        console.error('Error loading data:', error);
+
+        // Fallback to mock data on error
+        const mockData = generateMockData();
+        const mockMetrics = calculateMetrics(mockData);
+
+        set({
+          data: mockData,
+          metrics: mockMetrics,
+          dataMode: 'mock',
+          isLoading: false,
+          loadError: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    },
+
+    refreshData: async () => {
+      const { dataMode } = get();
+      await get().loadData(dataMode);
+    },
 
     setCurrentTime: (time) => set({ currentTime: time }),
 

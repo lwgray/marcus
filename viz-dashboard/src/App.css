@@ -10,9 +10,53 @@
   padding: 1rem 2rem;
   background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
   border-bottom: 2px solid #334155;
+}
+
+.header-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 1rem;
+}
+
+.header-controls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.data-mode-toggle,
+.refresh-button {
+  padding: 0.5rem 1rem;
+  background: #1e293b;
+  border: 2px solid #334155;
+  border-radius: 0.5rem;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.data-mode-toggle:hover:not(:disabled),
+.refresh-button:hover:not(:disabled) {
+  background: #334155;
+  border-color: #475569;
+  color: #e2e8f0;
+}
+
+.data-mode-toggle:disabled,
+.refresh-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.error-banner {
+  background: #ffcc00;
+  color: #000;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
 }
 
 .app-header h1 {

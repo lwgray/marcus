@@ -82,10 +82,79 @@ class MarcusDataLoader:
             logger.warning(f"Projects file not found: {projects_file}")
             return tasks
 
-        # TODO: Parse tasks from projects_data
-        # For now, return empty list - will implement in next commit
+        # Parse tasks from projects_data
+        for project_key, project_info in projects_data.items():
+            # Filter by project_id if specified
+            if project_id and project_key != project_id:
+                continue
 
+            project_name = project_info.get("name", "Unknown Project")
+            project_tasks = project_info.get("tasks", {})
+
+            for task_id, task_data in project_tasks.items():
+                try:
+                    # Transform Marcus Task to viz format
+                    viz_task = {
+                        "id": task_id,
+                        "name": task_data.get("name", "Untitled Task"),
+                        "description": task_data.get("description", ""),
+                        "status": task_data.get("status", "todo"),
+                        "priority": task_data.get("priority", "medium"),
+                        "assigned_to": task_data.get("assigned_to"),
+                        "created_at": task_data.get(
+                            "created_at", datetime.now().isoformat()
+                        ),
+                        "updated_at": task_data.get(
+                            "updated_at", datetime.now().isoformat()
+                        ),
+                        "due_date": task_data.get("due_date"),
+                        "estimated_hours": task_data.get("estimated_hours", 0.0),
+                        "actual_hours": task_data.get("actual_hours", 0.0),
+                        "dependencies": task_data.get("dependencies", []),
+                        "labels": task_data.get("labels", []),
+                        "project_id": project_key,
+                        "project_name": project_name,
+                        "is_subtask": task_data.get("is_subtask", False),
+                        "parent_task_id": task_data.get("parent_task_id"),
+                        "subtask_index": task_data.get("subtask_index"),
+                        "progress": self._calculate_progress(task_data),
+                    }
+                    tasks.append(viz_task)
+                except Exception as e:
+                    logger.error(f"Error parsing task {task_id}: {e}")
+                    continue
+
+        logger.info(f"Loaded {len(tasks)} tasks from persistence")
         return tasks
+
+    def _calculate_progress(self, task_data: Dict[str, Any]) -> int:
+        """
+        Calculate task progress percentage.
+
+        Parameters
+        ----------
+        task_data : Dict[str, Any]
+            Task data from persistence
+
+        Returns
+        -------
+        int
+            Progress percentage (0-100)
+        """
+        status = task_data.get("status", "todo")
+        if status == "done":
+            return 100
+        elif status == "in_progress":
+            # Try to calculate from actual vs estimated hours
+            estimated = task_data.get("estimated_hours", 0.0)
+            actual = task_data.get("actual_hours", 0.0)
+            if estimated > 0:
+                return min(int((actual / estimated) * 100), 90)
+            return 50  # Default for in_progress
+        elif status == "blocked":
+            return 0
+        else:  # todo
+            return 0
 
     def load_messages_from_logs(
         self, start_time: Optional[datetime] = None, end_time: Optional[datetime] = None
@@ -106,6 +175,7 @@ class MarcusDataLoader:
             List of messages in viz-dashboard format
         """
         messages: List[Dict[str, Any]] = []
+        message_id_counter = 0
 
         if not self.conversation_logs_dir.exists():
             logger.warning(
@@ -125,9 +195,79 @@ class MarcusDataLoader:
                             continue
 
                         try:
-                            _log_entry = json.loads(line)  # noqa: F841
-                            # TODO: Transform _log_entry to viz Message format
-                            # Will implement in next commit
+                            log_entry = json.loads(line)
+
+                            # Extract timestamp
+                            timestamp_str = log_entry.get(
+                                "timestamp", log_entry.get("event", {}).get("timestamp")
+                            )
+                            if not timestamp_str:
+                                continue
+
+                            # Parse timestamp for filtering
+                            try:
+                                msg_time = datetime.fromisoformat(
+                                    timestamp_str.replace("Z", "+00:00")
+                                )
+                                if start_time and msg_time < start_time:
+                                    continue
+                                if end_time and msg_time > end_time:
+                                    continue
+                            except Exception:
+                                pass  # Keep message if timestamp parsing fails
+
+                            # Determine message type and content
+                            event_data = log_entry.get("event", {})
+                            conversation_type = event_data.get("conversation_type", "")
+
+                            # Map conversation types to viz message types
+                            message_type = self._map_conversation_type(
+                                conversation_type, event_data
+                            )
+
+                            # Extract from/to
+                            from_id = event_data.get(
+                                "worker_id", event_data.get("from", "marcus")
+                            )
+                            to_id = event_data.get("to", "marcus")
+                            if conversation_type == "pm_to_worker":
+                                from_id = "marcus"
+                                to_id = event_data.get("worker_id", "unknown")
+
+                            # Extract message content
+                            message_text = (
+                                event_data.get("message", "")
+                                or event_data.get("decision", "")
+                                or event_data.get("content", "")
+                            )
+
+                            # Extract task_id
+                            task_id = event_data.get("task_id")
+
+                            # Build metadata
+                            metadata = {}
+                            if "progress" in event_data:
+                                metadata["progress"] = event_data["progress"]
+                            if "blocking" in event_data:
+                                metadata["blocking"] = event_data["blocking"]
+                            if "response_time" in event_data:
+                                metadata["response_time"] = event_data["response_time"]
+
+                            # Create viz message
+                            viz_message = {
+                                "id": f"msg-{message_id_counter}",
+                                "timestamp": timestamp_str,
+                                "from": from_id,
+                                "to": to_id,
+                                "task_id": task_id,
+                                "message": message_text,
+                                "type": message_type,
+                                "parent_message_id": None,  # Could be enhanced
+                                "metadata": metadata,
+                            }
+                            messages.append(viz_message)
+                            message_id_counter += 1
+
                         except json.JSONDecodeError as e:
                             logger.debug(
                                 f"Skipping invalid JSON line in {log_file}: {e}"
@@ -138,7 +278,109 @@ class MarcusDataLoader:
                 logger.error(f"Error reading log file {log_file}: {e}")
                 continue
 
+        logger.info(f"Loaded {len(messages)} messages from logs")
         return messages
+
+    def _map_conversation_type(
+        self, conversation_type: str, event_data: Dict[str, Any]
+    ) -> str:
+        """
+        Map Marcus conversation types to viz message types.
+
+        Parameters
+        ----------
+        conversation_type : str
+            Marcus conversation type
+        event_data : Dict[str, Any]
+            Event data for additional context
+
+        Returns
+        -------
+        str
+            Viz message type
+        """
+        # Check for specific patterns in message content
+        message = event_data.get("message", "").lower()
+
+        if "blocker" in message or "blocked" in message:
+            return "blocker"
+        elif "?" in message or "question" in conversation_type:
+            return "question"
+        elif conversation_type == "decision":
+            return "instruction"
+        elif "progress" in event_data or "progress" in message:
+            return "status_update"
+        elif conversation_type == "worker_to_pm":
+            if "completed" in message or "done" in message:
+                return "status_update"
+            return "answer"
+        elif conversation_type == "pm_to_worker":
+            if "assign" in message:
+                return "task_assignment"
+            return "instruction"
+        else:
+            return "status_update"
+
+    def load_agent_profiles(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Load agent profiles from assignment persistence and experiments.
+
+        Returns
+        -------
+        Dict[str, Dict[str, Any]]
+            Dictionary mapping agent_id to agent profile data
+        """
+        agents_data: Dict[str, Dict[str, Any]] = {}
+
+        # Try to load from experiment monitoring data (most complete)
+        mlruns_dir = self.marcus_root / "mlruns"
+        if mlruns_dir.exists():
+            # Find most recent experiment with agent data
+            try:
+                for exp_dir in sorted(mlruns_dir.iterdir(), reverse=True):
+                    if not exp_dir.is_dir() or exp_dir.name == ".trash":
+                        continue
+
+                    for run_dir in sorted(exp_dir.iterdir(), reverse=True):
+                        if not run_dir.is_dir():
+                            continue
+
+                        # Check for agent artifacts
+                        artifacts_dir = run_dir / "artifacts"
+                        if artifacts_dir.exists():
+                            agent_file = artifacts_dir / "agents.json"
+                            if agent_file.exists():
+                                with open(agent_file, "r") as f:
+                                    exp_agents = json.load(f)
+                                    for agent_id, agent_info in exp_agents.items():
+                                        agents_data[agent_id] = agent_info
+                                break
+                    if agents_data:
+                        break
+            except Exception as e:
+                logger.debug(f"Could not load agents from mlruns: {e}")
+
+        # Fallback: infer from assignments
+        assignments_dir = self.marcus_root / "data" / "assignments"
+        if assignments_dir.exists() and not agents_data:
+            assignments_file = assignments_dir / "assignments.json"
+            if assignments_file.exists():
+                try:
+                    with open(assignments_file, "r") as f:
+                        assignments = json.load(f)
+                        for agent_id, assignment_info in assignments.items():
+                            if agent_id not in agents_data:
+                                agents_data[agent_id] = {
+                                    "id": agent_id,
+                                    "name": agent_id.replace("_", " ").title(),
+                                    "role": "Worker",
+                                    "skills": [],
+                                }
+                except Exception as e:
+                    logger.debug(f"Could not load agents from assignments: {e}")
+
+        logger.info(f"Loaded {len(agents_data)} agent profiles")
+        return agents_data
 
     def load_events_from_logs(
         self, start_time: Optional[datetime] = None, end_time: Optional[datetime] = None
@@ -159,6 +401,7 @@ class MarcusDataLoader:
             List of events in viz-dashboard format
         """
         events: List[Dict[str, Any]] = []
+        event_id_counter = 0
 
         if not self.agent_events_dir.exists():
             logger.warning(f"Agent events directory not found: {self.agent_events_dir}")
@@ -176,9 +419,47 @@ class MarcusDataLoader:
                             continue
 
                         try:
-                            _event_entry = json.loads(line)  # noqa: F841
-                            # TODO: Transform _event_entry to viz Event format
-                            # Will implement in next commit
+                            event_entry = json.loads(line)
+
+                            # Extract timestamp
+                            timestamp_str = event_entry.get("timestamp")
+                            if not timestamp_str:
+                                continue
+
+                            # Parse timestamp for filtering
+                            try:
+                                event_time = datetime.fromisoformat(
+                                    timestamp_str.replace("Z", "+00:00")
+                                )
+                                if start_time and event_time < start_time:
+                                    continue
+                                if end_time and event_time > end_time:
+                                    continue
+                            except Exception:  # nosec B112
+                                pass  # Keep event if timestamp parsing fails
+
+                            # Extract event data
+                            event_type = event_entry.get("event_type", "unknown")
+                            event_data = event_entry.get("data", {})
+
+                            # Extract agent_id and task_id
+                            agent_id = event_data.get("worker_id") or event_data.get(
+                                "agent_id"
+                            )
+                            task_id = event_data.get("task_id")
+
+                            # Create viz event
+                            viz_event = {
+                                "id": f"event-{event_id_counter}",
+                                "timestamp": timestamp_str,
+                                "event_type": event_type,
+                                "agent_id": agent_id,
+                                "task_id": task_id,
+                                "data": event_data,
+                            }
+                            events.append(viz_event)
+                            event_id_counter += 1
+
                         except json.JSONDecodeError as e:
                             logger.debug(
                                 f"Skipping invalid JSON line in {log_file}: {e}"
@@ -189,6 +470,7 @@ class MarcusDataLoader:
                 logger.error(f"Error reading log file {log_file}: {e}")
                 continue
 
+        logger.info(f"Loaded {len(events)} events from logs")
         return events
 
     def infer_agents_from_data(
@@ -209,14 +491,58 @@ class MarcusDataLoader:
         List[Dict[str, Any]]
             List of agents in viz-dashboard format
         """
+        # Load agent profiles first
+        agent_profiles = self.load_agent_profiles()
+
+        # Collect unique agent IDs from tasks and messages
+        agent_ids = set()
+        for task in tasks:
+            if task.get("assigned_to"):
+                agent_ids.add(task["assigned_to"])
+
+        for message in messages:
+            from_id = message.get("from")
+            to_id = message.get("to")
+            if from_id and from_id != "marcus":
+                agent_ids.add(from_id)
+            if to_id and to_id != "marcus":
+                agent_ids.add(to_id)
+
+        # Build agent list with metrics
         agents: List[Dict[str, Any]] = []
+        for agent_id in agent_ids:
+            # Get profile if exists
+            profile = agent_profiles.get(agent_id, {})
 
-        # TODO: Build agent list from:
-        # 1. Unique assigned_to values in tasks
-        # 2. Message senders/receivers (excluding 'marcus')
-        # 3. Calculate metrics (completed tasks, autonomy score)
-        # Will implement in next commit
+            # Calculate metrics from tasks
+            agent_tasks = [t for t in tasks if t.get("assigned_to") == agent_id]
+            completed_tasks = [t for t in agent_tasks if t.get("status") == "done"]
+            current_tasks = [
+                t["id"] for t in agent_tasks if t.get("status") == "in_progress"
+            ]
 
+            # Calculate autonomy from messages
+            agent_messages = [m for m in messages if m.get("from") == agent_id]
+            questions = [
+                m for m in agent_messages if m.get("type") in ["question", "blocker"]
+            ]
+            autonomy_score = 1.0 - min(len(questions) / max(len(agent_tasks), 1), 0.5)
+
+            # Build viz agent
+            viz_agent = {
+                "id": agent_id,
+                "name": profile.get("name", agent_id.replace("_", " ").title()),
+                "role": profile.get("role", "Worker"),
+                "skills": profile.get("skills", []),
+                "current_tasks": current_tasks,
+                "completed_tasks_count": len(completed_tasks),
+                "capacity": profile.get("capacity", 40),
+                "performance_score": profile.get("performance_score", 1.0),
+                "autonomy_score": round(autonomy_score, 2),
+            }
+            agents.append(viz_agent)
+
+        logger.info(f"Inferred {len(agents)} agents from data")
         return agents
 
     def calculate_metadata(
@@ -242,16 +568,87 @@ class MarcusDataLoader:
         Dict[str, Any]
             Metadata in viz-dashboard format
         """
+        # Determine project name from tasks
+        project_name = "Marcus Project"
+        if tasks:
+            project_name = tasks[0].get("project_name", "Marcus Project")
+
+        # Calculate time boundaries
+        all_timestamps = []
+
+        # Collect timestamps from all sources
+        for task in tasks:
+            if task.get("created_at"):
+                all_timestamps.append(task["created_at"])
+            if task.get("updated_at"):
+                all_timestamps.append(task["updated_at"])
+
+        for message in messages:
+            if message.get("timestamp"):
+                all_timestamps.append(message["timestamp"])
+
+        for event in events:
+            if event.get("timestamp"):
+                all_timestamps.append(event["timestamp"])
+
+        # Parse timestamps and find boundaries
+        parsed_times = []
+        for ts_str in all_timestamps:
+            try:
+                ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                parsed_times.append(ts)
+            except Exception:  # nosec B112
+                continue  # Skip invalid timestamps
+
+        if parsed_times:
+            start_time = min(parsed_times)
+            end_time = max(parsed_times)
+            duration = end_time - start_time
+            total_duration_minutes = int(duration.total_seconds() / 60)
+        else:
+            start_time = datetime.now()
+            end_time = datetime.now()
+            total_duration_minutes = 0
+
+        # Calculate max concurrent tasks (parallelization level)
+        task_times = []
+        for task in tasks:
+            try:
+                created = datetime.fromisoformat(
+                    task["created_at"].replace("Z", "+00:00")
+                )
+                updated = datetime.fromisoformat(
+                    task["updated_at"].replace("Z", "+00:00")
+                )
+                task_times.append((created, updated))
+            except Exception:  # nosec B112
+                continue  # Skip tasks with invalid timestamps
+
+        max_concurrent = 0
+        if task_times:
+            time_points = set()
+            for start, end in task_times:
+                time_points.add(start)
+                time_points.add(end)
+
+            for time_point in sorted(time_points):
+                concurrent = sum(
+                    1 for start, end in task_times if start <= time_point <= end
+                )
+                max_concurrent = max(max_concurrent, concurrent)
+
         metadata = {
-            "project_name": "Unknown Project",
-            "start_time": datetime.now().isoformat(),
-            "end_time": datetime.now().isoformat(),
-            "total_duration_hours": 0.0,
+            "project_name": project_name,
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
+            "total_duration_minutes": total_duration_minutes,
+            "parallelization_level": max_concurrent,
         }
 
-        # TODO: Calculate actual metadata from data
-        # Will implement in next commit
-
+        logger.info(
+            f"Calculated metadata: {total_duration_minutes}min, "
+            f"{max_concurrent} max concurrent"
+        )
         return metadata
 
     def load_all_data(self, project_id: Optional[str] = None) -> Dict[str, Any]:
