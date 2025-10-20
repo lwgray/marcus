@@ -57,9 +57,20 @@ def create_experiment_structure(experiment_dir: Path, templates_dir: Path) -> bo
 - [Requirement 1]
 - [Requirement 2]
 
+## Technical Stack (Suggested)
+- Backend: Python, FastAPI
+- Database: PostgreSQL, SQLAlchemy
+- Frontend: React, TypeScript (if applicable)
+- Testing: pytest
+- Authentication: JWT
+
 ## Deliverables
 - [Deliverable 1]
 - [Deliverable 2]
+
+## Agent Notes
+All agents are full-stack "unicorn" developers capable of working on any task.
+They will accept and complete tasks regardless of their listed skill preferences.
 """
             )
         print("✓ Created project_spec.md template")

@@ -14,47 +14,85 @@ project_options:
   mode: "new_project"     # new_project | auto | select_project
 
 # Agent definitions
+# NOTE: All agents are "unicorn" full-stack developers capable of any task
+# The skills list is a preference hint to Marcus, NOT a limitation
+# Agents MUST accept any task assigned regardless of their listed skills
 agents:
-  - id: "agent_foundation"
-    name: "Foundation Agent"
-    role: "backend"
+  - id: "agent_unicorn_1"
+    name: "Unicorn Developer 1"
+    role: "full-stack"
     skills:
       - "python"
+      - "javascript"
+      - "typescript"
+      - "react"
+      - "fastapi"
       - "sqlalchemy"
       - "postgresql"
       - "database-design"
-    subagents: 5
-
-  - id: "agent_auth"
-    name: "Authentication Agent"
-    role: "backend"
-    skills:
-      - "python"
-      - "fastapi"
+      - "rest-api"
       - "jwt"
       - "security"
-      - "bcrypt"
-    subagents: 3
-
-  - id: "agent_api"
-    name: "API Development Agent"
-    role: "backend"
-    skills:
-      - "python"
-      - "fastapi"
-      - "rest-api"
-      - "pydantic"
-    subagents: 3
-
-  - id: "agent_integration"
-    name: "Integration & QA Agent"
-    role: "qa"
-    skills:
-      - "python"
       - "pytest"
       - "integration-testing"
-      - "api-testing"
-    subagents: 2
+    subagents: 0
+
+  - id: "agent_unicorn_2"
+    name: "Unicorn Developer 2"
+    role: "full-stack"
+    skills:
+      - "python"
+      - "javascript"
+      - "typescript"
+      - "react"
+      - "fastapi"
+      - "sqlalchemy"
+      - "postgresql"
+      - "database-design"
+      - "rest-api"
+      - "jwt"
+      - "security"
+      - "pytest"
+      - "integration-testing"
+    subagents: 0
+
+  - id: "agent_unicorn_3"
+    name: "Unicorn Developer 3"
+    role: "full-stack"
+    skills:
+      - "python"
+      - "javascript"
+      - "typescript"
+      - "react"
+      - "fastapi"
+      - "sqlalchemy"
+      - "postgresql"
+      - "database-design"
+      - "rest-api"
+      - "jwt"
+      - "security"
+      - "pytest"
+      - "integration-testing"
+    subagents: 0
+
+  - id: "agent_unicorn_4"
+    name: "Unicorn Developer 4"
+    role: "full-stack"
+    skills:
+      - "python"
+      - "javascript"
+      - "typescript"
+      - "react"
+      - "fastapi"
+      - "sqlalchemy"
+      - "postgresql"
+      - "database-design"
+      - "rest-api"
+      - "jwt"
+      - "security"
+      - "pytest"
+      - "integration-testing"
+    subagents: 0
 
 # Optional: Timeout settings (in seconds)
 timeouts:
