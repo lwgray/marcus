@@ -5,7 +5,7 @@ import asyncio
 import sys
 from collections import defaultdict
 from pathlib import Path
-from statistics import mean, stdev
+from statistics import mean, median, stdev
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -63,8 +63,14 @@ async def main():
     if all_durations:
         print(f"\n📈 Overall Statistics")
         print("=" * 70)
+        avg_duration = mean(all_durations)
+        median_duration = median(all_durations)
+
         print(
-            f"Average actual duration: {mean(all_durations):.4f}h ({mean(all_durations) * 60:.2f} min)"
+            f"Average actual duration: {avg_duration:.4f}h ({avg_duration * 60:.2f} min)"
+        )
+        print(
+            f"Median actual duration:  {median_duration:.4f}h ({median_duration * 60:.2f} min)"
         )
         if len(all_durations) > 1:
             print(
@@ -77,10 +83,14 @@ async def main():
             f"Max duration:            {max(all_durations):.4f}h ({max(all_durations) * 60:.2f} min)"
         )
 
-        # Show what the current default should be
-        avg_minutes = mean(all_durations) * 60
+        # Show what the current default should be (using median as more robust)
+        median_minutes = median_duration * 60
+        avg_minutes = avg_duration * 60
         print(
-            f"\n💡 Recommended default: {mean(all_durations):.4f}h ({avg_minutes:.2f} min)"
+            f"\n💡 Recommended default (median): {median_duration:.4f}h ({median_minutes:.2f} min)"
+        )
+        print(
+            f"   Alternative (mean):           {avg_duration:.4f}h ({avg_minutes:.2f} min)"
         )
 
     # Query agent profiles (to see if they exist)

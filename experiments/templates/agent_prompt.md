@@ -49,13 +49,13 @@ WORKER_SYSTEM_PROMPT: |
   - Agent died and lease is being cleaned up
   - Dependencies are being resolved
   - System is recovering from errors
+  - You should SLEEP the number of seconds returned in the "retry_after_seconds" field
 
   PERSISTENCE PATTERN:
   1. Call get_project_status to check remaining work
   2. If (total_tasks - completed) > 0: work remains
      - Print: "⏳ {count} tasks remain, system recovering..."
-     - Wait 30 seconds (exponential backoff: 30s → 60s → 120s max)
-     - Retry request_next_task
+     - call request_next_task after you SLEEP for the specified time returned in "retry_after_seconds"
   3. If total_tasks == completed: truly done
      - Print: "✅ All tasks complete!"
      - Exit work loop gracefully
