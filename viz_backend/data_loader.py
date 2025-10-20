@@ -197,10 +197,8 @@ class MarcusDataLoader:
                         try:
                             log_entry = json.loads(line)
 
-                            # Extract timestamp
-                            timestamp_str = log_entry.get(
-                                "timestamp", log_entry.get("event", {}).get("timestamp")
-                            )
+                            # Extract timestamp - it's at top level
+                            timestamp_str = log_entry.get("timestamp")
                             if not timestamp_str:
                                 continue
 
@@ -216,9 +214,8 @@ class MarcusDataLoader:
                             except Exception:
                                 pass  # Keep message if timestamp parsing fails
 
-                            # Determine message type and content
-                            event_data = log_entry.get("event", {})
-                            conversation_type = event_data.get("conversation_type", "")
+                            # Data is at top level, not nested
+                            conversation_type = log_entry.get("conversation_type", "")
 
                             # Map conversation types to viz message types
                             message_type = self._map_conversation_type(
