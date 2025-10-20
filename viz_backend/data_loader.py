@@ -597,6 +597,9 @@ class MarcusDataLoader:
         for ts_str in all_timestamps:
             try:
                 ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                # Make timezone-aware if it's naive
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
                 parsed_times.append(ts)
             except Exception:  # nosec B112
                 continue  # Skip invalid timestamps
@@ -622,6 +625,11 @@ class MarcusDataLoader:
                 updated = datetime.fromisoformat(
                     task["updated_at"].replace("Z", "+00:00")
                 )
+                # Make timezone-aware if naive
+                if created.tzinfo is None:
+                    created = created.replace(tzinfo=timezone.utc)
+                if updated.tzinfo is None:
+                    updated = updated.replace(tzinfo=timezone.utc)
                 task_times.append((created, updated))
             except Exception:  # nosec B112
                 continue  # Skip tasks with invalid timestamps
