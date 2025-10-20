@@ -12,6 +12,49 @@ The viz_backend package reads data from Marcus' persistence layer and logs, tran
 - **Agents**: Infer agent profiles from MLflow experiments, assignments, tasks, and messages
 - **Metadata**: Calculate project metrics and timelines
 
+## Installation
+
+```bash
+# Install dependencies (if not already installed)
+pip install fastapi uvicorn[standard] aiofiles python-dateutil
+```
+
+## Running the Server
+
+**IMPORTANT**: The server must be run from the Marcus root directory, not from within viz_backend/
+
+### Method 1: Using the convenience script (Recommended)
+```bash
+# From anywhere in Marcus
+./viz_backend/start_server.sh
+```
+
+### Method 2: As a Python module
+```bash
+# From Marcus root
+python -m viz_backend.run_server
+```
+
+### Method 3: Direct uvicorn
+```bash
+# From Marcus root
+uvicorn viz_backend.api:app --host 0.0.0.0 --port 4300 --reload
+```
+
+The server will:
+- Auto-detect an available port (starting from 4300)
+- Display helpful startup information
+- Show the URL for your frontend .env configuration
+
+Example output:
+```
+🚀 Starting Marcus Viz Backend on http://localhost:4300
+📊 API Documentation: http://localhost:4300/docs
+✅ Health Check: http://localhost:4300/health
+
+💡 Update your frontend .env to: VITE_API_URL=http://localhost:4300
+```
+
 ## Architecture
 
 ```
@@ -30,7 +73,8 @@ Marcus Root
 └── viz_backend/
     ├── data_loader.py              # Data transformation logic
     ├── api.py                      # FastAPI endpoints
-    └── run_server.py               # Server launcher
+    ├── run_server.py               # Server launcher
+    └── start_server.sh             # Convenience script
 ```
 
 ## Data Sources Mapped
@@ -62,35 +106,6 @@ The MarcusDataLoader integrates multiple Marcus data sources:
 - Current task assignments
 - Assignment history and tracking
 - Worker allocation data
-
-## Installation
-
-```bash
-# Install dependencies
-pip install -r viz_backend/requirements.txt
-
-# Or if requirements are already in project root:
-pip install fastapi uvicorn[standard] aiofiles python-dateutil
-```
-
-## Running the Server
-
-### Method 1: Direct Python
-```bash
-python viz_backend/run_server.py
-```
-
-### Method 2: Uvicorn Command
-```bash
-uvicorn viz_backend.api:app --host 0.0.0.0 --port 8000 --reload
-```
-
-### Method 3: From API Module
-```bash
-python -m viz_backend.api
-```
-
-The server will start on `http://localhost:8000`
 
 ## API Endpoints
 
@@ -141,96 +156,27 @@ Get project metadata and metrics
 **Query Parameters:**
 - `project_id` (optional): Calculate for specific project
 
-## Data Transformation
-
-### Task Format
-Marcus persistence → Viz format:
-```python
-{
-    "id": str,
-    "name": str,
-    "description": str,
-    "status": "todo" | "in_progress" | "done" | "blocked",
-    "priority": "low" | "medium" | "high" | "urgent",
-    "assigned_to": str | null,
-    "created_at": ISO datetime,
-    "updated_at": ISO datetime,
-    "estimated_hours": float,
-    "actual_hours": float,
-    "dependencies": [str],
-    "labels": [str],
-    "project_id": str,
-    "project_name": str,
-    "progress": int (0-100)
-}
-```
-
-### Message Format
-Conversation logs → Viz format:
-```python
-{
-    "id": str,
-    "timestamp": ISO datetime,
-    "from": str,  # agent_id or "marcus"
-    "to": str,
-    "task_id": str | null,
-    "message": str,
-    "type": "instruction" | "question" | "answer" | "status_update" | "blocker",
-    "parent_message_id": str | null,
-    "metadata": {
-        "progress": int,
-        "blocking": bool,
-        "response_time": int (seconds)
-    }
-}
-```
-
-### Agent Format
-Inferred from multiple sources:
-```python
-{
-    "id": str,
-    "name": str,
-    "role": str,
-    "skills": [str],
-    "current_tasks": [str],
-    "completed_tasks_count": int,
-    "capacity": int,
-    "performance_score": float,
-    "autonomy_score": float (0-1)
-}
-```
-
-## Development
-
-### Adding New Data Sources
-
-1. Add loading method to `MarcusDataLoader`:
-```python
-def load_new_source(self) -> List[Dict[str, Any]]:
-    """Load from new Marcus data source."""
-    # Implementation
-```
-
-2. Update `load_all_data()` to include new source
-3. Add API endpoint in `api.py` if needed
-4. Update frontend to consume new data
-
-### Testing the API
+## Testing the API
 
 ```bash
 # Health check
-curl http://localhost:8000/health
+curl http://localhost:4300/health
 
 # Get all data
-curl http://localhost:8000/api/data
+curl http://localhost:4300/api/data
 
 # Get tasks for specific project
-curl "http://localhost:8000/api/tasks?project_id=proj-123"
+curl "http://localhost:4300/api/tasks?project_id=proj-123"
 
 # Get agents
-curl http://localhost:8000/api/agents
+curl http://localhost:4300/api/agents
 ```
+
+## Interactive API Documentation
+
+Once the server is running, visit:
+- Swagger UI: `http://localhost:4300/docs`
+- ReDoc: `http://localhost:4300/redoc`
 
 ## CORS Configuration
 
@@ -251,28 +197,74 @@ app.add_middleware(
 
 ## Troubleshooting
 
-### No data returned
-- Check that Marcus has generated data in `data/marcus_state/projects.json`
-- Verify logs exist in `logs/conversations/` and `logs/agent_events/`
-- Run a Marcus project first to generate data
+### ModuleNotFoundError: No module named 'viz_backend'
 
-### CORS errors in browser
-- Ensure frontend is running on an allowed origin
-- Check browser console for specific CORS error
-- Add your frontend URL to `allow_origins` in `api.py`
+**Problem**: Running from wrong directory
+```bash
+# ❌ Wrong - from viz_backend directory
+cd viz_backend
+python run_server.py  # This will fail
 
-### Import errors
-- Ensure you're running from Marcus root directory
-- Install all dependencies: `pip install -r viz_backend/requirements.txt`
-- Check Python path includes Marcus root
+# ✅ Correct - from Marcus root
+cd /path/to/marcus
+python -m viz_backend.run_server
+```
+
+**Solution**: Always run from Marcus root directory using one of:
+- `./viz_backend/start_server.sh`
+- `python -m viz_backend.run_server`
+
+### No data returned from /api/tasks
+
+**Problem**: Marcus has not generated any data yet
+
+**Solution**: Run a Marcus project first to generate data:
+```bash
+./marcus
+> create_project "Test Project"
+> register_agent test_agent "Developer" python,api
+> request_next_task test_agent
+```
+
+### Port already in use
+
+**Solution**: The server will automatically try ports 4300-4309. If all are in use:
+1. Stop other services using those ports
+2. Or modify `start_port` in `run_server.py`
+
+### CORS errors in browser console
+
+**Problem**: Frontend running on unexpected port
+
+**Solution**: Add your frontend URL to `allow_origins` in `api.py`
+
+## Development
+
+### Adding New Endpoints
+
+1. Add function to `viz_backend/api.py`:
+```python
+@app.get("/api/custom")  # type: ignore[misc]
+async def get_custom_data() -> Dict[str, Any]:
+    # Your logic
+    return {"data": "..."}
+```
+
+2. Update frontend service if needed
+
+### Testing Changes
+
+The server runs with auto-reload enabled by default. Simply edit files and save - changes will be automatically reloaded.
 
 ## Future Enhancements
 
 - [ ] WebSocket support for real-time updates
 - [ ] Database backend option (SQLite/PostgreSQL)
 - [ ] Caching layer for expensive queries
-- [ ] GraphQL API alternative
 - [ ] Authentication and authorization
-- [ ] Rate limiting and API keys
+- [ ] Rate limiting
 - [ ] Prometheus metrics export
-- [ ] OpenAPI/Swagger UI improvements
+
+## License
+
+Part of the Marcus project. See root LICENSE file.

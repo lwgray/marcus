@@ -3,7 +3,11 @@
 Run the Marcus Visualization API server.
 
 Usage:
-    python viz_backend/run_server.py
+    From Marcus root directory:
+        python -m viz_backend.run_server
+
+    Or use the convenience script:
+        viz_backend/start_server.sh
 """
 
 import socket
