@@ -124,7 +124,10 @@ class MarcusDataLoader:
                 task_project_name = "Unknown Project"
 
                 if parent_task_id and project_timeframes:
-                    # First, try to match to a known project by board/project ID
+                    # Find the CLOSEST matching project by board/project ID
+                    best_match = None
+                    best_distance = float("inf")
+
                     for proj_id, timeframe in project_timeframes.items():
                         # Get the board_id and project_id from projects_data
                         proj_data = projects_data.get(proj_id, {})
@@ -132,14 +135,28 @@ class MarcusDataLoader:
                         board_id = str(config.get("board_id", ""))
                         kanban_project_id = str(config.get("project_id", ""))
 
-                        # Check if parent_task_id starts with board or project prefix
-                        if (board_id and parent_task_id.startswith(board_id[:8])) or (
-                            kanban_project_id
-                            and parent_task_id.startswith(kanban_project_id[:8])
-                        ):
-                            task_project_id = proj_id  # Use Marcus UUID
-                            task_project_name = timeframe["name"]
-                            break
+                        # Check distance to board or project ID
+                        # Planka creates task IDs that are offset from board IDs
+                        for id_to_check in [board_id, kanban_project_id]:
+                            if id_to_check and len(id_to_check) >= 8:
+                                try:
+                                    id_prefix = int(id_to_check[:8])
+                                    parent_prefix = int(parent_task_id[:8])
+                                    distance = abs(parent_prefix - id_prefix)
+
+                                    # Track closest match within ±20 range
+                                    if distance <= 20 and distance < best_distance:
+                                        best_distance = distance
+                                        best_match = (proj_id, timeframe["name"])
+                                except (ValueError, IndexError):
+                                    # If conversion fails, fall back to exact match
+                                    if parent_task_id.startswith(id_to_check[:8]):
+                                        best_distance = 0
+                                        best_match = (proj_id, timeframe["name"])
+
+                    if best_match:
+                        task_project_id = best_match[0]  # Use Marcus UUID
+                        task_project_name = best_match[1]
                     else:
                         # No match to known project - use inferred
                         board_prefix = parent_task_id[:8]
@@ -408,8 +425,35 @@ class MarcusDataLoader:
 
                 # Create inferred projects for groups with tasks
                 for board_prefix, tasks in parent_groups.items():
-                    # Skip if this matches a known project
-                    if any(pid.startswith(board_prefix) for pid in known_parent_ids):
+                    # Skip if this matches a known project using fuzzy matching
+                    # (same logic as task assignment - check if within ±20)
+                    matched_to_known_project = False
+                    try:
+                        prefix_num = int(board_prefix)
+                        for pid in known_parent_ids:
+                            if len(pid) >= 8:
+                                try:
+                                    pid_num = int(pid[:8])
+                                    if abs(prefix_num - pid_num) <= 20:
+                                        matched_to_known_project = True
+                                        break
+                                except ValueError:
+                                    if pid.startswith(board_prefix):
+                                        matched_to_known_project = True
+                                        break
+                    except ValueError:
+                        # Fallback to exact match if conversion fails
+                        if any(
+                            pid.startswith(board_prefix) for pid in known_parent_ids
+                        ):
+                            matched_to_known_project = True
+
+                    if matched_to_known_project:
+                        continue
+
+                    # Check if we already added this inferred project from projects.json
+                    inferred_id = f"inferred_{board_prefix}"
+                    if any(p["id"] == inferred_id for p in projects):
                         continue
 
                     # Create virtual project
@@ -423,7 +467,7 @@ class MarcusDataLoader:
 
                         projects.append(
                             {
-                                "id": f"inferred_{board_prefix}",
+                                "id": inferred_id,
                                 "name": f"Legacy Project {board_prefix}",
                                 "last_used": newest,
                                 "created_at": oldest,
@@ -921,91 +965,49 @@ class MarcusDataLoader:
         if tasks:
             project_name = tasks[0].get("project_name", "Marcus Project")
 
-        # Calculate time boundaries using task assignment/completion events
-        # This gives the actual project execution timeline
-        import sqlite3
-
-        db_path = self.marcus_root / "data" / "marcus.db"
+        # Calculate time boundaries from displayed tasks only
+        # This ensures timeline matches the visible data
         start_time = None
         end_time = None
         total_duration_minutes = 0
 
-        try:
-            conn = sqlite3.connect(str(db_path))
-            cursor = conn.cursor()
+        # Collect timestamps from displayed tasks only (not messages, not database)
+        # Use created_at for start and updated_at for end to get actual work span
+        created_times = []
+        updated_times = []
+        for task in tasks:
+            if task.get("created_at"):
+                created_times.append(task["created_at"])
+            if task.get("updated_at"):
+                updated_times.append(task["updated_at"])
 
-            # Get first task start (from task_completed events which have started_at)
-            cursor.execute(
-                """
-                SELECT MIN(json_extract(data, '$.data.started_at'))
-                FROM persistence
-                WHERE collection = 'events'
-                  AND json_extract(data, '$.event_type') = 'task_completed'
-                  AND json_extract(data, '$.data.started_at') IS NOT NULL
-            """
-            )
-            first_start = cursor.fetchone()[0]
+        # Parse created and updated times separately
+        parsed_created = []
+        for ts_str in created_times:
+            try:
+                ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                parsed_created.append(ts)
+            except Exception:  # nosec B112
+                continue
 
-            # Get last task completion
-            cursor.execute(
-                """
-                SELECT MAX(json_extract(data, '$.data.completed_at'))
-                FROM persistence
-                WHERE collection = 'events'
-                  AND json_extract(data, '$.event_type') = 'task_completed'
-                  AND json_extract(data, '$.data.completed_at') IS NOT NULL
-            """
-            )
-            last_completion = cursor.fetchone()[0]
+        parsed_updated = []
+        for ts_str in updated_times:
+            try:
+                ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                parsed_updated.append(ts)
+            except Exception:  # nosec B112
+                continue
 
-            conn.close()
-
-            if first_start and last_completion:
-                start_time = datetime.fromisoformat(first_start.replace("Z", "+00:00"))
-                end_time = datetime.fromisoformat(
-                    last_completion.replace("Z", "+00:00")
-                )
-
-                # Make timezone-aware if naive
-                if start_time.tzinfo is None:
-                    start_time = start_time.replace(tzinfo=timezone.utc)
-                if end_time.tzinfo is None:
-                    end_time = end_time.replace(tzinfo=timezone.utc)
-
-                duration = end_time - start_time
-                total_duration_minutes = int(duration.total_seconds() / 60)
-        except Exception as e:
-            logger.warning(
-                f"Could not load timeline from events: {e}, "
-                f"falling back to task timestamps"
-            )
-
-            # Fallback: use task timestamps
-            all_timestamps = []
-            for task in tasks:
-                if task.get("created_at"):
-                    all_timestamps.append(task["created_at"])
-                if task.get("updated_at"):
-                    status = task.get("status", "")
-                    actual_hours = task.get("actual_hours", 0.0)
-                    if status in ["done", "completed"] or actual_hours > 0:
-                        all_timestamps.append(task["updated_at"])
-
-            parsed_times = []
-            for ts_str in all_timestamps:
-                try:
-                    ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-                    if ts.tzinfo is None:
-                        ts = ts.replace(tzinfo=timezone.utc)
-                    parsed_times.append(ts)
-                except Exception:  # nosec B112
-                    continue
-
-            if parsed_times:
-                start_time = min(parsed_times)
-                end_time = max(parsed_times)
-                duration = end_time - start_time
-                total_duration_minutes = int(duration.total_seconds() / 60)
+        # Use earliest created_at as start, latest updated_at as end
+        if parsed_created and parsed_updated:
+            start_time = min(parsed_created)
+            end_time = max(parsed_updated)
+            duration = end_time - start_time
+            total_duration_minutes = int(duration.total_seconds() / 60)
 
         if not start_time or not end_time:
             # Final fallback
