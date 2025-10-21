@@ -62,9 +62,63 @@ const NetworkGraphView = () => {
 
     nodesRef.current = nodes;
 
+    // Build dependency map for transitive reduction
+    const depMap = new Map<string, Set<string>>();
+    tasks.forEach(task => {
+      depMap.set(task.id, new Set(task.dependencies));
+    });
+
+    // Get all reachable nodes from a given task (including direct deps)
+    const getAllReachable = (taskId: string, visited = new Set<string>()): Set<string> => {
+      if (visited.has(taskId)) return new Set();
+      visited.add(taskId);
+
+      const directDeps = depMap.get(taskId) || new Set();
+      const allReachable = new Set<string>();
+
+      directDeps.forEach(depId => {
+        allReachable.add(depId);
+        const transitive = getAllReachable(depId, new Set(visited));
+        transitive.forEach(td => allReachable.add(td));
+      });
+
+      return allReachable;
+    };
+
+    // Compute reduced dependencies for each task
+    const reducedDeps = new Map<string, Set<string>>();
+    tasks.forEach(task => {
+      const directDeps = depMap.get(task.id) || new Set();
+      const reduced = new Set<string>();
+
+      // For each direct dependency, check if it's reachable via another direct dependency
+      directDeps.forEach(depId => {
+        let isTransitive = false;
+
+        // Check if this dep is reachable through any OTHER direct dependency
+        directDeps.forEach(otherDepId => {
+          if (depId !== otherDepId) {
+            const reachableFromOther = getAllReachable(otherDepId);
+            if (reachableFromOther.has(depId)) {
+              isTransitive = true;
+            }
+          }
+        });
+
+        // Only keep if it's not transitive
+        if (!isTransitive) {
+          reduced.add(depId);
+        }
+      });
+
+      reducedDeps.set(task.id, reduced);
+    });
+
+    // Create links using reduced dependencies
     const links: GraphLink[] = [];
     tasks.forEach(task => {
-      task.dependencies.forEach(depId => {
+      const deps = reducedDeps.get(task.id) || new Set();
+      deps.forEach(depId => {
         if (nodes.find(n => n.id === depId)) {
           links.push({
             source: depId,
@@ -261,6 +315,11 @@ const NetworkGraphView = () => {
       node.status = state.status;
       node.progress = state.progress;
       node.isActive = state.isActive;
+
+      // Debug: log first node
+      if (node.id === nodesRef.current[0].id) {
+        console.log(`Time: ${(currentTime/60000).toFixed(1)}m, Node: ${node.task.name.substring(0, 20)}, Progress: ${node.progress}%, Status: ${node.status}, Active: ${node.isActive}`);
+      }
     });
 
     const statusColor = (status: TaskStatus, isActive: boolean) => {
