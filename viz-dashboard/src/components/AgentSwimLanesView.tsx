@@ -14,11 +14,13 @@ const AgentSwimLanesView = () => {
   const totalDuration = endTime - startTime;
   const currentAbsTime = startTime + currentTime;
 
-  // Group tasks by agent
-  const agentTasks = data.agents.map(agent => {
-    const tasks = data.tasks.filter(t => t.assigned_to === agent.id);
-    return { agent, tasks };
-  });
+  // Group tasks by agent and filter out agents with no tasks
+  const agentTasks = data.agents
+    .map(agent => {
+      const tasks = data.tasks.filter(t => t.assigned_to === agent.id);
+      return { agent, tasks };
+    })
+    .filter(({ tasks }) => tasks.length > 0);
 
   const getTaskPosition = (task: Task) => {
     const taskStart = new Date(task.created_at).getTime();
