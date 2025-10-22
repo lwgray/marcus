@@ -81,7 +81,8 @@ async def health() -> Dict[str, str]:
 
 @app.get("/api/data")  # type: ignore[misc]
 async def get_all_data(
-    project_id: Optional[str] = Query(None, description="Project ID to filter by")
+    project_id: Optional[str] = Query(None, description="Project ID to filter by"),
+    view: str = Query("subtasks", description="View mode: 'subtasks' or 'parents'"),
 ) -> Dict[str, Any]:
     """
     Get all simulation data for the dashboard.
@@ -90,6 +91,8 @@ async def get_all_data(
     ----------
     project_id : Optional[str]
         Specific project to load data for
+    view : str
+        View mode: 'subtasks' (default) or 'parents'
 
     Returns
     -------
@@ -97,8 +100,10 @@ async def get_all_data(
         Complete simulation data including tasks, agents, messages, events, and metadata
     """
     try:
-        logger.info(f"Loading all data for project: {project_id or 'all'}")
-        data = data_loader.load_all_data(project_id=project_id)
+        logger.info(
+            f"Loading all data for project: {project_id or 'all'}, view: {view}"
+        )
+        data = data_loader.load_all_data(project_id=project_id, view=view)
         return data
     except Exception as e:
         logger.error(f"Error loading data: {e}")
@@ -107,7 +112,8 @@ async def get_all_data(
 
 @app.get("/api/tasks")  # type: ignore[misc]
 async def get_tasks(
-    project_id: Optional[str] = Query(None, description="Project ID to filter by")
+    project_id: Optional[str] = Query(None, description="Project ID to filter by"),
+    view: str = Query("subtasks", description="View mode: 'subtasks' or 'parents'"),
 ) -> Dict[str, Any]:
     """
     Get tasks from Marcus persistence.
@@ -116,16 +122,25 @@ async def get_tasks(
     ----------
     project_id : Optional[str]
         Specific project to load tasks for
+    view : str
+        View mode: 'subtasks' (default) or 'parents'
 
     Returns
     -------
     dict
-        List of tasks
+        List of tasks (either subtasks or parent tasks)
     """
     try:
-        logger.info(f"Loading tasks for project: {project_id or 'all'}")
-        tasks = data_loader.load_tasks_from_persistence(project_id=project_id)
-        return {"tasks": tasks}
+        logger.info(f"Loading tasks for project: {project_id or 'all'}, view: {view}")
+
+        if view == "parents":
+            tasks = data_loader.load_parent_tasks_from_persistence(
+                project_id=project_id
+            )
+        else:
+            tasks = data_loader.load_tasks_from_persistence(project_id=project_id)
+
+        return {"tasks": tasks, "view": view}
     except Exception as e:
         logger.error(f"Error loading tasks: {e}")
         raise HTTPException(status_code=500, detail=f"Error loading tasks: {str(e)}")
@@ -196,6 +211,26 @@ async def get_events() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error loading events: {e}")
         raise HTTPException(status_code=500, detail=f"Error loading events: {str(e)}")
+
+
+@app.get("/api/projects")  # type: ignore[misc]
+async def get_projects() -> Dict[str, Any]:
+    """
+    Get list of all projects.
+
+    Returns
+    -------
+    dict
+        List of projects with metadata and active project ID
+    """
+    try:
+        logger.info("Loading projects list")
+        projects = data_loader.get_projects_list()
+        active_project_id = data_loader.get_active_project_id()
+        return {"projects": projects, "active_project_id": active_project_id}
+    except Exception as e:
+        logger.error(f"Error loading projects: {e}")
+        raise HTTPException(status_code=500, detail=f"Error loading projects: {str(e)}")
 
 
 @app.get("/api/metadata")  # type: ignore[misc]

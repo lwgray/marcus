@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useVisualizationStore } from '../store/visualizationStore';
+import { timeToLogScale, logScaleToTime } from '../utils/timelineUtils';
 import './TimelineControls.css';
 
 const TimelineControls = () => {
@@ -17,17 +18,20 @@ const TimelineControls = () => {
   const endTime = new Date(data.metadata.end_time).getTime();
   const totalDuration = endTime - startTime;
 
-  const currentPercent = (currentTime / totalDuration) * 100;
+  // Apply power scale to scrubber to match visual layout
+  const currentScaled = timeToLogScale(currentTime, totalDuration);
+  const currentPercent = (currentScaled / totalDuration) * 100;
   const currentMinutes = Math.round(currentTime / 60000);
   const totalMinutes = Math.round(totalDuration / 60000);
 
   const handleScrub = (e: React.ChangeEvent<HTMLInputElement>) => {
     const percent = parseFloat(e.target.value);
-    const newTime = (percent / 100) * totalDuration;
+    const scaledTime = (percent / 100) * totalDuration;
+    const linearTime = logScaleToTime(scaledTime, totalDuration);
     if (isPlaying) {
       pause(); // Pause playback when scrubbing
     }
-    setCurrentTime(newTime);
+    setCurrentTime(linearTime);
   };
 
   const handlePlayPause = () => {

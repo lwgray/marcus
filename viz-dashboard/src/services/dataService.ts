@@ -12,10 +12,17 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4300';
 /**
  * Fetch all simulation data from the backend API
  */
-export async function fetchSimulationData(projectId?: string): Promise<SimulationData> {
+export async function fetchSimulationData(
+  projectId?: string,
+  taskView?: 'subtasks' | 'parents'
+): Promise<SimulationData> {
   try {
-    const url = projectId
-      ? `${API_BASE_URL}/api/data?project_id=${projectId}`
+    const params = new URLSearchParams();
+    if (projectId) params.append('project_id', projectId);
+    if (taskView) params.append('view', taskView);
+
+    const url = params.toString()
+      ? `${API_BASE_URL}/api/data?${params.toString()}`
       : `${API_BASE_URL}/api/data`;
 
     const response = await fetch(url);
@@ -36,10 +43,17 @@ export async function fetchSimulationData(projectId?: string): Promise<Simulatio
 /**
  * Fetch only tasks from the backend API
  */
-export async function fetchTasks(projectId?: string) {
+export async function fetchTasks(
+  projectId?: string,
+  taskView?: 'subtasks' | 'parents'
+) {
   try {
-    const url = projectId
-      ? `${API_BASE_URL}/api/tasks?project_id=${projectId}`
+    const params = new URLSearchParams();
+    if (projectId) params.append('project_id', projectId);
+    if (taskView) params.append('view', taskView);
+
+    const url = params.toString()
+      ? `${API_BASE_URL}/api/tasks?${params.toString()}`
       : `${API_BASE_URL}/api/tasks`;
 
     const response = await fetch(url);
@@ -136,6 +150,25 @@ export async function fetchMetadata(projectId?: string) {
     return data.metadata;
   } catch (error) {
     console.error('Error fetching metadata:', error);
+    throw error;
+  }
+}
+
+/**
+ * Fetch list of projects
+ */
+export async function fetchProjects() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/projects`);
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error fetching projects:', error);
     throw error;
   }
 }

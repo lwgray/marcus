@@ -1,9 +1,18 @@
 import { create } from 'zustand';
 import { SimulationData, Task, Agent, Message, generateMockData, calculateMetrics } from '../data/mockDataGenerator';
-import { fetchSimulationData, checkApiHealth } from '../services/dataService';
+import { fetchSimulationData, checkApiHealth, fetchProjects } from '../services/dataService';
 
 export type ViewLayer = 'network' | 'swimlanes' | 'conversations';
 export type DataMode = 'live' | 'mock';
+export type TaskView = 'subtasks' | 'parents';
+
+export interface Project {
+  id: string;
+  name: string;
+  created_at: string;
+  last_used?: string;
+  description?: string;
+}
 
 interface VisualizationState {
   // Data
@@ -13,14 +22,25 @@ interface VisualizationState {
   isLoading: boolean;
   loadError: string | null;
 
+  // Project filtering
+  projects: Project[];
+  selectedProjectId: string | null;
+  activeProjectId: string | null;
+
   // Playback state
   currentTime: number; // milliseconds since simulation start
   isPlaying: boolean;
   playbackSpeed: number; // 0.5, 1, 2, 5, 10
   animationIntervalId: number | null;
 
+  // Auto-refresh state
+  autoRefreshEnabled: boolean;
+  autoRefreshIntervalId: number | null;
+  autoRefreshInterval: number; // milliseconds (default 5000 = 5 seconds)
+
   // View state
   currentLayer: ViewLayer;
+  taskView: TaskView;
   selectedTaskId: string | null;
   selectedAgentId: string | null;
   selectedMessageId: string | null;
@@ -32,11 +52,17 @@ interface VisualizationState {
 
   // Actions
   loadData: (mode?: DataMode, projectId?: string) => Promise<void>;
+  loadProjects: () => Promise<void>;
+  setSelectedProject: (projectId: string | null) => void;
+  startAutoRefresh: () => void;
+  stopAutoRefresh: () => void;
+  setAutoRefreshInterval: (interval: number) => void;
   setCurrentTime: (time: number) => void;
   play: () => void;
   pause: () => void;
   setPlaybackSpeed: (speed: number) => void;
   setCurrentLayer: (layer: ViewLayer) => void;
+  setTaskView: (view: TaskView) => void;
   selectTask: (taskId: string | null) => void;
   selectAgent: (agentId: string | null) => void;
   selectMessage: (messageId: string | null) => void;
@@ -56,19 +82,24 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => {
   const data = generateMockData();
   const metrics = calculateMetrics(data);
 
-  const startTime = new Date(data.metadata.start_time).getTime();
-
   return {
     data,
     metrics,
     dataMode: 'mock',
     isLoading: false,
     loadError: null,
+    projects: [],
+    selectedProjectId: null,
+    activeProjectId: null,
+    autoRefreshEnabled: false,
+    autoRefreshIntervalId: null,
+    autoRefreshInterval: 5000, // 5 seconds default
     currentTime: 0,
     isPlaying: false,
     playbackSpeed: 1,
     animationIntervalId: null,
     currentLayer: 'network',
+    taskView: 'subtasks',
     selectedTaskId: null,
     selectedAgentId: null,
     selectedMessageId: null,
@@ -95,7 +126,8 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => {
           } else {
             // Fetch live data from API
             console.log('Fetching live data from API...');
-            newData = await fetchSimulationData(projectId);
+            const { taskView } = get();
+            newData = await fetchSimulationData(projectId, taskView);
             set({ dataMode: 'live' });
           }
         } else {
@@ -107,15 +139,24 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => {
         // Calculate metrics
         const newMetrics = calculateMetrics(newData);
 
-        // Update store
+        // Update store - preserve currentTime if animation is playing
+        const currentState = get();
         set({
           data: newData,
           metrics: newMetrics,
           isLoading: false,
-          currentTime: 0,
+          currentTime: currentState.isPlaying ? currentState.currentTime : 0,
         });
 
         console.log(`Data loaded successfully in ${dataMode} mode`);
+
+        // Start auto-refresh if in live mode and not already running
+        const state = get();
+        if (dataMode === 'live' && !state.autoRefreshEnabled) {
+          get().startAutoRefresh();
+        } else if (dataMode === 'mock' && state.autoRefreshEnabled) {
+          get().stopAutoRefresh();
+        }
       } catch (error) {
         console.error('Error loading data:', error);
 
@@ -134,8 +175,89 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => {
     },
 
     refreshData: async () => {
+      const { dataMode, selectedProjectId } = get();
+      await get().loadData(dataMode, selectedProjectId || undefined);
+    },
+
+    loadProjects: async () => {
+      try {
+        const response = await fetchProjects();
+        const projects = response.projects || [];
+        const activeProjectId = response.active_project_id || null;
+
+        set({
+          projects,
+          activeProjectId,
+          // If no project selected yet, default to active project
+          selectedProjectId: get().selectedProjectId || activeProjectId,
+        });
+
+        console.log(`Loaded ${projects.length} projects, active: ${activeProjectId}`);
+      } catch (error) {
+        console.error('Error loading projects:', error);
+      }
+    },
+
+    setSelectedProject: async (projectId: string | null) => {
+      set({ selectedProjectId: projectId });
+
+      // Reload data with the new project filter
       const { dataMode } = get();
-      await get().loadData(dataMode);
+      if (dataMode === 'live') {
+        await get().loadData(dataMode, projectId || undefined);
+      }
+    },
+
+    startAutoRefresh: () => {
+      const current = get();
+
+      // Only enable for live data mode
+      if (current.dataMode !== 'live') {
+        console.log('Auto-refresh only available in live data mode');
+        return;
+      }
+
+      // Clear any existing interval
+      if (current.autoRefreshIntervalId) {
+        window.clearInterval(current.autoRefreshIntervalId);
+      }
+
+      set({ autoRefreshEnabled: true });
+
+      // Start polling
+      const intervalId = window.setInterval(() => {
+        const state = get();
+        if (!state.autoRefreshEnabled || state.dataMode !== 'live') {
+          get().stopAutoRefresh();
+          return;
+        }
+
+        console.log('Auto-refreshing data...');
+        get().refreshData();
+      }, current.autoRefreshInterval);
+
+      set({ autoRefreshIntervalId: intervalId });
+      console.log(`Auto-refresh started (polling every ${current.autoRefreshInterval}ms)`);
+    },
+
+    stopAutoRefresh: () => {
+      const current = get();
+      if (current.autoRefreshIntervalId) {
+        window.clearInterval(current.autoRefreshIntervalId);
+      }
+      set({ autoRefreshEnabled: false, autoRefreshIntervalId: null });
+      console.log('Auto-refresh stopped');
+    },
+
+    setAutoRefreshInterval: (interval: number) => {
+      set({ autoRefreshInterval: interval });
+
+      // Restart auto-refresh with new interval if it's running
+      const current = get();
+      if (current.autoRefreshEnabled) {
+        get().stopAutoRefresh();
+        get().startAutoRefresh();
+      }
     },
 
     setCurrentTime: (time) => set({ currentTime: time }),
@@ -150,7 +272,8 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => {
 
       set({ isPlaying: true });
 
-      // Animation loop
+      // Animation loop - calculate from current data, not stale mock data
+      const startTime = new Date(current.data.metadata.start_time).getTime();
       const endTime = new Date(current.data.metadata.end_time).getTime();
       const totalDuration = endTime - startTime;
       const targetPlaybackDuration = 150000; // 150 seconds at 1x speed (so 10x = 15 seconds)
@@ -189,6 +312,16 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => {
     setPlaybackSpeed: (speed) => set({ playbackSpeed: speed }),
 
     setCurrentLayer: (layer) => set({ currentLayer: layer }),
+
+    setTaskView: async (view) => {
+      set({ taskView: view });
+
+      // Reload data with the new task view
+      const { dataMode, selectedProjectId } = get();
+      if (dataMode === 'live') {
+        await get().loadData(dataMode, selectedProjectId || undefined);
+      }
+    },
 
     selectTask: (taskId) => set({ selectedTaskId: taskId }),
 
@@ -242,6 +375,7 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => {
 
     getMessagesUpToCurrentTime: () => {
       const state = get();
+      const startTime = new Date(state.data.metadata.start_time).getTime();
       const currentAbsTime = startTime + state.currentTime;
 
       return state.data.messages.filter(msg => {
@@ -252,6 +386,7 @@ export const useVisualizationStore = create<VisualizationState>((set, get) => {
 
     getActiveAgentsAtCurrentTime: () => {
       const state = get();
+      const startTime = new Date(state.data.metadata.start_time).getTime();
       const currentAbsTime = startTime + state.currentTime;
 
       // Determine which agents have active tasks at current time

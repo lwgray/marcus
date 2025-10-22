@@ -24,8 +24,34 @@
   gap: 0.5rem;
 }
 
+.project-selector {
+  padding: 0.5rem 1rem;
+  background: #1e293b;
+  border: 2px solid #334155;
+  border-radius: 0.5rem;
+  color: #94a3b8;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 200px;
+}
+
+.project-selector:hover:not(:disabled) {
+  background: #334155;
+  border-color: #475569;
+  color: #e2e8f0;
+}
+
+.project-selector:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .data-mode-toggle,
-.refresh-button {
+.refresh-button,
+.auto-refresh-toggle,
+.task-view-toggle {
   padding: 0.5rem 1rem;
   background: #1e293b;
   border: 2px solid #334155;
@@ -37,15 +63,39 @@
   transition: all 0.2s;
 }
 
+.auto-refresh-toggle.enabled {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border-color: #059669;
+  color: white;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
 .data-mode-toggle:hover:not(:disabled),
-.refresh-button:hover:not(:disabled) {
+.refresh-button:hover:not(:disabled),
+.auto-refresh-toggle:hover:not(:disabled),
+.task-view-toggle:hover:not(:disabled) {
   background: #334155;
   border-color: #475569;
   color: #e2e8f0;
 }
 
+.auto-refresh-toggle.enabled:hover:not(:disabled) {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+}
+
 .data-mode-toggle:disabled,
-.refresh-button:disabled {
+.refresh-button:disabled,
+.auto-refresh-toggle:disabled,
+.task-view-toggle:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

@@ -1,6 +1,6 @@
 import { useVisualizationStore } from '../store/visualizationStore';
 import { Task, TaskStatus } from '../data/mockDataGenerator';
-import { getTaskStateAtTime } from '../utils/timelineUtils';
+import { getTaskStateAtTime, timeToLogScale } from '../utils/timelineUtils';
 import './AgentSwimLanesView.css';
 
 const AgentSwimLanesView = () => {
@@ -25,12 +25,21 @@ const AgentSwimLanesView = () => {
   const getTaskPosition = (task: Task) => {
     const taskStart = new Date(task.created_at).getTime();
     const taskEnd = new Date(task.updated_at).getTime();
-    const startPercent = ((taskStart - startTime) / totalDuration) * 100;
-    const durationPercent = ((taskEnd - taskStart) / totalDuration) * 100;
+
+    // Convert to relative time from start
+    const taskStartRelative = taskStart - startTime;
+    const taskEndRelative = taskEnd - startTime;
+
+    // Apply logarithmic scale
+    const taskStartLog = timeToLogScale(taskStartRelative, totalDuration);
+    const taskEndLog = timeToLogScale(taskEndRelative, totalDuration);
+
+    const startPercent = (taskStartLog / totalDuration) * 100;
+    const durationPercent = ((taskEndLog - taskStartLog) / totalDuration) * 100;
 
     return {
       left: `${startPercent}%`,
-      width: `${Math.max(durationPercent, 2)}%`,
+      width: `${Math.max(durationPercent, 0.5)}%`, // Minimum width for visibility
     };
   };
 
@@ -52,7 +61,10 @@ const AgentSwimLanesView = () => {
     );
   };
 
-  const currentTimePosition = (currentTime / totalDuration) * 100;
+  // Apply power scale to indicator position to match task bar positions
+  // But task activation still uses linear currentAbsTime (line 15)
+  const currentTimeScaled = timeToLogScale(currentTime, totalDuration);
+  const currentTimePercent = (currentTimeScaled / totalDuration) * 100;
 
   return (
     <div className="swimlanes-view">
@@ -60,21 +72,28 @@ const AgentSwimLanesView = () => {
         <div className="swimlanes-content">
           {/* Time axis */}
           <div className="time-axis">
-            {Array.from({ length: 13 }, (_, i) => i * 30).map(minutes => (
-              <div
-                key={minutes}
-                className="time-marker"
-                style={{ left: `${(minutes / data.metadata.total_duration_minutes) * 100}%` }}
-              >
-                <span>{minutes}m</span>
-              </div>
-            ))}
+            {Array.from({ length: 13 }, (_, i) => i * 30).map(minutes => {
+              // Convert minutes to milliseconds, apply power scale
+              const timeMs = minutes * 60000;
+              const timeScaledMs = timeToLogScale(timeMs, totalDuration);
+              const position = (timeScaledMs / totalDuration) * 100;
+
+              return (
+                <div
+                  key={minutes}
+                  className="time-marker"
+                  style={{ left: `${position}%` }}
+                >
+                  <span>{minutes}m</span>
+                </div>
+              );
+            })}
           </div>
 
           {/* Current time indicator */}
           <div
             className="current-time-line"
-            style={{ left: `${currentTimePosition}%` }}
+            style={{ left: `calc(200px + ${currentTimePercent}%)` }}
           >
             <div className="time-label">{Math.round(currentTime / 60000)}m</div>
           </div>
