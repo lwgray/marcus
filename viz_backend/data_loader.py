@@ -165,6 +165,7 @@ class MarcusDataLoader:
 
                 # Use timezone-aware datetime for defaults
                 now = datetime.now(timezone.utc).isoformat()
+                created_at = task_data.get("created_at", now)
 
                 viz_task = {
                     "id": task_id,
@@ -173,8 +174,10 @@ class MarcusDataLoader:
                     "status": task_data.get("status", "todo"),
                     "priority": task_data.get("priority", "medium"),
                     "assigned_to": task_data.get("assigned_to"),
-                    "created_at": task_data.get("created_at", now),
-                    "updated_at": task_data.get("updated_at", now),
+                    "created_at": created_at,
+                    "updated_at": task_data.get(
+                        "updated_at", created_at
+                    ),  # Default to created_at, not now
                     "due_date": task_data.get("due_date"),
                     "estimated_hours": task_data.get("estimated_hours", 0.0),
                     "actual_hours": task_data.get("actual_hours", 0.0),
@@ -592,6 +595,22 @@ class MarcusDataLoader:
                             if not timestamp_str:
                                 continue
 
+                            # WORKAROUND: Conversation logs have timestamps in
+                            # local time (MDT/MST) but marked as UTC (Z).
+                            # Correct by subtracting 6 hours.
+                            # TODO: Fix this in Marcus conversation logging
+                            try:
+                                from datetime import timedelta
+
+                                ts = datetime.fromisoformat(
+                                    timestamp_str.replace("Z", "+00:00")
+                                )
+                                # Subtract 6 hours to convert from MDT to actual UTC
+                                ts = ts - timedelta(hours=6)
+                                timestamp_str = ts.isoformat().replace("+00:00", "Z")
+                            except Exception:
+                                pass  # Use original timestamp if correction fails
+
                             # Parse timestamp for filtering
                             try:
                                 msg_time = datetime.fromisoformat(
@@ -633,6 +652,8 @@ class MarcusDataLoader:
                             task_id = log_entry.get("task_id")
                             if not task_id and "data" in log_entry:
                                 task_id = log_entry.get("data", {}).get("task_id")
+                            if not task_id and "metadata" in log_entry:
+                                task_id = log_entry.get("metadata", {}).get("task_id")
 
                             # Build metadata
                             metadata = {}
@@ -971,14 +992,22 @@ class MarcusDataLoader:
         end_time = None
         total_duration_minutes = 0
 
-        # Collect timestamps from displayed tasks only (not messages, not database)
-        # Use created_at for start and updated_at for end to get actual work span
+        # Collect timestamps from displayed tasks only
+        # (not messages, not database)
+        # Use created_at for start and updated_at for end to get
+        # actual work span. Only use updated_at from completed/
+        # in-progress tasks to avoid future timestamps
         created_times = []
         updated_times = []
         for task in tasks:
             if task.get("created_at"):
                 created_times.append(task["created_at"])
-            if task.get("updated_at"):
+            # Only include updated_at if task has actual work done
+            if task.get("updated_at") and task.get("status") in [
+                "in_progress",
+                "done",
+                "completed",
+            ]:
                 updated_times.append(task["updated_at"])
 
         # Parse created and updated times separately
@@ -1002,12 +1031,44 @@ class MarcusDataLoader:
             except Exception:  # nosec B112
                 continue
 
-        # Use earliest created_at as start, latest updated_at as end
+        # Also consider message timestamps for complete timeline
+        parsed_message_times = []
+        for msg in messages:
+            if msg.get("timestamp"):
+                try:
+                    ts = datetime.fromisoformat(msg["timestamp"].replace("Z", "+00:00"))
+                    if ts.tzinfo is None:
+                        ts = ts.replace(tzinfo=timezone.utc)
+                    parsed_message_times.append(ts)
+                except Exception:  # nosec B112
+                    continue
+
+        # Use earliest created_at/message as start, latest updated_at/message as end
         if parsed_created and parsed_updated:
             start_time = min(parsed_created)
             end_time = max(parsed_updated)
+
+            # Extend timeline if messages go beyond task times
+            if parsed_message_times:
+                start_time = min(start_time, min(parsed_message_times))
+                end_time = max(end_time, max(parsed_message_times))
+
+            # Debug logging using logger
+            logger.info("=" * 60)
+            logger.info("TIMELINE CALCULATION DEBUG")
+            logger.info(f"Start time: {start_time}")
+            logger.info(f"End time: {end_time}")
+            logger.info(
+                f"Tasks: {len(parsed_updated)}, Messages: {len(parsed_message_times)}"
+            )
+
             duration = end_time - start_time
             total_duration_minutes = int(duration.total_seconds() / 60)
+            logger.info(
+                f"Duration: {total_duration_minutes} minutes "
+                f"({total_duration_minutes/60:.1f} hours)"
+            )
+            logger.info("=" * 60)
 
         if not start_time or not end_time:
             # Final fallback
@@ -1089,8 +1150,28 @@ class MarcusDataLoader:
         else:
             tasks = self.load_tasks_from_persistence(project_id)
 
-        messages = self.load_messages_from_logs()
+        # Load all messages and events
+        all_messages = self.load_messages_from_logs()
         events = self.load_events_from_logs()
+
+        # Filter messages to only include those related to tasks in this project
+        task_ids = {task["id"] for task in tasks}
+        messages = []
+        for msg in all_messages:
+            # Include message if it has a task_id that matches this project
+            if msg.get("task_id") in task_ids:
+                messages.append(msg)
+            # Also include messages without task_id if we're viewing all projects
+            elif not project_id and not msg.get("task_id"):
+                messages.append(msg)
+
+        filter_log = (
+            f"Filtered messages: {len(all_messages)} total -> "
+            f"{len(messages)} for project {project_id or 'all'}"
+        )
+        logger.info(filter_log)
+        print(f"📊 {filter_log}", flush=True)  # Also print for immediate visibility
+
         agents = self.infer_agents_from_data(tasks, messages)
         metadata = self.calculate_metadata(tasks, messages, events)
 

@@ -90,46 +90,11 @@ const MetricsPanel = () => {
             <span className="metric-value">{metrics.totalMessages}</span>
           </div>
           <div className="metric-item">
-            <span className="metric-label">Questions</span>
-            <span className="metric-value">{metrics.questionMessages}</span>
-          </div>
-          <div className="metric-item">
             <span className="metric-label">Blockers</span>
             <span className={`metric-value ${metrics.blockerMessages > 0 ? 'warning' : 'good'}`}>
               {metrics.blockerMessages}
             </span>
           </div>
-          <div className="metric-item">
-            <span className="metric-label">Questions/Task</span>
-            <span className="metric-value">{metrics.questionsPerTask.toFixed(1)}</span>
-          </div>
-          <div className="metric-item">
-            <span className="metric-label">Avg Response Time</span>
-            <span className="metric-value">{metrics.avgResponseTimeSeconds}s</span>
-          </div>
-        </div>
-
-        {/* Agent Autonomy */}
-        <div className="metric-section">
-          <h4>🤖 Agent Autonomy</h4>
-          {metrics.agentAutonomyMetrics
-            .sort((a, b) => b.autonomy_score - a.autonomy_score)
-            .map(agent => (
-              <div key={agent.id} className="agent-autonomy-item">
-                <div className="agent-name">{agent.name}</div>
-                <div className="autonomy-bar-container">
-                  <div
-                    className="autonomy-bar"
-                    style={{ width: `${agent.autonomy_score * 100}%` }}
-                  >
-                    <span>{(agent.autonomy_score * 100).toFixed(0)}%</span>
-                  </div>
-                </div>
-                <div className="agent-questions">
-                  {agent.questions} {agent.questions === 1 ? 'question' : 'questions'}
-                </div>
-              </div>
-            ))}
         </div>
 
         {/* Active Agents */}
