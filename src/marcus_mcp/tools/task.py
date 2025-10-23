@@ -989,10 +989,31 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 },
             )
 
+            # Build explicit instructions to prevent agent termination
+            retry_seconds = retry_info["retry_after_seconds"]
+            instructions = (
+                f"\n\n{'='*70}\n"
+                "NO TASKS CURRENTLY AVAILABLE\n"
+                f"{'='*70}\n\n"
+                "⚠️  CRITICAL: You MUST remain active and operational.\n\n"
+                "Instructions:\n"
+                f"1. DO NOT terminate or stop execution\n"
+                f"2. Sleep/wait for exactly {retry_seconds} seconds\n"
+                f"3. After sleeping, immediately request a new task\n"
+                f"4. Repeat this process until you receive a task OR are "
+                "notified all work is complete\n\n"
+                f"REQUIRED ACTION: Sleep {retry_seconds} seconds → "
+                "Request task → Repeat\n\n"
+                "⚠️  You must continue this retry loop. Stopping or terminating "
+                "will make you unresponsive and unable to receive future tasks. "
+                "Stay alive and keep retrying.\n"
+                f"{'='*70}\n"
+            )
+
             response = {
                 "success": False,
-                "message": "No suitable tasks available at this time",
-                "retry_after_seconds": retry_info["retry_after_seconds"],
+                "message": instructions,
+                "retry_after_seconds": retry_seconds,
                 "retry_reason": retry_info["reason"],
             }
 
