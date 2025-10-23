@@ -33,10 +33,12 @@ def should_decompose(task: Task) -> bool:
     bool
         True if task should be decomposed
     """
-    # Don't decompose small tasks
-    if task.estimated_hours < 3.0:
+    # Don't decompose very small tasks (< 3 minutes)
+    # NOTE: Estimates are now reality-based (0.05-0.2 hours = 3-12 minutes)
+    if task.estimated_hours < 0.05:  # Less than 3 minutes
+        minutes = task.estimated_hours * 60
         logger.debug(
-            f"Task {task.name} too small ({task.estimated_hours}h) - no decomposition"
+            f"Task {task.name} too small ({minutes:.1f} min) - no decomposition"
         )
         return False
 
@@ -54,10 +56,13 @@ def should_decompose(task: Task) -> bool:
         logger.debug(f"Task {task.name} is deployment - no decomposition")
         return False
 
-    # Decompose if estimated time is long
-    if task.estimated_hours >= 4.0:
+    # Decompose if estimated time is substantial (> 12 minutes)
+    # With reality-based estimates, anything > 0.2 hours (12 min)
+    # benefits from splitting
+    if task.estimated_hours >= 0.2:
+        minutes = task.estimated_hours * 60
         logger.info(
-            f"Task {task.name} large ({task.estimated_hours}h) - will decompose"
+            f"Task {task.name} substantial ({minutes:.1f} min) - will decompose"
         )
         return True
 
