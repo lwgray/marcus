@@ -31,9 +31,9 @@ Research and document:
 - Error handling conventions for date APIs
 - REST API best practices for simple GET endpoints
 
-**Deliverable**: Create `docs/research/date_endpoint_research.md` with findings
+**Deliverable**: Research documentation with findings
 
-**CHECKPOINT**: State "SUBTASK 1.1 COMPLETE" and show the research document before proceeding.
+**CHECKPOINT**: State "SUBTASK 1.1 COMPLETE" and show what you created.
 
 ---
 
@@ -48,9 +48,9 @@ Create a complete API specification document including:
 - Error response examples (500, 503)
 - Response headers
 
-**Deliverable**: Create `docs/api/date_endpoint_spec.md` with complete specification
+**Deliverable**: Complete API specification document
 
-**CHECKPOINT**: State "SUBTASK 1.2 COMPLETE" and show the API spec before proceeding.
+**CHECKPOINT**: State "SUBTASK 1.2 COMPLETE" and show the API spec.
 
 ---
 
@@ -63,9 +63,9 @@ Document error handling approach:
 - Logging strategy
 - Monitoring/health check approach
 
-**Deliverable**: Create `docs/error_handling/date_endpoint_errors.md`
+**Deliverable**: Error handling design document
 
-**CHECKPOINT**: State "SUBTASK 1.3 COMPLETE" and show error handling document before proceeding.
+**CHECKPOINT**: State "SUBTASK 1.3 COMPLETE" and show the error handling document.
 
 ---
 
@@ -74,13 +74,12 @@ Document error handling approach:
 ### Subtask 2.1: Implement current date model
 
 Create a data model for the current date response:
-- Create `src/models/current_date.py`
-- Define CurrentDate model/class
+- Define model/class for current date
 - Include date field with ISO format
 - Add validation logic
 - Include docstrings
 
-**Deliverable**: Working `src/models/current_date.py` file
+**Deliverable**: Working current date model code
 
 **CHECKPOINT**: State "SUBTASK 2.1 COMPLETE", show the model code, and verify it can be imported.
 
@@ -89,9 +88,8 @@ Create a data model for the current date response:
 ### Subtask 2.2: Implement current date API endpoint
 
 Implement the actual endpoint:
-- Create `src/api/date.py` (or appropriate file for your framework)
-- Implement GET /api/date endpoint
-- Use CurrentDate model
+- Create GET /api/date endpoint (or similar)
+- Use the current date model
 - Return JSON with current date in ISO format
 - Handle request processing
 
@@ -119,8 +117,8 @@ Add comprehensive error handling:
 ### Subtask 2.4: Document current date endpoint
 
 Create complete endpoint documentation:
-- Create `docs/api/date_endpoint_usage.md`
-- Include example curl commands
+- Document how to use the endpoint
+- Include example curl commands or similar
 - Show example responses
 - Document error cases
 - Provide integration examples
@@ -136,7 +134,6 @@ Create complete endpoint documentation:
 ### Subtask 3.1: Write unit tests for date formatting logic
 
 Create unit tests:
-- Create `tests/unit/test_date_formatting.py`
 - Test ISO format conversion
 - Test date model validation
 - Test edge cases (leap years, etc.)
@@ -151,7 +148,6 @@ Create unit tests:
 ### Subtask 3.2: Implement integration tests for current date endpoint
 
 Create integration tests:
-- Create `tests/integration/test_date_endpoint.py`
 - Test full HTTP request/response cycle
 - Test response format matches specification
 - Test HTTP status codes
@@ -166,7 +162,6 @@ Create integration tests:
 ### Subtask 3.3: Create end-to-end tests for current date endpoint
 
 Create E2E tests:
-- Create `tests/e2e/test_date_endpoint_e2e.py`
 - Test endpoint in production-like environment
 - Verify actual date returned is correct
 - Test error scenarios
@@ -188,7 +183,7 @@ Research and document:
 - Time synchronization considerations
 - Common patterns for time APIs
 
-**Deliverable**: Create `docs/research/time_endpoint_research.md`
+**Deliverable**: Research documentation with findings
 
 **CHECKPOINT**: State "SUBTASK 4.1 COMPLETE" and show research document.
 
@@ -203,7 +198,7 @@ Create complete API spec:
 - Success and error responses
 - Example responses
 
-**Deliverable**: Create `docs/api/time_endpoint_spec.md`
+**Deliverable**: Complete API specification document
 
 **CHECKPOINT**: State "SUBTASK 4.2 COMPLETE" and show API spec.
 
@@ -218,7 +213,7 @@ Design the time response model:
 - Document timezone handling
 - Define model interface
 
-**Deliverable**: Create `docs/models/time_model_design.md`
+**Deliverable**: Time model design document
 
 **CHECKPOINT**: State "SUBTASK 4.3 COMPLETE" and show design document.
 
@@ -233,7 +228,7 @@ Document error handling:
 - Logging approach
 - Recovery strategies
 
-**Deliverable**: Create `docs/error_handling/time_endpoint_errors.md`
+**Deliverable**: Error handling documentation
 
 **CHECKPOINT**: State "SUBTASK 4.4 COMPLETE" and show error documentation.
 
@@ -244,13 +239,12 @@ Document error handling:
 ### Subtask 5.1: Implement current time model
 
 Create time response model:
-- Create `src/models/current_time.py`
-- Define CurrentTime model/class
+- Define model/class for current time
 - Implement HH:MM:SS formatting
 - Add validation
 - Include docstrings
 
-**Deliverable**: Working `src/models/current_time.py` file
+**Deliverable**: Working current time model code
 
 **CHECKPOINT**: State "SUBTASK 5.1 COMPLETE" and show model code.
 
@@ -259,10 +253,9 @@ Create time response model:
 ### Subtask 5.2: Build current time endpoint
 
 Implement the endpoint:
-- Create `src/api/time.py`
-- Implement GET /api/time endpoint
+- Create GET /api/time endpoint (or similar)
 - Return JSON with current time in HH:MM:SS format
-- Use CurrentTime model
+- Use the current time model
 - Handle request processing
 
 **Deliverable**: Working endpoint implementation
@@ -289,13 +282,13 @@ Implement error handling:
 ### Subtask 5.4: Document current time endpoint
 
 Create usage documentation:
-- Create `docs/api/time_endpoint_usage.md`
-- Include curl examples
+- Document how to use the endpoint
+- Include example requests
 - Show example responses
 - Document error cases
 - Provide integration examples
 
-**Deliverable**: Complete documentation
+**Deliverable**: Complete endpoint documentation
 
 **CHECKPOINT**: State "SUBTASK 5.4 COMPLETE" and show documentation.
 
@@ -306,7 +299,6 @@ Create usage documentation:
 ### Subtask 6.1: Write unit tests for current time API logic
 
 Create unit tests:
-- Create `tests/unit/test_time_formatting.py`
 - Test HH:MM:SS formatting
 - Test time model validation
 - Test edge cases (midnight, etc.)
@@ -321,7 +313,6 @@ Create unit tests:
 ### Subtask 6.2: Implement integration tests for current time API endpoint
 
 Create integration tests:
-- Create `tests/integration/test_time_endpoint.py`
 - Test full HTTP request/response
 - Verify response format
 - Test status codes
@@ -336,13 +327,12 @@ Create integration tests:
 ### Subtask 6.3: Create test fixtures and mock data for current time API
 
 Create test infrastructure:
-- Create `tests/fixtures/time_fixtures.py`
 - Define reusable test fixtures
 - Create mock time data
 - Set up test helpers
 - Document fixture usage
 
-**Deliverable**: Working fixtures file
+**Deliverable**: Working test fixtures/helpers
 
 **CHECKPOINT**: State "SUBTASK 6.3 COMPLETE" and show fixtures code.
 
@@ -351,7 +341,6 @@ Create test infrastructure:
 ### Subtask 6.4: Write performance tests for current time API
 
 Create performance tests:
-- Create `tests/performance/test_time_performance.py`
 - Test response time under load
 - Test concurrent request handling
 - Measure throughput
@@ -366,7 +355,6 @@ Create performance tests:
 ### Subtask 6.5: Document test plan for current time API
 
 Create test plan documentation:
-- Create `docs/testing/time_endpoint_test_plan.md`
 - Document test strategy
 - List all test scenarios
 - Define pass/fail criteria
@@ -409,8 +397,8 @@ This timing data is critical for the experiment.
 
 ## Reminder: COMPLETE EVERY SUBTASK
 
-This is a controlled experiment. Marcus completed this same project with 17 subtasks in 21 minutes with median 2.98 minutes per subtask.
+This is a controlled experiment. Marcus completed a similar project in 21 minutes with 17 subtasks.
 
 You must complete all 22 subtasks listed above to provide a fair comparison. Do not skip documentation, do not skip tests, and do not provide stub implementations.
 
-**Every file listed must be created. Every test must run and pass.**
+**Organize your files and code however you think is best. The deliverables matter, not the exact file structure.**
