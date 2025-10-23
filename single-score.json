@@ -1,0 +1,104 @@
+{
+  "project_name": "single_agent",
+  "total_score": 85.0,
+  "total_possible": 100,
+  "percentage": 85.0,
+  "categories": [
+    {
+      "category": "Functionality",
+      "points_earned": 17.0,
+      "points_possible": 25,
+      "percentage": 68.0,
+      "details": {
+        "has_main_file": true,
+        "app_runs_score": 7,
+        "test_files_count": 4,
+        "tests_score": 7,
+        "coverage_score": 3
+      }
+    },
+    {
+      "category": "Code Quality",
+      "points_earned": 16.0,
+      "points_possible": 20,
+      "percentage": 80.0,
+      "details": {
+        "total_lines": 1682,
+        "function_count": 94,
+        "docstring_count": 118,
+        "static_analysis_score": 6.0,
+        "avg_file_size": 140.16666666666666,
+        "complexity_score": 4.0,
+        "documentation_coverage": 125.53191489361701,
+        "documentation_score": 6.0
+      }
+    },
+    {
+      "category": "Completeness",
+      "points_earned": 20.0,
+      "points_possible": 20,
+      "percentage": 100.0,
+      "details": {
+        "deliverables": {
+          "api_spec": true,
+          "models": true,
+          "endpoints": true,
+          "error_handling": true,
+          "tests": true
+        },
+        "deliverables_score": 10.0,
+        "stub_count": 0,
+        "no_stubs_score": 5,
+        "both_endpoints": true,
+        "subtasks_score": 5
+      }
+    },
+    {
+      "category": "Project Structure",
+      "points_earned": 12.0,
+      "points_possible": 15,
+      "percentage": 80.0,
+      "details": {
+        "structure": {
+          "models": true,
+          "tests": true,
+          "docs": true,
+          "controllers": true
+        },
+        "structure_score": 8.0,
+        "python_file_count": 12,
+        "file_count_score": 4.0,
+        "has_config_file": false,
+        "config_score": 0
+      }
+    },
+    {
+      "category": "Documentation",
+      "points_earned": 12.0,
+      "points_possible": 12,
+      "percentage": 100.0,
+      "details": {
+        "project_success_word_count": 1891,
+        "project_success_sections": 3,
+        "project_success_score": 6.0,
+        "api_documentation_score": 3,
+        "setup_instructions_score": 3
+      }
+    },
+    {
+      "category": "Usability",
+      "points_earned": 8.0,
+      "points_possible": 8,
+      "percentage": 100.0,
+      "details": {
+        "single_command_startup": true,
+        "has_dependency_file": true,
+        "has_examples": true
+      }
+    }
+  ],
+  "metadata": {
+    "project_directory": "/Users/lwgray/dev/time/single_agent",
+    "python_files_analyzed": 12
+  }
+}

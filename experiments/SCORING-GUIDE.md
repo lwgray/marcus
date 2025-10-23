@@ -2,7 +2,18 @@
 
 Quick guide to scoring and comparing Marcus vs Single Agent implementations.
 
-## Quick Start
+## Two Scoring Methods
+
+We have **two complementary scoring systems**:
+
+1. **Heuristic Scorer** (`score_project.py`) - Fast, objective, pattern-based
+2. **LLM Scorer** (`llm_score_project.py`) - Intelligent, qualitative, understands code
+
+**Recommendation**: Use BOTH for comprehensive evaluation.
+
+---
+
+## Quick Start: Heuristic Scoring (Fast)
 
 ### 1. Score Marcus Implementation
 
@@ -30,6 +41,178 @@ python experiments/compare_scores.py \
     --time-single 80.5 \
     --output ./comparison-report.md
 ```
+
+---
+
+## LLM-Based Scoring (Intelligent)
+
+### 1. Score Marcus Implementation with LLM
+
+```bash
+python experiments/llm_score_project.py \
+    --project-dir ./datetime-api-marcus \
+    --output-file ./marcus-llm-score.json
+```
+
+This takes 1-2 minutes as the LLM reads and evaluates all code/docs.
+
+### 2. Score Single Agent Implementation with LLM
+
+```bash
+python experiments/llm_score_project.py \
+    --project-dir ./datetime-api-single-agent \
+    --output-file ./single-llm-score.json
+```
+
+### 3. Compare LLM Results
+
+```bash
+python experiments/compare_scores.py \
+    --marcus ./marcus-llm-score.json \
+    --single ./single-llm-score.json \
+    --time-marcus 21.37 \
+    --time-single 80.5 \
+    --output ./llm-comparison-report.md
+```
+
+---
+
+## Heuristic vs LLM Scoring
+
+| Aspect | Heuristic Scorer | LLM Scorer |
+|--------|------------------|------------|
+| **Speed** | Instant (<1 sec) | 1-2 minutes |
+| **Cost** | Free | API costs (~$0.10/project) |
+| **Accuracy** | ~70-80% | ~90-95% |
+| **Understanding** | Pattern matching | Actually reads code |
+| **Reasoning** | No explanation | Detailed reasoning |
+| **Qualitative** | Metrics only | Strengths/weaknesses |
+
+### When to Use Which
+
+**Heuristic Scorer** (score_project.py):
+- Quick preliminary assessment
+- Batch scoring many projects
+- Cost-sensitive situations
+- Objective metrics only
+
+**LLM Scorer** (llm_score_project.py):
+- Final authoritative score
+- Need qualitative feedback
+- Want actionable recommendations
+- Understanding WHY score is what it is
+
+**Best Practice**: Use heuristic first for speed, then LLM for final judgment.
+
+---
+
+## What LLM Scoring Adds
+
+The LLM scorer provides **intelligence** that heuristics can't match:
+
+### 1. Actually Understands Code
+```python
+# Heuristic sees: "function with docstring" = +1 point
+# LLM sees: "Well-documented function with clear parameter
+#            descriptions and appropriate error handling"
+```
+
+### 2. Evaluates Quality, Not Just Presence
+```python
+# Heuristic: "Tests exist" = +10 points
+# LLM: "Tests are comprehensive, cover edge cases, and use
+#       good assertions" = +10 points
+#  vs: "Tests are stubs that don't test anything" = +2 points
+```
+
+### 3. Gives Actionable Feedback
+```
+Heuristic output:
+  Code Quality: 14/20 (70%)
+
+LLM output:
+  Code Quality: 14/20 (70%)
+  Reasoning: "Code is functional but has complexity issues.
+              Functions are too long (50+ lines). Error handling
+              is present but generic."
+  Weaknesses:
+    - "refactor_data() function is 87 lines, should be split"
+    - "Error messages don't provide context"
+  Recommendations:
+    - "Break long functions into smaller, focused units"
+    - "Add specific error messages with troubleshooting hints"
+```
+
+### 4. Catches What Heuristics Miss
+
+**Example 1: Documentation Quality**
+- Heuristic: Sees 90% docstring coverage = 6/6 points
+- LLM: Reads docstrings, notices they're all "TODO: document this" = 1/6 points
+
+**Example 2: Test Quality**
+- Heuristic: Sees 10 test files = 10/10 points
+- LLM: Reads tests, sees they all just "pass" = 2/10 points
+
+**Example 3: Architecture**
+- Heuristic: Sees organized directories = 8/8 points
+- LLM: Notices circular dependencies and tight coupling = 4/8 points
+
+### 5. Contextual Evaluation
+
+The LLM understands the **PROJECT CONTEXT** (DateTime API):
+
+```
+LLM Evaluation:
+"For a simple DateTime API prototype, error handling is
+ appropriate. For production, would need more robust timezone
+ handling and input validation."
+
+vs Heuristic:
+"Error handling: 2/3 points (has try/catch)"
+```
+
+---
+
+## LLM Scorer Output Example
+
+```json
+{
+  "category": "Code Quality",
+  "points_earned": 16.5,
+  "points_possible": 20,
+  "percentage": 82.5,
+  "reasoning": "Code is well-structured with good separation of
+                concerns. Models are clean, endpoints are simple,
+                and error handling is comprehensive. Complexity is
+                low (functions average 15 lines). Minor issue: some
+                docstrings lack parameter descriptions.",
+  "strengths": [
+    "Clean separation between models and controllers",
+    "Consistent error handling pattern throughout",
+    "Simple, readable functions with single responsibilities"
+  ],
+  "weaknesses": [
+    "Some docstrings missing parameter descriptions",
+    "No type hints on return values"
+  ]
+}
+```
+
+Compare to heuristic output:
+```json
+{
+  "category": "Code Quality",
+  "points_earned": 16,
+  "points_possible": 20,
+  "details": {
+    "docstring_count": 12,
+    "function_count": 15,
+    "avg_file_size": 45.3
+  }
+}
+```
+
+The LLM tells you **WHY** and **WHAT TO IMPROVE**. Heuristics just give numbers.
 
 ---
 
