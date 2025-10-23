@@ -909,16 +909,15 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                     )
 
             # Check if there are any TODO tasks remaining
-            # Only run diagnostics if tasks exist but can't be assigned
+            # Only run diagnostics for LOGGING if tasks exist but can't be assigned
+            # DO NOT send diagnostics to agents - they interpret them as reasons to stop
             todo_tasks = [t for t in state.project_tasks if t.status == TaskStatus.TODO]
 
-            diagnostic_summary = None
-
             if todo_tasks:
-                # Tasks exist but can't be assigned - run diagnostics
+                # Tasks exist but can't be assigned - run diagnostics FOR LOGGING ONLY
                 logger.warning(
                     f"No tasks assignable but {len(todo_tasks)} TODO tasks exist - "
-                    "running diagnostics"
+                    "running diagnostics for logs"
                 )
 
                 from src.core.task_diagnostics import (
@@ -932,7 +931,7 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 }
                 assigned_task_ids = {a.task_id for a in state.agent_tasks.values()}
 
-                # Run diagnostics
+                # Run diagnostics FOR LOGGING ONLY - don't send to agents
                 try:
                     diagnostic_report = await run_automatic_diagnostics(
                         project_tasks=state.project_tasks,
@@ -940,36 +939,16 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                         assigned_task_ids=assigned_task_ids,
                     )
 
-                    # Format report for logging
+                    # Format report for logging (operators can see this)
                     formatted_report = format_diagnostic_report(diagnostic_report)
-                    logger.info(f"Diagnostic Report:\n{formatted_report}")
-
-                    # Include diagnostic summary in response
-                    diagnostic_summary = {
-                        "total_tasks": diagnostic_report.total_tasks,
-                        "available_tasks": diagnostic_report.available_tasks,
-                        "blocked_tasks": diagnostic_report.blocked_tasks,
-                        "issues_found": len(diagnostic_report.issues),
-                        "top_issues": [
-                            {
-                                "type": issue.issue_type,
-                                "severity": issue.severity,
-                                "description": issue.description,
-                                "recommendation": issue.recommendation,
-                            }
-                            for issue in diagnostic_report.issues[:3]
-                        ],
-                        "recommendations": diagnostic_report.recommendations[:5],
-                    }
+                    logger.info(
+                        f"Diagnostic Report (for operators):\n{formatted_report}"
+                    )
 
                 except Exception as diag_error:
                     logger.error(
                         f"Diagnostic system error: {diag_error}", exc_info=True
                     )
-                    diagnostic_summary = {
-                        "error": "Diagnostics failed",
-                        "details": str(diag_error),
-                    }
             else:
                 # No TODO tasks remaining - all tasks are done or in progress
                 logger.info("No TODO tasks remaining - project may be complete")
@@ -983,7 +962,6 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 "No suitable tasks available at this time",
                 {
                     "reason": "no_matching_tasks",
-                    "diagnostics": diagnostic_summary,
                     "retry_after_seconds": retry_info["retry_after_seconds"],
                     **project_context,
                 },
@@ -1010,18 +988,15 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 f"{'='*70}\n"
             )
 
+            # Return ONLY the essential retry information
+            # DO NOT include diagnostics or blocking_task info - agents interpret
+            # these as reasons to stop working instead of retrying
             response = {
                 "success": False,
                 "message": instructions,
                 "retry_after_seconds": retry_seconds,
                 "retry_reason": retry_info["reason"],
             }
-
-            if retry_info.get("blocking_task"):
-                response["blocking_task"] = retry_info["blocking_task"]
-
-            if diagnostic_summary:
-                response["diagnostics"] = diagnostic_summary
 
             return response
 
