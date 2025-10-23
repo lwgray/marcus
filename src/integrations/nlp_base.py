@@ -35,6 +35,7 @@ class NaturalLanguageTaskCreator(ABC):
         kanban_client: Any,
         ai_engine: Any = None,
         subtask_manager: Any = None,
+        complexity: str = "standard",
     ) -> None:
         """
         Initialize the base task creator.
@@ -47,10 +48,13 @@ class NaturalLanguageTaskCreator(ABC):
             Optional AI engine for enhanced processing
         subtask_manager : Any, optional
             Optional SubtaskManager for registering decomposed subtasks
+        complexity : str, default="standard"
+            Project complexity level: "prototype", "standard", "enterprise"
         """
         self.kanban_client = kanban_client
         self.ai_engine = ai_engine
         self.subtask_manager = subtask_manager
+        self.complexity = complexity
         self.task_classifier = EnhancedTaskClassifier()
         self.task_builder = TaskBuilder()
         self.safety_checker = SafetyChecker()
@@ -290,8 +294,12 @@ class NaturalLanguageTaskCreator(ABC):
                 project_id=getattr(original_task, "project_id", None),
                 project_name=getattr(original_task, "project_name", None),
             )
+            # Pass complexity through project_context for time budgets and validation
+            project_context = {"complexity": self.complexity}
             decomposition_jobs.append(
-                decompose_task(task_with_real_id, self.ai_engine, project_context=None)
+                decompose_task(
+                    task_with_real_id, self.ai_engine, project_context=project_context
+                )
             )
             task_metadata.append((created_task, original_task))
 

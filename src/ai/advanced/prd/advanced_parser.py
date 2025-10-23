@@ -667,14 +667,19 @@ class AdvancedPRDParser:
             )
 
             # Get estimated hours based on task type
+            # CRITICAL: Use reality-based estimates (tasks take 4-8 minutes, not hours)
+            # Time in MINUTES based on actual agent performance
             if task_type == "design":
-                estimated_hours = 8
+                estimated_minutes = 6  # Design tasks: 4-8 minutes reality
             elif task_type == "implement":
-                estimated_hours = 16
+                estimated_minutes = 8  # Implementation tasks: 6-10 minutes reality
             elif task_type == "test":
-                estimated_hours = 8
+                estimated_minutes = 6  # Test tasks: 4-8 minutes reality
             else:
-                estimated_hours = 12
+                estimated_minutes = 7  # Generic tasks: ~7 minutes average
+
+            # Convert to hours for backward compatibility with existing system
+            estimated_hours = estimated_minutes / 60
 
         else:
             # Fallback: use old template approach if no AI requirement matches
@@ -1338,31 +1343,31 @@ explanation."""
                 project_context, task_id, original_name
             )
             task_type = "design"
-            estimated_hours = 8
+            estimated_hours = 6 / 60  # 6 minutes in hours
         elif "implement" in task_id.lower():
             name, description = self._generate_implementation_task(
                 project_context, task_id, original_name
             )
             task_type = "implementation"
-            estimated_hours = 16
+            estimated_hours = 8 / 60  # 8 minutes in hours
         elif "test" in task_id.lower():
             name, description = self._generate_testing_task(
                 project_context, task_id, original_name
             )
             task_type = "testing"
-            estimated_hours = 8
+            estimated_hours = 6 / 60  # 6 minutes in hours
         elif "setup" in task_id.lower() or "infra" in task_id.lower():
             name, description = self._generate_infrastructure_task(
                 project_context, task_id, original_name
             )
             task_type = "setup"
-            estimated_hours = 12
+            estimated_hours = 10 / 60  # 10 minutes in hours
         else:
             name, description = self._generate_generic_task(
                 project_context, task_id, original_name
             )
             task_type = "feature"
-            estimated_hours = 12
+            estimated_hours = 7 / 60  # 7 minutes in hours
 
         # Generate appropriate labels based on context and requirements
         labels = self._generate_labels(task_type, project_context, constraints)

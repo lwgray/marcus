@@ -42,9 +42,13 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
     """
 
     def __init__(
-        self, kanban_client: Any, ai_engine: Any, subtask_manager: Any = None
+        self,
+        kanban_client: Any,
+        ai_engine: Any,
+        subtask_manager: Any = None,
+        complexity: str = "standard",
     ) -> None:
-        super().__init__(kanban_client, ai_engine, subtask_manager)
+        super().__init__(kanban_client, ai_engine, subtask_manager, complexity)
         self.prd_parser = AdvancedPRDParser()
         self.board_analyzer = BoardAnalyzer()
         self.context_detector = ContextDetector(self.board_analyzer)
@@ -1049,11 +1053,15 @@ async def create_project_from_natural_language(
         # Get subtask_manager if available (GH-62 fix)
         subtask_manager = getattr(state, "subtask_manager", None)
 
-        # Initialize project creator
+        # Extract complexity from options (default to "standard")
+        complexity = options.get("complexity", "standard") if options else "standard"
+
+        # Initialize project creator with complexity
         creator = NaturalLanguageProjectCreator(
             kanban_client=state.kanban_client,
             ai_engine=state.ai_engine,
             subtask_manager=subtask_manager,
+            complexity=complexity,
         )
 
         # Create project

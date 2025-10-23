@@ -203,11 +203,11 @@ async def decompose_task(
             dep_types = [type(d).__name__ for d in deps]
             logger.info(f"  Subtask {idx}: deps={deps} (types: {dep_types})")
 
-        # Add final integration subtask automatically
-        integration_subtask = _create_integration_subtask(
-            task, decomposition.get("subtasks", [])
-        )
-        decomposition["subtasks"].append(integration_subtask)
+        # NOTE: Integration/validation subtasks have been removed
+        # They add 6-8 minutes of overhead with minimal value
+        # Validation happens naturally during implementation and testing phases
+        # See: docs/architecture/subtask-performance-strategy.md
+        pass
 
         # Validate decomposition
         if not _validate_decomposition(decomposition):
@@ -267,6 +267,9 @@ def _build_decomposition_prompt(
     # Extract task type from task name (first word: Design/Implement/Test)
     task_type = task.name.split()[0].lower() if task.name else "implement"
 
+    # Calculate total time budget in MINUTES for subtasks
+    total_minutes = task.estimated_hours * 60  # Convert hours to minutes
+
     prompt = f"""Decompose the following task into subtasks:
 
 **Task Name:** {task.name}
@@ -275,11 +278,23 @@ def _build_decomposition_prompt(
 
 **Description:** {task.description}
 
-**Estimated Hours:** {task.estimated_hours}
+**Estimated Time:** {total_minutes:.1f} minutes ({task.estimated_hours:.2f} hours)
 
 **Labels:** {', '.join(task.labels or [])}
 
 **Priority:** {task.priority.value}
+
+**CRITICAL - TIME ESTIMATION:**
+- This task should complete in approximately {total_minutes:.1f} minutes total
+- Break into 3-5 subtasks, each taking a fraction of this time
+- Use REALISTIC estimates based on AI agent performance
+  (NOT traditional software estimates)
+- Estimated time should be in HOURS (for system compatibility),
+  but think in MINUTES
+- Example: For a {total_minutes:.0f}-minute task split into 3 subtasks:
+  - Subtask 1: {(total_minutes/3)/60:.3f} hours ({total_minutes/3:.1f} minutes)
+  - Subtask 2: {(total_minutes/3)/60:.3f} hours ({total_minutes/3:.1f} minutes)
+  - Subtask 3: {(total_minutes/3)/60:.3f} hours ({total_minutes/3:.1f} minutes)
 """
 
     if project_context:
@@ -658,8 +673,8 @@ just the JSON object."""
 
 
 def _create_integration_subtask(
-    task: Task, subtasks: List[Dict[str, Any]]
-) -> Dict[str, Any]:
+    task: Task, subtasks: List[Dict[str, Any]], complexity: str = "standard"
+) -> Optional[Dict[str, Any]]:
     """
     Create a final integration subtask automatically.
 
@@ -675,12 +690,19 @@ def _create_integration_subtask(
         The parent task
     subtasks : List[Dict[str, Any]]
         Previously created subtasks
+    complexity : str, default="standard"
+        Project complexity level (prototype/standard/enterprise)
 
     Returns
     -------
-    Dict[str, Any]
-        Final integration subtask definition
+    Optional[Dict[str, Any]]
+        Final integration subtask definition, or None if skipped for prototype mode
     """
+    # Skip validation subtask in prototype mode (waste of time)
+    if complexity == "prototype":
+        logger.info(f"Skipping integration subtask for {task.name} (prototype mode)")
+        return None
+
     # Collect all file artifacts from previous subtasks
     all_artifacts = []
     for subtask in subtasks:
@@ -692,6 +714,12 @@ def _create_integration_subtask(
     all_dep_types = ["hard"] * len(all_deps)
     component_list = ", ".join([s["name"] for s in subtasks])
 
+    # Reality-based time estimates (in MINUTES)
+    if complexity == "enterprise":
+        estimated_minutes = 15  # Comprehensive validation
+    else:  # standard
+        estimated_minutes = 6  # Basic validation
+
     integration_subtask = {
         "name": f"Integrate and validate {task.name}",
         "description": (
@@ -702,8 +730,8 @@ def _create_integration_subtask(
             "4. Validate all interfaces and file outputs\n"
             f"5. Ensure project meets original requirements"
         ),
-        # 20% of total, capped at 1.5 hours
-        "estimated_hours": min(1.5, task.estimated_hours * 0.2),
+        # Convert minutes to hours for compatibility
+        "estimated_hours": estimated_minutes / 60,
         "dependencies": all_deps,
         "dependency_types": all_dep_types,
         "file_artifacts": [

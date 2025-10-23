@@ -118,8 +118,44 @@ def build_tiered_instructions(
     # Layer 1.5: Subtask Context (if this is a subtask)
     if hasattr(task, "_is_subtask") and task._is_subtask:
         parent_name = getattr(task, "_parent_task_name", "parent task")
+
+        # Calculate realistic time budget for subtask
+        # estimated_hours is already in reality-based format (minutes/60)
+        estimated_minutes = task.estimated_hours * 60
+
+        # Get complexity level (default to standard if not set)
+        complexity = getattr(task, "_complexity", "standard")
+
+        # Complexity-specific guidance
+        COMPLEXITY_GUIDANCE = {
+            "prototype": {
+                "detail_level": "Quick sketches and bullet points",
+                "docs": "Brief notes only",
+                "quality": "Good enough to start coding",
+            },
+            "standard": {
+                "detail_level": "Basic diagrams and structured docs",
+                "docs": "1-2 pages with key sections",
+                "quality": "Production-ready",
+            },
+            "enterprise": {
+                "detail_level": "Comprehensive diagrams and detailed docs",
+                "docs": "Complete documentation with examples",
+                "quality": "Enterprise-grade with reviews",
+            },
+        }
+
+        guidance = COMPLEXITY_GUIDANCE.get(complexity, COMPLEXITY_GUIDANCE["standard"])
+
         instructions_parts.append(
-            f"\n\n📋 SUBTASK CONTEXT:\n"
+            f"\n\n⏱️ TIME BUDGET: {estimated_minutes:.0f} MINUTES\n"
+            f"Complexity Mode: {complexity.upper()}\n\n"
+            f"This is a SUBTASK - complete it in ~{estimated_minutes:.0f} minutes.\n\n"
+            f"{complexity.upper()} MODE EXPECTATIONS:\n"
+            f"- Detail Level: {guidance['detail_level']}\n"
+            f"- Documentation: {guidance['docs']}\n"
+            f"- Quality Bar: {guidance['quality']}\n\n"
+            f"📋 SUBTASK CONTEXT:\n"
             f"This is a SUBTASK of the larger task: '{parent_name}'\n\n"
             f"FOCUS ONLY on completing this specific subtask:\n"
             f"  Task: {task.name}\n"
