@@ -1258,8 +1258,12 @@ async def report_task_progress(
             {"acknowledged": True, **project_context},
         )
 
-        # Update system state
-        await state.refresh_project_state()
+        # DON'T refresh after task updates - causes race condition with Kanban
+        # Parent task completion updates Kanban asynchronously, refresh may
+        # fetch stale data and overwrite in-memory DONE status, causing tasks
+        # to revert to TODO. Let refresh happen on next request_next_task
+        # instead. NOTE: This may affect PROJECT_SUCCESS task visibility -
+        # monitor for that
 
         return {"success": True, "message": "Progress updated successfully"}
 
