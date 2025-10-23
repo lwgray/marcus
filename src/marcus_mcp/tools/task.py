@@ -126,22 +126,22 @@ def build_tiered_instructions(
         # Get complexity level (default to standard if not set)
         complexity = getattr(task, "_complexity", "standard")
 
-        # Complexity-specific guidance
+        # Complexity-specific guidance (generic for all task types)
         COMPLEXITY_GUIDANCE = {
             "prototype": {
-                "detail_level": "Quick sketches and bullet points",
-                "docs": "Brief notes only",
-                "quality": "Good enough to start coding",
+                "scope": "Minimal - core functionality only",
+                "quality": "Works for the happy path",
+                "effort": "Quick implementation",
             },
             "standard": {
-                "detail_level": "Basic diagrams and structured docs",
-                "docs": "1-2 pages with key sections",
-                "quality": "Production-ready",
+                "scope": "Complete - production-ready",
+                "quality": "Handles errors, maintainable",
+                "effort": "Thorough implementation",
             },
             "enterprise": {
-                "detail_level": "Comprehensive diagrams and detailed docs",
-                "docs": "Complete documentation with examples",
-                "quality": "Enterprise-grade with reviews",
+                "scope": "Comprehensive - all edge cases",
+                "quality": "Production-grade, extensively validated",
+                "effort": "Complete with reviews",
             },
         }
 
@@ -152,9 +152,9 @@ def build_tiered_instructions(
             f"Complexity Mode: {complexity.upper()}\n\n"
             f"This is a SUBTASK - complete it in ~{estimated_minutes:.0f} minutes.\n\n"
             f"{complexity.upper()} MODE EXPECTATIONS:\n"
-            f"- Detail Level: {guidance['detail_level']}\n"
-            f"- Documentation: {guidance['docs']}\n"
-            f"- Quality Bar: {guidance['quality']}\n\n"
+            f"- Scope: {guidance['scope']}\n"
+            f"- Quality: {guidance['quality']}\n"
+            f"- Effort: {guidance['effort']}\n\n"
             f"📋 SUBTASK CONTEXT:\n"
             f"This is a SUBTASK of the larger task: '{parent_name}'\n\n"
             f"FOCUS ONLY on completing this specific subtask:\n"
