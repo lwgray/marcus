@@ -108,8 +108,7 @@ async def decompose_task(
     - Sequential or independent subtasks
     - Clear dependencies
     - File artifacts and interfaces
-    - Shared conventions
-    - Final integration subtask
+    - Shared conventions for natural integration
 
     Parameters
     ----------
@@ -325,9 +324,9 @@ When breaking down this task, follow these principles to maximize parallelism:
 3. **Component Boundaries**: Separate concerns cleanly
    - Database models vs API logic vs UI components
    - Each subtask focuses on one component with clear interface
-   - Integration happens in final subtask
+   - Components integrate naturally through shared interfaces
 
-4. **Shared Conventions**: Define upfront to avoid integration issues
+4. **Shared Conventions**: Define upfront to ensure compatibility
    - Standard response formats, error handling patterns
    - Naming conventions, file structure
    - This enables parallel work without conflicts
@@ -393,9 +392,11 @@ They all use the RESEARCH FINDINGS as their input and can be drafted in parallel
 Research (gather requirements/best practices)
   ↓
 [API Spec + Data Schema + Error Handling + Architecture] ← ALL IN PARALLEL
-  ↓
-Integration (validate designs work together)
 ```
+
+Design artifacts should be compatible by following shared conventions defined
+during research. There's NO separate integration subtask - components integrate
+naturally through adherence to the design specifications.
 
 **NOT this (artificial sequential chain):**
 ```
@@ -461,7 +462,7 @@ For each subtask, specify:
    (use 0-based indexing)
 5. **dependency_types**: REQUIRED - For each dependency, specify type:
    - "hard": Must wait for subtask to complete before starting (blocks execution)
-   - "soft": Can start using Design specs as contract, integrate at final step
+   - "soft": Can start using Design specs as contract, connect later naturally
    MUST have same length as dependencies array. Empty array if no dependencies.
    Prefer "soft" when Design phase provided clear specifications/contracts.
 6. **file_artifacts**: List of files this subtask will create/modify
@@ -479,8 +480,9 @@ Also define **shared_conventions** that all subtasks must follow:
 - Use independent subtasks only if truly parallelizable
 - Keep each subtask focused on one component/file
 - Ensure clear interfaces between subtasks
-- DO NOT create more than 5 subtasks (excluding final integration)
+- DO NOT create more than 5 subtasks total
 - Each subtask should be testable independently
+- NO integration/validation subtasks - components integrate naturally
 """
 
     # Add type-specific example
@@ -677,77 +679,10 @@ just the JSON object."""
     return base_prompt
 
 
-def _create_integration_subtask(
-    task: Task, subtasks: List[Dict[str, Any]], complexity: str = "standard"
-) -> Optional[Dict[str, Any]]:
-    """
-    Create a final integration subtask automatically.
-
-    This subtask:
-    - Integrates all components
-    - Creates consolidated documentation
-    - Runs integration tests
-    - Validates all file outputs
-
-    Parameters
-    ----------
-    task : Task
-        The parent task
-    subtasks : List[Dict[str, Any]]
-        Previously created subtasks
-    complexity : str, default="standard"
-        Project complexity level (prototype/standard/enterprise)
-
-    Returns
-    -------
-    Optional[Dict[str, Any]]
-        Final integration subtask definition, or None if skipped for prototype mode
-    """
-    # Skip validation subtask in prototype mode (waste of time)
-    if complexity == "prototype":
-        logger.info(f"Skipping integration subtask for {task.name} (prototype mode)")
-        return None
-
-    # Collect all file artifacts from previous subtasks
-    all_artifacts = []
-    for subtask in subtasks:
-        all_artifacts.extend(subtask.get("file_artifacts", []))
-
-    # Dependencies: all previous subtasks
-    all_deps = list(range(len(subtasks)))
-    # All dependencies for integration are hard (must complete before integration)
-    all_dep_types = ["hard"] * len(all_deps)
-    component_list = ", ".join([s["name"] for s in subtasks])
-
-    # Reality-based time estimates (in MINUTES)
-    if complexity == "enterprise":
-        estimated_minutes = 15  # Comprehensive validation
-    else:  # standard
-        estimated_minutes = 6  # Basic validation
-
-    integration_subtask = {
-        "name": f"Integrate and validate {task.name}",
-        "description": (
-            f"Final integration step for {task.name}:\n"
-            "1. Verify all components work together\n"
-            "2. Run integration tests across all files\n"
-            "3. Create consolidated documentation\n"
-            "4. Validate all interfaces and file outputs\n"
-            f"5. Ensure project meets original requirements"
-        ),
-        # Convert minutes to hours for compatibility
-        "estimated_hours": estimated_minutes / 60,
-        "dependencies": all_deps,
-        "dependency_types": all_dep_types,
-        "file_artifacts": [
-            "docs/integration_report.md",
-            "tests/integration/test_integration.py",
-        ],
-        "provides": "Fully integrated and validated solution",
-        "requires": f"All components: {component_list}",
-    }
-
-    return integration_subtask
+# REMOVED: _create_integration_subtask function
+# Integration subtasks have been eliminated to reduce overhead.
+# See: docs/architecture/subtask-performance-strategy.md
+# Components integrate naturally through shared conventions and interfaces.
 
 
 def _validate_decomposition(decomposition: Dict[str, Any]) -> bool:
