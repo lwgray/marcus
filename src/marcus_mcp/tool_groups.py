@@ -50,6 +50,10 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "create_project",  # NLP project creation for autonomous agents
         # Scheduling
         "get_optimal_agent_count",  # Calculate optimal agent count using CPM
+        # Experiment tracking
+        "start_experiment",
+        "end_experiment",
+        "get_experiment_status",
     },
     "analytics": {
         # All tools for comprehensive analytics (Seneca)
