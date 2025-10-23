@@ -15,11 +15,12 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 # Add Marcus src to path
-SCRIPT_DIR = Path(__file__).parent
+SCRIPT_DIR = Path(__file__).resolve().parent
 MARCUS_ROOT = SCRIPT_DIR.parent
-sys.path.insert(0, str(MARCUS_ROOT))
+if str(MARCUS_ROOT) not in sys.path:
+    sys.path.insert(0, str(MARCUS_ROOT))
 
-from src.ai.llm_abstraction import LLMAbstraction
+from src.ai.providers.llm_abstraction import LLMAbstraction
 
 
 @dataclass
