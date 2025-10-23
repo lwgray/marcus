@@ -9,9 +9,15 @@ and qualitative feedback.
 
 import argparse
 import json
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, List
+
+# Add Marcus src to path
+SCRIPT_DIR = Path(__file__).parent
+MARCUS_ROOT = SCRIPT_DIR.parent
+sys.path.insert(0, str(MARCUS_ROOT))
 
 from src.ai.llm_abstraction import LLMAbstraction
 
@@ -475,7 +481,9 @@ Be constructive and actionable."""
             project_name=self.project_dir.name,
             total_score=total_earned,
             total_possible=total_possible,
-            percentage=(total_earned / total_possible) * 100 if total_possible > 0 else 0,
+            percentage=(
+                (total_earned / total_possible) * 100 if total_possible > 0 else 0
+            ),
             categories=categories,
             overall_assessment=assessment,
             recommendations=recommendations,
@@ -520,7 +528,9 @@ Be constructive and actionable."""
 
         for path, content in sorted(self.code_files.items()):
             if total_lines >= max_lines:
-                lines.append(f"\n... ({len(self.code_files) - len(lines)} more files) ...")
+                lines.append(
+                    f"\n... ({len(self.code_files) - len(lines)} more files) ..."
+                )
                 break
 
             lines.append(f"\n=== {path} ===")
@@ -544,7 +554,9 @@ Be constructive and actionable."""
 
         for path, content in sorted(self.doc_files.items()):
             if total_lines >= max_lines:
-                lines.append(f"\n... ({len(self.doc_files) - len(lines)} more files) ...")
+                lines.append(
+                    f"\n... ({len(self.doc_files) - len(lines)} more files) ..."
+                )
                 break
 
             lines.append(f"\n=== {path} ===")
