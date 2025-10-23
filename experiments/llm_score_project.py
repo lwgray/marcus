@@ -12,7 +12,7 @@ import json
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Dict, List
 
 # Add Marcus src to path
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -20,7 +20,43 @@ MARCUS_ROOT = SCRIPT_DIR.parent
 if str(MARCUS_ROOT) not in sys.path:
     sys.path.insert(0, str(MARCUS_ROOT))
 
-from src.ai.providers.llm_abstraction import LLMAbstraction
+from src.ai.providers.llm_abstraction import LLMAbstraction  # noqa: E402
+
+
+class LLMContext:
+    """Simple context for LLM calls."""
+
+    def __init__(self, max_tokens: int = 4000):
+        self.max_tokens = max_tokens
+
+
+def extract_json_from_response(response: str) -> str:
+    r"""
+    Extract JSON from LLM response with markdown or extra text.
+
+    Handles responses like:
+    - ```json\n{...}\n```
+    - Some text before\n{...}\nSome text after
+    - Plain {...}
+    """
+    # Remove markdown code blocks
+    if "```json" in response:
+        start = response.find("```json") + 7
+        end = response.find("```", start)
+        response = response[start:end].strip()
+    elif "```" in response:
+        start = response.find("```") + 3
+        end = response.find("```", start)
+        response = response[start:end].strip()
+
+    # Find first { and last }
+    first_brace = response.find("{")
+    last_brace = response.rfind("}")
+
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        response = response[first_brace : last_brace + 1]
+
+    return response.strip()
 
 
 @dataclass
@@ -96,7 +132,7 @@ class LLMProjectScorer:
                 try:
                     relative_path = f.relative_to(self.project_dir)
                     files[str(relative_path)] = f.read_text()
-                except Exception:
+                except Exception:  # nosec B112
                     continue
 
         return files
@@ -110,7 +146,7 @@ class LLMProjectScorer:
         LLMCategoryScore
             Functionality score with reasoning
         """
-        prompt = f"""You are evaluating a DateTime API project's FUNCTIONALITY (25 points).
+        prompt = f"""You are evaluating a DateTime API project's FUNCTIONALITY (25 points).  # noqa: E501
 
 PROJECT FILES:
 {self._format_files_summary()}
@@ -144,8 +180,8 @@ Respond in JSON format:
 
 Be objective and specific. Reference actual code/files in your reasoning."""
 
-        response = await self.llm.chat(prompt)
-        result = json.loads(response)
+        response = await self.llm.analyze(prompt, LLMContext())
+        result = json.loads(extract_json_from_response(response))
 
         return LLMCategoryScore(
             category="Functionality",
@@ -159,7 +195,7 @@ Be objective and specific. Reference actual code/files in your reasoning."""
 
     async def score_code_quality(self) -> LLMCategoryScore:
         """Score Category 2: Code Quality using LLM."""
-        prompt = f"""You are evaluating a DateTime API project's CODE QUALITY (20 points).
+        prompt = f"""You are evaluating a DateTime API project's CODE QUALITY (20 points).  # noqa: E501
 
 CODE FILES:
 {self._format_code_files(max_lines=1000)}
@@ -190,8 +226,8 @@ Respond in JSON format:
 
 Be critical but fair. Reference specific code examples."""
 
-        response = await self.llm.chat(prompt)
-        result = json.loads(response)
+        response = await self.llm.analyze(prompt, LLMContext())
+        result = json.loads(extract_json_from_response(response))
 
         return LLMCategoryScore(
             category="Code Quality",
@@ -205,7 +241,7 @@ Be critical but fair. Reference specific code examples."""
 
     async def score_completeness(self) -> LLMCategoryScore:
         """Score Category 3: Completeness using LLM."""
-        prompt = f"""You are evaluating a DateTime API project's COMPLETENESS (20 points).
+        prompt = f"""You are evaluating a DateTime API project's COMPLETENESS (20 points).  # noqa: E501
 
 REQUIRED DELIVERABLES:
 - API specification document
@@ -243,8 +279,8 @@ Respond in JSON format:
 
 List specific missing items if any."""
 
-        response = await self.llm.chat(prompt)
-        result = json.loads(response)
+        response = await self.llm.analyze(prompt, LLMContext())
+        result = json.loads(extract_json_from_response(response))
 
         return LLMCategoryScore(
             category="Completeness",
@@ -291,8 +327,8 @@ Respond in JSON format:
 
 Compare to industry best practices."""
 
-        response = await self.llm.chat(prompt)
-        result = json.loads(response)
+        response = await self.llm.analyze(prompt, LLMContext())
+        result = json.loads(extract_json_from_response(response))
 
         return LLMCategoryScore(
             category="Project Structure",
@@ -310,7 +346,7 @@ Compare to industry best practices."""
             [f"=== {path} ===\n{content}" for path, content in self.doc_files.items()]
         )
 
-        prompt = f"""You are evaluating a DateTime API project's DOCUMENTATION (12 points).
+        prompt = f"""You are evaluating a DateTime API project's DOCUMENTATION (12 points).  # noqa: E501
 
 DOCUMENTATION FILES:
 {docs_content if docs_content else "No documentation files found."}
@@ -342,8 +378,8 @@ Respond in JSON format:
 
 Judge: could a new developer use this documentation successfully?"""
 
-        response = await self.llm.chat(prompt)
-        result = json.loads(response)
+        response = await self.llm.analyze(prompt, LLMContext())
+        result = json.loads(extract_json_from_response(response))
 
         return LLMCategoryScore(
             category="Documentation",
@@ -391,8 +427,8 @@ Respond in JSON format:
 
 Focus on developer experience."""
 
-        response = await self.llm.chat(prompt)
-        result = json.loads(response)
+        response = await self.llm.analyze(prompt, LLMContext())
+        result = json.loads(extract_json_from_response(response))
 
         return LLMCategoryScore(
             category="Usability",
@@ -446,8 +482,8 @@ Respond in JSON format:
 
 Be constructive and actionable."""
 
-        response = await self.llm.chat(prompt)
-        result = json.loads(response)
+        response = await self.llm.analyze(prompt, LLMContext())
+        result = json.loads(extract_json_from_response(response))
 
         return result["overall_assessment"], result["recommendations"]
 
@@ -524,7 +560,7 @@ Be constructive and actionable."""
 
     def _format_code_files(self, max_lines: int = 500) -> str:
         """Format code files with line limit."""
-        lines = []
+        lines: List[str] = []
         total_lines = 0
 
         for path, content in sorted(self.code_files.items()):
@@ -550,7 +586,7 @@ Be constructive and actionable."""
 
     def _format_doc_files(self, max_lines: int = 200) -> str:
         """Format documentation files with line limit."""
-        lines = []
+        lines: List[str] = []
         total_lines = 0
 
         for path, content in sorted(self.doc_files.items()):
@@ -606,7 +642,7 @@ async def main() -> int:
 
     # Print summary
     print(f"\n{'='*70}")
-    print(f"LLM-Based Scoring Results")
+    print("LLM-Based Scoring Results")
     print(f"Project: {result.project_name}")
     print(
         f"Total Score: {result.total_score:.1f}/{result.total_possible} "
