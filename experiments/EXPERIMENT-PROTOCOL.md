@@ -14,6 +14,15 @@ Compare single coding agent vs Marcus multi-agent system for prototype project c
 4. ☐ Timer ready
 5. ☐ Tracking sheet printed/opened
 
+### Important: No Time Budgets
+**Time budgets have been removed from the single-agent prompt for fairness.**
+
+Why?
+- Time budgets are a Marcus-specific feature (learned from historical data)
+- Single agents don't normally receive time guidance
+- Providing them would give unfair advantage
+- This tests natural pace vs Marcus's optimized pace
+
 ---
 
 ## Experiment Execution Steps

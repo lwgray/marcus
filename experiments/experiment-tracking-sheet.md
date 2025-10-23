@@ -29,34 +29,36 @@ Compare single coding agent performance vs Marcus multi-agent system for prototy
 
 ## Subtask Completion Tracking
 
-| Task | Subtask | Estimated | Actual | Status | Notes |
-|------|---------|-----------|--------|--------|-------|
-| 1 | 1.1 Research date best practices | 2 min | ___ | ☐ | |
-| 1 | 1.2 Define date API spec | 2 min | ___ | ☐ | |
-| 1 | 1.3 Design error handling | 2 min | ___ | ☐ | |
-| 2 | 2.1 Implement date model | 2 min | ___ | ☐ | |
-| 2 | 2.2 Implement date endpoint | 3 min | ___ | ☐ | |
-| 2 | 2.3 Add error handling | 2 min | ___ | ☐ | |
-| 2 | 2.4 Document endpoint | 2 min | ___ | ☐ | |
-| 3 | 3.1 Write unit tests (date) | 2 min | ___ | ☐ | |
-| 3 | 3.2 Write integration tests (date) | 2 min | ___ | ☐ | |
-| 3 | 3.3 Write E2E tests (date) | 2 min | ___ | ☐ | |
-| 4 | 4.1 Research time API patterns | 2 min | ___ | ☐ | |
-| 4 | 4.2 Design time endpoint spec | 2 min | ___ | ☐ | |
-| 4 | 4.3 Design time model | 2 min | ___ | ☐ | |
-| 4 | 4.4 Document time error handling | 2 min | ___ | ☐ | |
-| 5 | 5.1 Implement time model | 2 min | ___ | ☐ | |
-| 5 | 5.2 Build time endpoint | 3 min | ___ | ☐ | |
-| 5 | 5.3 Add error handling (time) | 2 min | ___ | ☐ | |
-| 5 | 5.4 Document time endpoint | 2 min | ___ | ☐ | |
-| 6 | 6.1 Write unit tests (time) | 2 min | ___ | ☐ | |
-| 6 | 6.2 Write integration tests (time) | 2 min | ___ | ☐ | |
-| 6 | 6.3 Create test fixtures | 2 min | ___ | ☐ | |
-| 6 | 6.4 Write performance tests | 3 min | ___ | ☐ | |
-| 6 | 6.5 Document test plan | 2 min | ___ | ☐ | |
+**Note**: No time budgets provided to single agent (for fair comparison - time budgets are a Marcus feature)
 
-**Total Estimated**: ~47 minutes (sequential)
-**Marcus Actual**: 21 minutes (parallel)
+| Task | Subtask | Actual Time | Status | Notes |
+|------|---------|-------------|--------|-------|
+| 1 | 1.1 Research date best practices | ___ | ☐ | |
+| 1 | 1.2 Define date API spec | ___ | ☐ | |
+| 1 | 1.3 Design error handling | ___ | ☐ | |
+| 2 | 2.1 Implement date model | ___ | ☐ | |
+| 2 | 2.2 Implement date endpoint | ___ | ☐ | |
+| 2 | 2.3 Add error handling | ___ | ☐ | |
+| 2 | 2.4 Document endpoint | ___ | ☐ | |
+| 3 | 3.1 Write unit tests (date) | ___ | ☐ | |
+| 3 | 3.2 Write integration tests (date) | ___ | ☐ | |
+| 3 | 3.3 Write E2E tests (date) | ___ | ☐ | |
+| 4 | 4.1 Research time API patterns | ___ | ☐ | |
+| 4 | 4.2 Design time endpoint spec | ___ | ☐ | |
+| 4 | 4.3 Design time model | ___ | ☐ | |
+| 4 | 4.4 Document time error handling | ___ | ☐ | |
+| 5 | 5.1 Implement time model | ___ | ☐ | |
+| 5 | 5.2 Build time endpoint | ___ | ☐ | |
+| 5 | 5.3 Add error handling (time) | ___ | ☐ | |
+| 5 | 5.4 Document time endpoint | ___ | ☐ | |
+| 6 | 6.1 Write unit tests (time) | ___ | ☐ | |
+| 6 | 6.2 Write integration tests (time) | ___ | ☐ | |
+| 6 | 6.3 Create test fixtures | ___ | ☐ | |
+| 6 | 6.4 Write performance tests | ___ | ☐ | |
+| 6 | 6.5 Document test plan | ___ | ☐ | |
+
+**Marcus Actual**: 21 minutes (parallel), median 2.98 min/subtask
+**Single Agent**: ___ minutes (sequential), ___ avg/subtask
 
 ---
 

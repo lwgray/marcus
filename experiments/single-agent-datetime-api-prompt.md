@@ -24,7 +24,6 @@ Build a REST API with two endpoints:
 ## Task 1: Design Current Date Endpoint (3 subtasks)
 
 ### Subtask 1.1: Research current date representation best practices
-**Time Budget: ~2 minutes**
 
 Research and document:
 - Common date formats and ISO-8601 standard
@@ -39,7 +38,6 @@ Research and document:
 ---
 
 ### Subtask 1.2: Define current date API specification
-**Time Budget: ~2 minutes**
 
 Create a complete API specification document including:
 - Endpoint URL (e.g., GET /api/date)
@@ -57,7 +55,6 @@ Create a complete API specification document including:
 ---
 
 ### Subtask 1.3: Design error handling strategy
-**Time Budget: ~2 minutes**
 
 Document error handling approach:
 - What errors can occur (system clock unavailable, formatting errors, etc.)
@@ -75,7 +72,6 @@ Document error handling approach:
 ## Task 2: Implement Current Date Endpoint (4 subtasks)
 
 ### Subtask 2.1: Implement current date model
-**Time Budget: ~2 minutes**
 
 Create a data model for the current date response:
 - Create `src/models/current_date.py`
@@ -91,7 +87,6 @@ Create a data model for the current date response:
 ---
 
 ### Subtask 2.2: Implement current date API endpoint
-**Time Budget: ~3 minutes**
 
 Implement the actual endpoint:
 - Create `src/api/date.py` (or appropriate file for your framework)
@@ -107,7 +102,6 @@ Implement the actual endpoint:
 ---
 
 ### Subtask 2.3: Implement error handling for current date endpoint
-**Time Budget: ~2 minutes**
 
 Add comprehensive error handling:
 - Add try-catch blocks for system clock access
@@ -123,7 +117,6 @@ Add comprehensive error handling:
 ---
 
 ### Subtask 2.4: Document current date endpoint
-**Time Budget: ~2 minutes**
 
 Create complete endpoint documentation:
 - Create `docs/api/date_endpoint_usage.md`
@@ -141,7 +134,6 @@ Create complete endpoint documentation:
 ## Task 3: Test Current Date Endpoint (3 subtasks)
 
 ### Subtask 3.1: Write unit tests for date formatting logic
-**Time Budget: ~2 minutes**
 
 Create unit tests:
 - Create `tests/unit/test_date_formatting.py`
@@ -157,7 +149,6 @@ Create unit tests:
 ---
 
 ### Subtask 3.2: Implement integration tests for current date endpoint
-**Time Budget: ~2 minutes**
 
 Create integration tests:
 - Create `tests/integration/test_date_endpoint.py`
@@ -173,7 +164,6 @@ Create integration tests:
 ---
 
 ### Subtask 3.3: Create end-to-end tests for current date endpoint
-**Time Budget: ~2 minutes**
 
 Create E2E tests:
 - Create `tests/e2e/test_date_endpoint_e2e.py`
@@ -191,7 +181,6 @@ Create E2E tests:
 ## Task 4: Design Current Time Endpoint (4 subtasks)
 
 ### Subtask 4.1: Research current time API patterns
-**Time Budget: ~2 minutes**
 
 Research and document:
 - Time format standards (HH:MM:SS)
@@ -206,7 +195,6 @@ Research and document:
 ---
 
 ### Subtask 4.2: Design current time API endpoint specification
-**Time Budget: ~2 minutes**
 
 Create complete API spec:
 - Endpoint URL (e.g., GET /api/time)
@@ -222,7 +210,6 @@ Create complete API spec:
 ---
 
 ### Subtask 4.3: Design data model for current time response
-**Time Budget: ~2 minutes**
 
 Design the time response model:
 - Document time field structure
@@ -238,7 +225,6 @@ Design the time response model:
 ---
 
 ### Subtask 4.4: Document error handling for current time API
-**Time Budget: ~2 minutes**
 
 Document error handling:
 - Possible error scenarios
@@ -256,7 +242,6 @@ Document error handling:
 ## Task 5: Implement Current Time Endpoint (4 subtasks)
 
 ### Subtask 5.1: Implement current time model
-**Time Budget: ~2 minutes**
 
 Create time response model:
 - Create `src/models/current_time.py`
@@ -272,7 +257,6 @@ Create time response model:
 ---
 
 ### Subtask 5.2: Build current time endpoint
-**Time Budget: ~3 minutes**
 
 Implement the endpoint:
 - Create `src/api/time.py`
@@ -288,7 +272,6 @@ Implement the endpoint:
 ---
 
 ### Subtask 5.3: Add error handling to time endpoint
-**Time Budget: ~2 minutes**
 
 Implement error handling:
 - Add try-catch for system time access
@@ -304,7 +287,6 @@ Implement error handling:
 ---
 
 ### Subtask 5.4: Document current time endpoint
-**Time Budget: ~2 minutes**
 
 Create usage documentation:
 - Create `docs/api/time_endpoint_usage.md`
@@ -322,7 +304,6 @@ Create usage documentation:
 ## Task 6: Test Current Time Endpoint (5 subtasks)
 
 ### Subtask 6.1: Write unit tests for current time API logic
-**Time Budget: ~2 minutes**
 
 Create unit tests:
 - Create `tests/unit/test_time_formatting.py`
@@ -338,7 +319,6 @@ Create unit tests:
 ---
 
 ### Subtask 6.2: Implement integration tests for current time API endpoint
-**Time Budget: ~2 minutes**
 
 Create integration tests:
 - Create `tests/integration/test_time_endpoint.py`
@@ -354,7 +334,6 @@ Create integration tests:
 ---
 
 ### Subtask 6.3: Create test fixtures and mock data for current time API
-**Time Budget: ~2 minutes**
 
 Create test infrastructure:
 - Create `tests/fixtures/time_fixtures.py`
@@ -370,7 +349,6 @@ Create test infrastructure:
 ---
 
 ### Subtask 6.4: Write performance tests for current time API
-**Time Budget: ~3 minutes**
 
 Create performance tests:
 - Create `tests/performance/test_time_performance.py`
@@ -386,7 +364,6 @@ Create performance tests:
 ---
 
 ### Subtask 6.5: Document test plan for current time API
-**Time Budget: ~2 minutes**
 
 Create test plan documentation:
 - Create `docs/testing/time_endpoint_test_plan.md`
