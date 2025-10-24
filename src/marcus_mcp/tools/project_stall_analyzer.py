@@ -69,6 +69,16 @@ class ProjectStallSnapshot:
         Primary reason for the stall
     recommendations : List[str]
         Actionable recommendations to resolve the stall
+    zombie_tasks : List[Dict[str, Any]]
+        Tasks marked IN_PROGRESS with no agent assigned
+    redundant_dependencies : List[Dict[str, Any]]
+        Dependencies that are already reachable transitively
+    state_inconsistencies : List[Dict[str, Any]]
+        Tasks with inconsistent state (e.g., DONE with incomplete deps)
+    circular_dependencies : List[List[str]]
+        Circular dependency cycles detected
+    bottlenecks : List[Dict[str, Any]]
+        Tasks blocking multiple other tasks
     """
 
     timestamp: str
@@ -81,6 +91,11 @@ class ProjectStallSnapshot:
     early_completions: List[Dict[str, Any]]
     stall_reason: str
     recommendations: List[str]
+    zombie_tasks: List[Dict[str, Any]]
+    redundant_dependencies: List[Dict[str, Any]]
+    state_inconsistencies: List[Dict[str, Any]]
+    circular_dependencies: List[List[str]]
+    bottlenecks: List[Dict[str, Any]]
 
 
 class ConversationReplayAnalyzer:
@@ -564,6 +579,15 @@ async def capture_project_stall_snapshot(
         project_id = active_project.id if active_project else None
         project_name = active_project.name if active_project else None
 
+        # Collect detailed diagnostics by category
+        zombies = dependency_analyzer.find_zombie_tasks(assigned_task_ids)
+        redundant = dependency_analyzer.find_transitive_dependencies()
+        inconsistencies = dependency_analyzer.find_state_inconsistencies(
+            completed_task_ids
+        )
+        cycles = dependency_analyzer.find_circular_dependencies()
+        bottlenecks = dependency_analyzer.find_bottlenecks()
+
         # Create snapshot
         snapshot = ProjectStallSnapshot(
             timestamp=datetime.now().isoformat(),
@@ -609,6 +633,11 @@ async def capture_project_stall_snapshot(
             early_completions=early_completions,
             stall_reason=stall_reason,
             recommendations=recommendations,
+            zombie_tasks=zombies,
+            redundant_dependencies=redundant,
+            state_inconsistencies=inconsistencies,
+            circular_dependencies=cycles,
+            bottlenecks=bottlenecks,
         )
 
         # Save snapshot to file
@@ -634,6 +663,11 @@ async def capture_project_stall_snapshot(
                 "early_completions": len(early_completions),
                 "conversation_events": len(conversation_history),
                 "recommendations_count": len(recommendations),
+                "zombie_tasks": len(zombies),
+                "redundant_dependencies": len(redundant),
+                "state_inconsistencies": len(inconsistencies),
+                "circular_dependencies": len(cycles),
+                "bottlenecks": len(bottlenecks),
             },
         }
 

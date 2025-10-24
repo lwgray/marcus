@@ -360,5 +360,20 @@ class TestCaptureStallSnapshot:
         assert "dependency_locks" in summary
         assert "early_completions" in summary
 
+        # Check new diagnostic fields in summary
+        assert "zombie_tasks" in summary
+        assert "redundant_dependencies" in summary
+        assert "state_inconsistencies" in summary
+        assert "circular_dependencies" in summary
+        assert "bottlenecks" in summary
+
         # Should detect early completion of "Project Success"
         assert summary["early_completions"] >= 1
+
+        # Check snapshot has diagnostic data
+        snapshot = result["snapshot"]
+        assert "zombie_tasks" in snapshot
+        assert "redundant_dependencies" in snapshot
+        assert "state_inconsistencies" in snapshot
+        assert "circular_dependencies" in snapshot
+        assert "bottlenecks" in snapshot
