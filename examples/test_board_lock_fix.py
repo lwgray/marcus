@@ -143,7 +143,7 @@ async def test_task_completion_loop(
             continue
 
         # Task assigned!
-        task_id = task_data.get("task_id")
+        task_id = task_data.get("task_id") or task_data.get("task", {}).get("id")
         task_title = task_data.get("task", {}).get("name", "Unknown")
         print(f"✅ Task assigned: {task_id}")
         print(f"   Title: {task_title}")
