@@ -84,8 +84,13 @@ class AdvancedPRDParser:
     dependencies and risk assessment.
     """
 
-    def __init__(self, hybrid_config: Optional[HybridInferenceConfig] = None):
+    def __init__(
+        self,
+        hybrid_config: Optional[HybridInferenceConfig] = None,
+        memory: Optional[Any] = None,
+    ):
         self.llm_client = LLMAbstraction()
+        self.memory = memory  # Store memory system for learning durations
 
         # Set up hybrid dependency inference with configurable thresholds
         ai_engine = (
@@ -124,6 +129,54 @@ class AdvancedPRDParser:
         ]
 
         logger.info("Advanced PRD parser initialized")
+
+    def _get_learned_task_duration(
+        self, task_type: str, default_minutes: float = 6.0
+    ) -> float:
+        """
+        Get median task duration from historical data.
+
+        Uses memory system to query learned median completion times.
+        Falls back to default if no historical data available.
+
+        Parameters
+        ----------
+        task_type : str
+            Task type: "design", "implement", "test", etc.
+        default_minutes : float
+            Default duration in minutes if no learned data available
+
+        Returns
+        -------
+        float
+            Estimated duration in minutes
+        """
+        try:
+            if self.memory:
+                # Query memory system for median duration
+                median_hours = self.memory.get_median_duration_by_type(task_type)
+                if median_hours is not None:
+                    # Convert hours to minutes
+                    learned_minutes: float = float(median_hours) * 60
+                    logger.info(
+                        f"Using learned duration for {task_type}: "
+                        f"{learned_minutes:.1f} minutes "
+                        f"(from {median_hours:.3f} hours)"
+                    )
+                    return learned_minutes
+                else:
+                    logger.debug(
+                        f"No learned duration for {task_type}, "
+                        f"using default: {default_minutes} minutes"
+                    )
+        except Exception as e:
+            logger.warning(
+                f"Failed to get learned duration for {task_type}: {e}. "
+                f"Using default: {default_minutes} minutes"
+            )
+
+        # Fallback to default
+        return default_minutes
 
     async def parse_prd_to_tasks(
         self, prd_content: str, constraints: ProjectConstraints
@@ -667,14 +720,27 @@ class AdvancedPRDParser:
             )
 
             # Get estimated hours based on task type
+            # CRITICAL: Use learned median from historical data
+            # Falls back to reality-based estimates (4-8 minutes)
             if task_type == "design":
-                estimated_hours = 8
+                estimated_minutes = self._get_learned_task_duration(
+                    "design", default_minutes=6.0
+                )
             elif task_type == "implement":
-                estimated_hours = 16
+                estimated_minutes = self._get_learned_task_duration(
+                    "implement", default_minutes=8.0
+                )
             elif task_type == "test":
-                estimated_hours = 8
+                estimated_minutes = self._get_learned_task_duration(
+                    "test", default_minutes=6.0
+                )
             else:
-                estimated_hours = 12
+                estimated_minutes = self._get_learned_task_duration(
+                    task_type, default_minutes=7.0
+                )
+
+            # Convert to hours for backward compatibility with existing system
+            estimated_hours = estimated_minutes / 60
 
         else:
             # Fallback: use old template approach if no AI requirement matches
@@ -1338,31 +1404,31 @@ explanation."""
                 project_context, task_id, original_name
             )
             task_type = "design"
-            estimated_hours = 8
+            estimated_hours = 6 / 60  # 6 minutes in hours
         elif "implement" in task_id.lower():
             name, description = self._generate_implementation_task(
                 project_context, task_id, original_name
             )
             task_type = "implementation"
-            estimated_hours = 16
+            estimated_hours = 8 / 60  # 8 minutes in hours
         elif "test" in task_id.lower():
             name, description = self._generate_testing_task(
                 project_context, task_id, original_name
             )
             task_type = "testing"
-            estimated_hours = 8
+            estimated_hours = 6 / 60  # 6 minutes in hours
         elif "setup" in task_id.lower() or "infra" in task_id.lower():
             name, description = self._generate_infrastructure_task(
                 project_context, task_id, original_name
             )
             task_type = "setup"
-            estimated_hours = 12
+            estimated_hours = 10 / 60  # 10 minutes in hours
         else:
             name, description = self._generate_generic_task(
                 project_context, task_id, original_name
             )
             task_type = "feature"
-            estimated_hours = 12
+            estimated_hours = 7 / 60  # 7 minutes in hours
 
         # Generate appropriate labels based on context and requirements
         labels = self._generate_labels(task_type, project_context, constraints)

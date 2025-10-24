@@ -33,10 +33,12 @@ def should_decompose(task: Task) -> bool:
     bool
         True if task should be decomposed
     """
-    # Don't decompose small tasks
-    if task.estimated_hours < 3.0:
+    # Don't decompose very small tasks (< 3 minutes)
+    # NOTE: Estimates are now reality-based (0.05-0.2 hours = 3-12 minutes)
+    if task.estimated_hours < 0.05:  # Less than 3 minutes
+        minutes = task.estimated_hours * 60
         logger.debug(
-            f"Task {task.name} too small ({task.estimated_hours}h) - no decomposition"
+            f"Task {task.name} too small ({minutes:.1f} min) - no decomposition"
         )
         return False
 
@@ -54,10 +56,13 @@ def should_decompose(task: Task) -> bool:
         logger.debug(f"Task {task.name} is deployment - no decomposition")
         return False
 
-    # Decompose if estimated time is long
-    if task.estimated_hours >= 4.0:
+    # Decompose if estimated time is substantial (> 12 minutes)
+    # With reality-based estimates, anything > 0.2 hours (12 min)
+    # benefits from splitting
+    if task.estimated_hours >= 0.2:
+        minutes = task.estimated_hours * 60
         logger.info(
-            f"Task {task.name} large ({task.estimated_hours}h) - will decompose"
+            f"Task {task.name} substantial ({minutes:.1f} min) - will decompose"
         )
         return True
 
@@ -103,8 +108,7 @@ async def decompose_task(
     - Sequential or independent subtasks
     - Clear dependencies
     - File artifacts and interfaces
-    - Shared conventions
-    - Final integration subtask
+    - Shared conventions for natural integration
 
     Parameters
     ----------
@@ -203,11 +207,11 @@ async def decompose_task(
             dep_types = [type(d).__name__ for d in deps]
             logger.info(f"  Subtask {idx}: deps={deps} (types: {dep_types})")
 
-        # Add final integration subtask automatically
-        integration_subtask = _create_integration_subtask(
-            task, decomposition.get("subtasks", [])
-        )
-        decomposition["subtasks"].append(integration_subtask)
+        # NOTE: Integration/validation subtasks have been removed
+        # They add 6-8 minutes of overhead with minimal value
+        # Validation happens naturally during implementation and testing phases
+        # See: docs/architecture/subtask-performance-strategy.md
+        pass
 
         # Validate decomposition
         if not _validate_decomposition(decomposition):
@@ -267,6 +271,9 @@ def _build_decomposition_prompt(
     # Extract task type from task name (first word: Design/Implement/Test)
     task_type = task.name.split()[0].lower() if task.name else "implement"
 
+    # Calculate total time budget in MINUTES for subtasks
+    total_minutes = task.estimated_hours * 60  # Convert hours to minutes
+
     prompt = f"""Decompose the following task into subtasks:
 
 **Task Name:** {task.name}
@@ -275,11 +282,23 @@ def _build_decomposition_prompt(
 
 **Description:** {task.description}
 
-**Estimated Hours:** {task.estimated_hours}
+**Estimated Time:** {total_minutes:.1f} minutes ({task.estimated_hours:.2f} hours)
 
 **Labels:** {', '.join(task.labels or [])}
 
 **Priority:** {task.priority.value}
+
+**CRITICAL - TIME ESTIMATION:**
+- This task should complete in approximately {total_minutes:.1f} minutes total
+- Break into 3-5 subtasks, each taking a fraction of this time
+- Use REALISTIC estimates based on AI agent performance
+  (NOT traditional software estimates)
+- Estimated time should be in HOURS (for system compatibility),
+  but think in MINUTES
+- Example: For a {total_minutes:.0f}-minute task split into 3 subtasks:
+  - Subtask 1: {(total_minutes/3)/60:.3f} hours ({total_minutes/3:.1f} minutes)
+  - Subtask 2: {(total_minutes/3)/60:.3f} hours ({total_minutes/3:.1f} minutes)
+  - Subtask 3: {(total_minutes/3)/60:.3f} hours ({total_minutes/3:.1f} minutes)
 """
 
     if project_context:
@@ -305,9 +324,9 @@ When breaking down this task, follow these principles to maximize parallelism:
 3. **Component Boundaries**: Separate concerns cleanly
    - Database models vs API logic vs UI components
    - Each subtask focuses on one component with clear interface
-   - Integration happens in final subtask
+   - Components integrate naturally through shared interfaces
 
-4. **Shared Conventions**: Define upfront to avoid integration issues
+4. **Shared Conventions**: Define upfront to ensure compatibility
    - Standard response formats, error handling patterns
    - Naming conventions, file structure
    - This enables parallel work without conflicts
@@ -373,9 +392,11 @@ They all use the RESEARCH FINDINGS as their input and can be drafted in parallel
 Research (gather requirements/best practices)
   ↓
 [API Spec + Data Schema + Error Handling + Architecture] ← ALL IN PARALLEL
-  ↓
-Integration (validate designs work together)
 ```
+
+Design artifacts should be compatible by following shared conventions defined
+during research. There's NO separate integration subtask - components integrate
+naturally through adherence to the design specifications.
 
 **NOT this (artificial sequential chain):**
 ```
@@ -441,7 +462,7 @@ For each subtask, specify:
    (use 0-based indexing)
 5. **dependency_types**: REQUIRED - For each dependency, specify type:
    - "hard": Must wait for subtask to complete before starting (blocks execution)
-   - "soft": Can start using Design specs as contract, integrate at final step
+   - "soft": Can start using Design specs as contract, connect later naturally
    MUST have same length as dependencies array. Empty array if no dependencies.
    Prefer "soft" when Design phase provided clear specifications/contracts.
 6. **file_artifacts**: List of files this subtask will create/modify
@@ -459,8 +480,9 @@ Also define **shared_conventions** that all subtasks must follow:
 - Use independent subtasks only if truly parallelizable
 - Keep each subtask focused on one component/file
 - Ensure clear interfaces between subtasks
-- DO NOT create more than 5 subtasks (excluding final integration)
+- DO NOT create more than 5 subtasks total
 - Each subtask should be testable independently
+- NO integration/validation subtasks - components integrate naturally
 """
 
     # Add type-specific example
@@ -657,64 +679,10 @@ just the JSON object."""
     return base_prompt
 
 
-def _create_integration_subtask(
-    task: Task, subtasks: List[Dict[str, Any]]
-) -> Dict[str, Any]:
-    """
-    Create a final integration subtask automatically.
-
-    This subtask:
-    - Integrates all components
-    - Creates consolidated documentation
-    - Runs integration tests
-    - Validates all file outputs
-
-    Parameters
-    ----------
-    task : Task
-        The parent task
-    subtasks : List[Dict[str, Any]]
-        Previously created subtasks
-
-    Returns
-    -------
-    Dict[str, Any]
-        Final integration subtask definition
-    """
-    # Collect all file artifacts from previous subtasks
-    all_artifacts = []
-    for subtask in subtasks:
-        all_artifacts.extend(subtask.get("file_artifacts", []))
-
-    # Dependencies: all previous subtasks
-    all_deps = list(range(len(subtasks)))
-    # All dependencies for integration are hard (must complete before integration)
-    all_dep_types = ["hard"] * len(all_deps)
-    component_list = ", ".join([s["name"] for s in subtasks])
-
-    integration_subtask = {
-        "name": f"Integrate and validate {task.name}",
-        "description": (
-            f"Final integration step for {task.name}:\n"
-            "1. Verify all components work together\n"
-            "2. Run integration tests across all files\n"
-            "3. Create consolidated documentation\n"
-            "4. Validate all interfaces and file outputs\n"
-            f"5. Ensure project meets original requirements"
-        ),
-        # 20% of total, capped at 1.5 hours
-        "estimated_hours": min(1.5, task.estimated_hours * 0.2),
-        "dependencies": all_deps,
-        "dependency_types": all_dep_types,
-        "file_artifacts": [
-            "docs/integration_report.md",
-            "tests/integration/test_integration.py",
-        ],
-        "provides": "Fully integrated and validated solution",
-        "requires": f"All components: {component_list}",
-    }
-
-    return integration_subtask
+# REMOVED: _create_integration_subtask function
+# Integration subtasks have been eliminated to reduce overhead.
+# See: docs/architecture/subtask-performance-strategy.md
+# Components integrate naturally through shared conventions and interfaces.
 
 
 def _validate_decomposition(decomposition: Dict[str, Any]) -> bool:

@@ -831,11 +831,30 @@ class MarcusServer:
 
         try:
             # Get all tasks from the board
-            # CRITICAL: Skip if subtasks already migrated to avoid losing them
-            # (get_all_tasks only returns parent tasks from Planka,
-            # not migrated subtasks)
-            if self.kanban_client is not None and not self._subtasks_migrated:
-                self.project_tasks = await self.kanban_client.get_all_tasks()
+            # CRITICAL: After subtasks are migrated, we need to update parent tasks
+            # while preserving the migrated subtasks in memory
+            if self.kanban_client is not None:
+                parent_tasks = await self.kanban_client.get_all_tasks()
+
+                if not self._subtasks_migrated:
+                    # First time: just use parent tasks directly
+                    self.project_tasks = parent_tasks
+                else:
+                    # After migration: preserve subtasks, update parents
+                    # Extract existing subtasks
+                    existing_subtasks = []
+                    if self.project_tasks:
+                        for task in self.project_tasks:
+                            if getattr(task, "is_subtask", False):
+                                existing_subtasks.append(task)
+
+                    # Combine refreshed parents with preserved subtasks
+                    self.project_tasks = parent_tasks + existing_subtasks
+
+                    logger.info(
+                        f"Refreshed {len(parent_tasks)} parent tasks, "
+                        f"preserved {len(existing_subtasks)} subtasks"
+                    )
 
             # Migrate subtasks from SubtaskManager to unified project_tasks storage
             # ONLY run migration once to avoid duplicate subtasks

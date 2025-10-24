@@ -97,11 +97,31 @@ class TaskPattern:
 
     pattern_type: str
     task_labels: List[str]
-    average_duration: float
+    recent_durations: List[float]  # Last N actual_hours (for median calculation)
     success_rate: float
     common_blockers: List[str]
     prerequisites: List[str]
     best_agents: List[str]
+    max_samples: int = 100  # Keep last 100 samples for median
+
+    @property
+    def median_duration(self) -> float:
+        """Calculate median duration from recent samples."""
+        if not self.recent_durations:
+            return 0.0
+        sorted_durations = sorted(self.recent_durations)
+        n = len(sorted_durations)
+        if n % 2 == 0:
+            return (sorted_durations[n // 2 - 1] + sorted_durations[n // 2]) / 2
+        else:
+            return sorted_durations[n // 2]
+
+    @property
+    def average_duration(self) -> float:
+        """Calculate average duration (for backward compatibility)."""
+        if not self.recent_durations:
+            return 0.0
+        return sum(self.recent_durations) / len(self.recent_durations)
 
 
 class Memory:
@@ -357,7 +377,7 @@ class Memory:
                 self.semantic["task_patterns"][pattern_key] = TaskPattern(
                     pattern_type=pattern_key,
                     task_labels=task.labels,
-                    average_duration=outcome.actual_hours,
+                    recent_durations=[outcome.actual_hours],
                     success_rate=1.0 if outcome.success else 0.0,
                     common_blockers=outcome.blockers,
                     prerequisites=[],
@@ -366,12 +386,14 @@ class Memory:
             else:
                 pattern = self.semantic["task_patterns"][pattern_key]
 
-                # Update average duration
-                pattern.average_duration = (
-                    pattern.average_duration * 0.9 + outcome.actual_hours * 0.1
-                )
+                # Append new duration and keep last max_samples
+                pattern.recent_durations.append(outcome.actual_hours)
+                if len(pattern.recent_durations) > pattern.max_samples:
+                    pattern.recent_durations = pattern.recent_durations[
+                        -pattern.max_samples :
+                    ]
 
-                # Update success rate
+                # Update success rate (exponential moving average)
                 pattern.success_rate = (
                     pattern.success_rate * 0.9 + (1.0 if outcome.success else 0.0) * 0.1
                 )
@@ -431,8 +453,8 @@ class Memory:
             if pattern_key in self.semantic["task_patterns"]:
                 pattern = self.semantic["task_patterns"][pattern_key]
 
-                # Use pattern data if more reliable
-                predictions["estimated_duration"] = pattern.average_duration
+                # Use pattern median (more robust to outliers than average)
+                predictions["estimated_duration"] = pattern.median_duration
                 if isinstance(pattern.common_blockers, list):
                     risk_factors = predictions["risk_factors"]
                     if isinstance(risk_factors, list):
@@ -513,6 +535,47 @@ class Memory:
             "confidence": confidence,
             "sample_size": len(agent_outcomes),
         }
+
+    def get_median_duration_by_type(self, task_type: str) -> Optional[float]:
+        """
+        Get median task duration for a given task type.
+
+        Parameters
+        ----------
+        task_type : str
+            Task type label (e.g., "design", "implement", "test")
+
+        Returns
+        -------
+        Optional[float]
+            Median duration in hours, or None if no data available
+
+        Examples
+        --------
+        >>> memory.get_median_duration_by_type("design")
+        0.1  # 6 minutes
+
+        Notes
+        -----
+        Uses median instead of average to be robust to outliers
+        (tasks that sat for hours waiting for user input, etc.)
+        """
+        # Try exact match first
+        if task_type in self.semantic["task_patterns"]:
+            pattern: TaskPattern = self.semantic["task_patterns"][task_type]
+            if pattern.recent_durations:
+                median: float = pattern.median_duration
+                return median
+
+        # Try patterns that contain this task type
+        for pattern_key, pattern_obj in self.semantic["task_patterns"].items():
+            pattern_typed: TaskPattern = pattern_obj
+            if task_type in pattern_key.split("_"):
+                if pattern_typed.recent_durations:
+                    median_val: float = pattern_typed.median_duration
+                    return median_val
+
+        return None
 
     async def predict_blockage_probability(
         self, agent_id: str, task: Task

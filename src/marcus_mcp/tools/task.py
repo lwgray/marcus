@@ -118,8 +118,44 @@ def build_tiered_instructions(
     # Layer 1.5: Subtask Context (if this is a subtask)
     if hasattr(task, "_is_subtask") and task._is_subtask:
         parent_name = getattr(task, "_parent_task_name", "parent task")
+
+        # Calculate realistic time budget for subtask
+        # estimated_hours is already in reality-based format (minutes/60)
+        estimated_minutes = task.estimated_hours * 60
+
+        # Get complexity level (default to standard if not set)
+        complexity = getattr(task, "_complexity", "standard")
+
+        # Complexity-specific guidance (generic for all task types)
+        COMPLEXITY_GUIDANCE = {
+            "prototype": {
+                "scope": "Minimal - core functionality only",
+                "quality": "Works for the happy path",
+                "effort": "Quick implementation",
+            },
+            "standard": {
+                "scope": "Complete - production-ready",
+                "quality": "Handles errors, maintainable",
+                "effort": "Thorough implementation",
+            },
+            "enterprise": {
+                "scope": "Comprehensive - all edge cases",
+                "quality": "Production-grade, extensively validated",
+                "effort": "Complete with reviews",
+            },
+        }
+
+        guidance = COMPLEXITY_GUIDANCE.get(complexity, COMPLEXITY_GUIDANCE["standard"])
+
         instructions_parts.append(
-            f"\n\n📋 SUBTASK CONTEXT:\n"
+            f"\n\n⏱️ TIME BUDGET: {estimated_minutes:.0f} MINUTES\n"
+            f"Complexity Mode: {complexity.upper()}\n\n"
+            f"This is a SUBTASK - complete it in ~{estimated_minutes:.0f} minutes.\n\n"
+            f"{complexity.upper()} MODE EXPECTATIONS:\n"
+            f"- Scope: {guidance['scope']}\n"
+            f"- Quality: {guidance['quality']}\n"
+            f"- Effort: {guidance['effort']}\n\n"
+            f"📋 SUBTASK CONTEXT:\n"
             f"This is a SUBTASK of the larger task: '{parent_name}'\n\n"
             f"FOCUS ONLY on completing this specific subtask:\n"
             f"  Task: {task.name}\n"
@@ -873,16 +909,15 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                     )
 
             # Check if there are any TODO tasks remaining
-            # Only run diagnostics if tasks exist but can't be assigned
+            # Only run diagnostics for LOGGING if tasks exist but can't be assigned
+            # DO NOT send diagnostics to agents - they interpret them as reasons to stop
             todo_tasks = [t for t in state.project_tasks if t.status == TaskStatus.TODO]
 
-            diagnostic_summary = None
-
             if todo_tasks:
-                # Tasks exist but can't be assigned - run diagnostics
+                # Tasks exist but can't be assigned - run diagnostics FOR LOGGING ONLY
                 logger.warning(
                     f"No tasks assignable but {len(todo_tasks)} TODO tasks exist - "
-                    "running diagnostics"
+                    "running diagnostics for logs"
                 )
 
                 from src.core.task_diagnostics import (
@@ -896,7 +931,7 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 }
                 assigned_task_ids = {a.task_id for a in state.agent_tasks.values()}
 
-                # Run diagnostics
+                # Run diagnostics FOR LOGGING ONLY - don't send to agents
                 try:
                     diagnostic_report = await run_automatic_diagnostics(
                         project_tasks=state.project_tasks,
@@ -904,36 +939,16 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                         assigned_task_ids=assigned_task_ids,
                     )
 
-                    # Format report for logging
+                    # Format report for logging (operators can see this)
                     formatted_report = format_diagnostic_report(diagnostic_report)
-                    logger.info(f"Diagnostic Report:\n{formatted_report}")
-
-                    # Include diagnostic summary in response
-                    diagnostic_summary = {
-                        "total_tasks": diagnostic_report.total_tasks,
-                        "available_tasks": diagnostic_report.available_tasks,
-                        "blocked_tasks": diagnostic_report.blocked_tasks,
-                        "issues_found": len(diagnostic_report.issues),
-                        "top_issues": [
-                            {
-                                "type": issue.issue_type,
-                                "severity": issue.severity,
-                                "description": issue.description,
-                                "recommendation": issue.recommendation,
-                            }
-                            for issue in diagnostic_report.issues[:3]
-                        ],
-                        "recommendations": diagnostic_report.recommendations[:5],
-                    }
+                    logger.info(
+                        f"Diagnostic Report (for operators):\n{formatted_report}"
+                    )
 
                 except Exception as diag_error:
                     logger.error(
                         f"Diagnostic system error: {diag_error}", exc_info=True
                     )
-                    diagnostic_summary = {
-                        "error": "Diagnostics failed",
-                        "details": str(diag_error),
-                    }
             else:
                 # No TODO tasks remaining - all tasks are done or in progress
                 logger.info("No TODO tasks remaining - project may be complete")
@@ -947,24 +962,41 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 "No suitable tasks available at this time",
                 {
                     "reason": "no_matching_tasks",
-                    "diagnostics": diagnostic_summary,
                     "retry_after_seconds": retry_info["retry_after_seconds"],
                     **project_context,
                 },
             )
 
+            # Build explicit instructions to prevent agent termination
+            retry_seconds = retry_info["retry_after_seconds"]
+            instructions = (
+                f"\n\n{'='*70}\n"
+                "NO TASKS CURRENTLY AVAILABLE\n"
+                f"{'='*70}\n\n"
+                "⚠️  CRITICAL: You MUST remain active and operational.\n\n"
+                "Instructions:\n"
+                f"1. DO NOT terminate or stop execution\n"
+                f"2. Sleep/wait for exactly {retry_seconds} seconds\n"
+                f"3. After sleeping, immediately request a new task\n"
+                f"4. Repeat this process until you receive a task OR are "
+                "notified all work is complete\n\n"
+                f"REQUIRED ACTION: Sleep {retry_seconds} seconds → "
+                "Request task → Repeat\n\n"
+                "⚠️  You must continue this retry loop. Stopping or terminating "
+                "will make you unresponsive and unable to receive future tasks. "
+                "Stay alive and keep retrying.\n"
+                f"{'='*70}\n"
+            )
+
+            # Return ONLY the essential retry information
+            # DO NOT include diagnostics or blocking_task info - agents interpret
+            # these as reasons to stop working instead of retrying
             response = {
                 "success": False,
-                "message": "No suitable tasks available at this time",
-                "retry_after_seconds": retry_info["retry_after_seconds"],
+                "message": instructions,
+                "retry_after_seconds": retry_seconds,
                 "retry_reason": retry_info["reason"],
             }
-
-            if retry_info.get("blocking_task"):
-                response["blocking_task"] = retry_info["blocking_task"]
-
-            if diagnostic_summary:
-                response["diagnostics"] = diagnostic_summary
 
             return response
 
@@ -1226,8 +1258,12 @@ async def report_task_progress(
             {"acknowledged": True, **project_context},
         )
 
-        # Update system state
-        await state.refresh_project_state()
+        # DON'T refresh after task updates - causes race condition with Kanban
+        # Parent task completion updates Kanban asynchronously, refresh may
+        # fetch stale data and overwrite in-memory DONE status, causing tasks
+        # to revert to TODO. Let refresh happen on next request_next_task
+        # instead. NOTE: This may affect PROJECT_SUCCESS task visibility -
+        # monitor for that
 
         return {"success": True, "message": "Progress updated successfully"}
 
