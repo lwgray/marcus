@@ -6,7 +6,8 @@ in Planka. Use this to see what tasks Marcus will create before committing them
 to the board.
 
 Usage:
-    python scripts/preview_project_plan.py "Your project description" "ProjectName"
+    python dev-tools/diagnostics/preview_project_plan.py \
+        "Your project description" "ProjectName"
 
 Output:
     Creates a detailed markdown preview in data/diagnostics/project_preview.md
@@ -207,11 +208,11 @@ def generate_preview_markdown(result: Any, description: str, project_name: str) 
 async def main() -> None:
     """Run the preview tool."""
     if len(sys.argv) < 3:
-        print(
-            "Usage: python scripts/preview_project_plan.py <description> <project_name>"
-        )
+        print("Usage: python dev-tools/diagnostics/preview_project_plan.py")
+        print("       <description> <project_name>")
         print("\nExample:")
-        print('  python scripts/preview_project_plan.py "Build a todo app" "MyTodoApp"')
+        print("  python dev-tools/diagnostics/preview_project_plan.py \\")
+        print('         "Build a todo app" "MyTodoApp"')
         sys.exit(1)
 
     description = sys.argv[1]

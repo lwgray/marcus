@@ -4,14 +4,14 @@ Command-line utility to analyze project stalls.
 
 Usage:
     # Capture a snapshot when development stalls
-    python scripts/analyze_stall.py capture
+    python dev-tools/diagnostics/analyze_stall.py capture
 
     # Replay a specific snapshot
-    python scripts/analyze_stall.py replay \
+    python dev-tools/diagnostics/analyze_stall.py replay \
 logs/stall_snapshots/stall_snapshot_20251006_220000.json
 
     # List all snapshots
-    python scripts/analyze_stall.py list
+    python dev-tools/diagnostics/analyze_stall.py list
 """
 
 import asyncio
