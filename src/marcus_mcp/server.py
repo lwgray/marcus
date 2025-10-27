@@ -12,7 +12,7 @@ import logging
 import os
 import signal
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
@@ -93,7 +93,7 @@ class MarcusServer:
         log_dir = marcus_root / "logs" / "conversations"
         log_dir.mkdir(parents=True, exist_ok=True)
         self.realtime_log = open(
-            log_dir / f"realtime_{datetime.now():%Y%m%d_%H%M%S}.jsonl",
+            log_dir / f"realtime_{datetime.now(timezone.utc):%Y%m%d_%H%M%S}.jsonl",
             "a",
             buffering=1,  # Line buffering
         )
@@ -248,7 +248,7 @@ class MarcusServer:
         # Log startup
         self.log_event(
             "server_startup",
-            {"provider": self.provider, "timestamp": datetime.now().isoformat()},
+            {"provider": self.provider, "timestamp": datetime.now(timezone.utc).isoformat()},
         )
 
         # Create MCP server instance
@@ -806,7 +806,7 @@ class MarcusServer:
 
     def log_event(self, event_type: str, data: Dict[str, Any]) -> None:
         """Log events immediately to realtime log and optionally to Events system."""
-        event = {"timestamp": datetime.now().isoformat(), "type": event_type, **data}
+        event = {"timestamp": datetime.now(timezone.utc).isoformat(), "type": event_type, **data}
         self.realtime_log.write(json.dumps(event) + "\n")
 
         # Also publish to Events system if available
@@ -941,7 +941,7 @@ class MarcusServer:
                     overdue_tasks=[],  # Would need to check due dates
                     team_velocity=0.0,  # Would need to calculate
                     risk_level=RiskLevel.LOW,  # Simplified
-                    last_updated=datetime.now(),
+                    last_updated=datetime.now(timezone.utc),
                 )
 
             # Create a JSON-serializable version of project_state
