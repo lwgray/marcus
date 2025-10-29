@@ -41,7 +41,10 @@ def log_agent_event(event_type: str, event_data: Dict[str, Any]) -> None:
         }
 
         # Write to a simple JSON lines file
-        log_file = log_dir / f"agent_events_{datetime.now(timezone.utc).strftime('%Y%m%d')}.jsonl"
+        log_file = (
+            log_dir
+            / f"agent_events_{datetime.now(timezone.utc).strftime('%Y%m%d')}.jsonl"
+        )
         with open(log_file, "a") as f:
             f.write(json.dumps(event) + "\n")
 

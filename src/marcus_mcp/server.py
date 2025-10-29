@@ -248,7 +248,10 @@ class MarcusServer:
         # Log startup
         self.log_event(
             "server_startup",
-            {"provider": self.provider, "timestamp": datetime.now(timezone.utc).isoformat()},
+            {
+                "provider": self.provider,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
         )
 
         # Create MCP server instance
@@ -806,7 +809,11 @@ class MarcusServer:
 
     def log_event(self, event_type: str, data: Dict[str, Any]) -> None:
         """Log events immediately to realtime log and optionally to Events system."""
-        event = {"timestamp": datetime.now(timezone.utc).isoformat(), "type": event_type, **data}
+        event = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "type": event_type,
+            **data,
+        }
         self.realtime_log.write(json.dumps(event) + "\n")
 
         # Also publish to Events system if available

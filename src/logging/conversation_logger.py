@@ -324,7 +324,8 @@ class ConversationLogger:
 
         # Main conversation log
         conversation_handler = logging.FileHandler(
-            self.log_dir / f"conversations_{datetime.now(timezone.utc):%Y%m%d_%H%M%S}.jsonl"
+            self.log_dir
+            / f"conversations_{datetime.now(timezone.utc):%Y%m%d_%H%M%S}.jsonl"
         )
         conversation_handler.setLevel(logging.DEBUG)
         conversation_handler.addFilter(ConversationLogFilter())
