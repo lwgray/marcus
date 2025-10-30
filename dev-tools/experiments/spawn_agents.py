@@ -565,16 +565,36 @@ echo "=========================================="
             "implementation directory."
         )
         print("Marcus coordinates task assignment to prevent conflicts.")
-        print("\nAttaching to tmux session in 3 seconds...")
 
-        # Give time to read the instructions
-        time.sleep(3)
+        # Check if we're in an interactive terminal
+        import os
 
-        # Attach to the tmux session (this blocks until user detaches)
-        try:
-            subprocess.run(["tmux", "attach", "-t", self.tmux_session])
-        except KeyboardInterrupt:
-            print("\n\nDetached from tmux session.")
+        is_tty = os.isatty(sys.stdout.fileno())
+
+        if is_tty:
+            print("\nAttaching to tmux session in 3 seconds...")
+            # Give time to read the instructions
+            time.sleep(3)
+
+            # Attach to the tmux session (this blocks until user detaches)
+            try:
+                result = subprocess.run(
+                    ["tmux", "attach", "-t", self.tmux_session],
+                    check=False,
+                )
+                if result.returncode != 0:
+                    print("\n⚠️  Failed to attach to tmux session.")
+                    print(
+                        f"   Manually attach with: tmux attach -t {self.tmux_session}"
+                    )
+            except KeyboardInterrupt:
+                print("\n\nDetached from tmux session.")
+            except Exception as e:
+                print(f"\n⚠️  Error attaching to tmux: {e}")
+                print(f"   Manually attach with: tmux attach -t {self.tmux_session}")
+        else:
+            print("\n⚠️  Not running in interactive terminal - skipping auto-attach")
+            print(f"   Manually attach with: tmux attach -t {self.tmux_session}")
 
         print("\nExperiment manager shutting down...")
         print(f"Tmux session '{self.tmux_session}' is still running.")
