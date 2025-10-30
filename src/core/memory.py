@@ -11,7 +11,7 @@ import logging
 import statistics
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from src.core.events import Events, EventTypes
@@ -244,7 +244,7 @@ class Memory:
         # Update working memory
         self.working["active_tasks"][agent_id] = {
             "task": task,
-            "started_at": datetime.now(),
+            "started_at": datetime.now(timezone.utc),
             "events": [],
         }
 
@@ -288,12 +288,12 @@ class Memory:
             success=success,
             blockers=blockers or [],
             started_at=started_at,
-            completed_at=datetime.now(),
+            completed_at=datetime.now(timezone.utc),
         )
 
         # Store in episodic memory
         self.episodic["outcomes"].append(outcome)
-        self.episodic["timeline"][datetime.now().date()].append(outcome)
+        self.episodic["timeline"][datetime.now(timezone.utc).date()].append(outcome)
 
         # Update semantic memory (agent profile)
         await self._update_agent_profile(agent_id, outcome, task)

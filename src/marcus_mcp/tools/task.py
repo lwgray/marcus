@@ -11,7 +11,7 @@ This module contains tools for task operations in the Marcus system:
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from src.core.ai_powered_task_assignment import find_optimal_task_for_agent_ai_powered
@@ -1072,7 +1072,7 @@ async def report_task_progress(
 
         if status == "completed":
             update_data["status"] = TaskStatus.DONE
-            update_data["completed_at"] = datetime.now().isoformat()
+            update_data["completed_at"] = datetime.now(timezone.utc).isoformat()
 
             # Handle subtask completion
             if hasattr(state, "subtask_manager") and state.subtask_manager:
