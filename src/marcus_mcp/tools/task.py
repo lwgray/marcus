@@ -315,7 +315,9 @@ def build_tiered_instructions(
     return "\n".join(instructions_parts)
 
 
-async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
+async def calculate_retry_after_seconds(
+    state: Any, has_todo_tasks: bool = False
+) -> Dict[str, Any]:
     """
     Calculate intelligent wait time before next task request.
 
@@ -323,11 +325,14 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
     - Current progress of IN_PROGRESS tasks
     - Historical median task duration
     - Task dependencies to find soonest unblocking event
+    - Whether TODO tasks exist (shorter retry for faster response)
 
     Parameters
     ----------
     state : Any
         Marcus server state instance
+    has_todo_tasks : bool
+        Whether there are TODO tasks waiting (affects retry time)
 
     Returns
     -------
@@ -346,13 +351,25 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
         if task and task.status == TaskStatus.IN_PROGRESS:
             in_progress_tasks.append({"task": task, "assignment": assignment})
 
-    # If no tasks in progress, use default wait time
+    # If no tasks in progress
     if not in_progress_tasks:
-        return {
-            "retry_after_seconds": 300,  # 5 minutes
-            "reason": "No tasks currently in progress - check back soon",
-            "blocking_task": None,
-        }
+        if has_todo_tasks:
+            # TODO tasks exist but blocked - check frequently
+            return {
+                "retry_after_seconds": 30,  # 30 seconds - check frequently
+                "reason": (
+                    "TODO tasks exist but blocked by dependencies - "
+                    "checking frequently for task availability"
+                ),
+                "blocking_task": None,
+            }
+        else:
+            # No TODO tasks - project may be complete
+            return {
+                "retry_after_seconds": 120,  # 2 minutes
+                "reason": "No tasks currently in progress - check back soon",
+                "blocking_task": None,
+            }
 
     # Get historical median duration
     global_median_hours = 1.0  # Default fallback
@@ -361,7 +378,7 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
 
     # Calculate ETA for each in-progress task
     completion_estimates = []
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
     for item in in_progress_tasks:
         task = item["task"]
@@ -949,12 +966,19 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                     logger.error(
                         f"Diagnostic system error: {diag_error}", exc_info=True
                     )
+
+                # TODO tasks exist - use short retry to check frequently
+                retry_info = await calculate_retry_after_seconds(
+                    state, has_todo_tasks=True
+                )
             else:
                 # No TODO tasks remaining - all tasks are done or in progress
                 logger.info("No TODO tasks remaining - project may be complete")
 
-            # Calculate intelligent retry time
-            retry_info = await calculate_retry_after_seconds(state)
+                # Calculate intelligent retry time based on in-progress tasks
+                retry_info = await calculate_retry_after_seconds(
+                    state, has_todo_tasks=False
+                )
 
             conversation_logger.log_worker_message(
                 agent_id,
