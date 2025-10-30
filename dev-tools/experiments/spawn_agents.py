@@ -106,19 +106,27 @@ EXECUTE NOW - DO NOT ASK FOR CONFIRMATION:
    - Confirm working directory: {self.config.implementation_dir}
    - Ping Marcus: mcp__marcus__ping
 
-2. IMMEDIATELY call mcp__marcus__create_project with these EXACT parameters:
+2. Call mcp__marcus__create_project and WAIT FOR COMPLETE RESPONSE:
    - project_name: "{self.config.project_name}"
    - description: (the full spec below)
    - options: {options_str}
 
+   CRITICAL: This call is SYNCHRONOUS and takes 30-60 seconds
+   - The AI will break down the spec into tasks AND subtasks
+   - Do NOT proceed to step 3 until you see the FULL response
+   - The response contains project_id, board_id, and tasks_created count
+   - When the response arrives, ALL subtasks are already created in Kanban
+
 PROJECT SPECIFICATION:
 {project_description}
 
-3. As soon as the project is created (DO NOT WAIT for user input):
-   - Write project_id and board_id to: {self.config.project_info_file}
-   - Format: {{"project_id": "<id>", "board_id": "<board_id>"}}
+3. ONLY AFTER create_project returns with full response:
+   - Extract project_id, board_id, and tasks_created from response
+   - Write to: {self.config.project_info_file}
+   - Format: {{"project_id": "<id>", "board_id": "<board_id>", \
+"tasks_created": <count>}}
    - Run: git add -A && git commit -m "Initial commit: Marcus project created"
-   - Print: "PROJECT CREATED: project_id=<id> board_id=<board_id>"
+   - Print: "PROJECT CREATED: project_id=<id> board_id=<board_id> tasks=<count>"
 
 4. IMMEDIATELY start MLflow experiment tracking:
    - Call mcp__marcus__start_experiment with:
@@ -512,10 +520,13 @@ echo "=========================================="
         self.spawn_project_creator()
 
         # Wait for project creation
+        # (create_project is synchronous - when project_info.json exists,
+        #  all subtasks are already created)
         timeout = self.config.get_timeout("project_creation", 300)
         start_time = time.time()
 
         print("\nWaiting for project creation...")
+        print("  (create_project will take 30-60s for AI task decomposition)")
         while not self.config.project_info_file.exists():
             if time.time() - start_time > timeout:
                 print("✗ Project creation timed out!")
@@ -530,9 +541,11 @@ echo "=========================================="
             project_info = json.load(f)
             project_id = project_info.get("project_id")
             board_id = project_info.get("board_id")
+            tasks_created = project_info.get("tasks_created", "unknown")
 
         print(f"  Project ID: {project_id}")
         print(f"  Board ID: {board_id}")
+        print(f"  Tasks Created: {tasks_created}")
 
         # Phase 2: Spawn worker agents
         print("\n" + "=" * 60)
