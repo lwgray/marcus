@@ -50,7 +50,7 @@ class TestTaskGraphValidator:
 
         task3 = Task(
             id="task_3",
-            name="PROJECT_SUCCESS",
+            name="Create README documentation",
             description="Documentation task",
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
@@ -215,7 +215,7 @@ class TestTaskGraphValidator:
 
         final_task = Task(
             id="final_task",
-            name="PROJECT_SUCCESS",
+            name="Create README documentation",
             description="Final documentation",
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
@@ -234,7 +234,7 @@ class TestTaskGraphValidator:
         error_msg = str(exc_info.value)
         assert "final tasks have no dependencies" in error_msg.lower()
         assert "implementation tasks exist" in error_msg.lower()
-        assert "PROJECT_SUCCESS" in error_msg
+        assert "README" in error_msg
 
     def test_final_task_ok_with_dependencies(self):
         """Test that final task WITH dependencies passes validation."""
@@ -255,7 +255,7 @@ class TestTaskGraphValidator:
 
         final_task = Task(
             id="final_task",
-            name="PROJECT_SUCCESS",
+            name="Create README documentation",
             description="Final documentation",
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
@@ -275,7 +275,7 @@ class TestTaskGraphValidator:
         """Test that final task with no deps is OK if no implementation tasks."""
         final_task = Task(
             id="final_task",
-            name="PROJECT_SUCCESS",
+            name="Create README documentation",
             description="Final documentation",
             status=TaskStatus.TODO,
             priority=Priority.HIGH,

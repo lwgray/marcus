@@ -202,7 +202,7 @@ class TestTaskGraphAutoFix:
 
         final_task = Task(
             id="final_task",
-            name="PROJECT_SUCCESS",
+            name="Create README documentation",
             description="Final documentation",
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
@@ -224,7 +224,7 @@ class TestTaskGraphAutoFix:
         assert "impl_task" in fixed_final.dependencies
         assert len(warnings) == 1
         assert "Added 1 implementation task dependency" in warnings[0]
-        assert "PROJECT_SUCCESS" in warnings[0]
+        assert "README" in warnings[0]
 
     def test_fix_multiple_issues_simultaneously(self):
         """Test fixing orphaned deps + final task deps together."""
@@ -260,7 +260,7 @@ class TestTaskGraphAutoFix:
 
         final_task = Task(
             id="final",
-            name="PROJECT_SUCCESS",
+            name="Create README documentation",
             description="Final",
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
@@ -280,7 +280,7 @@ class TestTaskGraphAutoFix:
         # Should have 2 warnings: orphan removal + final task deps
         assert len(warnings) == 2
         assert any("orphan" in w.lower() or "invalid" in w.lower() for w in warnings)
-        assert any("final" in w.lower() or "PROJECT_SUCCESS" in w for w in warnings)
+        assert any("final" in w.lower() or "README" in w for w in warnings)
 
         # Verify fixed graph is valid
         is_valid, error = TaskGraphValidator.validate_and_log(fixed_tasks)
@@ -320,7 +320,7 @@ class TestTaskGraphAutoFix:
 
         task3 = Task(
             id="task_3",
-            name="PROJECT_SUCCESS",
+            name="Create README documentation",
             description="Final",
             status=TaskStatus.TODO,
             priority=Priority.HIGH,

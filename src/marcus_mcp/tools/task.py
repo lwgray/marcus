@@ -1262,7 +1262,7 @@ async def report_task_progress(
         # Parent task completion updates Kanban asynchronously, refresh may
         # fetch stale data and overwrite in-memory DONE status, causing tasks
         # to revert to TODO. Let refresh happen on next request_next_task
-        # instead. NOTE: This may affect PROJECT_SUCCESS task visibility -
+        # instead. NOTE: This may affect README documentation task visibility -
         # monitor for that
 
         return {"success": True, "message": "Progress updated successfully"}
@@ -1553,15 +1553,15 @@ async def _find_optimal_task_original_logic(
 
             available_tasks.append(t)
 
-        # Special handling for PROJECT_SUCCESS documentation
+        # Special handling for README documentation
         # Calculate project completion percentage
-        # Exclude PROJECT_SUCCESS tasks from the calculation since they should only
+        # Exclude README documentation tasks from the calculation since they should only
         # be assigned after other tasks are complete
         total_non_doc_tasks = len(
             [
                 t
                 for t in state.project_tasks
-                if "PROJECT_SUCCESS" not in t.name
+                if "README" not in t.name
                 and not any(
                     label in (t.labels or [])
                     for label in ["documentation", "final", "verification"]
@@ -1573,7 +1573,7 @@ async def _find_optimal_task_original_logic(
                 t
                 for t in state.project_tasks
                 if t.status == TaskStatus.DONE
-                and "PROJECT_SUCCESS" not in t.name
+                and "README" not in t.name
                 and not any(
                     label in (t.labels or [])
                     for label in ["documentation", "final", "verification"]
@@ -1581,28 +1581,24 @@ async def _find_optimal_task_original_logic(
             ]
         )
 
-        # Special case: If PROJECT_SUCCESS is the only task left, make it available
-        project_success_tasks = [
-            t for t in available_tasks if "PROJECT_SUCCESS" in t.name
-        ]
-        if project_success_tasks and len(available_tasks) == len(project_success_tasks):
-            # All available tasks are PROJECT_SUCCESS tasks, don't filter them
+        # Special case: If README documentation is the only task left, make it available
+        readme_doc_tasks = [t for t in available_tasks if "README" in t.name]
+        if readme_doc_tasks and len(available_tasks) == len(readme_doc_tasks):
+            # All available tasks are README documentation tasks, don't filter them
             logger.debug(
-                "PROJECT_SUCCESS is the only available task - making it assignable"
+                "README documentation is the only available task - making it assignable"
             )
         elif total_non_doc_tasks > 0:
             completion_percentage = (
                 completed_non_doc_tasks / total_non_doc_tasks
             ) * 100
 
-            # Filter out PROJECT_SUCCESS tasks if not nearly complete
+            # Filter out README documentation tasks if not nearly complete
             # Using 90% threshold since some tasks might be blocked
             if completion_percentage < 90:
-                available_tasks = [
-                    t for t in available_tasks if "PROJECT_SUCCESS" not in t.name
-                ]
+                available_tasks = [t for t in available_tasks if "README" not in t.name]
                 logger.debug(
-                    f"Filtering out PROJECT_SUCCESS tasks - project only "
+                    f"Filtering out README documentation tasks - project only "
                     f"{completion_percentage:.1f}% complete"
                 )
 
