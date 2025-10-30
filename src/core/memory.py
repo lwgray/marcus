@@ -814,7 +814,7 @@ class Memory:
             for o in self.episodic["outcomes"]
             if o.agent_id == agent_id
             and o.completed_at
-            and (datetime.now() - o.completed_at).days <= 30
+            and (datetime.now(timezone.utc) - o.completed_at).days <= 30
         ]
 
         # Group by skill/label
@@ -1007,7 +1007,9 @@ class Memory:
                 {
                     "agent_id": agent_id,
                     "task_name": info["task"].name,
-                    "duration": (datetime.now() - info["started_at"]).total_seconds()
+                    "duration": (
+                        datetime.now(timezone.utc) - info["started_at"]
+                    ).total_seconds()
                     / 3600,
                 }
                 for agent_id, info in self.working["active_tasks"].items()
