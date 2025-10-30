@@ -637,6 +637,12 @@ echo "=========================================="
             print("  Install with: pip install mlflow")
             print("  Experiment tracking will not be available")
 
+        # Clean up state from previous runs
+        print("\n[Setup] Cleaning up previous experiment state...")
+        if self.config.project_info_file.exists():
+            self.config.project_info_file.unlink()
+            print("  ✓ Removed old project_info.json")
+
         # Create tmux session
         print("\n[Setup] Creating tmux session")
         self.create_tmux_session()
