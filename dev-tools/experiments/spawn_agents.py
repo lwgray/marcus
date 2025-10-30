@@ -237,6 +237,72 @@ START NOW!
 """
         return worker_prompt
 
+    def create_monitor_prompt(self) -> str:
+        """
+        Create the prompt for the experiment monitor agent.
+
+        Returns
+        -------
+        str
+            Prompt for monitor agent
+        """
+        prompt = f"""You are the Experiment Monitor Agent for a Marcus \
+multi-agent experiment.
+
+WORKING DIRECTORY: {self.config.implementation_dir}
+
+YOUR MISSION:
+Monitor project progress and end the experiment when all work is complete.
+
+EXECUTE NOW - DO NOT ASK FOR CONFIRMATION:
+
+1. Wait for project creation:
+   - Wait for {self.config.project_info_file} to exist
+   - Read project_id and board_id from it
+
+2. Register with Marcus:
+   - Call mcp__marcus__register_agent:
+     - agent_id: "monitor"
+     - name: "Experiment Monitor"
+     - role: "monitor"
+     - skills: ["monitoring", "analytics"]
+
+3. Enter monitoring loop:
+   REPEAT every 2 minutes (120 seconds):
+
+   a. Call mcp__marcus__get_project_status
+
+   b. Display current status:
+      - Print: "Project Status: {{completed}}/{{total_tasks}} tasks complete \
+({{completion_percentage}}%)"
+      - Print: "  In Progress: {{in_progress}}, Blocked: {{blocked}}"
+      - Print: "  Workers: {{active}}/{{total}} active"
+
+   c. Check if project is complete:
+      - Complete when: in_progress == 0 AND (completed + blocked) == total_tasks
+      - If NOT complete: wait 120 seconds and repeat
+      - If COMPLETE: proceed to step 4
+
+4. End the experiment:
+   - Call mcp__marcus__end_experiment
+   - Print: "EXPERIMENT COMPLETE!"
+   - Display final statistics from end_experiment response:
+     - total_registered_agents
+     - total_task_completions
+     - total_blockers
+     - total_artifacts
+     - total_decisions
+     - summary text
+   - Exit
+
+CRITICAL INSTRUCTIONS:
+- Work in: {self.config.implementation_dir}
+- Poll interval: EXACTLY 120 seconds (2 minutes)
+- DO NOT end experiment early - verify ALL conditions
+- This is an automated process - no human interaction needed
+"""
+        return prompt
+
     def create_tmux_session(self) -> None:
         """Create tmux session for the experiment."""
         # Kill existing session if it exists
@@ -488,6 +554,54 @@ echo "=========================================="
         print(f"  Prompt: {prompt_file}")
         print(f"  Subagents: {num_subagents}")
 
+    def spawn_monitor(self) -> None:
+        """Spawn the experiment monitor agent in a tmux pane."""
+        print("\nSpawning Experiment Monitor")
+        print("-" * 60)
+
+        prompt = self.create_monitor_prompt()
+        prompt_file = self.config.prompts_dir / "monitor.txt"
+
+        with open(prompt_file, "w") as f:
+            f.write(prompt)
+
+        # Create a script to run in tmux
+        script = f"""#!/bin/bash
+# Source shell profile to get nvm/claude in PATH
+[ -f ~/.zshrc ] && source ~/.zshrc
+[ -f ~/.bashrc ] && source ~/.bashrc
+
+cd {self.config.implementation_dir} || exit 1
+echo "=========================================="
+echo "EXPERIMENT MONITOR"
+echo "Working Directory: $(pwd)"
+echo "=========================================="
+echo ""
+echo "Waiting for project creation..."
+while [ ! -f {self.config.project_info_file} ]; do
+    sleep 2
+done
+echo "✓ Project found, starting monitor..."
+echo ""
+# Launch Claude from the implementation directory (cwd matters!)
+claude --dangerously-skip-permissions < {prompt_file}
+echo ""
+echo "=========================================="
+echo "Experiment Monitor - Complete"
+echo "=========================================="
+"""
+        script_file = self.config.prompts_dir / "monitor.sh"
+        with open(script_file, "w") as f:
+            f.write(script)
+        script_file.chmod(0o755)
+
+        # Get pane location and run
+        window, pane = self.get_next_pane_location()
+        self.run_in_tmux_pane(window, pane, script_file, "Monitor")
+
+        print(f"  ✓ Spawned in tmux window {window}, pane {pane}")
+        print(f"  Prompt: {prompt_file}")
+
     def run(self) -> bool:
         """Run the multi-agent experiment and return success status."""
         print("\n" + "=" * 60)
@@ -501,7 +615,7 @@ echo "=========================================="
         print(f"Subagents: {total_subagents}")
 
         # Calculate tmux layout
-        total_agents = 1 + len(self.config.agents)  # creator + workers
+        total_agents = 1 + len(self.config.agents) + 1  # creator + workers + monitor
         num_windows = (
             total_agents + self.panes_per_window - 1
         ) // self.panes_per_window
@@ -510,6 +624,18 @@ echo "=========================================="
             f"{self.panes_per_window} panes each"
         )
         print("=" * 60)
+
+        # Verify MLflow is available
+        print("\n[Setup] Verifying MLflow installation...")
+        try:
+            import mlflow  # noqa: F401
+
+            print("✓ MLflow is installed and ready")
+            print("  Experiments will be tracked in: ./mlruns")
+        except ImportError:
+            print("⚠️  MLflow not found!")
+            print("  Install with: pip install mlflow")
+            print("  Experiment tracking will not be available")
 
         # Create tmux session
         print("\n[Setup] Creating tmux session")
@@ -557,12 +683,19 @@ echo "=========================================="
             self.spawn_worker(agent)
             time.sleep(0.5)  # Stagger starts to avoid tmux race conditions
 
+        # Phase 3: Spawn monitor agent
+        print("\n" + "=" * 60)
+        print("[Phase 3] Spawning Experiment Monitor")
+        print("=" * 60)
+        self.spawn_monitor()
+
         print("\n" + "=" * 60)
         print("All Agents Spawned!")
         print("=" * 60)
         print(f"\n✓ All agents running in tmux session: {self.tmux_session}")
-        print(f"✓ 1 project creator + {len(self.config.agents)} worker agents")
+        print(f"✓ 1 project creator + {len(self.config.agents)} workers + 1 monitor")
         print(f"✓ {total_subagents} subagents will be registered by workers")
+        print("✓ Monitor will poll project status every 2 minutes")
         print(
             f"\n📺 Tmux layout: {num_windows} window(s), "
             f"{self.panes_per_window} panes max per window"
