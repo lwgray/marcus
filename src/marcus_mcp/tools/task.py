@@ -319,10 +319,16 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
     """
     Calculate intelligent wait time before next task request.
 
+    Strategy:
+    - Prioritizes tasks that unlock parallel work for idle agents
+    - Uses 60% of ETA for early completion detection
+    - Caps at 5 minutes for regular re-polling
+
     Uses:
     - Current progress of IN_PROGRESS tasks
     - Historical median task duration
-    - Task dependencies to find soonest unblocking event
+    - Task dependencies and parallel work potential
+    - Idle agent capacity
 
     Parameters
     ----------
@@ -333,7 +339,7 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
     -------
     Dict[str, Any]
         Dictionary with:
-        - retry_after_seconds: int (wait time in seconds)
+        - retry_after_seconds: int (wait time in seconds, max 300s)
         - reason: str (explanation for the wait time)
         - blocking_task: Optional[Dict] (task that's blocking progress)
     """
@@ -400,34 +406,57 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
             }
         )
 
-    # Sort by ETA (soonest first)
-    completion_estimates.sort(key=lambda x: x["eta_seconds"])
+    # Count idle agents (registered but not currently working)
+    total_agents = len(state.agents)
+    busy_agents = len([a for a in state.agent_tasks.values() if a.task_id])
+    idle_agents = max(0, total_agents - busy_agents)
 
-    # Get the soonest completion
-    soonest = completion_estimates[0]
+    # Prioritize tasks that unlock parallel work for idle agents
+    # This prevents waking up for sequential work that current workers can handle
+    high_value_tasks = [
+        est for est in completion_estimates if est["unlocks_count"] >= idle_agents
+    ]
 
-    # Add a buffer (minimum 30 seconds, or 10% of estimate)
-    buffer_seconds = max(30, soonest["eta_seconds"] * 0.1)
-    retry_after = int(soonest["eta_seconds"] + buffer_seconds)
+    # If we have tasks that unlock enough parallel work, prioritize those
+    # Otherwise fall back to any task completion (sequential work is still work)
+    candidate_tasks = high_value_tasks if high_value_tasks else completion_estimates
 
-    # Cap maximum wait time at 1 hour
-    retry_after = min(retry_after, 3600)
+    # Sort candidates by ETA (soonest first)
+    candidate_tasks.sort(key=lambda x: x["eta_seconds"])
+
+    # Get the best task to wait for
+    target_task = candidate_tasks[0]
+
+    # Use 60% of ETA for retry to catch early completions
+    # This accounts for tasks finishing faster than estimated
+    retry_after = int(target_task["eta_seconds"] * 0.6)
+
+    # Minimum 30 seconds to avoid excessive polling
+    retry_after = max(30, retry_after)
+
+    # Cap at 5 minutes for re-polling (catch unexpected early completions)
+    retry_after = min(retry_after, 300)
 
     # Format reason
-    eta_minutes = int(soonest["eta_seconds"] / 60)
+    eta_minutes = int(target_task["eta_seconds"] / 60)
+    unlocks_info = (
+        f" (unlocks {target_task['unlocks_count']} tasks)"
+        if target_task["unlocks_count"] > 0
+        else ""
+    )
     reason = (
-        f"Waiting for '{soonest['task_name']}' to complete "
-        f"(~{eta_minutes} min, {soonest['progress']}% done)"
+        f"Waiting for '{target_task['task_name']}' to complete "
+        f"(~{eta_minutes} min, {target_task['progress']}% done){unlocks_info}"
     )
 
     return {
         "retry_after_seconds": retry_after,
         "reason": reason,
         "blocking_task": {
-            "id": soonest["task_id"],
-            "name": soonest["task_name"],
-            "progress": soonest["progress"],
-            "eta_seconds": int(soonest["eta_seconds"]),
+            "id": target_task["task_id"],
+            "name": target_task["task_name"],
+            "progress": target_task["progress"],
+            "eta_seconds": int(target_task["eta_seconds"]),
         },
     }
 
