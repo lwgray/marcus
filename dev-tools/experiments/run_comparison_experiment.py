@@ -80,10 +80,40 @@ class ExperimentRunner:
 
         # Paths to scripts
         self.run_experiment_script = base_dir.parent / "run_experiment.py"
+        self.run_single_agent_script = (
+            base_dir.parent / "run_single_agent_experiment.py"
+        )
         self.analysis_script = base_dir.parent / "analysis" / "compare_experiments.py"
         self.visualization_script = (
             base_dir.parent / "analysis" / "visualize_results.py"
         )
+
+    def detect_experiment_type(self, config_file: Path) -> str:
+        """
+        Detect experiment type from config file.
+
+        Parameters
+        ----------
+        config_file : Path
+            Configuration file path
+
+        Returns
+        -------
+        str
+            Experiment type: 'single_agent' or 'multi_agent'
+        """
+        import yaml
+
+        try:
+            with open(config_file, "r") as f:
+                config = yaml.safe_load(f)
+                if isinstance(config, dict):
+                    exp_type = config.get("experiment_type", "multi_agent")
+                    return str(exp_type) if exp_type else "multi_agent"
+                return "multi_agent"
+        except Exception:
+            # Default to multi-agent if can't determine
+            return "multi_agent"
 
     def get_project_configs(self, project_dir: Path) -> List[Path]:
         """
@@ -151,11 +181,23 @@ class ExperimentRunner:
         if desc_file.exists():
             shutil.copy(desc_file, exp_dir / "project_description.txt")
 
+        # Detect experiment type and select appropriate runner
+        exp_type = self.detect_experiment_type(config_file)
+
+        if exp_type == "single_agent":
+            runner_script = self.run_single_agent_script
+            runner_name = "Single-Agent"
+        else:
+            runner_script = self.run_experiment_script
+            runner_name = "Multi-Agent"
+
+        self._thread_safe_print(f"\nExperiment type: {runner_name}")
+
         # Run the experiment
         try:
             cmd = [
                 sys.executable,
-                str(self.run_experiment_script),
+                str(runner_script),
                 str(exp_dir),
             ]
 

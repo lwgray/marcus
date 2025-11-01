@@ -1,0 +1,67 @@
+# Single-Agent Experiment Configuration
+# For controlled experiments comparing single-agent vs multi-agent performance
+
+# Experiment type (required for detection)
+experiment_type: "single_agent"
+
+# Project name (used in experiment tracking)
+project_name: "Your Project Name"
+
+# Project description/specification file (relative to experiment dir)
+# This should contain the high-level project overview
+project_spec_file: "project_spec.md"
+
+# Task breakdown configuration
+task_generation:
+  # How to generate task structure:
+  # - "predefined": Use a predefined task breakdown file
+  # - "template": Use a standard template for project type
+  # - "ai_generated": Use AI to generate tasks from project spec
+  mode: "predefined"
+
+  # Source file for task breakdown (required if mode is "predefined")
+  # This should contain the detailed task structure in YAML format
+  source: "task_breakdown.yaml"
+
+  # Project type template (optional, used if mode is "template")
+  # Options: "rest_api", "web_app", "cli_tool", "data_pipeline"
+  template: "rest_api"
+
+# Single-agent settings
+single_agent:
+  # Claude model to use
+  model: "claude-sonnet-4-5-20250929"
+
+  # Experiment mode:
+  # - "structured": Use task breakdown with checkpoints (mimics Marcus structure)
+  # - "unstructured": Raw project description only, no scaffolding (pure baseline)
+  mode: "structured"
+
+  # Enforce checkpoint reporting after each subtask (only for structured mode)
+  checkpoint_mode: true
+
+  # Track timing for each subtask
+  time_tracking: true
+
+  # Working directory (relative to experiment dir)
+  working_directory: "./implementation"
+
+# MLflow experiment tracking (optional but recommended)
+experiment_tracking:
+  enabled: true
+  experiment_name: "{project_name}_single_agent"
+  tags:
+    agent_type: "single"
+    complexity: "standard"
+
+# Optional: Marcus baseline for comparison
+# Remove this section if you don't have a baseline
+marcus_baseline:
+  enabled: false
+  time_minutes: null  # e.g., 21.37
+  tasks_completed: null  # e.g., 17
+  reference: null  # e.g., "DateTime API Test 2"
+
+# Optional: Timeout settings (in seconds)
+timeouts:
+  max_experiment_duration: 14400  # 4 hours
