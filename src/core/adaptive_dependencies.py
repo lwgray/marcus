@@ -10,7 +10,7 @@ Works alongside existing templates to:
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from src.core.models import Task, TaskStatus
@@ -669,7 +669,7 @@ class AdaptiveDependencyInferer:
             pattern = self.patterns[pattern_key]
             pattern.examples_count += 1
             pattern.confidence = min(0.95, pattern.confidence * 1.05)
-            pattern.last_seen = datetime.now()
+            pattern.last_seen = datetime.now(timezone.utc)
 
         logger.info(
             f"Learned from confirmed dependency: "

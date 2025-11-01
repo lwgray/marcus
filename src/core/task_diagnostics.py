@@ -147,7 +147,7 @@ class TaskDiagnosticCollector:
         ProjectSnapshot
             Holistic view of the project
         """
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         # Calculate completion percentage
         completed_count = len(
@@ -157,7 +157,7 @@ class TaskDiagnosticCollector:
         completion_pct = (completed_count / total_count * 100) if total_count > 0 else 0
 
         # Calculate task ages (for incomplete tasks only)
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         incomplete_tasks = [
             t for t in self.project_tasks if t.status != TaskStatus.DONE
         ]
@@ -688,7 +688,7 @@ class DiagnosticReportGenerator:
         DiagnosticReport
             Complete diagnostic report with issues and recommendations
         """
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         issues = self._identify_issues()
         recommendations = self._generate_recommendations(issues)
@@ -698,7 +698,7 @@ class DiagnosticReportGenerator:
         project_snapshot = collector.create_project_snapshot()
 
         return DiagnosticReport(
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             project_snapshot=project_snapshot,
             total_tasks=self.filtering_stats["total_tasks"],
             available_tasks=len(self.filtering_stats["available"]),
