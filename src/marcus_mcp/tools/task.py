@@ -756,7 +756,7 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                     priority=optimal_task.priority,
                     dependencies=optimal_task.dependencies,
                     assigned_to=agent_id,
-                    assigned_at=datetime.now(),
+                    assigned_at=datetime.now(timezone.utc),
                     due_date=optimal_task.due_date,
                 )
 
@@ -1150,8 +1150,12 @@ async def report_task_progress(
             task_assignment = state.agent_tasks.get(agent_id)
             if task_assignment:
                 start_time = task_assignment.assigned_at
-                actual_hours = (datetime.now() - start_time).total_seconds() / 3600
-                duration_seconds = (datetime.now() - start_time).total_seconds()
+                actual_hours = (
+                    datetime.now(timezone.utc) - start_time
+                ).total_seconds() / 3600
+                duration_seconds = (
+                    datetime.now(timezone.utc) - start_time
+                ).total_seconds()
             else:
                 actual_hours = 1.0  # Default if no assignment found
                 duration_seconds = 3600.0  # 1 hour default
@@ -1242,7 +1246,9 @@ async def report_task_progress(
                 task_assignment = state.agent_tasks.get(agent_id)
                 if task_assignment:
                     start_time = task_assignment.assigned_at
-                    actual_hours = (datetime.now() - start_time).total_seconds() / 3600
+                    actual_hours = (
+                        datetime.now(timezone.utc) - start_time
+                    ).total_seconds() / 3600
                 else:
                     actual_hours = 1.0
 
