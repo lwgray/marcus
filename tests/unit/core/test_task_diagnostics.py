@@ -4,7 +4,7 @@ Unit tests for the automatic task diagnostics system.
 Tests the diagnostic collectors, analyzers, and report generators.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List
 from unittest.mock import Mock
 
@@ -28,7 +28,7 @@ def create_task(
     description: str = "",
 ) -> Task:
     """Helper function to create a task with all required fields."""
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     return Task(
         id=task_id,
         name=name,

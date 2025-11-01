@@ -11,7 +11,7 @@ This module analyzes the overall health of the project board by detecting:
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, List, Set
 
@@ -418,7 +418,9 @@ class BoardHealthAnalyzer:
         """Detect tasks that haven't progressed in a while."""
         issues = []
 
-        stale_threshold = datetime.now() - timedelta(days=self.stale_task_days)
+        stale_threshold = datetime.now(timezone.utc) - timedelta(
+            days=self.stale_task_days
+        )
         stale_tasks: List[Dict[str, Any]] = []
 
         for task in tasks:
@@ -430,7 +432,9 @@ class BoardHealthAnalyzer:
                             "task_id": task.id,
                             "task_name": task.name,
                             "assigned_to": task.assigned_to,
-                            "days_stale": (datetime.now() - task.updated_at).days,
+                            "days_stale": (
+                                datetime.now(timezone.utc) - task.updated_at
+                            ).days,
                         }
                     )
 
