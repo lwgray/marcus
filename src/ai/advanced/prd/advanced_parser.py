@@ -295,7 +295,14 @@ class AdvancedPRDParser:
             "confidence": 0.85
         }}
 
-        IMPORTANT:
+        CRITICAL RULES:
+        - RESPECT EXPLICIT EXCLUSIONS: If the description says
+          "Do not include X" or "Do not add Y", you MUST NOT create
+          requirements for those items
+        - ONLY include features and requirements explicitly mentioned
+          or clearly implied
+        - Do NOT add "best practices" features that were explicitly
+          excluded
         - For functionalRequirements, use "id", "name", "description",
           and "priority" fields
         - For nonFunctionalRequirements, use "id", "name", "description",
@@ -304,6 +311,14 @@ class AdvancedPRDParser:
           (e.g., "crud_operations", "user_auth")
         - Focus on extracting actionable, specific requirements that can
           be converted into development tasks
+
+        EXCLUSION EXAMPLES:
+        - If description says "Do not include API Security", return
+          empty nonFunctionalRequirements array or omit security NFRs
+        - If description says "Do not include API Response Time", do
+          not add performance monitoring
+        - If description says "just a simple X", do not add enterprise
+          features
         """
         try:
             # Use AI to analyze PRD

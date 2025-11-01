@@ -357,12 +357,16 @@ def get_stats() -> Response:
 
 
 if __name__ == "__main__":
+    import sys
+
     print("\n" + "=" * 70)
     print("    🤖 Marcus Conversation Debugger (Interactive)")
     print("=" * 70)
-    print("\n[I] Starting server at http://127.0.0.1:5001")
+
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 5002
+
+    print(f"\n[I] Trying to start server at http://127.0.0.1:{port}")
     print("[I] Log directory:", get_log_directory())
     print("[I] Press Ctrl+C to stop\n")
 
-    # Debug mode is acceptable for this local development/debugging tool
-    app.run(debug=True, port=5002, host="127.0.0.1")  # nosec B201
+    app.run(debug=True, port=port, host="127.0.0.1")  # nosec B201
