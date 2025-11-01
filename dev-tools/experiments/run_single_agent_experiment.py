@@ -511,14 +511,8 @@ class SingleAgentExperiment:
             / f"single_agent_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
         )
 
-        # Read prompt content
-        with open(prompt_file, "r") as f:
-            prompt_content = f.read()
-
-        # Escape special characters for shell
-        escaped_prompt = prompt_content.replace('"', '\\"').replace("$", "\\$")
-
         # Create script to launch Claude
+        # Pipe the prompt file directly instead of trying to escape everything
         launch_script = f"""#!/bin/bash
 # Source shell profiles to get nvm, claude, etc.
 [ -f ~/.zshrc ] && source ~/.zshrc
@@ -527,8 +521,8 @@ class SingleAgentExperiment:
 # Change to implementation directory
 cd {self.config.implementation_dir}
 
-# Launch Claude with prompt
-echo "{escaped_prompt}" | claude 2>&1 | tee {log_file}
+# Launch Claude with prompt (pipe file directly to avoid escaping issues)
+cat {prompt_file} | claude 2>&1 | tee {log_file}
 """
 
         script_file = self.config.logs_dir / "launch_claude.sh"
