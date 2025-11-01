@@ -8,24 +8,9 @@ experiment_type: "single_agent"
 project_name: "Your Project Name"
 
 # Project description/specification file (relative to experiment dir)
-# This should contain the high-level project overview
+# For structured mode: Should contain Marcus-generated task breakdown
+# For unstructured mode: Should contain raw project description
 project_spec_file: "project_spec.md"
-
-# Task breakdown configuration
-task_generation:
-  # How to generate task structure:
-  # - "predefined": Use a predefined task breakdown file
-  # - "template": Use a standard template for project type
-  # - "ai_generated": Use AI to generate tasks from project spec
-  mode: "predefined"
-
-  # Source file for task breakdown (required if mode is "predefined")
-  # This should contain the detailed task structure in YAML format
-  source: "task_breakdown.yaml"
-
-  # Project type template (optional, used if mode is "template")
-  # Options: "rest_api", "web_app", "cli_tool", "data_pipeline"
-  template: "rest_api"
 
 # Single-agent settings
 single_agent:

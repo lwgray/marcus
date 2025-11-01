@@ -45,9 +45,9 @@ class SingleAgentConfig:
         self.project_name = self.config["project_name"]
         self.project_spec_file = self.experiment_dir / self.config["project_spec_file"]
 
-        # Task generation settings
+        # Task generation settings (deprecated - keeping for backward compatibility)
         self.task_generation = self.config.get("task_generation", {})
-        self.mode = self.task_generation.get("mode", "predefined")
+        self.mode = self.task_generation.get("mode", "from_spec")
         self.task_source = self.task_generation.get("source")
         self.template_type = self.task_generation.get("template")
 
@@ -246,29 +246,33 @@ class PromptGenerator:
         """
         # Load project description
         with open(self.config.project_spec_file, "r") as f:
-            project_description = f.read()
+            project_spec_content = f.read()
 
         # Check if we're in unstructured mode
         if self.config.agent_mode == "unstructured":
-            return self._generate_unstructured_prompt(project_description)
+            return self._generate_unstructured_prompt(project_spec_content)
 
-        # Structured mode - use full template
-        # Load template
-        with open(self.template_path, "r") as f:
-            template = f.read()
+        # Structured mode - wrap spec with execution instructions
+        return self._generate_structured_prompt(project_spec_content)
 
-        # Load task breakdown
-        task_data = self.load_task_breakdown()
-        tasks = task_data.get("tasks", [])
+    def _generate_structured_prompt(self, project_spec_content: str) -> str:
+        """
+        Generate structured prompt by wrapping project spec with instructions.
 
-        # Format task structure
-        task_structure = self.format_task_structure(tasks)
-        completion_checklist = self.format_completion_checklist(tasks)
+        Takes the project_spec.md content (which contains Marcus-generated
+        task breakdown) and wraps it with checkpoint/timing instructions.
 
-        # Determine final task number
-        final_task_num = tasks[-1]["number"] if tasks else "X"
+        Parameters
+        ----------
+        project_spec_content : str
+            Full content of project_spec.md including task breakdown
 
-        # Format Marcus baseline (if provided)
+        Returns
+        -------
+        str
+            Structured prompt with execution instructions
+        """
+        # Format Marcus baseline if provided
         marcus_baseline_text = ""
         if self.config.marcus_baseline.get("enabled"):
             time_minutes = self.config.marcus_baseline.get("time_minutes")
@@ -277,21 +281,77 @@ class PromptGenerator:
 
             if time_minutes and tasks_completed:
                 marcus_baseline_text = (
-                    f"**Marcus baseline**: Completed similar project in "
-                    f"{time_minutes} minutes with {tasks_completed} subtasks"
+                    f"\n\n**For comparison**: A multi-agent system "
+                    f"completed a similar project in {time_minutes} minutes "
+                    f"with {tasks_completed} subtasks"
                 )
                 if reference:
                     marcus_baseline_text += f" ({reference})"
-                marcus_baseline_text += "\n\n"
+                marcus_baseline_text += ".\n"
 
-        # Substitute variables
-        prompt = template.replace("{PROJECT_NAME}", self.config.project_name)
-        prompt = prompt.replace("{PROJECT_DESCRIPTION}", project_description.strip())
-        prompt = prompt.replace("{TASK_STRUCTURE}", task_structure.strip())
-        prompt = prompt.replace("{COMPLETION_CHECKLIST}", completion_checklist)
-        prompt = prompt.replace("{FINAL_TASK_NUMBER}", str(final_task_num))
-        prompt = prompt.replace("{MARCUS_BASELINE}", marcus_baseline_text)
+        prompt = f"""# Single Agent Experiment: {self.config.project_name}
 
+## CRITICAL INSTRUCTIONS
+
+You will implement the project and tasks described below. The tasks have \
+already been broken down for you.
+
+**You MUST follow this process:**
+
+1. **Execute each subtask in order** (1.1, 1.2, 1.3, ... 2.1, 2.2, etc.)
+2. **After completing EACH subtask**, state "SUBTASK X.X COMPLETE"
+3. **Show what you created/implemented** for that subtask
+4. **Do NOT skip any subtasks** - complete them all in full
+5. **Do NOT provide partial implementations** - finish each subtask completely
+
+**After completing a full task** (all subtasks), state "TASK X COMPLETE"
+
+**Failure to complete any subtask fully will invalidate this experiment.**
+
+---
+
+## Time Tracking Instructions
+
+Track your time carefully for this experiment:
+
+1. **At the start**: Note the exact timestamp when you begin
+2. **After each subtask**: Note the completion timestamp and elapsed time
+3. **At the end**: Note when you complete the final task
+4. **Calculate total**: Report total elapsed time
+
+**Required Format:**
+```
+START: 2025-11-01 14:30:00
+SUBTASK 1.1 COMPLETE: 14:33:15 (3:15 elapsed)
+SUBTASK 1.2 COMPLETE: 14:36:20 (6:20 elapsed)
+TASK 1 COMPLETE: 14:40:00
+SUBTASK 2.1 COMPLETE: 14:45:30 (45:30 elapsed)
+...
+PROJECT COMPLETE: 15:12:45
+TOTAL: 42 minutes 45 seconds
+```
+
+This timing data is critical for the experiment.
+{marcus_baseline_text}
+---
+
+## Project Specification and Tasks
+
+{project_spec_content.strip()}
+
+---
+
+## Final Reminder
+
+- Complete ALL tasks and subtasks listed above
+- Report "SUBTASK X.X COMPLETE" after each subtask
+- Report "TASK X COMPLETE" after each full task
+- Track all timing data in the required format
+- Do not skip documentation, tests, or any deliverables
+- Organize your files and code however you think is best
+
+When everything is complete, state "PROJECT COMPLETE" and report total time.
+"""
         return prompt
 
     def _generate_unstructured_prompt(self, project_description: str) -> str:
@@ -562,7 +622,6 @@ def create_experiment_structure(experiment_dir: Path, templates_dir: Path) -> bo
 
     config_file = experiment_dir / "config.yaml"
     spec_file = experiment_dir / "project_spec.md"
-    task_file = experiment_dir / "task_breakdown.yaml"
 
     # Copy config template
     if not config_file.exists():
@@ -577,56 +636,49 @@ def create_experiment_structure(experiment_dir: Path, templates_dir: Path) -> bo
             f.write(
                 """# Project Specification
 
-## Overview
-[Describe what you want to build - this is used in the generated prompt]
+Build a simple [description of what you want to build]
 
-## Features
-- [Feature 1]
-- [Feature 2]
-- [Feature 3]
+## Tasks
 
-## Technical Requirements
-- [Requirement 1]
-- [Requirement 2]
+Paste the Marcus-generated task breakdown here. For example:
 
-## Deliverables
-- [Deliverable 1]
-- [Deliverable 2]
+1. Design [Component Name]
+   1.1. Research [topic] best practices
+       - Gather requirements
+       - Estimated: 0.033h
+   1.2. Design [component] specification
+       - Define the API
+       - Estimated: 0.033h
+
+2. Implement [Component Name]
+   - Develop core logic
+   - Estimated: 0.13h
+
+3. Test [Component Name]
+   - Write end-to-end tests
+   - Estimated: 0.1h
+
+## Instructions for Structured Mode
+
+1. Run Marcus create_project to get task breakdown
+2. Paste the tasks above (replace the example)
+3. Run: python run_single_agent_experiment.py <experiment_dir>
+
+The runner will wrap this with checkpoint and timing instructions.
+
+## Instructions for Unstructured Mode
+
+1. Set single_agent.mode: "unstructured" in config.yaml
+2. Remove the ## Tasks section
+3. Just describe what you want to build in your own words
+4. Run: python run_single_agent_experiment.py <experiment_dir>
+
+Claude will get the raw description with no scaffolding.
 """
             )
         print("✓ Created project_spec.md template")
-        print(f"  Edit {spec_file} to describe your project")
-
-    # Create task breakdown template
-    if not task_file.exists():
-        with open(task_file, "w") as f:
-            f.write(
-                """# Task Breakdown for Single-Agent Experiment
-# Define the task structure that will be used to generate the prompt
-
-tasks:
-  - number: 1
-    name: "Task Name"
-    subtasks:
-      - number: 1.1
-        name: "Subtask Name"
-        requirements:
-          - "Requirement 1"
-          - "Requirement 2"
-        deliverable: "What should be created"
-
-  - number: 2
-    name: "Another Task"
-    subtasks:
-      - number: 2.1
-        name: "Another Subtask"
-        requirements:
-          - "Requirement 1"
-        deliverable: "Deliverable description"
-"""
-            )
-        print("✓ Created task_breakdown.yaml template")
-        print(f"  Edit {task_file} to define task structure")
+        print(f"  Edit {spec_file} to paste Marcus task breakdown (structured)")
+        print("  or write your own description (unstructured)")
 
     # Create subdirectories
     (experiment_dir / "prompts").mkdir(exist_ok=True)
@@ -655,7 +707,7 @@ tasks:
         except subprocess.CalledProcessError as e:
             print(f"⚠️  Git initialization failed: {e}")
 
-    return not (config_file.exists() and spec_file.exists() and task_file.exists())
+    return not (config_file.exists() and spec_file.exists())
 
 
 def validate_experiment(experiment_dir: Path) -> bool:
@@ -704,22 +756,8 @@ def validate_experiment(experiment_dir: Path) -> bool:
     if not spec_file.exists():
         errors.append(f"Missing {spec_filename} at {spec_file}")
 
-    # Validate task breakdown file (only for structured mode with predefined tasks)
-    single_agent = config.get("single_agent", {})
-    agent_mode = single_agent.get("mode", "structured")
-
-    if agent_mode == "structured":
-        task_gen = config.get("task_generation", {})
-        if task_gen.get("mode") == "predefined":
-            task_source = task_gen.get("source")
-            if not task_source:
-                errors.append(
-                    "task_generation.source is required for structured predefined mode"
-                )
-            else:
-                task_file = experiment_dir / task_source
-                if not task_file.exists():
-                    errors.append(f"Missing task breakdown file at {task_file}")
+    # No additional validation needed for structured mode
+    # Project spec should contain the task breakdown from Marcus
 
     if errors:
         print("Validation errors:")
@@ -788,9 +826,13 @@ Examples:
         print()
         print("Next steps:")
         print(f"  1. Edit {experiment_dir / 'config.yaml'}")
+        print("     - Set single_agent.mode to 'structured' or 'unstructured'")
+        print()
         print(f"  2. Edit {experiment_dir / 'project_spec.md'}")
-        print(f"  3. Edit {experiment_dir / 'task_breakdown.yaml'}")
-        print(f"  4. Run: python run_single_agent_experiment.py {experiment_dir}")
+        print("     - For structured: Paste Marcus-generated task breakdown")
+        print("     - For unstructured: Write raw project description")
+        print()
+        print(f"  3. Run: python run_single_agent_experiment.py {experiment_dir}")
         sys.exit(0)
 
     # Validate experiment exists
