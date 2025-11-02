@@ -1016,33 +1016,24 @@ class AdvancedPRDParser:
         violations = []
         description_lower = description.lower()
 
-        # Check for framework violations
-        if "no-frameworks" in constraints or "vanilla-js" in constraints:
-            frameworks = ["react", "vue", "angular", "svelte", "ember"]
-            for framework in frameworks:
-                if framework in description_lower:
-                    violations.append(
-                        f"Mentions '{framework}' but constraints prohibit frameworks"
-                    )
-
         # Check for specific "no-X" constraints
+        # This catches things like "no-react", "no-orm", "no-typescript", etc.
         for constraint in constraints:
             if constraint.startswith("no-"):
                 tech = constraint[3:]  # Remove "no-" prefix
-                tech_normalized = tech.replace("-", "")
-                if tech_normalized in description_lower.replace(" ", "").replace(
-                    "-", ""
-                ):
+                # Normalize both the tech name and description for comparison
+                tech_normalized = tech.replace("-", " ").lower()
+
+                # Check if the technology appears in the description
+                if tech_normalized in description_lower:
                     violations.append(f"Mentions '{tech}' but constraint prohibits it")
 
-        # Check for ORM violations
-        if "no-orm" in constraints:
-            orm_keywords = ["sqlalchemy", "django orm", "sequelize", "typeorm"]
-            for keyword in orm_keywords:
-                if keyword in description_lower:
-                    violations.append(
-                        f"Mentions '{keyword}' but constraints prohibit ORMs"
-                    )
+        # Special handling for "no-frameworks" - look for the word "framework"
+        if "no-frameworks" in constraints or "vanilla-js" in constraints:
+            if "framework" in description_lower:
+                violations.append(
+                    "Mentions 'framework' but constraints prohibit frameworks"
+                )
 
         return violations
 
