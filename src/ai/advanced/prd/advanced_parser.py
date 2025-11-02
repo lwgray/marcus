@@ -1263,73 +1263,231 @@ explanation."""
     # appropriate errors with actionable feedback
 
     # Additional helper methods would be implemented here...
+    def _select_task_pattern(
+        self, requirement: Dict[str, Any], complexity_mode: str = "standard"
+    ) -> List[Dict[str, str]]:
+        """
+        Select task pattern based on feature complexity and project mode.
+
+        Implements intelligent task pattern selection to avoid over-engineering
+        simple features while maintaining proper structure for complex ones.
+
+        Parameters
+        ----------
+        requirement : Dict[str, Any]
+            The requirement dictionary containing:
+            - id: Feature identifier
+            - name: Feature name
+            - complexity: One of "atomic", "simple", "coordinated", "distributed"
+            - requires_design_artifacts: Boolean (optional)
+        complexity_mode : str, optional
+            Project complexity mode: "prototype", "standard", or "enterprise"
+            Default is "standard"
+
+        Returns
+        -------
+        List[Dict[str, str]]
+            List of task dictionaries, each containing:
+            - id: Task identifier
+            - name: Task name
+            - type: Task type ("design", "implementation", or "testing")
+
+        Notes
+        -----
+        Task patterns by complexity and mode:
+
+        Prototype Mode (speed-focused):
+        - atomic: 1 task (Implementation only)
+        - simple: 1 task (Implementation only)
+        - coordinated: 2 tasks (Implementation + Testing)
+        - distributed: 2 tasks (Implementation + Testing)
+
+        Standard Mode (balanced):
+        - atomic: 1 task (Implementation only)
+        - simple: 2 tasks (Implementation + Testing)
+        - coordinated: 3 tasks (Design + Implementation + Testing)
+        - distributed: 3 tasks (Design + Implementation + Testing)
+
+        Enterprise Mode (full traceability):
+        - atomic: 2 tasks (Implementation + Testing)
+        - simple: 3 tasks (Design + Implementation + Testing)
+        - coordinated: 3 tasks (Design + Implementation + Testing)
+        - distributed: 3 tasks (Design + Implementation + Testing)
+        """
+        req_id = requirement.get("id", "feature")
+        feature_name = requirement.get("name", "Feature")
+        complexity = requirement.get("complexity", "coordinated")  # Backward compatible
+        requires_design = requirement.get("requires_design_artifacts", True)
+
+        tasks = []
+
+        # Determine task pattern based on complexity and mode
+        if complexity_mode == "prototype":
+            # Prototype: Speed over structure
+            if complexity in ["atomic", "simple"]:
+                # Just implement it
+                tasks.append(
+                    {
+                        "id": f"task_{req_id}_implement",
+                        "name": f"Implement {feature_name}",
+                        "type": "implementation",
+                    }
+                )
+            else:  # coordinated or distributed
+                # Implementation + basic testing
+                tasks.append(
+                    {
+                        "id": f"task_{req_id}_implement",
+                        "name": f"Implement {feature_name}",
+                        "type": "implementation",
+                    }
+                )
+                tasks.append(
+                    {
+                        "id": f"task_{req_id}_test",
+                        "name": f"Test {feature_name}",
+                        "type": "testing",
+                    }
+                )
+
+        elif complexity_mode == "enterprise":
+            # Enterprise: Full traceability
+            if complexity == "atomic":
+                # Even atomic features get tested in enterprise
+                tasks.append(
+                    {
+                        "id": f"task_{req_id}_implement",
+                        "name": f"Implement {feature_name}",
+                        "type": "implementation",
+                    }
+                )
+                tasks.append(
+                    {
+                        "id": f"task_{req_id}_test",
+                        "name": f"Test {feature_name}",
+                        "type": "testing",
+                    }
+                )
+            else:  # simple, coordinated, or distributed
+                # Full design-implement-test cycle
+                tasks.append(
+                    {
+                        "id": f"task_{req_id}_design",
+                        "name": f"Design {feature_name}",
+                        "type": "design",
+                    }
+                )
+                tasks.append(
+                    {
+                        "id": f"task_{req_id}_implement",
+                        "name": f"Implement {feature_name}",
+                        "type": "implementation",
+                    }
+                )
+                tasks.append(
+                    {
+                        "id": f"task_{req_id}_test",
+                        "name": f"Test {feature_name}",
+                        "type": "testing",
+                    }
+                )
+
+        else:  # standard mode (default)
+            if complexity == "atomic":
+                # Atomic: Just do it
+                tasks.append(
+                    {
+                        "id": f"task_{req_id}_implement",
+                        "name": f"Implement {feature_name}",
+                        "type": "implementation",
+                    }
+                )
+            elif complexity == "simple":
+                # Simple: Implement + test
+                tasks.append(
+                    {
+                        "id": f"task_{req_id}_implement",
+                        "name": f"Implement {feature_name}",
+                        "type": "implementation",
+                    }
+                )
+                tasks.append(
+                    {
+                        "id": f"task_{req_id}_test",
+                        "name": f"Test {feature_name}",
+                        "type": "testing",
+                    }
+                )
+            else:  # coordinated or distributed
+                # Full cycle for multi-component features
+                if requires_design:
+                    tasks.append(
+                        {
+                            "id": f"task_{req_id}_design",
+                            "name": f"Design {feature_name}",
+                            "type": "design",
+                        }
+                    )
+                tasks.append(
+                    {
+                        "id": f"task_{req_id}_implement",
+                        "name": f"Implement {feature_name}",
+                        "type": "implementation",
+                    }
+                )
+                tasks.append(
+                    {
+                        "id": f"task_{req_id}_test",
+                        "name": f"Test {feature_name}",
+                        "type": "testing",
+                    }
+                )
+
+        return tasks
+
     async def _break_down_epic(
         self,
         req: Dict[str, Any],
         analysis: PRDAnalysis,
         constraints: ProjectConstraints,
     ) -> List[Dict[str, Any]]:
-        """Break down epic into smaller tasks."""
-        # First try to use standardized fields (from our template)
-        req_id = req.get("id")
-        feature_name = req.get("name")
+        """
+        Break down epic into smaller tasks using intelligent task pattern selection.
 
-        # Fallback to other possible field names if template wasn't followed
-        if not feature_name:
-            feature_name = req.get("feature") or req.get("description") or "feature"
-            logger.warning(
-                f"AI deviated from template format. Expected 'name' "
-                f"field but got: {list(req.keys())}"
-            )
+        This method now uses _select_task_pattern() to determine the appropriate
+        number and type of tasks based on feature complexity and project mode.
 
-        if not req_id:
-            # Generate ID from feature name as fallback
-            feature_id = feature_name.lower()
-            # Remove common words and clean up
-            for word in ["for", "the", "a", "an", "and", "or", "with", "using"]:
-                feature_id = feature_id.replace(f" {word} ", " ")
-            # Convert to ID format
-            feature_id = (
-                feature_id.strip().replace(" ", "_").replace("-", "_").replace(":", "")
-            )
-            # Remove any non-alphanumeric characters except underscore
-            feature_id = "".join(
-                c if c.isalnum() or c == "_" else "" for c in feature_id
-            )
+        Parameters
+        ----------
+        req : Dict[str, Any]
+            The requirement dictionary containing complexity metadata
+        analysis : PRDAnalysis
+            The full PRD analysis context
+        constraints : ProjectConstraints
+            Project constraints including quality requirements
 
-            # If we still don't have a good ID, use the index from
-            # functional requirements
-            if not feature_id or feature_id == "feature":
-                req_index = (
-                    analysis.functional_requirements.index(req)
-                    if req in analysis.functional_requirements
-                    else 0
-                )
-                feature_id = f"req_{req_index}"
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of task dictionaries for this epic
+        """
+        # Get project size and map to complexity mode
+        project_size = (constraints.quality_requirements or {}).get(
+            "project_size", "medium"
+        )
 
-            req_id = feature_id
-            logger.warning(
-                f"AI deviated from template format. Expected 'id' "
-                f"field, generated: {req_id}"
-            )
+        # Map project_size to complexity_mode (3-option system)
+        if project_size in ["prototype", "mvp"]:
+            complexity_mode = "prototype"
+        elif project_size in ["enterprise", "large"]:
+            complexity_mode = "enterprise"
+        else:  # standard, medium, small
+            complexity_mode = "standard"
 
-        return [
-            {
-                "id": f"task_{req_id}_design",
-                "name": f"Design {feature_name}",
-                "type": "design",
-            },
-            {
-                "id": f"task_{req_id}_implement",
-                "name": f"Implement {feature_name}",
-                "type": "implementation",
-            },
-            {
-                "id": f"task_{req_id}_test",
-                "name": f"Test {feature_name}",
-                "type": "testing",
-            },
-        ]
+        # Use intelligent task pattern selection
+        tasks = self._select_task_pattern(req, complexity_mode)
+
+        return tasks
 
     async def _create_nfr_tasks(
         self, nfrs: List[Dict[str, Any]], constraints: ProjectConstraints
