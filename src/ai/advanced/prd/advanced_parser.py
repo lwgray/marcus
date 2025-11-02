@@ -106,6 +106,15 @@ class AdvancedPRDParser:
         self.min_task_complexity_hours = 1
         self.max_task_complexity_hours = 40
 
+        # Task pattern constants
+        self.TASK_TYPE_DESIGN = "design"
+        self.TASK_TYPE_IMPLEMENTATION = "implementation"
+        self.TASK_TYPE_TESTING = "testing"
+
+        # Complexity mode constants
+        self.VALID_COMPLEXITY_MODES = ["prototype", "standard", "enterprise"]
+        self.VALID_COMPLEXITIES = ["atomic", "simple", "coordinated", "distributed"]
+
         # Standard project phases for task organization
         self.standard_phases = [
             "research_and_planning",
@@ -1314,9 +1323,29 @@ explanation."""
         - coordinated: 3 tasks (Design + Implementation + Testing)
         - distributed: 3 tasks (Design + Implementation + Testing)
         """
+        # Validate complexity_mode
+        if complexity_mode not in self.VALID_COMPLEXITY_MODES:
+            logger.warning(
+                f"Invalid complexity_mode '{complexity_mode}', "
+                f"defaulting to 'standard'. "
+                f"Valid modes: {self.VALID_COMPLEXITY_MODES}"
+            )
+            complexity_mode = "standard"
+
         req_id = requirement.get("id", "feature")
         feature_name = requirement.get("name", "Feature")
         complexity = requirement.get("complexity", "coordinated")  # Backward compatible
+
+        # Validate complexity
+        if complexity not in self.VALID_COMPLEXITIES:
+            logger.warning(
+                f"Invalid complexity '{complexity}', defaulting to 'coordinated'. "
+                f"Valid complexities: {self.VALID_COMPLEXITIES}"
+            )
+            complexity = "coordinated"
+
+        # Get requires_design flag (default True for backward compatibility)
+        # The AI should explicitly set this to False for features that don't need design
         requires_design = requirement.get("requires_design_artifacts", True)
 
         tasks = []
@@ -1330,7 +1359,7 @@ explanation."""
                     {
                         "id": f"task_{req_id}_implement",
                         "name": f"Implement {feature_name}",
-                        "type": "implementation",
+                        "type": self.TASK_TYPE_IMPLEMENTATION,
                     }
                 )
             else:  # coordinated or distributed
@@ -1339,14 +1368,14 @@ explanation."""
                     {
                         "id": f"task_{req_id}_implement",
                         "name": f"Implement {feature_name}",
-                        "type": "implementation",
+                        "type": self.TASK_TYPE_IMPLEMENTATION,
                     }
                 )
                 tasks.append(
                     {
                         "id": f"task_{req_id}_test",
                         "name": f"Test {feature_name}",
-                        "type": "testing",
+                        "type": self.TASK_TYPE_TESTING,
                     }
                 )
 
@@ -1358,37 +1387,38 @@ explanation."""
                     {
                         "id": f"task_{req_id}_implement",
                         "name": f"Implement {feature_name}",
-                        "type": "implementation",
+                        "type": self.TASK_TYPE_IMPLEMENTATION,
                     }
                 )
                 tasks.append(
                     {
                         "id": f"task_{req_id}_test",
                         "name": f"Test {feature_name}",
-                        "type": "testing",
+                        "type": self.TASK_TYPE_TESTING,
                     }
                 )
             else:  # simple, coordinated, or distributed
-                # Full design-implement-test cycle
-                tasks.append(
-                    {
-                        "id": f"task_{req_id}_design",
-                        "name": f"Design {feature_name}",
-                        "type": "design",
-                    }
-                )
+                # Full design-implement-test cycle (respect requires_design)
+                if requires_design:
+                    tasks.append(
+                        {
+                            "id": f"task_{req_id}_design",
+                            "name": f"Design {feature_name}",
+                            "type": self.TASK_TYPE_DESIGN,
+                        }
+                    )
                 tasks.append(
                     {
                         "id": f"task_{req_id}_implement",
                         "name": f"Implement {feature_name}",
-                        "type": "implementation",
+                        "type": self.TASK_TYPE_IMPLEMENTATION,
                     }
                 )
                 tasks.append(
                     {
                         "id": f"task_{req_id}_test",
                         "name": f"Test {feature_name}",
-                        "type": "testing",
+                        "type": self.TASK_TYPE_TESTING,
                     }
                 )
 
@@ -1399,7 +1429,7 @@ explanation."""
                     {
                         "id": f"task_{req_id}_implement",
                         "name": f"Implement {feature_name}",
-                        "type": "implementation",
+                        "type": self.TASK_TYPE_IMPLEMENTATION,
                     }
                 )
             elif complexity == "simple":
@@ -1408,14 +1438,14 @@ explanation."""
                     {
                         "id": f"task_{req_id}_implement",
                         "name": f"Implement {feature_name}",
-                        "type": "implementation",
+                        "type": self.TASK_TYPE_IMPLEMENTATION,
                     }
                 )
                 tasks.append(
                     {
                         "id": f"task_{req_id}_test",
                         "name": f"Test {feature_name}",
-                        "type": "testing",
+                        "type": self.TASK_TYPE_TESTING,
                     }
                 )
             else:  # coordinated or distributed
@@ -1425,21 +1455,21 @@ explanation."""
                         {
                             "id": f"task_{req_id}_design",
                             "name": f"Design {feature_name}",
-                            "type": "design",
+                            "type": self.TASK_TYPE_DESIGN,
                         }
                     )
                 tasks.append(
                     {
                         "id": f"task_{req_id}_implement",
                         "name": f"Implement {feature_name}",
-                        "type": "implementation",
+                        "type": self.TASK_TYPE_IMPLEMENTATION,
                     }
                 )
                 tasks.append(
                     {
                         "id": f"task_{req_id}_test",
                         "name": f"Test {feature_name}",
-                        "type": "testing",
+                        "type": self.TASK_TYPE_TESTING,
                     }
                 )
 
@@ -1471,6 +1501,54 @@ explanation."""
         List[Dict[str, Any]]
             List of task dictionaries for this epic
         """
+        # Ensure requirement has valid ID and name (fallback generation)
+        req_id = req.get("id")
+        feature_name = req.get("name")
+
+        # Fallback to other possible field names if template wasn't followed
+        if not feature_name:
+            feature_name = req.get("feature") or req.get("description") or "feature"
+            logger.warning(
+                f"AI deviated from template format. Expected 'name' "
+                f"field but got: {list(req.keys())}"
+            )
+
+        if not req_id:
+            # Generate ID from feature name as fallback
+            feature_id = feature_name.lower()
+            # Remove common words and clean up
+            for word in ["for", "the", "a", "an", "and", "or", "with", "using"]:
+                feature_id = feature_id.replace(f" {word} ", " ")
+            # Convert to ID format
+            feature_id = (
+                feature_id.strip().replace(" ", "_").replace("-", "_").replace(":", "")
+            )
+            # Remove any non-alphanumeric characters except underscore
+            feature_id = "".join(
+                c if c.isalnum() or c == "_" else "" for c in feature_id
+            )
+
+            # If we still don't have a good ID, use the index from
+            # functional requirements
+            if not feature_id or feature_id == "feature":
+                req_index = (
+                    analysis.functional_requirements.index(req)
+                    if req in analysis.functional_requirements
+                    else 0
+                )
+                feature_id = f"req_{req_index}"
+
+            req_id = feature_id
+            logger.warning(
+                f"AI deviated from template format. Expected 'id' "
+                f"field, generated: {req_id}"
+            )
+
+        # Inject the normalized ID and name back into requirement
+        # to ensure _select_task_pattern gets consistent values
+        req["id"] = req_id
+        req["name"] = feature_name
+
         # Get project size and map to complexity mode
         project_size = (constraints.quality_requirements or {}).get(
             "project_size", "medium"
