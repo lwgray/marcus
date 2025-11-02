@@ -35,7 +35,7 @@ class PRDAnalysis:
     complexity_assessment: Dict[str, Any]
     risk_factors: List[Dict[str, Any]]
     confidence: float
-    original_description: str  # NEW: Preserve original user description
+    original_description: str = ""  # NEW: Preserve original user description
 
 
 @dataclass
@@ -256,6 +256,7 @@ class AdvancedPRDParser:
 
     async def _analyze_prd_deeply(self, prd_content: str) -> PRDAnalysis:
         """Perform deep analysis of PRD using AI."""
+        # nosec B608: This is an AI prompt template, not SQL
         analysis_prompt = f"""
         Analyze this Product Requirements Document in detail:
 
@@ -769,9 +770,13 @@ class AdvancedPRDParser:
             # Create task name with phase prefix
             task_name = f"{task_type.title()} {feature_name}"
 
-            # Generate task-type-specific description using LLM
+            # Generate task-type-specific description using LLM with constraints
             description = await self._generate_task_description_for_type(
-                base_description, task_type, feature_name
+                base_description=base_description,
+                task_type=task_type,
+                feature_name=feature_name,
+                constraints=analysis.technical_constraints,
+                original_description=analysis.original_description,
             )
 
             # Get estimated hours based on task type
@@ -948,14 +953,104 @@ class AdvancedPRDParser:
         logger.warning(f"No requirement found with id={req_id} for task_id={task_id}")
         return None
 
+    def _format_constraints_for_prompt(self, constraints: List[str]) -> str:
+        """
+        Format technical constraints for inclusion in AI prompts.
+
+        Converts constraint tags like "vanilla-js" into readable descriptions
+        that help the AI understand what to include/exclude.
+
+        Parameters
+        ----------
+        constraints : List[str]
+            List of constraint tags (e.g., ["vanilla-js", "no-frameworks"])
+
+        Returns
+        -------
+        str
+            Human-readable constraint description for AI prompts
+        """
+        if not constraints:
+            return ""
+
+        # Separate positive and negative constraints
+        positive = []
+        negative = []
+
+        for constraint in constraints:
+            if constraint.startswith("no-"):
+                # Convert "no-X" to "do not use X"
+                tech = constraint[3:].replace("-", " ")
+                negative.append(tech)
+            else:
+                # Convert "vanilla-js" to "vanilla JavaScript"
+                tech = constraint.replace("-", " ")
+                positive.append(tech)
+
+        parts = []
+        if positive:
+            parts.append(f"Use: {', '.join(positive)}")
+        if negative:
+            parts.append(f"Do not use: {', '.join(negative)}")
+
+        return ". ".join(parts) if parts else ""
+
+    def _check_constraint_violations(
+        self, description: str, constraints: List[str]
+    ) -> List[str]:
+        """
+        Check if a task description violates any technical constraints.
+
+        Parameters
+        ----------
+        description : str
+            The generated task description
+        constraints : List[str]
+            List of constraint tags to check against
+
+        Returns
+        -------
+        List[str]
+            List of detected violations (empty if no violations)
+        """
+        violations = []
+        description_lower = description.lower()
+
+        # Check for specific "no-X" constraints
+        # This catches things like "no-react", "no-orm", "no-typescript", etc.
+        for constraint in constraints:
+            if constraint.startswith("no-"):
+                tech = constraint[3:]  # Remove "no-" prefix
+                # Normalize both the tech name and description for comparison
+                tech_normalized = tech.replace("-", " ").lower()
+
+                # Check if the technology appears in the description
+                if tech_normalized in description_lower:
+                    violations.append(f"Mentions '{tech}' but constraint prohibits it")
+
+        # Special handling for "no-frameworks" - look for the word "framework"
+        if "no-frameworks" in constraints or "vanilla-js" in constraints:
+            if "framework" in description_lower:
+                violations.append(
+                    "Mentions 'framework' but constraints prohibit frameworks"
+                )
+
+        return violations
+
     async def _generate_task_description_for_type(
-        self, base_description: str, task_type: str, feature_name: str
+        self,
+        base_description: str,
+        task_type: str,
+        feature_name: str,
+        constraints: Optional[List[str]] = None,
+        original_description: Optional[str] = None,
     ) -> str:
         """
-        Use LLM to generate task-type-specific descriptions.
+        Use LLM to generate task-type-specific descriptions with constraint awareness.
 
         This ensures Design/Implement/Test tasks get appropriate descriptions
-        that are then passed to subtasks during decomposition.
+        that are then passed to subtasks during decomposition. Technical constraints
+        are incorporated to ensure generated descriptions respect project requirements.
 
         Parameters
         ----------
@@ -965,16 +1060,34 @@ class AdvancedPRDParser:
             Task type: "design", "implement", or "test"
         feature_name : str
             Name of the feature being worked on
+        constraints : Optional[List[str]], default=None
+            Technical constraints to respect (e.g., "vanilla-js", "no-frameworks")
+        original_description : Optional[str], default=None
+            Original user description for context
 
         Returns
         -------
         str
-            Task-type-specific description
+            Task-type-specific description that respects constraints
         """
+        # Format constraints for the prompt
+        constraint_text = ""
+        if constraints:
+            formatted_constraints = self._format_constraints_for_prompt(constraints)
+            if formatted_constraints:
+                constraint_text = (
+                    f"\n\nTECHNICAL CONSTRAINTS (MUST FOLLOW):\n{formatted_constraints}"
+                )
+
+        # Include original description context if available
+        original_context = ""
+        if original_description:
+            original_context = f"\nOriginal Request: {original_description}"
+
         prompt = f"""Given this feature requirement:
 
 Feature: {feature_name}
-Requirement: {base_description}
+Requirement: {base_description}{original_context}{constraint_text}
 
 Generate a clear, specific description for a **{task_type.upper()}** task.
 
@@ -988,6 +1101,8 @@ Guidelines:
   components, writing the actual code based on Design specifications.
 - For TEST tasks: Focus on writing tests, creating test scenarios,
   validation, test coverage, quality assurance.
+
+IMPORTANT: Your description MUST respect the technical constraints listed above.
 
 Provide ONLY the description (3-4 sentences), no preamble or
 explanation."""
@@ -1003,7 +1118,20 @@ explanation."""
             # Use LLM to generate task-specific description
             result = await self.llm_client.analyze(prompt, context)
             description: str = str(result) if result else ""
-            return description.strip()
+            description = description.strip()
+
+            # Validate that generated description doesn't violate constraints
+            if constraints:
+                violations = self._check_constraint_violations(description, constraints)
+                if violations:
+                    logger.warning(
+                        f"Generated description has constraint violations: "
+                        f"{violations}. Description: {description}"
+                    )
+                    # Note: We log but don't fail
+                    # AI can be retried or manually corrected
+
+            return description
 
         except Exception as e:
             logger.warning(
