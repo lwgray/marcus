@@ -411,8 +411,10 @@ async def create_project_from_natural_language_tracked(
                     # Reset migration flag for new project
                     state._subtasks_migrated = False
 
-                    # Add Marcus project_id to result for auto-select functionality
+                    # Add Marcus project_id and board_id to result
+                    # for auto-select functionality
                     result["project_id"] = marcus_project_id
+                    result["board_id"] = str(kanban_client.board_id)
                 else:
                     logger.warning(
                         "ProjectRegistry not available - project not registered"
