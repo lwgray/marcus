@@ -45,15 +45,22 @@ class TimingParser:
             return False
 
         with open(self.log_file, "r") as f:
-            content = f.read()
+            lines = f.readlines()
 
-        # Pattern for START timestamp
+        # Skip the first 2000 lines (prompt section with examples)
+        # Real timing from Claude appears later in the log
+        prompt_skip_lines = min(2000, len(lines) // 2)
+        actual_content = "".join(lines[prompt_skip_lines:])
+
+        # Pattern for START timestamp - search in actual content only
         start_pattern = r"START:\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})"
-        start_match = re.search(start_pattern, content)
 
-        if start_match:
+        # Find ALL matches and use the LAST one (Claude's real output)
+        start_matches = list(re.finditer(start_pattern, actual_content))
+        if start_matches:
+            last_start = start_matches[-1]
             self.start_time = datetime.strptime(
-                start_match.group(1), "%Y-%m-%d %H:%M:%S"
+                last_start.group(1), "%Y-%m-%d %H:%M:%S"
             )
 
         # Pattern for subtask checkpoints
@@ -65,7 +72,8 @@ class TimingParser:
             r"(?:\s+\(([^\)]+)\s+elapsed\))?"
         )
 
-        for match in re.finditer(checkpoint_pattern, content, re.MULTILINE):
+        # Parse checkpoints from actual content (skip prompt examples)
+        for match in re.finditer(checkpoint_pattern, actual_content, re.MULTILINE):
             checkpoint_type = match.group(1)  # "SUBTASK" or "TASK"
             task_id = match.group(2)  # "1.1" or "3"
             timestamp_str = match.group(3)  # "10:18:45"
@@ -101,21 +109,31 @@ class TimingParser:
                 }
             )
 
-        # Pattern for PROJECT COMPLETE
-        complete_pattern = r"PROJECT\s+COMPLETE(?::\s+(\d{2}:\d{2}:\d{2}))?"
-        complete_match = re.search(complete_pattern, content)
+        # Pattern for END timestamp (more reliable than PROJECT COMPLETE)
+        end_pattern = r"END:\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})"
+        end_matches = list(re.finditer(end_pattern, actual_content))
+        if end_matches:
+            last_end = end_matches[-1]
+            self.end_time = datetime.strptime(last_end.group(1), "%Y-%m-%d %H:%M:%S")
 
-        if complete_match and complete_match.group(1):
-            timestamp_str = complete_match.group(1)
-            if self.start_time:
-                time_parts = timestamp_str.split(":")
-                self.end_time = self.start_time.replace(
-                    hour=int(time_parts[0]),
-                    minute=int(time_parts[1]),
-                    second=int(time_parts[2]),
-                )
-                if self.end_time < self.start_time:
-                    self.end_time += timedelta(days=1)
+        # Fallback: Pattern for PROJECT COMPLETE (old format)
+        if not self.end_time:
+            complete_pattern = r"PROJECT\s+COMPLETE(?::\s+(\d{2}:\d{2}:\d{2}))?"
+            complete_matches = list(re.finditer(complete_pattern, actual_content))
+
+            if complete_matches:
+                last_complete = complete_matches[-1]
+                if last_complete.group(1):
+                    timestamp_str = last_complete.group(1)
+                    if self.start_time:
+                        time_parts = timestamp_str.split(":")
+                        self.end_time = self.start_time.replace(
+                            hour=int(time_parts[0]),
+                            minute=int(time_parts[1]),
+                            second=int(time_parts[2]),
+                        )
+                        if self.end_time < self.start_time:
+                            self.end_time += timedelta(days=1)
 
         # Pattern for TOTAL time
         # Examples:
@@ -125,12 +143,15 @@ class TimingParser:
             r"TOTAL(?:\s+TIME)?:\s+(?:(\d+)\s+hour[s]?)?\s*"
             r"(?:(\d+)\s+minute[s]?)?\s*(?:(\d+)\s+second[s]?)?"
         )
-        total_match = re.search(total_pattern, content, re.IGNORECASE)
 
-        if total_match:
-            hours = int(total_match.group(1)) if total_match.group(1) else 0
-            minutes = int(total_match.group(2)) if total_match.group(2) else 0
-            seconds = int(total_match.group(3)) if total_match.group(3) else 0
+        # Find ALL matches and use the LAST one (Claude's real output)
+        total_matches = list(re.finditer(total_pattern, actual_content, re.IGNORECASE))
+
+        if total_matches:
+            last_total = total_matches[-1]
+            hours = int(last_total.group(1)) if last_total.group(1) else 0
+            minutes = int(last_total.group(2)) if last_total.group(2) else 0
+            seconds = int(last_total.group(3)) if last_total.group(3) else 0
 
             total_seconds = hours * 3600 + minutes * 60 + seconds
 
