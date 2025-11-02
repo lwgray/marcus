@@ -744,10 +744,7 @@ echo "=========================================="
         print(f"Prompt: {prompt_file}")
 
         # Check if we're in an interactive terminal and auto-attach
-        import os
-        import time
-
-        is_tty = os.isatty(sys.stdout.fileno())
+        is_tty = sys.stdout.isatty()
 
         if is_tty:
             print("\nAttaching to tmux session in 3 seconds...")
