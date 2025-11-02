@@ -8,7 +8,7 @@ for project definitions.
 
 import uuid
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from src.core.persistence import Persistence
