@@ -407,7 +407,7 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
         )
 
     # Count idle agents (registered but not currently working)
-    total_agents = len(state.agents)
+    total_agents = len(state.agent_status)
     busy_agents = len([a for a in state.agent_tasks.values() if a.task_id])
     idle_agents = max(0, total_agents - busy_agents)
 
