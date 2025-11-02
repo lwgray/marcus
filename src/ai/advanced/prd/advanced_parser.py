@@ -35,6 +35,7 @@ class PRDAnalysis:
     complexity_assessment: Dict[str, Any]
     risk_factors: List[Dict[str, Any]]
     confidence: float
+    original_description: str  # NEW: Preserve original user description
 
 
 @dataclass
@@ -258,7 +259,10 @@ class AdvancedPRDParser:
                     "id": "unique_feature_id",
                     "name": "Feature Name",
                     "description": "Detailed description of the feature",
-                    "priority": "high|medium|low"
+                    "priority": "high|medium|low",
+                    "complexity": "atomic|simple|coordinated|distributed",
+                    "requires_design_artifacts": true|false,
+                    "affected_components": ["component1", "component2"]
                 }}
             ],
             "nonFunctionalRequirements": [
@@ -304,13 +308,39 @@ class AdvancedPRDParser:
         - Do NOT add "best practices" features that were explicitly
           excluded
         - For functionalRequirements, use "id", "name", "description",
-          and "priority" fields
+          "priority", "complexity", "requires_design_artifacts", and
+          "affected_components" fields
         - For nonFunctionalRequirements, use "id", "name", "description",
           and "category" fields
         - Generate meaningful IDs based on the feature name
           (e.g., "crud_operations", "user_auth")
         - Focus on extracting actionable, specific requirements that can
           be converted into development tasks
+
+        COMPLEXITY CLASSIFICATION:
+        - "atomic": Single file changes (e.g., set background color, update text)
+        - "simple": One component feature (e.g., score display, button handler)
+        - "coordinated": Multi-component feature requiring coordination
+          (e.g., user auth with API + UI + DB, full CRUD operations)
+        - "distributed": Multi-service architecture
+          (e.g., microservices, separate auth/user/order services)
+
+        DESIGN ARTIFACTS NEEDED:
+        - Set "requires_design_artifacts" to true if the feature needs
+          interface contracts, API specs, or data schemas for coordination
+        - Set to false for atomic or simple features that don't need
+          design documentation
+
+        AFFECTED COMPONENTS:
+        - List all components touched by this feature
+        - Examples: ["frontend"], ["api", "database"], ["auth-service", "user-service"]
+        - Use specific names like "api", "database", "frontend", "auth-service"
+
+        TECHNICAL CONSTRAINTS:
+        - Extract ALL technology constraints from the description
+        - Include explicit constraints: "use X", "vanilla JS", "PostgreSQL"
+        - Include exclusions: "no frameworks", "don't use React", "avoid ORM"
+        - Convert to lowercase with hyphens: "vanilla-js", "no-react", "postgresql"
 
         EXCLUSION EXAMPLES:
         - If description says "Do not include API Security", return
@@ -451,6 +481,7 @@ class AdvancedPRDParser:
                 or {},
                 risk_factors=get_key(analysis_data, "risk_factors", "riskFactors"),
                 confidence=analysis_data.get("confidence", 0.8),
+                original_description=prd_content,  # NEW: Preserve original description
             )
 
         except Exception as e:
