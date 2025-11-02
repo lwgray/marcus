@@ -8,7 +8,7 @@ would affect the outcome, learning optimal approaches through experimentation.
 import copy
 import uuid
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from src.visualization.shared_pipeline_events import (
@@ -460,5 +460,5 @@ class WhatIfAnalysisEngine:
                 for v in self.variations
             ],
             "optimization_suggestions": self.get_optimization_suggestions(),
-            "analysis_timestamp": datetime.now().isoformat(),
+            "analysis_timestamp": datetime.now(timezone.utc).isoformat(),
         }

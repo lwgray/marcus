@@ -5,7 +5,7 @@ Complete unit tests for Marcus Server - Using anyio to avoid pytest-asyncio issu
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, Mock, patch
@@ -354,7 +354,7 @@ async def test_get_project_status():
             overdue_tasks=[],
             team_velocity=2.0,
             risk_level=RiskLevel.LOW,
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
 
     # Mock board summary

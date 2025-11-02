@@ -9,7 +9,7 @@ Tests the MCP tools that expose Marcus's AI capabilities for:
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -58,8 +58,8 @@ class TestCreateProjectFromNaturalLanguage:
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=task_data.get("estimated_hours", 1.0),
         )
@@ -82,8 +82,8 @@ class TestCreateProjectFromNaturalLanguage:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=4.0,
                 labels=["database", "design"],
@@ -95,8 +95,8 @@ class TestCreateProjectFromNaturalLanguage:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=6.0,
                 labels=["backend", "auth"],
@@ -108,8 +108,8 @@ class TestCreateProjectFromNaturalLanguage:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=5.0,
                 dependencies=["2"],
@@ -245,8 +245,8 @@ class TestAddFeatureNaturalLanguage:
                 priority=Priority.HIGH,
                 labels=["backend", "auth"],
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
             ),
             Task(
                 id="2",
@@ -255,8 +255,8 @@ class TestAddFeatureNaturalLanguage:
                 priority=Priority.MEDIUM,
                 labels=["frontend"],
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
             ),
         ]
 
@@ -301,8 +301,8 @@ class TestAddFeatureNaturalLanguage:
                 priority=Priority.MEDIUM,
                 labels=task_data.get("labels", []),
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
             )
             created_tasks.append(task)
             return task
@@ -394,8 +394,8 @@ class TestNaturalLanguageCreators:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
             ),
             Task(
                 id="2",
@@ -404,8 +404,8 @@ class TestNaturalLanguageCreators:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
             ),
             Task(
                 id="3",
@@ -414,8 +414,8 @@ class TestNaturalLanguageCreators:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
             ),
         ]
 
@@ -441,8 +441,8 @@ class TestNaturalLanguageCreators:
                 status=TaskStatus.TODO,
                 priority=Priority.LOW,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
             )
         ]
         assert adder._calculate_complexity(tasks_low) == "low"
@@ -456,8 +456,8 @@ class TestNaturalLanguageCreators:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
             ),
             Task(
                 id="2",
@@ -466,8 +466,8 @@ class TestNaturalLanguageCreators:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
             ),
         ]
         assert adder._calculate_complexity(tasks_medium) == "medium"
@@ -481,8 +481,8 @@ class TestNaturalLanguageCreators:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
             )
         ]
         assert adder._calculate_complexity(tasks_high) == "high"

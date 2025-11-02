@@ -25,7 +25,7 @@ import functools
 import json
 import time
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional
 
 import mlflow
@@ -75,7 +75,7 @@ def trace_agent_task(
 
                 # Add task information
                 span.set_attribute("task_name", task_name)
-                span.set_attribute("start_time", datetime.now().isoformat())
+                span.set_attribute("start_time", datetime.now(timezone.utc).isoformat())
 
                 # Add function arguments
                 if args:
@@ -93,7 +93,9 @@ def trace_agent_task(
                     duration = time.time() - start_time
                     span.set_attribute("duration_seconds", duration)
                     span.set_attribute("status", "success")
-                    span.set_attribute("end_time", datetime.now().isoformat())
+                    span.set_attribute(
+                        "end_time", datetime.now(timezone.utc).isoformat()
+                    )
 
                     # Add result summary
                     if isinstance(result, dict):
@@ -311,7 +313,9 @@ class TracedExperiment:
     ) -> None:
         """Initialize TracedExperiment context manager."""
         self.experiment_name = experiment_name
-        self.run_name = run_name or f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        self.run_name = (
+            run_name or f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+        )
         self.tags = tags or {}
         self.run: Optional[Any] = None
 

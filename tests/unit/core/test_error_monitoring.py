@@ -8,7 +8,7 @@ and health monitoring capabilities.
 import asyncio
 import json
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Type
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
@@ -65,8 +65,8 @@ class TestErrorPattern:
             pattern_type="frequency",
             description="High frequency error pattern",
             frequency=10,
-            first_seen=datetime.now(),
-            last_seen=datetime.now(),
+            first_seen=datetime.now(timezone.utc),
+            last_seen=datetime.now(timezone.utc),
         )
 
         assert pattern.pattern_id == "test_pattern_123"
@@ -322,21 +322,21 @@ class TestErrorMonitor:
             "error_type": "NetworkTimeoutError",
             "operation": "test_op",
             "integration_name": "test_service",
-            "timestamp": datetime.now(),
+            "timestamp": datetime.now(timezone.utc),
         }
 
         error2_data = {
             "error_type": "NetworkTimeoutError",
             "operation": "test_op",
             "integration_name": "test_service",
-            "timestamp": datetime.now(),
+            "timestamp": datetime.now(timezone.utc),
         }
 
         error3_data = {
             "error_type": "AuthorizationError",
             "operation": "different_op",
             "integration_name": "different_service",
-            "timestamp": datetime.now(),
+            "timestamp": datetime.now(timezone.utc),
         }
 
         # High similarity
@@ -467,7 +467,7 @@ class TestErrorMonitor:
     def test_data_cleanup(self):
         """Test cleanup of old monitoring data"""
         # Add old patterns (simulate old timestamps)
-        old_time = datetime.now() - timedelta(days=8)
+        old_time = datetime.now(timezone.utc) - timedelta(days=8)
         old_pattern = ErrorPattern(
             pattern_id="old_pattern",
             pattern_type="test",
@@ -484,8 +484,8 @@ class TestErrorMonitor:
             pattern_type="test",
             description="Recent pattern",
             frequency=1,
-            first_seen=datetime.now(),
-            last_seen=datetime.now(),
+            first_seen=datetime.now(timezone.utc),
+            last_seen=datetime.now(timezone.utc),
         )
         self.monitor.detected_patterns["recent_pattern"] = recent_pattern
 

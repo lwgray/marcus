@@ -11,7 +11,7 @@ This refactored version eliminates code duplication by using base classes and ut
 import logging
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 # Add src to path
@@ -353,7 +353,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 "dependencies_mapped": self._count_dependencies(safe_tasks),
                 "risk_level": self._assess_risk_by_count(len(created_tasks)),
                 "confidence": 0.85,
-                "created_at": datetime.now().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
             }
 
             logger.info(f"Successfully created project with {len(created_tasks)} tasks")
@@ -604,8 +604,8 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             status=TaskStatus.DONE,  # Mark as completed
             priority=Priority.LOW,
             assigned_to=None,  # Not assignable
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=0,  # No time estimate
             dependencies=[],
@@ -743,8 +743,8 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
                 ),
                 labels=task_info.get("labels", ["feature"]),
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 estimated_hours=task_info.get("estimated_hours", 8),
                 dependencies=[],
                 due_date=None,

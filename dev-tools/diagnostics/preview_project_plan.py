@@ -16,7 +16,7 @@ Output:
 import asyncio
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, List
 
@@ -79,7 +79,7 @@ def generate_preview_markdown(result: Any, description: str, project_name: str) 
     lines = []
 
     lines.append("# Project Plan Preview")
-    lines.append(f"\n**Generated:** {datetime.now().isoformat()}")
+    lines.append(f"\n**Generated:** {datetime.now(timezone.utc).isoformat()}")
     lines.append(f"\n**Project Name:** {project_name}")
     lines.append("\n**Status:** ⚠️ NOT YET CREATED - PREVIEW ONLY\n")
 

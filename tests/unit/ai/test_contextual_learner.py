@@ -13,7 +13,7 @@ and avoid external dependencies during testing.
 
 import json
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -663,7 +663,7 @@ class TestContextualLearningSystem:
             preferred_task_types={"frontend": 0.8, "backend": 0.75},
             collaboration_patterns={"avg_team_size": 4},
             quality_metrics={"average_quality": 0.88},
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
         learning_system.team_learnings[team_id] = team_learnings
 
@@ -675,7 +675,7 @@ class TestContextualLearningSystem:
             common_dependencies=[("database_setup", "api_development")],
             risk_factors={"integration_complexity": 0.3},
             best_practices=["automated_testing", "code_review"],
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
         learning_system.technology_learnings[tech_stack] = tech_learnings
 
@@ -770,7 +770,7 @@ class TestContextualLearningSystem:
             preferred_task_types={"frontend": 0.9},
             collaboration_patterns={"avg_team_size": 3},
             quality_metrics={"average_quality": 0.82},
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
         learning_system.team_learnings["team-delta"] = team_learnings
 
@@ -781,7 +781,7 @@ class TestContextualLearningSystem:
             common_dependencies=[],
             risk_factors={"database_migration": 0.4},  # High risk
             best_practices=["database_indexing", "caching"],
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
         learning_system.technology_learnings["django-react-postgres"] = tech_learnings
 
@@ -1203,7 +1203,7 @@ class TestContextualLearningSystem:
             preferred_task_types={},
             collaboration_patterns={},
             quality_metrics={},
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
 
         tech_learnings = TechnologyLearnings(
@@ -1213,7 +1213,7 @@ class TestContextualLearningSystem:
             common_dependencies=[],
             risk_factors={},
             best_practices=[],
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
 
         context = {"project_type": "web_app"}
@@ -1262,7 +1262,7 @@ class TestContextualLearningSystem:
             success_patterns={},
             common_pitfalls=[],
             resource_requirements={},
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
 
         team_learnings = TeamLearnings(
@@ -1272,7 +1272,7 @@ class TestContextualLearningSystem:
             preferred_task_types={"frontend": 0.9, "backend": 0.7, "testing": 0.8},
             collaboration_patterns={},
             quality_metrics={},
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
 
         context = {"project_size": "medium"}
@@ -1320,7 +1320,7 @@ class TestContextualLearningSystem:
             ],
             risk_factors={"database_migration": 0.4, "api_versioning": 0.2},
             best_practices=[],
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
 
         context = {"deployment_env": "production"}
@@ -1373,7 +1373,7 @@ class TestContextualLearningSystem:
             preferred_task_types={},
             collaboration_patterns={},
             quality_metrics={},
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
 
         current_state = {"active_backend_tasks": 5}
@@ -1436,7 +1436,7 @@ class TestContextualLearningSystem:
                 "circuit_breakers",
                 "health_checks",
             ],
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
 
         current_state = {"service_count": 12}
@@ -1500,7 +1500,7 @@ class TestContextualLearningSystem:
                 "Poor offline handling implementation",
             ],
             resource_requirements={},
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
 
         current_state = {"current_phase": "development"}

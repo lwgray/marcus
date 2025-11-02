@@ -74,6 +74,16 @@ repos:
         args: ['--baseline', '.secrets.baseline']
         exclude: ^(tests/|\.git/|\.env\.example)
 
+  # Prevent naive datetime usage (GH-107)
+  - repo: local
+    hooks:
+      - id: no-naive-datetime
+        name: Prevent naive datetime.now() usage
+        entry: 'datetime\.now\(\)(?![^\n]*#\s*timezone-naive-ok)'
+        language: pygrep
+        types: [python]
+        exclude: '^(migrations/|\.mypy_cache/|\.pytest_cache/|__pycache__/)'
+
 # Configuration
 default_language_version:
   python: python3.11

@@ -4,7 +4,7 @@ Unit tests for ProjectPatternLearner
 
 import json
 from dataclasses import asdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -98,13 +98,13 @@ class TestProjectPatternLearner:
             overdue_tasks=[],
             team_velocity=5.0,
             risk_level=RiskLevel.LOW,
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
 
     @pytest.fixture
     def sample_tasks(self):
         """Create sample tasks"""
-        base_time = datetime.now()
+        base_time = datetime.now(timezone.utc)
         return [
             Task(
                 id=f"task-{i}",
@@ -343,7 +343,7 @@ class TestProjectPatternLearner:
             implementation_patterns={},
             success_factors=[],
             risk_factors=[],
-            extracted_at=datetime.now(),
+            extracted_at=datetime.now(timezone.utc),
             confidence_score=0.8,
         )
 
@@ -360,7 +360,7 @@ class TestProjectPatternLearner:
             implementation_patterns={},
             success_factors=[],
             risk_factors=[],
-            extracted_at=datetime.now(),
+            extracted_at=datetime.now(timezone.utc),
             confidence_score=0.75,
         )
 
@@ -392,7 +392,7 @@ class TestProjectPatternLearner:
             implementation_patterns={},
             success_factors=["Clear requirements", "Strong team"],
             risk_factors=[],
-            extracted_at=datetime.now(),
+            extracted_at=datetime.now(timezone.utc),
             confidence_score=0.9,
         )
 
@@ -445,7 +445,7 @@ class TestProjectPatternLearner:
             implementation_patterns={},
             success_factors=["Good planning"],
             risk_factors=[],
-            extracted_at=datetime.now(),
+            extracted_at=datetime.now(timezone.utc),
             confidence_score=0.8,
         )
 

@@ -216,11 +216,11 @@ def check_relevance(task_name: str, description: Optional[str]) -> bool:
 
 def generate_markdown_report(results: List[Dict[str, Any]]) -> str:
     """Generate a markdown report from analysis results."""
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     lines = []
     lines.append("# Task Description Analysis Report")
-    lines.append(f"\n**Generated:** {datetime.now().isoformat()}")
+    lines.append(f"\n**Generated:** {datetime.now(timezone.utc).isoformat()}")
     lines.append(f"\n**Total Tasks:** {len(results)}\n")
 
     # Summary table

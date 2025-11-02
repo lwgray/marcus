@@ -7,7 +7,7 @@ for multiple concurrent projects.
 import asyncio
 import logging
 from collections import OrderedDict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -36,7 +36,7 @@ class ProjectContext:
         self.events: Optional[Events] = None
         self.project_state: Optional[ProjectState] = None
         self.assignment_persistence: Optional[AssignmentPersistence] = None
-        self.last_accessed = datetime.now()
+        self.last_accessed = datetime.now(timezone.utc)
         self.is_connected = False
 
 
@@ -221,7 +221,7 @@ class ProjectContextManager:
             return None
 
         # Update last accessed
-        context.last_accessed = datetime.now()
+        context.last_accessed = datetime.now(timezone.utc)
 
         return context.kanban_client
 
@@ -391,7 +391,7 @@ class ProjectContextManager:
             project_id,
             {
                 "state": context.project_state.__dict__,
-                "saved_at": datetime.now().isoformat(),
+                "saved_at": datetime.now(timezone.utc).isoformat(),
             },
         )
 
@@ -447,7 +447,7 @@ class ProjectContextManager:
                 await asyncio.sleep(300)  # Check every 5 minutes
 
                 async with self.lock:
-                    now = datetime.now()
+                    now = datetime.now(timezone.utc)
                     idle_threshold = now - timedelta(minutes=self.IDLE_TIMEOUT_MINUTES)
 
                     to_remove = []

@@ -156,7 +156,7 @@ class BoardHealthAnalyzer:
             issues=issues,
             metrics=metrics,
             recommendations=recommendations,
-            timestamp=datetime.now(),
+            timestamp=datetime.now(timezone.utc),
         )
 
     async def _detect_skill_mismatches(

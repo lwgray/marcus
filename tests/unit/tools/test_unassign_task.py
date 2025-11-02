@@ -5,7 +5,7 @@ Tests the manual task unassignment feature that breaks stuck task
 assignments when agents crash, disconnect, or get stuck.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -22,7 +22,7 @@ def create_mock_task(
     assigned_to: Optional[str] = None,
 ) -> Task:
     """Helper to create a mock task."""
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     return Task(
         id=task_id,
         name=name,
@@ -52,8 +52,8 @@ def create_mock_assignment(
         priority=Priority.MEDIUM,
         dependencies=[],
         assigned_to=agent_id,
-        assigned_at=datetime.now(),
-        due_date=datetime.now() + timedelta(days=7),
+        assigned_at=datetime.now(timezone.utc),
+        due_date=datetime.now(timezone.utc) + timedelta(days=7),
     )
 
 

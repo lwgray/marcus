@@ -5,7 +5,7 @@ Tests that the validator can automatically fix common task graph issues
 without raising exceptions.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -27,8 +27,8 @@ class TestTaskGraphAutoFix:
             labels=["type:feature"],
             dependencies=["task_999", "task_888"],  # Both orphaned
             estimated_hours=4.0,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             assigned_to=None,
             due_date=None,
         )
@@ -53,8 +53,8 @@ class TestTaskGraphAutoFix:
             labels=["type:feature"],
             dependencies=[],
             estimated_hours=4.0,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             assigned_to=None,
             due_date=None,
         )
@@ -68,8 +68,8 @@ class TestTaskGraphAutoFix:
             labels=["type:feature"],
             dependencies=["task_1", "task_999"],  # One valid, one orphaned
             estimated_hours=4.0,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             assigned_to=None,
             due_date=None,
         )
@@ -93,8 +93,8 @@ class TestTaskGraphAutoFix:
             labels=["type:feature"],
             dependencies=["task_b"],
             estimated_hours=4.0,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             assigned_to=None,
             due_date=None,
         )
@@ -108,8 +108,8 @@ class TestTaskGraphAutoFix:
             labels=["type:feature"],
             dependencies=["task_a"],  # Creates cycle
             estimated_hours=4.0,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             assigned_to=None,
             due_date=None,
         )
@@ -135,8 +135,8 @@ class TestTaskGraphAutoFix:
             labels=["type:feature"],
             dependencies=["task_b"],
             estimated_hours=4.0,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             assigned_to=None,
             due_date=None,
         )
@@ -150,8 +150,8 @@ class TestTaskGraphAutoFix:
             labels=["type:feature"],
             dependencies=["task_c"],
             estimated_hours=4.0,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             assigned_to=None,
             due_date=None,
         )
@@ -165,8 +165,8 @@ class TestTaskGraphAutoFix:
             labels=["type:feature"],
             dependencies=["task_a"],  # Completes cycle
             estimated_hours=4.0,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             assigned_to=None,
             due_date=None,
         )
@@ -194,8 +194,8 @@ class TestTaskGraphAutoFix:
             labels=["type:feature", "component:backend"],
             dependencies=[],
             estimated_hours=4.0,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             assigned_to=None,
             due_date=None,
         )
@@ -209,8 +209,8 @@ class TestTaskGraphAutoFix:
             labels=["final", "verification"],
             dependencies=[],  # Missing dependencies!
             estimated_hours=4.0,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             assigned_to=None,
             due_date=None,
         )
@@ -237,8 +237,8 @@ class TestTaskGraphAutoFix:
             labels=["type:feature"],
             dependencies=[],
             estimated_hours=4.0,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             assigned_to=None,
             due_date=None,
         )
@@ -252,8 +252,8 @@ class TestTaskGraphAutoFix:
             labels=["type:feature"],
             dependencies=["impl_1", "orphan_999"],  # One valid, one orphaned
             estimated_hours=4.0,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             assigned_to=None,
             due_date=None,
         )
@@ -267,8 +267,8 @@ class TestTaskGraphAutoFix:
             labels=["final"],
             dependencies=[],  # Missing deps
             estimated_hours=4.0,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             assigned_to=None,
             due_date=None,
         )
@@ -297,8 +297,8 @@ class TestTaskGraphAutoFix:
             labels=["type:feature"],
             dependencies=[],
             estimated_hours=4.0,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             assigned_to=None,
             due_date=None,
         )
@@ -312,8 +312,8 @@ class TestTaskGraphAutoFix:
             labels=["type:testing"],
             dependencies=["task_1"],
             estimated_hours=2.0,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             assigned_to=None,
             due_date=None,
         )
@@ -327,8 +327,8 @@ class TestTaskGraphAutoFix:
             labels=["final"],
             dependencies=["task_1", "task_2"],  # Proper dependencies
             estimated_hours=4.0,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             assigned_to=None,
             due_date=None,
         )
@@ -358,8 +358,8 @@ class TestTaskGraphAutoFix:
             labels=["type:feature"],
             dependencies=["task_1"],  # Self-reference (creates cycle)
             estimated_hours=4.0,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             assigned_to=None,
             due_date=None,
         )

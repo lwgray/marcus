@@ -9,7 +9,7 @@ import os
 
 # Add parent to path
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -36,7 +36,7 @@ class TestNLPBoardIntegration:
         """Setup kanban client for tests"""
         self.provider = os.getenv("KANBAN_PROVIDER", "planka")
         self.kanban = await KanbanFactory.create(self.provider)
-        self.test_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.test_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         yield
         # Cleanup would go here if needed
 

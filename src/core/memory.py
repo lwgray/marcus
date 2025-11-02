@@ -305,7 +305,7 @@ class Memory:
         if self.persistence:
             await self.persistence.store(
                 "task_outcomes",
-                f"{task_id}_{agent_id}_{datetime.now().timestamp()}",
+                f"{task_id}_{agent_id}_{datetime.now(timezone.utc).timestamp()}",
                 outcome.to_dict(),
             )
 
@@ -520,7 +520,7 @@ class Memory:
             )
 
         # Time of day factor
-        current_hour = datetime.now().hour
+        current_hour = datetime.now(timezone.utc).hour
         if current_hour >= 15:  # After 3 PM
             factors.append("Late day tasks often take longer")
             upper_bound *= 1.1
@@ -757,7 +757,7 @@ class Memory:
                             "task_id": dependent_id,
                             "task_name": task_name,
                             "delay_hours": propagated_delay,
-                            "new_start": datetime.now()
+                            "new_start": datetime.now(timezone.utc)
                             + timedelta(hours=propagated_delay),
                         }
                     )

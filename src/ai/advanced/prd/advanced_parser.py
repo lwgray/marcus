@@ -8,7 +8,7 @@ deep understanding, intelligent task breakdown, and risk assessment.
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.ai.providers.llm_abstraction import LLMAbstraction
@@ -780,8 +780,8 @@ class AdvancedPRDParser:
             status=TaskStatus.TODO,
             priority=self._determine_priority({"type": task_type}, analysis),
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=estimated_hours,
             dependencies=[],  # Will be filled by dependency inference
@@ -1131,7 +1131,7 @@ explanation."""
         estimated_days *= buffer_factor
 
         # Timeline prediction
-        start_date = datetime.now()
+        start_date = datetime.now(timezone.utc)
         estimated_completion = start_date + timedelta(days=estimated_days)
 
         timeline = {
@@ -1514,7 +1514,7 @@ explanation."""
         risks = []
         if constraints.deadline:
             total_effort = sum(task.estimated_hours or 8 for task in tasks)
-            days_available = (constraints.deadline - datetime.now()).days
+            days_available = (constraints.deadline - datetime.now(timezone.utc)).days
             if (
                 total_effort > days_available * constraints.team_size * 6
             ):  # 6 hours per day

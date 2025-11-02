@@ -15,7 +15,7 @@ This simulates task completion without actually implementing the work.
 import asyncio
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -45,7 +45,7 @@ class TaskTracker:
 
     def __init__(self) -> None:
         self.completed_tasks: List[Dict[str, Any]] = []
-        self.start_time = datetime.now()
+        self.start_time = datetime.now(timezone.utc)
         self.end_time: Optional[datetime] = None
 
     def add_completed_task(self, task_id: str, title: str, order: int) -> None:
@@ -55,13 +55,13 @@ class TaskTracker:
                 "order": order,
                 "task_id": task_id,
                 "title": title,
-                "completed_at": datetime.now().isoformat(),
+                "completed_at": datetime.now(timezone.utc).isoformat(),
             }
         )
 
     def finalize(self, remaining_count: int) -> None:
         """Mark the workflow as complete."""
-        self.end_time = datetime.now()
+        self.end_time = datetime.now(timezone.utc)
 
     def generate_report(self, remaining_count: int) -> str:
         """Generate a final report of the agent's work."""

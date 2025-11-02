@@ -7,7 +7,7 @@ separation of concerns.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from src.core.project_registry import ProjectConfig
@@ -171,8 +171,8 @@ class ProjectAutoSetup:
                 "project_id": result["project_id"],
                 "board_id": result["board_id"],
             },
-            created_at=datetime.now(),
-            last_used=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            last_used=datetime.now(timezone.utc),
             tags=["auto-created"],
         )
 

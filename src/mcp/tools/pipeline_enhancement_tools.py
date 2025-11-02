@@ -6,7 +6,7 @@ error prediction, and recommendation features through MCP interface.
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from src.analysis.pipeline_comparison import PipelineComparator
@@ -258,7 +258,7 @@ class PipelineEnhancementTools:
                 "success": True,
                 "format": format,
                 "content": content,
-                "generated_at": datetime.now().isoformat(),
+                "generated_at": datetime.now(timezone.utc).isoformat(),
             }
         except Exception as e:
             return {"success": False, "error": str(e)}

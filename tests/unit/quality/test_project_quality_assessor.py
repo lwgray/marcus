@@ -3,7 +3,7 @@ Unit tests for ProjectQualityAssessor
 """
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
 from unittest.mock import AsyncMock
 
@@ -147,13 +147,13 @@ class TestProjectQualityAssessor:
             overdue_tasks=[],
             team_velocity=5.0,
             risk_level=RiskLevel.LOW,
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
 
     @pytest.fixture
     def sample_tasks(self):
         """Create sample tasks"""
-        base_time = datetime.now()
+        base_time = datetime.now(timezone.utc)
         return [
             Task(
                 id=f"task-{i}",
