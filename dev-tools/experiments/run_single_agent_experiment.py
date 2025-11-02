@@ -11,11 +11,20 @@ import argparse
 import shutil
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import yaml
+
+# MLflow is optional
+try:
+    import mlflow
+
+    MLFLOW_AVAILABLE = True
+except ImportError:
+    MLFLOW_AVAILABLE = False
 
 
 class SingleAgentConfig:
@@ -439,6 +448,9 @@ class SingleAgentExperiment:
         self.tmux_session = (
             f"single_agent_{self.config.project_name.lower().replace(' ', '_')}"
         )
+        self.mlflow_run_id: Optional[str] = None
+        self.experiment_start_time: Optional[float] = None
+        self.current_log_file: Optional[Path] = None
 
     def generate_and_save_prompt(self) -> Path:
         """
@@ -486,7 +498,29 @@ class SingleAgentExperiment:
                 check=True,
                 capture_output=True,
             )
+
+            # Set up logging with pipe-pane
+            log_file = (
+                self.config.logs_dir
+                / f"single_agent_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+            )
+            self.current_log_file = log_file
+
+            subprocess.run(
+                [
+                    "tmux",
+                    "pipe-pane",
+                    "-t",
+                    self.tmux_session,
+                    "-o",
+                    f"cat >> {log_file}",
+                ],
+                check=True,
+                capture_output=True,
+            )
+
             print(f"✓ Created tmux session: {self.tmux_session}")
+            print(f"✓ Logging to: {log_file}")
             return True
         except subprocess.CalledProcessError as e:
             print(f"✗ Failed to create tmux session: {e}")
@@ -506,23 +540,29 @@ class SingleAgentExperiment:
         bool
             True if successful, False otherwise
         """
-        log_file = (
-            self.config.logs_dir
-            / f"single_agent_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-        )
-
-        # Create script to launch Claude
-        # Pipe the prompt file directly instead of trying to escape everything
+        # Create script to launch Claude (matching spawn_agents.py approach)
         launch_script = f"""#!/bin/bash
 # Source shell profiles to get nvm, claude, etc.
 [ -f ~/.zshrc ] && source ~/.zshrc
 [ -f ~/.bashrc ] && source ~/.bashrc
 
 # Change to implementation directory
-cd {self.config.implementation_dir}
+cd {self.config.implementation_dir} || exit 1
 
-# Launch Claude with prompt (pipe file directly to avoid escaping issues)
-cat {prompt_file} | claude 2>&1 | tee {log_file}
+echo "=========================================="
+echo "SINGLE AGENT EXPERIMENT"
+echo "Project: {self.config.project_name}"
+echo "Working Directory: $(pwd)"
+echo "=========================================="
+echo ""
+
+# Launch Claude with input redirection (same as spawn_agents.py)
+claude --dangerously-skip-permissions < {prompt_file}
+
+echo ""
+echo "=========================================="
+echo "Experiment Complete"
+echo "=========================================="
 """
 
         script_file = self.config.logs_dir / "launch_claude.sh"
@@ -546,12 +586,111 @@ cat {prompt_file} | claude 2>&1 | tee {log_file}
                 capture_output=True,
             )
             print("✓ Launched Claude in tmux session")
-            print(f"  Log file: {log_file}")
-            print(f"  Attach with: tmux attach -t {self.tmux_session}")
             return True
         except subprocess.CalledProcessError as e:
             print(f"✗ Failed to launch Claude: {e}")
             return False
+
+    def init_mlflow_tracking(self) -> bool:
+        """
+        Initialize MLflow experiment tracking.
+
+        Returns
+        -------
+        bool
+            True if MLflow is enabled and initialized, False otherwise
+        """
+        if not self.config.tracking_enabled:
+            return False
+
+        if not MLFLOW_AVAILABLE:
+            print("⚠️  MLflow not installed - tracking disabled")
+            print("  Install with: pip install mlflow")
+            return False
+
+        try:
+            # Set tracking URI
+            mlflow.set_tracking_uri("./mlruns")
+
+            # Get or create experiment
+            experiment_name = self.config.experiment_tracking.get(
+                "experiment_name", f"{self.config.project_name}_single_agent"
+            ).format(project_name=self.config.project_name)
+
+            experiment = mlflow.get_experiment_by_name(experiment_name)
+            if experiment is None:
+                experiment_id = mlflow.create_experiment(experiment_name)
+            else:
+                experiment_id = experiment.experiment_id
+
+            # Start run
+            mlflow.start_run(experiment_id=experiment_id)
+            self.mlflow_run_id = mlflow.active_run().info.run_id
+
+            # Log parameters
+            mlflow.log_param("project_name", self.config.project_name)
+            mlflow.log_param("agent_mode", self.config.agent_mode)
+            mlflow.log_param("model", self.config.model)
+            mlflow.log_param("num_agents", 1)  # Single agent
+            mlflow.log_param("checkpoint_mode", self.config.checkpoint_mode)
+            mlflow.log_param("time_tracking", self.config.time_tracking)
+
+            # Log tags
+            tags = self.config.experiment_tracking.get("tags", {})
+            for key, value in tags.items():
+                mlflow.set_tag(key, value)
+
+            print("✓ MLflow tracking initialized")
+            print(f"  Experiment: {experiment_name}")
+            print(f"  Run ID: {self.mlflow_run_id}")
+
+            return True
+        except Exception as e:
+            print(f"⚠️  Failed to initialize MLflow: {e}")
+            return False
+
+    def log_mlflow_results(self) -> None:
+        """Log experiment results to MLflow after completion."""
+        if not self.mlflow_run_id or not self.current_log_file:
+            return
+
+        try:
+            # Parse timing from log file
+            from parse_single_agent_timing import TimingParser
+
+            parser = TimingParser(self.current_log_file)
+            if parser.parse_log():
+                metrics = parser.get_metrics()
+
+                # Log all metrics
+                for key, value in metrics.items():
+                    if value is not None:
+                        mlflow.log_metric(key, value)
+
+                print(f"\n✓ Logged {len(metrics)} metrics to MLflow")
+            else:
+                print("\n⚠️  Could not parse timing data from log")
+
+            # Log the log file as an artifact
+            if self.current_log_file.exists():
+                mlflow.log_artifact(str(self.current_log_file), "logs")
+                print("✓ Logged experiment log as artifact")
+
+        except ImportError:
+            print("⚠️  parse_single_agent_timing.py not found - cannot parse timing")
+        except Exception as e:
+            print(f"⚠️  Error logging MLflow results: {e}")
+
+    def finalize_mlflow_tracking(self) -> None:
+        """Finalize and end MLflow tracking."""
+        if self.mlflow_run_id:
+            try:
+                mlflow.end_run()
+                print(f"✓ MLflow run ended: {self.mlflow_run_id}")
+                print("\nView results: mlflow ui")
+                print("  Then open: http://localhost:5000")
+            except Exception as e:
+                print(f"⚠️  Error ending MLflow run: {e}")
 
     def run(self) -> bool:
         """
@@ -566,32 +705,117 @@ cat {prompt_file} | claude 2>&1 | tee {log_file}
             f"\n=== Starting Single-Agent Experiment: {self.config.project_name} ===\n"
         )
 
+        # Initialize MLflow tracking
+        if self.config.tracking_enabled:
+            print("[0/4] Initializing MLflow tracking...")
+            self.init_mlflow_tracking()
+            print()
+
+        # Record start time
+        self.experiment_start_time = time.time()
+
         # Generate prompt
-        print("[1/3] Generating prompt...")
+        print("[1/4] Generating prompt...")
         try:
             prompt_file = self.generate_and_save_prompt()
         except Exception as e:
             print(f"✗ Failed to generate prompt: {e}")
+            if self.mlflow_run_id:
+                self.finalize_mlflow_tracking()
             return False
 
         # Setup tmux
-        print("\n[2/3] Setting up tmux session...")
+        print("\n[2/4] Setting up tmux session...")
         if not self.setup_tmux_session():
+            if self.mlflow_run_id:
+                self.finalize_mlflow_tracking()
             return False
 
         # Launch Claude
-        print("\n[3/3] Launching Claude...")
+        print("\n[3/4] Launching Claude...")
         if not self.launch_claude(prompt_file):
+            if self.mlflow_run_id:
+                self.finalize_mlflow_tracking()
             return False
 
         print("\n=== Experiment Started Successfully ===\n")
         print(f"Session: {self.tmux_session}")
         print(f"Working directory: {self.config.implementation_dir}")
         print(f"Prompt: {prompt_file}")
-        print("\nTo monitor:")
-        print(f"  tmux attach -t {self.tmux_session}")
-        print("\nTo kill session:")
-        print(f"  tmux kill-session -t {self.tmux_session}")
+
+        # Check if we're in an interactive terminal and auto-attach
+        import os
+        import time
+
+        is_tty = os.isatty(sys.stdout.fileno())
+
+        if is_tty:
+            print("\nAttaching to tmux session in 3 seconds...")
+            print("(Press Ctrl+b d to detach from the session)")
+            # Give time to read the instructions
+            time.sleep(3)
+
+            # Attach to the tmux session (this blocks until user detaches)
+            try:
+                result = subprocess.run(
+                    ["tmux", "attach", "-t", self.tmux_session],
+                    check=False,
+                )
+                if result.returncode != 0:
+                    print("\n⚠️  Failed to attach to tmux session.")
+                    print(
+                        f"   Manually attach with: tmux attach -t {self.tmux_session}"
+                    )
+            except KeyboardInterrupt:
+                print("\n\nDetached from tmux session.")
+            except Exception as e:
+                print(f"\n⚠️  Error attaching to tmux: {e}")
+                print(f"   Manually attach with: tmux attach -t {self.tmux_session}")
+        else:
+            print("\n⚠️  Not running in interactive terminal - skipping auto-attach")
+            print(f"   Manually attach with: tmux attach -t {self.tmux_session}")
+
+        print("\n=== Session Info ===")
+        print(f"Tmux session '{self.tmux_session}' is still running.")
+        print(f"Log file: {self.current_log_file}")
+        print(f"\nTo re-attach: tmux attach -t {self.tmux_session}")
+        print(f"To kill session: tmux kill-session -t {self.tmux_session}")
+        print(
+            "\nTo parse timing: python parse_single_agent_timing.py "
+            f"{self.current_log_file}"
+        )
+
+        # Offer to log results to MLflow if tracking is enabled
+        if self.mlflow_run_id:
+            print("\n" + "=" * 60)
+            print("MLflow Tracking")
+            print("=" * 60)
+            print("\nOptions:")
+            print("  1. Log results now (if experiment is complete)")
+            print(
+                "  2. Log results later with: "
+                "python run_single_agent_experiment.py "
+                "--log-results <log_file>"
+            )
+            print("  3. Skip MLflow logging (run will remain open)")
+
+            if is_tty:
+                try:
+                    response = input("\nLog results now? (y/n): ").strip().lower()
+                    if response == "y":
+                        print("\n[4/4] Logging results to MLflow...")
+                        self.log_mlflow_results()
+                        self.finalize_mlflow_tracking()
+                    else:
+                        print(
+                            "\n⚠️  MLflow run still active - remember to finalize later"
+                        )
+                        print(f"  Run ID: {self.mlflow_run_id}")
+                except (KeyboardInterrupt, EOFError):
+                    print("\n\n⚠️  MLflow run still active")
+            else:
+                print("\n⚠️  Not in interactive mode - MLflow run still active")
+                print(f"  Run ID: {self.mlflow_run_id}")
 
         return True
 
@@ -777,6 +1001,11 @@ Examples:
 
   # Validate experiment config without running
   python run_single_agent_experiment.py --validate ~/experiments/my-project
+
+  # Log results from a completed experiment to MLflow
+  python run_single_agent_experiment.py --log-results \
+    ~/experiments/my-project/logs/single_agent_*.log \
+    ~/experiments/my-project
         """,
     )
 
@@ -796,6 +1025,13 @@ Examples:
         "--validate",
         action="store_true",
         help="Validate experiment configuration without running",
+    )
+
+    parser.add_argument(
+        "--log-results",
+        type=str,
+        metavar="LOG_FILE",
+        help="Parse and log results from a completed experiment log file to MLflow",
     )
 
     args = parser.parse_args()
@@ -846,11 +1082,40 @@ Examples:
         print(f"✓ Experiment configuration is valid: {experiment_dir}")
         sys.exit(0)
 
-    # Load config and run experiment
+    # Load config
     config_file = experiment_dir / "config.yaml"
     config = SingleAgentConfig(config_file)
-    experiment = SingleAgentExperiment(config, templates_dir)
 
+    # Log results mode
+    if args.log_results:
+        log_file = Path(args.log_results).resolve()
+        if not log_file.exists():
+            print(f"Error: Log file not found: {log_file}")
+            sys.exit(1)
+
+        print("=== Logging Results to MLflow ===\n")
+
+        if not MLFLOW_AVAILABLE:
+            print("Error: MLflow is not installed")
+            print("Install with: pip install mlflow")
+            sys.exit(1)
+
+        experiment = SingleAgentExperiment(config, templates_dir)
+        experiment.current_log_file = log_file
+
+        # Initialize MLflow tracking
+        if experiment.init_mlflow_tracking():
+            # Log results
+            experiment.log_mlflow_results()
+            experiment.finalize_mlflow_tracking()
+            print("\n✓ Results logged successfully!")
+            sys.exit(0)
+        else:
+            print("\n✗ Failed to initialize MLflow tracking")
+            sys.exit(1)
+
+    # Run experiment
+    experiment = SingleAgentExperiment(config, templates_dir)
     success = experiment.run()
     sys.exit(0 if success else 1)
 
