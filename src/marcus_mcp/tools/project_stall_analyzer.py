@@ -9,7 +9,7 @@ and task completion pattern analysis.
 import json
 import logging
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -126,7 +126,7 @@ class ConversationReplayAnalyzer:
         List[ConversationEvent]
             List of conversation events
         """
-        cutoff_time = datetime.now() - timedelta(hours=lookback_hours)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
         events = []
 
         # Find realtime log files
@@ -276,7 +276,9 @@ class TaskCompletionAnalyzer:
             completion_time = getattr(task, "completed_at", None)
             if not completion_time:
                 # Use created_at as fallback
-                completion_time = getattr(task, "created_at", datetime.now())
+                completion_time = getattr(
+                    task, "created_at", datetime.now(timezone.utc)
+                )
 
             # Ensure completion_time is a datetime object
             if isinstance(completion_time, str):
@@ -590,7 +592,7 @@ async def capture_project_stall_snapshot(
 
         # Create snapshot
         snapshot = ProjectStallSnapshot(
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             project_id=project_id,
             project_name=project_name,
             diagnostic_report={
@@ -644,7 +646,7 @@ async def capture_project_stall_snapshot(
         snapshot_dir = Path("logs/stall_snapshots")
         snapshot_dir.mkdir(parents=True, exist_ok=True)
 
-        timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         snapshot_file = snapshot_dir / f"stall_snapshot_{timestamp_str}.json"
 
         with open(snapshot_file, "w") as f:

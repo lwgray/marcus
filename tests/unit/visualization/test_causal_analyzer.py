@@ -2,7 +2,7 @@
 Unit tests for causal analyzer.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 import pytest
@@ -14,7 +14,7 @@ from src.visualization.causal_analyzer import CausalAnalyzer, analyze_why
 def sample_snapshot_with_circular_dependency() -> Dict[str, Any]:
     """Create sample snapshot with circular dependency."""
     return {
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "project_name": "Test Project",
         "diagnostic_report": {
             "issues": [
@@ -35,7 +35,7 @@ def sample_snapshot_with_circular_dependency() -> Dict[str, Any]:
 def sample_snapshot_with_premature_completion() -> Dict[str, Any]:
     """Create sample snapshot with premature task completion."""
     return {
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "project_name": "Test Project",
         "diagnostic_report": {"issues": []},
         "early_completions": [
@@ -65,7 +65,7 @@ def sample_snapshot_with_premature_completion() -> Dict[str, Any]:
 def sample_snapshot_with_assignment_deadlock() -> Dict[str, Any]:
     """Create sample snapshot with assignment deadlock."""
     return {
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "project_name": "Test Project",
         "diagnostic_report": {"issues": []},
         "early_completions": [],
@@ -284,7 +284,7 @@ class TestCausalAnalyzer:
     def test_empty_snapshot(self):
         """Test analyzer handles empty snapshot gracefully."""
         empty_snapshot = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "project_name": "Empty Project",
             "diagnostic_report": {"issues": []},
             "early_completions": [],
@@ -302,7 +302,7 @@ class TestCausalAnalyzer:
     def test_multiple_root_causes(self):
         """Test analyzer identifies multiple root causes."""
         complex_snapshot = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "project_name": "Complex Project",
             "diagnostic_report": {
                 "issues": [

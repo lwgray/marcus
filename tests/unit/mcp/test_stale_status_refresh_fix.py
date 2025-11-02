@@ -5,7 +5,7 @@ Verifies that refresh_project_state() correctly updates parent tasks
 while preserving migrated subtasks.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -32,8 +32,8 @@ def parent_task_todo():
         status=TaskStatus.TODO,
         priority=Priority.MEDIUM,
         assigned_to=None,
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
         due_date=None,
         estimated_hours=4.0,
         is_subtask=False,
@@ -50,8 +50,8 @@ def parent_task_in_progress():
         status=TaskStatus.IN_PROGRESS,  # Status updated on Kanban
         priority=Priority.MEDIUM,
         assigned_to="agent-1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
         due_date=None,
         estimated_hours=4.0,
         is_subtask=False,
@@ -68,8 +68,8 @@ def subtask():
         status=TaskStatus.IN_PROGRESS,
         priority=Priority.MEDIUM,
         assigned_to="agent-1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
         due_date=None,
         estimated_hours=2.0,
         is_subtask=True,
@@ -189,8 +189,8 @@ class TestStaleStatusRefreshFix:
             parent_task_id="parent-1",
             subtask_index=1,
             assigned_to="agent-1",
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=2.0,
             priority=Priority.MEDIUM,
@@ -204,8 +204,8 @@ class TestStaleStatusRefreshFix:
             parent_task_id="parent-1",
             subtask_index=2,
             assigned_to="agent-2",
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=2.0,
             priority=Priority.MEDIUM,
@@ -219,8 +219,8 @@ class TestStaleStatusRefreshFix:
             parent_task_id="parent-1",
             subtask_index=3,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=2.0,
             priority=Priority.MEDIUM,
@@ -234,8 +234,8 @@ class TestStaleStatusRefreshFix:
             status=TaskStatus.TODO,
             is_subtask=False,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=4.0,
             priority=Priority.MEDIUM,

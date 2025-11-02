@@ -202,7 +202,7 @@ class WorkerAgentManager:
     def update_agent_activity(self, agent_id: str) -> None:
         """Update agent's last activity timestamp."""
         if agent_id in self.agent_sessions:
-            self.agent_sessions[agent_id].last_activity = datetime.now()
+            self.agent_sessions[agent_id].last_activity = datetime.now(timezone.utc)
 
     def set_agent_state(self, agent_id: str, state: AgentState) -> None:
         """Update agent's operational state."""
@@ -302,7 +302,7 @@ class EnhancedPMAgentMethods:
                 cast(int, a["tasks_completed"]) for a in active_agents
             ),
             "agent_details": agent_metrics,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
     async def broadcast_to_agents(
@@ -318,5 +318,5 @@ class EnhancedPMAgentMethods:
             "broadcast_sent": True,
             "recipients": target_agents,
             "message": message,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }

@@ -12,7 +12,7 @@ import asyncio
 import logging
 import secrets
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
@@ -151,7 +151,7 @@ class CircuitBreaker:
 
     async def _update_state(self) -> None:
         """Update circuit breaker state based on current conditions."""
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
 
         if self.state.state == CircuitBreakerState.OPEN:
             # Check if timeout has passed to try half-open
@@ -192,7 +192,7 @@ class CircuitBreaker:
 
     async def _record_failure(self, exception: Exception) -> None:
         """Record a failed operation."""
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         self.state.failure_count += 1
         self.state.last_failure_time = now
         self.state.failure_history.append(now)

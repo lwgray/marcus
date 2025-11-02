@@ -217,7 +217,7 @@ def format_timestamp(timestamp_str: str) -> str:
     """
     try:
         dt = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
-        now = datetime.now(dt.tzinfo) if dt.tzinfo else datetime.now()
+        now = datetime.now(dt.tzinfo) if dt.tzinfo else datetime.now(timezone.utc)
         delta = now - dt
 
         if delta.total_seconds() < 60:

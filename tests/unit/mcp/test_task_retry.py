@@ -2,7 +2,7 @@
 Unit tests for intelligent task retry functionality
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -45,8 +45,8 @@ class TestCalculateRetryAfterSeconds:
             status=TaskStatus.IN_PROGRESS,
             priority=Priority.HIGH,
             assigned_to="agent_1",
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=1.0,
             labels=["backend"],
@@ -62,7 +62,8 @@ class TestCalculateRetryAfterSeconds:
             priority=Priority.HIGH,
             dependencies=[],
             assigned_to="agent_1",
-            assigned_at=datetime.now() - timedelta(minutes=30),  # Started 30 min ago
+            assigned_at=datetime.now(timezone.utc)
+            - timedelta(minutes=30),  # Started 30 min ago
             due_date=None,
         )
 
@@ -99,8 +100,8 @@ class TestCalculateRetryAfterSeconds:
             status=TaskStatus.IN_PROGRESS,
             priority=Priority.HIGH,
             assigned_to="agent_1",
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=2.0,
             labels=["backend"],
@@ -116,7 +117,7 @@ class TestCalculateRetryAfterSeconds:
             priority=Priority.HIGH,
             dependencies=[],
             assigned_to="agent_1",
-            assigned_at=datetime.now() - timedelta(minutes=5),
+            assigned_at=datetime.now(timezone.utc) - timedelta(minutes=5),
             due_date=None,
         )
 
@@ -151,8 +152,8 @@ class TestCalculateRetryAfterSeconds:
             status=TaskStatus.IN_PROGRESS,
             priority=Priority.HIGH,
             assigned_to="agent_1",
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=1.0,
         )
@@ -167,7 +168,7 @@ class TestCalculateRetryAfterSeconds:
             priority=Priority.HIGH,
             dependencies=[],
             assigned_to="agent_1",
-            assigned_at=datetime.now() - timedelta(minutes=30),
+            assigned_at=datetime.now(timezone.utc) - timedelta(minutes=30),
             due_date=None,
         )
 
@@ -179,8 +180,8 @@ class TestCalculateRetryAfterSeconds:
             status=TaskStatus.IN_PROGRESS,
             priority=Priority.HIGH,
             assigned_to="agent_2",
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=2.0,
         )
@@ -195,7 +196,7 @@ class TestCalculateRetryAfterSeconds:
             priority=Priority.HIGH,
             dependencies=[],
             assigned_to="agent_2",
-            assigned_at=datetime.now() - timedelta(minutes=60),
+            assigned_at=datetime.now(timezone.utc) - timedelta(minutes=60),
             due_date=None,
         )
 
@@ -228,8 +229,8 @@ class TestCalculateRetryAfterSeconds:
             status=TaskStatus.IN_PROGRESS,
             priority=Priority.LOW,
             assigned_to="agent_1",
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=10.0,
         )
@@ -244,7 +245,7 @@ class TestCalculateRetryAfterSeconds:
             priority=Priority.LOW,
             dependencies=[],
             assigned_to="agent_1",
-            assigned_at=datetime.now() - timedelta(minutes=10),
+            assigned_at=datetime.now(timezone.utc) - timedelta(minutes=10),
             due_date=None,
         )
 

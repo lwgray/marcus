@@ -8,7 +8,7 @@ pre-defined tasks and GitHub issue fixing.
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set
 
@@ -153,8 +153,8 @@ class AdaptiveDocumentationGenerator:
             labels=labels,
             dependencies=dependencies,
             estimated_hours=template.get("estimated_hours", 4.0),
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             assigned_to=None,
             due_date=None,
         )

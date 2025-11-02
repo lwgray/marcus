@@ -5,7 +5,7 @@ for visualization of the entire processing pipeline.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from src.integrations.nlp_tools import NaturalLanguageProjectCreator
@@ -74,7 +74,7 @@ class PipelineTrackedProjectCreator:
                     raise AttributeError("PRD parser missing analyze_prd_deeply method")
 
             # Track AI analysis
-            start_time = datetime.now()
+            start_time = datetime.now(timezone.utc)
             self.pipeline_visualizer.add_event(
                 flow_id=flow_id,
                 stage=PipelineStage.AI_ANALYSIS,
@@ -94,7 +94,9 @@ class PipelineTrackedProjectCreator:
                 result = await original_analyze(prd_content)
 
                 # Track success with rich insights
-                duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+                duration_ms = int(
+                    (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+                )
 
                 # Determine AI provider and model from the engine
                 ai_provider = "unknown"
@@ -132,7 +134,9 @@ class PipelineTrackedProjectCreator:
 
             except Exception as e:
                 # Track failure
-                duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+                duration_ms = int(
+                    (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+                )
                 self.pipeline_visualizer.add_event(
                     flow_id=flow_id,
                     stage=PipelineStage.AI_ANALYSIS,
@@ -150,7 +154,7 @@ class PipelineTrackedProjectCreator:
                 return await original_parse(prd_content, constraints)
 
             # Track PRD parsing
-            start_time = datetime.now()
+            start_time = datetime.now(timezone.utc)
             self.pipeline_visualizer.add_event(
                 flow_id=flow_id,
                 stage=PipelineStage.PRD_PARSING,
@@ -168,7 +172,9 @@ class PipelineTrackedProjectCreator:
                 result = await original_parse(prd_content, constraints)
 
                 # Track task generation with rich context
-                duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+                duration_ms = int(
+                    (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+                )
                 if result and result.tasks:
                     # Build task data with dependencies
                     task_data = []
@@ -218,7 +224,9 @@ class PipelineTrackedProjectCreator:
 
             except Exception as e:
                 # Track failure
-                duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+                duration_ms = int(
+                    (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+                )
                 self.pipeline_visualizer.add_event(
                     flow_id=flow_id,
                     stage=PipelineStage.PRD_PARSING,
@@ -379,8 +387,8 @@ async def create_project_from_natural_language_tracked(
                         "board_id": str(kanban_client.board_id),
                         "board_name": provider_board_name,
                     },
-                    created_at=datetime.now(),
-                    last_used=datetime.now(),
+                    created_at=datetime.now(timezone.utc),
+                    last_used=datetime.now(timezone.utc),
                     tags=["auto-created", provider],
                 )
 

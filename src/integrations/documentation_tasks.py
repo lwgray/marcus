@@ -9,7 +9,7 @@ Adds a final documentation task to projects that:
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from src.core.models import Priority, Task, TaskStatus
@@ -128,8 +128,8 @@ class DocumentationTaskGenerator:
             labels=["documentation", "final", "verification"],
             dependencies=dependencies,
             estimated_hours=4.0,  # Adjust based on project size
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             assigned_to=None,
             due_date=None,
         )

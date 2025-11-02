@@ -22,7 +22,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 
 
@@ -576,7 +576,7 @@ class WorkspaceManager:
         a security audit log file.
         """
         violation = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "agent_id": agent_id,
             "attempted_path": attempted_path,
             "operation": operation,

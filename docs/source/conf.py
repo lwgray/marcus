@@ -2,14 +2,14 @@
 
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Add project root to path for autodoc
 sys.path.insert(0, os.path.abspath("../.."))
 
 # -- Project information -----------------------------------------------------
 project = "Marcus AI"
-copyright = f"{datetime.now().year}, Marcus AI Contributors"
+copyright = f"{datetime.now(timezone.utc).year}, Marcus AI Contributors"
 author = "Marcus AI Team"
 release = "0.1.0"  # Update from your package version
 

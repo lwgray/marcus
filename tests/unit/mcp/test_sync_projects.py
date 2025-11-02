@@ -5,7 +5,7 @@ Tests the sync_projects functionality that syncs projects
 from external providers (like Planka) into Marcus's registry.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -54,8 +54,8 @@ class TestSyncProjects:
             name="Existing Project",
             provider="planka",
             provider_config={"project_id": "old-id", "board_id": "old-board"},
-            created_at=datetime.now(),
-            last_used=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            last_used=datetime.now(timezone.utc),
         )
 
     async def test_sync_projects_adds_new_projects(
@@ -250,8 +250,8 @@ class TestSyncProjects:
                 "project_id": "1612478574885864456",
                 "board_id": "1612478920202912778",
             },
-            created_at=datetime.now(),
-            last_used=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            last_used=datetime.now(timezone.utc),
         )
 
         mock_server.project_registry.list_projects = AsyncMock(return_value=[existing])
@@ -300,8 +300,8 @@ class TestSyncProjects:
                 "project_id": "1612478574885864456",
                 "board_id": "board-a-id",
             },
-            created_at=datetime.now(),
-            last_used=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            last_used=datetime.now(timezone.utc),
         )
 
         mock_server.project_registry.list_projects = AsyncMock(return_value=[existing])
@@ -335,8 +335,8 @@ class TestSyncProjects:
             name="MyRepo",
             provider="github",
             provider_config={"owner": "myorg", "repo": "myrepo"},
-            created_at=datetime.now(),
-            last_used=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            last_used=datetime.now(timezone.utc),
         )
 
         mock_server.project_registry.list_projects = AsyncMock(return_value=[existing])
@@ -368,8 +368,8 @@ class TestSyncProjects:
             name="ENG Project",
             provider="linear",
             provider_config={"project_id": "lin-proj-456"},
-            created_at=datetime.now(),
-            last_used=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            last_used=datetime.now(timezone.utc),
         )
 
         mock_server.project_registry.list_projects = AsyncMock(return_value=[existing])
@@ -401,7 +401,7 @@ class TestSyncProjects:
         from src.marcus_mcp.tools.project_management import sync_projects
 
         # Create duplicate projects (same provider_config, different names)
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         old_duplicate = ProjectConfig(
             id="old-dup-123",
             name="1st Project",  # Old name

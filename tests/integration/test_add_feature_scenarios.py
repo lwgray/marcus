@@ -12,7 +12,7 @@ Tests various scenarios including:
 import asyncio
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -52,8 +52,8 @@ class TestAddFeatureScenarios:
                 priority=Priority.HIGH,
                 labels=["setup", "backend"],
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 estimated_hours=4,
                 due_date=None,
                 dependencies=[],
@@ -66,8 +66,8 @@ class TestAddFeatureScenarios:
                 priority=Priority.HIGH,
                 labels=["auth", "backend", "security"],
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 estimated_hours=8,
                 due_date=None,
                 dependencies=["1"],
@@ -80,8 +80,8 @@ class TestAddFeatureScenarios:
                 priority=Priority.MEDIUM,
                 labels=["api", "backend"],
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 estimated_hours=12,
                 due_date=None,
                 dependencies=["2"],

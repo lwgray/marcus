@@ -5,7 +5,7 @@ This script demonstrates the hierarchical task decomposition workflow.
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock
 
 from src.core.models import Priority, Task, TaskStatus
@@ -35,8 +35,8 @@ async def demo_task_decomposition() -> None:
         status=TaskStatus.TODO,
         priority=Priority.HIGH,
         assigned_to=None,
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
         due_date=None,
         estimated_hours=10.0,
         labels=["backend", "api", "websocket"],

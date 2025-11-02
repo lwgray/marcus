@@ -59,7 +59,7 @@ Risk and blocker management:
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from src.config.settings import Settings
@@ -362,7 +362,7 @@ class ProjectMonitor:
 
         # Find overdue tasks
         overdue_tasks = []
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         for task in all_tasks:
             if task.due_date and task.due_date < now and task.status != TaskStatus.DONE:
                 overdue_tasks.append(task)
@@ -401,7 +401,7 @@ class ProjectMonitor:
             overdue_tasks=overdue_tasks,
             team_velocity=velocity,
             risk_level=risk_level,
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
 
         # Store additional metrics as instance attributes for later use
@@ -466,7 +466,7 @@ class ProjectMonitor:
         rolling window of team productivity that can be used for planning
         and capacity assessment.
         """
-        one_week_ago = datetime.now() - timedelta(days=7)
+        one_week_ago = datetime.now(timezone.utc) - timedelta(days=7)
 
         completed_this_week = [
             t
@@ -628,7 +628,7 @@ class ProjectMonitor:
                 probability=0.5,  # Default probability
                 impact=risk_data.get("impact", "Medium"),
                 mitigation_strategy=risk_data.get("mitigation", "Monitor closely"),
-                identified_at=datetime.now(),
+                identified_at=datetime.now(timezone.utc),
             )
             self.risks.append(risk)
 
@@ -695,7 +695,7 @@ class ProjectMonitor:
         stall_threshold = timedelta(
             hours=self.settings.get("stall_threshold_hours", 24)
         )
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
 
         for task in tasks:
             if task.status == TaskStatus.IN_PROGRESS:
@@ -752,7 +752,7 @@ class ProjectMonitor:
                 probability=0.8,
                 impact="Team burnout and quality issues",
                 mitigation_strategy="Prioritize and defer lower priority tasks",
-                identified_at=datetime.now(),
+                identified_at=datetime.now(timezone.utc),
             )
             self.risks.append(risk)
 
@@ -801,7 +801,7 @@ class ProjectMonitor:
                         probability=1.0,
                         impact="Multiple tasks cannot proceed",
                         mitigation_strategy="Prioritize unblocking this task",
-                        identified_at=datetime.now(),
+                        identified_at=datetime.now(timezone.utc),
                     )
                     self.risks.append(risk)
 
@@ -831,7 +831,7 @@ class ProjectMonitor:
         """
         if self.current_state:
             metrics = {
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "progress": self.current_state.progress_percent,
                 "velocity": self.current_state.team_velocity,
                 "blocked_tasks": self.current_state.blocked_tasks,
@@ -907,7 +907,7 @@ class ProjectMonitor:
             reporter_id=agent_id,
             description=description,
             severity=RiskLevel.MEDIUM,
-            reported_at=datetime.now(),
+            reported_at=datetime.now(timezone.utc),
         )
 
         self.blockers.append(blocker)
@@ -1022,7 +1022,7 @@ class ProjectMonitor:
         ...     print(f"Task {blocker.task_id}: {blocker.description}")
         ...     print(f"  Reported by: {blocker.reporter_id}")
         ...     print(f"  Severity: {blocker.severity.value}")
-        ...     print(f"  Age: {datetime.now() - blocker.reported_at}")
+        ...     print(f"  Age: {datetime.now(timezone.utc) - blocker.reported_at}")
 
         Notes
         -----
@@ -1142,7 +1142,7 @@ class ProjectMonitor:
         remaining_tasks = total_tasks - completed_tasks
         weeks_to_complete = remaining_tasks / velocity
 
-        return datetime.now() + timedelta(weeks=weeks_to_complete)
+        return datetime.now(timezone.utc) + timedelta(weeks=weeks_to_complete)
 
     async def _check_for_project_completion(self) -> None:
         """Check if project has reached completion criteria.
@@ -1171,10 +1171,10 @@ class ProjectMonitor:
         ):
             # Check if we've already processed this completion
             if self._last_completion_check is not None:
-                if (datetime.now() - self._last_completion_check).days < 1:
+                if (datetime.now(timezone.utc) - self._last_completion_check).days < 1:
                     return
 
-            self._last_completion_check = datetime.now()
+            self._last_completion_check = datetime.now(timezone.utc)
 
             # Trigger completion learning
             await self._handle_project_completion()
@@ -1291,7 +1291,7 @@ class ProjectMonitor:
         first_entry = self.historical_data[0]
         first_date = datetime.fromisoformat(first_entry["timestamp"])
 
-        return (datetime.now() - first_date).days
+        return (datetime.now(timezone.utc) - first_date).days
 
     def _estimate_project_cost(self, duration_days: int, team_size: int) -> float:
         """Estimate project cost based on duration and team size."""

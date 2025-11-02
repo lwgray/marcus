@@ -8,7 +8,7 @@ for project definitions.
 
 import uuid
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from src.core.persistence import Persistence
@@ -211,7 +211,7 @@ class ProjectRegistry:
                 setattr(project, key, value)
 
         # Update last_used timestamp
-        project.last_used = datetime.now()
+        project.last_used = datetime.now(timezone.utc)
 
         # Save to persistence
         await self.persistence.store(self.COLLECTION, project_id, project.to_dict())
@@ -273,7 +273,7 @@ class ProjectRegistry:
         self._active_project_id = project_id
 
         # Update last_used timestamp
-        await self.update_project(project_id, {"last_used": datetime.now()})
+        await self.update_project(project_id, {"last_used": datetime.now(timezone.utc)})
 
         # Store active project ID
         await self.persistence.store(

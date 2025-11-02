@@ -4,7 +4,7 @@ Base test classes with common utilities for Marcus tests.
 
 import os
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Union, cast
 from unittest.mock import AsyncMock, Mock
 
@@ -36,7 +36,7 @@ class BaseTestCase:
 
     def setup_method(self) -> None:
         """Set up before each test method."""
-        self.test_start_time = datetime.now()
+        self.test_start_time = datetime.now(timezone.utc)
 
     def teardown_method(self) -> None:
         """Clean up after each test method."""
@@ -57,9 +57,9 @@ class BaseTestCase:
             "status": TaskStatus.TODO,
             "priority": Priority.MEDIUM,
             "assigned_to": None,
-            "created_at": datetime.now(),
-            "updated_at": datetime.now(),
-            "due_date": datetime.now() + timedelta(days=7),
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc),
+            "due_date": datetime.now(timezone.utc) + timedelta(days=7),
             "estimated_hours": 4.0,
             "actual_hours": 0.0,
             "dependencies": [],

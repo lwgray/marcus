@@ -5,7 +5,7 @@ Tests the smart project discovery helper that guides users through
 the "which project?" decision tree.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -34,8 +34,8 @@ class TestFindOrCreateProject:
                 name="MyAPI",
                 provider="planka",
                 provider_config={"project_id": "1", "board_id": "1"},
-                created_at=datetime.now(),
-                last_used=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                last_used=datetime.now(timezone.utc),
                 tags=["backend"],
             ),
             ProjectConfig(
@@ -43,8 +43,8 @@ class TestFindOrCreateProject:
                 name="MyAPI-Dev",
                 provider="planka",
                 provider_config={"project_id": "2", "board_id": "2"},
-                created_at=datetime.now(),
-                last_used=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                last_used=datetime.now(timezone.utc),
                 tags=["backend", "dev"],
             ),
             ProjectConfig(
@@ -52,8 +52,8 @@ class TestFindOrCreateProject:
                 name="Frontend-App",
                 provider="github",
                 provider_config={"owner": "test", "repo": "app", "project_number": 1},
-                created_at=datetime.now(),
-                last_used=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                last_used=datetime.now(timezone.utc),
                 tags=["frontend"],
             ),
         ]

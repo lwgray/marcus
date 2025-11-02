@@ -22,7 +22,7 @@ Examples
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import anthropic
@@ -938,7 +938,7 @@ Provide a helpful clarification that guides the developer."""
                     probability=likelihood_map.get(risk_data["likelihood"], 0.5),
                     impact=risk_data.get("impact", "Unknown impact"),
                     mitigation_strategy=risk_data["mitigation"],
-                    identified_at=datetime.now(),
+                    identified_at=datetime.now(timezone.utc),
                 )
                 risks.append(risk)
 
@@ -977,7 +977,7 @@ Provide a helpful clarification that guides the developer."""
                     mitigation_strategy=(
                         "Review task priorities and resource allocation"
                     ),
-                    identified_at=datetime.now(),
+                    identified_at=datetime.now(timezone.utc),
                 )
             )
 

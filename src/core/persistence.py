@@ -10,7 +10,7 @@ import asyncio
 import json
 import logging
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -93,7 +93,10 @@ class FilePersistence(PersistenceBackend):
                     logger.error(f"Error loading {collection}: {e}")
 
             # Update with new data
-            existing_data[key] = {**data, "_stored_at": datetime.now().isoformat()}
+            existing_data[key] = {
+                **data,
+                "_stored_at": datetime.now(timezone.utc).isoformat(),
+            }
 
             # Write back atomically
             temp_file = file_path.with_suffix(".tmp")
@@ -192,7 +195,7 @@ class FilePersistence(PersistenceBackend):
             if not file_path.exists():
                 return 0
 
-            cutoff = datetime.now() - timedelta(days=days)
+            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
             removed_count = 0
 
             try:
@@ -380,7 +383,7 @@ class SQLitePersistence(PersistenceBackend):
         """Clear old data from SQLite."""
 
         def _clear() -> int:
-            cutoff = datetime.now() - timedelta(days=days)
+            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.execute(
                     """
@@ -639,7 +642,7 @@ class MemoryPersistence(PersistenceBackend):
 
             self.data[collection][key] = {
                 **data,
-                "_stored_at": datetime.now().isoformat(),
+                "_stored_at": datetime.now(timezone.utc).isoformat(),
             }
 
     async def retrieve(self, collection: str, key: str) -> Optional[Dict[str, Any]]:
@@ -686,7 +689,7 @@ class MemoryPersistence(PersistenceBackend):
             if collection not in self.data:
                 return 0
 
-            cutoff = datetime.now() - timedelta(days=days)
+            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
             removed_count = 0
 
             # Create new dict with non-old entries

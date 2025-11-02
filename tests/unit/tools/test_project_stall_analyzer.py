@@ -2,7 +2,7 @@
 Unit tests for project stall analyzer.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -21,7 +21,7 @@ from src.marcus_mcp.tools.project_stall_analyzer import (
 @pytest.fixture
 def sample_tasks():
     """Create sample tasks for testing."""
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
     tasks = [
         Task(
@@ -153,7 +153,7 @@ class TestConversationReplayAnalyzer:
         # Create sample log file
         log_file = log_dir / "realtime_20251006_120000.jsonl"
 
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         events = [
             {
                 "timestamp": (now - timedelta(hours=2)).isoformat(),

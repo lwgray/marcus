@@ -8,7 +8,7 @@ duplicate assignments across Marcus restarts and multiple instances.
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -70,7 +70,7 @@ class AssignmentPersistence:
             # Update cache
             self._assignments_cache[worker_id] = {
                 "task_id": task_id,
-                "assigned_at": datetime.now().isoformat(),
+                "assigned_at": datetime.now(timezone.utc).isoformat(),
                 "task_data": task_data,
             }
 

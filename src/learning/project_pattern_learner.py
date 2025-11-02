@@ -10,7 +10,7 @@ import json
 import statistics
 from collections import defaultdict
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -194,7 +194,7 @@ class ProjectPatternLearner:
             implementation_patterns=implementation_patterns,
             success_factors=success_factors,
             risk_factors=risk_factors,
-            extracted_at=datetime.now(),
+            extracted_at=datetime.now(timezone.utc),
             confidence_score=confidence_score,
         )
 
@@ -360,7 +360,7 @@ class ProjectPatternLearner:
             return {}
 
         # Sort by completion date
-        completed_tasks.sort(key=lambda t: t.updated_at or datetime.now())
+        completed_tasks.sort(key=lambda t: t.updated_at or datetime.now(timezone.utc))
 
         # Calculate velocity by project phase (quartiles)
         total_tasks = len(completed_tasks)

@@ -10,7 +10,7 @@ import logging
 import re
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 from src.config.hybrid_inference_config import HybridInferenceConfig
@@ -387,7 +387,7 @@ class HybridDependencyInferer(DependencyInferer):
             # Check if cache is still valid
             cache_time = self.cache_timestamps.get(cache_key, datetime.min)
             if (
-                datetime.now() - cache_time
+                datetime.now(timezone.utc) - cache_time
             ).total_seconds() < self.config.cache_ttl_hours * 3600:
                 logger.info("Using cached AI inference results")
                 return self.inference_cache[cache_key]
@@ -492,7 +492,7 @@ Focus on logical dependencies based on:
 
             # Cache results
             self.inference_cache[cache_key] = ai_dependencies
-            self.cache_timestamps[cache_key] = datetime.now()
+            self.cache_timestamps[cache_key] = datetime.now(timezone.utc)
             return ai_dependencies
 
         except Exception as e:
