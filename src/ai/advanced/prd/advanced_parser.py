@@ -35,7 +35,7 @@ class PRDAnalysis:
     complexity_assessment: Dict[str, Any]
     risk_factors: List[Dict[str, Any]]
     confidence: float
-    original_description: str  # NEW: Preserve original user description
+    original_description: str = ""  # NEW: Preserve original user description
 
 
 @dataclass
