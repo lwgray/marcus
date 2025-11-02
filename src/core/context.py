@@ -9,7 +9,7 @@ reducing time spent understanding existing code and architectural decisions.
 # import asyncio  # Removed - not needed after lazy loading fix
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.core.events import Events, EventTypes
@@ -181,7 +181,7 @@ class Context:
         """
         self.implementations[task_id] = {
             "task_id": task_id,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             **implementation,
         }
 
@@ -252,11 +252,12 @@ class Context:
             The logged Decision object.
         """
         self._decision_counter += 1
+        now = datetime.now(timezone.utc)
         decision = Decision(
-            decision_id=f"dec_{self._decision_counter}_{datetime.now().timestamp()}",
+            decision_id=f"dec_{self._decision_counter}_{now.timestamp()}",
             task_id=task_id,
             agent_id=agent_id,
-            timestamp=datetime.now(),
+            timestamp=now,
             what=what,
             why=why,
             impact=impact,
@@ -1185,7 +1186,7 @@ class Context:
                 Number of days to retain.
         """
         await self._ensure_persisted_data_loaded()
-        cutoff = datetime.now().timestamp() - (days * 24 * 60 * 60)
+        cutoff = datetime.now(timezone.utc).timestamp() - (days * 24 * 60 * 60)
 
         # Clear old implementations
         self.implementations = {
