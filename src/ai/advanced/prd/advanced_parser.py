@@ -1092,13 +1092,15 @@ Requirement: {base_description}{original_context}{constraint_text}
 Generate a clear, specific description for a **{task_type.upper()}** task.
 
 Guidelines:
-- For DESIGN tasks: Define HIGH-LEVEL coordination context (NOT detailed
-  implementation specs). Describe: what components need to interact, what
-  data flows between them, what interfaces exist (conceptually). Agents will
-  determine exact API paths, field names, and implementation details themselves.
-  Focus on COORDINATION and SHARED UNDERSTANDING, not prescription.
+- For DESIGN tasks: Create specifications for coordination (NOT implementation
+  prescription). Define: component boundaries, what needs to communicate,
+  data flow patterns, integration points. DO NOT specify: exact API paths,
+  exact field names, exact function signatures, exact technologies. Agents
+  discover these through get_task_context() and document via log_artifact().
+  Example: "Frontend auth component communicates with backend auth service"
+  NOT "LoginForm calls POST /api/v1/auth/login with {{email, password}}".
 - For IMPLEMENT tasks: Focus on coding, building features, integrating
-  components, writing the actual code. Agents will use get_task_context() to
+  components, writing the actual code. Agents use get_task_context() to
   see design artifacts from dependencies.
 - For TEST tasks: Focus on writing tests, creating test scenarios,
   validation, test coverage, quality assurance.
