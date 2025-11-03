@@ -37,9 +37,10 @@ class PipelineTrackedProjectCreator:
         pipeline_visualizer: SharedPipelineVisualizer,
         conversation_logger: Any = None,
         subtask_manager: Any = None,
+        complexity: str = "standard",
     ) -> None:
         self.creator = NaturalLanguageProjectCreator(
-            kanban_client, ai_engine, subtask_manager
+            kanban_client, ai_engine, subtask_manager, complexity
         )
         self.pipeline_visualizer = pipeline_visualizer
         self.prd_parser = self.creator.prd_parser
@@ -321,6 +322,9 @@ async def create_project_from_natural_language_tracked(
     # Get subtask_manager if available (GH-62 fix)
     subtask_manager = getattr(state, "subtask_manager", None)
 
+    # Extract complexity from options (default to "standard")
+    complexity = options.get("complexity", "standard")
+
     # Clear stale project/board IDs to force new project creation
     # The creator checks if these are set and skips creation if they are
     if state.kanban_client:
@@ -331,15 +335,18 @@ async def create_project_from_natural_language_tracked(
         else:
             state.kanban_client.project_id = None
             state.kanban_client.board_id = None
-        logger.info(f"Creating NEW project '{project_name}' (tracked)")
+        logger.info(
+            f"Creating NEW project '{project_name}' (tracked, {complexity} mode)"
+        )
 
-    # Initialize tracked creator
+    # Initialize tracked creator with complexity
     tracked_creator = PipelineTrackedProjectCreator(
         kanban_client=state.kanban_client,
         ai_engine=state.ai_engine,
         pipeline_visualizer=state.pipeline_visualizer,
         conversation_logger=conversation_logger,
         subtask_manager=subtask_manager,
+        complexity=complexity,
     )
 
     # Create project (creator handles project creation in Kanban provider)

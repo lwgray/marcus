@@ -1092,13 +1092,14 @@ Requirement: {base_description}{original_context}{constraint_text}
 Generate a clear, specific description for a **{task_type.upper()}** task.
 
 Guidelines:
-- For DESIGN tasks: Create COMPLETE specifications that enable parallel
-  implementation. Must produce: interface contracts (API specs, data schemas,
-  component interfaces), component boundaries, integration points, error
-  handling specifications, and shared conventions. The goal is to enable
-  developers to implement ANY component in parallel using ONLY these specs.
+- For DESIGN tasks: Define HIGH-LEVEL coordination context (NOT detailed
+  implementation specs). Describe: what components need to interact, what
+  data flows between them, what interfaces exist (conceptually). Agents will
+  determine exact API paths, field names, and implementation details themselves.
+  Focus on COORDINATION and SHARED UNDERSTANDING, not prescription.
 - For IMPLEMENT tasks: Focus on coding, building features, integrating
-  components, writing the actual code based on Design specifications.
+  components, writing the actual code. Agents will use get_task_context() to
+  see design artifacts from dependencies.
 - For TEST tasks: Focus on writing tests, creating test scenarios,
   validation, test coverage, quality assurance.
 
