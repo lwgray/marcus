@@ -1529,7 +1529,6 @@ explanation."""
         else:  # standard mode (default)
             # ALWAYS include design tasks for agent coordination
             # Design tasks create shared context (API contracts, data models)
-            # even for atomic/simple features
             tasks.append(
                 {
                     "id": f"task_{req_id}_design",
@@ -1544,13 +1543,15 @@ explanation."""
                     "type": self.TASK_TYPE_IMPLEMENTATION,
                 }
             )
-            tasks.append(
-                {
-                    "id": f"task_{req_id}_test",
-                    "name": f"Test {feature_name}",
-                    "type": self.TASK_TYPE_TESTING,
-                }
-            )
+            # Atomic features are too simple to need explicit testing
+            if complexity != "atomic":
+                tasks.append(
+                    {
+                        "id": f"task_{req_id}_test",
+                        "name": f"Test {feature_name}",
+                        "type": self.TASK_TYPE_TESTING,
+                    }
+                )
 
         return tasks
 
