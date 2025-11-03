@@ -265,7 +265,8 @@ class NaturalLanguageTaskCreator(ABC):
                 continue
 
             # Check if task should be decomposed
-            if not should_decompose(original_task):
+            # Pass complexity for prototype mode check
+            if not should_decompose(original_task, project_complexity=self.complexity):
                 continue
 
             logger.info(

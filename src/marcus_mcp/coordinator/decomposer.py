@@ -14,25 +14,35 @@ from src.core.models import Task
 logger = logging.getLogger(__name__)
 
 
-def should_decompose(task: Task) -> bool:
+def should_decompose(task: Task, project_complexity: Optional[str] = None) -> bool:
     """
     Decide whether a task should be decomposed into subtasks.
 
     Uses heuristics to determine if decomposition would be beneficial:
+    - Project complexity mode (prototype mode = no subtasks)
     - Task size (estimated hours)
     - Task complexity (description length, multiple components)
-    - Task type (not bugfix, not deployment)
+    - Task type (not bugfix, not deployment, not design)
 
     Parameters
     ----------
     task : Task
         The task to evaluate
+    project_complexity : Optional[str], default=None
+        Project complexity mode: "prototype", "standard", or "enterprise"
+        If "prototype", ALL subtasks are disabled
 
     Returns
     -------
     bool
         True if task should be decomposed
     """
+    # In prototype mode, NEVER decompose (speed over granularity)
+    if project_complexity == "prototype":
+        logger.debug(
+            f"Task {task.name} in prototype mode - no decomposition (speed priority)"
+        )
+        return False
     # Don't decompose very small tasks (< 3 minutes)
     # NOTE: Estimates are now reality-based (0.05-0.2 hours = 3-12 minutes)
     if task.estimated_hours < 0.05:  # Less than 3 minutes
@@ -47,6 +57,13 @@ def should_decompose(task: Task) -> bool:
     skip_labels = ["bugfix", "hotfix", "refactor", "documentation"]
     if any(skip_label in labels_lower for skip_label in skip_labels):
         logger.debug(f"Task {task.name} type ({task.labels}) - no decomposition")
+        return False
+
+    # Don't decompose design tasks - they exist for coordination context only
+    # Design tasks should be single, atomic artifacts (API contracts, schemas)
+    task_name_lower = task.name.lower()
+    if task_name_lower.startswith("design "):
+        logger.debug(f"Task {task.name} is design task - no decomposition")
         return False
 
     # Don't decompose deployment tasks

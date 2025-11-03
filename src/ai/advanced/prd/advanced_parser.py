@@ -1472,33 +1472,28 @@ explanation."""
             )
             complexity = "coordinated"
 
-        # Get requires_design flag (default True for backward compatibility)
-        # The AI should explicitly set this to False for features that don't need design
-        requires_design = requirement.get("requires_design_artifacts", True)
-
         tasks = []
 
         # Determine task pattern based on complexity and mode
         if complexity_mode == "prototype":
-            # Prototype: Speed over structure
-            if complexity in ["atomic", "simple"]:
-                # Just implement it
-                tasks.append(
-                    {
-                        "id": f"task_{req_id}_implement",
-                        "name": f"Implement {feature_name}",
-                        "type": self.TASK_TYPE_IMPLEMENTATION,
-                    }
-                )
-            else:  # coordinated or distributed
-                # Implementation + basic testing
-                tasks.append(
-                    {
-                        "id": f"task_{req_id}_implement",
-                        "name": f"Implement {feature_name}",
-                        "type": self.TASK_TYPE_IMPLEMENTATION,
-                    }
-                )
+            # Prototype: Speed over structure, but keep design for coordination
+            # Design tasks ensure agents have shared context (no subtasks in prototype)
+            tasks.append(
+                {
+                    "id": f"task_{req_id}_design",
+                    "name": f"Design {feature_name}",
+                    "type": self.TASK_TYPE_DESIGN,
+                }
+            )
+            tasks.append(
+                {
+                    "id": f"task_{req_id}_implement",
+                    "name": f"Implement {feature_name}",
+                    "type": self.TASK_TYPE_IMPLEMENTATION,
+                }
+            )
+            # Add testing for coordinated/distributed features
+            if complexity in ["coordinated", "distributed"]:
                 tasks.append(
                     {
                         "id": f"task_{req_id}_test",
@@ -1508,98 +1503,54 @@ explanation."""
                 )
 
         elif complexity_mode == "enterprise":
-            # Enterprise: Full traceability
-            if complexity == "atomic":
-                # Even atomic features get tested in enterprise
-                tasks.append(
-                    {
-                        "id": f"task_{req_id}_implement",
-                        "name": f"Implement {feature_name}",
-                        "type": self.TASK_TYPE_IMPLEMENTATION,
-                    }
-                )
-                tasks.append(
-                    {
-                        "id": f"task_{req_id}_test",
-                        "name": f"Test {feature_name}",
-                        "type": self.TASK_TYPE_TESTING,
-                    }
-                )
-            else:  # simple, coordinated, or distributed
-                # Full design-implement-test cycle (respect requires_design)
-                if requires_design:
-                    tasks.append(
-                        {
-                            "id": f"task_{req_id}_design",
-                            "name": f"Design {feature_name}",
-                            "type": self.TASK_TYPE_DESIGN,
-                        }
-                    )
-                tasks.append(
-                    {
-                        "id": f"task_{req_id}_implement",
-                        "name": f"Implement {feature_name}",
-                        "type": self.TASK_TYPE_IMPLEMENTATION,
-                    }
-                )
-                tasks.append(
-                    {
-                        "id": f"task_{req_id}_test",
-                        "name": f"Test {feature_name}",
-                        "type": self.TASK_TYPE_TESTING,
-                    }
-                )
+            # Enterprise: Full traceability with design tasks for all features
+            tasks.append(
+                {
+                    "id": f"task_{req_id}_design",
+                    "name": f"Design {feature_name}",
+                    "type": self.TASK_TYPE_DESIGN,
+                }
+            )
+            tasks.append(
+                {
+                    "id": f"task_{req_id}_implement",
+                    "name": f"Implement {feature_name}",
+                    "type": self.TASK_TYPE_IMPLEMENTATION,
+                }
+            )
+            tasks.append(
+                {
+                    "id": f"task_{req_id}_test",
+                    "name": f"Test {feature_name}",
+                    "type": self.TASK_TYPE_TESTING,
+                }
+            )
 
         else:  # standard mode (default)
-            if complexity == "atomic":
-                # Atomic: Just do it
-                tasks.append(
-                    {
-                        "id": f"task_{req_id}_implement",
-                        "name": f"Implement {feature_name}",
-                        "type": self.TASK_TYPE_IMPLEMENTATION,
-                    }
-                )
-            elif complexity == "simple":
-                # Simple: Implement + test
-                tasks.append(
-                    {
-                        "id": f"task_{req_id}_implement",
-                        "name": f"Implement {feature_name}",
-                        "type": self.TASK_TYPE_IMPLEMENTATION,
-                    }
-                )
-                tasks.append(
-                    {
-                        "id": f"task_{req_id}_test",
-                        "name": f"Test {feature_name}",
-                        "type": self.TASK_TYPE_TESTING,
-                    }
-                )
-            else:  # coordinated or distributed
-                # Full cycle for multi-component features
-                if requires_design:
-                    tasks.append(
-                        {
-                            "id": f"task_{req_id}_design",
-                            "name": f"Design {feature_name}",
-                            "type": self.TASK_TYPE_DESIGN,
-                        }
-                    )
-                tasks.append(
-                    {
-                        "id": f"task_{req_id}_implement",
-                        "name": f"Implement {feature_name}",
-                        "type": self.TASK_TYPE_IMPLEMENTATION,
-                    }
-                )
-                tasks.append(
-                    {
-                        "id": f"task_{req_id}_test",
-                        "name": f"Test {feature_name}",
-                        "type": self.TASK_TYPE_TESTING,
-                    }
-                )
+            # ALWAYS include design tasks for agent coordination
+            # Design tasks create shared context (API contracts, data models)
+            # even for atomic/simple features
+            tasks.append(
+                {
+                    "id": f"task_{req_id}_design",
+                    "name": f"Design {feature_name}",
+                    "type": self.TASK_TYPE_DESIGN,
+                }
+            )
+            tasks.append(
+                {
+                    "id": f"task_{req_id}_implement",
+                    "name": f"Implement {feature_name}",
+                    "type": self.TASK_TYPE_IMPLEMENTATION,
+                }
+            )
+            tasks.append(
+                {
+                    "id": f"task_{req_id}_test",
+                    "name": f"Test {feature_name}",
+                    "type": self.TASK_TYPE_TESTING,
+                }
+            )
 
         return tasks
 
