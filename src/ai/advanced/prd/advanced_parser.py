@@ -328,6 +328,38 @@ class AdvancedPRDParser:
         - Focus on extracting actionable, specific requirements that can
           be converted into development tasks
 
+        UNIQUENESS AND DEDUPLICATION:
+        - ENSURE UNIQUENESS: Each functional requirement must represent a
+          DISTINCT feature
+          * Check that no two requirements describe the same functionality
+          * Consolidate overlapping features (e.g., "User Auth" +
+            "Login System" → "User Authentication")
+          * IDs must be unique - never reuse an ID or create similar IDs
+            for related features
+          * If a feature appears in multiple contexts (e.g., auth for
+            profiles and auth for messaging), create ONE requirement with
+            both contexts listed in affected_components
+
+        - AVOID OVER-DECOMPOSITION: Keep requirements at consistent
+          granularity level
+          * Don't split "User Authentication" into separate requirements
+            for Login, Registration, Password Reset
+          * These should be ONE requirement that will be broken into
+            parallelizable subtasks during implementation
+          * Parallelization happens at the subtask level, not the
+            requirement level
+          * Implementation details belong in the description, not as
+            separate requirements
+
+        - CROSS-CHECK FEATURE GROUPS: Before finalizing, verify no
+          duplicate features exist across groups
+          * Example: If both "User Profiles" and "Messaging" groups
+            mention authentication, create a single "User Authentication"
+            requirement with affected_components: ["user-profiles",
+            "messaging"]
+          * Same applies for other cross-cutting concerns like logging,
+            validation, error handling
+
         COMPLEXITY CLASSIFICATION:
         - "atomic": Single file changes (e.g., set background color, update text)
         - "simple": One component feature (e.g., score display, button handler)
@@ -464,10 +496,15 @@ class AdvancedPRDParser:
                 else:
                     return []  # Return empty list as default
 
+            # Extract functional requirements and deduplicate
+            functional_reqs = get_key(
+                analysis_data, "functional_requirements", "functionalRequirements"
+            )
+            # Apply deduplication to prevent duplicate tasks
+            functional_reqs = self._deduplicate_functional_requirements(functional_reqs)
+
             return PRDAnalysis(
-                functional_requirements=get_key(
-                    analysis_data, "functional_requirements", "functionalRequirements"
-                ),
+                functional_requirements=functional_reqs,
                 non_functional_requirements=get_key(
                     analysis_data,
                     "non_functional_requirements",
@@ -685,6 +722,41 @@ Provide ONLY valid JSON, no preamble."""
                 )
                 domains["Other"] = list(unassigned)
 
+            # Additional validation: Check for semantically similar feature names
+            # This helps detect potential duplicates that passed through deduplication
+            feature_names = [
+                (req.get("id"), req.get("name")) for req in functional_requirements
+            ]
+
+            normalized_names: Dict[str, Tuple[str, str]] = {}
+            for fid, fname in feature_names:
+                if not fname or not fid:
+                    continue
+                # Type narrowing: fid and fname are guaranteed to be str here
+                fid_str: str = fid
+                fname_str: str = fname
+                normalized = fname_str.lower().strip()
+                # Normalize variations
+                normalized = normalized.replace("authentication", "auth")
+                normalized = normalized.replace("authorization", "auth")
+                normalized = normalized.replace(" system", "")
+                normalized = normalized.replace(" feature", "")
+                normalized = normalized.replace(" component", "")
+                normalized = normalized.replace(" service", "")
+                normalized = normalized.replace("management", "mgmt")
+
+                if normalized in normalized_names:
+                    logger.warning(
+                        f"Potential duplicate features detected: "
+                        f"'{fname_str}' (ID: {fid_str}) and "
+                        f"'{normalized_names[normalized][1]}' "
+                        f"(ID: {normalized_names[normalized][0]}) "
+                        f"have similar normalized names: '{normalized}'. "
+                        f"Consider consolidating these features."
+                    )
+                else:
+                    normalized_names[normalized] = (fid_str, fname_str)
+
             return domains
 
         except Exception as e:
@@ -837,6 +909,24 @@ artifacts and log_artifact() to document their specific implementation choices
         self._bundled_designs = {
             task["domain_name"]: task["id"] for task in bundled_design_tasks
         }
+
+        # Validate functional requirements for duplicates before creating epics
+        req_ids = [req.get("id") for req in functional_requirements]
+        logger.info(
+            f"Creating epics from {len(functional_requirements)} functional "
+            f"requirements: {req_ids}"
+        )
+
+        # Check for duplicate IDs (should not happen after deduplication, but verify)
+        if len(req_ids) != len(set(req_ids)):
+            from collections import Counter
+
+            id_counts = Counter(req_ids)
+            duplicates = [req_id for req_id, count in id_counts.items() if count > 1]
+            logger.error(
+                f"DUPLICATE REQUIREMENT IDs DETECTED: {duplicates} - "
+                f"This will create duplicate tasks! Check deduplication logic."
+            )
 
         # Create epics from functional requirements
         for i, req in enumerate(functional_requirements):
@@ -1198,8 +1288,10 @@ artifacts and log_artifact() to document their specific implementation choices
         # task_user_auth_implement -> user_auth
 
         if task_id.startswith("nfr_task_"):
-            # Non-functional requirement
-            req_id = task_id.replace("nfr_task_", "")
+            # Non-functional requirement - strip "nfr_task_" AND phase suffix
+            # Example: nfr_task_scalability_implement -> scalability
+            parts = task_id.replace("nfr_task_", "").rsplit("_", 1)
+            req_id = parts[0] if parts else task_id.replace("nfr_task_", "")
         elif task_id.startswith("task_"):
             # Functional requirement - extract between "task_" and last "_phase"
             parts = task_id.replace("task_", "").rsplit("_", 1)
@@ -1207,6 +1299,8 @@ artifacts and log_artifact() to document their specific implementation choices
         else:
             logger.warning(f"Unknown task_id format: {task_id}")
             return None
+
+        logger.debug(f"Extracted req_id '{req_id}' from task_id '{task_id}'")
 
         # Find matching requirement by ID
         for req in all_requirements:
@@ -1223,10 +1317,92 @@ artifacts and log_artifact() to document their specific implementation choices
 
             # Check if this requirement matches
             if req_dict.get("id") == req_id:
+                logger.debug(
+                    f"Matched requirement: task_id='{task_id}' -> "
+                    f"req_id='{req_id}' -> '{req_dict.get('name')}'"
+                )
                 return req_dict
 
         logger.warning(f"No requirement found with id={req_id} for task_id={task_id}")
         return None
+
+    def _deduplicate_functional_requirements(
+        self, requirements: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Remove duplicate functional requirements based on ID and semantic similarity.
+
+        This prevents the AI from creating duplicate tasks when it generates
+        similar requirements with different names (e.g., "User Auth" and
+        "Authentication System" for the same feature).
+
+        Parameters
+        ----------
+        requirements : List[Dict[str, Any]]
+            Raw functional requirements from AI analysis
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            Deduplicated requirements
+
+        Notes
+        -----
+        Deduplication strategy:
+        1. Check for exact duplicate IDs
+        2. Normalize feature names to detect semantic duplicates:
+           - Remove common suffixes: " system", " feature", " component", " module"
+           - Normalize variations: "authentication" → "auth", "authorization" → "auth"
+        3. Keep first occurrence, log and skip duplicates
+        """
+        seen_ids = set()
+        seen_names_normalized = set()
+        deduplicated = []
+
+        for req in requirements:
+            req_id = req.get("id", "").lower().strip()
+            req_name = req.get("name", "").lower().strip()
+
+            # Normalize name for similarity checking
+            normalized_name = req_name
+            # Remove common suffix variations
+            for suffix in [" system", " feature", " component", " module", " service"]:
+                normalized_name = normalized_name.replace(suffix, "")
+            # Normalize common variations
+            normalized_name = normalized_name.replace("authentication", "auth")
+            normalized_name = normalized_name.replace("authorization", "auth")
+            normalized_name = normalized_name.replace("management", "mgmt")
+
+            # Check for duplicate ID
+            if req_id in seen_ids:
+                logger.warning(
+                    f"Duplicate requirement ID detected: '{req_id}' - "
+                    f"'{req.get('name')}' - SKIPPING (AI violated uniqueness "
+                    f"constraint)"
+                )
+                continue
+
+            # Check for semantic duplicate (similar name)
+            if normalized_name in seen_names_normalized:
+                logger.warning(
+                    f"Duplicate requirement detected (similar name): "
+                    f"'{req.get('name')}' (normalized: '{normalized_name}') - "
+                    f"SKIPPING (consolidate with existing requirement)"
+                )
+                continue
+
+            # Add to results
+            seen_ids.add(req_id)
+            seen_names_normalized.add(normalized_name)
+            deduplicated.append(req)
+
+        if len(deduplicated) < len(requirements):
+            logger.info(
+                f"Deduplication removed {len(requirements) - len(deduplicated)} "
+                f"duplicate functional requirements"
+            )
+
+        return deduplicated
 
     def _format_constraints_for_prompt(self, constraints: List[str]) -> str:
         """
