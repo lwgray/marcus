@@ -1682,7 +1682,52 @@ explanation."""
                 }
             )
 
-        # Add PRD-specific dependencies
+        # BUGFIX: Filter out generic design→implement dependencies when using
+        # bundled domain designs. The pattern-based inference adds ALL design
+        # tasks as dependencies for implement/test tasks. We'll replace these
+        # with domain-specific dependencies in the next step.
+        if hasattr(self, "_bundled_designs") and self._bundled_designs:
+            bundled_design_ids = set(self._bundled_designs.values())
+            filtered_dependencies = []
+
+            for dep in dependencies:
+                dep_task = next(
+                    (t for t in tasks if t.id == dep["dependency_task_id"]), None
+                )
+                dependent_task = next(
+                    (t for t in tasks if t.id == dep["dependent_task_id"]), None
+                )
+
+                # Skip generic design dependencies when:
+                # 1. Dependency is a bundled design task
+                # 2. Dependent is an implement/test task
+                # 3. This is from pattern-based inference (not domain-specific)
+                if (
+                    dep_task
+                    and dependent_task
+                    and dep_task.id in bundled_design_ids
+                    and (
+                        dependent_task.name.lower().startswith("implement ")
+                        or dependent_task.name.lower().startswith("test ")
+                    )
+                    and dep["dependency_type"] == "blocks"
+                ):
+                    logger.debug(
+                        f"Filtering generic design dependency: "
+                        f"{dependent_task.name} -x-> {dep_task.name} "
+                        f"(will use domain-specific dependency instead)"
+                    )
+                    continue
+
+                filtered_dependencies.append(dep)
+
+            dependencies = filtered_dependencies
+            logger.info(
+                f"Filtered {len(dependencies) - len(filtered_dependencies)} "
+                f"generic design dependencies (using bundled domain designs)"
+            )
+
+        # Add PRD-specific dependencies (domain-aware)
         prd_dependencies = await self._add_prd_specific_dependencies(tasks, analysis)
         dependencies.extend(prd_dependencies)
 
