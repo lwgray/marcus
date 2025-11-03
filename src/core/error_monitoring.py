@@ -45,7 +45,7 @@ class ErrorMetrics:
     retryable_errors: int = 0
     critical_errors: int = 0
     error_rate_per_minute: float = 0.0
-    last_updated: datetime = field(default_factory=datetime.now)
+    last_updated: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -71,7 +71,7 @@ class CorrelationGroup:
     group_id: str
     correlation_key: str
     errors: List[str] = field(default_factory=list)  # Error correlation IDs
-    start_time: datetime = field(default_factory=datetime.now)
+    start_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     end_time: Optional[datetime] = None
     pattern: Optional[str] = None
     root_cause: Optional[str] = None
