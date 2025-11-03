@@ -371,8 +371,9 @@ class AdvancedPRDParser:
             # Increase max_tokens to handle complex PRDs with many requirements
             # 2000 tokens is too small - causes JSON truncation for 15+ features
             # Task Management (18 features) and Restaurant Booking (17 features)
-            # need ~4000-6000 tokens for complete JSON response
-            context = SimpleContext(max_tokens=8000)
+            # need ~4000 tokens for complete JSON response
+            # Note: Claude Haiku max_tokens limit is 4096
+            context = SimpleContext(max_tokens=4096)
 
             logger.info("Attempting to use LLM for PRD analysis...")
 
