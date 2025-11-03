@@ -63,6 +63,7 @@ class ProjectConstraints:
     technology_constraints: Optional[List[str]] = None
     quality_requirements: Optional[Dict[str, Any]] = None
     deployment_target: str = "local"  # local, dev, prod, remote
+    complexity_mode: str = "standard"  # prototype, standard, enterprise
 
     def __post_init__(self) -> None:
         """Initialize post-creation."""
@@ -546,6 +547,242 @@ class AdvancedPRDParser:
             # Raise the error instead of falling back to simulation
             raise ai_error
 
+    async def _discover_domains(
+        self, functional_requirements: List[Dict[str, Any]]
+    ) -> Dict[str, List[str]]:
+        """
+        Use AI to discover natural domain groupings from functional requirements.
+
+        Parameters
+        ----------
+        functional_requirements : List[Dict[str, Any]]
+            List of functional requirements with id, name, description, etc.
+
+        Returns
+        -------
+        Dict[str, List[str]]
+            Mapping of domain_name -> [feature_ids]
+            Example: {"User Management": ["user_reg", "user_login"],
+                     "Todo Management": ["todo_create", "todo_list"]}
+        """
+        if not functional_requirements:
+            return {}
+
+        # Build feature list for AI prompt
+        feature_list = []
+        for idx, req in enumerate(functional_requirements, 1):
+            feature_id = req.get("id", f"feature_{idx}")
+            feature_name = req.get("name", "Unknown Feature")
+            description = req.get("description", "")
+            affected_components = req.get("affected_components", [])
+            complexity = req.get("complexity", "simple")
+
+            feature_list.append(
+                f"{idx}. {feature_name} (ID: {feature_id})\n"
+                f"   Description: {description}\n"
+                f"   Components: {', '.join(affected_components)}\n"
+                f"   Complexity: {complexity}"
+            )
+
+        features_text = "\n\n".join(feature_list)
+
+        # Determine target number of domains based on project size
+        num_features = len(functional_requirements)
+        if num_features <= 5:
+            target_domains = "2-3"
+        elif num_features <= 15:
+            target_domains = "3-5"
+        elif num_features <= 30:
+            target_domains = "4-7"
+        else:
+            target_domains = "6-10"
+
+        prompt = f"""Analyze these features and group them into logical domains.
+
+Each domain should represent a cohesive area of functionality that requires
+coordination and shared design artifacts (API contracts, data models, etc.).
+
+Consider:
+- Shared data models (features touching same entities)
+- Integration points (features that communicate)
+- Common components (UI, backend services, databases)
+- Semantic similarity (related business functionality)
+
+Features:
+{features_text}
+
+Return JSON with {target_domains} domains (adaptive to project size):
+{{
+  "domains": [
+    {{
+      "name": "Descriptive Domain Name",
+      "feature_ids": ["feature_id1", "feature_id2"],
+      "rationale": "Why these features belong together (1 sentence)"
+    }}
+  ]
+}}
+
+IMPORTANT:
+- Use the exact feature IDs from above
+- Every feature MUST be assigned to exactly one domain
+- Domain names should be descriptive (e.g., "User Management System",
+  "Product Catalog", "Payment Processing")
+- Group by COORDINATION NEEDS, not just technical similarity
+
+Provide ONLY valid JSON, no preamble."""
+
+        try:
+            # Create context for AI call
+            class SimpleContext:
+                def __init__(self, max_tokens: int) -> None:
+                    self.max_tokens = max_tokens
+
+            context = SimpleContext(max_tokens=500)
+
+            # Use LLM to discover domains
+            result = await self.llm_client.analyze(prompt, context)
+            response_text = str(result) if result else "{}"
+
+            # Parse JSON response
+            import json
+
+            domain_data = json.loads(response_text)
+            domains_list = domain_data.get("domains", [])
+
+            # Convert to simple dict mapping
+            domains = {}
+            for domain in domains_list:
+                domain_name = domain.get("name", "Unknown Domain")
+                feature_ids = domain.get("feature_ids", [])
+                rationale = domain.get("rationale", "")
+
+                domains[domain_name] = feature_ids
+                logger.info(
+                    f"Discovered domain '{domain_name}' with {len(feature_ids)} "
+                    f"features: {rationale}"
+                )
+
+            # Validate: Ensure all features are assigned
+            assigned_features = set()
+            for feature_ids in domains.values():
+                assigned_features.update(feature_ids)
+
+            all_feature_ids = {
+                req.get("id", f"feature_{i+1}")
+                for i, req in enumerate(functional_requirements)
+            }
+            unassigned = all_feature_ids - assigned_features
+
+            if unassigned:
+                logger.warning(
+                    f"AI did not assign {len(unassigned)} features to domains: "
+                    f"{unassigned}. Creating 'Other' domain."
+                )
+                domains["Other"] = list(unassigned)
+
+            return domains
+
+        except Exception as e:
+            logger.warning(
+                f"Domain discovery failed: {e}. Falling back to single domain."
+            )
+            # Fallback: Create single domain with all features
+            all_ids = [
+                req.get("id", f"feature_{i+1}")
+                for i, req in enumerate(functional_requirements)
+            ]
+            return {"Project Domain": all_ids}
+
+    async def _create_bundled_design_tasks(
+        self,
+        domains: Dict[str, List[str]],
+        functional_requirements: List[Dict[str, Any]],
+        complexity_mode: str,
+    ) -> List[Dict[str, Any]]:
+        """
+        Create bundled design tasks, one per domain.
+
+        Parameters
+        ----------
+        domains : Dict[str, List[str]]
+            Mapping of domain_name -> [feature_ids]
+        functional_requirements : List[Dict[str, Any]]
+            All functional requirements
+        complexity_mode : str
+            Project complexity mode: "prototype", "standard", or "enterprise"
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of bundled design tasks
+        """
+        bundled_design_tasks = []
+
+        # Create a lookup map for requirements
+        req_map = {req.get("id"): req for req in functional_requirements}
+
+        for domain_name, feature_ids in domains.items():
+            # Get all requirements for this domain (filter out None values)
+            domain_reqs = [req_map[fid] for fid in feature_ids if fid in req_map]
+
+            if not domain_reqs:
+                continue
+
+            # Build detailed description including all features in this domain
+            feature_descriptions = []
+            for idx, req in enumerate(domain_reqs, 1):
+                feature_name = req.get("name", "Unknown Feature")
+                description = req.get("description", "")
+
+                feature_descriptions.append(
+                    f"{idx}. {feature_name.upper()}\n" f"   {description}"
+                )
+
+            features_text = "\n\n".join(feature_descriptions)
+
+            # Create task description
+            task_description = f"""Design the architecture for the {domain_name} \
+which encompasses the following features:
+
+{features_text}
+
+Your design should define:
+- Component boundaries (what components exist and their responsibilities)
+- Data flows (how data moves between components)
+- Integration points (how components communicate)
+- Shared data models (schemas, entities, etc.)
+
+Agents implementing these features will use get_task_context() to see your design
+artifacts and log_artifact() to document their specific implementation choices
+(exact API paths, field names, technologies, etc.)."""
+
+            # Create bundled design task
+            task_id = f"design_{domain_name.lower().replace(' ', '_')}"
+
+            bundled_design_tasks.append(
+                {
+                    "id": task_id,
+                    "name": f"Design {domain_name}",
+                    "description": task_description,
+                    "type": self.TASK_TYPE_DESIGN,
+                    "domain_name": domain_name,
+                    "feature_ids": feature_ids,  # Track which features this covers
+                    "priority": "high",  # Design tasks should run first
+                    "estimated_hours": self._get_learned_task_duration(
+                        "design", default_minutes=6.0 * len(domain_reqs)
+                    )
+                    / 60.0,  # Scale with number of features
+                    "labels": ["design", "architecture", domain_name.lower()],
+                }
+            )
+
+            logger.info(
+                f"Created bundled design task '{task_id}' for domain "
+                f"'{domain_name}' covering {len(feature_ids)} features"
+            )
+
+        return bundled_design_tasks
+
     async def _generate_task_hierarchy(
         self, analysis: PRDAnalysis, constraints: ProjectConstraints
     ) -> Dict[str, List[str]]:
@@ -562,6 +799,39 @@ class AdvancedPRDParser:
         functional_requirements = self._filter_requirements_by_size(
             analysis.functional_requirements, project_size, constraints.team_size
         )
+
+        # Get complexity mode from constraints (passed from create_project)
+        complexity_mode = constraints.complexity_mode
+
+        # STEP 1: Discover domains from functional requirements
+        domains = await self._discover_domains(functional_requirements)
+        logger.info(f"Discovered {len(domains)} domains: {list(domains.keys())}")
+
+        # STEP 2: Create bundled design tasks (one per domain)
+        bundled_design_tasks = await self._create_bundled_design_tasks(
+            domains, functional_requirements, complexity_mode
+        )
+
+        # Store bundled design tasks (they don't belong to any epic)
+        if bundled_design_tasks:
+            design_epic_id = "epic_design_architecture"
+            hierarchy[design_epic_id] = []
+
+            for task in bundled_design_tasks:
+                self._task_metadata[task["id"]] = {
+                    "original_name": task["name"],
+                    "type": task["type"],
+                    "epic_id": design_epic_id,
+                    "domain_name": task["domain_name"],
+                    "feature_ids": task["feature_ids"],
+                }
+                hierarchy[design_epic_id].append(task["id"])
+
+        # Store domain mapping for later dependency resolution
+        self._domain_mapping = domains  # feature_id -> domain_name lookup
+        self._bundled_designs = {
+            task["domain_name"]: task["id"] for task in bundled_design_tasks
+        }
 
         # Create epics from functional requirements
         for i, req in enumerate(functional_requirements):
@@ -1635,18 +1905,8 @@ explanation."""
         req["id"] = req_id
         req["name"] = feature_name
 
-        # Get project size and map to complexity mode
-        project_size = (constraints.quality_requirements or {}).get(
-            "project_size", "medium"
-        )
-
-        # Map project_size to complexity_mode (3-option system)
-        if project_size in ["prototype", "mvp"]:
-            complexity_mode = "prototype"
-        elif project_size in ["enterprise", "large"]:
-            complexity_mode = "enterprise"
-        else:  # standard, medium, small
-            complexity_mode = "standard"
+        # Get complexity mode from constraints (passed from create_project)
+        complexity_mode = constraints.complexity_mode
 
         # Use intelligent task pattern selection
         tasks = self._select_task_pattern(req, complexity_mode)
@@ -1845,8 +2105,80 @@ explanation."""
     async def _add_prd_specific_dependencies(
         self, tasks: List[Task], analysis: PRDAnalysis
     ) -> List[Dict[str, Any]]:
-        """Add PRD-specific dependencies."""
-        return []  # Simplified for now
+        """
+        Add PRD-specific dependencies, including bundled design dependencies.
+
+        Creates dependencies from implement/test tasks to their domain's bundled
+        design task to ensure coordination.
+        """
+        dependencies = []
+
+        # Check if we have bundled designs and domain mapping
+        if not hasattr(self, "_bundled_designs") or not hasattr(
+            self, "_domain_mapping"
+        ):
+            return []
+
+        # Create a reverse mapping: feature_id -> domain_name
+        feature_to_domain = {}
+        for domain_name, feature_ids in self._domain_mapping.items():
+            for feature_id in feature_ids:
+                feature_to_domain[feature_id] = domain_name
+
+        # For each task, check if it needs to depend on a bundled design
+        for task in tasks:
+            task_id_lower = task.id.lower()
+
+            # Only implement and test tasks depend on design
+            if "implement" not in task_id_lower and "test" not in task_id_lower:
+                continue
+
+            # Extract feature_id from task_id
+            # (e.g., "task_user_login_implement" -> "user_login")
+            # Task IDs are in format: "task_{feature_id}_{type}"
+            parts = task.id.split("_")
+            if len(parts) >= 3 and parts[0] == "task":
+                # Find the feature_id (everything between "task_" and the type suffix)
+                type_suffixes = ["design", "implement", "test"]
+                # Remove "task_" prefix
+                remainder = "_".join(parts[1:])
+                # Remove type suffix
+                feature_id = remainder
+                for suffix in type_suffixes:
+                    if remainder.endswith(f"_{suffix}"):
+                        feature_id = remainder[: -len(f"_{suffix}")]
+                        break
+
+                # Find which domain this feature belongs to
+                feature_domain: Optional[str] = feature_to_domain.get(feature_id)
+
+                if feature_domain:
+                    # Get the bundled design task ID for this domain
+                    design_task_id = self._bundled_designs.get(feature_domain)
+
+                    if design_task_id:
+                        # Add dependency: implement/test task depends on bundled design
+                        dependencies.append(
+                            {
+                                "dependent_task_id": task.id,
+                                "dependency_task_id": design_task_id,
+                                "dependency_type": "architectural",
+                                # High confidence - explicit bundled design dep
+                                "confidence": 1.0,
+                                "reasoning": (
+                                    f"Implement/test tasks must wait for "
+                                    f"{feature_domain} design to define "
+                                    f"architecture and interfaces"
+                                ),
+                            }
+                        )
+                        logger.debug(
+                            f"Added bundled design dependency: "
+                            f"{task.id} -> {design_task_id}"
+                        )
+
+        logger.info(f"Added {len(dependencies)} bundled design dependencies to tasks")
+        return dependencies
 
     async def _analyze_complexity_risks(
         self, tasks: List[Task], analysis: PRDAnalysis

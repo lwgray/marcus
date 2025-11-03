@@ -466,6 +466,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             available_skills=options.get("tech_stack", []),
             technology_constraints=options.get("tech_stack", []),
             deployment_target=mapped_deployment,
+            complexity_mode=self.complexity,  # Pass explicit complexity mode
         )
 
         # Pass complexity info via quality_requirements for parser to use
