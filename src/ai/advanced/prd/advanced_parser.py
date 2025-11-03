@@ -1479,15 +1479,17 @@ explanation."""
 
         # Determine task pattern based on complexity and mode
         if complexity_mode == "prototype":
-            # Prototype: Speed over structure, but keep design for coordination
-            # Design tasks ensure agents have shared context (no subtasks in prototype)
-            tasks.append(
-                {
-                    "id": f"task_{req_id}_design",
-                    "name": f"Design {feature_name}",
-                    "type": self.TASK_TYPE_DESIGN,
-                }
-            )
+            # Prototype: Speed over structure
+            # Design ONLY for coordinated/distributed (produces artifacts)
+            # Atomic/simple: just implement (nothing to coordinate)
+            if complexity in ["coordinated", "distributed"]:
+                tasks.append(
+                    {
+                        "id": f"task_{req_id}_design",
+                        "name": f"Design {feature_name}",
+                        "type": self.TASK_TYPE_DESIGN,
+                    }
+                )
             tasks.append(
                 {
                     "id": f"task_{req_id}_implement",
@@ -1530,15 +1532,16 @@ explanation."""
             )
 
         else:  # standard mode (default)
-            # ALWAYS include design tasks for agent coordination
-            # Design tasks create shared context (API contracts, data models)
-            tasks.append(
-                {
-                    "id": f"task_{req_id}_design",
-                    "name": f"Design {feature_name}",
-                    "type": self.TASK_TYPE_DESIGN,
-                }
-            )
+            # Design ONLY for coordinated/distributed (produces coordination artifacts)
+            # Atomic/simple: just implement (nothing to coordinate)
+            if complexity in ["coordinated", "distributed"]:
+                tasks.append(
+                    {
+                        "id": f"task_{req_id}_design",
+                        "name": f"Design {feature_name}",
+                        "type": self.TASK_TYPE_DESIGN,
+                    }
+                )
             tasks.append(
                 {
                     "id": f"task_{req_id}_implement",
@@ -1546,7 +1549,7 @@ explanation."""
                     "type": self.TASK_TYPE_IMPLEMENTATION,
                 }
             )
-            # Atomic features are too simple to need explicit testing
+            # Add testing for simple/coordinated/distributed (not atomic)
             if complexity != "atomic":
                 tasks.append(
                     {
