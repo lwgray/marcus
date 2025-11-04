@@ -1682,56 +1682,52 @@ explanation."""
                 }
             )
 
-        # BUGFIX: Filter out generic design→implement dependencies when using
-        # bundled domain designs. The pattern-based inference adds ALL design
-        # tasks as dependencies for implement/test tasks. We'll replace these
-        # with domain-specific dependencies in the next step.
-        if hasattr(self, "_bundled_designs") and self._bundled_designs:
-            filtered_dependencies = []
+        # BUGFIX: Filter out ALL generic design→implement/test dependencies.
+        # The pattern-based inference incorrectly adds ALL design tasks as
+        # dependencies for ALL implement/test tasks. We'll replace these with
+        # correct domain-specific dependencies in the next step.
+        filtered_dependencies = []
 
-            for dep in dependencies:
-                dep_task = next(
-                    (t for t in tasks if t.id == dep["dependency_task_id"]), None
-                )
-                dependent_task = next(
-                    (t for t in tasks if t.id == dep["dependent_task_id"]), None
-                )
-
-                # Skip generic design dependencies when:
-                # 1. Dependency is ANY design task (check by name prefix)
-                # 2. Dependent is an implement/test task
-                # 3. This is from pattern-based inference (not domain-specific)
-                is_design_task = dep_task and dep_task.name.lower().startswith(
-                    "design "
-                )
-                is_implement_or_test_task = dependent_task and (
-                    dependent_task.name.lower().startswith("implement ")
-                    or dependent_task.name.lower().startswith("test ")
-                )
-
-                if (
-                    is_design_task
-                    and is_implement_or_test_task
-                    and dep["dependency_type"] == "blocks"
-                ):
-                    # Type narrowing: we know both are not None from the
-                    # conditions above
-                    assert dependent_task is not None
-                    assert dep_task is not None
-                    logger.debug(
-                        f"Filtering generic design dependency: "
-                        f"{dependent_task.name} -x-> {dep_task.name} "
-                        f"(will use domain-specific dependency instead)"
-                    )
-                    continue
-
-                filtered_dependencies.append(dep)
-
-            dependencies = filtered_dependencies
-            logger.info(
-                f"Filtered {len(dependencies) - len(filtered_dependencies)} "
-                f"generic design dependencies (using bundled domain designs)"
+        for dep in dependencies:
+            dep_task = next(
+                (t for t in tasks if t.id == dep["dependency_task_id"]), None
             )
+            dependent_task = next(
+                (t for t in tasks if t.id == dep["dependent_task_id"]), None
+            )
+
+            # Skip generic design dependencies when:
+            # 1. Dependency is ANY design task (check by name prefix)
+            # 2. Dependent is an implement/test task
+            # 3. This is from pattern-based inference (type="blocks")
+            is_design_task = dep_task and dep_task.name.lower().startswith("design ")
+            is_implement_or_test_task = dependent_task and (
+                dependent_task.name.lower().startswith("implement ")
+                or dependent_task.name.lower().startswith("test ")
+            )
+
+            if (
+                is_design_task
+                and is_implement_or_test_task
+                and dep["dependency_type"] == "blocks"
+            ):
+                # Type narrowing: we know both are not None from conditions above
+                assert dependent_task is not None
+                assert dep_task is not None
+                logger.debug(
+                    f"Filtering generic design dependency: "
+                    f"{dependent_task.name} -x-> {dep_task.name} "
+                    f"(will use domain-specific dependency instead)"
+                )
+                continue
+
+            filtered_dependencies.append(dep)
+
+        dependencies = filtered_dependencies
+        logger.info(
+            f"Filtered {len(dependencies) - len(filtered_dependencies)} "
+            f"generic design dependencies"
+        )
 
         # Add PRD-specific dependencies (domain-aware)
         prd_dependencies = await self._add_prd_specific_dependencies(tasks, analysis)
