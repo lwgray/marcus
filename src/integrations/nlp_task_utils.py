@@ -335,6 +335,12 @@ class SafetyChecker:
         """
         Ensure implementation tasks depend on design tasks.
 
+        IMPORTANT: Only adds bundled domain-based design dependencies,
+        not per-feature design dependencies, to support GH-108.
+
+        Bundled designs have IDs like: design_user_authentication
+        Per-feature designs have IDs like: task_user-login_design
+
         Parameters
         ----------
         tasks : List[Task]
@@ -350,20 +356,31 @@ class SafetyChecker:
             tasks, TaskType.IMPLEMENTATION
         )
 
+        # Filter to ONLY bundled domain designs (GH-108)
+        # Bundled designs have IDs starting with "design_" (not "task_")
+        bundled_design_tasks = [
+            dt for dt in design_tasks if dt.id.startswith("design_")
+        ]
+
+        logger.info(
+            f"Filtered {len(design_tasks)} design tasks to "
+            f"{len(bundled_design_tasks)} bundled domain designs"
+        )
+
         for impl_task in implementation_tasks:
-            # Find related design tasks (by matching labels or keywords)
+            # Find related BUNDLED design tasks only
             related_design_tasks = SafetyChecker._find_related_tasks(
-                impl_task, design_tasks
+                impl_task, bundled_design_tasks
             )
 
             if not related_design_tasks:
-                logger.warning(
-                    f"No related design tasks found for implementation task "
-                    f"'{impl_task.name}' with labels: {impl_task.labels}"
+                logger.debug(
+                    f"No bundled design dependencies needed for '{impl_task.name}' "
+                    f"(per-feature designs handled by PRD logic)"
                 )
             else:
                 logger.info(
-                    f"Found {len(related_design_tasks)} related design tasks "
+                    f"Found {len(related_design_tasks)} bundled design tasks "
                     f"for '{impl_task.name}'"
                 )
 
@@ -371,8 +388,8 @@ class SafetyChecker:
                 if design_task.id not in impl_task.dependencies:
                     impl_task.dependencies.append(design_task.id)
                     logger.info(
-                        f"Added dependency: {impl_task.name} depends on "
-                        f"{design_task.name}"
+                        f"Added bundled design dependency: {impl_task.name} "
+                        f"depends on {design_task.name}"
                     )
 
         return tasks
