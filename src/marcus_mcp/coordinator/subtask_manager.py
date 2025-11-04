@@ -88,7 +88,7 @@ class SubtaskMetadata:
     """
 
     shared_conventions: Dict[str, Any] = field(default_factory=dict)
-    decomposed_at: datetime = field(default_factory=datetime.now)
+    decomposed_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     decomposed_by: str = "ai"
 
 
