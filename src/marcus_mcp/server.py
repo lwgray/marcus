@@ -889,16 +889,30 @@ class MarcusServer:
                     f"[DEBUG] Before migration: project_tasks has "
                     f"{len(self.project_tasks)} tasks"
                 )
-                self.subtask_manager.migrate_to_unified_storage(self.project_tasks)
-                self._subtasks_migrated = True
-                migrated_subtasks = sum(
-                    1 for t in self.project_tasks if getattr(t, "is_subtask", False)
+
+                # CRITICAL FIX: Only set migration flag if we have parent tasks
+                # If project_tasks is empty, migration will skip all subtasks,
+                # but we need to allow retry on next refresh when parents exist
+                has_parent_tasks = any(
+                    not getattr(t, "is_subtask", False) for t in self.project_tasks
                 )
-                logger.info(
-                    f"[DEBUG] After migration: project_tasks has "
-                    f"{len(self.project_tasks)} tasks, "
-                    f"subtasks: {migrated_subtasks}"
-                )
+
+                if has_parent_tasks:
+                    self.subtask_manager.migrate_to_unified_storage(self.project_tasks)
+                    self._subtasks_migrated = True
+                    migrated_subtasks = sum(
+                        1 for t in self.project_tasks if getattr(t, "is_subtask", False)
+                    )
+                    logger.info(
+                        f"[DEBUG] After migration: project_tasks has "
+                        f"{len(self.project_tasks)} tasks, "
+                        f"subtasks: {migrated_subtasks}"
+                    )
+                else:
+                    logger.warning(
+                        "[DEBUG] Skipping migration: no parent tasks in project_tasks. "
+                        "Will retry on next refresh when parent tasks are available."
+                    )
 
                 # Wire cross-parent dependencies after migration completes
                 # Creates fine-grained dependencies between different parents
