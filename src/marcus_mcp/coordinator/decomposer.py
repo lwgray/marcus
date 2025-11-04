@@ -19,10 +19,28 @@ def should_decompose(task: Task, project_complexity: Optional[str] = None) -> bo
     Decide whether a task should be decomposed into subtasks.
 
     Uses heuristics to determine if decomposition would be beneficial:
-    - Project complexity mode (prototype mode = no subtasks)
+    - Project complexity mode affects thresholds:
+        * prototype: No decomposition (speed priority)
+        * standard: Balanced decomposition (default thresholds)
+        * enterprise: Aggressive decomposition (maximum granularity)
     - Task size (estimated hours)
     - Task complexity (description length, multiple components)
     - Task type (not bugfix, not deployment, not design)
+
+    Decomposition Thresholds by Mode
+    ---------------------------------
+    **Prototype**: Never decompose (speed over granularity)
+
+    **Standard** (default):
+    - Time threshold: >= 0.2 hours (12 minutes)
+    - Multi-component threshold: >= 3 indicators
+    - Result: Moderate task breakdown
+
+    **Enterprise**:
+    - Time threshold: >= 0.1 hours (6 minutes)
+    - Multi-component threshold: >= 2 indicators
+    - Force decompose: All "Implement" tasks
+    - Result: Maximum granularity for parallelization
 
     Parameters
     ----------
@@ -30,7 +48,6 @@ def should_decompose(task: Task, project_complexity: Optional[str] = None) -> bo
         The task to evaluate
     project_complexity : Optional[str], default=None
         Project complexity mode: "prototype", "standard", or "enterprise"
-        If "prototype", ALL subtasks are disabled
 
     Returns
     -------
@@ -73,6 +90,60 @@ def should_decompose(task: Task, project_complexity: Optional[str] = None) -> bo
         logger.debug(f"Task {task.name} is deployment - no decomposition")
         return False
 
+    # Enterprise mode: More aggressive decomposition for maximum granularity
+    if project_complexity == "enterprise":
+        # Force decompose all "Implement" tasks (they almost always benefit)
+        if task_name_lower.startswith("implement "):
+            logger.info(
+                f"Task {task.name} in enterprise mode - "
+                "force decompose implementation task"
+            )
+            return True
+
+        # Lower time threshold: 6 minutes instead of 12
+        if task.estimated_hours >= 0.1:
+            minutes = task.estimated_hours * 60
+            logger.info(
+                f"Task {task.name} in enterprise mode - "
+                f"substantial ({minutes:.1f} min) - will decompose"
+            )
+            return True
+
+        # Lower multi-component threshold: 2 instead of 3
+        description_lower = task.description.lower()
+        multi_component_indicators = [
+            " and ",
+            "then",
+            "including",
+            "as well as",
+            "plus",
+            "endpoint",
+            "api",
+            "database",
+            "model",
+            "ui",
+            "frontend",
+            "backend",
+        ]
+
+        indicator_count = sum(
+            1
+            for indicator in multi_component_indicators
+            if indicator in description_lower
+        )
+
+        if indicator_count >= 2:
+            logger.info(
+                f"Task {task.name} in enterprise mode - "
+                f"has multiple components ({indicator_count} indicators) "
+                "- will decompose"
+            )
+            return True
+
+        logger.debug(f"Task {task.name} in enterprise mode - no decomposition needed")
+        return False
+
+    # Standard mode: Balanced decomposition thresholds
     # Decompose if estimated time is substantial (> 12 minutes)
     # With reality-based estimates, anything > 0.2 hours (12 min)
     # benefits from splitting

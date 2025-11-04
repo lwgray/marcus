@@ -101,6 +101,173 @@ class TestShouldDecompose:
         # Assert
         assert result is True
 
+    # ===== Project Complexity Mode Tests =====
+
+    def test_prototype_mode_never_decomposes(self, base_task):
+        """Test prototype mode never decomposes regardless of task characteristics."""
+        # Arrange
+        base_task.estimated_hours = 10.0  # Large task
+        base_task.description = (
+            "Build API with database and frontend UI"  # Multi-component
+        )
+
+        # Act
+        result = should_decompose(base_task, project_complexity="prototype")
+
+        # Assert
+        assert result is False, "Prototype mode should never decompose"
+
+    def test_standard_mode_time_threshold_12_minutes(self, base_task):
+        """Test standard mode decomposes tasks >= 0.2 hours (12 minutes)."""
+        # Arrange - Just above threshold
+        base_task.estimated_hours = 0.2
+        base_task.description = "Simple task"
+
+        # Act
+        result = should_decompose(base_task, project_complexity="standard")
+
+        # Assert
+        assert result is True, "Standard mode should decompose at 0.2h"
+
+    def test_standard_mode_below_time_threshold(self, base_task):
+        """Test standard mode doesn't decompose tasks < 0.2 hours."""
+        # Arrange - Just below threshold
+        base_task.estimated_hours = 0.19
+        base_task.description = "Simple task"
+
+        # Act
+        result = should_decompose(base_task, project_complexity="standard")
+
+        # Assert
+        assert result is False, "Standard mode should not decompose below 0.2h"
+
+    def test_standard_mode_multi_component_threshold_3(self, base_task):
+        """Test standard mode requires >= 3 component indicators."""
+        # Arrange - Exactly 3 indicators: "api", "database", "frontend"
+        base_task.estimated_hours = 0.1  # Below time threshold
+        base_task.description = "Build api with database and frontend"
+
+        # Act
+        result = should_decompose(base_task, project_complexity="standard")
+
+        # Assert
+        assert result is True, "Standard mode should decompose with 3 indicators"
+
+    def test_standard_mode_below_multi_component_threshold(self, base_task):
+        """Test standard mode doesn't decompose with < 3 indicators."""
+        # Arrange - Only 2 indicators: "api", "database"
+        base_task.estimated_hours = 0.1  # Below time threshold
+        base_task.description = "Build api with database"
+
+        # Act
+        result = should_decompose(base_task, project_complexity="standard")
+
+        # Assert
+        assert result is False, "Standard mode should not decompose with 2 indicators"
+
+    def test_enterprise_mode_time_threshold_6_minutes(self, base_task):
+        """Test enterprise mode decomposes tasks >= 0.1 hours (6 minutes)."""
+        # Arrange - Just above enterprise threshold, below standard threshold
+        base_task.estimated_hours = 0.1
+        base_task.description = "Simple task"
+
+        # Act
+        result = should_decompose(base_task, project_complexity="enterprise")
+
+        # Assert
+        assert result is True, "Enterprise mode should decompose at 0.1h"
+
+    def test_enterprise_mode_multi_component_threshold_2(self, base_task):
+        """Test enterprise mode requires >= 2 component indicators."""
+        # Arrange - Exactly 2 indicators: "api", "database"
+        base_task.estimated_hours = 0.05  # Just above minimum
+        base_task.description = "Build api with database"
+
+        # Act
+        result = should_decompose(base_task, project_complexity="enterprise")
+
+        # Assert
+        assert result is True, "Enterprise mode should decompose with 2 indicators"
+
+    def test_enterprise_mode_forces_implement_tasks(self, base_task):
+        """Test enterprise mode force decomposes all Implement tasks."""
+        # Arrange - Below time threshold, no multi-component indicators
+        base_task.name = "Implement User Authentication"
+        base_task.estimated_hours = 0.06  # Below enterprise time threshold
+        base_task.description = "Simple implementation"  # No indicators
+
+        # Act
+        result = should_decompose(base_task, project_complexity="enterprise")
+
+        # Assert
+        assert result is True, "Enterprise mode should force decompose Implement tasks"
+
+    def test_enterprise_mode_more_aggressive_than_standard(self, base_task):
+        """Test enterprise mode decomposes more tasks than standard mode."""
+        # Arrange - Task characteristics between standard and enterprise thresholds
+        test_cases = [
+            # (hours, description, expected_standard, expected_enterprise)
+            (0.15, "Simple task", False, True),  # Time: 9 min (enterprise yes)
+            (
+                0.05,
+                "Build api and database",
+                False,
+                True,
+            ),  # 2 indicators (enterprise yes)
+            (
+                0.1,
+                "Implement feature",
+                False,
+                True,
+            ),  # Force implement (enterprise yes)
+        ]
+
+        for hours, description, expected_std, expected_ent in test_cases:
+            base_task.estimated_hours = hours
+            base_task.description = description
+            if "implement" in description.lower():
+                base_task.name = description
+
+            # Act
+            std_result = should_decompose(base_task, project_complexity="standard")
+            ent_result = should_decompose(base_task, project_complexity="enterprise")
+
+            # Assert
+            assert (
+                std_result == expected_std
+            ), f"Standard mode failed for: {description}"
+            assert (
+                ent_result == expected_ent
+            ), f"Enterprise mode failed for: {description}"
+
+    def test_enterprise_mode_still_respects_skip_conditions(self, base_task):
+        """Test enterprise mode still skips bugfix/deployment/design tasks."""
+        # Arrange - Large implement task but with skip label
+        base_task.name = "Implement hotfix"
+        base_task.estimated_hours = 5.0
+        base_task.labels = ["bugfix"]
+
+        # Act
+        result = should_decompose(base_task, project_complexity="enterprise")
+
+        # Assert
+        assert result is False, "Enterprise mode should still skip bugfix tasks"
+
+    def test_default_mode_behaves_like_standard(self, base_task):
+        """Test None (default) complexity behaves like standard mode."""
+        # Arrange
+        base_task.estimated_hours = 0.2
+        base_task.description = "Simple task"
+
+        # Act
+        result_default = should_decompose(base_task, project_complexity=None)
+        result_standard = should_decompose(base_task, project_complexity="standard")
+
+        # Assert
+        assert (
+            result_default == result_standard
+        ), "Default should behave like standard mode"
+
 
 class TestDecomposeTask:
     """Test suite for decompose_task AI-driven decomposition."""
