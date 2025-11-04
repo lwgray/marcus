@@ -1699,18 +1699,16 @@ explanation."""
             # Skip generic design dependencies when:
             # 1. Dependency is ANY design task (check by name prefix)
             # 2. Dependent is an implement/test task
-            # 3. This is from pattern-based inference (type="blocks")
+            # 3. This is from pattern-based inference (type="hard" or "soft")
+            #    NOT from PRD-specific logic (type="architectural")
             is_design_task = dep_task and dep_task.name.lower().startswith("design ")
             is_implement_or_test_task = dependent_task and (
                 dependent_task.name.lower().startswith("implement ")
                 or dependent_task.name.lower().startswith("test ")
             )
+            is_pattern_based = dep["dependency_type"] in ["hard", "soft"]
 
-            if (
-                is_design_task
-                and is_implement_or_test_task
-                and dep["dependency_type"] == "blocks"
-            ):
+            if is_design_task and is_implement_or_test_task and is_pattern_based:
                 # Type narrowing: we know both are not None from conditions above
                 assert dependent_task is not None
                 assert dep_task is not None
