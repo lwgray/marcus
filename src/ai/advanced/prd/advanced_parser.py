@@ -1687,7 +1687,6 @@ explanation."""
         # tasks as dependencies for implement/test tasks. We'll replace these
         # with domain-specific dependencies in the next step.
         if hasattr(self, "_bundled_designs") and self._bundled_designs:
-            bundled_design_ids = set(self._bundled_designs.values())
             filtered_dependencies = []
 
             for dep in dependencies:
@@ -1699,19 +1698,26 @@ explanation."""
                 )
 
                 # Skip generic design dependencies when:
-                # 1. Dependency is a bundled design task
+                # 1. Dependency is ANY design task (check by name prefix)
                 # 2. Dependent is an implement/test task
                 # 3. This is from pattern-based inference (not domain-specific)
+                is_design_task = dep_task and dep_task.name.lower().startswith(
+                    "design "
+                )
+                is_implement_or_test_task = dependent_task and (
+                    dependent_task.name.lower().startswith("implement ")
+                    or dependent_task.name.lower().startswith("test ")
+                )
+
                 if (
-                    dep_task
-                    and dependent_task
-                    and dep_task.id in bundled_design_ids
-                    and (
-                        dependent_task.name.lower().startswith("implement ")
-                        or dependent_task.name.lower().startswith("test ")
-                    )
+                    is_design_task
+                    and is_implement_or_test_task
                     and dep["dependency_type"] == "blocks"
                 ):
+                    # Type narrowing: we know both are not None from the
+                    # conditions above
+                    assert dependent_task is not None
+                    assert dep_task is not None
                     logger.debug(
                         f"Filtering generic design dependency: "
                         f"{dependent_task.name} -x-> {dep_task.name} "
