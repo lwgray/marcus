@@ -268,6 +268,29 @@ def calculate_optimal_agents(tasks: List[Task]) -> ProjectSchedule:
     2. Maximum parallelism at any time point
     3. Optimal agent count for maximum efficiency
 
+    Workable Task Selection
+    -----------------------
+    Schedules tasks that represent actual work, filtering based on structure:
+
+    - **Subtasks**: Always included (decomposed work items)
+    - **Atomic parents**: Parents with NO subtasks (atomic work or prototype mode)
+    - **Container parents**: Excluded (parents that HAVE subtasks are just containers)
+    - **Completed tasks**: Always excluded
+
+    This handles three project modes:
+    1. **Standard mode**: Mix of decomposed (parents+subtasks) and atomic tasks
+    2. **Prototype mode**: All tasks are atomic parents (no decomposition)
+    3. **Hybrid mode**: Some tasks decomposed, others atomic
+
+    Example:
+        tasks = [
+            Task(id="parent_A", is_subtask=False),  # Has subtasks → excluded
+            Task(id="parent_A_sub1", is_subtask=True, parent="parent_A"),  # → included
+            Task(id="parent_A_sub2", is_subtask=True, parent="parent_A"),  # → included
+            Task(id="parent_B", is_subtask=False),  # No subtasks → included (atomic)
+        ]
+        # Schedules: parent_A_sub1, parent_A_sub2, parent_B (3 tasks)
+
     Parameters
     ----------
     tasks : List[Task]
@@ -295,29 +318,45 @@ def calculate_optimal_agents(tasks: List[Task]) -> ProjectSchedule:
         )
 
     # Filter to only workable tasks based on project structure:
-    # - If subtasks exist: only schedule subtasks (parent tasks are containers)
-    # - If no subtasks: schedule parent tasks (prototype mode or simple projects)
+    # - Subtasks (decomposed work)
+    # - Parent tasks that have NO subtasks (atomic work or prototype mode)
+    # - Exclude parent tasks that HAVE subtasks (they're just containers)
     # - Always exclude completed tasks
-    has_subtasks = any(getattr(task, "is_subtask", False) for task in tasks)
 
-    if has_subtasks:
-        # Standard mode: parent tasks are containers, only subtasks are workable
-        workable_tasks = [
-            task
-            for task in tasks
-            if getattr(task, "is_subtask", False) and task.status != TaskStatus.DONE
-        ]
-        logger.debug(
-            f"Scheduling {len(workable_tasks)} subtasks "
-            f"(filtered from {len(tasks)} total tasks)"
-        )
-    else:
-        # Prototype/simple mode: no subtasks exist, parent tasks are the work
-        workable_tasks = [task for task in tasks if task.status != TaskStatus.DONE]
-        logger.info(
-            f"No subtasks found - scheduling {len(workable_tasks)} parent tasks "
-            f"(prototype mode or simple project)"
-        )
+    # Build map of parent tasks to their subtasks
+    parent_to_subtasks: Dict[str, List[Task]] = {}
+    for task in tasks:
+        if getattr(task, "is_subtask", False):
+            parent_id = getattr(task, "parent_task_id", None)
+            if parent_id:
+                if parent_id not in parent_to_subtasks:
+                    parent_to_subtasks[parent_id] = []
+                parent_to_subtasks[parent_id].append(task)
+
+    # Select workable tasks:
+    # 1. All subtasks (decomposed work)
+    # 2. Parent tasks with NO subtasks (atomic work)
+    workable_tasks = []
+    for task in tasks:
+        if task.status == TaskStatus.DONE:
+            continue  # Skip completed tasks
+
+        is_subtask = getattr(task, "is_subtask", False)
+        has_children = task.id in parent_to_subtasks
+
+        if is_subtask:
+            # Include all subtasks (they're actual work)
+            workable_tasks.append(task)
+        elif not has_children:
+            # Include parent tasks with no subtasks (atomic work)
+            workable_tasks.append(task)
+        # else: parent with subtasks - skip (it's just a container)
+
+    logger.debug(
+        f"Scheduling {len(workable_tasks)} workable tasks "
+        f"from {len(tasks)} total tasks "
+        f"(subtasks + atomic parents, excluding containers)"
+    )
 
     if not workable_tasks:
         logger.info("No workable tasks found (all tasks completed)")

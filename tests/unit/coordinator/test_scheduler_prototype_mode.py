@@ -266,3 +266,118 @@ class TestSchedulerMixedMode:
 
         # Assert - should schedule the task
         assert schedule.optimal_agents > 0, "Should handle tasks without is_subtask"
+
+    def test_mixed_project_with_atomic_and_decomposed_tasks(self):
+        """Test hybrid project with both atomic parents and decomposed parents."""
+        # Arrange - Create mixed project:
+        # - Parent A: Decomposed into 2 subtasks
+        # - Parent B: Atomic (no subtasks)
+        # - Parent C: Decomposed into 2 subtasks
+        tasks = [
+            # Parent A (container - should be excluded)
+            Task(
+                id="parent_a",
+                name="Parent A",
+                description="Parent with subtasks",
+                status=TaskStatus.TODO,
+                priority=Priority.MEDIUM,
+                estimated_hours=2.0,
+                dependencies=[],
+                labels=[],
+                is_subtask=False,
+            ),
+            # Parent A subtasks (should be included)
+            Task(
+                id="parent_a_sub_1",
+                name="Subtask A1",
+                description="First subtask",
+                status=TaskStatus.TODO,
+                priority=Priority.MEDIUM,
+                estimated_hours=1.0,
+                dependencies=[],
+                labels=[],
+                is_subtask=True,
+                parent_task_id="parent_a",
+            ),
+            Task(
+                id="parent_a_sub_2",
+                name="Subtask A2",
+                description="Second subtask",
+                status=TaskStatus.TODO,
+                priority=Priority.MEDIUM,
+                estimated_hours=1.0,
+                dependencies=[],
+                labels=[],
+                is_subtask=True,
+                parent_task_id="parent_a",
+            ),
+            # Parent B (atomic - should be included)
+            Task(
+                id="parent_b",
+                name="Parent B",
+                description="Parent without subtasks (atomic)",
+                status=TaskStatus.TODO,
+                priority=Priority.MEDIUM,
+                estimated_hours=1.0,
+                dependencies=[],
+                labels=[],
+                is_subtask=False,
+            ),
+            # Parent C (container - should be excluded)
+            Task(
+                id="parent_c",
+                name="Parent C",
+                description="Parent with subtasks",
+                status=TaskStatus.TODO,
+                priority=Priority.MEDIUM,
+                estimated_hours=2.0,
+                dependencies=[],
+                labels=[],
+                is_subtask=False,
+            ),
+            # Parent C subtasks (should be included)
+            Task(
+                id="parent_c_sub_1",
+                name="Subtask C1",
+                description="First subtask",
+                status=TaskStatus.TODO,
+                priority=Priority.MEDIUM,
+                estimated_hours=1.0,
+                dependencies=[],
+                labels=[],
+                is_subtask=True,
+                parent_task_id="parent_c",
+            ),
+            Task(
+                id="parent_c_sub_2",
+                name="Subtask C2",
+                description="Second subtask",
+                status=TaskStatus.TODO,
+                priority=Priority.MEDIUM,
+                estimated_hours=1.0,
+                dependencies=[],
+                labels=[],
+                is_subtask=True,
+                parent_task_id="parent_c",
+            ),
+        ]
+
+        # Act
+        schedule = calculate_optimal_agents(tasks)
+
+        # Assert - Should schedule 5 tasks:
+        # - 2 subtasks from parent_a
+        # - 1 atomic parent_b
+        # - 2 subtasks from parent_c
+        # Parents A and C should be excluded (they're containers)
+        assert (
+            schedule.optimal_agents == 5
+        ), f"Expected 5 agents (all tasks independent), got {schedule.optimal_agents}"
+        assert (
+            schedule.max_parallelism == 5
+        ), f"Expected 5 parallel tasks, got {schedule.max_parallelism}"
+
+        # Critical path should be 1.0h (all tasks are independent and take 1.0h)
+        assert schedule.critical_path_hours == pytest.approx(
+            1.0, abs=0.01
+        ), f"Expected critical path of 1.0h, got {schedule.critical_path_hours}h"
