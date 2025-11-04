@@ -1989,12 +1989,18 @@ explanation."""
 
         tasks = []
 
+        # Check if bundled domain designs exist (GH-108)
+        has_bundled_designs = (
+            hasattr(self, "_bundled_designs") and self._bundled_designs
+        )
+
         # Determine task pattern based on complexity and mode
         if complexity_mode == "prototype":
             # Prototype: Speed over structure
             # Design ONLY for coordinated/distributed (produces artifacts)
             # Atomic/simple: just implement (nothing to coordinate)
-            if complexity in ["coordinated", "distributed"]:
+            # SKIP per-feature designs if bundled domain designs exist (GH-108)
+            if complexity in ["coordinated", "distributed"] and not has_bundled_designs:
                 tasks.append(
                     {
                         "id": f"task_{req_id}_design",
@@ -2021,13 +2027,15 @@ explanation."""
 
         elif complexity_mode == "enterprise":
             # Enterprise: Full traceability with design tasks for all features
-            tasks.append(
-                {
-                    "id": f"task_{req_id}_design",
-                    "name": f"Design {feature_name}",
-                    "type": self.TASK_TYPE_DESIGN,
-                }
-            )
+            # SKIP per-feature designs if bundled domain designs exist (GH-108)
+            if not has_bundled_designs:
+                tasks.append(
+                    {
+                        "id": f"task_{req_id}_design",
+                        "name": f"Design {feature_name}",
+                        "type": self.TASK_TYPE_DESIGN,
+                    }
+                )
             tasks.append(
                 {
                     "id": f"task_{req_id}_implement",
@@ -2046,7 +2054,8 @@ explanation."""
         else:  # standard mode (default)
             # Design ONLY for coordinated/distributed (produces coordination artifacts)
             # Atomic/simple: just implement (nothing to coordinate)
-            if complexity in ["coordinated", "distributed"]:
+            # SKIP per-feature designs if bundled domain designs exist (GH-108)
+            if complexity in ["coordinated", "distributed"] and not has_bundled_designs:
                 tasks.append(
                     {
                         "id": f"task_{req_id}_design",
