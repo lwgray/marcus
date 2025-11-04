@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 class HybridDependency(InferredDependency):
     """Extended dependency with hybrid inference metadata."""
 
-    inference_method: str  # 'pattern', 'ai', 'both'
+    inference_method: str = "unknown"  # 'pattern', 'ai', 'both'
     pattern_confidence: float = 0.0
     ai_confidence: float = 0.0
     ai_reasoning: Optional[str] = None

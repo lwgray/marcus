@@ -37,9 +37,7 @@ class InferredDependency:
     dependency_type: str  # 'hard', 'soft', 'logical'
     confidence: float
     reasoning: str
-    source: (
-        str  # Source of dependency: pattern_matching, prd_bundled_design, manual, etc.
-    )
+    source: str = "unknown"  # pattern_matching, prd_bundled_design, manual
 
 
 @dataclass
