@@ -1078,9 +1078,15 @@ async def create_project_from_natural_language(
         if result.get("success"):
             try:
                 await state.refresh_project_state()
+                logger.info(
+                    f"[DEBUG] After refresh_project_state: project_tasks has "
+                    f"{len(state.project_tasks) if state.project_tasks else 0} tasks"
+                )
             except Exception as e:
                 # Log but don't fail the operation
-                logger.warning(f"Failed to refresh project state: {str(e)}")
+                logger.error(
+                    f"Failed to refresh project state: {str(e)}", exc_info=True
+                )
 
         return result
 

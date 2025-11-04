@@ -843,9 +843,24 @@ class MarcusServer:
             if self.kanban_client is not None:
                 parent_tasks = await self.kanban_client.get_all_tasks()
 
+                subtask_count = (
+                    len(self.subtask_manager.subtasks) if self.subtask_manager else 0
+                )
+                logger.info(
+                    f"[DEBUG] refresh_project_state: got {len(parent_tasks)} "
+                    f"parent tasks, _subtasks_migrated={self._subtasks_migrated}, "
+                    f"subtask_manager exists={self.subtask_manager is not None}, "
+                    f"subtask_manager.subtasks count={subtask_count}"
+                )
+
                 if not self._subtasks_migrated:
                     # First time: just use parent tasks directly
+                    # Migration will append subtasks to this list
                     self.project_tasks = parent_tasks
+                    logger.info(
+                        f"[DEBUG] First refresh: set project_tasks to "
+                        f"{len(parent_tasks)} parent tasks"
+                    )
                 else:
                     # After migration: preserve subtasks, update parents
                     # Extract existing subtasks
@@ -870,8 +885,34 @@ class MarcusServer:
                 and self.project_tasks is not None
                 and not self._subtasks_migrated
             ):
-                self.subtask_manager.migrate_to_unified_storage(self.project_tasks)
-                self._subtasks_migrated = True
+                logger.info(
+                    f"[DEBUG] Before migration: project_tasks has "
+                    f"{len(self.project_tasks)} tasks"
+                )
+
+                # CRITICAL FIX: Only set migration flag if we have parent tasks
+                # If project_tasks is empty, migration will skip all subtasks,
+                # but we need to allow retry on next refresh when parents exist
+                has_parent_tasks = any(
+                    not getattr(t, "is_subtask", False) for t in self.project_tasks
+                )
+
+                if has_parent_tasks:
+                    self.subtask_manager.migrate_to_unified_storage(self.project_tasks)
+                    self._subtasks_migrated = True
+                    migrated_subtasks = sum(
+                        1 for t in self.project_tasks if getattr(t, "is_subtask", False)
+                    )
+                    logger.info(
+                        f"[DEBUG] After migration: project_tasks has "
+                        f"{len(self.project_tasks)} tasks, "
+                        f"subtasks: {migrated_subtasks}"
+                    )
+                else:
+                    logger.warning(
+                        "[DEBUG] Skipping migration: no parent tasks in project_tasks. "
+                        "Will retry on next refresh when parent tasks are available."
+                    )
 
                 # Wire cross-parent dependencies after migration completes
                 # Creates fine-grained dependencies between different parents
