@@ -294,15 +294,33 @@ def calculate_optimal_agents(tasks: List[Task]) -> ProjectSchedule:
             parallel_opportunities=[],
         )
 
-    # Filter to only workable tasks:
-    # 1. Subtasks only (not parent containers)
-    # 2. Not already completed
-    workable_tasks = [
-        task for task in tasks if task.is_subtask and task.status != TaskStatus.DONE
-    ]
+    # Filter to only workable tasks based on project structure:
+    # - If subtasks exist: only schedule subtasks (parent tasks are containers)
+    # - If no subtasks: schedule parent tasks (prototype mode or simple projects)
+    # - Always exclude completed tasks
+    has_subtasks = any(getattr(task, "is_subtask", False) for task in tasks)
+
+    if has_subtasks:
+        # Standard mode: parent tasks are containers, only subtasks are workable
+        workable_tasks = [
+            task
+            for task in tasks
+            if getattr(task, "is_subtask", False) and task.status != TaskStatus.DONE
+        ]
+        logger.debug(
+            f"Scheduling {len(workable_tasks)} subtasks "
+            f"(filtered from {len(tasks)} total tasks)"
+        )
+    else:
+        # Prototype/simple mode: no subtasks exist, parent tasks are the work
+        workable_tasks = [task for task in tasks if task.status != TaskStatus.DONE]
+        logger.info(
+            f"No subtasks found - scheduling {len(workable_tasks)} parent tasks "
+            f"(prototype mode or simple project)"
+        )
 
     if not workable_tasks:
-        logger.info("No workable tasks found (all tasks are parents or done)")
+        logger.info("No workable tasks found (all tasks completed)")
         return ProjectSchedule(
             optimal_agents=0,
             critical_path_hours=0.0,
