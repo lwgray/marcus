@@ -1686,7 +1686,13 @@ explanation."""
         # The pattern-based inference incorrectly adds ALL design tasks as
         # dependencies for ALL implement/test tasks. We'll replace these with
         # correct domain-specific dependencies in the next step.
+        original_count = len(dependencies)
         filtered_dependencies = []
+        filtered_count = 0
+
+        logger.warning(
+            f"🔍 DEPENDENCY FILTER: Processing {original_count} dependencies"
+        )
 
         for dep in dependencies:
             dep_task = next(
@@ -1696,33 +1702,45 @@ explanation."""
                 (t for t in tasks if t.id == dep["dependent_task_id"]), None
             )
 
-            # Skip ALL design→implement/test dependencies from pattern matching.
-            # We'll add back ONLY the correct domain-specific ones via PRD logic.
+            dep_id = dep.get("dependent_task_id")
+            dep_on_id = dep.get("dependency_task_id")
+            logger.warning(f"🔍 Checking: {dep_id} → {dep_on_id}")
+            logger.warning(
+                f"   dep_task name: {dep_task.name if dep_task else 'NOT FOUND'}"
+            )
+            dep_task_name = dependent_task.name if dependent_task else "NOT FOUND"
+            logger.warning(f"   dependent_task name: {dep_task_name}")
+
+            # Skip ALL design→implement/test dependencies
+            # We'll add back ONLY correct ones via PRD logic
             is_design_task = dep_task and dep_task.name.lower().startswith("design ")
             is_implement_or_test_task = dependent_task and (
                 dependent_task.name.lower().startswith("implement ")
                 or dependent_task.name.lower().startswith("test ")
             )
 
-            # Filter out ALL design→implement/test, regardless of type
-            # (PRD logic will add back correct ones with type="architectural")
+            logger.warning(
+                f"   is_design={is_design_task}, "
+                f"is_impl_test={is_implement_or_test_task}"
+            )
+
+            # Filter out ALL design→implement/test
             if is_design_task and is_implement_or_test_task:
-                # Type narrowing: we know both are not None from conditions above
                 assert dependent_task is not None
                 assert dep_task is not None
-                logger.debug(
-                    f"Filtering generic design dependency: "
-                    f"{dependent_task.name} -x-> {dep_task.name} "
-                    f"(will use domain-specific dependency instead)"
+                logger.warning(
+                    f"🚫 FILTERING: {dependent_task.name} " f"-x-> {dep_task.name}"
                 )
+                filtered_count += 1
                 continue
 
+            logger.warning(f"✓ KEEPING: {dep_id} → {dep_on_id}")
             filtered_dependencies.append(dep)
 
         dependencies = filtered_dependencies
-        logger.info(
-            f"Filtered {len(dependencies) - len(filtered_dependencies)} "
-            f"generic design dependencies"
+        logger.warning(
+            f"🔍 FILTER COMPLETE: Filtered {filtered_count}/"
+            f"{original_count} deps, kept {len(filtered_dependencies)}"
         )
 
         # Add PRD-specific dependencies (domain-aware)
