@@ -1682,10 +1682,10 @@ explanation."""
                 }
             )
 
-        # BUGFIX: Filter out ALL generic design→implement/test dependencies.
-        # The pattern-based inference incorrectly adds ALL design tasks as
-        # dependencies for ALL implement/test tasks. We'll replace these with
-        # correct domain-specific dependencies in the next step.
+        # BUGFIX: Filter out ONLY pattern-based design→implement/test dependencies.
+        # Pattern-based inference incorrectly adds ALL design tasks as dependencies
+        # for ALL implement/test tasks. We filter ONLY pattern-sourced ones and
+        # preserve dependencies from other sources (PRD logic, manual, etc.).
         filtered_dependencies = []
 
         for dep in dependencies:
@@ -1696,21 +1696,23 @@ explanation."""
                 (t for t in tasks if t.id == dep["dependent_task_id"]), None
             )
 
-            # Skip ALL design→implement/test dependencies
-            # We'll add back ONLY correct ones via PRD logic
+            # Only filter design→implement/test dependencies FROM PATTERN MATCHING
+            # Preserve deps from other sources (PRD bundled designs, manual, etc.)
             is_design_task = dep_task and dep_task.name.lower().startswith("design ")
             is_implement_or_test_task = dependent_task and (
                 dependent_task.name.lower().startswith("implement ")
                 or dependent_task.name.lower().startswith("test ")
             )
+            is_pattern_sourced = dep.get("source") == "pattern_matching"
 
-            # Filter out ALL design→implement/test
-            if is_design_task and is_implement_or_test_task:
+            # Filter out ONLY pattern-sourced design→implement/test (GH-129)
+            # This preserves PRD bundled design deps and other manually created deps
+            if is_design_task and is_implement_or_test_task and is_pattern_sourced:
                 # Type narrowing: we know both are not None from conditions above
                 assert dependent_task is not None
                 assert dep_task is not None
                 logger.debug(
-                    f"Filtered design dependency: "
+                    f"Filtered pattern-based design dependency: "
                     f"{dependent_task.name} -x-> {dep_task.name}"
                 )
                 continue
@@ -2376,6 +2378,7 @@ explanation."""
                                 f"architecture to be defined. NFRs are cross-cutting "
                                 f"concerns that affect all system components."
                             ),
+                            "source": "prd_bundled_design",
                         }
                     )
                     logger.debug(
@@ -2427,6 +2430,7 @@ explanation."""
                                     f"{feature_domain} design to define "
                                     f"architecture and interfaces"
                                 ),
+                                "source": "prd_bundled_design",
                             }
                         )
                         logger.debug(

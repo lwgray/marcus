@@ -37,6 +37,9 @@ class InferredDependency:
     dependency_type: str  # 'hard', 'soft', 'logical'
     confidence: float
     reasoning: str
+    source: (
+        str  # Source of dependency: pattern_matching, prd_bundled_design, manual, etc.
+    )
 
 
 @dataclass
@@ -334,6 +337,7 @@ class DependencyInferer:
             dependency_type=dependency_type,
             confidence=pattern.confidence,
             reasoning=f"Pattern: {pattern.description}",
+            source="pattern_matching",
         )
 
     def _is_logical_dependency(

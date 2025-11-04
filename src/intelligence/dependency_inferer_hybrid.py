@@ -140,6 +140,7 @@ class HybridDependencyInferer(DependencyInferer):
                             dependency_type=dep.dependency_type,
                             confidence=dep.confidence,
                             reasoning=dep.reasoning,
+                            source="pattern_matching",
                             inference_method="pattern",
                             pattern_confidence=dep.confidence,
                         )
@@ -485,6 +486,7 @@ Focus on logical dependencies based on:
                         dependency_type=result["dependency_type"],
                         confidence=result["confidence"],
                         reasoning=f"AI: {result['reasoning']}",
+                        source="ai_inference",
                         inference_method="ai",
                         ai_confidence=result["confidence"],
                         ai_reasoning=result["reasoning"],
@@ -535,6 +537,7 @@ Focus on logical dependencies based on:
                     dependency_type=pattern_dep.dependency_type,
                     confidence=combined_confidence,
                     reasoning=f"{pattern_dep.reasoning} | {ai_dep.ai_reasoning}",
+                    source="pattern_and_ai",
                     inference_method="both",
                     pattern_confidence=pattern_dep.confidence,
                     ai_confidence=ai_dep.ai_confidence,
@@ -562,6 +565,7 @@ Focus on logical dependencies based on:
                 dependency_type=dep.dependency_type,
                 confidence=dep.confidence,
                 reasoning=dep.reasoning,
+                source=dep.source,
             )
             for dep in final_deps_list
         ]
@@ -580,6 +584,7 @@ Focus on logical dependencies based on:
                         dependency_type=cleaned_dep.dependency_type,
                         confidence=cleaned_dep.confidence,
                         reasoning=cleaned_dep.reasoning,
+                        source=cleaned_dep.source,
                         inference_method=original_hybrid.inference_method,
                         pattern_confidence=original_hybrid.pattern_confidence,
                         ai_confidence=original_hybrid.ai_confidence,
