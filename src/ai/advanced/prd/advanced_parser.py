@@ -1679,6 +1679,7 @@ explanation."""
                     "dependency_type": edge.dependency_type,
                     "confidence": edge.confidence,
                     "reasoning": edge.reasoning,
+                    "source": edge.source,  # GH-129: Track dependency source
                 }
             )
 
