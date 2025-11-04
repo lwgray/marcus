@@ -2358,6 +2358,32 @@ explanation."""
 
         # For each task, check if it needs to depend on a bundled design
         for task in tasks:
+            # Handle NFR (Non-Functional Requirement) tasks FIRST
+            # NFR tasks are cross-cutting concerns (performance, security, etc.)
+            # They should depend on ALL bundled design tasks since they affect
+            # the entire system architecture
+            if task.id.startswith("nfr_task_"):
+                # Add dependencies to ALL bundled design tasks
+                for domain_name, design_task_id in self._bundled_designs.items():
+                    dependencies.append(
+                        {
+                            "dependent_task_id": task.id,
+                            "dependency_task_id": design_task_id,
+                            "dependency_type": "architectural",
+                            "confidence": 1.0,
+                            "reasoning": (
+                                f"NFR implementation requires {domain_name} "
+                                f"architecture to be defined. NFRs are cross-cutting "
+                                f"concerns that affect all system components."
+                            ),
+                        }
+                    )
+                    logger.debug(
+                        f"Added NFR bundled design dependency: "
+                        f"{task.id} -> {design_task_id}"
+                    )
+                continue  # Skip to next task
+
             task_id_lower = task.id.lower()
 
             # Only implement and test tasks depend on design
@@ -2407,31 +2433,6 @@ explanation."""
                             f"Added bundled design dependency: "
                             f"{task.id} -> {design_task_id}"
                         )
-
-            # Handle NFR (Non-Functional Requirement) tasks
-            # NFR tasks are cross-cutting concerns (performance, security, etc.)
-            # They should depend on ALL bundled design tasks since they affect
-            # the entire system architecture
-            elif task.id.startswith("nfr_task_"):
-                # Add dependencies to ALL bundled design tasks
-                for domain_name, design_task_id in self._bundled_designs.items():
-                    dependencies.append(
-                        {
-                            "dependent_task_id": task.id,
-                            "dependency_task_id": design_task_id,
-                            "dependency_type": "architectural",
-                            "confidence": 1.0,
-                            "reasoning": (
-                                f"NFR implementation requires {domain_name} "
-                                f"architecture to be defined. NFRs are cross-cutting "
-                                f"concerns that affect all system components."
-                            ),
-                        }
-                    )
-                    logger.debug(
-                        f"Added NFR bundled design dependency: "
-                        f"{task.id} -> {design_task_id}"
-                    )
 
         logger.info(f"Added {len(dependencies)} bundled design dependencies to tasks")
         return dependencies
