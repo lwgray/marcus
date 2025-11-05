@@ -15,7 +15,6 @@ from src.marcus_mcp.coordinator.decomposer import (
     _adjust_subtask_dependencies,
     _analyze_parallelism,
     _calculate_dependency_levels,
-    _create_integration_subtask,
     _validate_decomposition,
     decompose_task,
     should_decompose,
@@ -267,6 +266,42 @@ class TestShouldDecompose:
         assert (
             result_default == result_standard
         ), "Default should behave like standard mode"
+
+    def test_should_decompose_none_estimated_hours(self, base_task):
+        """Test that None estimated_hours doesn't crash should_decompose."""
+        # Arrange
+        base_task.estimated_hours = None
+
+        # Act - should not raise TypeError
+        result = should_decompose(base_task)
+
+        # Assert - None hours should not decompose (treated as unknown/small)
+        assert result is False, "Tasks with None estimated_hours should not decompose"
+
+    def test_should_decompose_none_estimated_hours_standard_mode(self, base_task):
+        """Test None estimated_hours in standard mode."""
+        # Arrange
+        base_task.estimated_hours = None
+
+        # Act
+        result = should_decompose(base_task, project_complexity="standard")
+
+        # Assert
+        assert result is False, "None hours in standard mode should not decompose"
+
+    def test_should_decompose_none_estimated_hours_enterprise_mode(self, base_task):
+        """Test None estimated_hours in enterprise mode."""
+        # Arrange
+        base_task.estimated_hours = None
+        base_task.name = (
+            "Implement User Authentication"  # Should force decompose in enterprise
+        )
+
+        # Act
+        result = should_decompose(base_task, project_complexity="enterprise")
+
+        # Assert - Enterprise mode force decomposes "Implement" tasks even with None hours
+        assert result is True, "Enterprise mode should force decompose Implement tasks"
 
 
 class TestDecomposeTask:
