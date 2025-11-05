@@ -958,6 +958,12 @@ artifacts and log_artifact() to document their specific implementation choices
                     "epic_id": design_epic_id,
                     "domain_name": task["domain_name"],
                     "feature_ids": task["feature_ids"],
+                    "description": task[
+                        "description"
+                    ],  # Store the full detailed description
+                    "estimated_hours": task["estimated_hours"],
+                    "labels": task["labels"],
+                    "priority": task["priority"],
                 }
                 hierarchy[design_epic_id].append(task["id"])
 
@@ -1178,6 +1184,67 @@ artifacts and log_artifact() to document their specific implementation choices
         template boilerplate, while preserving Design/Implement/Test methodology
         through task names and labels.
         """
+        # Check if this is a bundled design task (already has description)
+        if (
+            hasattr(self, "_task_metadata")
+            and task_id in self._task_metadata
+            and self._task_metadata[task_id].get("type") == self.TASK_TYPE_DESIGN
+            and epic_id == "epic_design_architecture"
+        ):
+            # This is a bundled design task - it already has all its details
+            # from _create_bundled_design_tasks().
+            # Just convert the metadata to a Task object.
+            metadata = self._task_metadata[task_id]
+            task_name = metadata["original_name"]
+            domain_name = metadata.get("domain_name", "Project Domain")
+
+            # Use the pre-built description from _create_bundled_design_tasks
+            # which includes all features in this domain
+            task_description = metadata.get(
+                "description", f"Design the architecture for {domain_name}."
+            )
+
+            # Use the estimated hours calculated during bundled design creation
+            # (scaled by number of features in the domain)
+            estimated_hours = metadata.get("estimated_hours", 0.1)
+
+            # Map priority string to Priority enum
+            priority_str = metadata.get("priority", "high")
+            priority_map = {
+                "high": Priority.HIGH,
+                "medium": Priority.MEDIUM,
+                "low": Priority.LOW,
+            }
+            priority = priority_map.get(priority_str, Priority.HIGH)
+
+            # Create the Task object for bundled design
+            task = Task(
+                id=task_id,
+                name=task_name,
+                description=task_description,
+                status=TaskStatus.TODO,
+                priority=priority,
+                assigned_to=None,
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+                due_date=None,
+                estimated_hours=estimated_hours,
+                dependencies=[],
+                labels=metadata.get("labels", ["design", "architecture"]),
+                source_type="bundled_design",
+                source_context={
+                    "domain_name": domain_name,
+                    "feature_ids": metadata.get("feature_ids", []),
+                },
+            )
+
+            feature_count = len(metadata.get("feature_ids", []))
+            logger.info(
+                f"Created bundled design Task object: {task_name} "
+                f"(domain: {domain_name}, features: {feature_count})"
+            )
+            return task
+
         # Extract task type from task_id
         task_type = self._extract_task_type(task_id)
 
@@ -1225,16 +1292,38 @@ artifacts and log_artifact() to document their specific implementation choices
             estimated_hours = estimated_minutes / 60
 
         else:
-            # Fallback: use old template approach if no AI requirement matches
-            logger.warning(f"No matching AI requirement for {task_id}, using fallback")
-            task_info = self._extract_task_info(task_id, epic_id, analysis)
-            enhanced_details = await self._enhance_task_with_ai(
-                task_info, analysis, constraints
+            # No matching requirement - this means AI analysis failed to properly
+            # analyze the PRD or the task_id doesn't match any requirement
+            from src.core.error_framework import AIProviderError, ErrorContext
+
+            available_req_ids = [
+                req.get("id") for req in analysis.functional_requirements
+            ]
+            error_msg = (
+                f"Failed to generate task '{task_id}': "
+                f"No matching requirement found in AI analysis. "
+                f"This usually means the AI service failed to properly "
+                f"analyze your project description, or there's a mismatch "
+                f"between generated task IDs and requirements. "
+                f"Available requirements: {available_req_ids}"
             )
-            task_name = enhanced_details.get("name", f"Task {sequence}")
-            description = enhanced_details.get("description", "")
-            estimated_hours = enhanced_details.get("estimated_hours", 12.0)
-            feature_name = task_name  # Use task name for labels in fallback
+            logger.error(error_msg)
+            raise AIProviderError(
+                provider_name="llm_client",
+                operation="generate_detailed_task",
+                context=ErrorContext(
+                    operation="generate_detailed_task",
+                    integration_name="advanced_prd_parser",
+                    custom_context={
+                        "task_id": task_id,
+                        "epic_id": epic_id,
+                        "requirement_count": len(analysis.functional_requirements),
+                        "available_requirements": [
+                            req.get("id") for req in analysis.functional_requirements
+                        ],
+                    },
+                ),
+            )
 
         # Generate labels (methodology preserved here)
         labels = self._generate_task_labels(task_type, feature_name, analysis)
@@ -1645,17 +1734,29 @@ explanation."""
             return description
 
         except Exception as e:
-            logger.warning(
-                f"Failed to generate task-specific description: {e}. "
-                f"Falling back to base description."
+            from src.core.error_framework import AIProviderError, ErrorContext
+
+            error_msg = (
+                f"AI service failed to generate {task_type} task description for "
+                f"'{feature_name}'. The AI service may be unavailable, "
+                f"rate-limited, or encountered an error. Cannot proceed without "
+                f"AI-generated descriptions. Original error: {str(e)}"
             )
-            # Fallback: use base description with simple prefix
-            if task_type == "design":
-                return f"Design {base_description.lower()}"
-            elif task_type == "test":
-                return f"Test {base_description.lower()}"
-            else:
-                return base_description
+            logger.error(error_msg)
+            raise AIProviderError(
+                provider_name="llm_client",
+                operation="generate_task_description",
+                context=ErrorContext(
+                    operation="generate_task_description",
+                    integration_name="advanced_prd_parser",
+                    custom_context={
+                        "task_type": task_type,
+                        "feature_name": feature_name,
+                        "base_description": base_description[:200],
+                        "original_error": str(e),
+                    },
+                ),
+            ) from e
 
     def _generate_task_labels(
         self, task_type: str, feature_name: str, analysis: PRDAnalysis
@@ -1838,9 +1939,10 @@ explanation."""
         total_effort = sum(task.estimated_hours or 8 for task in tasks)
 
         # Adjust for team size and parallel work
-        team_productivity = min(
-            constraints.team_size, len(tasks) // 2
-        )  # Diminishing returns
+        # Ensure team_productivity is at least 1 to avoid division by zero
+        team_productivity = max(
+            1, min(constraints.team_size, len(tasks) // 2)
+        )  # Diminishing returns, min 1
         parallel_factor = 0.7 if team_productivity > 1 else 1.0
 
         # Calculate duration
