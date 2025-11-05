@@ -206,8 +206,8 @@ class AdvancedPRDParser:
         """
         logger.info("Starting advanced PRD parsing and task generation")
 
-        # Step 1: Deep PRD analysis
-        prd_analysis = await self._analyze_prd_deeply(prd_content)
+        # Step 1: Deep PRD analysis (with complexity-aware enrichment)
+        prd_analysis = await self._analyze_prd_deeply(prd_content, constraints)
 
         # Step 2: Generate task hierarchy
         req_count = len(prd_analysis.functional_requirements)
@@ -255,8 +255,10 @@ class AdvancedPRDParser:
             ),
         )
 
-    async def _analyze_prd_deeply(self, prd_content: str) -> PRDAnalysis:
-        """Perform deep analysis of PRD using AI."""
+    async def _analyze_prd_deeply(
+        self, prd_content: str, constraints: ProjectConstraints
+    ) -> PRDAnalysis:
+        """Perform deep analysis of PRD using AI with complexity-aware enrichment."""
         # nosec B608: This is an AI prompt template, not SQL
         analysis_prompt = f"""
         Analyze this Product Requirements Document in detail:
@@ -327,6 +329,61 @@ class AdvancedPRDParser:
           (e.g., "crud_operations", "user_auth")
         - Focus on extracting actionable, specific requirements that can
           be converted into development tasks
+
+        COMPLEXITY MODE: {constraints.complexity_mode}
+
+        Use complexity mode to control BOTH feature breadth and implementation depth:
+
+        PROTOTYPE MODE - Speed-focused MVP (3-5 core features):
+        FEATURE BREADTH:
+        - Include ONLY the absolute minimum to demonstrate the concept
+        - Skip: Authentication (unless core to concept), admin UI, monitoring,
+          logging, comprehensive error handling, data migration, backup/restore
+        - Example "twitter clone": Just create/view tweets + basic feed
+
+        IMPLEMENTATION DEPTH:
+        - Keep requirement descriptions minimal and basic
+        - Use complexity: "atomic" or "simple"
+        - Focus on happy path only
+        - Example "User Auth": Just "basic login/signup"
+
+        STANDARD MODE - Balanced production app (8-15 features):
+        FEATURE BREADTH:
+        - Include core features + essential supporting features
+        - Include: Basic auth (if multi-user), error handling, basic tests
+        - Skip: Advanced ops tooling, comprehensive observability, admin dashboards
+        - Example "twitter clone": CRUD tweets, auth, following, feed, profiles,
+          likes, search
+
+        IMPLEMENTATION DEPTH:
+        - Include standard implementation details in descriptions
+        - Use complexity: "simple" or "coordinated"
+        - Include basic error handling and validation
+        - Example "User Auth": "Login, signup, password reset, session management"
+
+        ENTERPRISE MODE - Production-ready system (15-30+ features):
+        FEATURE BREADTH:
+        - Include everything in STANDARD plus production readiness:
+          * Observability: Monitoring, structured logging, alerting, health checks
+          * Security: Comprehensive auth, RBAC, audit trails, rate limiting
+          * Resilience: Retry logic, circuit breakers, graceful degradation
+          * Data Operations: Backup/restore, migration scripts, data archival
+          * Admin Tooling: Admin dashboard, user management, feature flags
+          * Quality: Comprehensive testing, performance monitoring
+        - Example "twitter clone": All standard features + monitoring, admin UI,
+          content moderation, analytics dashboard, rate limiting, audit logs
+
+        IMPLEMENTATION DEPTH:
+        - Include comprehensive implementation details in descriptions
+        - Use complexity: "coordinated" or "distributed"
+        - Include security hardening, error recovery, edge cases, audit trails
+        - Example "User Auth": "Login, signup, password reset, session management,
+          MFA, account lockout, password policies, OAuth integration, audit logging,
+          rate limiting, account recovery workflows"
+
+        CRITICAL: User exclusions ALWAYS override complexity mode defaults!
+        - If user says "no authentication", omit it even in enterprise mode
+        - If user says "just a simple X", use prototype guidance regardless of mode
 
         UNIQUENESS AND DEDUPLICATION:
         - ENSURE UNIQUENESS: Each functional requirement must represent a
