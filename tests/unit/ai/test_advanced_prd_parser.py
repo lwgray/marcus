@@ -64,7 +64,7 @@ class TestAdvancedPRDParserErrorHandling:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_ai_provider_connection_failure_raises_proper_error(
-        self, parser, mock_llm_client, sample_prd_content
+        self, parser, mock_llm_client, sample_prd_content, sample_constraints
     ):
         """Test AI provider connection failure raises AIProviderError with proper context"""
         # Arrange
@@ -73,7 +73,7 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Act & Assert
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(sample_prd_content)
+            await parser._analyze_prd_deeply(sample_prd_content, sample_constraints)
 
         error = exc_info.value
         assert error.service_name == "LLM"
@@ -95,7 +95,7 @@ class TestAdvancedPRDParserErrorHandling:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_ai_timeout_failure_raises_proper_error(
-        self, parser, mock_llm_client, sample_prd_content
+        self, parser, mock_llm_client, sample_prd_content, sample_constraints
     ):
         """Test AI provider timeout raises AIProviderError with timeout context"""
         # Arrange
@@ -104,7 +104,7 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Act & Assert
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(sample_prd_content)
+            await parser._analyze_prd_deeply(sample_prd_content, sample_constraints)
 
         error = exc_info.value
         assert error.service_name == "LLM"
@@ -124,7 +124,7 @@ class TestAdvancedPRDParserErrorHandling:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_json_parsing_failure_raises_proper_error(
-        self, parser, mock_llm_client, sample_prd_content
+        self, parser, mock_llm_client, sample_prd_content, sample_constraints
     ):
         """Test malformed JSON response raises AIProviderError with parsing context"""
         # Arrange
@@ -133,7 +133,7 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Act & Assert
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(sample_prd_content)
+            await parser._analyze_prd_deeply(sample_prd_content, sample_constraints)
 
         error = exc_info.value
         assert error.service_name == "LLM"
@@ -151,7 +151,7 @@ class TestAdvancedPRDParserErrorHandling:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_empty_ai_response_raises_proper_error(
-        self, parser, mock_llm_client, sample_prd_content
+        self, parser, mock_llm_client, sample_prd_content, sample_constraints
     ):
         """Test empty AI response raises AIProviderError"""
         # Arrange
@@ -159,7 +159,7 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Act & Assert
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(sample_prd_content)
+            await parser._analyze_prd_deeply(sample_prd_content, sample_constraints)
 
         error = exc_info.value
         assert error.service_name == "LLM"
@@ -176,7 +176,7 @@ class TestAdvancedPRDParserErrorHandling:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_none_ai_response_raises_proper_error(
-        self, parser, mock_llm_client, sample_prd_content
+        self, parser, mock_llm_client, sample_prd_content, sample_constraints
     ):
         """Test None AI response raises AIProviderError"""
         # Arrange
@@ -184,7 +184,7 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Act & Assert
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(sample_prd_content)
+            await parser._analyze_prd_deeply(sample_prd_content, sample_constraints)
 
         error = exc_info.value
         assert error.service_name == "LLM"
@@ -201,7 +201,7 @@ class TestAdvancedPRDParserErrorHandling:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_successful_ai_analysis_works_normally(
-        self, parser, mock_llm_client, sample_prd_content
+        self, parser, mock_llm_client, sample_prd_content, sample_constraints
     ):
         """Test successful AI analysis continues to work normally"""
         # Arrange
@@ -209,10 +209,16 @@ class TestAdvancedPRDParserErrorHandling:
             "functional_requirements": [
                 {
                     "id": "req_1",
+                    "name": "User Authentication",
                     "description": "User authentication",
                     "priority": "high",
                 },
-                {"id": "req_2", "description": "Task management", "priority": "high"},
+                {
+                    "id": "req_2",
+                    "name": "Task Management",
+                    "description": "Task management",
+                    "priority": "high",
+                },
             ],
             "non_functional_requirements": [
                 {
@@ -235,7 +241,9 @@ class TestAdvancedPRDParserErrorHandling:
         mock_llm_client.analyze.return_value = json.dumps(valid_response)
 
         # Act
-        result = await parser._analyze_prd_deeply(sample_prd_content)
+        result = await parser._analyze_prd_deeply(
+            sample_prd_content, sample_constraints
+        )
 
         # Assert
         assert len(result.functional_requirements) == 2
@@ -248,7 +256,7 @@ class TestAdvancedPRDParserErrorHandling:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_error_monitoring_integration(
-        self, parser, mock_llm_client, sample_prd_content
+        self, parser, mock_llm_client, sample_prd_content, sample_constraints
     ):
         """Test that errors are properly recorded for monitoring"""
         # Arrange
@@ -261,7 +269,7 @@ class TestAdvancedPRDParserErrorHandling:
         ) as mock_record:
             # Act & Assert
             with pytest.raises(AIProviderError):
-                await parser._analyze_prd_deeply(sample_prd_content)
+                await parser._analyze_prd_deeply(sample_prd_content, sample_constraints)
 
             # Verify error was recorded for monitoring
             mock_record.assert_called_once()
@@ -283,7 +291,7 @@ class TestAdvancedPRDParserErrorHandling:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_error_context_includes_actionable_troubleshooting(
-        self, parser, mock_llm_client, sample_prd_content
+        self, parser, mock_llm_client, sample_prd_content, sample_constraints
     ):
         """Test error context includes comprehensive troubleshooting steps"""
         # Arrange
@@ -292,7 +300,7 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Act & Assert
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(sample_prd_content)
+            await parser._analyze_prd_deeply(sample_prd_content, sample_constraints)
 
         error = exc_info.value
         context = error.context.custom_context
@@ -318,7 +326,9 @@ class TestAdvancedPRDParserErrorHandling:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_prd_content_length_tracked_in_errors(self, parser, mock_llm_client):
+    async def test_prd_content_length_tracked_in_errors(
+        self, parser, mock_llm_client, sample_constraints
+    ):
         """Test that PRD content length is tracked in error context for debugging"""
         # Arrange
         short_prd = "Build app"
@@ -330,12 +340,12 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Test short PRD
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(short_prd)
+            await parser._analyze_prd_deeply(short_prd, sample_constraints)
         assert exc_info.value.context.custom_context["prd_length"] == len(short_prd)
 
         # Test long PRD
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(long_prd)
+            await parser._analyze_prd_deeply(long_prd, sample_constraints)
         assert exc_info.value.context.custom_context["prd_length"] == len(long_prd)
 
         # Verify preview is truncated for long content
@@ -386,7 +396,9 @@ class TestAdvancedPRDParserTaskGeneration:
             mock_parse.return_value = camelcase_data
 
             with patch.object(parser.llm_client, "analyze", new_callable=AsyncMock):
-                result = await parser._analyze_prd_deeply("Test PRD")
+                result = await parser._analyze_prd_deeply(
+                    "Test PRD", ProjectConstraints()
+                )
 
                 assert len(result.functional_requirements) == 1
                 assert result.functional_requirements[0]["feature"] == "CRUD"
