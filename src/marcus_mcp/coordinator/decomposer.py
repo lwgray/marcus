@@ -62,7 +62,10 @@ def should_decompose(task: Task, project_complexity: Optional[str] = None) -> bo
         return False
     # Don't decompose very small tasks (< 3 minutes)
     # NOTE: Estimates are now reality-based (0.05-0.2 hours = 3-12 minutes)
-    if task.estimated_hours < 0.05:  # Less than 3 minutes
+    # Guard against None estimated_hours
+    if (
+        task.estimated_hours is not None and task.estimated_hours < 0.05
+    ):  # Less than 3 minutes
         minutes = task.estimated_hours * 60
         logger.debug(
             f"Task {task.name} too small ({minutes:.1f} min) - no decomposition"
@@ -101,7 +104,7 @@ def should_decompose(task: Task, project_complexity: Optional[str] = None) -> bo
             return True
 
         # Lower time threshold: 6 minutes instead of 12
-        if task.estimated_hours >= 0.1:
+        if task.estimated_hours is not None and task.estimated_hours >= 0.1:
             minutes = task.estimated_hours * 60
             logger.info(
                 f"Task {task.name} in enterprise mode - "
@@ -147,7 +150,7 @@ def should_decompose(task: Task, project_complexity: Optional[str] = None) -> bo
     # Decompose if estimated time is substantial (> 12 minutes)
     # With reality-based estimates, anything > 0.2 hours (12 min)
     # benefits from splitting
-    if task.estimated_hours >= 0.2:
+    if task.estimated_hours is not None and task.estimated_hours >= 0.2:
         minutes = task.estimated_hours * 60
         logger.info(
             f"Task {task.name} substantial ({minutes:.1f} min) - will decompose"
@@ -360,7 +363,11 @@ def _build_decomposition_prompt(
     task_type = task.name.split()[0].lower() if task.name else "implement"
 
     # Calculate total time budget in MINUTES for subtasks
-    total_minutes = task.estimated_hours * 60  # Convert hours to minutes
+    # Guard against None estimated_hours
+    total_minutes = (task.estimated_hours or 0) * 60  # Convert hours to minutes
+    estimated_hours_display = (
+        task.estimated_hours if task.estimated_hours is not None else 0
+    )
 
     prompt = f"""Decompose the following task into subtasks:
 
@@ -370,7 +377,7 @@ def _build_decomposition_prompt(
 
 **Description:** {task.description}
 
-**Estimated Time:** {total_minutes:.1f} minutes ({task.estimated_hours:.2f} hours)
+**Estimated Time:** {total_minutes:.1f} minutes ({estimated_hours_display:.2f} hours)
 
 **Labels:** {', '.join(task.labels or [])}
 

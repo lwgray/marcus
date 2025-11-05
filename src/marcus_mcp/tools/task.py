@@ -121,7 +121,8 @@ def build_tiered_instructions(
 
         # Calculate realistic time budget for subtask
         # estimated_hours is already in reality-based format (minutes/60)
-        estimated_minutes = task.estimated_hours * 60
+        # Guard against None to prevent TypeError
+        estimated_minutes = (task.estimated_hours or 0) * 60
 
         # Get complexity level (default to standard if not set)
         complexity = getattr(task, "_complexity", "standard")
