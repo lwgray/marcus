@@ -2518,7 +2518,14 @@ explanation."""
         risks = []
         if constraints.deadline:
             total_effort = sum(task.estimated_hours or 8 for task in tasks)
-            days_available = (constraints.deadline - datetime.now(timezone.utc)).days
+            # All datetimes should be UTC-aware. If a naive deadline is passed,
+            # assume it's UTC and normalize it to prevent TypeError.
+            deadline_utc = (
+                constraints.deadline.replace(tzinfo=timezone.utc)
+                if constraints.deadline.tzinfo is None
+                else constraints.deadline
+            )
+            days_available = (deadline_utc - datetime.now(timezone.utc)).days
             if (
                 total_effort > days_available * constraints.team_size * 6
             ):  # 6 hours per day

@@ -652,3 +652,129 @@ class TestAdvancedPRDParserTaskGeneration:
         assert design_task.description != implement_task.description
         assert design_task.description != test_task.description
         assert implement_task.description != test_task.description
+
+
+class TestConstraintRiskAnalysis:
+    """Test suite for constraint risk analysis with deadline handling"""
+
+    @pytest.fixture
+    def mock_llm_client(self):
+        """Mock LLM client"""
+        mock_client = Mock()
+        mock_client.analyze = AsyncMock()
+        return mock_client
+
+    @pytest.fixture
+    def parser(self, mock_llm_client):
+        """Create AdvancedPRDParser with mocked dependencies"""
+        with patch(
+            "src.ai.advanced.prd.advanced_parser.LLMAbstraction"
+        ) as mock_llm_class:
+            mock_llm_class.return_value = mock_llm_client
+            parser = AdvancedPRDParser()
+            parser.llm_client = mock_llm_client
+            return parser
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_analyze_constraint_risks_with_sufficient_time(self, parser):
+        """Test that no timeline pressure risk with sufficient time"""
+        from datetime import timedelta, timezone
+
+        from src.core.models import Priority, Task, TaskStatus
+
+        # Arrange - Create deadline with sufficient time (7 days, 2 people = 84 hours capacity)
+        deadline = datetime.now(timezone.utc) + timedelta(days=7)
+        constraints = ProjectConstraints(deadline=deadline, team_size=2)
+
+        now_utc = datetime.now(timezone.utc)
+        tasks = [
+            Task(
+                id="task1",
+                name="Test Task",
+                description="Test",
+                status=TaskStatus.TODO,
+                priority=Priority.HIGH,
+                estimated_hours=40,  # 40 hours of work - well within capacity
+                assigned_to=None,
+                created_at=now_utc,
+                updated_at=now_utc,
+                due_date=None,
+            )
+        ]
+
+        # Act
+        risks = await parser._analyze_constraint_risks(tasks, constraints)
+
+        # Assert - Should not detect timeline pressure
+        assert isinstance(risks, list)
+        assert not any(risk["type"] == "timeline_pressure" for risk in risks)
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_analyze_constraint_risks_with_aware_deadline(self, parser):
+        """Test that aware deadline works correctly"""
+        from datetime import timedelta, timezone
+
+        from src.core.models import Priority, Task, TaskStatus
+
+        # Arrange - Create aware deadline (with UTC timezone)
+        aware_deadline = datetime.now(timezone.utc) + timedelta(days=7)
+        constraints = ProjectConstraints(deadline=aware_deadline, team_size=2)
+
+        now_utc = datetime.now(timezone.utc)
+        tasks = [
+            Task(
+                id="task1",
+                name="Test Task",
+                description="Test",
+                status=TaskStatus.TODO,
+                priority=Priority.HIGH,
+                estimated_hours=40,
+                assigned_to=None,
+                created_at=now_utc,
+                updated_at=now_utc,
+                due_date=None,
+            )
+        ]
+
+        # Act
+        risks = await parser._analyze_constraint_risks(tasks, constraints)
+
+        # Assert
+        assert isinstance(risks, list)
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_analyze_constraint_risks_detects_timeline_pressure(self, parser):
+        """Test that timeline pressure is detected with insufficient time"""
+        from datetime import timedelta, timezone
+
+        from src.core.models import Priority, Task, TaskStatus
+
+        # Arrange - Create tight deadline (1 day) with too much work (100 hours)
+        tight_deadline = datetime.now(timezone.utc) + timedelta(days=1)
+        constraints = ProjectConstraints(deadline=tight_deadline, team_size=2)
+
+        now_utc = datetime.now(timezone.utc)
+        tasks = [
+            Task(
+                id="task1",
+                name="Test Task",
+                description="Test",
+                status=TaskStatus.TODO,
+                priority=Priority.HIGH,
+                estimated_hours=100,  # Too much work for 1 day with 2 people
+                assigned_to=None,
+                created_at=now_utc,
+                updated_at=now_utc,
+                due_date=None,
+            )
+        ]
+
+        # Act
+        risks = await parser._analyze_constraint_risks(tasks, constraints)
+
+        # Assert - Should detect timeline pressure
+        assert len(risks) > 0
+        assert any(risk["type"] == "timeline_pressure" for risk in risks)
