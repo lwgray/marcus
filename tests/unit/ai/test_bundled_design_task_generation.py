@@ -71,9 +71,11 @@ Your design should define:
 - Integration points (how components communicate)
 - Shared data models (schemas, entities, etc.)
 
-Agents implementing these features will use get_task_context() to see your design
-artifacts and log_artifact() to document their specific implementation choices
-(exact API paths, field names, technologies, etc.).""",
+Create design artifacts such as:
+- Architecture diagrams (component relationships, data flow)
+- API contracts (endpoint definitions, request/response schemas)
+- Data models (database schemas, entity relationships)
+- Integration specifications (how components communicate)""",
             "estimated_hours": 0.2,
             "labels": ["design", "architecture", "task management"],
             "priority": "high",
