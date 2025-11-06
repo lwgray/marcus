@@ -1251,6 +1251,12 @@ artifacts and log_artifact() to document their specific implementation choices
         # Find matching requirement from AI analysis
         relevant_req = self._find_matching_requirement(task_id, analysis)
 
+        # Check if we have stored metadata for this task
+        # (NFR tasks, infrastructure tasks store metadata)
+        has_metadata = (
+            hasattr(self, "_task_metadata") and task_id in self._task_metadata
+        )
+
         if relevant_req:
             # Get base information from requirement
             base_description = relevant_req.get("description", "")
@@ -1291,9 +1297,40 @@ artifacts and log_artifact() to document their specific implementation choices
             # Convert to hours for backward compatibility with existing system
             estimated_hours = estimated_minutes / 60
 
+        elif has_metadata:
+            # NFR or infrastructure task - use metadata with AI enhancement
+            metadata = self._task_metadata[task_id]
+            task_name = metadata["original_name"]
+
+            # Use stored description if available, otherwise generate with AI
+            base_description = metadata.get("description", "")
+            if not base_description:
+                # Generate description using AI (for infrastructure tasks)
+                base_description = f"Set up and configure {task_name}"
+
+            # For NFR tasks, enhance the description with AI
+            if metadata.get("type") == "nfr":
+                description = await self._generate_task_description_for_type(
+                    base_description=base_description,
+                    task_type="nfr",
+                    feature_name=task_name,
+                    constraints=analysis.technical_constraints,
+                    original_description=analysis.original_description,
+                )
+            else:
+                # Infrastructure/setup tasks - use description as-is or enhance
+                description = base_description
+
+            # Get estimated hours for NFR/infrastructure tasks
+            estimated_minutes = self._get_learned_task_duration(
+                metadata.get("type", "infrastructure"), default_minutes=8.0
+            )
+            estimated_hours = estimated_minutes / 60
+            feature_name = task_name
+
         else:
-            # No matching requirement - this means AI analysis failed to properly
-            # analyze the PRD or the task_id doesn't match any requirement
+            # No matching requirement AND no metadata
+            # This means AI analysis failed or task_id mismatch
             from src.core.error_framework import AIProviderError, ErrorContext
 
             available_req_ids = [
@@ -1301,8 +1338,8 @@ artifacts and log_artifact() to document their specific implementation choices
             ]
             error_msg = (
                 f"Failed to generate task '{task_id}': "
-                f"No matching requirement found in AI analysis. "
-                f"This usually means the AI service failed to properly "
+                f"No matching requirement found in AI analysis and no stored "
+                f"metadata. This usually means the AI service failed to properly "
                 f"analyze your project description, or there's a mismatch "
                 f"between generated task IDs and requirements. "
                 f"Available requirements: {available_req_ids}"
@@ -1318,9 +1355,8 @@ artifacts and log_artifact() to document their specific implementation choices
                         "task_id": task_id,
                         "epic_id": epic_id,
                         "requirement_count": len(analysis.functional_requirements),
-                        "available_requirements": [
-                            req.get("id") for req in analysis.functional_requirements
-                        ],
+                        "available_requirements": available_req_ids,
+                        "has_metadata": has_metadata,
                     },
                 ),
             )
