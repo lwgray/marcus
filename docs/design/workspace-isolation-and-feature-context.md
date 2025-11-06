@@ -1,9 +1,32 @@
 # Workspace Isolation and Feature Context Design
 
-**Status**: Draft
+**⚠️ IMPORTANT: This is a DESIGN PROPOSAL for future functionality**
+
+This document describes **PROPOSED** architecture for Marcus v2.0, not current behavior.
+
+**Status**: Draft - Proposing Future Architecture
 **Created**: 2025-01-05
 **Target Version**: Marcus v2.0
 **Authors**: Development Team
+
+---
+
+## Current vs Proposed Behavior
+
+### What `create_project` Does TODAY (v1.x)
+```python
+create_project(description="...", project_name="...")
+```
+**Creates**: Tasks only (bundled design tasks, implementation tasks, test tasks)
+**NO feature entity**: Features don't exist as a concept in the current system
+**NO workspace isolation**: All agents work in the same repository directory
+**NO feature-level context**: Context is task-level only
+
+### What This Document PROPOSES (v2.0)
+- **Add "Feature" entity**: Group related tasks into features
+- **Add workspace isolation**: Each task gets isolated workspace
+- **Add feature-level context**: Aggregate all artifacts/decisions per feature
+- **Add feature branches**: Automatic Git branching per feature
 
 ---
 
@@ -25,9 +48,9 @@
 
 ## Executive Summary
 
-### What We're Building
+### What We're Proposing to Build
 
-We're adding **workspace isolation** and **feature-level context** to Marcus to enable safe, scalable multi-agent development.
+We're proposing to add **workspace isolation** and **feature-level context** to Marcus to enable safe, scalable multi-agent development.
 
 **Key Capabilities:**
 - **Per-task workspaces**: Each task gets its own Git branch and filesystem directory
@@ -374,31 +397,82 @@ projects = {
 }
 ```
 
-**⚠️ Current Confusion**: `create_project()` actually creates a **feature**, not a project!
+### Current State: Task-Only System
 
-### Definition: Feature
+**Today**: `create_project()` creates **tasks only** - bundled design tasks generate multiple implementation tasks, but there's no grouping mechanism.
 
-**Feature** = A cohesive piece of functionality defined by a bundled design task
+```python
+create_project(
+    description="Build an e-commerce platform with user auth, product catalog, and shopping cart",
+    project_name="ecommerce-platform"
+)
 
-**Key Property**: Feature boundary = Design task scope
+# Creates TASKS (no feature grouping):
+# - design_user_management (bundled design task)
+#   ├─ T-IMPL-1: Implement User Registration
+#   ├─ T-IMPL-2: Implement User Login
+#   └─ T-TEST-1: Test User Auth
+# - design_product_management (bundled design task)
+#   ├─ T-IMPL-3: Implement Product CRUD
+#   └─ T-TEST-2: Test Products
+# - design_shopping_experience (bundled design task)
+#   ├─ T-IMPL-4: Implement Shopping Cart
+#   └─ T-TEST-3: Test Cart
+```
+
+**Problem**: While bundled designs group related work, there's no explicit Feature entity to:
+- Query "what's the status of user management?"
+- Aggregate all artifacts for a feature
+- Track feature-level progress
+
+### Solution: Add Feature Entity
+
+**Feature** = A first-class entity that groups related tasks with shared context
+
+**Key Insight**: Each bundled design task naturally defines a feature boundary!
+
+**Implementation Strategy**:
+1. Create Feature entity/table with `feature_id`, `feature_name`, `bundled_design_task_id`
+2. Link all tasks to their feature via `feature_id` foreign key
+3. Use bundled design metadata to automatically create features when `create_project` runs
+
+**Feature Properties**:
+- `feature_id`: e.g., `F-200`
+- `feature_name`: e.g., `task-management-system`
+- `bundled_design_task_id`: Links to the design task (e.g., `design_task_management`)
+- `feature_branch`: `feature/F-200-task-management`
+- **Feature Context**: Aggregated view of all tasks, artifacts, decisions
 
 A feature includes:
-1. **ONE bundled design task** (covers multiple domains)
-2. **N implementation tasks** (split from design domains)
+1. **ONE bundled design task** (covers multiple related sub-features/domains)
+2. **N implementation tasks** (one per sub-feature within the bundled design)
 3. **M test tasks** (validates implementations)
+
+**Example After Implementation**:
+```
+Feature F-100: User Management
+├─ Bundled Design: design_user_management
+├─ Implementation Tasks:
+│   ├─ T-IMPL-1: Implement User Registration
+│   └─ T-IMPL-2: Implement User Login
+├─ Test Tasks:
+│   └─ T-TEST-1: Test User Auth
+├─ Feature Branch: feature/F-100-user-management
+└─ Artifacts: All design specs, code, decisions for user management
+```
 
 **Examples**:
 
 ```
 Feature F-200: "Task Management System"
-├─ Design Task (T-DESIGN-1): Bundled specification for:
-│   ├─ Domain: Task creation
-│   ├─ Domain: Task viewing
-│   ├─ Domain: Task deletion
-│   ├─ Domain: Task status updates
-│   └─ Domain: Task filtering
+├─ Bundled Design Task (design_task_management): Specification covering:
+│   ├─ Sub-feature: Task creation
+│   ├─ Sub-feature: Task viewing
+│   ├─ Sub-feature: Task deletion
+│   ├─ Sub-feature: Task status updates
+│   └─ Sub-feature: Task filtering
 │
-├─ Implementation Tasks (one per domain):
+├─ Implementation Tasks (one per sub-feature):
 │   ├─ T-IMPL-1: Implement Create Task
 │   ├─ T-IMPL-2: Implement View Tasks
 │   ├─ T-IMPL-3: Implement Delete Task
@@ -410,11 +484,11 @@ Feature F-200: "Task Management System"
     └─ T-TEST-2: E2E tests for task workflows
 ```
 
-**Why Design Task Defines Feature Boundary**:
-1. It **bundles related domains** into one specification
-2. It **determines scope** of all implementation tasks
+**Why Bundled Design Task Defines Feature Boundary**:
+1. It **bundles related sub-features** into one specification
+2. It **determines scope** of all implementation tasks for that feature
 3. It **creates shared context** all implementations depend on
-4. It **produces key artifact** (design spec) that unifies the feature
+4. It **produces key artifacts** (design specs, API contracts) that unify the feature
 
 **Properties**:
 - `feature_id`: e.g., `F-200`
@@ -1810,165 +1884,206 @@ class MarcusState:
         self.feature_context_service = FeatureContextService(self)
 ```
 
-### Component 6: Rename create_project to create_feature
+### Component 6: Feature Creation and Management
 
-**Purpose**: Clarify that `create_project` actually creates a **feature**
+**Purpose**: Enable feature-centric workflow by automatically creating Feature entities from bundled design tasks
 
-**Location**: `src/marcus_mcp/server.py` and `src/marcus_mcp/tools/nlp.py`
+**Location**: `src/marcus_mcp/server.py`, `src/core/models.py`, and `src/marcus_mcp/tools/nlp.py`
 
-**Current Confusion**:
+**Current Behavior**:
 ```python
-# This name suggests it creates a PROJECT (repository)
-# But it actually creates a FEATURE (bundled design + implement + test tasks)
+# Today: create_project creates tasks only
 create_project(
-    description="Build task management API",
+    description="Build task management API with user auth and notifications",
     project_name="task-management-api"
 )
+
+# Creates:
+# - design_user_auth (bundled design task)
+# - design_task_management (bundled design task)
+# - design_notifications (bundled design task)
+# - Multiple implementation and test tasks
+# BUT: No Feature entity exists to group them!
 ```
 
-**Proposed Changes**:
+**Proposed Change**: Automatically create Feature entities from bundled design tasks
 
-**Option 1**: Rename everything
+#### Step 1: Add Feature Model
+
 ```python
-# NEW MCP tool
-create_feature(
-    project_id="proj-task-api",  # Which project this belongs to
-    description="Task management with CRUD operations",
-    feature_name="task-management"
-)
+# src/core/models.py
+
+@dataclass
+class Feature:
+    """Represents a feature - a group of related tasks with shared context."""
+
+    feature_id: str  # F-100, F-200, etc.
+    feature_name: str  # user-management, task-management
+    bundled_design_task_id: str  # Links to design_user_management task
+    project_id: str
+    feature_branch: str  # feature/F-100-user-management
+    status: str  # planning, in_progress, completed
+    created_at: datetime
+
+    # Derived from tasks
+    task_ids: list[str] = field(default_factory=list)
+    artifacts: list[str] = field(default_factory=list)
+    decisions: list[str] = field(default_factory=list)
 ```
 
-**Option 2**: Keep for backwards compatibility, add new tool
-```python
-# Keep old tool (deprecated)
-create_project(...)  # Warns: "Deprecated, use create_feature"
-
-# Add new tool
-create_feature(
-    project_id="proj-task-api",
-    description="...",
-    feature_name="..."
-)
-```
-
-**Recommended**: Option 2 for smooth migration
+#### Step 2: Modify create_project to Auto-Create Features
 
 **Implementation**:
 ```python
-# src/marcus_mcp/server.py
+# src/ai/advanced/prd/advanced_parser.py (MODIFY EXISTING)
+
+async def _generate_task_hierarchy(
+    self, analysis: PRDAnalysis, constraints: ProjectConstraints
+) -> Dict[str, List[str]]:
+    """
+    Generate task hierarchy with automatic feature creation.
+
+    CHANGE: After creating bundled design tasks, automatically create
+    Feature entities to group related tasks.
+    """
+    # ... existing code creates bundled_design_tasks ...
+
+    # NEW: Create Feature entities from bundled designs
+    features_created = []
+    for idx, design_task in enumerate(bundled_design_tasks, start=100):
+        feature_id = f"F-{idx}"
+        feature_name = design_task["domain_name"].lower().replace(" ", "-")
+
+        feature = Feature(
+            feature_id=feature_id,
+            feature_name=feature_name,
+            bundled_design_task_id=design_task["id"],
+            project_id=constraints.project_id,  # Need to add this to constraints
+            feature_branch=f"feature/{feature_id}-{feature_name}",
+            status="planning",
+            created_at=datetime.now(timezone.utc)
+        )
+
+        features_created.append(feature)
+
+        # Store feature_id in task metadata for later linking
+        design_task["feature_id"] = feature_id
+
+    # Store features in task metadata for later retrieval
+    self._features = {f.feature_id: f for f in features_created}
+
+    # ... rest of existing task generation ...
+
+    # NEW: Link implementation/test tasks to their features
+    for task_id, task in all_tasks.items():
+        # Find which bundled design this task depends on
+        for dep_id in task.get("dependencies", []):
+            if dep_id.startswith("design_"):
+                # Find the feature for this design task
+                for feature in features_created:
+                    if feature.bundled_design_task_id == dep_id:
+                        task["feature_id"] = feature.feature_id
+                        feature.task_ids.append(task_id)
+                        break
+
+    return hierarchy, features_created
+```
+
+#### Step 3: Store Features in Marcus State
+
+```python
+# src/marcus_mcp/server.py (MODIFY EXISTING)
+
+class MarcusServer:
+    def __init__(self):
+        # ... existing initialization ...
+        self.features: Dict[str, Feature] = {}  # NEW: Store features
+
+    async def create_project_from_nlp(
+        self, description: str, project_name: str, options: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        MODIFIED: Now also creates and stores Feature entities.
+        """
+        # ... existing task creation code ...
+
+        # NEW: Extract and store features created by AdvancedPRDParser
+        if hasattr(parser, '_features'):
+            for feature_id, feature in parser._features.items():
+                self.features[feature_id] = feature
+                logger.info(f"Created feature {feature_id}: {feature.feature_name}")
+
+        return {
+            "success": True,
+            "project_id": project_id,
+            "features_created": len(self.features),  # NEW
+            "tasks_created": len(tasks),
+            "features": [  # NEW: Return feature info
+                {
+                    "feature_id": f.feature_id,
+                    "feature_name": f.feature_name,
+                    "bundled_design_task": f.bundled_design_task_id
+                }
+                for f in self.features.values()
+            ]
+        }
+```
+
+#### Step 4: Add get_feature_context Tool
+
+```python
+# src/marcus_mcp/server.py (NEW TOOL)
 
 @app.tool()
-async def create_feature(
-    project_id: str,
-    description: str,
-    feature_name: str,
-    options: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
+async def get_feature_context(feature_id: str) -> Dict[str, Any]:
     """
-    Create a feature within a project.
+    Get complete context for a feature including all tasks, artifacts, and decisions.
 
-    A feature includes:
-    - One bundled design task (covers multiple domains)
-    - Multiple implementation tasks (one per domain)
-    - Test tasks (validates implementations)
-
-    Parameters
-    ----------
-    project_id : str
-        Project this feature belongs to
-    description : str
-        Natural language description of the feature
-    feature_name : str
-        Short name for the feature (e.g., "task-management")
-    options : Optional[Dict[str, Any]]
-        - complexity: "prototype" | "standard" | "enterprise"
-        - team_size: 1-20
-
-    Returns
-    -------
-    Dict[str, Any]
-        {
-          "success": True,
-          "feature_id": "F-200",
-          "feature_branch": "feature/F-200-task-management",
-          "tasks_created": 6,
-          "tasks": [...]
-        }
+    This enables agents to ask: "What's everything about the user management feature?"
     """
-    # 1. Create feature in state
-    feature_id = await server.create_feature(
-        project_id=project_id,
-        feature_name=feature_name
-    )
+    if feature_id not in server.features:
+        return {"success": False, "error": f"Feature {feature_id} not found"}
 
-    # 2. Create feature branch
-    project = server.projects[project_id]
-    await asyncio.create_subprocess_exec(
-        "git", "checkout", "-b", f"feature/{feature_id}-{feature_name}",
-        cwd=project.local_path
-    )
+    feature = server.features[feature_id]
 
-    # 3. Use existing task decomposition logic
-    from .tools.nlp import create_project as create_tasks_impl
+    # Gather all tasks for this feature
+    tasks = [
+        server.task_graph.nodes[task_id]
+        for task_id in feature.task_ids
+        if task_id in server.task_graph.nodes
+    ]
 
-    result = await create_tasks_impl(
-        description=description,
-        project_name=feature_name,  # Actually feature name
-        options=options,
-        state=server
-    )
+    # Gather all artifacts logged for these tasks
+    artifacts = []
+    for task in tasks:
+        task_artifacts = await server.get_artifacts_for_task(task.id)
+        artifacts.extend(task_artifacts)
 
-    # 4. Tag all created tasks with feature_id
-    for task in result["tasks"]:
-        task["feature_id"] = feature_id
-
-    # 5. Update feature with design_task_id
-    design_tasks = [t for t in result["tasks"] if t["phase"] == "DESIGN"]
-    if design_tasks:
-        server.features[feature_id].design_task_id = design_tasks[0]["id"]
+    # Gather all decisions logged for these tasks
+    decisions = []
+    for task in tasks:
+        task_decisions = await server.get_decisions_for_task(task.id)
+        decisions.extend(task_decisions)
 
     return {
         "success": True,
-        "feature_id": feature_id,
-        "feature_name": feature_name,
-        "feature_branch": f"feature/{feature_id}-{feature_name}",
-        "tasks_created": len(result["tasks"]),
-        "tasks": result["tasks"]
+        "feature_id": feature.feature_id,
+        "feature_name": feature.feature_name,
+        "status": feature.status,
+        "bundled_design_task": feature.bundled_design_task_id,
+        "feature_branch": feature.feature_branch,
+        "tasks": [
+            {
+                "task_id": t.id,
+                "name": t.name,
+                "phase": t.phase,
+                "status": t.status
+            }
+            for t in tasks
+        ],
+        "artifacts": artifacts,
+        "decisions": decisions
     }
-
-@app.tool()
-async def create_project(
-    description: str,
-    project_name: str,
-    options: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
-    """
-    ⚠️ DEPRECATED: Use create_feature() instead.
-
-    This tool name is misleading - it actually creates a FEATURE, not a PROJECT.
-    A project is a repository. A feature is work within that repository.
-
-    For backwards compatibility, this still works but will be removed in v3.0.
-    """
-    logger.warning(
-        f"create_project() is deprecated. Use create_feature() instead. "
-        f"Called with project_name={project_name}"
-    )
-
-    # Assume current project
-    if not server.current_project_id:
-        return {
-            "success": False,
-            "error": "No active project. Use create_feature() with project_id instead."
-        }
-
-    # Delegate to create_feature
-    return await create_feature(
-        project_id=server.current_project_id,
-        description=description,
-        feature_name=project_name,
-        options=options
-    )
 ```
 
 ---
@@ -2763,95 +2878,158 @@ async def test_agent_works_in_isolated_workspace(test_state, claude_agent):
     assert (project.local_path / "docs" / "design" / "auth-spec.md").exists()
 ```
 
-### Phase 6: create_feature Tool (Week 5)
+### Phase 6: Feature Entity Integration (Week 5)
 
-**Goal**: Add proper `create_feature` tool, deprecate `create_project`
+**Goal**: Integrate Feature entities into create_project workflow
 
-#### Step 6.1: Implement create_feature
+#### Step 6.1: Modify create_project to Return Feature Info
+
+**Current**: `create_project` returns only task information
+**Proposed**: Also return feature information
 
 ```python
-# src/marcus_mcp/server.py
+# src/marcus_mcp/tools/nlp.py (MODIFY EXISTING)
 
-@app.tool()
-async def create_feature(
-    project_id: str,
-    description: str,
-    feature_name: str,
-    options: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
-    """Create a feature within a project."""
-    # Full implementation as designed above
-    ...
-
-@app.tool()
 async def create_project(
-    description: str,
-    project_name: str,
-    options: Optional[Dict[str, Any]] = None
+    description: str, project_name: str, options: Optional[Dict[str, Any]], state: Any
 ) -> Dict[str, Any]:
-    """⚠️ DEPRECATED: Use create_feature() instead."""
-    # Delegates to create_feature with warning
-    ...
+    """
+    Create a NEW project from natural language description.
+
+    NOW ALSO: Automatically creates Feature entities from bundled design tasks.
+    """
+    # ... existing implementation ...
+
+    # NEW: Return feature information
+    features_info = []
+    if hasattr(parser, '_features'):
+        for feature_id, feature in parser._features.items():
+            features_info.append({
+                "feature_id": feature.feature_id,
+                "feature_name": feature.feature_name,
+                "bundled_design_task_id": feature.bundled_design_task_id,
+                "feature_branch": feature.feature_branch,
+                "task_count": len(feature.task_ids)
+            })
+
+    return {
+        "success": True,
+        "project_id": project_id,
+        "tasks_created": len(tasks),
+        "features_created": len(features_info),  # NEW
+        "features": features_info,  # NEW
+        "board": board_info,
+        # ... existing fields ...
+    }
 ```
 
-#### Step 6.2: Migration Guide
+#### Step 6.2: Add Feature Querying
 
-Create `docs/migration/create_project_to_create_feature.md`:
+**Enable queries like**: "What's the status of the user management feature?"
+
+```python
+# src/marcus_mcp/server.py (NEW TOOLS)
+
+@app.tool()
+async def list_features(project_id: str) -> Dict[str, Any]:
+    """List all features in a project."""
+    features = [
+        f for f in server.features.values()
+        if f.project_id == project_id
+    ]
+
+    return {
+        "success": True,
+        "features": [
+            {
+                "feature_id": f.feature_id,
+                "feature_name": f.feature_name,
+                "status": f.status,
+                "tasks_total": len(f.task_ids),
+                "tasks_completed": sum(
+                    1 for tid in f.task_ids
+                    if server.task_graph.nodes[tid].status == "completed"
+                )
+            }
+            for f in features
+        ]
+    }
+
+@app.tool()
+async def get_feature_status(feature_id: str) -> Dict[str, Any]:
+    """Get detailed status of a specific feature."""
+    if feature_id not in server.features:
+        return {"success": False, "error": f"Feature {feature_id} not found"}
+
+    feature = server.features[feature_id]
+    tasks = [server.task_graph.nodes[tid] for tid in feature.task_ids]
+
+    return {
+        "success": True,
+        "feature_id": feature.feature_id,
+        "feature_name": feature.feature_name,
+        "status": feature.status,
+        "progress": {
+            "total": len(tasks),
+            "completed": sum(1 for t in tasks if t.status == "completed"),
+            "in_progress": sum(1 for t in tasks if t.status == "in_progress"),
+            "pending": sum(1 for t in tasks if t.status == "pending")
+        }
+    }
+```
+
+#### Step 6.3: Documentation
+
+Update `docs/user-guide/features.md`:
 
 ```markdown
-# Migration Guide: create_project → create_feature
+# Working with Features
 
-## Why the Change?
+## What is a Feature?
 
-The `create_project` tool name was misleading:
-- **Project** = Repository (e.g., `marcus`, `task-api`)
-- **Feature** = Work within repository (e.g., "user auth", "task management")
+A Feature is a group of related tasks centered around a bundled design task.
+When you call `create_project`, Marcus automatically creates features.
 
-`create_project` was actually creating **features**, not projects.
+## Example
 
-## Migration Steps
-
-### Before (Old Way)
 ```python
-# This creates a FEATURE, not a PROJECT
-result = await create_project(
-    description="Build user authentication",
-    project_name="user-auth"
+result = create_project(
+    description="E-commerce platform with user auth and products",
+    project_name="ecommerce"
 )
+
+# Returns:
+{
+    "features_created": 2,
+    "features": [
+        {
+            "feature_id": "F-100",
+            "feature_name": "user-management",
+            "bundled_design_task_id": "design_user_management",
+            "task_count": 5
+        },
+        {
+            "feature_id": "F-200",
+            "feature_name": "product-catalog",
+            "bundled_design_task_id": "design_product_catalog",
+            "task_count": 7
+        }
+    ]
+}
 ```
 
-### After (New Way)
+## Querying Features
+
 ```python
-# 1. Register your project (one-time setup)
-project_id = await register_project(
-    name="my-app",
-    repo_url="https://github.com/user/my-app",
-    local_path="/Users/user/dev/my-app"
-)
+# List all features
+features = list_features(project_id="proj-ecommerce")
 
-# 2. Create features within that project
-result = await create_feature(
-    project_id=project_id,
-    description="Build user authentication",
-    feature_name="user-auth"
-)
+# Get feature status
+status = get_feature_status(feature_id="F-100")
+
+# Get complete feature context
+context = get_feature_context(feature_id="F-100")
 ```
-
-## Backwards Compatibility
-
-`create_project` still works but shows a deprecation warning:
-```
-⚠️ create_project() is deprecated. Use create_feature() instead.
-```
-
-It will be removed in Marcus v3.0 (June 2025).
-
-## Benefits of New Approach
-
-1. **Clear hierarchy**: Projects contain features
-2. **Multiple features per project**: Work on auth + task management + notifications in same repo
-3. **Proper Git branching**: feature/F-100-user-auth, feature/F-200-task-mgmt
-4. **Feature-level context**: See everything about a feature in one place
 ```
 
 ---
