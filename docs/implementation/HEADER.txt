@@ -1,0 +1,40 @@
+# Marcus MVP Implementation Plan (5-6 Weeks)
+
+**Status**: Implementation Guide
+**Created**: 2025-01-06
+**Target**: MVP Release
+**Audience**: Development Team (Junior-Friendly)
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Week 1: Configuration & Foundation](#week-1-configuration--foundation)
+3. [Week 2: Workspace Isolation - Phase 1](#week-2-workspace-isolation---phase-1)
+4. [Week 3: Workspace Isolation - Phase 2](#week-3-workspace-isolation---phase-2)
+5. [Week 4: Feature Context & Git Integration](#week-4-feature-context--git-integration)
+6. [Week 5: Telemetry, Research Logging & CATO Integration](#week-5-telemetry-research-logging--cato-integration)
+7. [Week 6: Validation, Documentation & Polish](#week-6-validation-documentation--polish)
+8. [Testing Strategy](#testing-strategy)
+9. [Deployment Checklist](#deployment-checklist)
+
+---
+
+## Overview
+
+This plan addresses 5 critical MVP concerns:
+
+1. **Packaging** - Centralized configuration (Issue #68)
+2. **Telemetry** - User journey tracking
+3. **Observability** - Feature-level status with git context
+4. **Professional Git Workflows** - Workspace isolation with automatic branching
+5. **Research Instrumentation** - MAS study enablement
+
+**Key Principles**:
+- Build incrementally (no big-bang rewrites)
+- Maintain backward compatibility
+- Test-driven development (TDD)
+- Document as you go
+
+---
