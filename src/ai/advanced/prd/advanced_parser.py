@@ -334,12 +334,14 @@ class AdvancedPRDParser:
 
         Use complexity mode to control BOTH feature breadth and implementation depth:
 
-        PROTOTYPE MODE - Speed-focused MVP (3-5 core features):
+        PROTOTYPE MODE - Speed-focused MVP (MUST have 3-5 core features):
         FEATURE BREADTH:
         - Include ONLY the absolute minimum to demonstrate the concept
+        - MINIMUM 3 features required (e.g., create, read, list)
         - Skip: Authentication (unless core to concept), admin UI, monitoring,
           logging, comprehensive error handling, data migration, backup/restore
-        - Example "twitter clone": Just create/view tweets + basic feed
+        - Example "task management": create task, view tasks, list all tasks
+        - Example "twitter clone": create tweets, view tweets, basic feed
 
         IMPLEMENTATION DEPTH:
         - Keep requirement descriptions minimal and basic
@@ -560,7 +562,7 @@ class AdvancedPRDParser:
             # Apply deduplication to prevent duplicate tasks
             functional_reqs = self._deduplicate_functional_requirements(functional_reqs)
 
-            return PRDAnalysis(
+            analysis = PRDAnalysis(
                 functional_requirements=functional_reqs,
                 non_functional_requirements=get_key(
                     analysis_data,
@@ -593,6 +595,26 @@ class AdvancedPRDParser:
                 confidence=analysis_data.get("confidence", 0.8),
                 original_description=prd_content,  # NEW: Preserve original description
             )
+
+            # Validate minimum feature counts based on complexity mode
+            feature_count = len(analysis.functional_requirements)
+            if constraints.complexity_mode == "prototype" and feature_count < 3:
+                logger.warning(
+                    f"Prototype mode requires minimum 3 features, but AI generated "
+                    f"{feature_count}. Project may be incomplete."
+                )
+            elif constraints.complexity_mode == "standard" and feature_count < 8:
+                logger.warning(
+                    f"Standard mode expects 8-15 features, but AI generated "
+                    f"{feature_count}. Project may be incomplete."
+                )
+            elif constraints.complexity_mode == "enterprise" and feature_count < 15:
+                logger.warning(
+                    f"Enterprise mode expects 15-30+ features, but AI generated "
+                    f"{feature_count}. Project may be incomplete."
+                )
+
+            return analysis
 
         except Exception as e:
             from src.core.error_framework import AIProviderError, ErrorContext
@@ -886,9 +908,11 @@ Your design should define:
 - Integration points (how components communicate)
 - Shared data models (schemas, entities, etc.)
 
-Agents implementing these features will use get_task_context() to see your design
-artifacts and log_artifact() to document their specific implementation choices
-(exact API paths, field names, technologies, etc.)."""
+Create design artifacts such as:
+- Architecture diagrams (component relationships, data flow)
+- API contracts (endpoint definitions, request/response schemas)
+- Data models (database schemas, entity relationships)
+- Integration specifications (how components communicate)"""
 
             # Create bundled design task
             task_id = f"design_{domain_name.lower().replace(' ', '_')}"
