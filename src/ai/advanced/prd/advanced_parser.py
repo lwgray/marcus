@@ -1728,8 +1728,11 @@ Create design artifacts such as:
             Task-type-specific description that respects constraints
         """
         # Format constraints for the prompt
+        # IMPORTANT (GH-143): Only include tech constraints in DESIGN tasks.
+        # Design tasks establish the tech stack; implementation tasks get it from
+        # design docs via get_task_context(). This prevents conflicting guidance.
         constraint_text = ""
-        if constraints:
+        if constraints and task_type == "design":
             formatted_constraints = self._format_constraints_for_prompt(constraints)
             if formatted_constraints:
                 constraint_text = (
@@ -1758,11 +1761,14 @@ Guidelines:
   NOT "LoginForm calls POST /api/v1/auth/login with {{email, password}}".
 - For IMPLEMENT tasks: Focus on coding, building features, integrating
   components, writing the actual code. Agents use get_task_context() to
-  see design artifacts from dependencies.
+  see design artifacts from dependencies. DO NOT specify technologies -
+  implementation agents discover the tech stack from design documentation.
 - For TEST tasks: Focus on writing tests, creating test scenarios,
   validation, test coverage, quality assurance.
 
-IMPORTANT: Your description MUST respect the technical constraints listed above.
+IMPORTANT FOR DESIGN TASKS: Your description MUST respect the technical
+constraints listed above (if any) to ensure the design documents the chosen
+tech stack for implementation agents.
 
 Provide ONLY the description (3-4 sentences), no preamble or
 explanation."""
