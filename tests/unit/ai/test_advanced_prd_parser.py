@@ -778,3 +778,135 @@ class TestConstraintRiskAnalysis:
         # Assert - Should detect timeline pressure
         assert len(risks) > 0
         assert any(risk["type"] == "timeline_pressure" for risk in risks)
+
+
+class TestTaskDescriptionConstraints:
+    """Test suite for task description constraint handling (GH-143 fix)"""
+
+    @pytest.fixture
+    def mock_llm_client(self):
+        """Mock LLM client for testing"""
+        mock_client = Mock()
+        mock_client.analyze = AsyncMock()
+        return mock_client
+
+    @pytest.fixture
+    def parser(self, mock_llm_client):
+        """Create AdvancedPRDParser with mocked LLM"""
+        with patch(
+            "src.ai.advanced.prd.advanced_parser.LLMAbstraction"
+        ) as mock_llm_class:
+            mock_llm_class.return_value = mock_llm_client
+            with patch("src.ai.advanced.prd.advanced_parser.HybridDependencyInferer"):
+                parser = AdvancedPRDParser()
+                parser.llm_client = mock_llm_client
+                return parser
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_design_task_includes_technical_constraints_in_prompt(
+        self, parser, mock_llm_client
+    ):
+        """Test design task generation includes tech constraints in LLM prompt (GH-143)"""
+        # Arrange
+        mock_llm_client.analyze.return_value = "Design auth with FastAPI endpoints"
+
+        # Act
+        description = await parser._generate_task_description_for_type(
+            base_description="User authentication system",
+            task_type="design",
+            feature_name="Authentication",
+            constraints=["FastAPI", "PostgreSQL", "React"],
+            original_description="Build a blog platform",
+        )
+
+        # Assert
+        assert mock_llm_client.analyze.called
+        call_args = mock_llm_client.analyze.call_args[0]
+        prompt = call_args[0]
+
+        # Verify tech constraints are in the prompt for design tasks
+        assert "TECHNICAL CONSTRAINTS" in prompt
+        assert "FastAPI" in prompt
+        assert "PostgreSQL" in prompt
+        assert "React" in prompt
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_implement_task_excludes_technical_constraints_from_prompt(
+        self, parser, mock_llm_client
+    ):
+        """Test implementation task does NOT include tech constraints in prompt (GH-143)"""
+        # Arrange
+        mock_llm_client.analyze.return_value = "Implement auth service with endpoints"
+
+        # Act
+        description = await parser._generate_task_description_for_type(
+            base_description="User authentication system",
+            task_type="implement",
+            feature_name="Authentication",
+            constraints=["FastAPI", "PostgreSQL", "React"],
+            original_description="Build a blog platform",
+        )
+
+        # Assert
+        assert mock_llm_client.analyze.called
+        call_args = mock_llm_client.analyze.call_args[0]
+        prompt = call_args[0]
+
+        # Verify tech constraints are NOT in the prompt for implementation tasks
+        assert "TECHNICAL CONSTRAINTS" not in prompt
+        assert "FastAPI" not in prompt
+        assert "PostgreSQL" not in prompt
+        assert "React" not in prompt
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_test_task_excludes_technical_constraints_from_prompt(
+        self, parser, mock_llm_client
+    ):
+        """Test test task does NOT include tech constraints in prompt"""
+        # Arrange
+        mock_llm_client.analyze.return_value = "Write comprehensive auth tests"
+
+        # Act
+        description = await parser._generate_task_description_for_type(
+            base_description="User authentication system",
+            task_type="test",
+            feature_name="Authentication",
+            constraints=["FastAPI", "PostgreSQL"],
+            original_description="Build a blog platform",
+        )
+
+        # Assert
+        assert mock_llm_client.analyze.called
+        call_args = mock_llm_client.analyze.call_args[0]
+        prompt = call_args[0]
+
+        # Verify tech constraints are NOT in the prompt for test tasks
+        assert "TECHNICAL CONSTRAINTS" not in prompt
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_implement_task_prompt_instructs_no_tech_specification(
+        self, parser, mock_llm_client
+    ):
+        """Test implementation prompt explicitly says not to specify technologies"""
+        # Arrange
+        mock_llm_client.analyze.return_value = "Build backend API"
+
+        # Act
+        await parser._generate_task_description_for_type(
+            base_description="Backend API",
+            task_type="implement",
+            feature_name="API",
+            constraints=["Node.js"],
+        )
+
+        # Assert
+        call_args = mock_llm_client.analyze.call_args[0]
+        prompt = call_args[0]
+
+        # Verify prompt instructs not to specify technologies
+        assert "DO NOT specify technologies" in prompt
+        assert "discover the tech stack from design documentation" in prompt
