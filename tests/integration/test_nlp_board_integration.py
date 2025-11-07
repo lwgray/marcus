@@ -28,6 +28,11 @@ from src.integrations.nlp_tools import (
 load_dotenv()
 
 
+@pytest.mark.integration
+@pytest.mark.external
+@pytest.mark.slow
+@pytest.mark.ai
+@pytest.mark.kanban
 class TestNLPBoardIntegration:
     """Test that NLP tools create real tasks on the board"""
 

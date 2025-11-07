@@ -68,6 +68,9 @@ class MockNLPTaskCreator(NaturalLanguageTaskCreator):
         )
 
 
+@pytest.mark.integration
+@pytest.mark.internal
+@pytest.mark.fast
 class TestTaskExecutionOrderIntegration:
     """Integration tests for task execution order system."""
 

@@ -1,0 +1,290 @@
+name: Test Suite
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+  schedule:
+    # Run nightly at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      test_suite:
+        description: 'Test suite to run'
+        required: true
+        default: 'fast'
+        type: choice
+        options:
+          - fast
+          - full
+          - external
+          - e2e
+
+jobs:
+  # Fast tests - run on every push
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' && inputs.test_suite == 'fast')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
+          restore-keys: |
+            pip-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run unit tests
+        run: |
+          pytest -m unit -v --maxfail=10 --tb=short
+        timeout-minutes: 5
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          echo "## Unit Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Fast, isolated tests completed" >> $GITHUB_STEP_SUMMARY
+
+  # Internal integration tests - run on PRs
+  internal-integration-tests:
+    name: Internal Integration Tests
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' && inputs.test_suite == 'fast')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
+          restore-keys: |
+            pip-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run internal integration tests
+        run: |
+          pytest -m "integration and internal" -v --tb=short
+        timeout-minutes: 10
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          echo "## Internal Integration Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Component integration tests completed (mocked external services)" >> $GITHUB_STEP_SUMMARY
+
+  # External integration tests - run on PRs to main or nightly
+  external-integration-tests:
+    name: External Integration Tests (No AI)
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'pull_request' && github.base_ref == 'main') ||
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && (inputs.test_suite == 'external' || inputs.test_suite == 'full'))
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
+          restore-keys: |
+            pip-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run external integration tests (no AI)
+        env:
+          KANBAN_PROVIDER: ${{ secrets.KANBAN_PROVIDER }}
+          PLANKA_URL: ${{ secrets.PLANKA_URL }}
+          PLANKA_USERNAME: ${{ secrets.PLANKA_USERNAME }}
+          PLANKA_PASSWORD: ${{ secrets.PLANKA_PASSWORD }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pytest -m "external and not ai" -v --tb=short
+        timeout-minutes: 15
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          echo "## External Integration Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Real external service tests completed (Kanban, GitHub)" >> $GITHUB_STEP_SUMMARY
+          echo "ℹ️  AI tests skipped to save costs" >> $GITHUB_STEP_SUMMARY
+
+  # E2E and slow tests - run nightly or manually only
+  e2e-tests:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && (inputs.test_suite == 'e2e' || inputs.test_suite == 'full'))
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
+          restore-keys: |
+            pip-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run E2E and slow tests
+        env:
+          KANBAN_PROVIDER: ${{ secrets.KANBAN_PROVIDER }}
+          PLANKA_URL: ${{ secrets.PLANKA_URL }}
+          PLANKA_USERNAME: ${{ secrets.PLANKA_USERNAME }}
+          PLANKA_PASSWORD: ${{ secrets.PLANKA_PASSWORD }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pytest -m "e2e or slow" -v --tb=long
+        timeout-minutes: 30
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          echo "## E2E Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Complete workflow tests completed" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️  These tests use real AI and may incur costs" >> $GITHUB_STEP_SUMMARY
+
+  # Full test suite with coverage - nightly only
+  full-test-suite:
+    name: Full Test Suite with Coverage
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.test_suite == 'full')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
+          restore-keys: |
+            pip-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run full test suite with coverage
+        env:
+          KANBAN_PROVIDER: ${{ secrets.KANBAN_PROVIDER }}
+          PLANKA_URL: ${{ secrets.PLANKA_URL }}
+          PLANKA_USERNAME: ${{ secrets.PLANKA_USERNAME }}
+          PLANKA_PASSWORD: ${{ secrets.PLANKA_PASSWORD }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pytest -v --cov=src --cov-report=html --cov-report=term-missing
+        timeout-minutes: 45
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report
+          path: htmlcov/
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          echo "## Full Test Suite Results" >> $GITHUB_STEP_SUMMARY
+          echo "✅ All tests completed with coverage analysis" >> $GITHUB_STEP_SUMMARY
+          coverage report --format=markdown >> $GITHUB_STEP_SUMMARY
+
+  # Test result summary
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [unit-tests, internal-integration-tests]
+    if: always()
+
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## Test Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Suite | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Unit Tests | ${{ needs.unit-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Internal Integration | ${{ needs.internal-integration-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test Strategy" >> $GITHUB_STEP_SUMMARY
+          echo "- **Unit Tests**: Run on every push (fast feedback)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Internal Integration**: Run on PRs (mocked external services)" >> $GITHUB_STEP_SUMMARY
+          echo "- **External Integration**: Run on PR to main (real services, no AI)" >> $GITHUB_STEP_SUMMARY
+          echo "- **E2E/Slow Tests**: Run nightly or manually (includes AI tests)" >> $GITHUB_STEP_SUMMARY
