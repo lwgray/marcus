@@ -1,8 +1,16 @@
 # 40. Enhanced Ping Tool System
 
+**Status**: 🔮 PLANNED - This system is not yet implemented. This document describes a planned future enhancement.
+
+**Current Implementation**: Basic ping functionality exists in the MCP server. The enhanced multi-level diagnostic system described here is planned for future development.
+
+---
+
 ## Executive Summary
 
 The Enhanced Ping Tool System is a sophisticated health verification and diagnostic framework that extends the basic connectivity check into a comprehensive system health assessment tool. It provides multi-level health checks, performance benchmarking, dependency verification, and detailed diagnostic information, making it an essential tool for monitoring Marcus system health and troubleshooting issues.
+
+**Note**: This is a planned feature, not currently implemented.
 
 ## System Architecture
 

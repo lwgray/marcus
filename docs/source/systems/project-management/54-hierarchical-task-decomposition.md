@@ -186,21 +186,29 @@ The Hierarchical Task Decomposition System provides:
 
 #### Key Functions
 
-**`should_decompose(task: Task) -> bool`**
+**`should_decompose(task: Task, project_complexity: Optional[str] = None) -> bool`**
 ```python
-def should_decompose(task: Task) -> bool:
+def should_decompose(task: Task, project_complexity: Optional[str] = None) -> bool:
     """
     Decide whether a task should be decomposed into subtasks.
 
-    Criteria:
-    - Estimated hours >= 4.0
-    - Multiple component indicators (3+) in description
-    - Not a bugfix, refactor, deployment, or documentation task
+    Uses heuristics based on project complexity mode:
+    - prototype: No decomposition (speed priority)
+    - standard: Balanced decomposition (>= 0.2 hours, 3+ indicators)
+    - enterprise: Aggressive decomposition (>= 0.1 hours, 2+ indicators,
+                  force decompose "Implement" tasks)
+
+    Decomposition Thresholds by Mode:
+    - Prototype: Never decompose
+    - Standard (default): >= 0.2 hours (12 minutes), 3+ component indicators
+    - Enterprise: >= 0.1 hours (6 minutes), 2+ component indicators
 
     Parameters
     ----------
     task : Task
         The task to evaluate
+    project_complexity : Optional[str], default=None
+        Project complexity mode: "prototype", "standard", or "enterprise"
 
     Returns
     -------
@@ -209,10 +217,21 @@ def should_decompose(task: Task) -> bool:
     """
 ```
 
-**Heuristics**:
-- ✅ Size: `estimated_hours >= 4.0`
-- ✅ Complexity: Multiple indicators (api, database, model, ui, etc.)
-- ❌ Type: Skip bugfix, hotfix, refactor, documentation, deployment
+**Heuristics by Complexity Mode**:
+
+**Prototype Mode**:
+- ❌ Never decompose (speed over granularity)
+
+**Standard Mode (default)**:
+- ✅ Size: `estimated_hours >= 0.2` (12 minutes)
+- ✅ Complexity: Multiple indicators (3+) in description (api, database, model, ui, etc.)
+- ❌ Type: Skip bugfix, hotfix, refactor, documentation, deployment, design tasks
+
+**Enterprise Mode**:
+- ✅ Size: `estimated_hours >= 0.1` (6 minutes)
+- ✅ Complexity: Multiple indicators (2+) in description
+- ✅ Force decompose: All "Implement" tasks
+- ❌ Type: Skip bugfix, hotfix, refactor, documentation, deployment, design tasks
 
 **`decompose_task(task, ai_engine, project_context) -> Dict`**
 ```python
@@ -345,11 +364,18 @@ class Subtask:
     created_at: datetime
     estimated_hours: float
     dependencies: List[str] = field(default_factory=list)
+    dependency_types: List[str] = field(default_factory=list)
     file_artifacts: List[str] = field(default_factory=list)
     provides: Optional[str] = None
     requires: Optional[str] = None
     order: int = 0  # Execution order within parent
 ```
+
+**Field Details**:
+- `dependency_types`: Type of each dependency - "hard" (blocks start) or "soft" (can use mock/contract)
+  - Must match length of dependencies list
+  - Enables parallel work by using contracts from Design phase
+  - Empty array if no dependencies
 
 **`SubtaskMetadata` Dataclass**:
 ```python
@@ -363,25 +389,37 @@ class SubtaskMetadata:
 
 #### Key Methods
 
-**`add_subtasks(parent_task_id, subtasks, metadata)`**
+**`add_subtasks(parent_task_id, subtasks, project_tasks, metadata)`**
 ```python
 def add_subtasks(
     self,
     parent_task_id: str,
     subtasks: List[Dict[str, Any]],
-    metadata: SubtaskMetadata
-) -> None:
+    project_tasks: Optional[List[Task]] = None,
+    metadata: Optional[SubtaskMetadata] = None,
+) -> List[Task]:
     """
-    Add subtasks for a parent task.
+    Add subtasks for a parent task to unified project_tasks storage.
+
+    Creates Task objects with is_subtask=True and appends them to
+    project_tasks list for unified dependency graph.
 
     Parameters
     ----------
     parent_task_id : str
         ID of the parent task
     subtasks : List[Dict[str, Any]]
-        List of subtask definitions from decomposition
-    metadata : SubtaskMetadata
-        Shared metadata (conventions, decomposition info)
+        List of subtask dictionaries with fields:
+        - name, description, estimated_hours, dependencies, dependency_types, etc.
+    project_tasks : Optional[List[Task]]
+        Unified task storage (server.project_tasks). If None, uses legacy mode.
+    metadata : Optional[SubtaskMetadata]
+        Shared metadata (conventions, decomposition info). Now optional.
+
+    Returns
+    -------
+    List[Task]
+        Created Task objects (with is_subtask=True)
     """
 ```
 
@@ -843,7 +881,7 @@ task = await create_task(
     estimated_hours=8.0
 )
 
-if should_decompose(task):
+if should_decompose(task, project_complexity="standard"):
     # Decompose using AI
     decomposition = await decompose_task(
         task,
@@ -861,11 +899,15 @@ if should_decompose(task):
             decomposed_by="ai"
         )
 
-        state.subtask_manager.add_subtasks(
+        # Add subtasks to unified storage
+        created_tasks = state.subtask_manager.add_subtasks(
             task.id,
             decomposition["subtasks"],
-            metadata
+            project_tasks=state.project_tasks,
+            metadata=metadata
         )
+
+        # created_tasks now contains List[Task] with is_subtask=True
 ```
 
 ### Querying Subtasks
