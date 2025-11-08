@@ -9,7 +9,7 @@ import logging
 import statistics
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
@@ -142,7 +142,7 @@ class ContextualLearningSystem:
             preferred_task_types=preferred_task_types,
             collaboration_patterns=collaboration_patterns,
             quality_metrics=quality_metrics,
-            last_updated=datetime.now(timezone.utc),
+            last_updated=datetime.now(),
         )
 
         self.team_learnings[team_id] = team_learnings
@@ -198,7 +198,7 @@ class ContextualLearningSystem:
             common_dependencies=common_dependencies,
             risk_factors=risk_factors,
             best_practices=best_practices,
-            last_updated=datetime.now(timezone.utc),
+            last_updated=datetime.now(),
         )
 
         self.technology_learnings[tech_stack] = tech_learnings
@@ -567,7 +567,7 @@ class ContextualLearningSystem:
                 "parallel_task_preference": 0.5,
             },
             quality_metrics={"average_quality": 0.8},
-            last_updated=datetime.now(timezone.utc),
+            last_updated=datetime.now(),
         )
 
     def _create_default_tech_learnings(self, tech_stack: str) -> TechnologyLearnings:
@@ -579,7 +579,7 @@ class ContextualLearningSystem:
             common_dependencies=[],
             risk_factors={},
             best_practices=["Follow coding standards", "Write tests", "Code review"],
-            last_updated=datetime.now(timezone.utc),
+            last_updated=datetime.now(),
         )
 
     async def _adapt_estimation_template(
@@ -611,7 +611,7 @@ class ContextualLearningSystem:
             confidence=0.8,
             usage_count=0,
             success_rate=0.0,
-            last_used=datetime.now(timezone.utc),
+            last_used=datetime.now(),
         )
 
     async def _adapt_task_generation_template(
@@ -639,7 +639,7 @@ class ContextualLearningSystem:
             confidence=0.75,
             usage_count=0,
             success_rate=0.0,
-            last_used=datetime.now(timezone.utc),
+            last_used=datetime.now(),
         )
 
     async def _adapt_dependency_template(
@@ -659,7 +659,7 @@ class ContextualLearningSystem:
             confidence=0.7,
             usage_count=0,
             success_rate=0.0,
-            last_used=datetime.now(timezone.utc),
+            last_used=datetime.now(),
         )
 
     async def _get_team_recommendations(

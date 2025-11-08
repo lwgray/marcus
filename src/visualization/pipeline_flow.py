@@ -1,6 +1,6 @@
 """Minimal stubs for pipeline flow management."""
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List
 
 from .shared_pipeline_events import PipelineStage
@@ -40,7 +40,7 @@ class PipelineFlow:
         self.flow_type = flow_type
         self.stages: List[PipelineStage] = []
         self.status = "created"
-        self.created_at = datetime.now(timezone.utc).isoformat()
+        self.created_at = datetime.now().isoformat()
         self.metadata: Dict[str, Any] = {}
 
     def add_stage(self, stage: PipelineStage) -> None:

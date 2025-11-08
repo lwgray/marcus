@@ -7,7 +7,7 @@ allowing dynamic tool access based on client roles.
 
 import asyncio
 import asyncio.tasks as asyncio_tasks
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, Optional, Set
 
 from .tools.auth import DEFAULT_TOOLS, ROLE_TOOLS
@@ -23,8 +23,8 @@ class ClientSession:
         self.client_type: Optional[str] = None
         self.role: Optional[str] = None
         self.metadata: Dict[str, Any] = {}
-        self.connected_at = datetime.now(timezone.utc)
-        self.last_activity = datetime.now(timezone.utc)
+        self.connected_at = datetime.now()
+        self.last_activity = datetime.now()
         self.allowed_tools: Set[str] = set(DEFAULT_TOOLS)
         self.authenticated = False
 
@@ -56,7 +56,7 @@ class ClientSession:
 
     def update_activity(self) -> None:
         """Update last activity timestamp."""
-        self.last_activity = datetime.now(timezone.utc)
+        self.last_activity = datetime.now()
 
 
 class ClientManager:
@@ -165,7 +165,7 @@ class ClientManager:
             try:
                 await asyncio.sleep(300)  # Check every 5 minutes
 
-                now = datetime.now(timezone.utc)
+                now = datetime.now()
                 expired_sessions = []
 
                 for session_id, session in self.sessions.items():

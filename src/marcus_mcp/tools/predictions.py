@@ -5,7 +5,7 @@ This module exposes Marcus's AI prediction capabilities for project completion,
 task outcomes, blockage probability, and cascade effects analysis.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from mcp.types import Tool
@@ -88,12 +88,12 @@ async def predict_completion_time(
 
     # Calculate velocity
     velocity = len(completed_tasks) / max(
-        1, (datetime.now(timezone.utc) - project_context.created_at).days
+        1, (datetime.now() - project_context.created_at).days
     )
 
     # Predict completion
     days_to_complete = len(remaining_tasks) / max(0.1, velocity)
-    predicted_completion = datetime.now(timezone.utc) + timedelta(days=days_to_complete)
+    predicted_completion = datetime.now() + timedelta(days=days_to_complete)
 
     return {
         "success": True,

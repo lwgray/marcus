@@ -1,7 +1,7 @@
 """Enhancements for autonomous worker agent support."""
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union, cast
 
@@ -124,9 +124,7 @@ class WorkerAgentManager:
 
         # Create work session
         session = AgentWorkSession(
-            agent_id=agent_id,
-            started_at=datetime.now(timezone.utc),
-            last_activity=datetime.now(timezone.utc),
+            agent_id=agent_id, started_at=datetime.now(), last_activity=datetime.now()
         )
 
         self.agent_capabilities[agent_id] = capabilities
@@ -202,7 +200,7 @@ class WorkerAgentManager:
     def update_agent_activity(self, agent_id: str) -> None:
         """Update agent's last activity timestamp."""
         if agent_id in self.agent_sessions:
-            self.agent_sessions[agent_id].last_activity = datetime.now(timezone.utc)
+            self.agent_sessions[agent_id].last_activity = datetime.now()
 
     def set_agent_state(self, agent_id: str, state: AgentState) -> None:
         """Update agent's operational state."""
@@ -217,7 +215,7 @@ class WorkerAgentManager:
         if not session:
             return {}
 
-        uptime = datetime.now(timezone.utc) - session.started_at
+        uptime = datetime.now() - session.started_at
 
         average_performance = 0.0
         if capabilities and capabilities.performance_history:
@@ -240,9 +238,7 @@ class WorkerAgentManager:
 
         for agent_id, session in self.agent_sessions.items():
             # Consider agent active if last activity within 5 minutes
-            if (datetime.now(timezone.utc) - session.last_activity) < timedelta(
-                minutes=5
-            ):
+            if (datetime.now() - session.last_activity) < timedelta(minutes=5):
                 active_agents.append(
                     {
                         "agent_id": agent_id,
@@ -302,7 +298,7 @@ class EnhancedPMAgentMethods:
                 cast(int, a["tasks_completed"]) for a in active_agents
             ),
             "agent_details": agent_metrics,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now().isoformat(),
         }
 
     async def broadcast_to_agents(
@@ -318,5 +314,5 @@ class EnhancedPMAgentMethods:
             "broadcast_sent": True,
             "recipients": target_agents,
             "message": message,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now().isoformat(),
         }

@@ -11,7 +11,7 @@ Standardized error response formatting for different contexts:
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
@@ -574,7 +574,7 @@ def create_success_response(
     response = {
         "success": True,
         "message": message,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now().isoformat(),
     }
 
     if data is not None:

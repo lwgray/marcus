@@ -5,7 +5,7 @@ Tests that calling refresh_project_state multiple times does not
 duplicate subtasks in project_tasks.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import List
@@ -53,8 +53,8 @@ class TestRefreshSubtaskDuplication:
                 dependencies=[],
                 labels=["backend"],
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 is_subtask=False,
             ),
@@ -68,8 +68,8 @@ class TestRefreshSubtaskDuplication:
                 dependencies=[],
                 labels=["database"],
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 is_subtask=False,
             ),
@@ -181,8 +181,8 @@ class TestRefreshSubtaskDuplication:
                 dependencies=[],
                 labels=[],
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 is_subtask=False,
             )
@@ -241,8 +241,8 @@ class TestRefreshSubtaskDuplication:
                 dependencies=[],
                 labels=[],
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 is_subtask=False,
             )
@@ -282,8 +282,8 @@ class TestRefreshSubtaskDuplication:
                 dependencies=[],
                 labels=[],
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 is_subtask=False,
             )

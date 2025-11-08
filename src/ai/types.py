@@ -30,7 +30,7 @@ for audit trails.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from src.core.models import Task
@@ -293,7 +293,7 @@ class AssignmentDecision:
     def __post_init__(self) -> None:
         """Set timestamp if not provided."""
         if self.timestamp is None:
-            self.timestamp = datetime.now(timezone.utc)
+            self.timestamp = datetime.now()
 
 
 @dataclass

@@ -8,7 +8,7 @@ and their relationship to parent tasks.
 import json
 import logging
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -88,7 +88,7 @@ class SubtaskMetadata:
     """
 
     shared_conventions: Dict[str, Any] = field(default_factory=dict)
-    decomposed_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    decomposed_at: datetime = field(default_factory=datetime.now)
     decomposed_by: str = "ai"
 
 
@@ -183,7 +183,7 @@ class SubtaskManager:
                 status=TaskStatus.TODO,
                 priority=subtask_data.get("priority", Priority.MEDIUM),
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
                 estimated_hours=subtask_data.get("estimated_hours", 1.0),
                 dependencies=dependencies,
                 dependency_types=dependency_types,
@@ -207,8 +207,8 @@ class SubtaskManager:
                 dependencies=dependencies,
                 labels=subtask_data.get("labels", []),
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 # Subtask-specific fields
                 is_subtask=True,
@@ -374,7 +374,7 @@ class SubtaskManager:
                 return False
 
             task.status = status
-            task.updated_at = datetime.now(timezone.utc)
+            task.updated_at = datetime.now()
             if assigned_to:
                 task.assigned_to = assigned_to
 

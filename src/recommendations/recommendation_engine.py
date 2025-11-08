@@ -10,7 +10,7 @@ import json
 import statistics
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -185,7 +185,7 @@ class PatternDatabase:
             "requirements_summary": self._summarize_requirements(
                 flow_data["requirements"]
             ),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now().isoformat(),
         }
 
     def _infer_project_type(self, flow_data: Dict[str, Any]) -> str:
@@ -1104,7 +1104,7 @@ class PipelineRecommendationEngine:
         update_record = {
             "flow_id": flow_data["flow_id"],
             "outcome": asdict(outcome),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now().isoformat(),
         }
 
         if "optimization_rules" not in self.pattern_db.patterns:
@@ -1132,7 +1132,7 @@ class PipelineRecommendationEngine:
         report = f"""
 # Pipeline Recommendations Report
 
-**Generated:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}
+**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 **Total Recommendations:** {len(recommendations)}
 
 ## Priority Recommendations

@@ -6,7 +6,7 @@ and integration with the natural language processing tools.
 """
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, List
 from unittest.mock import AsyncMock, MagicMock, Mock
 
@@ -58,9 +58,9 @@ class MockNLPTaskCreator(NaturalLanguageTaskCreator):
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
             assigned_to=None,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
-            due_date=datetime.now(timezone.utc) + timedelta(days=7),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            due_date=datetime.now() + timedelta(days=7),
             estimated_hours=4.0,
             actual_hours=0.0,
             dependencies=[],
@@ -68,9 +68,6 @@ class MockNLPTaskCreator(NaturalLanguageTaskCreator):
         )
 
 
-@pytest.mark.integration
-@pytest.mark.internal
-@pytest.mark.fast
 class TestTaskExecutionOrderIntegration:
     """Integration tests for task execution order system."""
 
@@ -205,9 +202,9 @@ class TestTaskExecutionOrderIntegration:
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
             assigned_to=None,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
-            due_date=datetime.now(timezone.utc) + timedelta(days=7),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            due_date=datetime.now() + timedelta(days=7),
             estimated_hours=4.0,
             actual_hours=0.0,
             dependencies=[],
@@ -229,9 +226,9 @@ class TestTaskExecutionOrderIntegration:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
-                due_date=datetime.now(timezone.utc) + timedelta(days=1),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                due_date=datetime.now() + timedelta(days=1),
                 estimated_hours=2.0,
                 actual_hours=0.0,
                 dependencies=[],
@@ -244,9 +241,9 @@ class TestTaskExecutionOrderIntegration:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
-                due_date=datetime.now(timezone.utc) + timedelta(days=1),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                due_date=datetime.now() + timedelta(days=1),
                 estimated_hours=1.0,
                 actual_hours=0.0,
                 dependencies=[],
@@ -300,9 +297,9 @@ class TestTaskExecutionOrderIntegration:
                             status=TaskStatus.TODO,
                             priority=Priority.MEDIUM,
                             assigned_to=None,
-                            created_at=datetime.now(timezone.utc),
-                            updated_at=datetime.now(timezone.utc),
-                            due_date=datetime.now(timezone.utc) + timedelta(days=30),
+                            created_at=datetime.now(),
+                            updated_at=datetime.now(),
+                            due_date=datetime.now() + timedelta(days=30),
                             estimated_hours=4.0,
                             actual_hours=0.0,
                             dependencies=[],

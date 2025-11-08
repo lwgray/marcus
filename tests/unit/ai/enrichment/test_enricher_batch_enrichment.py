@@ -11,7 +11,7 @@ don't depend on external services or consume API quotas.
 """
 
 import copy
-from datetime import datetime, timezone
+from datetime import datetime
 from unittest.mock import patch
 
 import pytest
@@ -46,8 +46,8 @@ class TestIntelligentTaskEnricherBatchEnrichment:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 estimated_hours=4.0,
                 labels=["backend", "database"],
@@ -59,8 +59,8 @@ class TestIntelligentTaskEnricherBatchEnrichment:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 estimated_hours=3.0,
                 labels=["backend", "model"],
@@ -72,8 +72,8 @@ class TestIntelligentTaskEnricherBatchEnrichment:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 estimated_hours=6.0,
                 labels=["backend", "api"],
@@ -115,7 +115,7 @@ class TestIntelligentTaskEnricherBatchEnrichment:
                     confidence=0.8,
                     reasoning=f"AI analysis for {task.name}",
                     changes_made={},
-                    enhancement_timestamp=datetime.now(timezone.utc),
+                    enhancement_timestamp=datetime.now(),
                 )
                 mock_results.append(mock_result)
 
@@ -160,7 +160,7 @@ class TestIntelligentTaskEnricherBatchEnrichment:
                     confidence=0.8,
                     reasoning="AI analysis",
                     changes_made={},
-                    enhancement_timestamp=datetime.now(timezone.utc),
+                    enhancement_timestamp=datetime.now(),
                 )
 
             mock_enrich.side_effect = side_effect
@@ -178,7 +178,7 @@ class TestIntelligentTaskEnricherBatchEnrichment:
                     confidence=0.1,
                     reasoning="AI enrichment failed, using original task data",
                     changes_made={},
-                    enhancement_timestamp=datetime.now(timezone.utc),
+                    enhancement_timestamp=datetime.now(),
                 )
                 mock_fallback.return_value = fallback_result
 
@@ -225,7 +225,7 @@ class TestIntelligentTaskEnricherBatchEnrichment:
                 confidence=0.8,
                 reasoning="AI analysis",
                 changes_made={},
-                enhancement_timestamp=datetime.now(timezone.utc),
+                enhancement_timestamp=datetime.now(),
             )
 
         with patch.object(enricher, "enrich_task_with_ai", side_effect=capture_context):

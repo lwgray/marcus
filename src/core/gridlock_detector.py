@@ -11,7 +11,7 @@ This is a CRITICAL failure mode that requires immediate intervention.
 
 import logging
 from collections import deque
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from src.core.models import Task, TaskStatus
@@ -72,7 +72,7 @@ class GridlockDetector:
         self.recent_no_task_requests.append(
             {
                 "agent_id": agent_id,
-                "timestamp": datetime.now(timezone.utc),
+                "timestamp": datetime.now(),
             }
         )
 
@@ -96,7 +96,7 @@ class GridlockDetector:
         Dict[str, Any]
             Gridlock detection result with diagnosis
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
 
         # Clean old requests outside time window
         cutoff = now - self.time_window
@@ -233,7 +233,7 @@ class GridlockDetector:
 
     def get_statistics(self) -> Dict[str, Any]:
         """Get current detector statistics."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
         cutoff = now - self.time_window
 
         recent_requests = [

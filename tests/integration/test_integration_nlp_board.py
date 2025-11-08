@@ -8,7 +8,7 @@ import asyncio
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 # Add parent directory to path
@@ -32,9 +32,7 @@ class BoardIntegrationTest:
 
         self.provider = os.getenv("KANBAN_PROVIDER", "planka")
         self.kanban_client = None
-        self.test_project_name = (
-            f"Test NLP Project {datetime.now(timezone.utc):%Y%m%d_%H%M%S}"
-        )
+        self.test_project_name = f"Test NLP Project {datetime.now():%Y%m%d_%H%M%S}"
 
     async def setup(self):
         """Initialize kanban client"""

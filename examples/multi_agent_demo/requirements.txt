@@ -1,0 +1,21 @@
+# API Validation Dependencies
+httpx>=0.25.0
+pyyaml>=6.0
+openapi-core>=0.18.0
+openapi-spec-validator>=0.7.0
+
+# Quality Metrics
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-asyncio>=0.21.0
+mypy>=1.5.0
+
+# API Implementation (FastAPI stack)
+fastapi>=0.104.0
+uvicorn>=0.24.0
+sqlalchemy>=2.0.0
+alembic>=1.12.0
+pydantic>=2.4.0
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+python-multipart>=0.0.6

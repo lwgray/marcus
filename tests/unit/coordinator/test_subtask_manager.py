@@ -5,7 +5,7 @@ Tests the subtask decomposition and tracking functionality.
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
@@ -423,7 +423,7 @@ class TestSubtaskDependencyTypes:
                     "status": "todo",
                     "priority": "medium",
                     "assigned_to": None,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "created_at": datetime.now().isoformat(),
                     "estimated_hours": 2.0,
                     "dependencies": [],
                     "file_artifacts": [],
@@ -440,7 +440,7 @@ class TestSubtaskDependencyTypes:
                     "status": "todo",
                     "priority": "medium",
                     "assigned_to": None,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "created_at": datetime.now().isoformat(),
                     "estimated_hours": 3.0,
                     "dependencies": ["task-1_sub_1"],
                     "file_artifacts": [],
@@ -454,7 +454,7 @@ class TestSubtaskDependencyTypes:
             "metadata": {
                 "task-1": {
                     "shared_conventions": {},
-                    "decomposed_at": datetime.now(timezone.utc).isoformat(),
+                    "decomposed_at": datetime.now().isoformat(),
                     "decomposed_by": "ai",
                 }
             },

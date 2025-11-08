@@ -6,7 +6,7 @@ Intercepts all AI provider calls to track token usage per project.
 
 import asyncio
 import functools
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Callable, Dict, Literal, Optional
 
 from src.cost_tracking.token_tracker import token_tracker
@@ -36,7 +36,7 @@ class AIUsageMiddleware:
         self.current_project_context[agent_id] = {
             "project_id": project_id,
             "task_id": task_id,
-            "start_time": datetime.now(timezone.utc),
+            "start_time": datetime.now(),
         }
 
     def clear_project_context(self, agent_id: str) -> None:
@@ -73,9 +73,9 @@ class AIUsageMiddleware:
                     project_id = args[1].get("project_id")
 
             # Call the original function
-            start_time = datetime.now(timezone.utc)
+            start_time = datetime.now()
             result = await func(*args, **kwargs)
-            end_time = datetime.now(timezone.utc)
+            end_time = datetime.now()
 
             # Extract token usage from result
             if isinstance(result, dict):

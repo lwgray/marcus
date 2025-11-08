@@ -8,7 +8,7 @@ performance baselines, and test health monitoring.
 import json
 import time
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -26,7 +26,7 @@ class ExecutionMetrics:
 
     def __post_init__(self):
         if not self.timestamp:
-            self.timestamp = datetime.now(timezone.utc).isoformat()
+            self.timestamp = datetime.now().isoformat()
 
 
 class MetricsCollector:
@@ -118,10 +118,7 @@ class FlakyHandler:
 
     def mark_as_flaky(self, test_name: str, reason: str = ""):
         """Mark a test as flaky."""
-        flaky_data = {
-            "flaky_tests": {},
-            "last_updated": datetime.now(timezone.utc).isoformat(),
-        }
+        flaky_data = {"flaky_tests": {}, "last_updated": datetime.now().isoformat()}
 
         if self.flaky_tests_file.exists():
             with open(self.flaky_tests_file, "r") as f:
@@ -129,7 +126,7 @@ class FlakyHandler:
 
         flaky_data["flaky_tests"][test_name] = {
             "reason": reason,
-            "marked_at": datetime.now(timezone.utc).isoformat(),
+            "marked_at": datetime.now().isoformat(),
         }
 
         with open(self.flaky_tests_file, "w") as f:
@@ -186,7 +183,7 @@ class PerformanceBaseline:
         baselines[test_name][metric_name] = {
             "value": value,
             "tolerance": tolerance,
-            "set_at": datetime.now(timezone.utc).isoformat(),
+            "set_at": datetime.now().isoformat(),
         }
 
         with open(self.baseline_file, "w") as f:

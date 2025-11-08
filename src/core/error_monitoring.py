@@ -13,7 +13,7 @@ import time
 from asyncio import Task
 from collections import defaultdict, deque
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set
@@ -45,7 +45,7 @@ class ErrorMetrics:
     retryable_errors: int = 0
     critical_errors: int = 0
     error_rate_per_minute: float = 0.0
-    last_updated: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    last_updated: datetime = field(default_factory=datetime.now)
 
 
 @dataclass
@@ -71,7 +71,7 @@ class CorrelationGroup:
     group_id: str
     correlation_key: str
     errors: List[str] = field(default_factory=list)  # Error correlation IDs
-    start_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    start_time: datetime = field(default_factory=datetime.now)
     end_time: Optional[datetime] = None
     pattern: Optional[str] = None
     root_cause: Optional[str] = None
@@ -208,7 +208,7 @@ class ErrorMonitor:
             data = {
                 "patterns": patterns_data,
                 "metrics_history": metrics_data,
-                "last_updated": datetime.now(timezone.utc).isoformat(),
+                "last_updated": datetime.now().isoformat(),
             }
 
             with open(self.storage_path, "w") as f:
@@ -303,14 +303,14 @@ class ErrorMonitor:
             metrics.critical_errors += 1
 
         # Update timestamp
-        metrics.last_updated = datetime.now(timezone.utc)
+        metrics.last_updated = datetime.now()
 
         # Calculate error rate
         self._calculate_error_rate()
 
     def _calculate_error_rate(self) -> None:
         """Calculate current error rate per minute."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
         cutoff_time = now - timedelta(minutes=self.metrics_window_minutes)
 
         # Count errors in time window
@@ -324,7 +324,7 @@ class ErrorMonitor:
 
     def _detect_patterns(self, error_record: Dict[str, Any]) -> None:
         """Detect error patterns for proactive alerting."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
 
         # Pattern 1: Frequency-based (same error type recurring)
         self._detect_frequency_pattern(error_record, now)
@@ -530,9 +530,11 @@ class ErrorMonitor:
         # Find or create correlation group
         group_id = None
         for gid, group in self.correlation_groups.items():
-            if group.correlation_key == correlation_key and datetime.now(
-                timezone.utc
-            ) - group.start_time < timedelta(minutes=self.correlation_timeout_minutes):
+            if (
+                group.correlation_key == correlation_key
+                and datetime.now() - group.start_time
+                < timedelta(minutes=self.correlation_timeout_minutes)
+            ):
                 group_id = gid
                 break
 
@@ -545,7 +547,7 @@ class ErrorMonitor:
         # Add error to group
         group = self.correlation_groups[group_id]
         group.errors.append(correlation_id)
-        group.end_time = datetime.now(timezone.utc)
+        group.end_time = datetime.now()
 
         self.active_correlations[correlation_id] = group_id
 
@@ -570,7 +572,7 @@ class ErrorMonitor:
 
     def get_metrics_history(self, hours: int = 24) -> List[ErrorMetrics]:
         """Get metrics history for specified hours."""
-        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+        cutoff_time = datetime.now() - timedelta(hours=hours)
         return [
             metrics
             for metrics in self.metrics_history
@@ -583,7 +585,7 @@ class ErrorMonitor:
             return list(self.detected_patterns.values())
 
         # Return only patterns from last 24 hours
-        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=24)
+        cutoff_time = datetime.now() - timedelta(hours=24)
         return [
             pattern
             for pattern in self.detected_patterns.values()
@@ -598,7 +600,7 @@ class ErrorMonitor:
             return list(self.correlation_groups.values())
 
         # Return only active correlations
-        cutoff_time = datetime.now(timezone.utc) - timedelta(
+        cutoff_time = datetime.now() - timedelta(
             minutes=self.correlation_timeout_minutes
         )
         return [
@@ -620,7 +622,7 @@ class ErrorMonitor:
         hours: int = 24,
     ) -> List[Dict[str, Any]]:
         """Search errors with specified criteria."""
-        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+        cutoff_time = datetime.now() - timedelta(hours=hours)
 
         results = []
         for error in self.error_history:
@@ -679,7 +681,7 @@ class ErrorMonitor:
         return {
             "health_score": health_score,
             "health_status": health_status,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now().isoformat(),
             "metrics": asdict(current_metrics),
             "active_patterns": len(active_patterns),
             "active_correlations": len(active_correlations),
@@ -794,7 +796,7 @@ class ErrorMonitor:
 
     def _cleanup_old_data(self) -> None:
         """Clean up old monitoring data."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
 
         # Clean old patterns (older than 7 days)
         cutoff_time = now - timedelta(days=7)

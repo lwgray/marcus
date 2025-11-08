@@ -6,7 +6,7 @@ kanban board state on startup or after connectivity issues.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, TypedDict
 
 from src.core.assignment_persistence import AssignmentPersistence
@@ -153,7 +153,7 @@ class AssignmentReconciler:
                                 task.priority.value if task.priority else "medium"
                             ),
                             "estimated_hours": task.estimated_hours,
-                            "restored_at": datetime.now(timezone.utc).isoformat(),
+                            "restored_at": datetime.now().isoformat(),
                         },
                     )
                     results["assignments_restored"] += 1

@@ -9,7 +9,7 @@ import asyncio
 import json
 import logging
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
 from src.core.resilience import with_fallback
@@ -130,10 +130,9 @@ class Events:
         """
         # Create event
         self._event_counter += 1
-        now = datetime.now(timezone.utc)
         event = Event(
-            event_id=f"evt_{self._event_counter}_{now.timestamp()}",
-            timestamp=now,
+            event_id=f"evt_{self._event_counter}_{datetime.now().timestamp()}",
+            timestamp=datetime.now(),
             event_type=event_type,
             source=source,
             data=data,

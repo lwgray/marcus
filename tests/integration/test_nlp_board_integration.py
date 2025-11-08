@@ -9,7 +9,7 @@ import os
 
 # Add parent to path
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -28,11 +28,6 @@ from src.integrations.nlp_tools import (
 load_dotenv()
 
 
-@pytest.mark.integration
-@pytest.mark.external
-@pytest.mark.slow
-@pytest.mark.ai
-@pytest.mark.kanban
 class TestNLPBoardIntegration:
     """Test that NLP tools create real tasks on the board"""
 
@@ -41,7 +36,7 @@ class TestNLPBoardIntegration:
         """Setup kanban client for tests"""
         self.provider = os.getenv("KANBAN_PROVIDER", "planka")
         self.kanban = await KanbanFactory.create(self.provider)
-        self.test_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        self.test_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         yield
         # Cleanup would go here if needed
 

@@ -5,7 +5,7 @@ to prevent illogical task assignments like "Deploy to production" first.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from src.core.models import Task
@@ -96,7 +96,7 @@ class BasicCreatorMode:
             self.state["active_project"] = {
                 "name": project_name,
                 "template": template_name,
-                "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_at": datetime.now().isoformat(),
                 "customizations": customizations,
             }
             self.state["generated_tasks"] = [

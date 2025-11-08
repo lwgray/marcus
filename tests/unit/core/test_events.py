@@ -3,7 +3,7 @@ Unit tests for the Events system
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -18,7 +18,7 @@ class TestEvent:
         """Test creating an event with all fields"""
         event = Event(
             event_id="test_123",
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(),
             event_type="test_event",
             source="test_source",
             data={"key": "value"},
@@ -33,7 +33,7 @@ class TestEvent:
 
     def test_event_to_dict(self):
         """Test converting event to dictionary"""
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now()
         event = Event(
             event_id="test_123",
             timestamp=timestamp,
@@ -54,7 +54,7 @@ class TestEvent:
         """Test converting event to JSON string"""
         event = Event(
             event_id="test_123",
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(),
             event_type="test_event",
             source="test_source",
             data={"key": "value"},

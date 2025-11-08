@@ -9,7 +9,7 @@ import asyncio
 import json
 import os
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -57,8 +57,8 @@ class TestAssignmentDeduplication:
                 priority=Priority.HIGH,
                 labels=["backend", "security"],
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
             ),
             Task(
                 id="task-2",
@@ -68,8 +68,8 @@ class TestAssignmentDeduplication:
                 priority=Priority.MEDIUM,
                 labels=["frontend", "ui"],
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
             ),
             Task(
                 id="task-3",
@@ -79,8 +79,8 @@ class TestAssignmentDeduplication:
                 priority=Priority.LOW,
                 labels=["testing", "backend"],
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
             ),
         ]
 
@@ -285,8 +285,8 @@ class TestAssignmentDeduplication:
                 priority=Priority.MEDIUM,
                 labels=["test"],
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
             )
             for i in range(10)
         ]

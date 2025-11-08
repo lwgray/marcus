@@ -7,7 +7,7 @@ sensible defaults that can be easily overridden.
 
 import random
 import string
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, cast
 
 from src.core.models import (
@@ -43,9 +43,9 @@ class TaskFactory:
             "status": TaskStatus.TODO,
             "priority": Priority.MEDIUM,
             "assigned_to": None,
-            "created_at": datetime.now(timezone.utc),
-            "updated_at": datetime.now(timezone.utc),
-            "due_date": datetime.now(timezone.utc) + timedelta(days=7),
+            "created_at": datetime.now(),
+            "updated_at": datetime.now(),
+            "due_date": datetime.now() + timedelta(days=7),
             "estimated_hours": 4.0,
             "actual_hours": 0.0,
             "dependencies": [],
@@ -209,7 +209,7 @@ class ProjectStateFactory:
             "overdue_tasks": [],
             "team_velocity": 2.5,
             "risk_level": RiskLevel.LOW,
-            "last_updated": datetime.now(timezone.utc),
+            "last_updated": datetime.now(),
         }
 
         # Determine risk level based on metrics
@@ -279,7 +279,7 @@ class BlockerFactory:
             "reporter_id": f"agent-{random.randint(1, 10):03d}",
             "description": random.choice(cls._blocker_descriptions),
             "severity": random.choice(list(RiskLevel)),
-            "reported_at": datetime.now(timezone.utc),
+            "reported_at": datetime.now(),
             "resolved": False,
             "resolution": None,
             "resolved_at": None,
@@ -288,7 +288,7 @@ class BlockerFactory:
         # Handle resolved blockers
         if kwargs.get("resolved", False):
             defaults["resolution"] = "Issue resolved by implementing workaround"
-            defaults["resolved_at"] = datetime.now(timezone.utc)
+            defaults["resolved_at"] = datetime.now()
 
         defaults.update(kwargs)
         return BlockerReport(

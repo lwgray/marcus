@@ -3,7 +3,7 @@ Unit tests for the assignment lease system.
 """
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -22,7 +22,7 @@ class TestAssignmentLease:
 
     def test_lease_creation(self):
         """Test basic lease creation."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
         expires = now + timedelta(hours=4)
 
         lease = AssignmentLease(
@@ -40,7 +40,7 @@ class TestAssignmentLease:
 
     def test_lease_expiration(self):
         """Test lease expiration detection."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
 
         # Create expired lease
         expired_lease = AssignmentLease(
@@ -56,7 +56,7 @@ class TestAssignmentLease:
 
     def test_lease_expiring_soon(self):
         """Test detection of leases expiring soon."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
 
         # Lease expiring in 30 minutes
         expiring_lease = AssignmentLease(
@@ -73,7 +73,7 @@ class TestAssignmentLease:
 
     def test_renewal_duration_calculation(self):
         """Test lease renewal duration calculation."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
         base_lease = AssignmentLease(
             task_id="task-123",
             agent_id="agent-001",
@@ -124,7 +124,7 @@ class TestAssignmentLeaseManager:
         persistence.get_assignment = AsyncMock(
             return_value={
                 "task_id": "task-123",
-                "assigned_at": datetime.now(timezone.utc).isoformat(),
+                "assigned_at": datetime.now().isoformat(),
             }
         )
         persistence.save_assignment = AsyncMock()
@@ -152,8 +152,8 @@ class TestAssignmentLeaseManager:
             dependencies=[],
             labels=[],
             assigned_to=None,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             due_date=None,
         )
 
@@ -188,9 +188,9 @@ class TestAssignmentLeaseManager:
         lease = AssignmentLease(
             task_id="task-123",
             agent_id="agent-001",
-            assigned_at=datetime.now(timezone.utc) - timedelta(hours=5),
-            lease_expires=datetime.now(timezone.utc) - timedelta(hours=1),
-            last_renewed=datetime.now(timezone.utc) - timedelta(hours=5),
+            assigned_at=datetime.now() - timedelta(hours=5),
+            lease_expires=datetime.now() - timedelta(hours=1),
+            last_renewed=datetime.now() - timedelta(hours=5),
         )
         lease_manager.active_leases["task-123"] = lease
 
@@ -202,7 +202,7 @@ class TestAssignmentLeaseManager:
     @pytest.mark.asyncio
     async def test_check_expired_leases(self, lease_manager):
         """Test detection of expired leases."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
 
         # Add mix of leases
         active_lease = AssignmentLease(
@@ -239,9 +239,9 @@ class TestAssignmentLeaseManager:
         expired_lease = AssignmentLease(
             task_id="task-123",
             agent_id="agent-001",
-            assigned_at=datetime.now(timezone.utc) - timedelta(hours=5),
-            lease_expires=datetime.now(timezone.utc) - timedelta(hours=1),
-            last_renewed=datetime.now(timezone.utc) - timedelta(hours=5),
+            assigned_at=datetime.now() - timedelta(hours=5),
+            lease_expires=datetime.now() - timedelta(hours=1),
+            last_renewed=datetime.now() - timedelta(hours=5),
             progress_percentage=30,
         )
 
@@ -259,7 +259,7 @@ class TestAssignmentLeaseManager:
     @pytest.mark.asyncio
     async def test_get_expiring_leases(self, lease_manager):
         """Test getting leases that are expiring soon."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
 
         # Add various leases
         lease_manager.active_leases = {
@@ -293,7 +293,7 @@ class TestAssignmentLeaseManager:
 
     def test_lease_statistics(self, lease_manager):
         """Test lease statistics calculation."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
 
         # Add various leases
         lease_manager.active_leases = {

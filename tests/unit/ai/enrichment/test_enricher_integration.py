@@ -11,7 +11,7 @@ These are integration tests that verify component interaction patterns
 and system-wide consistency, with mocked external dependencies.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -74,8 +74,8 @@ class TestIntelligentTaskEnricherIntegration:
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
             assigned_to=None,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             due_date=None,
             estimated_hours=5.0,
             labels=[],
@@ -111,9 +111,9 @@ class TestIntelligentTaskEnricherIntegration:
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
             assigned_to="user1",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
-            due_date=datetime.now(timezone.utc) + timedelta(days=7),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            due_date=datetime.now() + timedelta(days=7),
             estimated_hours=5.0,
             labels=["existing", "labels"],
         )

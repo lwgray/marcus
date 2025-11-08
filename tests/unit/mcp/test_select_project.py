@@ -2,7 +2,7 @@
 Unit tests for select_project MCP tool.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -34,8 +34,8 @@ class TestSelectProject:
             name="MyAPI",
             provider="planka",
             provider_config={"project_id": "planka-789", "board_id": "board-101"},
-            created_at=datetime.now(timezone.utc),
-            last_used=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            last_used=datetime.now(),
             tags=["backend"],
         )
 

@@ -4,7 +4,7 @@ Unit tests for move executor.
 This module tests the create_move and execute_move functions.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 import pytest
 
@@ -43,9 +43,9 @@ class TestCreateMove:
 
     def test_create_move_has_timestamp(self):
         """Test that created move has a timestamp."""
-        before = datetime.now(timezone.utc)
+        before = datetime.now()
         move = create_move(1, 1, "X")
-        after = datetime.now(timezone.utc)
+        after = datetime.now()
 
         timestamp = datetime.fromisoformat(move.timestamp)
         assert before <= timestamp <= after

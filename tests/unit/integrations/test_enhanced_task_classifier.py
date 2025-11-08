@@ -5,7 +5,7 @@ Tests the robust task type identification system with expanded keywords,
 pattern matching, and confidence scoring.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 import pytest
 
@@ -32,8 +32,8 @@ class TestEnhancedTaskClassifier:
             "status": TaskStatus.TODO,
             "priority": Priority.MEDIUM,
             "assigned_to": None,
-            "created_at": datetime.now(timezone.utc),
-            "updated_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(),
+            "updated_at": datetime.now(),
             "due_date": None,
             "estimated_hours": 4.0,
             "dependencies": [],
@@ -55,8 +55,8 @@ class TestEnhancedTaskClassifier:
                 "status": TaskStatus.TODO,
                 "priority": Priority.MEDIUM,
                 "assigned_to": None,
-                "created_at": datetime.now(timezone.utc),
-                "updated_at": datetime.now(timezone.utc),
+                "created_at": datetime.now(),
+                "updated_at": datetime.now(),
                 "due_date": None,
                 "estimated_hours": 4.0,
                 "dependencies": [],

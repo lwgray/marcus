@@ -14,7 +14,7 @@ import asyncio
 import json
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
 
@@ -190,7 +190,7 @@ class TestKanbanClientWithCreate:
             "name": "Implement user authentication",
             "description": "Add JWT-based auth to the API",
             "listId": "list-1",
-            "createdAt": datetime.now(timezone.utc).isoformat(),
+            "createdAt": datetime.now().isoformat(),
         }
         card_response.content = [Mock(text=json.dumps(created_card))]
 
@@ -503,8 +503,8 @@ class TestKanbanClientWithCreate:
                     status=TaskStatus.TODO,
                     priority=Priority.MEDIUM,
                     assigned_to=None,
-                    created_at=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(),
+                    updated_at=datetime.now(),
                     due_date=None,
                     estimated_hours=0.0,
                 )
@@ -535,8 +535,8 @@ class TestKanbanClientWithCreate:
                     status=TaskStatus.TODO,
                     priority=Priority.MEDIUM,
                     assigned_to=None,
-                    created_at=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(),
+                    updated_at=datetime.now(),
                     due_date=None,
                     estimated_hours=0.0,
                 ),
@@ -548,8 +548,8 @@ class TestKanbanClientWithCreate:
                     status=TaskStatus.TODO,
                     priority=Priority.MEDIUM,
                     assigned_to=None,
-                    created_at=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(),
+                    updated_at=datetime.now(),
                     due_date=None,
                     estimated_hours=0.0,
                 ),
@@ -795,8 +795,8 @@ class TestKanbanClientWithCreate:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 estimated_hours=0.0,
             )
@@ -882,8 +882,8 @@ class TestKanbanClientWithCreate:
                 status=TaskStatus.TODO,
                 priority=Priority.LOW,
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 estimated_hours=1.0,
             )

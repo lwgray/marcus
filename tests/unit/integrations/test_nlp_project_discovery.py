@@ -5,7 +5,7 @@ Tests the integration of find_or_create_project helper into the
 create_project_from_natural_language flow.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -49,8 +49,8 @@ class TestCreateProjectWithDiscovery:
             name="MyAPI",
             provider="planka",
             provider_config={"project_id": "planka-789", "board_id": "board-101"},
-            created_at=datetime.now(timezone.utc),
-            last_used=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            last_used=datetime.now(),
             tags=["backend"],
         )
 

@@ -1,0 +1,96 @@
+# Project Management System - 8 Agent Configuration
+# Experiment: Complex project with optimal team size
+
+project_name: "Project Management System - 8 Agents"
+project_spec_file: "project_description.txt"
+
+project_options:
+  complexity: "enterprise"
+  provider: "planka"
+  mode: "new_project"
+
+agents:
+  - id: "agent_foundation"
+    name: "Foundation Agent"
+    role: "backend"
+    skills:
+      - "python"
+      - "sqlalchemy"
+      - "postgresql"
+      - "database-design"
+      - "alembic"
+    subagents: 4
+
+  - id: "agent_auth"
+    name: "Auth & RBAC Agent"
+    role: "security"
+    skills:
+      - "python"
+      - "fastapi"
+      - "jwt"
+      - "rbac"
+      - "security"
+    subagents: 3
+
+  - id: "agent_core_api"
+    name: "Core API Agent"
+    role: "backend"
+    skills:
+      - "python"
+      - "fastapi"
+      - "rest-api"
+      - "pydantic"
+    subagents: 4
+
+  - id: "agent_realtime"
+    name: "Real-time Features Agent"
+    role: "backend"
+    skills:
+      - "python"
+      - "websockets"
+      - "redis"
+      - "real-time"
+    subagents: 3
+
+  - id: "agent_background"
+    name: "Background Tasks Agent"
+    role: "backend"
+    skills:
+      - "python"
+      - "celery"
+      - "redis"
+      - "async-tasks"
+    subagents: 2
+
+  - id: "agent_storage"
+    name: "Storage Agent"
+    role: "backend"
+    skills:
+      - "python"
+      - "s3"
+      - "file-uploads"
+    subagents: 2
+
+  - id: "agent_analytics"
+    name: "Analytics Agent"
+    role: "backend"
+    skills:
+      - "python"
+      - "data-analysis"
+      - "reporting"
+      - "sql"
+    subagents: 2
+
+  - id: "agent_qa"
+    name: "QA & Integration Agent"
+    role: "qa"
+    skills:
+      - "python"
+      - "pytest"
+      - "integration-testing"
+      - "websocket-testing"
+    subagents: 3
+
+timeouts:
+  project_creation: 600
+  agent_startup: 60

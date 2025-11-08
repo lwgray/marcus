@@ -147,7 +147,7 @@ class TaskDiagnosticCollector:
         ProjectSnapshot
             Holistic view of the project
         """
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         # Calculate completion percentage
         completed_count = len(
@@ -157,7 +157,7 @@ class TaskDiagnosticCollector:
         completion_pct = (completed_count / total_count * 100) if total_count > 0 else 0
 
         # Calculate task ages (for incomplete tasks only)
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
         incomplete_tasks = [
             t for t in self.project_tasks if t.status != TaskStatus.DONE
         ]
@@ -288,7 +288,6 @@ class TaskDiagnosticCollector:
             "blocked_by_dependencies": blocked_by_dependencies,
             "blocked_by_assignment": blocked_by_assignment,
             "available": available,
-            "assigned_task_ids": list(assigned_task_ids),
         }
 
         return stats
@@ -339,12 +338,12 @@ class DependencyChainAnalyzer:
         List[List[str]]
             List of cycles, where each cycle is a list of task IDs
         """
-        cycles: List[List[str]] = []
+        cycles = []
         visited = set()
         rec_stack = set()
         path = []
 
-        def dfs(task_id: str) -> None:
+        def dfs(task_id: str) -> bool:
             """Depth-first search to detect cycles."""
             visited.add(task_id)
             rec_stack.add(task_id)
@@ -355,18 +354,18 @@ class DependencyChainAnalyzer:
             if task and task.dependencies:
                 for dep_id in task.dependencies:
                     if dep_id not in visited:
-                        dfs(dep_id)
+                        if dfs(dep_id):
+                            return True
                     elif dep_id in rec_stack:
-                        # Found a cycle - extract it
+                        # Found a cycle
                         cycle_start = path.index(dep_id)
                         cycle = path[cycle_start:] + [dep_id]
-                        # Avoid duplicate cycles by checking if we've seen this set
-                        cycle_set = frozenset(cycle)
-                        if not any(frozenset(c) == cycle_set for c in cycles):
-                            cycles.append(cycle)
+                        cycles.append(cycle)
+                        return True
 
             path.pop()
             rec_stack.remove(task_id)
+            return False
 
         for task in self.project_tasks:
             if task.id not in visited:
@@ -473,181 +472,6 @@ class DependencyChainAnalyzer:
 
         return chains
 
-    def find_zombie_tasks(self, assigned_task_ids: Set[str]) -> List[Dict[str, Any]]:
-        """
-        Find zombie tasks: IN_PROGRESS status but no agent assigned.
-
-        These tasks are stuck in progress but have no owner.
-
-        Parameters
-        ----------
-        assigned_task_ids : Set[str]
-            Set of task IDs currently assigned to agents
-
-        Returns
-        -------
-        List[Dict[str, Any]]
-            List of zombie tasks with details
-        """
-        zombies = []
-
-        for task in self.project_tasks:
-            if (
-                task.status == TaskStatus.IN_PROGRESS
-                and task.id not in assigned_task_ids
-            ):
-                zombies.append(
-                    {
-                        "task_id": task.id,
-                        "task_name": task.name,
-                        "status": task.status.value,
-                        "priority": task.priority.value if task.priority else "unknown",
-                    }
-                )
-
-        return zombies
-
-    def find_transitive_dependencies(self) -> List[Dict[str, Any]]:
-        """
-        Find transitive dependencies that are explicitly defined (redundant).
-
-        If A→B→C exists and A→C is also explicitly defined, then A→C is redundant.
-
-        Returns
-        -------
-        List[Dict[str, Any]]
-            List of redundant dependencies with details
-        """
-        redundant = []
-
-        for task in self.project_tasks:
-            if not task.dependencies or len(task.dependencies) < 2:
-                continue
-
-            # Find all tasks reachable through dependencies (transitive closure)
-            reachable_through_deps = set()
-
-            def find_reachable(dep_id: str, visited: Set[str]) -> None:
-                """Find all tasks reachable from dep_id."""
-                if dep_id in visited or dep_id not in self.task_map:
-                    return
-                visited.add(dep_id)
-                dep_task = self.task_map[dep_id]
-                if dep_task.dependencies:
-                    for next_dep in dep_task.dependencies:
-                        reachable_through_deps.add(next_dep)
-                        find_reachable(next_dep, visited)
-
-            # For each direct dependency, find what's reachable through it
-            for dep_id in task.dependencies:
-                find_reachable(dep_id, set())
-
-            # Check if any direct dependency is also reachable transitively
-            direct_deps = set(task.dependencies)
-            transitive_redundant = direct_deps & reachable_through_deps
-
-            if transitive_redundant:
-                for redundant_dep in transitive_redundant:
-                    redundant.append(
-                        {
-                            "task_id": task.id,
-                            "task_name": task.name,
-                            "redundant_dependency_id": redundant_dep,
-                            "redundant_dependency_name": (
-                                self.task_map[redundant_dep].name
-                                if redundant_dep in self.task_map
-                                else "Unknown"
-                            ),
-                            "reason": "Already reachable through other dependencies",
-                        }
-                    )
-
-        return redundant
-
-    def find_state_inconsistencies(
-        self, completed_task_ids: Set[str]
-    ) -> List[Dict[str, Any]]:
-        """
-        Find state inconsistencies in task data.
-
-        Checks for:
-        - Tasks marked DONE but with incomplete dependencies
-        - Parent tasks marked DONE but with incomplete children
-        - Status mismatches in task metadata
-
-        Parameters
-        ----------
-        completed_task_ids : Set[str]
-            Set of task IDs that are completed
-
-        Returns
-        -------
-        List[Dict[str, Any]]
-            List of state inconsistencies with details
-        """
-        inconsistencies = []
-
-        for task in self.project_tasks:
-            # Check: DONE task with incomplete dependencies
-            if task.status == TaskStatus.DONE and task.dependencies:
-                incomplete_deps = [
-                    dep_id
-                    for dep_id in task.dependencies
-                    if dep_id not in completed_task_ids and dep_id in self.task_map
-                ]
-                if incomplete_deps:
-                    dep_names = [
-                        self.task_map[dep_id].name
-                        for dep_id in incomplete_deps
-                        if dep_id in self.task_map
-                    ]
-                    inconsistencies.append(
-                        {
-                            "task_id": task.id,
-                            "task_name": task.name,
-                            "inconsistency_type": "completed_with_incomplete_deps",
-                            "description": (
-                                f"Task marked DONE but has {len(incomplete_deps)} "
-                                f"incomplete dependencies: {', '.join(dep_names[:3])}"
-                            ),
-                            "severity": "medium",
-                            "details": {
-                                "incomplete_dependency_ids": incomplete_deps,
-                                "incomplete_dependency_names": dep_names,
-                            },
-                        }
-                    )
-
-            # Check: Parent task status vs children status
-            # (This requires parent-child relationships in task metadata)
-            if hasattr(task, "parent_id") and task.parent_id:
-                parent = self.task_map.get(task.parent_id)
-                if parent:
-                    # Parent is DONE but child is not
-                    if (
-                        parent.status == TaskStatus.DONE
-                        and task.status != TaskStatus.DONE
-                    ):
-                        inconsistencies.append(
-                            {
-                                "task_id": task.id,
-                                "task_name": task.name,
-                                "inconsistency_type": "parent_done_child_incomplete",
-                                "description": (
-                                    f"Parent task '{parent.name}' is DONE but "
-                                    f"child task '{task.name}' is {task.status.value}"
-                                ),
-                                "severity": "high",
-                                "details": {
-                                    "parent_id": parent.id,
-                                    "parent_name": parent.name,
-                                    "child_status": task.status.value,
-                                },
-                            }
-                        )
-
-        return inconsistencies
-
 
 class DiagnosticReportGenerator:
     """
@@ -688,7 +512,7 @@ class DiagnosticReportGenerator:
         DiagnosticReport
             Complete diagnostic report with issues and recommendations
         """
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         issues = self._identify_issues()
         recommendations = self._generate_recommendations(issues)
@@ -698,7 +522,7 @@ class DiagnosticReportGenerator:
         project_snapshot = collector.create_project_snapshot()
 
         return DiagnosticReport(
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now().isoformat(),
             project_snapshot=project_snapshot,
             total_tasks=self.filtering_stats["total_tasks"],
             available_tasks=len(self.filtering_stats["available"]),
@@ -808,69 +632,6 @@ class DiagnosticReportGenerator:
                         "into independent sub-tasks where possible"
                     ),
                     details={"chain": chain, "chain_length": len(chain)},
-                )
-            )
-
-        # Check for zombie tasks (IN_PROGRESS with no agent)
-        assigned_task_ids = set(self.filtering_stats.get("assigned_task_ids", []))
-        zombies = self.analyzer.find_zombie_tasks(assigned_task_ids)
-        for zombie in zombies:
-            issues.append(
-                DiagnosticIssue(
-                    issue_type="zombie_task",
-                    severity="high",
-                    affected_tasks=[zombie["task_id"]],
-                    description=(
-                        f"Zombie task '{zombie['task_name']}': "
-                        f"Status is IN_PROGRESS but no agent assigned"
-                    ),
-                    recommendation=(
-                        f"Reset '{zombie['task_name']}' to TODO status or "
-                        f"assign to an available agent"
-                    ),
-                    details=zombie,
-                )
-            )
-
-        # Check for transitive/redundant dependencies
-        redundant = self.analyzer.find_transitive_dependencies()
-        for item in redundant:
-            issues.append(
-                DiagnosticIssue(
-                    issue_type="transitive_dependency",
-                    severity="low",
-                    affected_tasks=[item["task_id"]],
-                    description=(
-                        f"Task '{item['task_name']}' has redundant dependency on "
-                        f"'{item['redundant_dependency_name']}' "
-                        "(already reachable transitively)"
-                    ),
-                    recommendation=(
-                        f"Remove redundant dependency "
-                        f"'{item['redundant_dependency_name']}' from "
-                        f"'{item['task_name']}' to simplify dependency graph"
-                    ),
-                    details=item,
-                )
-            )
-
-        # Check for state inconsistencies
-        completed_task_ids = set(
-            [t.id for t in self.project_tasks if t.status == TaskStatus.DONE]
-        )
-        inconsistencies = self.analyzer.find_state_inconsistencies(completed_task_ids)
-        for item in inconsistencies:
-            issues.append(
-                DiagnosticIssue(
-                    issue_type=item["inconsistency_type"],
-                    severity=item["severity"],
-                    affected_tasks=[item["task_id"]],
-                    description=item["description"],
-                    recommendation=(
-                        f"Review and correct the status of '{item['task_name']}' "
-                        f"to ensure consistency with dependencies and parent tasks"
-                    ),
-                    details=item["details"],
                 )
             )
 

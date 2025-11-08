@@ -13,7 +13,7 @@ Tests cover:
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -35,7 +35,7 @@ class TestRuleBasedEngine:
     @pytest.fixture
     def sample_task(self):
         """Create a sample task for testing"""
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
         return Task(
             id="test-task-1",
             name="Test Task",
@@ -106,7 +106,7 @@ class TestRuleBasedEngine:
     ):
         """Test analysis when task has missing dependencies"""
         # Add a task that depends on another task that's not complete
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
         dependent_task = Task(
             id="dependent-task",
             name="Dependent Task",
@@ -208,7 +208,7 @@ class TestMarcusAIEngine:
     @pytest.fixture
     def sample_task(self):
         """Create a sample task for testing"""
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
         return Task(
             id="test-task-2",
             name="AI Test Task",
@@ -445,7 +445,7 @@ class TestIntegration:
     @pytest.fixture
     def complex_context(self):
         """Create a complex analysis context for integration testing"""
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
         task = Task(
             id="integration-task",
             name="Complex Integration Task",
@@ -507,7 +507,7 @@ class TestIntegration:
     async def test_engine_status_integration(self, full_engine):
         """Test engine status after performing analysis"""
         # Perform an analysis first
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
         task = Task(
             id="status-test",
             name="Status Test",

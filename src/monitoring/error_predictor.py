@@ -8,7 +8,7 @@ and suggest preventive actions.
 import statistics
 from collections import defaultdict
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List
 
 from src.visualization.shared_pipeline_events import SharedPipelineEvents
@@ -212,7 +212,7 @@ class PipelineErrorPredictor:
         self.prediction_history.append(
             {
                 "flow_id": flow_id,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now().isoformat(),
                 "assessment": asdict(assessment),
             }
         )
@@ -437,7 +437,7 @@ class PipelineErrorPredictor:
 # Pipeline Risk Assessment Report
 
 **Flow ID:** {assessment.flow_id}
-**Assessment Time:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}
+**Assessment Time:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 **Overall Risk:** {assessment.overall_risk * 100:.1f}% ({assessment.risk_category})
 **Confidence:** {assessment.confidence * 100:.0f}%
 

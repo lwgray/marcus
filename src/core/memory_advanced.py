@@ -7,7 +7,7 @@ confidence intervals, complexity adjustments, and time-based relevance weighting
 
 import logging
 import math
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List
 
 from src.core.memory import Memory, TaskOutcome
@@ -103,7 +103,7 @@ class MemoryAdvanced(Memory):
             "reliability_score": confidence * recency_weight,
             "prediction_metadata": {
                 "method": "enhanced_v2",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now().isoformat(),
                 "based_on_tasks": sample_size,
             },
         }
@@ -199,7 +199,7 @@ class MemoryAdvanced(Memory):
         if not agent_history:
             return 0.5  # No history = low confidence
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
         weights = []
 
         for outcome in agent_history:

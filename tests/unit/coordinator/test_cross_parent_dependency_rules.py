@@ -5,7 +5,7 @@ Tests the rule: If a parent task has NO dependencies, its subtasks can ONLY
 have intra-parent dependencies, NOT cross-parent dependencies.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -17,8 +17,8 @@ def create_task(**kwargs):
     """Helper to create Task with required fields."""
     defaults = {
         "assigned_to": None,
-        "created_at": datetime.now(timezone.utc),
-        "updated_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(),
+        "updated_at": datetime.now(),
         "due_date": None,
         "dependencies": [],
         "labels": [],
