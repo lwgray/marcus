@@ -5,6 +5,7 @@ Provides shared functionality for create_project and add_feature tools.
 
 import logging
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from src.core.models import Task
@@ -146,6 +147,38 @@ class NaturalLanguageTaskCreator(ABC):
                 logger.info(f"Creating task: {task.name}")
                 kanban_task = await self.kanban_client.create_task(task_data)
                 created_tasks.append(kanban_task)
+
+                # Store task metadata for Phase 1 analysis
+                try:
+                    from pathlib import Path
+
+                    from src.core.persistence import SQLitePersistence
+
+                    # Use absolute path to database (relative to marcus root)
+                    marcus_root = Path(__file__).parent.parent.parent
+                    db_path = marcus_root / "data" / "marcus.db"
+                    persistence = SQLitePersistence(db_path=db_path)
+
+                    task_id = kanban_task.get("id")
+                    if task_id:
+                        await persistence.store(
+                            "task_metadata",
+                            str(task_id),
+                            {
+                                "task_id": str(task_id),
+                                "name": task.name,
+                                "description": task.description,
+                                "priority": task_data.get("priority"),
+                                "estimated_hours": task.estimated_hours,
+                                "labels": task.labels,
+                                "dependencies": task.dependencies,
+                                "created_at": datetime.now(timezone.utc).isoformat(),
+                            },
+                        )
+                except Exception as log_error:
+                    logger.warning(
+                        f"Failed to log task metadata for '{task.name}': {log_error}"
+                    )
 
             except Exception as e:
                 from src.core.error_framework import (

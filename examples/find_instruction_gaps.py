@@ -65,20 +65,19 @@ async def find_instruction_gaps(project_id: str) -> None:
 
         # Show the original task description
         print("\n   Original Description:")
-        desc_lines = task.description.split("\n")
-        for line in desc_lines[:3]:  # Show first 3 lines
-            print(f"      {line}")
-        if len(desc_lines) > 3:
-            print(f"      ... ({len(desc_lines) - 3} more lines)")
+        if task.description:
+            desc_lines = task.description.split("\n")
+            for line in desc_lines:
+                print(f"      {line}")
+        else:
+            print("      (No description available)")
 
         # Show what instructions the agent actually received
         if task.instructions_received:
             print("\n   ✅ Instructions Given to Agent:")
             inst_lines = task.instructions_received.split("\n")
-            for line in inst_lines[:3]:
+            for line in inst_lines:
                 print(f"      {line}")
-            if len(inst_lines) > 3:
-                print(f"      ... ({len(inst_lines) - 3} more lines)")
 
             # Simple heuristic: check if instruction is much shorter than description
             desc_len = len(task.description)

@@ -303,6 +303,7 @@ class ProjectHistoryAggregator:
         events = await self._load_agent_events(project_id)
         outcomes = await self._load_task_outcomes(project_id)
         agent_profiles = await self._load_agent_profiles(project_id)
+        task_metadata = await self._load_task_metadata(project_id)
 
         # Extract task_ids from conversations to filter outcomes
         task_ids_in_project = set()
@@ -330,7 +331,12 @@ class ProjectHistoryAggregator:
 
         # Build unified history
         tasks = self._build_task_histories(
-            filtered_outcomes, decisions, artifacts, conversations, events
+            filtered_outcomes,
+            decisions,
+            artifacts,
+            conversations,
+            events,
+            task_metadata,
         )
         agents = self._build_agent_histories(
             filtered_profiles, filtered_outcomes, decisions, artifacts
@@ -564,6 +570,32 @@ class ProjectHistoryAggregator:
 
         return profiles
 
+    async def _load_task_metadata(self, project_id: str) -> dict[str, dict[str, Any]]:
+        """Load task metadata (descriptions, etc.) from Persistence backend."""
+        metadata_by_task_id: dict[str, dict[str, Any]] = {}
+
+        try:
+            # Import Persistence and get backend
+            from src.core.persistence import SQLitePersistence
+
+            # Use absolute path to database (relative to marcus root)
+            db_path = self.marcus_root / "data" / "marcus.db"
+            backend = SQLitePersistence(db_path=db_path)
+
+            # Query all task metadata from persistence
+            metadata_list = await backend.query("task_metadata", limit=10000)
+
+            # Build dict keyed by task_id
+            for metadata in metadata_list:
+                task_id = metadata.get("task_id")
+                if task_id:
+                    metadata_by_task_id[str(task_id)] = metadata
+
+        except Exception as e:
+            logger.warning(f"Error loading task metadata: {e}")
+
+        return metadata_by_task_id
+
     def _build_task_histories(
         self,
         outcomes: list[TaskOutcome],
@@ -571,6 +603,7 @@ class ProjectHistoryAggregator:
         artifacts: list[ArtifactMetadata],
         conversations: list[Message],
         events: list[dict[str, Any]],
+        task_metadata: dict[str, dict[str, Any]] = {},
     ) -> list[TaskHistory]:
         """
         Build comprehensive task histories.
@@ -583,10 +616,14 @@ class ProjectHistoryAggregator:
         for outcome in outcomes:
             task_id = outcome.task_id
 
+            # Get description from task_metadata if available
+            metadata = task_metadata.get(task_id, {})
+            description = metadata.get("description", "")
+
             task_histories[task_id] = TaskHistory(
                 task_id=task_id,
                 name=getattr(outcome, "task_name", task_id),
-                description=getattr(outcome, "description", ""),
+                description=description,
                 status="completed" if outcome.success else "failed",
                 estimated_hours=outcome.estimated_hours,
                 actual_hours=outcome.actual_hours,
