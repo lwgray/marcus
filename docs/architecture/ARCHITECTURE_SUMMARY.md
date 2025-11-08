@@ -43,7 +43,7 @@ Rich domain models and business logic:
 - **Context System:** Rich context for assignments, previous implementations, dependencies
 - **Memory System:** Multi-tier learning from past executions
 - **Events:** Publish/subscribe with optional persistence
-- **Project Management:** Multi-project support with isolated contexts
+- **Project Management:** Project switching with isolated state (single active project)
 - **Assignment:** Lease-based task assignment with timeout management
 - **Error Handling:** Comprehensive error hierarchy with recovery strategies
 - **Persistence:** File and SQLite backends
@@ -174,14 +174,17 @@ Real-time system health and learning:
 - Security errors bypass retry
 - Context injection for automatic metadata
 
-## Multi-Project Support
+## Project Management (Single Active Project)
+
+**IMPORTANT:** Only ONE project active at a time. Switching replaces the active project.
 
 **ProjectContextManager:**
-- LRU cache (max 10 projects)
+- LRU cache (max 10 projects) for fast switching
 - Auto-cleanup on idle (30 minutes)
-- Isolated state per project
+- Isolated state per project (loaded when active)
 - Automatic kanban client lifecycle
-- Async-safe context switching
+- Async-safe context switching (~5-10ms)
+- Single `active_project_id` variable
 
 ## Testing Strategy
 
@@ -207,7 +210,7 @@ Real-time system health and learning:
 
 **Format:**
 - JSON-based
-- Multi-project support
+- Multiple project configs (one active at a time)
 - Provider-specific settings
 - AI provider credentials
 - Kanban board configuration

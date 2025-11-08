@@ -1,4 +1,4 @@
-# ADR 0003: Multi-Project Support with Isolated State
+# ADR 0003: Project Switching with Isolated State Management
 
 **Status:** Accepted
 
@@ -10,74 +10,106 @@
 
 ## Context
 
-Initially, Marcus was designed to manage a single project. As usage grew, several requirements emerged:
+Initially, Marcus was designed to manage a single project. As usage grew, requirements emerged for managing multiple projects:
 
 ### User Needs
-1. **Multiple Projects:** Users want to manage multiple projects simultaneously
-2. **Context Switching:** Quick switching between projects without restart
-3. **Isolated State:** Each project's tasks, agents, and data must be independent
-4. **No Cross-Contamination:** Project A's agents shouldn't see Project B's tasks
+1. **Multiple Projects:** Users want to manage multiple project configurations
+2. **Project Switching:** Ability to switch between projects without restart
+3. **Isolated State:** Each project's configuration and state kept separate
+4. **No Cross-Contamination:** Project A's data shouldn't leak into Project B
 5. **Resource Efficiency:** Don't duplicate entire system for each project
 
+### Important Constraint
+**Marcus operates on ONE active project at a time.** While multiple project configurations can be stored and managed, only a single project can be actively worked on at any given moment. Agents cannot work on different projects simultaneously.
+
 ### Technical Challenges
-1. **Shared Resources:** Event bus, Kanban connections, AI providers
-2. **State Management:** How to maintain per-project state
-3. **Concurrency:** Multiple projects active simultaneously
-4. **Persistence:** How to store multi-project data
-5. **Discovery:** How to find and switch between projects
+1. **State Management:** How to store and switch between project states
+2. **Configuration Storage:** Where to persist multiple project configs
+3. **Context Switching:** How to efficiently switch active project
+4. **Resource Cleanup:** Managing memory for inactive projects
+5. **Discovery:** How to find and list available projects
 
 ---
 
 ## Decision
 
-We will implement **Multi-Project Support** using a **Project Context Manager** with isolated state per project.
+We will implement **Project Switching with Isolated State Management** using a **Project Context Manager** with LRU caching.
 
 ### Architecture Components
 
-#### 1. Project Context Manager (`src/core/project_context_manager.py`)
+#### 1. Project Registry (`src/core/project_registry.py`)
 
-Central coordinator for multi-project state management:
+Central registry for storing and managing project configurations:
+
+```python
+class ProjectRegistry:
+    """
+    Registry for managing multiple project configurations.
+
+    Stores project configs but only ONE project can be active at a time.
+    """
+
+    def __init__(self):
+        self._cache: Dict[str, ProjectConfig] = {}
+        self._active_project_id: Optional[str] = None  # SINGLE active project
+
+    async def set_active_project(self, project_id: str) -> bool:
+        """Set the ONE active project"""
+        self._active_project_id = project_id  # Replaces previous active
+        await self.persistence.store("active_project", {"project_id": project_id})
+
+    async def get_active_project(self) -> Optional[ProjectConfig]:
+        """Get the CURRENTLY active project (only one)"""
+        if self._active_project_id:
+            return await self.get_project(self._active_project_id)
+        return None
+```
+
+**Key Point:** `_active_project_id` is a **single value**, not a collection. Only ONE project is active.
+
+#### 2. Project Context Manager (`src/core/project_context_manager.py`)
+
+Manages switching between projects and maintains isolated state:
 
 ```python
 class ProjectContextManager:
     """
-    Manages multiple project contexts with isolated state.
+    Manages project switching with state isolation.
 
-    Features:
-    - LRU cache of active projects (limit to prevent memory bloat)
-    - Lazy loading (load project on first access)
-    - Automatic cleanup (evict least recently used)
-    - Thread-safe context switching
+    IMPORTANT: Only ONE project is active at a time.
+    Switching projects saves the current state and loads the new one.
     """
 
-    def __init__(self, max_active_projects: int = 10):
-        self._projects: dict[str, ProjectContext] = {}
-        self._current_project_id: str | None = None
-        self._max_active = max_active_projects
-        self._lru: list[str] = []  # Most recent at end
+    def __init__(self, registry: Optional[ProjectRegistry] = None):
+        self.registry = registry or ProjectRegistry()
+        self.contexts: OrderedDict[str, ProjectContext] = OrderedDict()
+        self.active_project_id: Optional[str] = None  # SINGLE active project
+        self.active_project_name: Optional[str] = None
 
-    async def get_or_create_project(
-        self,
-        project_id: str
-    ) -> ProjectContext:
-        """Get existing project or create new one"""
-        if project_id in self._projects:
-            self._touch_lru(project_id)
-            return self._projects[project_id]
+    async def switch_project(self, project_id: str) -> bool:
+        """
+        Switch from current project to a different project.
 
-        # Create new project context
-        context = await self._create_project_context(project_id)
-        self._add_project(project_id, context)
-        return context
+        This REPLACES the active project, not adds to it.
+        """
+        # Save current project state
+        if self.active_project_id:
+            await self._save_project_state(self.active_project_id)
 
-    async def switch_project(self, project_id: str) -> None:
-        """Switch active project context"""
-        await self.get_or_create_project(project_id)
-        self._current_project_id = project_id
-        logger.info(f"Switched to project: {project_id}")
+        # Load new project context
+        await self._get_or_create_context(project)
+
+        # UPDATE (not append) the active project
+        self.active_project_id = project_id  # Replaces previous
+        self.active_project_name = project.name
+        await self.registry.set_active_project(project_id)
+
+        return True
 ```
 
-#### 2. Project Context (`src/core/models.py`)
+**Key Point:** `switch_project()` **replaces** the active project, it doesn't add another concurrent project.
+
+#### 3. Project Context (`src/core/models.py`)
 
 Encapsulates all state for a single project:
 
@@ -89,99 +121,35 @@ class ProjectContext:
     project_id: str
     project_name: str
 
-    # Project-specific instances
-    task_queue: TaskQueue
-    agent_registry: AgentRegistry
-    event_bus: EventBus
-    memory_system: MemorySystem
-    kanban_provider: KanbanProvider
+    # Project-specific instances (loaded when project is active)
+    kanban_client: Optional[KanbanInterface] = None
+    context: Optional[Context] = None
+    events: Optional[Events] = None
+    project_state: Optional[ProjectState] = None
+    assignment_persistence: Optional[AssignmentPersistence] = None
 
-    # Project metadata
+    # Metadata
     created_at: datetime
     last_accessed: datetime
-    board_id: str | None = None
-    board_name: str | None = None
-
-    # Performance tracking
-    total_tasks: int = 0
-    completed_tasks: int = 0
-    active_agents: int = 0
+    is_connected: bool = False
 ```
 
-#### 3. Project Registry (`src/core/project_registry.py`)
+#### 4. LRU Cache for Performance
 
-Discovers and registers available projects:
+The context manager keeps recent project contexts in memory (LRU cache) to avoid reloading from disk on every switch:
 
 ```python
-class ProjectRegistry:
-    """
-    Discovers projects from multiple sources.
+# Use OrderedDict for LRU behavior
+self.contexts: OrderedDict[str, ProjectContext] = OrderedDict()
 
-    Sources:
-    1. Kanban boards (Planka, GitHub Projects, Linear)
-    2. Local project history files
-    3. Configuration files
-    """
+# When switching projects
+self.contexts.move_to_end(project_id)  # Mark as recently used
 
-    async def discover_projects(self) -> list[ProjectInfo]:
-        """Discover all available projects"""
-        projects = []
-
-        # From Kanban providers
-        projects.extend(await self._discover_from_kanban())
-
-        # From local history
-        projects.extend(await self._discover_from_history())
-
-        # From configuration
-        projects.extend(await self._discover_from_config())
-
-        return self._deduplicate(projects)
-
-    async def register_project(
-        self,
-        project_id: str,
-        project_name: str,
-        source: str
-    ) -> None:
-        """Register new project"""
-        await self._storage.save_project_info(
-            ProjectInfo(
-                project_id=project_id,
-                name=project_name,
-                source=source,
-                registered_at=datetime.now()
-            )
-        )
+# Cleanup old contexts if cache is full
+await self._cleanup_old_contexts()
 ```
 
-#### 4. Kanban Factory Pattern
-
-Abstract factory for creating provider-specific Kanban clients per project:
-
-```python
-class KanbanFactory:
-    """Factory for creating Kanban provider instances"""
-
-    @staticmethod
-    async def create_provider(
-        provider_type: str,
-        project_id: str,
-        **config
-    ) -> KanbanProvider:
-        """Create provider instance for specific project"""
-        if provider_type == "planka":
-            return await PlankaClient.create(
-                project_id=project_id,
-                **config
-            )
-        elif provider_type == "github":
-            return await GitHubProjectsClient.create(
-                project_id=project_id,
-                **config
-            )
-        # ...
-```
+**Key Point:** The cache stores multiple contexts for **fast switching**, not for **concurrent execution**.
 
 ---
 
@@ -189,62 +157,63 @@ class KanbanFactory:
 
 ### Positive
 
-✅ **True Multi-Project Support**
-- Users can manage multiple projects simultaneously
-- Each project completely isolated
-- No cross-contamination of data
+✅ **Clean Project Management**
+- Users can manage multiple project configurations
+- Easy switching between projects
+- No need to restart Marcus
+
+✅ **State Isolation**
+- Each project's state is completely separate
+- No cross-contamination between projects
+- Safe to work on different projects at different times
 
 ✅ **Resource Efficiency**
-- LRU cache prevents memory bloat
-- Lazy loading (only load active projects)
-- Automatic eviction of inactive projects
+- LRU cache prevents memory bloat (only recent projects in memory)
+- Inactive projects can be evicted
+- Fast switching without full reload
 
 ✅ **Clean Architecture**
-- Each project has own instances of core components
-- No global state (except ProjectContextManager)
+- Each project has isolated instances of core components
 - Easy to test (create isolated project context)
-
-✅ **Flexible Discovery**
-- Find projects from multiple sources
-- Auto-discover from Kanban boards
-- Manual registration supported
+- No global state pollution
 
 ✅ **Backward Compatible**
-- Single-project usage still works
-- Default project if not specified
-- Gradual migration path
+- Single-project usage still works (default active project)
+- Gradual migration path from legacy config
+- Can work without ever switching projects
 
-✅ **Performance**
-- Fast context switching (<10ms)
-- No need to reload entire system
-- Projects stay warm in cache
+✅ **Fast Context Switching**
+- Switch time ~5-10ms for cached projects
+- Projects stay warm in LRU cache
+- No system restart needed
 
 ### Negative
 
+⚠️ **Single Active Project Limitation**
+- **CANNOT run multiple projects concurrently**
+- **CANNOT have Agent A on Project 1 while Agent B works on Project 2**
+- All operations use the single active project
+- Must manually switch to work on different project
+
+⚠️ **Manual Switching Required**
+- User must explicitly call `switch_project`
+- No automatic routing of agents to their projects
+- Context switching overhead (though minimal)
+
 ⚠️ **Memory Usage**
-- Each project context consumes memory
-- LRU cache has memory limit
-- Mitigation: Configurable max_active_projects (default: 10)
+- Each cached project context consumes memory (~10-20MB)
+- LRU cache has limit (default: 10 projects)
+- Old contexts evicted automatically
 
-⚠️ **Complexity**
-- More complex than single-project design
-- Context manager adds indirection
-- Mitigation: Clear documentation, examples
+⚠️ **Context Loss on Switch**
+- Switching projects saves/loads state
+- In-memory state must be serializable
+- Small overhead on each switch
 
-⚠️ **Context Switching Cost**
-- Small overhead for switching projects
-- Must update references to current context
-- Mitigation: Async switching, minimal overhead (~5ms)
-
-⚠️ **Persistence Complexity**
-- Must store project_id with all data
-- More complex queries
-- Mitigation: Indexed project_id columns
-
-⚠️ **Discovery Overhead**
-- Scanning multiple sources takes time
-- Can be slow on first load
-- Mitigation: Cache discovery results, async discovery
+⚠️ **No Concurrent Operations**
+- Cannot execute tasks from multiple projects simultaneously
+- Cannot compare projects side-by-side in real-time
+- One project at a time architecture
 
 ---
 
@@ -252,145 +221,143 @@ class KanbanFactory:
 
 ### MCP Tool Integration
 
-Projects are identified in MCP tool calls:
+Projects are switched explicitly via MCP tool:
 
 ```python
 @server.call_tool()
-async def create_project(
-    description: str,
-    project_name: str,
-    options: dict | None = None
+async def switch_project(
+    project_id: str = None,
+    name: str = None
 ) -> dict:
     """
-    Create or discover project.
+    Switch the active project.
 
-    Options:
-    - mode: "new_project" | "auto" | "select_project"
-    - project_id: Explicit project ID (skip discovery)
+    Only ONE project can be active at a time.
     """
-    mode = options.get("mode", "new_project") if options else "new_project"
+    # Find project
+    if name:
+        projects = await registry.list_projects()
+        project = next((p for p in projects if p.name == name), None)
+        project_id = project.id if project else None
 
-    if mode == "auto":
-        # Try to find existing project
-        projects = await registry.discover_projects()
-        existing = [p for p in projects if p.name == project_name]
-        if existing:
-            project_id = existing[0].project_id
-        else:
-            project_id = await create_new_project(project_name)
-    elif mode == "select_project":
-        # User selects from existing
-        projects = await registry.discover_projects()
-        # ... selection logic
-    else:  # "new_project"
-        project_id = await create_new_project(project_name)
+    # Switch (replaces current active project)
+    success = await project_manager.switch_project(project_id)
 
-    # Switch to project
-    await context_manager.switch_project(project_id)
-
-    return {"success": True, "project_id": project_id}
+    return {"success": success, "active_project_id": project_id}
 ```
 
-### Task Assignment with Project Context
+### All Operations Use Active Project
+
+Every operation gets the **single** active project:
 
 ```python
 @server.call_tool()
 async def request_next_task(agent_id: str) -> dict:
     """Request next task for agent"""
-    # Get current project context
-    context = context_manager.current_project()
-    if not context:
-        return {"error": "No active project"}
+    # Get THE active project (only one)
+    active_project = await project_manager.get_active_project()
+    if not active_project:
+        return {"error": "No active project. Use switch_project first."}
 
-    # Use project-specific task queue
-    task = await context.task_queue.get_next_task(
-        agent_id=agent_id,
-        agent_skills=await get_agent_skills(agent_id)
-    )
+    # Use that single project's task queue
+    context = project_manager.contexts[active_project.id]
+    task = await context.task_queue.get_next_task(agent_id)
 
     return {"success": True, "task": task}
 ```
 
 ### Persistence Schema
 
-All persistence includes `project_id` for filtering:
+All data includes `project_id` for organization, but operations filter by the **single** active project:
 
 ```sql
 -- Tasks table
 CREATE TABLE tasks (
     id TEXT PRIMARY KEY,
-    project_id TEXT NOT NULL,  -- Added for multi-project
+    project_id TEXT NOT NULL,  -- For organization/filtering
     title TEXT NOT NULL,
     status TEXT NOT NULL,
     -- ...
-    FOREIGN KEY (project_id) REFERENCES projects(id)
 );
-CREATE INDEX idx_tasks_project_id ON tasks(project_id);
 
--- Assignments table
-CREATE TABLE assignments (
-    id INTEGER PRIMARY KEY,
-    project_id TEXT NOT NULL,  -- Added for multi-project
-    task_id TEXT NOT NULL,
-    agent_id TEXT NOT NULL,
-    -- ...
-);
-CREATE INDEX idx_assignments_project_id ON assignments(project_id);
-
--- Events table
-CREATE TABLE events (
-    id INTEGER PRIMARY KEY,
-    project_id TEXT,  -- Added for multi-project
-    event_type TEXT NOT NULL,
-    -- ...
-);
-CREATE INDEX idx_events_project_id ON events(project_id);
+-- When querying, always filter by the SINGLE active project
+SELECT * FROM tasks
+WHERE project_id = :active_project_id  -- Only one active
 ```
 
-### LRU Cache Strategy
+### Project Switching Flow
 
-```python
-class ProjectContextManager:
-    def _add_project(
-        self,
-        project_id: str,
-        context: ProjectContext
-    ) -> None:
-        """Add project to cache with LRU eviction"""
-        # Evict if over limit
-        if len(self._projects) >= self._max_active:
-            # Evict least recently used
-            lru_project_id = self._lru[0]
-            await self._evict_project(lru_project_id)
-
-        self._projects[project_id] = context
-        self._lru.append(project_id)
-
-    def _touch_lru(self, project_id: str) -> None:
-        """Mark project as recently used"""
-        self._lru.remove(project_id)
-        self._lru.append(project_id)
-
-    async def _evict_project(self, project_id: str) -> None:
-        """Evict project from cache"""
-        context = self._projects[project_id]
-
-        # Cleanup resources
-        await context.event_bus.shutdown()
-        await context.kanban_provider.disconnect()
-
-        del self._projects[project_id]
-        self._lru.remove(project_id)
-
-        logger.info(f"Evicted project from cache: {project_id}")
 ```
+User: switch_project("project-2")
+  ↓
+1. Save current project state (project-1)
+   - Persist task queue state
+   - Save project state snapshot
+   - Close kanban connection
+  ↓
+2. Load new project context (project-2)
+   - Get ProjectContext from cache OR create new
+   - Initialize kanban client for project-2
+   - Load task queue
+   - Restore project state
+  ↓
+3. Update active project reference
+   - self.active_project_id = "project-2"
+   - All subsequent operations use project-2
+  ↓
+4. Mark as recently used (LRU)
+   - Move to end of OrderedDict
+   - Evict old projects if cache full
+```
+
+---
+
+## What This Is and Is NOT
+
+### ✅ What This IS
+
+- **Project Configuration Management:** Store configs for many projects
+- **Project Switching:** Switch active project without restart
+- **State Isolation:** Each project has separate state
+- **LRU Caching:** Fast switching between recent projects
+- **Single Active Project:** Only one project active at a time
+
+### ❌ What This is NOT
+
+- **Multi-Project Execution:** Cannot run multiple projects simultaneously
+- **Concurrent Agent Routing:** Cannot have agents on different projects at once
+- **Parallel Project Processing:** All work happens on the single active project
+- **Multi-Tenancy:** No isolation between concurrent project operations (because there aren't any)
+
+---
+
+## Future Enhancements
+
+To support **true multi-project concurrency** would require:
+
+### Phase 1: Agent-Project Binding
+- Associate each agent with a specific project
+- Route agent requests to their project's context
+- Maintain multiple active projects
+
+### Phase 2: Concurrent Execution
+- Multiple active project contexts simultaneously
+- Thread-safe access to different project contexts
+- Resource pooling for kanban clients
+
+### Phase 3: Cross-Project Operations
+- Task dependencies across projects
+- Resource sharing between projects
+- Project aggregation and reporting
+
+**Current Status:** Not planned. Single active project meets current needs.
 
 ---
 
 ## Migration Path
 
-### Phase 1: Add Project Context (✅ Complete)
-- Implement ProjectContext dataclass
+### Phase 1: Add Project Registry (✅ Complete)
+- Implement ProjectRegistry for storage
 - Add project_id to all core models
 - Update persistence schema
 
@@ -399,54 +366,50 @@ class ProjectContextManager:
 - Add LRU cache
 - Integrate with MCP tools
 
-### Phase 3: Discovery (✅ Complete)
-- Implement ProjectRegistry
-- Add discovery from multiple sources
-- Auto-discovery on startup
+### Phase 3: Switching Tools (✅ Complete)
+- Add `switch_project` MCP tool
+- Add `list_projects` MCP tool
+- Add `get_current_project` tool
 
 ### Phase 4: Backward Compatibility (✅ Complete)
 - Default project for single-project usage
-- Migration script for existing data
-- Deprecation warnings
+- Migration from legacy config
+- Auto-create project from old config
 
 ---
 
 ## Alternatives Considered
 
-### 1. Separate Process Per Project
+### 1. True Multi-Project Concurrency
+**Rejected** because:
+- Current use cases don't require it
+- Adds significant complexity
+- Resource overhead (multiple kanban connections, etc.)
+- Most users work on one project at a time
+
+**When to Reconsider:**
+- Users need to compare projects in real-time
+- Agents need to work on different projects simultaneously
+- Cross-project task dependencies emerge
+
+### 2. No Project Management (Single Project Only)
+**Rejected** because:
+- Users want to manage multiple projects
+- Switching without restart is valuable
+- Project isolation prevents confusion
+
+### 3. Separate Process Per Project
 **Rejected** because:
 - High resource overhead (memory, CPU)
 - Complex inter-process communication
-- Difficult state management
+- Overkill for sequential project work
 
-**When to Reconsider:**
-- Need true process isolation
-- Security requirements (untrusted projects)
-- Independent scaling per project
-
-### 2. Global State with Filtering
+### 4. Database-Level Filtering Only
 **Rejected** because:
-- High risk of cross-contamination
-- Complex filtering logic everywhere
-- Shared resources cause conflicts
-- Hard to reason about state
-
-### 3. Database-Level Multi-Tenancy
-**Partially Adopted:**
-- We use project_id filtering in queries
-- But also isolated in-memory state
-
-**Why Hybrid:**
-- Persistence needs project filtering
-- In-memory state benefits from isolation
-- Best of both approaches
-
-### 4. Separate Database Per Project
-**Rejected** because:
-- File system clutter
-- Connection pool overhead
-- Hard to query across projects
-- Backup/restore complexity
+- No in-memory state isolation
+- Hard to manage multiple kanban connections
+- Context switching is complex
+- No clear "active project" concept
 
 ---
 
@@ -460,16 +423,23 @@ class ProjectContextManager:
 
 ## References
 
-- [Multi-Tenancy Patterns](https://docs.microsoft.com/en-us/azure/architecture/patterns/multitenancy)
 - [LRU Cache Design](https://en.wikipedia.org/wiki/Cache_replacement_policies#LRU)
+- [Context Manager Pattern](https://docs.python.org/3/reference/datamodel.html#context-managers)
 
 ---
 
 ## Metrics
 
-After implementing multi-project support:
-- **Context Switch Time:** ~5ms average
-- **Memory Per Project:** ~10-20MB (varies with task count)
-- **Max Concurrent Projects:** 10 (configurable)
-- **Discovery Time:** ~200ms (3 Kanban boards)
+After implementing project switching:
+- **Context Switch Time:** ~5-10ms average
+- **Memory Per Cached Project:** ~10-20MB (varies with task count)
+- **LRU Cache Size:** 10 projects (configurable)
+- **Active Projects:** 1 (always)
+- **Stored Projects:** Unlimited (only cache limit)
 - **Zero cross-contamination incidents** in testing and production
+
+---
+
+## Key Takeaway
+
+Marcus supports **managing multiple projects** with **fast switching** between them, but operates on **only ONE project at a time**. This is not multi-tenancy or concurrent project execution - it's efficient single-project execution with the ability to switch projects quickly.

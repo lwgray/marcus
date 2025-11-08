@@ -22,7 +22,7 @@ Marcus exists within an ecosystem of AI agents and external systems:
 │           │                                 │                       │
 │           │      ┌─────────────────────┐    │                       │
 │           └─────►│  Marcus MCP Server  │◄───┘                       │
-│                  │  (Multi-Project)    │                            │
+│                  │ (Project Switching) │                            │
 │                  └──────────┬──────────┘                            │
 │                             │                                       │
 │  ┌──────────────────┐       │      ┌──────────────────┐            │
@@ -358,32 +358,38 @@ Agent         Marcus           Kanban         History        Memory         Moni
  │              │                    │              │           │            │
 ```
 
-### Multi-Project Switching Sequence
+### Project Switching Sequence (Single Active Project)
+
+**Note:** Marcus switches FROM one active project TO another. Only ONE project is active at any time.
 
 ```
-Agent         Marcus           Registry       Kanban1         Kanban2
+User          Marcus           Registry       Kanban1         Kanban2
  │              │                │              │                │
- ├─ Switch ──────────────────────────────────────────────────────┤
- │ Project                        │              │                │
+ ├─ switch_────────────────────────────────────────────────────┤
+ │  project(2)                    │              │                │
  │                                │              │                │
- │              ├─ Get Context ────────────────────────────────┤
- │              │ (Project 1)      │  Find Config │                │
+ │              ├─ Save State ──────────────────────────────┤
+ │              │ (Project 1)      │   Save       │                │
  │              │                  │              │                │
  │              ├─ Disconnect ──────────────────────────────┤
- │              │ Old Client        │              │ Cleanup       │
+ │              │ Kanban1 Client   │              │ Cleanup       │
  │              │◄─────────────────┤              │                │
  │              │                  │              │                │
  │              ├─ Get Context ────────────────────────────┤
- │              │ (Project 2)      │  Find Config │                │
+ │              │ (Project 2)      │  Load Config │                │
  │              │                  │◄─────────────────────┤        │
  │              │                  │              │      Connect  │
  │              ├─ Connect ────────────────────────────────────────┤
- │              │ New Client        │              │               │ Create
+ │              │ Kanban2 Client   │              │               │ Create
  │              │                   │              │               │ Session
+ │              │                  │              │               │
+ │              ├─ active_project_id = "project-2" (REPLACES)     │
  │              │                   │              │               │
- │◄─────────────┤ Ready             │              │               │
+ │◄─────────────┤ Switched to Project 2            │               │
  │              │                   │              │               │
 ```
+
+**Key:** The switch operation **replaces** the active project. Project 1 is now inactive, Project 2 is now active.
 
 ---
 

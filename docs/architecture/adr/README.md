@@ -60,18 +60,19 @@ Implements publish/subscribe pattern for loose coupling and audit trail.
 
 ---
 
-#### [ADR-0003: Multi-Project Support with Isolated State](./0003-multi-project-support.md)
+#### [ADR-0003: Project Switching with Isolated State Management](./0003-multi-project-support.md)
 **Status:** Accepted | **Date:** 2024-11
 
-Enables managing multiple projects simultaneously with complete state isolation.
+Enables managing multiple project configurations with fast switching between them. **Only ONE project is active at a time.**
 
 **Key Points:**
-- ProjectContextManager with LRU cache (max 10 active projects)
-- Each project has isolated: task queue, event bus, agent registry, memory
+- ProjectContextManager with LRU cache (stores up to 10 project contexts)
+- Each project has isolated state (loaded when made active)
 - Project discovery from Kanban boards and local history
-- Fast context switching (~5ms)
+- Fast context switching (~5-10ms)
+- Single `active_project_id` variable (not concurrent projects)
 
-**Impact:** ✅ True multi-tenancy, resource efficiency | ⚠️ Memory usage per project
+**Impact:** ✅ Project management, fast switching, state isolation | ⚠️ Cannot run multiple projects concurrently
 
 ---
 
@@ -131,7 +132,7 @@ Four-layer error framework: exceptions, strategies, responses, monitoring.
 - [ADR-0002: Event-Driven Communication](./0002-event-driven-communication.md)
 
 ### Scalability & Performance
-- [ADR-0003: Multi-Project Support](./0003-multi-project-support.md)
+- [ADR-0003: Project Switching](./0003-multi-project-support.md)
 - [ADR-0004: Async-First Design](./0004-async-first-design.md)
 
 ### Data & Persistence

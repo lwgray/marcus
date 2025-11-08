@@ -25,10 +25,10 @@ Marcus follows a **Layered Architecture with Domain-Driven Design (DDD)** princi
    - Event history tracking for audit trails
    - Optional persistence for long-term event storage
 
-3. **Multi-Project Support:**
-   - Project Context Manager for switching between projects
-   - Isolated state per project
-   - Kanban factory for provider abstraction
+3. **Project Management:**
+   - Project switching with isolated state (one active project at a time)
+   - Project Context Manager for managing multiple project configurations
+   - LRU caching for fast project switching
 
 4. **Asynchronous-First Design:**
    - All I/O operations are async
@@ -825,44 +825,96 @@ MarcusBaseError (All Marcus user-facing errors)
 
 ---
 
-## 9. MULTI-PROJECT SUPPORT
+## 9. PROJECT MANAGEMENT (Single Active Project)
+
+**IMPORTANT:** Marcus operates on **ONE active project at a time**. While multiple project configurations can be stored and managed, only a single project is actively being worked on at any moment. Agents cannot work on different projects simultaneously.
 
 ### 9.1 **Project Registry**
 
+Stores and manages multiple project configurations, but enforces single active project:
+
 ```
 ProjectRegistry
-├── discover_projects() - Find Kanban boards
-├── create_project() - Register new project
-├── get_active_project() - Get current project
-└── switch_project() - Change active project
+├── discover_projects() - Find all Kanban boards
+├── create_project() - Register new project configuration
+├── get_active_project() - Get THE active project (only one)
+├── set_active_project() - Set which project is active (replaces previous)
+└── list_projects() - List all stored project configs
 ```
+
+**Key:** `_active_project_id` is a **single value**, not a collection.
 
 ### 9.2 **Project Context Manager**
 
+Manages switching between projects with LRU caching:
+
 ```
 ProjectContextManager
-├── contexts: OrderedDict[project_id -> ProjectContext]
-├── active_project_id: str
+├── contexts: OrderedDict[project_id -> ProjectContext]  # LRU cache
+├── active_project_id: str  # SINGLE active project
+├── active_project_name: str
 └── Methods:
-    ├── initialize() - Load projects
-    ├── switch_project(id) - Change project
-    ├── get_context() - Get current context
-    ├── cleanup() - Release unused projects
-    └── sync_projects() - Refresh from Kanban
+    ├── initialize() - Load project registry
+    ├── switch_project(id) - REPLACE active project with new one
+    ├── get_kanban_client() - Get client for ACTIVE project
+    ├── get_context() - Get context of ACTIVE project
+    └── cleanup() - Evict inactive projects from cache (LRU)
 ```
 
-### 9.3 **Project Context Isolation**
+**Key:** `switch_project()` **replaces** the active project, not adds to it.
+
+### 9.3 **Project Context (Cached State)**
+
+Each project has isolated state, loaded into context when made active:
 
 ```
 ProjectContext
 ├── project_id
-├── kanban_client (project-specific)
-├── context (task context)
-├── events (project events)
-├── project_state (snapshot)
-├── assignment_persistence (leases)
-└── last_accessed (LRU tracking)
+├── kanban_client (loaded when project is active)
+├── context (task context for this project)
+├── events (project-specific events)
+├── project_state (snapshot of project state)
+├── assignment_persistence (task assignments for this project)
+└── last_accessed (for LRU eviction)
 ```
+
+**Key:** Contexts are cached for **fast switching**, not for **concurrent execution**.
+
+### 9.4 **Project Switching Flow**
+
+```
+User calls: switch_project("project-2")
+  ↓
+1. Save current project state (if any)
+   - Persist project-1 state
+   - Close project-1 kanban connection
+  ↓
+2. Load new project context
+   - Get ProjectContext for project-2 (from cache or create)
+   - Initialize kanban client for project-2
+   - Restore project-2 state
+  ↓
+3. Update active project
+   - self.active_project_id = "project-2"  # REPLACES project-1
+   - All subsequent operations use project-2
+  ↓
+4. LRU cache management
+   - Mark project-2 as recently used
+   - Evict least recently used projects if cache full
+```
+
+### 9.5 **Limitations**
+
+❌ **Cannot do:**
+- Run multiple projects simultaneously
+- Have Agent A on Project 1 while Agent B works on Project 2
+- Execute tasks from different projects concurrently
+
+✅ **Can do:**
+- Store multiple project configurations
+- Switch between projects without restart (~5-10ms)
+- Keep recent projects cached for fast switching
+- Isolate project state to prevent cross-contamination
 
 ---
 
@@ -998,7 +1050,9 @@ Agent Workspace
    - Sensible defaults
    - Fallback values
 
-### 14.2 **Multi-Project Configuration**
+### 14.2 **Project Management Configuration**
+
+Store multiple project configurations, with one active at a time:
 
 ```json
 {
@@ -1008,9 +1062,15 @@ Agent Workspace
       "name": "My App",
       "board_id": "123",
       "provider": "planka"
+    },
+    {
+      "id": "project-2",
+      "name": "Other App",
+      "board_id": "456",
+      "provider": "planka"
     }
   ],
-  "active_project": "project-1",
+  "active_project": "project-1",  // SINGLE active project at a time
   "providers": {
     "planka": {
       "url": "http://localhost:3000",
@@ -1024,6 +1084,8 @@ Agent Workspace
   }
 }
 ```
+
+**Note:** While multiple projects can be stored, only `active_project` is worked on at any moment. Use `switch_project` to change which project is active.
 
 ---
 
@@ -1086,7 +1148,7 @@ Marcus is a sophisticated multi-agent coordination platform with:
 - **Pluggable providers** for flexibility (Kanban, AI)
 - **Rich domain models** for complex workflows
 - **Comprehensive error handling** with retry strategies
-- **Multi-project support** with isolated state
+- **Project management** with switching and isolated state (single active project)
 - **Learning & optimization** from past executions
 - **Real-time monitoring** and visualization
 - **Type-safe Python** with strict mypy checking
