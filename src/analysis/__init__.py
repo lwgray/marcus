@@ -8,9 +8,11 @@ from src.analysis.aggregator import (
     TaskHistory,
     TimelineEvent,
 )
+from src.analysis.query_api import ProjectHistoryQuery
 
 __all__ = [
     "ProjectHistoryAggregator",
+    "ProjectHistoryQuery",
     "ProjectHistory",
     "TaskHistory",
     "AgentHistory",
