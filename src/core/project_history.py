@@ -384,6 +384,11 @@ class ProjectHistoryPersistence:
         # Initialize SQLite backend for primary storage
         self.db_path = self.marcus_root / "data" / "marcus.db"
 
+        # Create reusable backend instance for connection pooling
+        from src.core.persistence import SQLitePersistence
+
+        self._backend = SQLitePersistence(db_path=self.db_path)
+
         logger.info(f"ProjectHistoryPersistence initialized (SQLite: {self.db_path})")
 
     def _get_project_dir(self, project_id: str) -> Path:
@@ -534,9 +539,11 @@ class ProjectHistoryPersistence:
 
         logger.info(f"Saved snapshot for project {snapshot.project_id}")
 
-    async def load_decisions(self, project_id: str) -> list[Decision]:
+    async def load_decisions(
+        self, project_id: str, limit: int = 10000, offset: int = 0
+    ) -> list[Decision]:
         """
-        Load all decisions for a project from SQLite.
+        Load decisions for a project from SQLite with pagination.
 
         Filters decisions by task_id, using conversation logs to identify
         project-specific tasks.
@@ -551,48 +558,77 @@ class ProjectHistoryPersistence:
         ----------
         project_id : str
             Project identifier
+        limit : int, optional
+            Maximum number of decisions to return (default: 10000)
+        offset : int, optional
+            Number of decisions to skip (default: 0)
 
         Returns
         -------
         list[Decision]
             List of decisions (empty if none exist)
         """
-        from src.core.persistence import SQLitePersistence
+        from src.core.error_framework import DatabaseError, error_context
 
-        try:
-            backend = SQLitePersistence(db_path=self.db_path)
+        with error_context("load_decisions", custom_context={"project_id": project_id}):
+            try:
+                # Use pooled backend instance
+                backend = self._backend
 
-            # Get task IDs for this project from conversation logs
-            project_task_ids = await self._get_task_ids_from_conversations(project_id)
+                # Get task IDs for this project from conversation logs
+                project_task_ids = await self._get_task_ids_from_conversations(
+                    project_id
+                )
 
-            # Query all decisions from persistence
-            all_decisions = await backend.query("decisions", limit=100000)
+                if not project_task_ids:
+                    logger.debug(
+                        f"No task IDs found for project {project_id} in conversations"
+                    )
+                    return []
 
-            # Filter decisions by project task IDs
-            decisions = []
-            for dec_data in all_decisions:
-                try:
-                    decision = Decision.from_dict(dec_data)
-                    # Include decision if its task_id matches this project
-                    if decision.task_id in project_task_ids:
+                # Create filter function for task IDs
+                def task_filter(item: dict[str, Any]) -> bool:
+                    return item.get("task_id") in project_task_ids
+
+                # Query decisions with filter and pagination
+                # Use reasonable limit to avoid memory issues
+                query_limit = min(limit, 10000)
+                all_decisions = await backend.query(
+                    "decisions", filter_func=task_filter, limit=query_limit + offset
+                )
+
+                # Apply offset and limit
+                paginated_decisions = all_decisions[offset : offset + limit]
+
+                # Parse decisions
+                decisions = []
+                for dec_data in paginated_decisions:
+                    try:
+                        decision = Decision.from_dict(dec_data)
                         decisions.append(decision)
-                except Exception as e:
-                    logger.debug(f"Error parsing decision: {e}")
-                    continue
+                    except Exception as e:
+                        logger.debug(
+                            f"Error parsing decision {dec_data.get('decision_id')}: {e}"
+                        )
+                        continue
 
-            logger.debug(
-                f"Loaded {len(decisions)} decisions for project {project_id} "
-                f"(from {len(project_task_ids)} tasks)"
-            )
-            return decisions
+                logger.debug(
+                    f"Loaded {len(decisions)} decisions for project {project_id} "
+                    f"(from {len(project_task_ids)} tasks, "
+                    f"limit={limit}, offset={offset})"
+                )
+                return decisions
 
-        except Exception as e:
-            logger.warning(f"Error loading decisions from SQLite: {e}")
-            return []
+            except Exception as e:
+                raise DatabaseError(
+                    operation="load_decisions", table="decisions"
+                ) from e
 
-    async def load_artifacts(self, project_id: str) -> list[ArtifactMetadata]:
+    async def load_artifacts(
+        self, project_id: str, limit: int = 10000, offset: int = 0
+    ) -> list[ArtifactMetadata]:
         """
-        Load all artifact metadata for a project from SQLite.
+        Load artifact metadata for a project from SQLite with pagination.
 
         Filters artifacts by task_id, using conversation logs to identify
         project-specific tasks.
@@ -607,44 +643,71 @@ class ProjectHistoryPersistence:
         ----------
         project_id : str
             Project identifier
+        limit : int, optional
+            Maximum number of artifacts to return (default: 10000)
+        offset : int, optional
+            Number of artifacts to skip (default: 0)
 
         Returns
         -------
         list[ArtifactMetadata]
             List of artifact metadata (empty if none exist)
         """
-        from src.core.persistence import SQLitePersistence
+        from src.core.error_framework import DatabaseError, error_context
 
-        try:
-            backend = SQLitePersistence(db_path=self.db_path)
+        with error_context("load_artifacts", custom_context={"project_id": project_id}):
+            try:
+                # Use pooled backend instance
+                backend = self._backend
 
-            # Get task IDs for this project from conversation logs
-            project_task_ids = await self._get_task_ids_from_conversations(project_id)
+                # Get task IDs for this project from conversation logs
+                project_task_ids = await self._get_task_ids_from_conversations(
+                    project_id
+                )
 
-            # Query all artifacts from persistence
-            all_artifacts = await backend.query("artifacts", limit=100000)
+                if not project_task_ids:
+                    logger.debug(
+                        f"No task IDs found for project {project_id} in conversations"
+                    )
+                    return []
 
-            # Filter artifacts by project task IDs
-            artifacts = []
-            for art_data in all_artifacts:
-                try:
-                    artifact = ArtifactMetadata.from_dict(art_data)
-                    # Include artifact if its task_id matches this project
-                    if artifact.task_id in project_task_ids:
+                # Create filter function for task IDs
+                def task_filter(item: dict[str, Any]) -> bool:
+                    return item.get("task_id") in project_task_ids
+
+                # Query artifacts with filter and pagination
+                # Use reasonable limit to avoid memory issues
+                query_limit = min(limit, 10000)
+                all_artifacts = await backend.query(
+                    "artifacts", filter_func=task_filter, limit=query_limit + offset
+                )
+
+                # Apply offset and limit
+                paginated_artifacts = all_artifacts[offset : offset + limit]
+
+                # Parse artifacts
+                artifacts = []
+                for art_data in paginated_artifacts:
+                    try:
+                        artifact = ArtifactMetadata.from_dict(art_data)
                         artifacts.append(artifact)
-                except Exception as e:
-                    logger.debug(f"Error parsing artifact: {e}")
-                    continue
+                    except Exception as e:
+                        logger.debug(
+                            f"Error parsing artifact {art_data.get('artifact_id')}: {e}"
+                        )
+                        continue
 
-            logger.debug(
-                f"Loaded {len(artifacts)} artifacts for project {project_id} "
-                f"(from {len(project_task_ids)} tasks)"
-            )
-            return artifacts
+                logger.debug(
+                    f"Loaded {len(artifacts)} artifacts for project {project_id} "
+                    f"(from {len(project_task_ids)} tasks, "
+                    f"limit={limit}, offset={offset})"
+                )
+                return artifacts
 
-        except Exception as e:
-            logger.warning(f"Error loading artifacts from SQLite: {e}")
-            return []
+            except Exception as e:
+                raise DatabaseError(
+                    operation="load_artifacts", table="artifacts"
+                ) from e
 
     async def load_snapshot(self, project_id: str) -> Optional[ProjectSnapshot]:
         """
@@ -742,3 +805,49 @@ class ProjectHistoryPersistence:
         except Exception as e:
             logger.warning(f"Error loading task IDs from conversations: {e}")
             return task_ids
+
+    async def _get_all_project_ids_from_conversations(self) -> set[str]:
+        """
+        Extract all unique project IDs from conversation logs.
+
+        Returns
+        -------
+        set[str]
+            Set of all project IDs found in conversation logs
+        """
+        project_ids: set[str] = set()
+
+        try:
+            # Conversation logs are stored in logs/conversations/
+            conversations_dir = self.marcus_root / "logs" / "conversations"
+            if not conversations_dir.exists():
+                logger.debug("No conversations directory found")
+                return project_ids
+
+            # Scan all conversation JSONL files
+            for log_file in conversations_dir.glob("conversations_*.jsonl"):
+                try:
+                    with open(log_file, "r") as f:
+                        for line in f:
+                            if not line.strip():
+                                continue
+                            try:
+                                entry = json.loads(line)
+                                # Extract project_id from metadata
+                                metadata = entry.get("metadata", {})
+                                if "project_id" in metadata:
+                                    project_ids.add(str(metadata["project_id"]))
+                            except json.JSONDecodeError:
+                                continue
+                except Exception as e:
+                    logger.debug(f"Error reading {log_file}: {e}")
+                    continue
+
+            logger.debug(
+                f"Found {len(project_ids)} unique project IDs from conversations"
+            )
+            return project_ids
+
+        except Exception as e:
+            logger.warning(f"Error loading project IDs from conversations: {e}")
+            return project_ids

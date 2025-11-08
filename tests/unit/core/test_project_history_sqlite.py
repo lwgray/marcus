@@ -119,6 +119,8 @@ class TestProjectHistoryPersistence:
 
         # Update persistence to use the temp_db with sample data
         persistence.db_path = temp_db
+        # Update backend to use new db_path (connection pooling fix)
+        persistence._backend = SQLitePersistence(db_path=temp_db)
 
         # Create conversation logs with project_id and task_ids
         conversations_dir = persistence.marcus_root / "logs" / "conversations"
@@ -162,6 +164,8 @@ class TestProjectHistoryPersistence:
         # Arrange
         project_id = "test_project_001"
         persistence.db_path = temp_db
+        # Update backend to use new db_path (connection pooling fix)
+        persistence._backend = SQLitePersistence(db_path=temp_db)
 
         # Create conversation logs
         conversations_dir = persistence.marcus_root / "logs" / "conversations"
@@ -195,6 +199,8 @@ class TestProjectHistoryPersistence:
         # Arrange
         backend = SQLitePersistence(db_path=temp_db)
         persistence.db_path = temp_db
+        # Update backend to use new db_path (connection pooling fix)
+        persistence._backend = backend
 
         # Store decision with naive timestamp (no timezone)
         naive_decision = {
@@ -256,6 +262,8 @@ class TestProjectHistoryPersistence:
         # Arrange
         backend = SQLitePersistence(db_path=temp_db)
         persistence.db_path = temp_db
+        # Update backend to use new db_path (connection pooling fix)
+        persistence._backend = backend
 
         # Store valid decision
         valid_dec = {
@@ -476,3 +484,372 @@ class TestArtifactMetadataFromDict:
         # Assert
         assert artifact.project_id is None
         assert artifact.to_dict()["project_id"] is None
+
+
+class TestPaginationSupport:
+    """Test suite for pagination in load_decisions and load_artifacts."""
+
+    @pytest.fixture
+    async def persistence_with_many_decisions(
+        self, tmp_path: Path
+    ) -> ProjectHistoryPersistence:
+        """Create persistence with many decisions for pagination testing."""
+        marcus_root = tmp_path / "marcus"
+        marcus_root.mkdir()
+        (marcus_root / "data").mkdir()
+
+        persistence = ProjectHistoryPersistence(marcus_root=marcus_root)
+
+        # Create conversation logs with project_id and task_ids
+        conversations_dir = persistence.marcus_root / "logs" / "conversations"
+        conversations_dir.mkdir(parents=True, exist_ok=True)
+        conv_file = conversations_dir / "conversations_test.jsonl"
+
+        import json
+
+        # Create 50 tasks for pagination testing
+        task_ids = [f"task_{i:03d}" for i in range(50)]
+        with open(conv_file, "w") as f:
+            for task_id in task_ids:
+                entry = {
+                    "metadata": {"project_id": "pagination_test", "task_id": task_id},
+                    "message": f"Test message for {task_id}",
+                }
+                f.write(json.dumps(entry) + "\n")
+
+        # Create 50 decisions in SQLite
+        backend = SQLitePersistence(db_path=persistence.db_path)
+        for i in range(50):
+            decision = {
+                "decision_id": f"dec_{i}_123.456",
+                "task_id": f"task_{i:03d}",
+                "agent_id": "agent_001",
+                "timestamp": "2025-11-08T12:00:00+00:00",
+                "what": f"Decision {i}",
+                "why": f"Reason {i}",
+                "impact": f"Impact {i}",
+                "project_id": "pagination_test",
+            }
+            await backend.store("decisions", decision["decision_id"], decision)
+
+        return persistence
+
+    @pytest.mark.asyncio
+    async def test_load_decisions_default_limit(
+        self, persistence_with_many_decisions: ProjectHistoryPersistence
+    ) -> None:
+        """Test load_decisions uses default limit of 10000."""
+        # Act
+        decisions = await persistence_with_many_decisions.load_decisions(
+            "pagination_test"
+        )
+
+        # Assert - should load all 50 decisions (under default limit)
+        assert len(decisions) == 50
+
+    @pytest.mark.asyncio
+    async def test_load_decisions_with_limit(
+        self, persistence_with_many_decisions: ProjectHistoryPersistence
+    ) -> None:
+        """Test load_decisions respects limit parameter."""
+        # Act
+        decisions = await persistence_with_many_decisions.load_decisions(
+            "pagination_test", limit=10
+        )
+
+        # Assert
+        assert len(decisions) == 10
+        # Verify decisions are from the test set (not specific order)
+        decision_nums = [int(d.what.split()[-1]) for d in decisions]
+        assert all(0 <= num < 50 for num in decision_nums)
+
+    @pytest.mark.asyncio
+    async def test_load_decisions_with_offset(
+        self, persistence_with_many_decisions: ProjectHistoryPersistence
+    ) -> None:
+        """Test load_decisions respects offset parameter."""
+        # Act - Get first 10 and then next 10 with offset
+        first_batch = await persistence_with_many_decisions.load_decisions(
+            "pagination_test", limit=10, offset=0
+        )
+        second_batch = await persistence_with_many_decisions.load_decisions(
+            "pagination_test", limit=10, offset=10
+        )
+
+        # Assert
+        assert len(first_batch) == 10
+        assert len(second_batch) == 10
+        # Verify no overlap between batches
+        first_ids = {d.decision_id for d in first_batch}
+        second_ids = {d.decision_id for d in second_batch}
+        assert len(first_ids & second_ids) == 0  # No intersection
+
+    @pytest.mark.asyncio
+    async def test_load_decisions_offset_beyond_results(
+        self, persistence_with_many_decisions: ProjectHistoryPersistence
+    ) -> None:
+        """Test load_decisions with offset beyond available results."""
+        # Act
+        decisions = await persistence_with_many_decisions.load_decisions(
+            "pagination_test", limit=10, offset=100
+        )
+
+        # Assert - should return empty list
+        assert len(decisions) == 0
+
+    @pytest.mark.asyncio
+    async def test_load_decisions_caps_at_10000(
+        self, persistence_with_many_decisions: ProjectHistoryPersistence
+    ) -> None:
+        """Test load_decisions caps query limit at 10000."""
+        # Act - request huge limit
+        decisions = await persistence_with_many_decisions.load_decisions(
+            "pagination_test", limit=100000
+        )
+
+        # Assert - should still work and return all 50
+        assert len(decisions) == 50
+
+    @pytest.mark.asyncio
+    async def test_load_artifacts_with_pagination(
+        self, persistence_with_many_decisions: ProjectHistoryPersistence
+    ) -> None:
+        """Test load_artifacts supports pagination."""
+        # Arrange - add some artifacts
+        backend = SQLitePersistence(db_path=persistence_with_many_decisions.db_path)
+        for i in range(30):
+            artifact = {
+                "artifact_id": f"art_{i}",
+                "task_id": f"task_{i:03d}",
+                "agent_id": "agent_001",
+                "timestamp": "2025-11-08T12:00:00+00:00",
+                "filename": f"spec_{i}.md",
+                "artifact_type": "specification",
+                "relative_path": f"docs/spec_{i}.md",
+                "absolute_path": f"/path/to/docs/spec_{i}.md",
+                "project_id": "pagination_test",
+            }
+            await backend.store("artifacts", artifact["artifact_id"], artifact)
+
+        # Act - Get two batches to verify pagination
+        first_batch = await persistence_with_many_decisions.load_artifacts(
+            "pagination_test", limit=10, offset=0
+        )
+        second_batch = await persistence_with_many_decisions.load_artifacts(
+            "pagination_test", limit=10, offset=10
+        )
+
+        # Assert
+        assert len(first_batch) == 10
+        assert len(second_batch) == 10
+        # Verify no overlap between batches
+        first_ids = {a.artifact_id for a in first_batch}
+        second_ids = {a.artifact_id for a in second_batch}
+        assert len(first_ids & second_ids) == 0  # No intersection
+
+
+class TestErrorHandling:
+    """Test suite for Marcus Error Framework integration."""
+
+    @pytest.fixture
+    def persistence(self, tmp_path: Path) -> ProjectHistoryPersistence:
+        """Create persistence for error testing."""
+        marcus_root = tmp_path / "marcus"
+        marcus_root.mkdir()
+        (marcus_root / "data").mkdir()
+        return ProjectHistoryPersistence(marcus_root=marcus_root)
+
+    @pytest.mark.asyncio
+    async def test_load_decisions_raises_database_error(
+        self, persistence: ProjectHistoryPersistence, monkeypatch: Any
+    ) -> None:
+        """Test load_decisions raises DatabaseError on failure."""
+        from src.core.error_framework import DatabaseError
+
+        # Arrange - mock backend to raise error
+        async def mock_query(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+            raise RuntimeError("Database connection failed")
+
+        monkeypatch.setattr(persistence._backend, "query", mock_query)
+
+        # Create minimal conversation logs
+        conversations_dir = persistence.marcus_root / "logs" / "conversations"
+        conversations_dir.mkdir(parents=True, exist_ok=True)
+        conv_file = conversations_dir / "conversations_test.jsonl"
+
+        import json
+
+        with open(conv_file, "w") as f:
+            entry = {
+                "metadata": {"project_id": "error_test", "task_id": "task_001"},
+                "message": "Test message",
+            }
+            f.write(json.dumps(entry) + "\n")
+
+        # Act & Assert
+        with pytest.raises(DatabaseError) as exc_info:
+            await persistence.load_decisions("error_test")
+
+        # Verify error attributes
+        assert "load_decisions" in str(exc_info.value)
+        assert "decisions" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_load_artifacts_raises_database_error(
+        self, persistence: ProjectHistoryPersistence, monkeypatch: Any
+    ) -> None:
+        """Test load_artifacts raises DatabaseError on failure."""
+        from src.core.error_framework import DatabaseError
+
+        # Arrange - mock backend to raise error
+        async def mock_query(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+            raise RuntimeError("Database connection failed")
+
+        monkeypatch.setattr(persistence._backend, "query", mock_query)
+
+        # Create minimal conversation logs
+        conversations_dir = persistence.marcus_root / "logs" / "conversations"
+        conversations_dir.mkdir(parents=True, exist_ok=True)
+        conv_file = conversations_dir / "conversations_test.jsonl"
+
+        import json
+
+        with open(conv_file, "w") as f:
+            entry = {
+                "metadata": {"project_id": "error_test", "task_id": "task_001"},
+                "message": "Test message",
+            }
+            f.write(json.dumps(entry) + "\n")
+
+        # Act & Assert
+        with pytest.raises(DatabaseError) as exc_info:
+            await persistence.load_artifacts("error_test")
+
+        # Verify error attributes
+        assert "load_artifacts" in str(exc_info.value)
+        assert "artifacts" in str(exc_info.value)
+
+
+class TestConversationLogQueries:
+    """Test suite for querying project IDs from conversation logs."""
+
+    @pytest.mark.asyncio
+    async def test_get_all_project_ids_from_conversations(
+        self, persistence: ProjectHistoryPersistence
+    ) -> None:
+        """Test extracting all unique project IDs from conversation logs."""
+        import json
+
+        # Arrange - create conversation logs with multiple projects
+        conversations_dir = persistence.marcus_root / "logs" / "conversations"
+        conversations_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create multiple log files with different projects
+        conv_file1 = conversations_dir / "conversations_20250101.jsonl"
+        conv_file2 = conversations_dir / "conversations_20250102.jsonl"
+
+        # File 1: projects A and B
+        with open(conv_file1, "w") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "metadata": {"project_id": "proj_a", "task_id": "task_1"},
+                        "message": "Test",
+                    }
+                )
+                + "\n"
+            )
+            f.write(
+                json.dumps(
+                    {
+                        "metadata": {"project_id": "proj_b", "task_id": "task_2"},
+                        "message": "Test",
+                    }
+                )
+                + "\n"
+            )
+
+        # File 2: projects B and C (B should appear only once)
+        with open(conv_file2, "w") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "metadata": {"project_id": "proj_b", "task_id": "task_3"},
+                        "message": "Test",
+                    }
+                )
+                + "\n"
+            )
+            f.write(
+                json.dumps(
+                    {
+                        "metadata": {"project_id": "proj_c", "task_id": "task_4"},
+                        "message": "Test",
+                    }
+                )
+                + "\n"
+            )
+
+        # Act
+        project_ids = await persistence._get_all_project_ids_from_conversations()
+
+        # Assert
+        assert len(project_ids) == 3
+        assert "proj_a" in project_ids
+        assert "proj_b" in project_ids
+        assert "proj_c" in project_ids
+
+    @pytest.mark.asyncio
+    async def test_get_all_project_ids_no_conversations(
+        self, persistence: ProjectHistoryPersistence
+    ) -> None:
+        """Test when no conversation logs exist."""
+        # Act
+        project_ids = await persistence._get_all_project_ids_from_conversations()
+
+        # Assert
+        assert len(project_ids) == 0
+
+    @pytest.mark.asyncio
+    async def test_get_all_project_ids_handles_malformed_lines(
+        self, persistence: ProjectHistoryPersistence
+    ) -> None:
+        """Test that malformed JSON lines are skipped gracefully."""
+        import json
+
+        # Arrange - create conversation log with some malformed lines
+        conversations_dir = persistence.marcus_root / "logs" / "conversations"
+        conversations_dir.mkdir(parents=True, exist_ok=True)
+
+        conv_file = conversations_dir / "conversations_test.jsonl"
+        with open(conv_file, "w") as f:
+            # Valid line
+            f.write(
+                json.dumps(
+                    {
+                        "metadata": {"project_id": "proj_good", "task_id": "task_1"},
+                        "message": "Valid",
+                    }
+                )
+                + "\n"
+            )
+            # Malformed JSON
+            f.write("{ this is not valid json }\n")
+            # Another valid line
+            f.write(
+                json.dumps(
+                    {
+                        "metadata": {"project_id": "proj_good2", "task_id": "task_2"},
+                        "message": "Valid",
+                    }
+                )
+                + "\n"
+            )
+
+        # Act
+        project_ids = await persistence._get_all_project_ids_from_conversations()
+
+        # Assert - should get both valid projects despite malformed line
+        assert len(project_ids) == 2
+        assert "proj_good" in project_ids
+        assert "proj_good2" in project_ids

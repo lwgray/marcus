@@ -49,9 +49,13 @@ class ProjectHistoryQuery:
         project_id: str,
         include_conversations: bool = True,
         include_kanban: bool = False,
+        decision_limit: int = 10000,
+        decision_offset: int = 0,
+        artifact_limit: int = 10000,
+        artifact_offset: int = 0,
     ) -> ProjectHistory:
         """
-        Get complete project history.
+        Get complete project history with pagination.
 
         Parameters
         ----------
@@ -61,6 +65,14 @@ class ProjectHistoryQuery:
             Whether to include conversation logs (default: True)
         include_kanban : bool
             Whether to include Kanban data (default: False)
+        decision_limit : int
+            Maximum number of decisions to load (default: 10000)
+        decision_offset : int
+            Number of decisions to skip (default: 0)
+        artifact_limit : int
+            Maximum number of artifacts to load (default: 10000)
+        artifact_offset : int
+            Number of artifacts to skip (default: 0)
 
         Returns
         -------
@@ -71,6 +83,10 @@ class ProjectHistoryQuery:
             project_id=project_id,
             include_conversations=include_conversations,
             include_kanban=include_kanban,
+            decision_limit=decision_limit,
+            decision_offset=decision_offset,
+            artifact_limit=artifact_limit,
+            artifact_offset=artifact_offset,
         )
 
     # Task Queries

@@ -264,9 +264,13 @@ class ProjectHistoryAggregator:
         project_id: str,
         include_conversations: bool = True,
         include_kanban: bool = False,
+        decision_limit: int = 10000,
+        decision_offset: int = 0,
+        artifact_limit: int = 10000,
+        artifact_offset: int = 0,
     ) -> ProjectHistory:
         """
-        Aggregate all historical data for a project.
+        Aggregate all historical data for a project with pagination.
 
         Parameters
         ----------
@@ -276,6 +280,14 @@ class ProjectHistoryAggregator:
             Whether to load conversation logs (can be slow)
         include_kanban : bool
             Whether to load Kanban data (can be slow, requires client)
+        decision_limit : int
+            Maximum number of decisions to load (default: 10000)
+        decision_offset : int
+            Number of decisions to skip (default: 0)
+        artifact_limit : int
+            Maximum number of artifacts to load (default: 10000)
+        artifact_offset : int
+            Number of artifacts to skip (default: 0)
 
         Returns
         -------
@@ -291,9 +303,13 @@ class ProjectHistoryAggregator:
                 logger.debug(f"Returning cached history for {project_id}")
                 return cached_history
 
-        # Load new persistent registries
-        decisions = await self.history_persistence.load_decisions(project_id)
-        artifacts = await self.history_persistence.load_artifacts(project_id)
+        # Load new persistent registries with pagination
+        decisions = await self.history_persistence.load_decisions(
+            project_id, limit=decision_limit, offset=decision_offset
+        )
+        artifacts = await self.history_persistence.load_artifacts(
+            project_id, limit=artifact_limit, offset=artifact_offset
+        )
         snapshot = await self.history_persistence.load_snapshot(project_id)
 
         # Load existing data sources

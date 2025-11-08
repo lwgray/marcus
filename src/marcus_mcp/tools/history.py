@@ -27,7 +27,7 @@ async def query_project_history(
     **filters: Any,
 ) -> dict[str, Any]:
     """
-    Query project history with flexible filtering.
+    Query project history with flexible filtering and pagination.
 
     This unified MCP tool provides access to all project history queries.
     Agents can query tasks, decisions, artifacts, agents, timeline, and
@@ -53,12 +53,15 @@ async def query_project_history(
     state : Any
         Marcus server state
     **filters : Any
-        Additional filters specific to query_type
+        Additional filters specific to query_type. Common pagination filters:
+        - limit (int): Maximum results to return (default: 10000, max: 10000)
+        - offset (int): Number of results to skip (default: 0)
 
     Returns
     -------
     dict[str, Any]
-        Query results with success status and data
+        Query results with success status and data. For paginated queries,
+        includes pagination metadata (limit, offset, returned_count).
 
     Examples
     --------
@@ -68,13 +71,32 @@ async def query_project_history(
     Find completed tasks:
     >>> await query_project_history("proj123", "tasks", state, status="completed")
 
-    Find decisions by agent:
-    >>> await query_project_history("proj123", "decisions", state, agent_id="agent1")  # noqa: E501
+    Find decisions by agent with pagination:
+    >>> await query_project_history("proj123", "decisions", state, agent_id="agent1", limit=100, offset=0)  # noqa: E501
 
     Search conversations for keyword:
     >>> await query_project_history("proj123", "conversations", state, keyword="API")  # noqa: E501
     """
     try:
+        # Extract pagination parameters from filters
+        limit = filters.get("limit", 10000)
+        offset = filters.get("offset", 0)
+
+        # Validate pagination parameters
+        if not isinstance(limit, int) or limit < 1:
+            return {
+                "success": False,
+                "error": f"Invalid limit: {limit}. Must be positive integer.",
+            }
+        if not isinstance(offset, int) or offset < 0:
+            return {
+                "success": False,
+                "error": f"Invalid offset: {offset}. Must be non-negative integer.",
+            }
+
+        # Cap limit at 10000 to prevent memory issues
+        limit = min(limit, 10000)
+
         # Initialize aggregator and query API
         aggregator = ProjectHistoryAggregator()
         query_api = ProjectHistoryQuery(aggregator)
@@ -170,14 +192,19 @@ async def query_project_history(
                     project_id, filters["affecting_task_id"]
                 )
             else:
-                # No filter - get all decisions
-                history = await query_api.get_project_history(project_id)
+                # No filter - get all decisions with pagination
+                history = await query_api.get_project_history(
+                    project_id,
+                    decision_limit=limit,
+                    decision_offset=offset,
+                )
                 decisions = history.decisions
 
             return {
                 "success": True,
                 "data": [d.to_dict() for d in decisions],
                 "count": len(decisions),
+                "pagination": {"limit": limit, "offset": offset},
             }
 
         elif query_type == "artifacts":
@@ -195,14 +222,19 @@ async def query_project_history(
                     project_id, filters["agent_id"]
                 )
             else:
-                # No filter - get all artifacts
-                history = await query_api.get_project_history(project_id)
+                # No filter - get all artifacts with pagination
+                history = await query_api.get_project_history(
+                    project_id,
+                    artifact_limit=limit,
+                    artifact_offset=offset,
+                )
                 artifacts = history.artifacts
 
             return {
                 "success": True,
                 "data": [a.to_dict() for a in artifacts],
                 "count": len(artifacts),
+                "pagination": {"limit": limit, "offset": offset},
             }
 
         elif query_type == "agent_history":
@@ -353,10 +385,10 @@ async def query_project_history(
 
 async def list_project_history_files(state: Any) -> dict[str, Any]:
     """
-    List all projects with available history data.
+    List all projects with available history data from SQLite and conversation logs.
 
-    Scans the project history storage directory to find all projects
-    that have recorded history data (decisions, artifacts, snapshots).
+    Queries both SQLite database (decisions/artifacts) and conversation logs
+    to find all projects with execution history.
 
     Parameters
     ----------
@@ -366,7 +398,14 @@ async def list_project_history_files(state: Any) -> dict[str, Any]:
     Returns
     -------
     dict[str, Any]
-        Dict with success status and list of project IDs with history
+        Dict with success status and list of projects with history data:
+        - project_id: Project identifier (from conversation logs)
+        - project_name: Human-readable name (defaults to project_id)
+        - has_decisions: Whether project has decisions in SQLite
+        - has_artifacts: Whether project has artifacts in SQLite
+        - decision_count: Number of decisions
+        - artifact_count: Number of artifacts
+        - last_updated: ISO timestamp of last activity
 
     Examples
     --------
@@ -376,11 +415,12 @@ async def list_project_history_files(state: Any) -> dict[str, Any]:
         "projects": [
             {
                 "project_id": "proj123",
-                "project_name": "My App",
+                "project_name": "proj123",
                 "has_decisions": True,
                 "has_artifacts": True,
-                "has_snapshot": False,
-                "last_updated": "2025-11-07T12:00:00Z"
+                "decision_count": 15,
+                "artifact_count": 8,
+                "last_updated": "2025-11-08T12:00:00Z"
             }
         ],
         "count": 1
@@ -390,68 +430,69 @@ async def list_project_history_files(state: Any) -> dict[str, Any]:
         from src.core.project_history import ProjectHistoryPersistence
 
         persistence = ProjectHistoryPersistence()
-        history_root = persistence.history_dir
+
+        # Get all unique project IDs from conversation logs
+        project_ids = await persistence._get_all_project_ids_from_conversations()
+
+        if not project_ids:
+            logger.debug("No projects found in conversation logs")
+            return {"success": True, "projects": [], "count": 0}
 
         projects = []
 
-        # Scan for project directories
-        if history_root.exists():
-            for project_dir in history_root.iterdir():
-                if not project_dir.is_dir():
+        # For each project, check SQLite for decisions and artifacts
+        for project_id in project_ids:
+            try:
+                # Get task IDs for this project
+                task_ids = await persistence._get_task_ids_from_conversations(
+                    project_id
+                )
+
+                if not task_ids:
                     continue
 
-                project_id = project_dir.name
+                # Query decisions and artifacts from SQLite
+                decisions = await persistence.load_decisions(
+                    project_id, limit=10000, offset=0
+                )
+                artifacts = await persistence.load_artifacts(
+                    project_id, limit=10000, offset=0
+                )
 
-                # Check what data exists
-                decisions_file = project_dir / "decisions.jsonl"
-                artifacts_file = project_dir / "artifacts.jsonl"
-                snapshot_file = project_dir / "snapshot.json"
-
-                has_decisions = decisions_file.exists()
-                has_artifacts = artifacts_file.exists()
-                has_snapshot = snapshot_file.exists()
-
-                # Get project name from snapshot if available
-                project_name = project_id
-                if has_snapshot:
-                    import json
-
-                    try:
-                        snapshot_data = json.loads(snapshot_file.read_text())
-                        project_name = snapshot_data.get("project_name", project_id)
-                    except Exception:
-                        pass
-
-                # Get last modified time
-                timestamps = []
-                if has_decisions:
-                    timestamps.append(decisions_file.stat().st_mtime)
-                if has_artifacts:
-                    timestamps.append(artifacts_file.stat().st_mtime)
-                if has_snapshot:
-                    timestamps.append(snapshot_file.stat().st_mtime)
-
+                # Find latest timestamp
                 last_updated = None
-                if timestamps:
-                    from datetime import datetime, timezone
+                all_timestamps = []
 
-                    last_updated = datetime.fromtimestamp(
-                        max(timestamps), tz=timezone.utc
-                    ).isoformat()
+                for decision in decisions:
+                    if decision.timestamp:
+                        all_timestamps.append(decision.timestamp)
+
+                for artifact in artifacts:
+                    if artifact.timestamp:
+                        all_timestamps.append(artifact.timestamp)
+
+                if all_timestamps:
+                    latest = max(all_timestamps)
+                    last_updated = latest.isoformat()
 
                 projects.append(
                     {
                         "project_id": project_id,
-                        "project_name": project_name,
-                        "has_decisions": has_decisions,
-                        "has_artifacts": has_artifacts,
-                        "has_snapshot": has_snapshot,
+                        "project_name": project_id,  # Could enhance with actual name
+                        "has_decisions": len(decisions) > 0,
+                        "has_artifacts": len(artifacts) > 0,
+                        "decision_count": len(decisions),
+                        "artifact_count": len(artifacts),
                         "last_updated": last_updated,
                     }
                 )
 
+            except Exception as e:
+                logger.debug(f"Error processing project {project_id}: {e}")
+                continue
+
         return {"success": True, "projects": projects, "count": len(projects)}
 
     except Exception as e:
-        logger.error(f"Error listing project history files: {e}", exc_info=True)
+        logger.error(f"Error listing project history: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
