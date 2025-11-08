@@ -304,12 +304,36 @@ class ProjectHistoryAggregator:
         outcomes = await self._load_task_outcomes(project_id)
         agent_profiles = await self._load_agent_profiles(project_id)
 
+        # Extract task_ids from conversations to filter outcomes
+        task_ids_in_project = set()
+        for msg in conversations:
+            if "task_id" in msg.metadata:
+                task_ids_in_project.add(str(msg.metadata["task_id"]))
+
+        # Filter outcomes to only those with task_ids seen in conversations
+        filtered_outcomes = [
+            outcome for outcome in outcomes if outcome.task_id in task_ids_in_project
+        ]
+
+        # Extract agent_ids from conversations to filter profiles
+        agent_ids_in_project = set()
+        for msg in conversations:
+            if msg.agent_id:
+                agent_ids_in_project.add(msg.agent_id)
+
+        # Filter agent profiles to only those with agent_ids seen in conversations
+        filtered_profiles = [
+            profile
+            for profile in agent_profiles
+            if profile.agent_id in agent_ids_in_project
+        ]
+
         # Build unified history
         tasks = self._build_task_histories(
-            outcomes, decisions, artifacts, conversations, events
+            filtered_outcomes, decisions, artifacts, conversations, events
         )
         agents = self._build_agent_histories(
-            agent_profiles, outcomes, decisions, artifacts
+            filtered_profiles, filtered_outcomes, decisions, artifacts
         )
         timeline = self._build_timeline(conversations, events, decisions, artifacts)
 
@@ -343,26 +367,44 @@ class ProjectHistoryAggregator:
                 logger.debug("No conversations directory found")
                 return messages
 
-            # Find all conversation files (may need to filter by project)
-            for log_file in conversations_dir.glob("*.json"):
+            # Find all conversation JSONL files and filter by project_id
+            for log_file in conversations_dir.glob("conversations_*.jsonl"):
                 try:
                     with open(log_file, "r") as f:
-                        data = json.load(f)
+                        for line in f:
+                            if not line.strip():
+                                continue
 
-                    # Filter by project_id if present in metadata
-                    for entry in data.get("conversations", []):
-                        if entry.get("metadata", {}).get("project_id") == project_id:
-                            messages.append(
-                                Message(
-                                    timestamp=datetime.fromisoformat(
-                                        entry["timestamp"]
-                                    ),
-                                    direction=entry.get("type", "unknown"),
-                                    agent_id=entry.get("agent_id", "unknown"),
-                                    content=entry.get("message", ""),
-                                    metadata=entry.get("metadata", {}),
-                                )
-                            )
+                            try:
+                                entry = json.loads(line)
+                                metadata = entry.get("metadata", {})
+
+                                # Filter by project_id
+                                if metadata.get("project_id") == project_id:
+                                    # Map conversation_type to direction
+                                    conv_type = entry.get("conversation_type", "")
+                                    if conv_type == "pm_to_worker":
+                                        direction = "from_pm"
+                                    elif conv_type == "worker_to_pm":
+                                        direction = "to_pm"
+                                    else:
+                                        direction = conv_type
+
+                                    messages.append(
+                                        Message(
+                                            timestamp=datetime.fromisoformat(
+                                                entry["timestamp"]
+                                            ),
+                                            direction=direction,
+                                            agent_id=entry.get("worker_id", "unknown"),
+                                            content=entry.get("message", ""),
+                                            metadata=metadata,
+                                        )
+                                    )
+                            except (json.JSONDecodeError, KeyError, ValueError):
+                                # Skip malformed lines
+                                continue
+
                 except Exception as e:
                     logger.warning(f"Error loading conversation log {log_file}: {e}")
 
@@ -372,28 +414,33 @@ class ProjectHistoryAggregator:
         return messages
 
     async def _load_agent_events(self, project_id: str) -> list[dict[str, Any]]:
-        """Load agent events for project."""
+        """Load agent events from Persistence backend."""
         events: list[dict[str, Any]] = []
 
         try:
-            # Agent events might be in events/ directory
-            events_dir = self.logs_dir / "events"
-            if not events_dir.exists():
-                logger.debug("No events directory found")
-                return events
+            # Import Persistence and get backend
+            from pathlib import Path
 
-            # Load event files
-            for event_file in events_dir.glob("*.json"):
-                try:
-                    with open(event_file, "r") as f:
-                        data = json.load(f)
+            from src.core.persistence import SQLitePersistence
 
-                    # Filter by project_id
-                    for entry in data.get("events", []):
-                        if entry.get("project_id") == project_id:
-                            events.append(entry)
-                except Exception as e:
-                    logger.warning(f"Error loading event log {event_file}: {e}")
+            backend = SQLitePersistence(db_path=Path("data/marcus.db"))
+
+            # Query all events from persistence
+            events_data = await backend.query("events", limit=10000)
+
+            # Filter by project_id and clean up persistence fields
+            for event_data in events_data:
+                # Remove internal persistence fields
+                event_data.pop("_key", None)
+                event_data.pop("_stored_at", None)
+
+                # Filter by project_id if present
+                if "project_id" in event_data:
+                    if event_data.get("project_id") == project_id:
+                        events.append(event_data)
+                else:
+                    # Include events without project_id for now
+                    events.append(event_data)
 
         except Exception as e:
             logger.warning(f"Error loading agent events: {e}")
@@ -401,45 +448,62 @@ class ProjectHistoryAggregator:
         return events
 
     async def _load_task_outcomes(self, project_id: str) -> list[TaskOutcome]:
-        """Load task outcomes from Memory system."""
+        """Load task outcomes from Memory system via Persistence backend."""
         outcomes: list[TaskOutcome] = []
 
         try:
-            # TaskOutcomes stored in data/marcus_state/memory/
-            memory_dir = self.state_dir / "memory"
-            if not memory_dir.exists():
-                logger.debug("No memory directory found")
-                return outcomes
+            # Import Persistence and get backend
+            from pathlib import Path
 
-            # Load outcomes file
-            outcomes_file = memory_dir / f"{project_id}_outcomes.json"
-            if outcomes_file.exists():
-                with open(outcomes_file, "r") as f:
-                    data = json.load(f)
+            from src.core.persistence import SQLitePersistence
 
-                for outcome_data in data.get("outcomes", []):
-                    # TaskOutcome doesn't have from_dict, manually construct
+            backend = SQLitePersistence(db_path=Path("data/marcus.db"))
+
+            # Query all task outcomes from persistence
+            outcomes_data = await backend.query("task_outcomes", limit=10000)
+
+            # Filter by project_id and reconstruct TaskOutcome objects
+            for outcome_data in outcomes_data:
+                # Check if this outcome belongs to the project
+                # Task outcomes don't have project_id directly, so include all
+                # for now and filter later by matching task_id with conversations
+
+                try:
+                    # Remove internal persistence fields
+                    outcome_data.pop("_key", None)
+                    outcome_data.pop("_stored_at", None)
+
+                    # Parse timestamps and ensure they're UTC timezone-aware
+                    started_at = None
+                    if outcome_data.get("started_at"):
+                        started_at = datetime.fromisoformat(outcome_data["started_at"])
+                        if started_at.tzinfo is None:
+                            started_at = started_at.replace(tzinfo=timezone.utc)
+
+                    completed_at = None
+                    if outcome_data.get("completed_at"):
+                        completed_at = datetime.fromisoformat(
+                            outcome_data["completed_at"]
+                        )
+                        if completed_at.tzinfo is None:
+                            completed_at = completed_at.replace(tzinfo=timezone.utc)
+
                     outcomes.append(
                         TaskOutcome(
                             task_id=outcome_data["task_id"],
                             agent_id=outcome_data["agent_id"],
-                            task_name=outcome_data["task_name"],
-                            estimated_hours=outcome_data["estimated_hours"],
-                            actual_hours=outcome_data["actual_hours"],
-                            success=outcome_data["success"],
+                            task_name=outcome_data.get("task_name", "Unknown"),
+                            estimated_hours=outcome_data.get("estimated_hours", 0.0),
+                            actual_hours=outcome_data.get("actual_hours", 0.0),
+                            success=outcome_data.get("success", False),
                             blockers=outcome_data.get("blockers", []),
-                            started_at=(
-                                datetime.fromisoformat(outcome_data["started_at"])
-                                if outcome_data.get("started_at")
-                                else None
-                            ),
-                            completed_at=(
-                                datetime.fromisoformat(outcome_data["completed_at"])
-                                if outcome_data.get("completed_at")
-                                else None
-                            ),
+                            started_at=started_at,
+                            completed_at=completed_at,
                         )
                     )
+                except Exception as e:
+                    logger.debug(f"Error reconstructing task outcome: {e}")
+                    continue
 
         except Exception as e:
             logger.warning(f"Error loading task outcomes: {e}")
@@ -447,24 +511,31 @@ class ProjectHistoryAggregator:
         return outcomes
 
     async def _load_agent_profiles(self, project_id: str) -> list[AgentProfile]:
-        """Load agent profiles from Memory system."""
+        """Load agent profiles from Memory system via Persistence backend."""
         profiles: list[AgentProfile] = []
 
         try:
-            # AgentProfiles stored in data/marcus_state/memory/
-            memory_dir = self.state_dir / "memory"
-            if not memory_dir.exists():
-                logger.debug("No memory directory found")
-                return profiles
+            # Import Persistence and get backend
+            from pathlib import Path
 
-            # Load profiles file
-            profiles_file = memory_dir / f"{project_id}_profiles.json"
-            if profiles_file.exists():
-                with open(profiles_file, "r") as f:
-                    data = json.load(f)
+            from src.core.persistence import SQLitePersistence
 
-                for profile_data in data.get("profiles", []):
-                    # AgentProfile doesn't have from_dict, manually construct
+            backend = SQLitePersistence(db_path=Path("data/marcus.db"))
+
+            # Query all agent profiles from persistence
+            profiles_data = await backend.query("agent_profiles", limit=10000)
+
+            # Filter by project_id and reconstruct AgentProfile objects
+            for profile_data in profiles_data:
+                # Check if this profile belongs to the project
+                # Agent profiles don't have project_id directly, so we'll include all
+                # for now and filter later by matching agent_id with conversations
+
+                try:
+                    # Remove internal persistence fields
+                    profile_data.pop("_key", None)
+                    profile_data.pop("_stored_at", None)
+
                     profiles.append(
                         AgentProfile(
                             agent_id=profile_data["agent_id"],
@@ -484,6 +555,9 @@ class ProjectHistoryAggregator:
                             ),
                         )
                     )
+                except Exception as e:
+                    logger.debug(f"Error reconstructing agent profile: {e}")
+                    continue
 
         except Exception as e:
             logger.warning(f"Error loading agent profiles: {e}")
@@ -687,9 +761,14 @@ class ProjectHistoryAggregator:
         # Add events
         for event in events:
             if "timestamp" in event:
+                # Parse timestamp and ensure it's timezone-aware
+                ts = datetime.fromisoformat(event["timestamp"])
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+
                 timeline.append(
                     TimelineEvent(
-                        timestamp=datetime.fromisoformat(event["timestamp"]),
+                        timestamp=ts,
                         event_type=event.get("event_type", "unknown"),
                         agent_id=event.get("agent_id"),
                         task_id=event.get("task_id"),
