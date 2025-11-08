@@ -13,6 +13,25 @@ FILE_MANAGEMENT:
   - Always Make sure all tests pass and you have 80% coverage
   - Always fix the mypy errors for your code changes
 
+  DATABASE_SAFETY:
+  Never perform destructive database operations without explicit user confirmation.
+
+  DESTRUCTIVE OPERATIONS (Require User Confirmation):
+  - DROP TABLE/DATABASE/COLUMN/INDEX
+  - TRUNCATE TABLE
+  - DELETE/UPDATE without WHERE clause
+  - Bulk operations affecting >100 rows
+  - Schema migrations that drop/alter columns
+  - Any operation on production databases
+
+  SAFE PRACTICES:
+  - Always use WHERE clauses for DELETE/UPDATE
+  - Wrap multi-step operations in transactions
+  - Use soft deletes (is_deleted flag) over hard deletes
+  - Count affected rows before bulk operations
+  - Create backups before schema changes
+  - Use test databases for testing, never production
+
 
   TEST_WRITING_INSTRUCTIONS:
   When writing tests for Marcus, follow this systematic approach:
