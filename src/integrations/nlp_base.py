@@ -159,7 +159,8 @@ class NaturalLanguageTaskCreator(ABC):
                     db_path = marcus_root / "data" / "marcus.db"
                     persistence = SQLitePersistence(db_path=db_path)
 
-                    task_id = kanban_task.get("id")
+                    # kanban_task is a Task object, not a dict
+                    task_id = kanban_task.id
                     if task_id:
                         await persistence.store(
                             "task_metadata",
