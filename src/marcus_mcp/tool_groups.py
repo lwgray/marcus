@@ -35,6 +35,9 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "start_experiment",
         "end_experiment",
         "get_experiment_status",
+        # Project history queries
+        "query_project_history",
+        "list_project_history_files",
     },
     "agent": {
         # Core workflow tools for autonomous agents
@@ -54,6 +57,9 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "start_experiment",
         "end_experiment",
         "get_experiment_status",
+        # Project history queries
+        "query_project_history",
+        "list_project_history_files",
     },
     "analytics": {
         # All tools for comprehensive analytics (Seneca)
@@ -131,6 +137,9 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "diagnose_project",
         "capture_stall_snapshot",
         "replay_snapshot_conversations",
+        # Project history queries
+        "query_project_history",
+        "list_project_history_files",
     },
 }
 

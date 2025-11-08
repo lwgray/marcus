@@ -1668,6 +1668,165 @@ class MarcusServer:
 
                 return await impl()
 
+        if "query_project_history" in allowed_tools:
+
+            @app.tool()  # type: ignore[misc]
+            async def query_project_history(
+                project_id: str,
+                query_type: str,
+                status: Optional[str] = None,
+                agent_id: Optional[str] = None,
+                task_id: Optional[str] = None,
+                artifact_type: Optional[str] = None,
+                affecting_task_id: Optional[str] = None,
+                event_type: Optional[str] = None,
+                keyword: Optional[str] = None,
+                start_time: Optional[str] = None,
+                end_time: Optional[str] = None,
+            ) -> Dict[str, Any]:
+                """
+                Query project history with flexible filtering.
+
+                Unified tool for querying project execution history across
+                tasks, decisions, artifacts, agents, timeline, and conversations.
+
+                Query Types:
+                - summary: Get project summary statistics
+                - tasks: Find tasks (filter by status, agent_id, or timerange)
+                - blocked_tasks: Find tasks with blockers
+                - task_dependencies: Get dependency chain (requires task_id)
+                - decisions: Find decisions (filter by task_id, agent_id, or
+                  affecting_task_id)
+                - artifacts: Find artifacts (filter by task_id, artifact_type,
+                  or agent_id)
+                - agent_history: Get agent history (requires agent_id)
+                - agent_metrics: Get agent performance metrics (requires agent_id)
+                - timeline: Search timeline events (filter by event_type, agent_id,
+                  task_id, or timerange)
+                - conversations: Search conversations (filter by keyword, agent_id,
+                  or task_id)
+
+                Parameters
+                ----------
+                project_id : str
+                    Project to query
+                query_type : str
+                    Type of query (see above for options)
+                status : Optional[str]
+                    Filter by task status (for tasks query)
+                agent_id : Optional[str]
+                    Filter by agent ID (for tasks/decisions/artifacts/timeline/
+                    conversations queries, or required for agent_history/agent_metrics)
+                task_id : Optional[str]
+                    Filter by task ID (for decisions/artifacts/timeline/conversations,
+                    or required for task_dependencies)
+                artifact_type : Optional[str]
+                    Filter by artifact type (for artifacts query)
+                affecting_task_id : Optional[str]
+                    Find decisions affecting this task (for decisions query)
+                event_type : Optional[str]
+                    Filter by event type (for timeline query)
+                keyword : Optional[str]
+                    Search keyword (for conversations query)
+                start_time : Optional[str]
+                    Start of time range in ISO format (for tasks/timeline queries)
+                end_time : Optional[str]
+                    End of time range in ISO format (for tasks/timeline queries)
+
+                Returns
+                -------
+                Dict[str, Any]
+                    Query results with success status and data
+
+                Examples
+                --------
+                Get project summary:
+                >>> query_project_history("proj123", "summary")
+
+                Find completed tasks:
+                >>> query_project_history("proj123", "tasks", status="completed")
+
+                Find decisions by agent:
+                >>> query_project_history("proj123", "decisions", agent_id="agent1")
+
+                Search conversations for keyword:
+                >>> query_project_history("proj123", "conversations", keyword="API")
+                """
+                from .tools.history import query_project_history as impl
+
+                # Build filters dict from optional parameters
+                filters = {}
+                if status is not None:
+                    filters["status"] = status
+                if agent_id is not None:
+                    filters["agent_id"] = agent_id
+                if task_id is not None:
+                    filters["task_id"] = task_id
+                if artifact_type is not None:
+                    filters["artifact_type"] = artifact_type
+                if affecting_task_id is not None:
+                    filters["affecting_task_id"] = affecting_task_id
+                if event_type is not None:
+                    filters["event_type"] = event_type
+                if keyword is not None:
+                    filters["keyword"] = keyword
+                if start_time is not None:
+                    filters["start_time"] = start_time
+                if end_time is not None:
+                    filters["end_time"] = end_time
+
+                return await impl(
+                    project_id=project_id,
+                    query_type=query_type,
+                    state=server,
+                    **filters,
+                )
+
+        if "list_project_history_files" in allowed_tools:
+
+            @app.tool()  # type: ignore[misc]
+            async def list_project_history_files() -> Dict[str, Any]:
+                """
+                List all projects with available history data.
+
+                Scans the project history storage directory to find all projects
+                that have recorded history data (decisions, artifacts, snapshots).
+
+                Returns
+                -------
+                Dict[str, Any]
+                    Dict with success status and list of projects with history:
+                    - projects: List of project dicts with:
+                      - project_id: Project identifier
+                      - project_name: Human-readable project name
+                      - has_decisions: Whether decision history exists
+                      - has_artifacts: Whether artifact history exists
+                      - has_snapshot: Whether snapshot exists
+                      - last_updated: ISO timestamp of last update
+                    - count: Number of projects found
+
+                Examples
+                --------
+                >>> list_project_history_files()
+                {
+                    "success": True,
+                    "projects": [
+                        {
+                            "project_id": "proj123",
+                            "project_name": "My App",
+                            "has_decisions": True,
+                            "has_artifacts": True,
+                            "has_snapshot": False,
+                            "last_updated": "2025-11-07T12:00:00Z"
+                        }
+                    ],
+                    "count": 1
+                }
+                """
+                from .tools.history import list_project_history_files as impl
+
+                return await impl(state=server)
+
         if "get_task_context" in allowed_tools:
 
             @app.tool()  # type: ignore[misc]
