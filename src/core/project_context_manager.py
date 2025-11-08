@@ -322,7 +322,9 @@ class ProjectContextManager:
             raise
 
         # Create project-specific services
-        context.context = Context(events=None, persistence=self.persistence)
+        context.context = Context(
+            events=None, persistence=self.persistence, project_id=project.id
+        )
 
         context.events = Events(store_history=True, persistence=self.persistence)
 

@@ -362,6 +362,7 @@ async def _persist_artifact_to_history(
             file_size_bytes=file_size_bytes,
             sha256_hash=sha256_hash,
             kanban_comment_url=kanban_comment_url,
+            project_id=project_id,
         )
 
         # Persist to project history

@@ -46,6 +46,8 @@ class Decision:
         Agent's confidence in this decision (0.0-1.0)
     kanban_comment_url : Optional[str]
         URL to the Kanban comment where this was also logged
+    project_id : Optional[str]
+        Project identifier for this decision
     """
 
     decision_id: str
@@ -58,6 +60,7 @@ class Decision:
     affected_tasks: list[str] = field(default_factory=list)
     confidence: float = 0.8
     kanban_comment_url: Optional[str] = None
+    project_id: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -72,6 +75,7 @@ class Decision:
             "affected_tasks": self.affected_tasks,
             "confidence": self.confidence,
             "kanban_comment_url": self.kanban_comment_url,
+            "project_id": self.project_id,
         }
 
     @classmethod
@@ -94,6 +98,7 @@ class Decision:
             affected_tasks=data.get("affected_tasks", []),
             confidence=data.get("confidence", 0.8),
             kanban_comment_url=data.get("kanban_comment_url"),
+            project_id=data.get("project_id"),
         )
 
 
@@ -133,6 +138,8 @@ class ArtifactMetadata:
         URL to Kanban comment where this was also logged
     referenced_by_tasks : list[str]
         Tasks that consumed this artifact
+    project_id : Optional[str]
+        Project identifier for this artifact
     """
 
     artifact_id: str
@@ -148,6 +155,7 @@ class ArtifactMetadata:
     sha256_hash: Optional[str] = None
     kanban_comment_url: Optional[str] = None
     referenced_by_tasks: list[str] = field(default_factory=list)
+    project_id: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -165,6 +173,7 @@ class ArtifactMetadata:
             "sha256_hash": self.sha256_hash,
             "kanban_comment_url": self.kanban_comment_url,
             "referenced_by_tasks": self.referenced_by_tasks,
+            "project_id": self.project_id,
         }
 
     @classmethod
@@ -190,6 +199,7 @@ class ArtifactMetadata:
             sha256_hash=data.get("sha256_hash"),
             kanban_comment_url=data.get("kanban_comment_url"),
             referenced_by_tasks=data.get("referenced_by_tasks", []),
+            project_id=data.get("project_id"),
         )
 
 

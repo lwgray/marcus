@@ -57,6 +57,7 @@ async def sample_decisions(temp_db: Path) -> list[dict[str, Any]]:
             "affected_tasks": ["task_002"],
             "confidence": 0.9,
             "kanban_comment_url": None,
+            "project_id": "test_project_001",
         },
         {
             "decision_id": "dec_2_123.789",
@@ -69,6 +70,7 @@ async def sample_decisions(temp_db: Path) -> list[dict[str, Any]]:
             "affected_tasks": [],
             "confidence": 0.8,
             "kanban_comment_url": None,
+            "project_id": "test_project_001",
         },
     ]
 
@@ -109,6 +111,7 @@ class TestProjectHistoryPersistence:
         persistence: ProjectHistoryPersistence,
         temp_db: Path,
         sample_decisions: list[dict[str, Any]],
+        tmp_path: Path,
     ) -> None:
         """Test load_decisions loads from SQLite backend."""
         # Arrange
@@ -116,6 +119,25 @@ class TestProjectHistoryPersistence:
 
         # Update persistence to use the temp_db with sample data
         persistence.db_path = temp_db
+
+        # Create conversation logs with project_id and task_ids
+        conversations_dir = persistence.marcus_root / "logs" / "conversations"
+        conversations_dir.mkdir(parents=True, exist_ok=True)
+        conv_file = conversations_dir / "conversations_test.jsonl"
+
+        import json
+
+        with open(conv_file, "w") as f:
+            # Add conversation entries for each task
+            for task_id in ["task_001", "task_002"]:
+                entry = {
+                    "metadata": {
+                        "project_id": project_id,
+                        "task_id": task_id,
+                    },
+                    "message": f"Test message for {task_id}",
+                }
+                f.write(json.dumps(entry) + "\n")
 
         # Act
         decisions = await persistence.load_decisions(project_id)
@@ -125,7 +147,9 @@ class TestProjectHistoryPersistence:
         assert isinstance(decisions[0], Decision)
         assert decisions[0].what == "Chose PostgreSQL"
         assert decisions[0].task_id == "task_001"
+        assert decisions[0].project_id == "test_project_001"
         assert decisions[1].what == "Chose React"
+        assert decisions[1].project_id == "test_project_001"
 
     @pytest.mark.asyncio
     async def test_load_decisions_timezone_aware(
@@ -138,6 +162,21 @@ class TestProjectHistoryPersistence:
         # Arrange
         project_id = "test_project_001"
         persistence.db_path = temp_db
+
+        # Create conversation logs
+        conversations_dir = persistence.marcus_root / "logs" / "conversations"
+        conversations_dir.mkdir(parents=True, exist_ok=True)
+        conv_file = conversations_dir / "conversations_test.jsonl"
+
+        import json
+
+        with open(conv_file, "w") as f:
+            for task_id in ["task_001", "task_002"]:
+                entry = {
+                    "metadata": {"project_id": project_id, "task_id": task_id},
+                    "message": f"Test message for {task_id}",
+                }
+                f.write(json.dumps(entry) + "\n")
 
         # Act
         decisions = await persistence.load_decisions(project_id)
@@ -169,8 +208,23 @@ class TestProjectHistoryPersistence:
             "affected_tasks": [],
             "confidence": 0.7,
             "kanban_comment_url": None,
+            "project_id": "test_project",
         }
         await backend.store("decisions", naive_decision["decision_id"], naive_decision)
+
+        # Create conversation logs
+        conversations_dir = persistence.marcus_root / "logs" / "conversations"
+        conversations_dir.mkdir(parents=True, exist_ok=True)
+        conv_file = conversations_dir / "conversations_test.jsonl"
+
+        import json
+
+        with open(conv_file, "w") as f:
+            entry = {
+                "metadata": {"project_id": "test_project", "task_id": "task_003"},
+                "message": "Test message for task_003",
+            }
+            f.write(json.dumps(entry) + "\n")
 
         # Act
         decisions = await persistence.load_decisions("test_project")
@@ -212,6 +266,7 @@ class TestProjectHistoryPersistence:
             "what": "Valid decision",
             "why": "Good reason",
             "impact": "Some impact",
+            "project_id": "test_project",
         }
         await backend.store("decisions", valid_dec["decision_id"], valid_dec)
 
@@ -222,6 +277,20 @@ class TestProjectHistoryPersistence:
             "what": "Incomplete decision",
         }
         await backend.store("decisions", malformed_dec["decision_id"], malformed_dec)
+
+        # Create conversation logs
+        conversations_dir = persistence.marcus_root / "logs" / "conversations"
+        conversations_dir.mkdir(parents=True, exist_ok=True)
+        conv_file = conversations_dir / "conversations_test.jsonl"
+
+        import json
+
+        with open(conv_file, "w") as f:
+            entry = {
+                "metadata": {"project_id": "test_project", "task_id": "task_004"},
+                "message": "Test message for task_004",
+            }
+            f.write(json.dumps(entry) + "\n")
 
         # Act
         decisions = await persistence.load_decisions("test_project")
@@ -275,6 +344,48 @@ class TestDecisionFromDict:
         assert decision.timestamp.tzinfo == timezone.utc
         assert decision.timestamp.hour == 12
 
+    def test_from_dict_with_project_id(self) -> None:
+        """Test from_dict handles project_id correctly."""
+        # Arrange
+        data = {
+            "decision_id": "dec_3",
+            "task_id": "task_3",
+            "agent_id": "agent_3",
+            "timestamp": "2025-11-08T12:00:00+00:00",
+            "what": "Decision with project",
+            "why": "Reason",
+            "impact": "Impact",
+            "project_id": "test_project_123",
+        }
+
+        # Act
+        decision = Decision.from_dict(data)
+
+        # Assert
+        assert decision.project_id == "test_project_123"
+        assert decision.to_dict()["project_id"] == "test_project_123"
+
+    def test_from_dict_without_project_id(self) -> None:
+        """Test from_dict handles missing project_id gracefully."""
+        # Arrange
+        data = {
+            "decision_id": "dec_4",
+            "task_id": "task_4",
+            "agent_id": "agent_4",
+            "timestamp": "2025-11-08T12:00:00+00:00",
+            "what": "Decision without project",
+            "why": "Reason",
+            "impact": "Impact",
+            # No project_id field
+        }
+
+        # Act
+        decision = Decision.from_dict(data)
+
+        # Assert
+        assert decision.project_id is None
+        assert decision.to_dict()["project_id"] is None
+
 
 class TestArtifactMetadataFromDict:
     """Test suite for ArtifactMetadata.from_dict() method."""
@@ -321,3 +432,47 @@ class TestArtifactMetadataFromDict:
         assert artifact.timestamp.tzinfo is not None
         assert artifact.timestamp.tzinfo == timezone.utc
         assert artifact.timestamp.hour == 12
+
+    def test_from_dict_with_project_id(self) -> None:
+        """Test from_dict handles project_id correctly."""
+        # Arrange
+        data = {
+            "artifact_id": "art_3",
+            "task_id": "task_3",
+            "agent_id": "agent_3",
+            "timestamp": "2025-11-08T12:00:00+00:00",
+            "filename": "spec.md",
+            "artifact_type": "specification",
+            "relative_path": "docs/spec.md",
+            "absolute_path": "/path/to/docs/spec.md",
+            "project_id": "test_project_456",
+        }
+
+        # Act
+        artifact = ArtifactMetadata.from_dict(data)
+
+        # Assert
+        assert artifact.project_id == "test_project_456"
+        assert artifact.to_dict()["project_id"] == "test_project_456"
+
+    def test_from_dict_without_project_id(self) -> None:
+        """Test from_dict handles missing project_id gracefully."""
+        # Arrange
+        data = {
+            "artifact_id": "art_4",
+            "task_id": "task_4",
+            "agent_id": "agent_4",
+            "timestamp": "2025-11-08T12:00:00+00:00",
+            "filename": "api.md",
+            "artifact_type": "api",
+            "relative_path": "docs/api.md",
+            "absolute_path": "/path/to/docs/api.md",
+            # No project_id field
+        }
+
+        # Act
+        artifact = ArtifactMetadata.from_dict(data)
+
+        # Assert
+        assert artifact.project_id is None
+        assert artifact.to_dict()["project_id"] is None

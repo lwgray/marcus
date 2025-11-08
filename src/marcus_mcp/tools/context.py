@@ -464,6 +464,7 @@ async def _persist_decision_to_history(logged_decision: Any, state: Any) -> None
             affected_tasks=affected_tasks,
             confidence=0.8,  # Default confidence
             kanban_comment_url=kanban_comment_url,
+            project_id=project_id,
         )
 
         # Persist to project history
