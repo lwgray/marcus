@@ -524,6 +524,9 @@ class ProjectHistoryPersistence:
         """
         Load all decisions for a project from SQLite.
 
+        Filters decisions by task_id, using conversation logs to identify
+        project-specific tasks.
+
         Parameters
         ----------
         project_id : str
@@ -539,20 +542,28 @@ class ProjectHistoryPersistence:
         try:
             backend = SQLitePersistence(db_path=self.db_path)
 
+            # Get task IDs for this project from conversation logs
+            project_task_ids = await self._get_task_ids_from_conversations(project_id)
+
             # Query all decisions from persistence
             all_decisions = await backend.query("decisions", limit=100000)
 
-            # Filter by project_id (from task_id mapping)
-            # For now, return all decisions - will add project_id filtering later
+            # Filter decisions by project task IDs
             decisions = []
             for dec_data in all_decisions:
                 try:
-                    decisions.append(Decision.from_dict(dec_data))
+                    decision = Decision.from_dict(dec_data)
+                    # Include decision if its task_id matches this project
+                    if decision.task_id in project_task_ids:
+                        decisions.append(decision)
                 except Exception as e:
                     logger.debug(f"Error parsing decision: {e}")
                     continue
 
-            logger.debug(f"Loaded {len(decisions)} decisions for project {project_id}")
+            logger.debug(
+                f"Loaded {len(decisions)} decisions for project {project_id} "
+                f"(from {len(project_task_ids)} tasks)"
+            )
             return decisions
 
         except Exception as e:
@@ -562,6 +573,9 @@ class ProjectHistoryPersistence:
     async def load_artifacts(self, project_id: str) -> list[ArtifactMetadata]:
         """
         Load all artifact metadata for a project from SQLite.
+
+        Filters artifacts by task_id, using conversation logs to identify
+        project-specific tasks.
 
         Parameters
         ----------
@@ -578,21 +592,28 @@ class ProjectHistoryPersistence:
         try:
             backend = SQLitePersistence(db_path=self.db_path)
 
+            # Get task IDs for this project from conversation logs
+            project_task_ids = await self._get_task_ids_from_conversations(project_id)
+
             # Query all artifacts from persistence
-            # Note: artifacts are currently stored via log_artifact MCP tool
-            # which uses a different collection name, need to check
             all_artifacts = await backend.query("artifacts", limit=100000)
 
-            # Filter by project_id (will add proper filtering later)
+            # Filter artifacts by project task IDs
             artifacts = []
             for art_data in all_artifacts:
                 try:
-                    artifacts.append(ArtifactMetadata.from_dict(art_data))
+                    artifact = ArtifactMetadata.from_dict(art_data)
+                    # Include artifact if its task_id matches this project
+                    if artifact.task_id in project_task_ids:
+                        artifacts.append(artifact)
                 except Exception as e:
                     logger.debug(f"Error parsing artifact: {e}")
                     continue
 
-            logger.debug(f"Loaded {len(artifacts)} artifacts for project {project_id}")
+            logger.debug(
+                f"Loaded {len(artifacts)} artifacts for project {project_id} "
+                f"(from {len(project_task_ids)} tasks)"
+            )
             return artifacts
 
         except Exception as e:
@@ -641,3 +662,57 @@ class ProjectHistoryPersistence:
             for d in self.history_dir.iterdir()
             if d.is_dir() and not d.name.startswith(".")
         ]
+
+    async def _get_task_ids_from_conversations(self, project_id: str) -> set[str]:
+        """
+        Extract task IDs for a project from conversation logs.
+
+        Parameters
+        ----------
+        project_id : str
+            Project identifier
+
+        Returns
+        -------
+        set[str]
+            Set of task IDs found in project conversations
+        """
+        task_ids: set[str] = set()
+
+        try:
+            # Conversation logs are stored in logs/conversations/
+            conversations_dir = self.marcus_root / "logs" / "conversations"
+            if not conversations_dir.exists():
+                logger.debug("No conversations directory found")
+                return task_ids
+
+            # Find all conversation JSONL files and filter by project_id
+            for log_file in conversations_dir.glob("conversations_*.jsonl"):
+                try:
+                    with open(log_file, "r") as f:
+                        for line in f:
+                            if not line.strip():
+                                continue
+                            try:
+                                entry = json.loads(line)
+                                # Check if this message is for our project
+                                metadata = entry.get("metadata", {})
+                                if metadata.get("project_id") == project_id:
+                                    # Extract task_id if present
+                                    if "task_id" in metadata:
+                                        task_ids.add(str(metadata["task_id"]))
+                            except json.JSONDecodeError:
+                                continue
+                except Exception as e:
+                    logger.debug(f"Error reading {log_file}: {e}")
+                    continue
+
+            logger.debug(
+                f"Found {len(task_ids)} task IDs for project {project_id} "
+                f"from conversations"
+            )
+            return task_ids
+
+        except Exception as e:
+            logger.warning(f"Error loading task IDs from conversations: {e}")
+            return task_ids
