@@ -316,7 +316,42 @@ CRITICAL INSTRUCTIONS:
             ["tmux", "new-session", "-d", "-s", self.tmux_session, "-n", "agents-0"],
             check=True,
         )
+
+        # Enable mouse mode for easy pane navigation
+        subprocess.run(
+            ["tmux", "set-option", "-t", self.tmux_session, "mouse", "on"],
+            check=True,
+        )
+
+        # Enable pane border status to show pane titles
+        subprocess.run(
+            [
+                "tmux",
+                "set-option",
+                "-t",
+                self.tmux_session,
+                "pane-border-status",
+                "top",
+            ],
+            check=True,
+        )
+
+        # Set pane border format to show the title clearly
+        subprocess.run(
+            [
+                "tmux",
+                "set-option",
+                "-t",
+                self.tmux_session,
+                "pane-border-format",
+                "#{pane_index}: #{pane_title}",
+            ],
+            check=True,
+        )
+
         print(f"✓ Created tmux session: {self.tmux_session}")
+        print("  - Mouse mode enabled (click to switch panes)")
+        print("  - Pane borders show agent names")
 
     def get_next_pane_location(self) -> tuple[int, int]:
         """
@@ -706,10 +741,11 @@ echo "=========================================="
             f"\n📺 Tmux layout: {num_windows} window(s), "
             f"{self.panes_per_window} panes max per window"
         )
-        print("\nTmux commands:")
+        print("\nTmux Navigation:")
         print(f"  - Attach to session: tmux attach -t {self.tmux_session}")
+        print("  - Switch panes: Click with mouse OR Ctrl+b arrow keys")
         print("  - Switch windows: Ctrl+b n (next) or Ctrl+b p (previous)")
-        print("  - Switch panes: Ctrl+b arrow keys")
+        print("  - Zoom pane: Ctrl+b z (toggle fullscreen)")
         print("  - Detach: Ctrl+b d")
         print(f"  - Kill session: tmux kill-session -t {self.tmux_session}")
         print(
@@ -724,9 +760,23 @@ echo "=========================================="
         is_tty = os.isatty(sys.stdout.fileno())
 
         if is_tty:
-            print("\nAttaching to tmux session in 3 seconds...")
+            print("\n" + "=" * 60)
+            print("Attaching to tmux session in 3 seconds...")
+            print("=" * 60)
+            print("\n💡 TIP: You can now click between panes with your mouse!")
+            print("   Each pane shows a different agent's terminal.")
             # Give time to read the instructions
             time.sleep(3)
+
+            # Select the first pane before attaching
+            subprocess.run(
+                ["tmux", "select-window", "-t", f"{self.tmux_session}:0"],
+                check=False,
+            )
+            subprocess.run(
+                ["tmux", "select-pane", "-t", f"{self.tmux_session}:0.0"],
+                check=False,
+            )
 
             # Attach to the tmux session (this blocks until user detaches)
             try:
