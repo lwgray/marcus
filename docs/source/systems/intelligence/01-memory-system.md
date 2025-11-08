@@ -28,13 +28,13 @@ self.working = {
     "active_tasks": {},     # agent_id -> current task
     "recent_events": [],    # last N events
     "system_state": {},     # current system metrics
-    "all_tasks": []        # project tasks for cascade analysis
 }
+# Note: "all_tasks" is added dynamically via update_project_tasks() method
 ```
 - Maintains real-time state of active operations
 - Tracks which agents are working on what tasks
 - Stores recent events for immediate context
-- Holds project task data for dependency analysis
+- Project tasks added via `update_project_tasks()` for dependency analysis
 
 #### 2. Episodic Memory (Task Execution History)
 ```python
@@ -200,6 +200,20 @@ class AgentProfile:
     peak_performance_hours: List[int]
 ```
 
+#### TaskPattern
+```python
+@dataclass
+class TaskPattern:
+    pattern_type: str
+    task_labels: List[str]
+    recent_durations: List[float]
+    success_rate: float
+    common_blockers: List[str]
+    prerequisites: List[str]
+    best_agents: List[str]
+    max_samples: int = 100  # Keep last 100 samples for median calculation
+```
+
 ### Confidence Calculation
 
 The system uses logarithmic growth for confidence:
@@ -265,6 +279,67 @@ The multi-tier cognitive model was chosen for several reasons:
 3. **Anomaly Detection**: Identify unusual patterns requiring attention
 4. **Knowledge Transfer**: Export/import learned knowledge
 5. **Causal Reasoning**: Understand why certain approaches succeed
+
+## Additional Utility Methods
+
+### get_median_duration_by_type
+```python
+def get_median_duration_by_type(task_type: str) -> Optional[float]
+```
+Returns the median task duration for a specific task type label.
+
+**Parameters:**
+- `task_type`: Task type label (e.g., "design", "implement", "test")
+
+**Returns:**
+- Median duration in hours, or None if no historical data available
+
+**Notes:**
+- Uses median instead of average to be robust to outliers
+- First tries exact match on pattern type
+- Falls back to patterns containing the task type
+
+### get_global_median_duration
+```python
+async def get_global_median_duration() -> float
+```
+Returns the global median task duration from all completed tasks.
+
+**Returns:**
+- Median task duration in hours (defaults to 1.0 if no historical data)
+
+**Notes:**
+- Prefers SQL-based calculation from persistence layer for efficiency
+- Falls back to in-memory calculation if persistence unavailable
+- Only considers successful completions with actual_hours > 0
+- More robust to outliers than mean (tasks that sat waiting for input)
+
+### update_project_tasks
+```python
+def update_project_tasks(tasks: List[Task]) -> None
+```
+Updates working memory with current project tasks for cascade analysis.
+
+**Parameters:**
+- `tasks`: List of all project tasks
+
+**Notes:**
+- Stores tasks in `self.working["all_tasks"]`
+- Required for dependency analysis and cascade effect predictions
+- Should be called when project task list changes
+
+### get_memory_stats
+```python
+def get_memory_stats() -> Dict[str, Any]
+```
+Returns memory system statistics across all tiers.
+
+**Returns:**
+Dictionary with:
+- `working_memory`: Active tasks, recent events, project tasks count
+- `episodic_memory`: Total outcomes, days tracked
+- `semantic_memory`: Agent profiles count, task patterns count
+- `procedural_memory`: Workflows count, strategies count
 
 ## Task Complexity Handling
 
