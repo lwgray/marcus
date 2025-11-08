@@ -211,6 +211,8 @@ class MarcusServer:
                 self.context.default_infer_dependencies = context_config[
                     "infer_dependencies"
                 ]
+            # Link global context to project manager for project_id syncing
+            self.project_manager.set_global_context(self.context)
         else:
             self.context = None
 
@@ -272,6 +274,30 @@ class MarcusServer:
     def assignment_lock(self) -> asyncio.Lock:
         """Get assignment lock for the current event loop."""
         return self._lock_manager.get_lock()
+
+    @property
+    def current_project_id(self) -> Optional[str]:
+        """
+        Get the current active project ID.
+
+        Returns
+        -------
+        Optional[str]
+            Active project ID or None if no project is active.
+        """
+        return self.project_manager.active_project_id
+
+    @property
+    def current_project_name(self) -> Optional[str]:
+        """
+        Get the current active project name.
+
+        Returns
+        -------
+        Optional[str]
+            Active project name or None if no project is active.
+        """
+        return self.project_manager.active_project_name
 
     def _register_handlers(self) -> None:
         """Register MCP tool handlers."""
