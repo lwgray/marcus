@@ -316,6 +316,11 @@ class ProjectHistoryAggregator:
             outcome for outcome in outcomes if outcome.task_id in task_ids_in_project
         ]
 
+        # Filter events to only those with task_ids seen in conversations
+        filtered_events = [
+            event for event in events if event.get("task_id") in task_ids_in_project
+        ]
+
         # Extract agent_ids from conversations to filter profiles
         agent_ids_in_project = set()
         for msg in conversations:
@@ -335,13 +340,15 @@ class ProjectHistoryAggregator:
             decisions,
             artifacts,
             conversations,
-            events,
+            filtered_events,
             task_metadata,
         )
         agents = self._build_agent_histories(
             filtered_profiles, filtered_outcomes, decisions, artifacts
         )
-        timeline = self._build_timeline(conversations, events, decisions, artifacts)
+        timeline = self._build_timeline(
+            conversations, filtered_events, decisions, artifacts
+        )
 
         history = ProjectHistory(
             project_id=project_id,
@@ -620,6 +627,9 @@ class ProjectHistoryAggregator:
             metadata = task_metadata.get(task_id, {})
             description = metadata.get("description", "")
 
+            # Get agent_id from outcome if available
+            agent_id = getattr(outcome, "agent_id", None)
+
             task_histories[task_id] = TaskHistory(
                 task_id=task_id,
                 name=getattr(outcome, "task_name", task_id),
@@ -628,6 +638,7 @@ class ProjectHistoryAggregator:
                 estimated_hours=outcome.estimated_hours,
                 actual_hours=outcome.actual_hours,
                 outcome=outcome,
+                assigned_to=agent_id,  # Set from outcome
             )
 
         # Add decisions made by each task
