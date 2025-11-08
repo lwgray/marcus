@@ -126,6 +126,29 @@ class AssignmentLease:
         return timedelta(hours=base_hours)
 
 
+def _ensure_timezone_aware(dt: datetime) -> datetime:
+    """
+    Ensure a datetime is timezone-aware (UTC).
+
+    Normalizes naive datetimes from old persistence data to UTC.
+    This prevents TypeErrors when comparing with timezone-aware datetimes.
+
+    Parameters
+    ----------
+    dt : datetime
+        Datetime to normalize (may be naive or aware)
+
+    Returns
+    -------
+    datetime
+        Timezone-aware datetime in UTC
+    """
+    if dt.tzinfo is None:
+        # Naive datetime - assume it was meant to be UTC
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 class AssignmentLeaseManager:
     """Manages assignment leases with automatic expiration and renewal."""
 
@@ -502,18 +525,29 @@ class AssignmentLeaseManager:
             task_id = assignment["task_id"]
 
             # Reconstruct lease from assignment
-            lease = AssignmentLease(
-                task_id=task_id,
-                agent_id=agent_id,
-                assigned_at=datetime.fromisoformat(assignment["assigned_at"]),
-                lease_expires=datetime.fromisoformat(
+            # Normalize naive datetimes to UTC for backwards compatibility
+            assigned_at = _ensure_timezone_aware(
+                datetime.fromisoformat(assignment["assigned_at"])
+            )
+            lease_expires = _ensure_timezone_aware(
+                datetime.fromisoformat(
                     assignment.get(
                         "lease_expires", datetime.now(timezone.utc).isoformat()
                     )
-                ),
-                last_renewed=datetime.fromisoformat(
+                )
+            )
+            last_renewed = _ensure_timezone_aware(
+                datetime.fromisoformat(
                     assignment.get("lease_renewed_at", assignment["assigned_at"])
-                ),
+                )
+            )
+
+            lease = AssignmentLease(
+                task_id=task_id,
+                agent_id=agent_id,
+                assigned_at=assigned_at,
+                lease_expires=lease_expires,
+                last_renewed=last_renewed,
                 renewal_count=assignment.get("renewal_count", 0),
                 progress_percentage=assignment.get("progress_percentage", 0),
             )

@@ -385,3 +385,160 @@ class TestLeaseMonitor:
         # Verify recovery was attempted
         mock_lease_manager.check_expired_leases.assert_called()
         mock_lease_manager.recover_expired_lease.assert_called_with(expired_lease)
+
+
+class TestNaiveDatetimeBackwardsCompatibility:
+    """Test suite for backwards compatibility with naive datetime persistence."""
+
+    @pytest.mark.asyncio
+    async def test_load_active_leases_handles_naive_datetimes(self):
+        """Test that load_active_leases normalizes naive datetimes to UTC."""
+        from src.core.assignment_persistence import AssignmentPersistence
+
+        # Arrange - create mock persistence with NAIVE datetime strings
+        # (simulating old data saved with naive datetime.isoformat())
+        mock_persistence = Mock(spec=AssignmentPersistence)
+
+        # Create naive datetime (no timezone info)
+        # Simulating old data by stripping timezone from a UTC datetime
+        aware_now = datetime.now(timezone.utc)
+        naive_now = aware_now.replace(tzinfo=None)  # Strip timezone
+        naive_iso = naive_now.isoformat()  # No +00:00 suffix
+
+        old_assignment = {
+            "task_id": "task-123",
+            "assigned_at": naive_iso,  # Naive datetime string
+            "lease_expires": naive_iso,  # Naive datetime string
+            "lease_renewed_at": naive_iso,  # Naive datetime string
+            "renewal_count": 0,
+            "progress_percentage": 0,
+        }
+
+        mock_persistence.load_assignments = AsyncMock(
+            return_value={"agent-001": old_assignment}
+        )
+
+        # Create lease manager with mock persistence
+        lease_manager = AssignmentLeaseManager(
+            kanban_client=Mock(),
+            assignment_persistence=mock_persistence,
+        )
+
+        # Act - load the old naive datetime assignments
+        await lease_manager.load_active_leases()
+
+        # Assert - lease should be created successfully
+        assert len(lease_manager.active_leases) == 1
+        lease = lease_manager.active_leases["task-123"]
+
+        # All datetimes should be timezone-aware (UTC)
+        assert lease.assigned_at.tzinfo is not None
+        assert lease.assigned_at.tzinfo == timezone.utc
+        assert lease.lease_expires.tzinfo is not None
+        assert lease.lease_expires.tzinfo == timezone.utc
+        assert lease.last_renewed.tzinfo is not None
+        assert lease.last_renewed.tzinfo == timezone.utc
+
+        # Should be able to call is_expired without TypeError
+        _ = lease.is_expired  # This would raise TypeError before the fix
+
+    @pytest.mark.asyncio
+    async def test_load_active_leases_preserves_aware_datetimes(self):
+        """Test that timezone-aware datetimes are preserved as-is."""
+        from src.core.assignment_persistence import AssignmentPersistence
+
+        # Arrange - create mock persistence with AWARE datetime strings
+        mock_persistence = Mock(spec=AssignmentPersistence)
+
+        aware_now = datetime.now(timezone.utc)
+        aware_iso = aware_now.isoformat()  # Has +00:00 suffix
+
+        new_assignment = {
+            "task_id": "task-456",
+            "assigned_at": aware_iso,
+            "lease_expires": aware_iso,
+            "lease_renewed_at": aware_iso,
+            "renewal_count": 0,
+            "progress_percentage": 0,
+        }
+
+        mock_persistence.load_assignments = AsyncMock(
+            return_value={"agent-002": new_assignment}
+        )
+
+        lease_manager = AssignmentLeaseManager(
+            kanban_client=Mock(),
+            assignment_persistence=mock_persistence,
+        )
+
+        # Act
+        await lease_manager.load_active_leases()
+
+        # Assert
+        assert len(lease_manager.active_leases) == 1
+        lease = lease_manager.active_leases["task-456"]
+
+        # All datetimes should be timezone-aware (UTC)
+        assert lease.assigned_at.tzinfo == timezone.utc
+        assert lease.lease_expires.tzinfo == timezone.utc
+        assert lease.last_renewed.tzinfo == timezone.utc
+
+    @pytest.mark.asyncio
+    async def test_load_active_leases_mixed_naive_and_aware(self):
+        """Test loading a mix of old naive and new aware datetimes."""
+        from src.core.assignment_persistence import AssignmentPersistence
+
+        mock_persistence = Mock(spec=AssignmentPersistence)
+
+        # Old assignment with naive datetimes
+        # Simulating old data by stripping timezone from a UTC datetime
+        aware_now = datetime.now(timezone.utc)
+        naive_now = aware_now.replace(tzinfo=None)  # Strip timezone
+        old_assignment = {
+            "task_id": "old-task",
+            "assigned_at": naive_now.isoformat(),
+            "lease_expires": naive_now.isoformat(),
+            "lease_renewed_at": naive_now.isoformat(),
+            "renewal_count": 0,
+            "progress_percentage": 0,
+        }
+
+        # New assignment with aware datetimes
+        aware_now = datetime.now(timezone.utc)
+        new_assignment = {
+            "task_id": "new-task",
+            "assigned_at": aware_now.isoformat(),
+            "lease_expires": aware_now.isoformat(),
+            "lease_renewed_at": aware_now.isoformat(),
+            "renewal_count": 0,
+            "progress_percentage": 0,
+        }
+
+        mock_persistence.load_assignments = AsyncMock(
+            return_value={
+                "agent-old": old_assignment,
+                "agent-new": new_assignment,
+            }
+        )
+
+        lease_manager = AssignmentLeaseManager(
+            kanban_client=Mock(),
+            assignment_persistence=mock_persistence,
+        )
+
+        # Act
+        await lease_manager.load_active_leases()
+
+        # Assert - both leases loaded successfully
+        assert len(lease_manager.active_leases) == 2
+
+        old_lease = lease_manager.active_leases["old-task"]
+        new_lease = lease_manager.active_leases["new-task"]
+
+        # Both should be timezone-aware now
+        assert old_lease.assigned_at.tzinfo == timezone.utc
+        assert new_lease.assigned_at.tzinfo == timezone.utc
+
+        # Both should be comparable without TypeError
+        assert old_lease.time_remaining  # Computed successfully
+        assert new_lease.time_remaining  # Computed successfully
