@@ -106,27 +106,19 @@ EXECUTE NOW - DO NOT ASK FOR CONFIRMATION:
    - Confirm working directory: {self.config.implementation_dir}
    - Ping Marcus: mcp__marcus__ping
 
-2. Call mcp__marcus__create_project and WAIT FOR COMPLETE RESPONSE:
+2. IMMEDIATELY call mcp__marcus__create_project with these EXACT parameters:
    - project_name: "{self.config.project_name}"
    - description: (the full spec below)
    - options: {options_str}
 
-   CRITICAL: This call is SYNCHRONOUS and takes 30-60 seconds
-   - The AI will break down the spec into tasks AND subtasks
-   - Do NOT proceed to step 3 until you see the FULL response
-   - The response contains project_id, board_id, and tasks_created count
-   - When the response arrives, ALL subtasks are already created in Kanban
-
 PROJECT SPECIFICATION:
 {project_description}
 
-3. ONLY AFTER create_project returns with full response:
-   - Extract project_id, board_id, and tasks_created from response
-   - Write to: {self.config.project_info_file}
-   - Format: {{"project_id": "<id>", "board_id": "<board_id>", \
-"tasks_created": <count>}}
+3. As soon as the project is created (DO NOT WAIT for user input):
+   - Write project_id and board_id to: {self.config.project_info_file}
+   - Format: {{"project_id": "<id>", "board_id": "<board_id>"}}
    - Run: git add -A && git commit -m "Initial commit: Marcus project created"
-   - Print: "PROJECT CREATED: project_id=<id> board_id=<board_id> tasks=<count>"
+   - Print: "PROJECT CREATED: project_id=<id> board_id=<board_id>"
 
 4. IMMEDIATELY start MLflow experiment tracking:
    - Call mcp__marcus__start_experiment with:
@@ -237,72 +229,6 @@ START NOW!
 """
         return worker_prompt
 
-    def create_monitor_prompt(self) -> str:
-        """
-        Create the prompt for the experiment monitor agent.
-
-        Returns
-        -------
-        str
-            Prompt for monitor agent
-        """
-        prompt = f"""You are the Experiment Monitor Agent for a Marcus \
-multi-agent experiment.
-
-WORKING DIRECTORY: {self.config.implementation_dir}
-
-YOUR MISSION:
-Monitor project progress and end the experiment when all work is complete.
-
-EXECUTE NOW - DO NOT ASK FOR CONFIRMATION:
-
-1. Wait for project creation:
-   - Wait for {self.config.project_info_file} to exist
-   - Read project_id and board_id from it
-
-2. Register with Marcus:
-   - Call mcp__marcus__register_agent:
-     - agent_id: "monitor"
-     - name: "Experiment Monitor"
-     - role: "monitor"
-     - skills: ["monitoring", "analytics"]
-
-3. Enter monitoring loop:
-   REPEAT every 2 minutes (120 seconds):
-
-   a. Call mcp__marcus__get_project_status
-
-   b. Display current status:
-      - Print: "Project Status: {{completed}}/{{total_tasks}} tasks complete \
-({{completion_percentage}}%)"
-      - Print: "  In Progress: {{in_progress}}, Blocked: {{blocked}}"
-      - Print: "  Workers: {{active}}/{{total}} active"
-
-   c. Check if project is complete:
-      - Complete when: in_progress == 0 AND (completed + blocked) == total_tasks
-      - If NOT complete: wait 120 seconds and repeat
-      - If COMPLETE: proceed to step 4
-
-4. End the experiment:
-   - Call mcp__marcus__end_experiment
-   - Print: "EXPERIMENT COMPLETE!"
-   - Display final statistics from end_experiment response:
-     - total_registered_agents
-     - total_task_completions
-     - total_blockers
-     - total_artifacts
-     - total_decisions
-     - summary text
-   - Exit
-
-CRITICAL INSTRUCTIONS:
-- Work in: {self.config.implementation_dir}
-- Poll interval: EXACTLY 120 seconds (2 minutes)
-- DO NOT end experiment early - verify ALL conditions
-- This is an automated process - no human interaction needed
-"""
-        return prompt
-
     def create_tmux_session(self) -> None:
         """Create tmux session for the experiment."""
         # Kill existing session if it exists
@@ -316,42 +242,7 @@ CRITICAL INSTRUCTIONS:
             ["tmux", "new-session", "-d", "-s", self.tmux_session, "-n", "agents-0"],
             check=True,
         )
-
-        # Enable mouse mode for easy pane navigation
-        subprocess.run(
-            ["tmux", "set-option", "-t", self.tmux_session, "mouse", "on"],
-            check=True,
-        )
-
-        # Enable pane border status to show pane titles
-        subprocess.run(
-            [
-                "tmux",
-                "set-option",
-                "-t",
-                self.tmux_session,
-                "pane-border-status",
-                "top",
-            ],
-            check=True,
-        )
-
-        # Set pane border format to show the title clearly
-        subprocess.run(
-            [
-                "tmux",
-                "set-option",
-                "-t",
-                self.tmux_session,
-                "pane-border-format",
-                "#{pane_index}: #{pane_title}",
-            ],
-            check=True,
-        )
-
         print(f"✓ Created tmux session: {self.tmux_session}")
-        print("  - Mouse mode enabled (click to switch panes)")
-        print("  - Pane borders show agent names")
 
     def get_next_pane_location(self) -> tuple[int, int]:
         """
@@ -589,54 +480,6 @@ echo "=========================================="
         print(f"  Prompt: {prompt_file}")
         print(f"  Subagents: {num_subagents}")
 
-    def spawn_monitor(self) -> None:
-        """Spawn the experiment monitor agent in a tmux pane."""
-        print("\nSpawning Experiment Monitor")
-        print("-" * 60)
-
-        prompt = self.create_monitor_prompt()
-        prompt_file = self.config.prompts_dir / "monitor.txt"
-
-        with open(prompt_file, "w") as f:
-            f.write(prompt)
-
-        # Create a script to run in tmux
-        script = f"""#!/bin/bash
-# Source shell profile to get nvm/claude in PATH
-[ -f ~/.zshrc ] && source ~/.zshrc
-[ -f ~/.bashrc ] && source ~/.bashrc
-
-cd {self.config.implementation_dir} || exit 1
-echo "=========================================="
-echo "EXPERIMENT MONITOR"
-echo "Working Directory: $(pwd)"
-echo "=========================================="
-echo ""
-echo "Waiting for project creation..."
-while [ ! -f {self.config.project_info_file} ]; do
-    sleep 2
-done
-echo "✓ Project found, starting monitor..."
-echo ""
-# Launch Claude from the implementation directory (cwd matters!)
-claude --dangerously-skip-permissions < {prompt_file}
-echo ""
-echo "=========================================="
-echo "Experiment Monitor - Complete"
-echo "=========================================="
-"""
-        script_file = self.config.prompts_dir / "monitor.sh"
-        with open(script_file, "w") as f:
-            f.write(script)
-        script_file.chmod(0o755)
-
-        # Get pane location and run
-        window, pane = self.get_next_pane_location()
-        self.run_in_tmux_pane(window, pane, script_file, "Monitor")
-
-        print(f"  ✓ Spawned in tmux window {window}, pane {pane}")
-        print(f"  Prompt: {prompt_file}")
-
     def run(self) -> bool:
         """Run the multi-agent experiment and return success status."""
         print("\n" + "=" * 60)
@@ -650,7 +493,7 @@ echo "=========================================="
         print(f"Subagents: {total_subagents}")
 
         # Calculate tmux layout
-        total_agents = 1 + len(self.config.agents) + 1  # creator + workers + monitor
+        total_agents = 1 + len(self.config.agents)  # creator + workers
         num_windows = (
             total_agents + self.panes_per_window - 1
         ) // self.panes_per_window
@@ -659,24 +502,6 @@ echo "=========================================="
             f"{self.panes_per_window} panes each"
         )
         print("=" * 60)
-
-        # Verify MLflow is available
-        print("\n[Setup] Verifying MLflow installation...")
-        try:
-            import mlflow  # noqa: F401
-
-            print("✓ MLflow is installed and ready")
-            print("  Experiments will be tracked in: ./mlruns")
-        except ImportError:
-            print("⚠️  MLflow not found!")
-            print("  Install with: pip install mlflow")
-            print("  Experiment tracking will not be available")
-
-        # Clean up state from previous runs
-        print("\n[Setup] Cleaning up previous experiment state...")
-        if self.config.project_info_file.exists():
-            self.config.project_info_file.unlink()
-            print("  ✓ Removed old project_info.json")
 
         # Create tmux session
         print("\n[Setup] Creating tmux session")
@@ -687,13 +512,10 @@ echo "=========================================="
         self.spawn_project_creator()
 
         # Wait for project creation
-        # (create_project is synchronous - when project_info.json exists,
-        #  all subtasks are already created)
         timeout = self.config.get_timeout("project_creation", 300)
         start_time = time.time()
 
         print("\nWaiting for project creation...")
-        print("  (create_project will take 30-60s for AI task decomposition)")
         while not self.config.project_info_file.exists():
             if time.time() - start_time > timeout:
                 print("✗ Project creation timed out!")
@@ -708,11 +530,9 @@ echo "=========================================="
             project_info = json.load(f)
             project_id = project_info.get("project_id")
             board_id = project_info.get("board_id")
-            tasks_created = project_info.get("tasks_created", "unknown")
 
         print(f"  Project ID: {project_id}")
         print(f"  Board ID: {board_id}")
-        print(f"  Tasks Created: {tasks_created}")
 
         # Phase 2: Spawn worker agents
         print("\n" + "=" * 60)
@@ -724,28 +544,20 @@ echo "=========================================="
             self.spawn_worker(agent)
             time.sleep(0.5)  # Stagger starts to avoid tmux race conditions
 
-        # Phase 3: Spawn monitor agent
-        print("\n" + "=" * 60)
-        print("[Phase 3] Spawning Experiment Monitor")
-        print("=" * 60)
-        self.spawn_monitor()
-
         print("\n" + "=" * 60)
         print("All Agents Spawned!")
         print("=" * 60)
         print(f"\n✓ All agents running in tmux session: {self.tmux_session}")
-        print(f"✓ 1 project creator + {len(self.config.agents)} workers + 1 monitor")
+        print(f"✓ 1 project creator + {len(self.config.agents)} worker agents")
         print(f"✓ {total_subagents} subagents will be registered by workers")
-        print("✓ Monitor will poll project status every 2 minutes")
         print(
             f"\n📺 Tmux layout: {num_windows} window(s), "
             f"{self.panes_per_window} panes max per window"
         )
-        print("\nTmux Navigation:")
+        print("\nTmux commands:")
         print(f"  - Attach to session: tmux attach -t {self.tmux_session}")
-        print("  - Switch panes: Click with mouse OR Ctrl+b arrow keys")
         print("  - Switch windows: Ctrl+b n (next) or Ctrl+b p (previous)")
-        print("  - Zoom pane: Ctrl+b z (toggle fullscreen)")
+        print("  - Switch panes: Ctrl+b arrow keys")
         print("  - Detach: Ctrl+b d")
         print(f"  - Kill session: tmux kill-session -t {self.tmux_session}")
         print(
@@ -753,50 +565,16 @@ echo "=========================================="
             "implementation directory."
         )
         print("Marcus coordinates task assignment to prevent conflicts.")
+        print("\nAttaching to tmux session in 3 seconds...")
 
-        # Check if we're in an interactive terminal
-        import os
+        # Give time to read the instructions
+        time.sleep(3)
 
-        is_tty = os.isatty(sys.stdout.fileno())
-
-        if is_tty:
-            print("\n" + "=" * 60)
-            print("Attaching to tmux session in 3 seconds...")
-            print("=" * 60)
-            print("\n💡 TIP: You can now click between panes with your mouse!")
-            print("   Each pane shows a different agent's terminal.")
-            # Give time to read the instructions
-            time.sleep(3)
-
-            # Select the first pane before attaching
-            subprocess.run(
-                ["tmux", "select-window", "-t", f"{self.tmux_session}:0"],
-                check=False,
-            )
-            subprocess.run(
-                ["tmux", "select-pane", "-t", f"{self.tmux_session}:0.0"],
-                check=False,
-            )
-
-            # Attach to the tmux session (this blocks until user detaches)
-            try:
-                result = subprocess.run(
-                    ["tmux", "attach", "-t", self.tmux_session],
-                    check=False,
-                )
-                if result.returncode != 0:
-                    print("\n⚠️  Failed to attach to tmux session.")
-                    print(
-                        f"   Manually attach with: tmux attach -t {self.tmux_session}"
-                    )
-            except KeyboardInterrupt:
-                print("\n\nDetached from tmux session.")
-            except Exception as e:
-                print(f"\n⚠️  Error attaching to tmux: {e}")
-                print(f"   Manually attach with: tmux attach -t {self.tmux_session}")
-        else:
-            print("\n⚠️  Not running in interactive terminal - skipping auto-attach")
-            print(f"   Manually attach with: tmux attach -t {self.tmux_session}")
+        # Attach to the tmux session (this blocks until user detaches)
+        try:
+            subprocess.run(["tmux", "attach", "-t", self.tmux_session])
+        except KeyboardInterrupt:
+            print("\n\nDetached from tmux session.")
 
         print("\nExperiment manager shutting down...")
         print(f"Tmux session '{self.tmux_session}' is still running.")

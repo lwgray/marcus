@@ -72,6 +72,7 @@ class Decision:
     what: str  # What was decided
     why: str  # Why it was decided
     impact: str  # Impact on other components
+    project_id: Optional[str] = None  # Project this decision belongs to
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for storage."""
@@ -83,6 +84,7 @@ class Decision:
             "what": self.what,
             "why": self.why,
             "impact": self.impact,
+            "project_id": self.project_id,
         }
 
 
@@ -104,6 +106,7 @@ class Context:
         persistence: Optional[Any] = None,
         use_hybrid_inference: bool = True,
         ai_engine: Optional[Any] = None,
+        project_id: Optional[str] = None,
     ):
         """Initialize the Context system.
 
@@ -117,9 +120,12 @@ class Context:
             Whether to use hybrid dependency inference if available.
         ai_engine : Optional[Any]
             Optional AI engine for hybrid inference.
+        project_id : Optional[str]
+            Project identifier for tracking decisions and artifacts.
         """
         self.events = events
         self.persistence = persistence
+        self.project_id = project_id
         self.implementations: Dict[str, Dict[str, Any]] = (
             {}
         )  # task_id -> implementation details
@@ -261,6 +267,7 @@ class Context:
             what=what,
             why=why,
             impact=impact,
+            project_id=self.project_id,
         )
 
         self.decisions.append(decision)

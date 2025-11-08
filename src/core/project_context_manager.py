@@ -53,13 +53,19 @@ class ProjectContextManager:
     MAX_CACHED_PROJECTS = 10
     IDLE_TIMEOUT_MINUTES = 30
 
-    def __init__(self, registry: Optional[ProjectRegistry] = None):
+    def __init__(
+        self,
+        registry: Optional[ProjectRegistry] = None,
+        global_context: Optional[Context] = None,
+    ):
         """Initialize the project context manager.
 
         Parameters
         ----------
         registry : Optional[ProjectRegistry]
             Optional project registry instance.
+        global_context : Optional[Context]
+            Optional global context instance to update with project_id changes.
         """
         self.registry = registry or ProjectRegistry()
         self.persistence = Persistence()
@@ -68,6 +74,10 @@ class ProjectContextManager:
         # Use OrderedDict for LRU behavior
         self.contexts: OrderedDict[str, ProjectContext] = OrderedDict()
         self.active_project_id: Optional[str] = None
+        self.active_project_name: Optional[str] = None
+
+        # Global context to sync project_id with
+        self._global_context = global_context
 
         # Lock manager for event loop safe operations
         self._lock_manager = EventLoopLockManager()
@@ -79,6 +89,17 @@ class ProjectContextManager:
     def lock(self) -> asyncio.Lock:
         """Get context lock for the current event loop."""
         return self._lock_manager.get_lock()
+
+    def set_global_context(self, context: Context) -> None:
+        """Set the global context to sync project_id with.
+
+        Parameters
+        ----------
+        context : Context
+            The global context instance to update when projects switch.
+        """
+        self._global_context = context
+        logger.debug("Global context linked to project context manager")
 
     async def initialize(self, auto_switch: bool = True) -> None:
         """
@@ -180,7 +201,16 @@ class ProjectContextManager:
 
             # Update active project
             self.active_project_id = project_id
+            self.active_project_name = project.name
             await self.registry.set_active_project(project_id)
+
+            # Update global context's project_id if it exists
+            if self._global_context is not None:
+                self._global_context.project_id = project_id
+                logger.debug(
+                    f"Updated global context project_id to {project_id} "
+                    f"for project '{project.name}'"
+                )
 
             # Move to end for LRU
             self.contexts.move_to_end(project_id)
@@ -322,7 +352,9 @@ class ProjectContextManager:
             raise
 
         # Create project-specific services
-        context.context = Context(events=None, persistence=self.persistence)
+        context.context = Context(
+            events=None, persistence=self.persistence, project_id=project.id
+        )
 
         context.events = Events(store_history=True, persistence=self.persistence)
 
