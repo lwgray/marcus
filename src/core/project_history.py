@@ -47,7 +47,9 @@ class Decision:
     kanban_comment_url : Optional[str]
         URL to the Kanban comment where this was also logged
     project_id : Optional[str]
-        Project identifier for this decision
+        Project identifier for validation/debugging. Note: Conversation logs
+        are the authoritative source for project-task mapping. This field is
+        stored for data integrity verification but is not used for filtering.
     """
 
     decision_id: str
@@ -139,7 +141,9 @@ class ArtifactMetadata:
     referenced_by_tasks : list[str]
         Tasks that consumed this artifact
     project_id : Optional[str]
-        Project identifier for this artifact
+        Project identifier for validation/debugging. Note: Conversation logs
+        are the authoritative source for project-task mapping. This field is
+        stored for data integrity verification but is not used for filtering.
     """
 
     artifact_id: str
@@ -537,6 +541,12 @@ class ProjectHistoryPersistence:
         Filters decisions by task_id, using conversation logs to identify
         project-specific tasks.
 
+        Design Decision: Conversation logs are the authoritative source of truth
+        for project-task mapping. While decisions contain a project_id field,
+        we filter by task_id (derived from conversations) to maintain a single
+        source of truth and avoid data inconsistencies. The project_id field
+        in Decision is used for validation and debugging only.
+
         Parameters
         ----------
         project_id : str
@@ -586,6 +596,12 @@ class ProjectHistoryPersistence:
 
         Filters artifacts by task_id, using conversation logs to identify
         project-specific tasks.
+
+        Design Decision: Conversation logs are the authoritative source of truth
+        for project-task mapping. While artifacts contain a project_id field,
+        we filter by task_id (derived from conversations) to maintain a single
+        source of truth and avoid data inconsistencies. The project_id field
+        in ArtifactMetadata is used for validation and debugging only.
 
         Parameters
         ----------
