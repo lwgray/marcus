@@ -9,7 +9,7 @@ and task completion pattern analysis.
 import json
 import logging
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -69,6 +69,16 @@ class ProjectStallSnapshot:
         Primary reason for the stall
     recommendations : List[str]
         Actionable recommendations to resolve the stall
+    zombie_tasks : List[Dict[str, Any]]
+        Tasks marked IN_PROGRESS with no agent assigned
+    redundant_dependencies : List[Dict[str, Any]]
+        Dependencies that are already reachable transitively
+    state_inconsistencies : List[Dict[str, Any]]
+        Tasks with inconsistent state (e.g., DONE with incomplete deps)
+    circular_dependencies : List[List[str]]
+        Circular dependency cycles detected
+    bottlenecks : List[Dict[str, Any]]
+        Tasks blocking multiple other tasks
     """
 
     timestamp: str
@@ -81,6 +91,11 @@ class ProjectStallSnapshot:
     early_completions: List[Dict[str, Any]]
     stall_reason: str
     recommendations: List[str]
+    zombie_tasks: List[Dict[str, Any]]
+    redundant_dependencies: List[Dict[str, Any]]
+    state_inconsistencies: List[Dict[str, Any]]
+    circular_dependencies: List[List[str]]
+    bottlenecks: List[Dict[str, Any]]
 
 
 class ConversationReplayAnalyzer:
@@ -111,7 +126,7 @@ class ConversationReplayAnalyzer:
         List[ConversationEvent]
             List of conversation events
         """
-        cutoff_time = datetime.now() - timedelta(hours=lookback_hours)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
         events = []
 
         # Find realtime log files
@@ -261,7 +276,9 @@ class TaskCompletionAnalyzer:
             completion_time = getattr(task, "completed_at", None)
             if not completion_time:
                 # Use created_at as fallback
-                completion_time = getattr(task, "created_at", datetime.now())
+                completion_time = getattr(
+                    task, "created_at", datetime.now(timezone.utc)
+                )
 
             # Ensure completion_time is a datetime object
             if isinstance(completion_time, str):
@@ -564,9 +581,18 @@ async def capture_project_stall_snapshot(
         project_id = active_project.id if active_project else None
         project_name = active_project.name if active_project else None
 
+        # Collect detailed diagnostics by category
+        zombies = dependency_analyzer.find_zombie_tasks(assigned_task_ids)
+        redundant = dependency_analyzer.find_transitive_dependencies()
+        inconsistencies = dependency_analyzer.find_state_inconsistencies(
+            completed_task_ids
+        )
+        cycles = dependency_analyzer.find_circular_dependencies()
+        bottlenecks = dependency_analyzer.find_bottlenecks()
+
         # Create snapshot
         snapshot = ProjectStallSnapshot(
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             project_id=project_id,
             project_name=project_name,
             diagnostic_report={
@@ -609,13 +635,18 @@ async def capture_project_stall_snapshot(
             early_completions=early_completions,
             stall_reason=stall_reason,
             recommendations=recommendations,
+            zombie_tasks=zombies,
+            redundant_dependencies=redundant,
+            state_inconsistencies=inconsistencies,
+            circular_dependencies=cycles,
+            bottlenecks=bottlenecks,
         )
 
         # Save snapshot to file
         snapshot_dir = Path("logs/stall_snapshots")
         snapshot_dir.mkdir(parents=True, exist_ok=True)
 
-        timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         snapshot_file = snapshot_dir / f"stall_snapshot_{timestamp_str}.json"
 
         with open(snapshot_file, "w") as f:
@@ -634,6 +665,11 @@ async def capture_project_stall_snapshot(
                 "early_completions": len(early_completions),
                 "conversation_events": len(conversation_history),
                 "recommendations_count": len(recommendations),
+                "zombie_tasks": len(zombies),
+                "redundant_dependencies": len(redundant),
+                "state_inconsistencies": len(inconsistencies),
+                "circular_dependencies": len(cycles),
+                "bottlenecks": len(bottlenecks),
             },
         }
 

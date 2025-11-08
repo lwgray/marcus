@@ -7,7 +7,7 @@ first-class Task objects.
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Dict, List
@@ -50,8 +50,8 @@ class TestUnifiedSubtaskStorage:
             dependencies=[],
             labels=["backend", "authentication"],
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
         )
 
@@ -158,8 +158,8 @@ class TestUnifiedSubtaskStorage:
             dependencies=[],
             labels=[],
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
         )
         project_tasks.append(other_parent)
@@ -370,7 +370,7 @@ class TestUnifiedSubtaskStorage:
                     "status": "in_progress",
                     "priority": "medium",
                     "assigned_to": "agent-1",
-                    "created_at": datetime.now().isoformat(),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
                     "estimated_hours": 2.0,
                     "dependencies": [],
                     "dependency_types": [],
@@ -384,7 +384,7 @@ class TestUnifiedSubtaskStorage:
             "metadata": {
                 "task-1": {
                     "shared_conventions": {},
-                    "decomposed_at": datetime.now().isoformat(),
+                    "decomposed_at": datetime.now(timezone.utc).isoformat(),
                     "decomposed_by": "ai",
                 }
             },
@@ -406,8 +406,8 @@ class TestUnifiedSubtaskStorage:
                 dependencies=[],
                 labels=[],
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 is_subtask=False,
             )

@@ -10,7 +10,7 @@ including Slack, email, and kanban board comments.
 
 import asyncio
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from src.config.settings import Settings
@@ -168,7 +168,7 @@ class CommunicationHub:
         {
             "type": "clarification",
             "content": clarification,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         if self.slack_enabled:
@@ -241,7 +241,8 @@ class CommunicationHub:
 
             if self.kanban_comments_enabled:
                 await self._send_kanban_comment(
-                    task.id, f"🔓 Task unblocked at {datetime.now().isoformat()}"
+                    task.id,
+                    f"🔓 Task unblocked at {datetime.now(timezone.utc).isoformat()}",
                 )
 
     async def send_daily_plan(

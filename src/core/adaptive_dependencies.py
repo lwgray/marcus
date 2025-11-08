@@ -10,7 +10,7 @@ Works alongside existing templates to:
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from src.core.models import Task, TaskStatus
@@ -35,7 +35,7 @@ class RelationshipPattern:
     feature_weights: Dict[str, float] = field(default_factory=dict)
     confidence: float = 0.5
     examples_count: int = 0
-    last_seen: datetime = field(default_factory=datetime.now)
+    last_seen: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -48,7 +48,7 @@ class DependencyFeedback:
     confidence: float
     user_confirmed: Optional[bool] = None
     feedback_reason: Optional[str] = None
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -61,7 +61,7 @@ class UserRelationship:
     user_confidence: float  # How sure the user is
     reason: Optional[str] = None
     created_by: Optional[str] = None
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -669,7 +669,7 @@ class AdaptiveDependencyInferer:
             pattern = self.patterns[pattern_key]
             pattern.examples_count += 1
             pattern.confidence = min(0.95, pattern.confidence * 1.05)
-            pattern.last_seen = datetime.now()
+            pattern.last_seen = datetime.now(timezone.utc)
 
         logger.info(
             f"Learned from confirmed dependency: "

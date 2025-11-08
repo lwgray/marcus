@@ -12,7 +12,7 @@ import logging
 import os
 import signal
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
@@ -93,7 +93,7 @@ class MarcusServer:
         log_dir = marcus_root / "logs" / "conversations"
         log_dir.mkdir(parents=True, exist_ok=True)
         self.realtime_log = open(
-            log_dir / f"realtime_{datetime.now():%Y%m%d_%H%M%S}.jsonl",
+            log_dir / f"realtime_{datetime.now(timezone.utc):%Y%m%d_%H%M%S}.jsonl",
             "a",
             buffering=1,  # Line buffering
         )
@@ -211,6 +211,8 @@ class MarcusServer:
                 self.context.default_infer_dependencies = context_config[
                     "infer_dependencies"
                 ]
+            # Link global context to project manager for project_id syncing
+            self.project_manager.set_global_context(self.context)
         else:
             self.context = None
 
@@ -248,7 +250,10 @@ class MarcusServer:
         # Log startup
         self.log_event(
             "server_startup",
-            {"provider": self.provider, "timestamp": datetime.now().isoformat()},
+            {
+                "provider": self.provider,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
         )
 
         # Create MCP server instance
@@ -269,6 +274,30 @@ class MarcusServer:
     def assignment_lock(self) -> asyncio.Lock:
         """Get assignment lock for the current event loop."""
         return self._lock_manager.get_lock()
+
+    @property
+    def current_project_id(self) -> Optional[str]:
+        """
+        Get the current active project ID.
+
+        Returns
+        -------
+        Optional[str]
+            Active project ID or None if no project is active.
+        """
+        return self.project_manager.active_project_id
+
+    @property
+    def current_project_name(self) -> Optional[str]:
+        """
+        Get the current active project name.
+
+        Returns
+        -------
+        Optional[str]
+            Active project name or None if no project is active.
+        """
+        return self.project_manager.active_project_name
 
     def _register_handlers(self) -> None:
         """Register MCP tool handlers."""
@@ -806,7 +835,11 @@ class MarcusServer:
 
     def log_event(self, event_type: str, data: Dict[str, Any]) -> None:
         """Log events immediately to realtime log and optionally to Events system."""
-        event = {"timestamp": datetime.now().isoformat(), "type": event_type, **data}
+        event = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "type": event_type,
+            **data,
+        }
         self.realtime_log.write(json.dumps(event) + "\n")
 
         # Also publish to Events system if available
@@ -831,11 +864,45 @@ class MarcusServer:
 
         try:
             # Get all tasks from the board
-            # CRITICAL: Skip if subtasks already migrated to avoid losing them
-            # (get_all_tasks only returns parent tasks from Planka,
-            # not migrated subtasks)
-            if self.kanban_client is not None and not self._subtasks_migrated:
-                self.project_tasks = await self.kanban_client.get_all_tasks()
+            # CRITICAL: After subtasks are migrated, we need to update parent tasks
+            # while preserving the migrated subtasks in memory
+            if self.kanban_client is not None:
+                parent_tasks = await self.kanban_client.get_all_tasks()
+
+                subtask_count = (
+                    len(self.subtask_manager.subtasks) if self.subtask_manager else 0
+                )
+                logger.info(
+                    f"[DEBUG] refresh_project_state: got {len(parent_tasks)} "
+                    f"parent tasks, _subtasks_migrated={self._subtasks_migrated}, "
+                    f"subtask_manager exists={self.subtask_manager is not None}, "
+                    f"subtask_manager.subtasks count={subtask_count}"
+                )
+
+                if not self._subtasks_migrated:
+                    # First time: just use parent tasks directly
+                    # Migration will append subtasks to this list
+                    self.project_tasks = parent_tasks
+                    logger.info(
+                        f"[DEBUG] First refresh: set project_tasks to "
+                        f"{len(parent_tasks)} parent tasks"
+                    )
+                else:
+                    # After migration: preserve subtasks, update parents
+                    # Extract existing subtasks
+                    existing_subtasks = []
+                    if self.project_tasks:
+                        for task in self.project_tasks:
+                            if getattr(task, "is_subtask", False):
+                                existing_subtasks.append(task)
+
+                    # Combine refreshed parents with preserved subtasks
+                    self.project_tasks = parent_tasks + existing_subtasks
+
+                    logger.info(
+                        f"Refreshed {len(parent_tasks)} parent tasks, "
+                        f"preserved {len(existing_subtasks)} subtasks"
+                    )
 
             # Migrate subtasks from SubtaskManager to unified project_tasks storage
             # ONLY run migration once to avoid duplicate subtasks
@@ -844,8 +911,34 @@ class MarcusServer:
                 and self.project_tasks is not None
                 and not self._subtasks_migrated
             ):
-                self.subtask_manager.migrate_to_unified_storage(self.project_tasks)
-                self._subtasks_migrated = True
+                logger.info(
+                    f"[DEBUG] Before migration: project_tasks has "
+                    f"{len(self.project_tasks)} tasks"
+                )
+
+                # CRITICAL FIX: Only set migration flag if we have parent tasks
+                # If project_tasks is empty, migration will skip all subtasks,
+                # but we need to allow retry on next refresh when parents exist
+                has_parent_tasks = any(
+                    not getattr(t, "is_subtask", False) for t in self.project_tasks
+                )
+
+                if has_parent_tasks:
+                    self.subtask_manager.migrate_to_unified_storage(self.project_tasks)
+                    self._subtasks_migrated = True
+                    migrated_subtasks = sum(
+                        1 for t in self.project_tasks if getattr(t, "is_subtask", False)
+                    )
+                    logger.info(
+                        f"[DEBUG] After migration: project_tasks has "
+                        f"{len(self.project_tasks)} tasks, "
+                        f"subtasks: {migrated_subtasks}"
+                    )
+                else:
+                    logger.warning(
+                        "[DEBUG] Skipping migration: no parent tasks in project_tasks. "
+                        "Will retry on next refresh when parent tasks are available."
+                    )
 
                 # Wire cross-parent dependencies after migration completes
                 # Creates fine-grained dependencies between different parents
@@ -922,7 +1015,7 @@ class MarcusServer:
                     overdue_tasks=[],  # Would need to check due dates
                     team_velocity=0.0,  # Would need to calculate
                     risk_level=RiskLevel.LOW,  # Simplified
-                    last_updated=datetime.now(),
+                    last_updated=datetime.now(timezone.utc),
                 )
 
             # Create a JSON-serializable version of project_state
@@ -1600,6 +1693,165 @@ class MarcusServer:
                 from .tools.experiments import get_experiment_status as impl
 
                 return await impl()
+
+        if "query_project_history" in allowed_tools:
+
+            @app.tool()  # type: ignore[misc]
+            async def query_project_history(
+                project_id: str,
+                query_type: str,
+                status: Optional[str] = None,
+                agent_id: Optional[str] = None,
+                task_id: Optional[str] = None,
+                artifact_type: Optional[str] = None,
+                affecting_task_id: Optional[str] = None,
+                event_type: Optional[str] = None,
+                keyword: Optional[str] = None,
+                start_time: Optional[str] = None,
+                end_time: Optional[str] = None,
+            ) -> Dict[str, Any]:
+                """
+                Query project history with flexible filtering.
+
+                Unified tool for querying project execution history across
+                tasks, decisions, artifacts, agents, timeline, and conversations.
+
+                Query Types:
+                - summary: Get project summary statistics
+                - tasks: Find tasks (filter by status, agent_id, or timerange)
+                - blocked_tasks: Find tasks with blockers
+                - task_dependencies: Get dependency chain (requires task_id)
+                - decisions: Find decisions (filter by task_id, agent_id, or
+                  affecting_task_id)
+                - artifacts: Find artifacts (filter by task_id, artifact_type,
+                  or agent_id)
+                - agent_history: Get agent history (requires agent_id)
+                - agent_metrics: Get agent performance metrics (requires agent_id)
+                - timeline: Search timeline events (filter by event_type, agent_id,
+                  task_id, or timerange)
+                - conversations: Search conversations (filter by keyword, agent_id,
+                  or task_id)
+
+                Parameters
+                ----------
+                project_id : str
+                    Project to query
+                query_type : str
+                    Type of query (see above for options)
+                status : Optional[str]
+                    Filter by task status (for tasks query)
+                agent_id : Optional[str]
+                    Filter by agent ID (for tasks/decisions/artifacts/timeline/
+                    conversations queries, or required for agent_history/agent_metrics)
+                task_id : Optional[str]
+                    Filter by task ID (for decisions/artifacts/timeline/conversations,
+                    or required for task_dependencies)
+                artifact_type : Optional[str]
+                    Filter by artifact type (for artifacts query)
+                affecting_task_id : Optional[str]
+                    Find decisions affecting this task (for decisions query)
+                event_type : Optional[str]
+                    Filter by event type (for timeline query)
+                keyword : Optional[str]
+                    Search keyword (for conversations query)
+                start_time : Optional[str]
+                    Start of time range in ISO format (for tasks/timeline queries)
+                end_time : Optional[str]
+                    End of time range in ISO format (for tasks/timeline queries)
+
+                Returns
+                -------
+                Dict[str, Any]
+                    Query results with success status and data
+
+                Examples
+                --------
+                Get project summary:
+                >>> query_project_history("proj123", "summary")
+
+                Find completed tasks:
+                >>> query_project_history("proj123", "tasks", status="completed")
+
+                Find decisions by agent:
+                >>> query_project_history("proj123", "decisions", agent_id="agent1")
+
+                Search conversations for keyword:
+                >>> query_project_history("proj123", "conversations", keyword="API")
+                """
+                from .tools.history import query_project_history as impl
+
+                # Build filters dict from optional parameters
+                filters = {}
+                if status is not None:
+                    filters["status"] = status
+                if agent_id is not None:
+                    filters["agent_id"] = agent_id
+                if task_id is not None:
+                    filters["task_id"] = task_id
+                if artifact_type is not None:
+                    filters["artifact_type"] = artifact_type
+                if affecting_task_id is not None:
+                    filters["affecting_task_id"] = affecting_task_id
+                if event_type is not None:
+                    filters["event_type"] = event_type
+                if keyword is not None:
+                    filters["keyword"] = keyword
+                if start_time is not None:
+                    filters["start_time"] = start_time
+                if end_time is not None:
+                    filters["end_time"] = end_time
+
+                return await impl(
+                    project_id=project_id,
+                    query_type=query_type,
+                    state=server,
+                    **filters,
+                )
+
+        if "list_project_history_files" in allowed_tools:
+
+            @app.tool()  # type: ignore[misc]
+            async def list_project_history_files() -> Dict[str, Any]:
+                """
+                List all projects with available history data.
+
+                Scans the project history storage directory to find all projects
+                that have recorded history data (decisions, artifacts, snapshots).
+
+                Returns
+                -------
+                Dict[str, Any]
+                    Dict with success status and list of projects with history:
+                    - projects: List of project dicts with:
+                      - project_id: Project identifier
+                      - project_name: Human-readable project name
+                      - has_decisions: Whether decision history exists
+                      - has_artifacts: Whether artifact history exists
+                      - has_snapshot: Whether snapshot exists
+                      - last_updated: ISO timestamp of last update
+                    - count: Number of projects found
+
+                Examples
+                --------
+                >>> list_project_history_files()
+                {
+                    "success": True,
+                    "projects": [
+                        {
+                            "project_id": "proj123",
+                            "project_name": "My App",
+                            "has_decisions": True,
+                            "has_artifacts": True,
+                            "has_snapshot": False,
+                            "last_updated": "2025-11-07T12:00:00Z"
+                        }
+                    ],
+                    "count": 1
+                }
+                """
+                from .tools.history import list_project_history_files as impl
+
+                return await impl(state=server)
 
         if "get_task_context" in allowed_tools:
 

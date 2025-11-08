@@ -62,7 +62,7 @@ JSON format enables easy integration with visualization and analysis tools.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -324,14 +324,15 @@ class ConversationLogger:
 
         # Main conversation log
         conversation_handler = logging.FileHandler(
-            self.log_dir / f"conversations_{datetime.now():%Y%m%d_%H%M%S}.jsonl"
+            self.log_dir
+            / f"conversations_{datetime.now(timezone.utc):%Y%m%d_%H%M%S}.jsonl"
         )
         conversation_handler.setLevel(logging.DEBUG)
         conversation_handler.addFilter(ConversationLogFilter())
 
         # Decision log for Marcus decisions
         decision_handler = logging.FileHandler(
-            self.log_dir / f"decisions_{datetime.now():%Y%m%d_%H%M%S}.jsonl"
+            self.log_dir / f"decisions_{datetime.now(timezone.utc):%Y%m%d_%H%M%S}.jsonl"
         )
         decision_handler.setLevel(logging.INFO)
         decision_handler.addFilter(ConversationLogFilter())
@@ -445,7 +446,7 @@ class ConversationLogger:
             conversation_type=conversation_type.value,
             message=message,
             metadata=metadata or {},
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     def log_pm_thinking(
@@ -528,7 +529,7 @@ class ConversationLogger:
             conversation_type=ConversationType.INTERNAL_THINKING.value,
             thought=thought,
             context=context or {},
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     def log_pm_decision(
@@ -687,7 +688,7 @@ class ConversationLogger:
             alternatives_considered=alternatives_considered or [],
             confidence_score=confidence_score,
             decision_factors=decision_factors or {},
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     def log_kanban_interaction(
@@ -849,7 +850,7 @@ class ConversationLogger:
             action=action,
             data=data,
             processing_steps=processing_steps or [],
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     def log_task_assignment(
@@ -1007,7 +1008,7 @@ class ConversationLogger:
             task_details=task_details,
             assignment_score=assignment_score,
             dependency_analysis=dependency_analysis or {},
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     def log_progress_update(
@@ -1171,7 +1172,7 @@ class ConversationLogger:
             status=status,
             message=message,
             metrics=metrics or {},
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     def log_blocker(
@@ -1385,7 +1386,7 @@ class ConversationLogger:
             severity=severity,
             suggested_solutions=suggested_solutions or [],
             resolution_attempts=resolution_attempts or [],
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     def log_system_state(
@@ -1555,7 +1556,7 @@ class ConversationLogger:
             tasks_completed=tasks_completed,
             tasks_blocked=tasks_blocked,
             system_metrics=system_metrics,
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     def get_conversation_replay(
@@ -1600,7 +1601,7 @@ class ConversationLogger:
         Retrieve all conversations from the last 24 hours:
 
         >>> from datetime import datetime, timedelta
-        >>> end_time = datetime.now()
+        >>> end_time = datetime.now(timezone.utc)
         >>> start_time = end_time - timedelta(hours=24)
         >>> conversations = logger.get_conversation_replay(
         ...     start_time=start_time,
@@ -1982,5 +1983,5 @@ def log_thinking(
             "thinking",
             thought=thought,
             context=context or {},
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )

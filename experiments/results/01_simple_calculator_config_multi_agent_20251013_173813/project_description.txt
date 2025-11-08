@@ -1,1 +1,0 @@
-Create a simple REST API calculator with basic arithmetic operations. The API should have endpoints for addition, subtraction, multiplication, and division. Each endpoint should accept two numbers as query parameters and return the result in JSON format. Include proper error handling for division by zero and invalid inputs. Use Python with FastAPI framework.

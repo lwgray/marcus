@@ -12,7 +12,7 @@ external dependencies during testing.
 
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -83,9 +83,9 @@ class TestAIAnalysisEngine:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
-                due_date=datetime.now() + timedelta(days=3),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+                due_date=datetime.now(timezone.utc) + timedelta(days=3),
                 estimated_hours=16.0,
                 dependencies=[],
                 labels=["backend", "security", "oauth"],
@@ -97,9 +97,9 @@ class TestAIAnalysisEngine:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
-                due_date=datetime.now() + timedelta(days=5),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+                due_date=datetime.now(timezone.utc) + timedelta(days=5),
                 estimated_hours=24.0,
                 dependencies=["TASK-001"],
                 labels=["frontend", "react", "ui/ux"],
@@ -111,9 +111,9 @@ class TestAIAnalysisEngine:
                 status=TaskStatus.TODO,
                 priority=Priority.URGENT,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
-                due_date=datetime.now() + timedelta(hours=4),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+                due_date=datetime.now(timezone.utc) + timedelta(hours=4),
                 estimated_hours=4.0,
                 dependencies=[],
                 labels=["backend", "payments", "bug", "critical"],
@@ -216,7 +216,7 @@ class TestAIAnalysisEngine:
             overdue_tasks=[],
             team_velocity=5.0,
             risk_level=RiskLevel.MEDIUM,
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
 
         # STEP 3: Call the AI to match a task
@@ -433,7 +433,7 @@ Remember: Take your time, test thoroughly, and ask questions!"""
             overdue_tasks=[],  # Will be populated
             team_velocity=3.0,  # Low velocity
             risk_level=RiskLevel.HIGH,
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
 
         # Recent activities showing problems
@@ -558,7 +558,7 @@ Remember: Take your time, test thoroughly, and ask questions!"""
             overdue_tasks=[],
             team_velocity=5.0,
             risk_level=RiskLevel.LOW,
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
 
         # Should fall back to highest priority task
@@ -699,7 +699,7 @@ Write unit tests for auth flow
             overdue_tasks=[],
             team_velocity=2.0,
             risk_level=RiskLevel.HIGH,
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
 
         blockers = [
@@ -708,7 +708,7 @@ Write unit tests for auth flow
                 reporter_id="dev-001",
                 description="API rate limit",
                 severity=RiskLevel.HIGH,
-                reported_at=datetime.now(),
+                reported_at=datetime.now(timezone.utc),
                 resolved=False,
                 resolution=None,
                 resolved_at=None,
@@ -755,7 +755,7 @@ Write unit tests for auth flow
             overdue_tasks=[],
             team_velocity=5.0,
             risk_level=RiskLevel.LOW,
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
 
         ai_engine._call_claude = AsyncMock(return_value="Invalid response")
@@ -791,7 +791,7 @@ Write unit tests for auth flow
             overdue_tasks=[],
             team_velocity=1.0,
             risk_level=risk_level,
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
 
         risks = engine._generate_fallback_risk_analysis(project_state)
@@ -881,7 +881,7 @@ Write unit tests for auth flow
             overdue_tasks=[Mock() for _ in range(overdue_count)],
             team_velocity=velocity,
             risk_level=risk_level,
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
 
         team_status: dict[str, Any] = {}
@@ -906,8 +906,8 @@ Write unit tests for auth flow
             status=TaskStatus.TODO,
             priority=Priority.LOW,  # Valid priority
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=1.0,
             dependencies=[],
@@ -938,7 +938,7 @@ Write unit tests for auth flow
             overdue_tasks=[],
             team_velocity=5.0,
             risk_level=RiskLevel.LOW,
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
 
         result = await ai_engine.match_task_to_agent(
@@ -959,7 +959,7 @@ Write unit tests for auth flow
         project_state.progress_percent = 50.0
         project_state.team_velocity = 5.0
         project_state.risk_level = RiskLevel.LOW
-        project_state.last_updated = datetime.now()
+        project_state.last_updated = datetime.now(timezone.utc)
         project_state.overdue_tasks = []
 
         # Pass team status as dict instead of list
@@ -1002,8 +1002,8 @@ Write unit tests for auth flow
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=1.0,
             dependencies=[],
@@ -1034,7 +1034,7 @@ Write unit tests for auth flow
             overdue_tasks=[],
             team_velocity=5.0,
             risk_level=RiskLevel.LOW,
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
 
         # Test match_task_to_agent with no client
@@ -1069,9 +1069,9 @@ Write unit tests for auth flow
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
-            due_date=datetime.now() + timedelta(days=3),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=datetime.now(timezone.utc) + timedelta(days=3),
             estimated_hours=8.0,
             dependencies=["TASK-999"],
             labels=["backend"],

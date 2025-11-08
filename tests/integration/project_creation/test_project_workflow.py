@@ -12,7 +12,7 @@ This demonstrates:
 import asyncio
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -149,7 +149,9 @@ def monitor_pipeline(flow_id: str, duration: int = 30) -> None:
                             break
 
                     if our_flow:
-                        print(f"[{datetime.now().strftime('%H:%M:%S')}] Flow Status:")
+                        print(
+                            f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] Flow Status:"
+                        )
                         print(f"  Stage: {our_flow.get('current_stage', 'Unknown')}")
                         print(f"  Progress: {our_flow.get('progress_percentage', 0)}%")
                         print(

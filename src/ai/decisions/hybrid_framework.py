@@ -6,7 +6,7 @@ optimal task assignment decisions while never compromising safety.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
@@ -289,7 +289,7 @@ class HybridDecisionFramework:
             "actual_time": assignment_outcome.get("completion_time"),
             "quality_score": assignment_outcome.get("quality_score", 0.8),
             "blockers_encountered": assignment_outcome.get("blockers", []),
-            "evaluation_timestamp": datetime.now(),
+            "evaluation_timestamp": datetime.now(timezone.utc),
         }
 
         # Calculate assignment effectiveness

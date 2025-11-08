@@ -5,7 +5,7 @@ for visualization of the entire processing pipeline.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from src.integrations.nlp_tools import NaturalLanguageProjectCreator
@@ -37,9 +37,10 @@ class PipelineTrackedProjectCreator:
         pipeline_visualizer: SharedPipelineVisualizer,
         conversation_logger: Any = None,
         subtask_manager: Any = None,
+        complexity: str = "standard",
     ) -> None:
         self.creator = NaturalLanguageProjectCreator(
-            kanban_client, ai_engine, subtask_manager
+            kanban_client, ai_engine, subtask_manager, complexity
         )
         self.pipeline_visualizer = pipeline_visualizer
         self.prd_parser = self.creator.prd_parser
@@ -74,7 +75,7 @@ class PipelineTrackedProjectCreator:
                     raise AttributeError("PRD parser missing analyze_prd_deeply method")
 
             # Track AI analysis
-            start_time = datetime.now()
+            start_time = datetime.now(timezone.utc)
             self.pipeline_visualizer.add_event(
                 flow_id=flow_id,
                 stage=PipelineStage.AI_ANALYSIS,
@@ -94,7 +95,9 @@ class PipelineTrackedProjectCreator:
                 result = await original_analyze(prd_content)
 
                 # Track success with rich insights
-                duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+                duration_ms = int(
+                    (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+                )
 
                 # Determine AI provider and model from the engine
                 ai_provider = "unknown"
@@ -132,7 +135,9 @@ class PipelineTrackedProjectCreator:
 
             except Exception as e:
                 # Track failure
-                duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+                duration_ms = int(
+                    (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+                )
                 self.pipeline_visualizer.add_event(
                     flow_id=flow_id,
                     stage=PipelineStage.AI_ANALYSIS,
@@ -150,7 +155,7 @@ class PipelineTrackedProjectCreator:
                 return await original_parse(prd_content, constraints)
 
             # Track PRD parsing
-            start_time = datetime.now()
+            start_time = datetime.now(timezone.utc)
             self.pipeline_visualizer.add_event(
                 flow_id=flow_id,
                 stage=PipelineStage.PRD_PARSING,
@@ -168,7 +173,9 @@ class PipelineTrackedProjectCreator:
                 result = await original_parse(prd_content, constraints)
 
                 # Track task generation with rich context
-                duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+                duration_ms = int(
+                    (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+                )
                 if result and result.tasks:
                     # Build task data with dependencies
                     task_data = []
@@ -218,7 +225,9 @@ class PipelineTrackedProjectCreator:
 
             except Exception as e:
                 # Track failure
-                duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+                duration_ms = int(
+                    (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+                )
                 self.pipeline_visualizer.add_event(
                     flow_id=flow_id,
                     stage=PipelineStage.PRD_PARSING,
@@ -313,6 +322,9 @@ async def create_project_from_natural_language_tracked(
     # Get subtask_manager if available (GH-62 fix)
     subtask_manager = getattr(state, "subtask_manager", None)
 
+    # Extract complexity from options (default to "standard")
+    complexity = options.get("complexity", "standard")
+
     # Clear stale project/board IDs to force new project creation
     # The creator checks if these are set and skips creation if they are
     if state.kanban_client:
@@ -323,15 +335,18 @@ async def create_project_from_natural_language_tracked(
         else:
             state.kanban_client.project_id = None
             state.kanban_client.board_id = None
-        logger.info(f"Creating NEW project '{project_name}' (tracked)")
+        logger.info(
+            f"Creating NEW project '{project_name}' (tracked, {complexity} mode)"
+        )
 
-    # Initialize tracked creator
+    # Initialize tracked creator with complexity
     tracked_creator = PipelineTrackedProjectCreator(
         kanban_client=state.kanban_client,
         ai_engine=state.ai_engine,
         pipeline_visualizer=state.pipeline_visualizer,
         conversation_logger=conversation_logger,
         subtask_manager=subtask_manager,
+        complexity=complexity,
     )
 
     # Create project (creator handles project creation in Kanban provider)
@@ -379,8 +394,8 @@ async def create_project_from_natural_language_tracked(
                         "board_id": str(kanban_client.board_id),
                         "board_name": provider_board_name,
                     },
-                    created_at=datetime.now(),
-                    last_used=datetime.now(),
+                    created_at=datetime.now(timezone.utc),
+                    last_used=datetime.now(timezone.utc),
                     tags=["auto-created", provider],
                 )
 

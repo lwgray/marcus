@@ -5,7 +5,7 @@ Tests verify that subtasks created during task decomposition are properly
 registered with SubtaskManager so they can be assigned individually to agents.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 from unittest.mock import AsyncMock, Mock, call, patch
 
@@ -53,7 +53,7 @@ class TestSubtaskRegistration:
     @pytest.fixture
     def sample_task(self):
         """Create sample task for decomposition."""
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         return Task(
             id="task-123",
             name="Implement Get Current Time",

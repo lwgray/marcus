@@ -11,7 +11,7 @@ This module contains tools for task operations in the Marcus system:
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from src.core.ai_powered_task_assignment import find_optimal_task_for_agent_ai_powered
@@ -118,8 +118,45 @@ def build_tiered_instructions(
     # Layer 1.5: Subtask Context (if this is a subtask)
     if hasattr(task, "_is_subtask") and task._is_subtask:
         parent_name = getattr(task, "_parent_task_name", "parent task")
+
+        # Calculate realistic time budget for subtask
+        # estimated_hours is already in reality-based format (minutes/60)
+        # Guard against None to prevent TypeError
+        estimated_minutes = (task.estimated_hours or 0) * 60
+
+        # Get complexity level (default to standard if not set)
+        complexity = getattr(task, "_complexity", "standard")
+
+        # Complexity-specific guidance (generic for all task types)
+        COMPLEXITY_GUIDANCE = {
+            "prototype": {
+                "scope": "Minimal - core functionality only",
+                "quality": "Works for the happy path",
+                "effort": "Quick implementation",
+            },
+            "standard": {
+                "scope": "Complete - production-ready",
+                "quality": "Handles errors, maintainable",
+                "effort": "Thorough implementation",
+            },
+            "enterprise": {
+                "scope": "Comprehensive - all edge cases",
+                "quality": "Production-grade, extensively validated",
+                "effort": "Complete with reviews",
+            },
+        }
+
+        guidance = COMPLEXITY_GUIDANCE.get(complexity, COMPLEXITY_GUIDANCE["standard"])
+
         instructions_parts.append(
-            f"\n\n📋 SUBTASK CONTEXT:\n"
+            f"\n\n⏱️ TIME BUDGET: {estimated_minutes:.0f} MINUTES\n"
+            f"Complexity Mode: {complexity.upper()}\n\n"
+            f"This is a SUBTASK - complete it in ~{estimated_minutes:.0f} minutes.\n\n"
+            f"{complexity.upper()} MODE EXPECTATIONS:\n"
+            f"- Scope: {guidance['scope']}\n"
+            f"- Quality: {guidance['quality']}\n"
+            f"- Effort: {guidance['effort']}\n\n"
+            f"📋 SUBTASK CONTEXT:\n"
             f"This is a SUBTASK of the larger task: '{parent_name}'\n\n"
             f"FOCUS ONLY on completing this specific subtask:\n"
             f"  Task: {task.name}\n"
@@ -283,10 +320,16 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
     """
     Calculate intelligent wait time before next task request.
 
+    Strategy:
+    - Prioritizes tasks that unlock parallel work for idle agents
+    - Uses 60% of ETA for early completion detection
+    - Caps at 5 minutes for regular re-polling
+
     Uses:
     - Current progress of IN_PROGRESS tasks
     - Historical median task duration
-    - Task dependencies to find soonest unblocking event
+    - Task dependencies and parallel work potential
+    - Idle agent capacity
 
     Parameters
     ----------
@@ -297,7 +340,7 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
     -------
     Dict[str, Any]
         Dictionary with:
-        - retry_after_seconds: int (wait time in seconds)
+        - retry_after_seconds: int (wait time in seconds, max 300s)
         - reason: str (explanation for the wait time)
         - blocking_task: Optional[Dict] (task that's blocking progress)
     """
@@ -325,7 +368,7 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
 
     # Calculate ETA for each in-progress task
     completion_estimates = []
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
     for item in in_progress_tasks:
         task = item["task"]
@@ -364,34 +407,57 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
             }
         )
 
-    # Sort by ETA (soonest first)
-    completion_estimates.sort(key=lambda x: x["eta_seconds"])
+    # Count idle agents (registered but not currently working)
+    total_agents = len(state.agent_status)
+    busy_agents = len([a for a in state.agent_tasks.values() if a.task_id])
+    idle_agents = max(0, total_agents - busy_agents)
 
-    # Get the soonest completion
-    soonest = completion_estimates[0]
+    # Prioritize tasks that unlock parallel work for idle agents
+    # This prevents waking up for sequential work that current workers can handle
+    high_value_tasks = [
+        est for est in completion_estimates if est["unlocks_count"] >= idle_agents
+    ]
 
-    # Add a buffer (minimum 30 seconds, or 10% of estimate)
-    buffer_seconds = max(30, soonest["eta_seconds"] * 0.1)
-    retry_after = int(soonest["eta_seconds"] + buffer_seconds)
+    # If we have tasks that unlock enough parallel work, prioritize those
+    # Otherwise fall back to any task completion (sequential work is still work)
+    candidate_tasks = high_value_tasks if high_value_tasks else completion_estimates
 
-    # Cap maximum wait time at 1 hour
-    retry_after = min(retry_after, 3600)
+    # Sort candidates by ETA (soonest first)
+    candidate_tasks.sort(key=lambda x: x["eta_seconds"])
+
+    # Get the best task to wait for
+    target_task = candidate_tasks[0]
+
+    # Use 60% of ETA for retry to catch early completions
+    # This accounts for tasks finishing faster than estimated
+    retry_after = int(target_task["eta_seconds"] * 0.6)
+
+    # Minimum 30 seconds to avoid excessive polling
+    retry_after = max(30, retry_after)
+
+    # Cap at 5 minutes for re-polling (catch unexpected early completions)
+    retry_after = min(retry_after, 300)
 
     # Format reason
-    eta_minutes = int(soonest["eta_seconds"] / 60)
+    eta_minutes = int(target_task["eta_seconds"] / 60)
+    unlocks_info = (
+        f" (unlocks {target_task['unlocks_count']} tasks)"
+        if target_task["unlocks_count"] > 0
+        else ""
+    )
     reason = (
-        f"Waiting for '{soonest['task_name']}' to complete "
-        f"(~{eta_minutes} min, {soonest['progress']}% done)"
+        f"Waiting for '{target_task['task_name']}' to complete "
+        f"(~{eta_minutes} min, {target_task['progress']}% done){unlocks_info}"
     )
 
     return {
         "retry_after_seconds": retry_after,
         "reason": reason,
         "blocking_task": {
-            "id": soonest["task_id"],
-            "name": soonest["task_name"],
-            "progress": soonest["progress"],
-            "eta_seconds": int(soonest["eta_seconds"]),
+            "id": target_task["task_id"],
+            "name": target_task["task_name"],
+            "progress": target_task["progress"],
+            "eta_seconds": int(target_task["eta_seconds"]),
         },
     }
 
@@ -691,7 +757,7 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                     priority=optimal_task.priority,
                     dependencies=optimal_task.dependencies,
                     assigned_to=agent_id,
-                    assigned_at=datetime.now(),
+                    assigned_at=datetime.now(timezone.utc),
                     due_date=optimal_task.due_date,
                 )
 
@@ -873,16 +939,15 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                     )
 
             # Check if there are any TODO tasks remaining
-            # Only run diagnostics if tasks exist but can't be assigned
+            # Only run diagnostics for LOGGING if tasks exist but can't be assigned
+            # DO NOT send diagnostics to agents - they interpret them as reasons to stop
             todo_tasks = [t for t in state.project_tasks if t.status == TaskStatus.TODO]
 
-            diagnostic_summary = None
-
             if todo_tasks:
-                # Tasks exist but can't be assigned - run diagnostics
+                # Tasks exist but can't be assigned - run diagnostics FOR LOGGING ONLY
                 logger.warning(
                     f"No tasks assignable but {len(todo_tasks)} TODO tasks exist - "
-                    "running diagnostics"
+                    "running diagnostics for logs"
                 )
 
                 from src.core.task_diagnostics import (
@@ -896,7 +961,7 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 }
                 assigned_task_ids = {a.task_id for a in state.agent_tasks.values()}
 
-                # Run diagnostics
+                # Run diagnostics FOR LOGGING ONLY - don't send to agents
                 try:
                     diagnostic_report = await run_automatic_diagnostics(
                         project_tasks=state.project_tasks,
@@ -904,36 +969,16 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                         assigned_task_ids=assigned_task_ids,
                     )
 
-                    # Format report for logging
+                    # Format report for logging (operators can see this)
                     formatted_report = format_diagnostic_report(diagnostic_report)
-                    logger.info(f"Diagnostic Report:\n{formatted_report}")
-
-                    # Include diagnostic summary in response
-                    diagnostic_summary = {
-                        "total_tasks": diagnostic_report.total_tasks,
-                        "available_tasks": diagnostic_report.available_tasks,
-                        "blocked_tasks": diagnostic_report.blocked_tasks,
-                        "issues_found": len(diagnostic_report.issues),
-                        "top_issues": [
-                            {
-                                "type": issue.issue_type,
-                                "severity": issue.severity,
-                                "description": issue.description,
-                                "recommendation": issue.recommendation,
-                            }
-                            for issue in diagnostic_report.issues[:3]
-                        ],
-                        "recommendations": diagnostic_report.recommendations[:5],
-                    }
+                    logger.info(
+                        f"Diagnostic Report (for operators):\n{formatted_report}"
+                    )
 
                 except Exception as diag_error:
                     logger.error(
                         f"Diagnostic system error: {diag_error}", exc_info=True
                     )
-                    diagnostic_summary = {
-                        "error": "Diagnostics failed",
-                        "details": str(diag_error),
-                    }
             else:
                 # No TODO tasks remaining - all tasks are done or in progress
                 logger.info("No TODO tasks remaining - project may be complete")
@@ -947,24 +992,41 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 "No suitable tasks available at this time",
                 {
                     "reason": "no_matching_tasks",
-                    "diagnostics": diagnostic_summary,
                     "retry_after_seconds": retry_info["retry_after_seconds"],
                     **project_context,
                 },
             )
 
+            # Build explicit instructions to prevent agent termination
+            retry_seconds = retry_info["retry_after_seconds"]
+            instructions = (
+                f"\n\n{'='*70}\n"
+                "NO TASKS CURRENTLY AVAILABLE\n"
+                f"{'='*70}\n\n"
+                "⚠️  CRITICAL: You MUST remain active and operational.\n\n"
+                "Instructions:\n"
+                f"1. DO NOT terminate or stop execution\n"
+                f"2. Sleep/wait for exactly {retry_seconds} seconds\n"
+                f"3. After sleeping, immediately request a new task\n"
+                f"4. Repeat this process until you receive a task OR are "
+                "notified all work is complete\n\n"
+                f"REQUIRED ACTION: Sleep {retry_seconds} seconds → "
+                "Request task → Repeat\n\n"
+                "⚠️  You must continue this retry loop. Stopping or terminating "
+                "will make you unresponsive and unable to receive future tasks. "
+                "Stay alive and keep retrying.\n"
+                f"{'='*70}\n"
+            )
+
+            # Return ONLY the essential retry information
+            # DO NOT include diagnostics or blocking_task info - agents interpret
+            # these as reasons to stop working instead of retrying
             response = {
                 "success": False,
-                "message": "No suitable tasks available at this time",
-                "retry_after_seconds": retry_info["retry_after_seconds"],
+                "message": instructions,
+                "retry_after_seconds": retry_seconds,
                 "retry_reason": retry_info["reason"],
             }
-
-            if retry_info.get("blocking_task"):
-                response["blocking_task"] = retry_info["blocking_task"]
-
-            if diagnostic_summary:
-                response["diagnostics"] = diagnostic_summary
 
             return response
 
@@ -1040,7 +1102,7 @@ async def report_task_progress(
 
         if status == "completed":
             update_data["status"] = TaskStatus.DONE
-            update_data["completed_at"] = datetime.now().isoformat()
+            update_data["completed_at"] = datetime.now(timezone.utc).isoformat()
 
             # Handle subtask completion
             if hasattr(state, "subtask_manager") and state.subtask_manager:
@@ -1089,8 +1151,12 @@ async def report_task_progress(
             task_assignment = state.agent_tasks.get(agent_id)
             if task_assignment:
                 start_time = task_assignment.assigned_at
-                actual_hours = (datetime.now() - start_time).total_seconds() / 3600
-                duration_seconds = (datetime.now() - start_time).total_seconds()
+                actual_hours = (
+                    datetime.now(timezone.utc) - start_time
+                ).total_seconds() / 3600
+                duration_seconds = (
+                    datetime.now(timezone.utc) - start_time
+                ).total_seconds()
             else:
                 actual_hours = 1.0  # Default if no assignment found
                 duration_seconds = 3600.0  # 1 hour default
@@ -1181,7 +1247,9 @@ async def report_task_progress(
                 task_assignment = state.agent_tasks.get(agent_id)
                 if task_assignment:
                     start_time = task_assignment.assigned_at
-                    actual_hours = (datetime.now() - start_time).total_seconds() / 3600
+                    actual_hours = (
+                        datetime.now(timezone.utc) - start_time
+                    ).total_seconds() / 3600
                 else:
                     actual_hours = 1.0
 
@@ -1226,8 +1294,12 @@ async def report_task_progress(
             {"acknowledged": True, **project_context},
         )
 
-        # Update system state
-        await state.refresh_project_state()
+        # DON'T refresh after task updates - causes race condition with Kanban
+        # Parent task completion updates Kanban asynchronously, refresh may
+        # fetch stale data and overwrite in-memory DONE status, causing tasks
+        # to revert to TODO. Let refresh happen on next request_next_task
+        # instead. NOTE: This may affect README documentation task visibility -
+        # monitor for that
 
         return {"success": True, "message": "Progress updated successfully"}
 
@@ -1517,15 +1589,15 @@ async def _find_optimal_task_original_logic(
 
             available_tasks.append(t)
 
-        # Special handling for PROJECT_SUCCESS documentation
+        # Special handling for README documentation
         # Calculate project completion percentage
-        # Exclude PROJECT_SUCCESS tasks from the calculation since they should only
+        # Exclude README documentation tasks from the calculation since they should only
         # be assigned after other tasks are complete
         total_non_doc_tasks = len(
             [
                 t
                 for t in state.project_tasks
-                if "PROJECT_SUCCESS" not in t.name
+                if "README" not in t.name
                 and not any(
                     label in (t.labels or [])
                     for label in ["documentation", "final", "verification"]
@@ -1537,7 +1609,7 @@ async def _find_optimal_task_original_logic(
                 t
                 for t in state.project_tasks
                 if t.status == TaskStatus.DONE
-                and "PROJECT_SUCCESS" not in t.name
+                and "README" not in t.name
                 and not any(
                     label in (t.labels or [])
                     for label in ["documentation", "final", "verification"]
@@ -1545,28 +1617,24 @@ async def _find_optimal_task_original_logic(
             ]
         )
 
-        # Special case: If PROJECT_SUCCESS is the only task left, make it available
-        project_success_tasks = [
-            t for t in available_tasks if "PROJECT_SUCCESS" in t.name
-        ]
-        if project_success_tasks and len(available_tasks) == len(project_success_tasks):
-            # All available tasks are PROJECT_SUCCESS tasks, don't filter them
+        # Special case: If README documentation is the only task left, make it available
+        readme_doc_tasks = [t for t in available_tasks if "README" in t.name]
+        if readme_doc_tasks and len(available_tasks) == len(readme_doc_tasks):
+            # All available tasks are README documentation tasks, don't filter them
             logger.debug(
-                "PROJECT_SUCCESS is the only available task - making it assignable"
+                "README documentation is the only available task - making it assignable"
             )
         elif total_non_doc_tasks > 0:
             completion_percentage = (
                 completed_non_doc_tasks / total_non_doc_tasks
             ) * 100
 
-            # Filter out PROJECT_SUCCESS tasks if not nearly complete
+            # Filter out README documentation tasks if not nearly complete
             # Using 90% threshold since some tasks might be blocked
             if completion_percentage < 90:
-                available_tasks = [
-                    t for t in available_tasks if "PROJECT_SUCCESS" not in t.name
-                ]
+                available_tasks = [t for t in available_tasks if "README" not in t.name]
                 logger.debug(
-                    f"Filtering out PROJECT_SUCCESS tasks - project only "
+                    f"Filtering out README documentation tasks - project only "
                     f"{completion_percentage:.1f}% complete"
                 )
 

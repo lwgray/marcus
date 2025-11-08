@@ -5,7 +5,7 @@ Provides real AI-related objects for testing AI components,
 analysis engines, and enrichment systems without external API calls.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 import pytest
@@ -58,7 +58,7 @@ def sample_project_context():
             "devops": 1,
         },
         project_phase="implementation",
-        deadline=datetime.now().isoformat(),
+        deadline=datetime.now(timezone.utc).isoformat(),
         complexity_level="medium",
         domain="web_application",
         existing_tasks=[

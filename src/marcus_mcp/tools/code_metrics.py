@@ -5,7 +5,7 @@ This module provides tools for collecting code metrics from GitHub,
 including commit statistics, PR metrics, and code review activity.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from mcp.types import Tool
@@ -52,7 +52,7 @@ async def get_code_metrics(
     if end_date:
         end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
     else:
-        end_dt = datetime.now()
+        end_dt = datetime.now(timezone.utc)
 
     if start_date:
         start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
@@ -190,7 +190,7 @@ async def get_repository_metrics(
         "30d": timedelta(days=30),
     }
     delta = window_map.get(time_window, timedelta(days=7))
-    cutoff_time = datetime.now() - delta
+    cutoff_time = datetime.now(timezone.utc) - delta
 
     # Mock repository metrics
     # In real implementation, this would query GitHub API
@@ -249,7 +249,7 @@ async def get_repository_metrics(
         "repository": repository,
         "time_window": time_window,
         "metrics": metrics,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -326,7 +326,7 @@ async def get_code_review_metrics(
         "agent_id": agent_id,
         "time_window": time_window,
         "metrics": metrics,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -393,8 +393,8 @@ async def get_code_quality_metrics(
         "repository": repository,
         "branch": branch,
         "metrics": metrics,
-        "timestamp": datetime.now().isoformat(),
-        "last_analysis": datetime.now().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "last_analysis": datetime.now(timezone.utc).isoformat(),
     }
 
 

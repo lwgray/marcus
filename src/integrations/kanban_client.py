@@ -19,7 +19,7 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, cast
 
 from mcp.client.stdio import stdio_client
@@ -664,7 +664,7 @@ class KanbanClient:
                         "cardId": task_id,
                         "text": (
                             f"📋 Task assigned to {agent_id} at "
-                            f"{datetime.now().isoformat()}"
+                            f"{datetime.now(timezone.utc).isoformat()}"
                         ),
                     },
                 )
@@ -815,8 +815,8 @@ class KanbanClient:
         task_name = card.get("name") or card.get("title", "")
 
         # Parse dates
-        created_at = datetime.now()
-        updated_at = datetime.now()
+        created_at = datetime.now(timezone.utc)
+        updated_at = datetime.now(timezone.utc)
 
         # Determine status
         list_name = card.get("listName", "").upper()
@@ -1355,8 +1355,8 @@ class KanbanClient:
             "board_id": board_id,
             "project_name": project_name,
             "board_name": board_name,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
 
         with open(workspace_file, "w") as f:

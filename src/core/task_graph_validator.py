@@ -4,7 +4,7 @@ Task Graph Validator for Marcus.
 Validates and AUTO-FIXES task graphs BEFORE committing to Kanban:
 1. Removes orphaned dependencies (references to non-existent tasks)
 2. Breaks circular dependencies by removing edges
-3. Adds dependencies to final tasks (PROJECT_SUCCESS jumping the line)
+3. Adds dependencies to final tasks (README documentation jumping the line)
 
 This is CORRECTIVE validation (fixes problems) not PREVENTATIVE (raises exceptions).
 Users get valid task graphs automatically, with warnings about what was fixed.
@@ -258,7 +258,7 @@ class TaskGraphValidator:
         """
         Add implementation task dependencies to final tasks.
 
-        Ensures PROJECT_SUCCESS and other final tasks only complete
+        Ensures README documentation and other final tasks only complete
         after all implementation work is done.
 
         Parameters
@@ -290,7 +290,7 @@ class TaskGraphValidator:
             t
             for t in tasks
             if any(label in t.labels for label in ["final", "verification"])
-            or "PROJECT_SUCCESS" in t.name
+            or "README" in t.name
         ]
 
         # If no implementation tasks, nothing to fix
@@ -443,7 +443,7 @@ class TaskGraphValidator:
         """
         Check that final/documentation tasks depend on implementation tasks.
 
-        This prevents PROJECT_SUCCESS from completing before the actual work.
+        This prevents README documentation from completing before the actual work.
 
         Parameters
         ----------
@@ -472,7 +472,7 @@ class TaskGraphValidator:
             t
             for t in tasks
             if any(label in t.labels for label in ["final", "verification"])
-            or "PROJECT_SUCCESS" in t.name
+            or "README" in t.name
         ]
 
         # If no implementation tasks, nothing to validate

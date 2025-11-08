@@ -9,7 +9,7 @@ import asyncio
 import statistics
 from collections import defaultdict
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Set
 
 from src.visualization.shared_pipeline_events import SharedPipelineEvents
@@ -251,7 +251,7 @@ class LivePipelineMonitor:
             return None
 
         # Calculate elapsed time
-        elapsed = (datetime.now() - start_time).total_seconds()
+        elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
 
         if current_progress > 0:
             # Simple linear estimation
@@ -273,7 +273,7 @@ class LivePipelineMonitor:
                         )
                         remaining += avg_duration / 1000  # Convert to seconds
 
-            return datetime.now() + timedelta(seconds=remaining)
+            return datetime.now(timezone.utc) + timedelta(seconds=remaining)
 
         return None
 
@@ -335,7 +335,9 @@ class LivePipelineMonitor:
         # Check for stalls
         if events:
             last_event_time = datetime.fromisoformat(events[-1].get("timestamp", ""))
-            stall_duration = (datetime.now() - last_event_time).total_seconds()
+            stall_duration = (
+                datetime.now(timezone.utc) - last_event_time
+            ).total_seconds()
 
             if stall_duration > 60:  # No events for 60 seconds
                 issues.append(f"Flow stalled for {int(stall_duration)}s")
@@ -430,7 +432,7 @@ class LivePipelineMonitor:
         }
 
         return {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "active_flows": flow_updates,
             "health_summary": health_summary,
             "system_metrics": system_metrics,
@@ -444,7 +446,7 @@ class LivePipelineMonitor:
         all_data = self.shared_events._read_events()
 
         completed_last_hour = 0
-        one_hour_ago = datetime.now() - timedelta(hours=1)
+        one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
 
         for flow_info in all_data["flows"].values():
             if flow_info.get("completed_at"):
@@ -506,7 +508,7 @@ class LivePipelineMonitor:
                 {
                     "level": "error",
                     "message": f"{critical_count} flows in critical state",
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
             )
 
@@ -522,7 +524,7 @@ class LivePipelineMonitor:
                 {
                     "level": "warning",
                     "message": "High error rate detected",
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
             )
 

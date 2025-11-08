@@ -6,7 +6,7 @@ integrations, API clients, and cross-system communication.
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 import pytest
@@ -68,7 +68,7 @@ def sample_board_data():
             {"id": "user-001", "name": "Developer 1", "role": "developer"},
             {"id": "user-002", "name": "Developer 2", "role": "developer"},
         ],
-        "created_at": datetime.now().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -83,10 +83,12 @@ def sample_kanban_task():
         "position": 1,
         "labels": ["backend", "api"],
         "assignees": ["user-001"],
-        "due_date": (datetime.now().replace(hour=23, minute=59, second=59)).isoformat(),
+        "due_date": (
+            datetime.now(timezone.utc).replace(hour=23, minute=59, second=59)
+        ).isoformat(),
         "estimated_hours": 6.0,
-        "created_at": datetime.now().isoformat(),
-        "updated_at": datetime.now().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -98,7 +100,7 @@ def api_response_templates():
             "success": True,
             "data": {},
             "message": "Operation completed successfully",
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         },
         "error": {
             "success": False,
@@ -107,7 +109,7 @@ def api_response_templates():
                 "message": "The operation could not be completed",
                 "details": {},
             },
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         },
         "task_created": {
             "success": True,

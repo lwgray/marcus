@@ -10,7 +10,7 @@ All external AI provider calls are mocked to ensure fast, reliable tests that
 don't depend on external services or consume API quotas.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -45,8 +45,8 @@ class TestIntelligentTaskEnricherTaskEnrichment:
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=8.0,
             labels=["backend", "security"],
@@ -302,8 +302,8 @@ class TestIntelligentTaskEnricherTaskEnrichment:
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=4.0,
             labels=["backend", "database"],

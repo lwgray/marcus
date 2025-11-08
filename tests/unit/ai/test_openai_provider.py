@@ -12,7 +12,7 @@ don't depend on external services or consume API quotas.
 """
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -90,8 +90,8 @@ class TestOpenAIProviderTaskAnalysis:
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=8.0,
         )
@@ -236,8 +236,8 @@ class TestOpenAIProviderDependencyInference:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=4.0,
             ),
@@ -248,8 +248,8 @@ class TestOpenAIProviderDependencyInference:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=3.0,
             ),
@@ -260,8 +260,8 @@ class TestOpenAIProviderDependencyInference:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=6.0,
             ),
@@ -319,8 +319,8 @@ class TestOpenAIProviderDependencyInference:
                 status=TaskStatus.TODO,
                 priority=Priority.LOW,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=2.0,
             )
@@ -397,8 +397,8 @@ class TestOpenAIProviderDescriptionEnhancement:
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=5.0,
         )
@@ -444,8 +444,8 @@ class TestOpenAIProviderDescriptionEnhancement:
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=5.0,
         )
@@ -489,8 +489,8 @@ class TestOpenAIProviderEffortEstimation:
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=0.0,
         )
@@ -580,8 +580,8 @@ class TestOpenAIProviderBlockerAnalysis:
             status=TaskStatus.BLOCKED,
             priority=Priority.URGENT,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=4.0,
         )

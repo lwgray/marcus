@@ -9,7 +9,7 @@ This test suite validates the complete task execution order functionality includ
 - Edge cases and error handling
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from unittest.mock import Mock, patch
 
@@ -56,9 +56,9 @@ class TestTaskExecutionOrderComprehensive:
             "status": TaskStatus.TODO,
             "priority": Priority.MEDIUM,
             "assigned_to": None,
-            "created_at": datetime.now(),
-            "updated_at": datetime.now(),
-            "due_date": datetime.now() + timedelta(days=7),
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc),
+            "due_date": datetime.now(timezone.utc) + timedelta(days=7),
             "estimated_hours": 4.0,
             "actual_hours": 0.0,
         }
