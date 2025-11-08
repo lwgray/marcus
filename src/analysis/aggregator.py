@@ -243,10 +243,12 @@ class ProjectHistoryAggregator:
         Parameters
         ----------
         marcus_root : Optional[Path]
-            Root directory of MARCUS installation. If None, uses default.
+            Root directory of MARCUS installation. If None, auto-detects
+            repository root to match ProjectHistoryPersistence.
         """
         if marcus_root is None:
-            marcus_root = Path.home() / ".marcus"
+            # Auto-detect Marcus root to match ProjectHistoryPersistence default
+            marcus_root = Path(__file__).parent.parent.parent
 
         self.marcus_root = marcus_root
         self.history_persistence = ProjectHistoryPersistence(marcus_root)
