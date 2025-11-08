@@ -6,7 +6,7 @@ assignments.
 
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
 from src.core.models import Priority, Task, TaskStatus
@@ -49,7 +49,7 @@ class TaskGenerator:
         excluded_phases: List[str] = customizations.get("excluded_phases", [])
         additional_labels: List[str] = customizations.get("labels", [])
         project_name = customizations.get("project_name", template.name)
-        start_date = customizations.get("start_date", datetime.now(timezone.utc))
+        start_date = customizations.get("start_date", datetime.now())
 
         logger.info(
             f"Generating tasks from template '{template.name}' "
@@ -211,8 +211,8 @@ class TaskGenerator:
             labels=list(set(labels)),  # Remove duplicates
             estimated_hours=task_template.estimated_hours,
             dependencies=[],  # Will be resolved later
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             due_date=None,  # Can be calculated based on dependencies
             assigned_to=None,
             source_context={
@@ -350,8 +350,8 @@ class TaskGenerator:
                 labels=task_data.get("labels", []),
                 estimated_hours=task_data.get("estimated_hours", 0),
                 dependencies=[],
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 assigned_to=None,
             )

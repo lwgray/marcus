@@ -5,7 +5,6 @@ Provides shared functionality for create_project and add_feature tools.
 
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from src.core.models import Task
@@ -36,7 +35,6 @@ class NaturalLanguageTaskCreator(ABC):
         kanban_client: Any,
         ai_engine: Any = None,
         subtask_manager: Any = None,
-        complexity: str = "standard",
     ) -> None:
         """
         Initialize the base task creator.
@@ -49,13 +47,10 @@ class NaturalLanguageTaskCreator(ABC):
             Optional AI engine for enhanced processing
         subtask_manager : Any, optional
             Optional SubtaskManager for registering decomposed subtasks
-        complexity : str, default="standard"
-            Project complexity level: "prototype", "standard", "enterprise"
         """
         self.kanban_client = kanban_client
         self.ai_engine = ai_engine
         self.subtask_manager = subtask_manager
-        self.complexity = complexity
         self.task_classifier = EnhancedTaskClassifier()
         self.task_builder = TaskBuilder()
         self.safety_checker = SafetyChecker()
@@ -147,39 +142,6 @@ class NaturalLanguageTaskCreator(ABC):
                 logger.info(f"Creating task: {task.name}")
                 kanban_task = await self.kanban_client.create_task(task_data)
                 created_tasks.append(kanban_task)
-
-                # Store task metadata for Phase 1 analysis
-                try:
-                    from pathlib import Path
-
-                    from src.core.persistence import SQLitePersistence
-
-                    # Use absolute path to database (relative to marcus root)
-                    marcus_root = Path(__file__).parent.parent.parent
-                    db_path = marcus_root / "data" / "marcus.db"
-                    persistence = SQLitePersistence(db_path=db_path)
-
-                    # kanban_task is a Task object, not a dict
-                    task_id = kanban_task.id
-                    if task_id:
-                        await persistence.store(
-                            "task_metadata",
-                            str(task_id),
-                            {
-                                "task_id": str(task_id),
-                                "name": task.name,
-                                "description": task.description,
-                                "priority": task_data.get("priority"),
-                                "estimated_hours": task.estimated_hours,
-                                "labels": task.labels,
-                                "dependencies": task.dependencies,
-                                "created_at": datetime.now(timezone.utc).isoformat(),
-                            },
-                        )
-                except Exception as log_error:
-                    logger.warning(
-                        f"Failed to log task metadata for '{task.name}': {log_error}"
-                    )
 
             except Exception as e:
                 from src.core.error_framework import (
@@ -299,8 +261,7 @@ class NaturalLanguageTaskCreator(ABC):
                 continue
 
             # Check if task should be decomposed
-            # Pass complexity for prototype mode check
-            if not should_decompose(original_task, project_complexity=self.complexity):
+            if not should_decompose(original_task):
                 continue
 
             logger.info(
@@ -329,12 +290,8 @@ class NaturalLanguageTaskCreator(ABC):
                 project_id=getattr(original_task, "project_id", None),
                 project_name=getattr(original_task, "project_name", None),
             )
-            # Pass complexity through project_context for time budgets and validation
-            project_context = {"complexity": self.complexity}
             decomposition_jobs.append(
-                decompose_task(
-                    task_with_real_id, self.ai_engine, project_context=project_context
-                )
+                decompose_task(task_with_real_id, self.ai_engine, project_context=None)
             )
             task_metadata.append((created_task, original_task))
 

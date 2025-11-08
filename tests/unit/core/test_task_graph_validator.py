@@ -4,7 +4,7 @@ Unit tests for TaskGraphValidator.
 Tests the pre-commit validation that PREVENTS invalid task graphs.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 import pytest
 
@@ -27,8 +27,8 @@ class TestTaskGraphValidator:
             labels=["type:feature", "component:backend"],
             dependencies=[],
             estimated_hours=4.0,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             assigned_to=None,
             due_date=None,
         )
@@ -42,23 +42,23 @@ class TestTaskGraphValidator:
             labels=["type:testing"],
             dependencies=["task_1"],
             estimated_hours=2.0,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             assigned_to=None,
             due_date=None,
         )
 
         task3 = Task(
             id="task_3",
-            name="Create README documentation",
+            name="PROJECT_SUCCESS",
             description="Documentation task",
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
             labels=["documentation", "final", "verification"],
             dependencies=["task_1", "task_2"],
             estimated_hours=4.0,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             assigned_to=None,
             due_date=None,
         )
@@ -86,8 +86,8 @@ class TestTaskGraphValidator:
             labels=["type:feature"],
             dependencies=["nonexistent_task"],  # Orphaned dependency
             estimated_hours=4.0,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             assigned_to=None,
             due_date=None,
         )
@@ -110,8 +110,8 @@ class TestTaskGraphValidator:
             labels=["type:feature"],
             dependencies=["task_b"],
             estimated_hours=4.0,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             assigned_to=None,
             due_date=None,
         )
@@ -125,8 +125,8 @@ class TestTaskGraphValidator:
             labels=["type:feature"],
             dependencies=["task_a"],  # Circular!
             estimated_hours=4.0,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             assigned_to=None,
             due_date=None,
         )
@@ -150,8 +150,8 @@ class TestTaskGraphValidator:
             labels=["type:feature"],
             dependencies=["task_b"],
             estimated_hours=4.0,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             assigned_to=None,
             due_date=None,
         )
@@ -165,8 +165,8 @@ class TestTaskGraphValidator:
             labels=["type:feature"],
             dependencies=["task_c"],
             estimated_hours=4.0,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             assigned_to=None,
             due_date=None,
         )
@@ -180,8 +180,8 @@ class TestTaskGraphValidator:
             labels=["type:feature"],
             dependencies=["task_a"],  # Completes the cycle
             estimated_hours=4.0,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             assigned_to=None,
             due_date=None,
         )
@@ -207,23 +207,23 @@ class TestTaskGraphValidator:
             labels=["type:feature", "component:backend"],
             dependencies=[],
             estimated_hours=4.0,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             assigned_to=None,
             due_date=None,
         )
 
         final_task = Task(
             id="final_task",
-            name="Create README documentation",
+            name="PROJECT_SUCCESS",
             description="Final documentation",
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
             labels=["final", "verification"],
             dependencies=[],  # BUG: Should depend on impl_task
             estimated_hours=4.0,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             assigned_to=None,
             due_date=None,
         )
@@ -234,7 +234,7 @@ class TestTaskGraphValidator:
         error_msg = str(exc_info.value)
         assert "final tasks have no dependencies" in error_msg.lower()
         assert "implementation tasks exist" in error_msg.lower()
-        assert "README" in error_msg
+        assert "PROJECT_SUCCESS" in error_msg
 
     def test_final_task_ok_with_dependencies(self):
         """Test that final task WITH dependencies passes validation."""
@@ -247,23 +247,23 @@ class TestTaskGraphValidator:
             labels=["type:feature", "component:backend"],
             dependencies=[],
             estimated_hours=4.0,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             assigned_to=None,
             due_date=None,
         )
 
         final_task = Task(
             id="final_task",
-            name="Create README documentation",
+            name="PROJECT_SUCCESS",
             description="Final documentation",
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
             labels=["final", "verification"],
             dependencies=["impl_task"],  # Correct!
             estimated_hours=4.0,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             assigned_to=None,
             due_date=None,
         )
@@ -275,15 +275,15 @@ class TestTaskGraphValidator:
         """Test that final task with no deps is OK if no implementation tasks."""
         final_task = Task(
             id="final_task",
-            name="Create README documentation",
+            name="PROJECT_SUCCESS",
             description="Final documentation",
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
             labels=["final", "verification"],
             dependencies=[],
             estimated_hours=4.0,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             assigned_to=None,
             due_date=None,
         )
@@ -309,8 +309,8 @@ class TestTaskGraphValidator:
             labels=["type:feature"],
             dependencies=["task_b"],
             estimated_hours=4.0,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             assigned_to=None,
             due_date=None,
         )
@@ -324,8 +324,8 @@ class TestTaskGraphValidator:
             labels=["type:feature"],
             dependencies=["task_a"],
             estimated_hours=4.0,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             assigned_to=None,
             due_date=None,
         )
@@ -347,8 +347,8 @@ class TestTaskGraphValidator:
             labels=["type:feature"],
             dependencies=["task_1"],  # Self-reference
             estimated_hours=4.0,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             assigned_to=None,
             due_date=None,
         )
@@ -370,8 +370,8 @@ class TestTaskGraphValidator:
             labels=["type:feature"],
             dependencies=[],
             estimated_hours=4.0,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             assigned_to=None,
             due_date=None,
         )
@@ -385,8 +385,8 @@ class TestTaskGraphValidator:
             labels=["final"],
             dependencies=[],
             estimated_hours=4.0,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             assigned_to=None,
             due_date=None,
         )
@@ -400,8 +400,8 @@ class TestTaskGraphValidator:
             labels=["verification"],
             dependencies=[],
             estimated_hours=4.0,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             assigned_to=None,
             due_date=None,
         )

@@ -11,7 +11,7 @@ This refactored version eliminates code duplication by using base classes and ut
 import logging
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 # Add src to path
@@ -42,13 +42,9 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
     """
 
     def __init__(
-        self,
-        kanban_client: Any,
-        ai_engine: Any,
-        subtask_manager: Any = None,
-        complexity: str = "standard",
+        self, kanban_client: Any, ai_engine: Any, subtask_manager: Any = None
     ) -> None:
-        super().__init__(kanban_client, ai_engine, subtask_manager, complexity)
+        super().__init__(kanban_client, ai_engine, subtask_manager)
         self.prd_parser = AdvancedPRDParser()
         self.board_analyzer = BoardAnalyzer()
         self.context_detector = ContextDetector(self.board_analyzer)
@@ -353,7 +349,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 "dependencies_mapped": self._count_dependencies(safe_tasks),
                 "risk_level": self._assess_risk_by_count(len(created_tasks)),
                 "confidence": 0.85,
-                "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_at": datetime.now().isoformat(),
             }
 
             logger.info(f"Successfully created project with {len(created_tasks)} tasks")
@@ -466,7 +462,6 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             available_skills=options.get("tech_stack", []),
             technology_constraints=options.get("tech_stack", []),
             deployment_target=mapped_deployment,
-            complexity_mode=self.complexity,  # Pass explicit complexity mode
         )
 
         # Pass complexity info via quality_requirements for parser to use
@@ -605,8 +600,8 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             status=TaskStatus.DONE,  # Mark as completed
             priority=Priority.LOW,
             assigned_to=None,  # Not assignable
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             due_date=None,
             estimated_hours=0,  # No time estimate
             dependencies=[],
@@ -744,8 +739,8 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
                 ),
                 labels=task_info.get("labels", ["feature"]),
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 estimated_hours=task_info.get("estimated_hours", 8),
                 dependencies=[],
                 due_date=None,
@@ -1054,15 +1049,11 @@ async def create_project_from_natural_language(
         # Get subtask_manager if available (GH-62 fix)
         subtask_manager = getattr(state, "subtask_manager", None)
 
-        # Extract complexity from options (default to "standard")
-        complexity = options.get("complexity", "standard") if options else "standard"
-
-        # Initialize project creator with complexity
+        # Initialize project creator
         creator = NaturalLanguageProjectCreator(
             kanban_client=state.kanban_client,
             ai_engine=state.ai_engine,
             subtask_manager=subtask_manager,
-            complexity=complexity,
         )
 
         # Create project
@@ -1078,15 +1069,9 @@ async def create_project_from_natural_language(
         if result.get("success"):
             try:
                 await state.refresh_project_state()
-                logger.info(
-                    f"[DEBUG] After refresh_project_state: project_tasks has "
-                    f"{len(state.project_tasks) if state.project_tasks else 0} tasks"
-                )
             except Exception as e:
                 # Log but don't fail the operation
-                logger.error(
-                    f"Failed to refresh project state: {str(e)}", exc_info=True
-                )
+                logger.warning(f"Failed to refresh project state: {str(e)}")
 
         return result
 

@@ -29,7 +29,7 @@ Examples
 import asyncio
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from src.core.models import Priority, Task, TaskStatus
@@ -588,8 +588,8 @@ class LLMAbstraction:
                     status=TaskStatus.TODO,
                     priority=Priority.LOW,
                     assigned_to=None,
-                    created_at=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(),
+                    updated_at=datetime.now(),
                     due_date=None,
                     estimated_hours=1.0,
                 )

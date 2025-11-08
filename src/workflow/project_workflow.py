@@ -7,7 +7,7 @@ using Marcus MCP.
 
 import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 from src.marcus_mcp.client import SimpleMarcusClient
@@ -37,7 +37,7 @@ class ProjectWorkflowManager:
             "flow_id": flow_id,
             "status": "running",
             "options": options,
-            "started_at": datetime.now(timezone.utc).isoformat(),
+            "started_at": datetime.now().isoformat(),
             "assigned_agents": [],
             "task_queue": [],
         }
@@ -59,7 +59,7 @@ class ProjectWorkflowManager:
                 "type": "workflow_initialized",
                 "workflow_id": workflow_id,
                 "options": options,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now().isoformat(),
             },
         )
 
@@ -115,9 +115,7 @@ class ProjectWorkflowManager:
                                         "task_name": task["name"],
                                         "agent_id": agent["agent_id"],
                                         "agent_name": agent["name"],
-                                        "assigned_at": datetime.now(
-                                            timezone.utc
-                                        ).isoformat(),
+                                        "assigned_at": datetime.now().isoformat(),
                                     }
 
                                     workflow["task_queue"].append(assignment)
@@ -132,9 +130,7 @@ class ProjectWorkflowManager:
                                             "task_name": task["name"],
                                             "agent_id": agent["agent_id"],
                                             "agent_name": agent["name"],
-                                            "timestamp": datetime.now(
-                                                timezone.utc
-                                            ).isoformat(),
+                                            "timestamp": datetime.now().isoformat(),
                                         },
                                     )
 
@@ -179,7 +175,7 @@ class ProjectWorkflowManager:
                         data={
                             "type": "workflow_metrics",
                             "metrics": metrics,
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "timestamp": datetime.now().isoformat(),
                         },
                     )
 
@@ -191,7 +187,7 @@ class ProjectWorkflowManager:
                             "workflow_completed",
                             data={
                                 "type": "workflow_completed",
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                "timestamp": datetime.now().isoformat(),
                             },
                         )
 

@@ -4,7 +4,7 @@ GitHub Projects implementation of KanbanInterface.
 Uses GitHub MCP Server to manage tasks.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from src.core.models import Priority, Task, TaskStatus
@@ -131,12 +131,12 @@ class GitHubKanban(KanbanInterface):
         if created_at:
             created_at = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
         else:
-            created_at = datetime.now(timezone.utc)
+            created_at = datetime.now()
 
         if updated_at:
             updated_at = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
         else:
-            updated_at = datetime.now(timezone.utc)
+            updated_at = datetime.now()
 
         # Extract assignee
         assignee = None

@@ -3,7 +3,7 @@ Unit tests for the Context system
 """
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -72,7 +72,7 @@ class TestDecision:
             decision_id="dec_1",
             task_id="task_123",
             agent_id="agent_1",
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(),
             what="Use PostgreSQL",
             why="Need ACID compliance",
             impact="All services must use SQL",
@@ -85,7 +85,7 @@ class TestDecision:
 
     def test_decision_to_dict(self):
         """Test converting Decision to dictionary"""
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now()
         decision = Decision(
             decision_id="dec_1",
             task_id="task_123",
@@ -249,8 +249,8 @@ class TestContext:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 estimated_hours=8.0,
                 labels=["backend", "api"],
@@ -263,8 +263,8 @@ class TestContext:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 estimated_hours=6.0,
                 labels=["frontend", "ui"],
@@ -277,8 +277,8 @@ class TestContext:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 estimated_hours=4.0,
                 labels=["test", "api"],
@@ -313,8 +313,8 @@ class TestContext:
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
             assigned_to=None,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             due_date=None,
             estimated_hours=8.0,
             labels=["backend", "api"],
@@ -327,8 +327,8 @@ class TestContext:
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
             assigned_to=None,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             due_date=None,
             estimated_hours=6.0,
             labels=["frontend", "ui"],
@@ -341,8 +341,8 @@ class TestContext:
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
             assigned_to=None,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             due_date=None,
             estimated_hours=4.0,
             labels=["test"],
@@ -399,7 +399,7 @@ class TestContext:
             decision_id="old_1",
             task_id="old_task",
             agent_id="agent_1",
-            timestamp=datetime.now(timezone.utc) - timedelta(days=40),
+            timestamp=datetime.now() - timedelta(days=40),
             what="Old decision",
             why="Old reason",
             impact="Old impact",

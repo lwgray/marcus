@@ -335,12 +335,6 @@ class SafetyChecker:
         """
         Ensure implementation tasks depend on design tasks.
 
-        Supports both bundled domain designs (GH-108) and per-feature designs
-        for backward compatibility with existing workflows.
-
-        Bundled designs have IDs like: design_user_authentication
-        Per-feature designs have IDs like: task_user-login_design
-
         Parameters
         ----------
         tasks : List[Task]
@@ -356,41 +350,20 @@ class SafetyChecker:
             tasks, TaskType.IMPLEMENTATION
         )
 
-        # Separate bundled and per-feature designs (GH-108)
-        bundled_design_tasks = [
-            dt for dt in design_tasks if dt.id.startswith("design_")
-        ]
-        per_feature_design_tasks = [
-            dt for dt in design_tasks if not dt.id.startswith("design_")
-        ]
-
-        logger.info(
-            f"Found {len(bundled_design_tasks)} bundled domain designs, "
-            f"{len(per_feature_design_tasks)} per-feature designs"
-        )
-
         for impl_task in implementation_tasks:
-            # Try bundled designs first (domain-level, GH-108)
+            # Find related design tasks (by matching labels or keywords)
             related_design_tasks = SafetyChecker._find_related_tasks(
-                impl_task, bundled_design_tasks
+                impl_task, design_tasks
             )
 
-            # Fallback to per-feature designs for backward compatibility
             if not related_design_tasks:
-                related_design_tasks = SafetyChecker._find_related_tasks(
-                    impl_task, per_feature_design_tasks
+                logger.warning(
+                    f"No related design tasks found for implementation task "
+                    f"'{impl_task.name}' with labels: {impl_task.labels}"
                 )
-                if related_design_tasks:
-                    logger.debug(
-                        f"Using per-feature design dependencies for "
-                        f"'{impl_task.name}' (bundled designs not found)"
-                    )
-
-            if not related_design_tasks:
-                logger.debug(f"No design dependencies found for '{impl_task.name}'")
             else:
                 logger.info(
-                    f"Found {len(related_design_tasks)} design tasks "
+                    f"Found {len(related_design_tasks)} related design tasks "
                     f"for '{impl_task.name}'"
                 )
 
@@ -398,8 +371,8 @@ class SafetyChecker:
                 if design_task.id not in impl_task.dependencies:
                     impl_task.dependencies.append(design_task.id)
                     logger.info(
-                        f"Added design dependency: {impl_task.name} "
-                        f"depends on {design_task.name}"
+                        f"Added dependency: {impl_task.name} depends on "
+                        f"{design_task.name}"
                     )
 
         return tasks

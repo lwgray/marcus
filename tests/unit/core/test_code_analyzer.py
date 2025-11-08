@@ -8,7 +8,7 @@ All external dependencies are mocked to ensure unit test isolation.
 
 import base64
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -41,8 +41,8 @@ class TestCodeAnalyzer:
             priority=Priority.HIGH,
             dependencies=[],
             assigned_to="worker-1",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             due_date=None,
             estimated_hours=8.0,
             actual_hours=6.0,
@@ -519,8 +519,8 @@ interface Product {
             priority=Priority.HIGH,
             dependencies=[],
             assigned_to="worker-1",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             due_date=None,
             estimated_hours=8.0,
             actual_hours=5.0,

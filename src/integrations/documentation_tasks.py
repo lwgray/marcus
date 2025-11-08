@@ -3,13 +3,13 @@ Documentation Task Generation for Marcus.
 
 Adds a final documentation task to projects that:
 1. Reviews all logged decisions
-2. Creates comprehensive README.md
+2. Creates comprehensive PROJECT_SUCCESS.md
 3. Verifies all instructions work
 """
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Optional
 
 from src.core.models import Priority, Task, TaskStatus
@@ -83,7 +83,7 @@ class DocumentationTaskGenerator:
             logger.info("No implementation tasks found, skipping documentation task")
             return None
 
-        # README documentation depends on ALL non-documentation tasks
+        # PROJECT_SUCCESS depends on ALL non-documentation tasks
         # This ensures it's only available when the entire project is
         # complete
         dependencies = [
@@ -95,11 +95,11 @@ class DocumentationTaskGenerator:
             )
         ]
 
-        # CRITICAL VALIDATION: README documentation must depend on implementation tasks
+        # CRITICAL VALIDATION: PROJECT_SUCCESS must depend on implementation tasks
         # If dependencies is empty but implementation tasks exist, this is a BUG
         if len(dependencies) == 0 and len(implementation_tasks) > 0:
             error_msg = (
-                f"CRITICAL: README documentation task has ZERO dependencies but "
+                f"CRITICAL: PROJECT_SUCCESS task has ZERO dependencies but "
                 f"{len(implementation_tasks)} implementation tasks exist. "
                 f"This means create_documentation_task() was called BEFORE "
                 f"implementation tasks were created. "
@@ -109,14 +109,12 @@ class DocumentationTaskGenerator:
             raise ValueError(error_msg)
 
         # Log dependency count for debugging
-        logger.info(
-            f"README documentation task will depend on {len(dependencies)} tasks"
-        )
+        logger.info(f"PROJECT_SUCCESS task will depend on {len(dependencies)} tasks")
 
         # Create the documentation task
         doc_task = Task(
             id=f"doc_final_{uuid.uuid4().hex[:8]}",
-            name=f"Create {project_name} README documentation",
+            name=f"Create {project_name} PROJECT_SUCCESS documentation",
             description=(
                 DocumentationTaskGenerator._generate_documentation_description(
                     has_tests=bool(test_tasks),
@@ -128,8 +126,8 @@ class DocumentationTaskGenerator:
             labels=["documentation", "final", "verification"],
             dependencies=dependencies,
             estimated_hours=4.0,  # Adjust based on project size
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             assigned_to=None,
             due_date=None,
         )
@@ -145,7 +143,7 @@ class DocumentationTaskGenerator:
         has_tests: bool = True, has_deployment: bool = False
     ) -> str:
         """Generate detailed description for documentation task."""
-        base_description = """Create comprehensive README.md documentation by:
+        base_description = """Create comprehensive PROJECT_SUCCESS.md documentation by:
 
 ⚠️ **IMPORTANT**: Work in the current directory (./) where Claude is
 running. Create all files in the current working directory, NOT in the
@@ -309,8 +307,8 @@ def enhance_project_with_documentation(
     return tasks
 
 
-# Template for README.md
-README_TEMPLATE = """# README.md
+# Template for PROJECT_SUCCESS.md
+PROJECT_SUCCESS_TEMPLATE = """# PROJECT_SUCCESS.md
 
 ## Project: {project_name}
 

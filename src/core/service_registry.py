@@ -10,7 +10,7 @@ import json
 import os
 import platform
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -86,8 +86,8 @@ class MarcusServiceRegistry:
             "project_name": project_name,
             "provider": provider,
             "status": "running",
-            "started_at": datetime.now(timezone.utc).isoformat(),
-            "last_heartbeat": datetime.now(timezone.utc).isoformat(),
+            "started_at": datetime.now().isoformat(),
+            "last_heartbeat": datetime.now().isoformat(),
             "platform": platform.system(),
             "python_version": platform.python_version(),
             "working_directory": str(Path.cwd()),
@@ -109,7 +109,7 @@ class MarcusServiceRegistry:
             with open(self.registry_file, "r") as f:
                 service_info = json.load(f)
 
-            service_info["last_heartbeat"] = datetime.now(timezone.utc).isoformat()
+            service_info["last_heartbeat"] = datetime.now().isoformat()
             service_info.update(updates)
 
             with open(self.registry_file, "w") as f:

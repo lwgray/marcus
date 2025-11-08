@@ -14,61 +14,29 @@ from src.core.models import Task
 logger = logging.getLogger(__name__)
 
 
-def should_decompose(task: Task, project_complexity: Optional[str] = None) -> bool:
+def should_decompose(task: Task) -> bool:
     """
     Decide whether a task should be decomposed into subtasks.
 
     Uses heuristics to determine if decomposition would be beneficial:
-    - Project complexity mode affects thresholds:
-        * prototype: No decomposition (speed priority)
-        * standard: Balanced decomposition (default thresholds)
-        * enterprise: Aggressive decomposition (maximum granularity)
     - Task size (estimated hours)
     - Task complexity (description length, multiple components)
-    - Task type (not bugfix, not deployment, not design)
-
-    Decomposition Thresholds by Mode
-    ---------------------------------
-    **Prototype**: Never decompose (speed over granularity)
-
-    **Standard** (default):
-    - Time threshold: >= 0.2 hours (12 minutes)
-    - Multi-component threshold: >= 3 indicators
-    - Result: Moderate task breakdown
-
-    **Enterprise**:
-    - Time threshold: >= 0.1 hours (6 minutes)
-    - Multi-component threshold: >= 2 indicators
-    - Force decompose: All "Implement" tasks
-    - Result: Maximum granularity for parallelization
+    - Task type (not bugfix, not deployment)
 
     Parameters
     ----------
     task : Task
         The task to evaluate
-    project_complexity : Optional[str], default=None
-        Project complexity mode: "prototype", "standard", or "enterprise"
 
     Returns
     -------
     bool
         True if task should be decomposed
     """
-    # In prototype mode, NEVER decompose (speed over granularity)
-    if project_complexity == "prototype":
+    # Don't decompose small tasks
+    if task.estimated_hours < 3.0:
         logger.debug(
-            f"Task {task.name} in prototype mode - no decomposition (speed priority)"
-        )
-        return False
-    # Don't decompose very small tasks (< 3 minutes)
-    # NOTE: Estimates are now reality-based (0.05-0.2 hours = 3-12 minutes)
-    # Guard against None estimated_hours
-    if (
-        task.estimated_hours is not None and task.estimated_hours < 0.05
-    ):  # Less than 3 minutes
-        minutes = task.estimated_hours * 60
-        logger.debug(
-            f"Task {task.name} too small ({minutes:.1f} min) - no decomposition"
+            f"Task {task.name} too small ({task.estimated_hours}h) - no decomposition"
         )
         return False
 
@@ -79,13 +47,6 @@ def should_decompose(task: Task, project_complexity: Optional[str] = None) -> bo
         logger.debug(f"Task {task.name} type ({task.labels}) - no decomposition")
         return False
 
-    # Don't decompose design tasks - they exist for coordination context only
-    # Design tasks should be single, atomic artifacts (API contracts, schemas)
-    task_name_lower = task.name.lower()
-    if task_name_lower.startswith("design "):
-        logger.debug(f"Task {task.name} is design task - no decomposition")
-        return False
-
     # Don't decompose deployment tasks
     deployment_keywords = ["deploy", "release", "production", "launch", "rollout"]
     task_name_lower = task.name.lower()
@@ -93,67 +54,10 @@ def should_decompose(task: Task, project_complexity: Optional[str] = None) -> bo
         logger.debug(f"Task {task.name} is deployment - no decomposition")
         return False
 
-    # Enterprise mode: More aggressive decomposition for maximum granularity
-    if project_complexity == "enterprise":
-        # Force decompose all "Implement" tasks (they almost always benefit)
-        if task_name_lower.startswith("implement "):
-            logger.info(
-                f"Task {task.name} in enterprise mode - "
-                "force decompose implementation task"
-            )
-            return True
-
-        # Lower time threshold: 6 minutes instead of 12
-        if task.estimated_hours is not None and task.estimated_hours >= 0.1:
-            minutes = task.estimated_hours * 60
-            logger.info(
-                f"Task {task.name} in enterprise mode - "
-                f"substantial ({minutes:.1f} min) - will decompose"
-            )
-            return True
-
-        # Lower multi-component threshold: 2 instead of 3
-        description_lower = task.description.lower()
-        multi_component_indicators = [
-            " and ",
-            "then",
-            "including",
-            "as well as",
-            "plus",
-            "endpoint",
-            "api",
-            "database",
-            "model",
-            "ui",
-            "frontend",
-            "backend",
-        ]
-
-        indicator_count = sum(
-            1
-            for indicator in multi_component_indicators
-            if indicator in description_lower
-        )
-
-        if indicator_count >= 2:
-            logger.info(
-                f"Task {task.name} in enterprise mode - "
-                f"has multiple components ({indicator_count} indicators) "
-                "- will decompose"
-            )
-            return True
-
-        logger.debug(f"Task {task.name} in enterprise mode - no decomposition needed")
-        return False
-
-    # Standard mode: Balanced decomposition thresholds
-    # Decompose if estimated time is substantial (> 12 minutes)
-    # With reality-based estimates, anything > 0.2 hours (12 min)
-    # benefits from splitting
-    if task.estimated_hours is not None and task.estimated_hours >= 0.2:
-        minutes = task.estimated_hours * 60
+    # Decompose if estimated time is long
+    if task.estimated_hours >= 4.0:
         logger.info(
-            f"Task {task.name} substantial ({minutes:.1f} min) - will decompose"
+            f"Task {task.name} large ({task.estimated_hours}h) - will decompose"
         )
         return True
 
@@ -199,7 +103,8 @@ async def decompose_task(
     - Sequential or independent subtasks
     - Clear dependencies
     - File artifacts and interfaces
-    - Shared conventions for natural integration
+    - Shared conventions
+    - Final integration subtask
 
     Parameters
     ----------
@@ -298,11 +203,11 @@ async def decompose_task(
             dep_types = [type(d).__name__ for d in deps]
             logger.info(f"  Subtask {idx}: deps={deps} (types: {dep_types})")
 
-        # NOTE: Integration/validation subtasks have been removed
-        # They add 6-8 minutes of overhead with minimal value
-        # Validation happens naturally during implementation and testing phases
-        # See: docs/architecture/subtask-performance-strategy.md
-        pass
+        # Add final integration subtask automatically
+        integration_subtask = _create_integration_subtask(
+            task, decomposition.get("subtasks", [])
+        )
+        decomposition["subtasks"].append(integration_subtask)
 
         # Validate decomposition
         if not _validate_decomposition(decomposition):
@@ -362,13 +267,6 @@ def _build_decomposition_prompt(
     # Extract task type from task name (first word: Design/Implement/Test)
     task_type = task.name.split()[0].lower() if task.name else "implement"
 
-    # Calculate total time budget in MINUTES for subtasks
-    # Guard against None estimated_hours
-    total_minutes = (task.estimated_hours or 0) * 60  # Convert hours to minutes
-    estimated_hours_display = (
-        task.estimated_hours if task.estimated_hours is not None else 0
-    )
-
     prompt = f"""Decompose the following task into subtasks:
 
 **Task Name:** {task.name}
@@ -377,23 +275,11 @@ def _build_decomposition_prompt(
 
 **Description:** {task.description}
 
-**Estimated Time:** {total_minutes:.1f} minutes ({estimated_hours_display:.2f} hours)
+**Estimated Hours:** {task.estimated_hours}
 
 **Labels:** {', '.join(task.labels or [])}
 
 **Priority:** {task.priority.value}
-
-**CRITICAL - TIME ESTIMATION:**
-- This task should complete in approximately {total_minutes:.1f} minutes total
-- Break into 3-5 subtasks, each taking a fraction of this time
-- Use REALISTIC estimates based on AI agent performance
-  (NOT traditional software estimates)
-- Estimated time should be in HOURS (for system compatibility),
-  but think in MINUTES
-- Example: For a {total_minutes:.0f}-minute task split into 3 subtasks:
-  - Subtask 1: {(total_minutes/3)/60:.3f} hours ({total_minutes/3:.1f} minutes)
-  - Subtask 2: {(total_minutes/3)/60:.3f} hours ({total_minutes/3:.1f} minutes)
-  - Subtask 3: {(total_minutes/3)/60:.3f} hours ({total_minutes/3:.1f} minutes)
 """
 
     if project_context:
@@ -419,9 +305,9 @@ When breaking down this task, follow these principles to maximize parallelism:
 3. **Component Boundaries**: Separate concerns cleanly
    - Database models vs API logic vs UI components
    - Each subtask focuses on one component with clear interface
-   - Components integrate naturally through shared interfaces
+   - Integration happens in final subtask
 
-4. **Shared Conventions**: Define upfront to ensure compatibility
+4. **Shared Conventions**: Define upfront to avoid integration issues
    - Standard response formats, error handling patterns
    - Naming conventions, file structure
    - This enables parallel work without conflicts
@@ -487,11 +373,9 @@ They all use the RESEARCH FINDINGS as their input and can be drafted in parallel
 Research (gather requirements/best practices)
   ↓
 [API Spec + Data Schema + Error Handling + Architecture] ← ALL IN PARALLEL
+  ↓
+Integration (validate designs work together)
 ```
-
-Design artifacts should be compatible by following shared conventions defined
-during research. There's NO separate integration subtask - components integrate
-naturally through adherence to the design specifications.
 
 **NOT this (artificial sequential chain):**
 ```
@@ -557,7 +441,7 @@ For each subtask, specify:
    (use 0-based indexing)
 5. **dependency_types**: REQUIRED - For each dependency, specify type:
    - "hard": Must wait for subtask to complete before starting (blocks execution)
-   - "soft": Can start using Design specs as contract, connect later naturally
+   - "soft": Can start using Design specs as contract, integrate at final step
    MUST have same length as dependencies array. Empty array if no dependencies.
    Prefer "soft" when Design phase provided clear specifications/contracts.
 6. **file_artifacts**: List of files this subtask will create/modify
@@ -575,9 +459,8 @@ Also define **shared_conventions** that all subtasks must follow:
 - Use independent subtasks only if truly parallelizable
 - Keep each subtask focused on one component/file
 - Ensure clear interfaces between subtasks
-- DO NOT create more than 5 subtasks total
+- DO NOT create more than 5 subtasks (excluding final integration)
 - Each subtask should be testable independently
-- NO integration/validation subtasks - components integrate naturally
 """
 
     # Add type-specific example
@@ -774,10 +657,64 @@ just the JSON object."""
     return base_prompt
 
 
-# REMOVED: _create_integration_subtask function
-# Integration subtasks have been eliminated to reduce overhead.
-# See: docs/architecture/subtask-performance-strategy.md
-# Components integrate naturally through shared conventions and interfaces.
+def _create_integration_subtask(
+    task: Task, subtasks: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """
+    Create a final integration subtask automatically.
+
+    This subtask:
+    - Integrates all components
+    - Creates consolidated documentation
+    - Runs integration tests
+    - Validates all file outputs
+
+    Parameters
+    ----------
+    task : Task
+        The parent task
+    subtasks : List[Dict[str, Any]]
+        Previously created subtasks
+
+    Returns
+    -------
+    Dict[str, Any]
+        Final integration subtask definition
+    """
+    # Collect all file artifacts from previous subtasks
+    all_artifacts = []
+    for subtask in subtasks:
+        all_artifacts.extend(subtask.get("file_artifacts", []))
+
+    # Dependencies: all previous subtasks
+    all_deps = list(range(len(subtasks)))
+    # All dependencies for integration are hard (must complete before integration)
+    all_dep_types = ["hard"] * len(all_deps)
+    component_list = ", ".join([s["name"] for s in subtasks])
+
+    integration_subtask = {
+        "name": f"Integrate and validate {task.name}",
+        "description": (
+            f"Final integration step for {task.name}:\n"
+            "1. Verify all components work together\n"
+            "2. Run integration tests across all files\n"
+            "3. Create consolidated documentation\n"
+            "4. Validate all interfaces and file outputs\n"
+            f"5. Ensure project meets original requirements"
+        ),
+        # 20% of total, capped at 1.5 hours
+        "estimated_hours": min(1.5, task.estimated_hours * 0.2),
+        "dependencies": all_deps,
+        "dependency_types": all_dep_types,
+        "file_artifacts": [
+            "docs/integration_report.md",
+            "tests/integration/test_integration.py",
+        ],
+        "provides": "Fully integrated and validated solution",
+        "requires": f"All components: {component_list}",
+    }
+
+    return integration_subtask
 
 
 def _validate_decomposition(decomposition: Dict[str, Any]) -> bool:

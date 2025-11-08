@@ -10,7 +10,7 @@ import traceback
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Optional, Union
 
@@ -51,7 +51,7 @@ class ErrorContext:
     agent_state: Optional[Dict[str, Any]] = None
 
     # System context
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=datetime.now)
     correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     system_state: Optional[Dict[str, Any]] = None
 

@@ -5,7 +5,7 @@ offline analysis, team reviews, and documentation.
 """
 
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -394,9 +394,7 @@ class PipelineReportGenerator:
                 flow=flow,
                 insights=insights,
                 recommendations=recommendations,
-                generation_date=datetime.now(timezone.utc).strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                ),
+                generation_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             )
         )
 
@@ -454,7 +452,7 @@ class PipelineReportGenerator:
         summary = {
             "project_name": flow["project_name"],
             "flow_id": flow_id,
-            "generation_date": datetime.now(timezone.utc).isoformat(),
+            "generation_date": datetime.now().isoformat(),
             "total_tasks": flow["metrics"]["task_count"],
             "estimated_hours": sum(
                 event.get("data", {}).get("effort_estimates", {}).values()

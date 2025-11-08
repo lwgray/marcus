@@ -5,7 +5,7 @@ Provides real implementations for core Marcus components including
 tasks, projects, agents, and basic data structures.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
 import pytest
@@ -24,9 +24,9 @@ def sample_task():
         status=TaskStatus.TODO,
         priority=Priority.HIGH,
         assigned_to=None,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-        due_date=datetime.now(timezone.utc) + timedelta(days=7),
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        due_date=datetime.now() + timedelta(days=7),
         estimated_hours=8.0,
         labels=["backend", "security", "authentication"],
     )
@@ -42,9 +42,9 @@ def sample_high_priority_task():
         status=TaskStatus.IN_PROGRESS,
         priority=Priority.CRITICAL,
         assigned_to="agent-001",
-        created_at=datetime.now(timezone.utc) - timedelta(hours=2),
-        updated_at=datetime.now(timezone.utc),
-        due_date=datetime.now(timezone.utc) + timedelta(hours=6),
+        created_at=datetime.now() - timedelta(hours=2),
+        updated_at=datetime.now(),
+        due_date=datetime.now() + timedelta(hours=6),
         estimated_hours=4.0,
         labels=["backend", "database", "bugfix"],
     )
@@ -60,9 +60,9 @@ def sample_completed_task():
         status=TaskStatus.DONE,
         priority=Priority.MEDIUM,
         assigned_to="agent-002",
-        created_at=datetime.now(timezone.utc) - timedelta(days=3),
-        updated_at=datetime.now(timezone.utc) - timedelta(hours=1),
-        due_date=datetime.now(timezone.utc) - timedelta(hours=2),
+        created_at=datetime.now() - timedelta(days=3),
+        updated_at=datetime.now() - timedelta(hours=1),
+        due_date=datetime.now() - timedelta(hours=2),
         estimated_hours=2.0,
         labels=["documentation", "api"],
     )
@@ -84,7 +84,7 @@ def sample_worker_status():
         current_tasks=2,
         max_capacity=5,
         skills=["python", "django", "postgresql", "redis"],
-        last_heartbeat=datetime.now(timezone.utc),
+        last_heartbeat=datetime.now(),
         performance_metrics={"completed_tasks": 15, "average_time": 4.2},
     )
 
@@ -99,7 +99,7 @@ def sample_frontend_worker():
         current_tasks=1,
         max_capacity=4,
         skills=["javascript", "react", "css", "html"],
-        last_heartbeat=datetime.now(timezone.utc),
+        last_heartbeat=datetime.now(),
         performance_metrics={"completed_tasks": 12, "average_time": 3.8},
     )
 
@@ -117,7 +117,7 @@ def sample_context():
     context.project_name = "Test Project"
     context.technology_stack = ["python", "postgresql", "react"]
     context.team_size = 3
-    context.deadline = datetime.now(timezone.utc) + timedelta(weeks=2)
+    context.deadline = datetime.now() + timedelta(weeks=2)
     return context
 
 

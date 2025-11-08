@@ -5,7 +5,7 @@ Enriches existing boards with metadata, structure, and organization.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from src.core.models import Task
@@ -173,7 +173,7 @@ class EnricherMode:
 
         # Update state
         self.state["current_enrichment"] = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now().isoformat(),
             "tasks_enriched": len(enriched_tasks),
             "changes_applied": len(changes_applied),
         }
@@ -646,7 +646,7 @@ class EnricherMode:
             "task_id": enriched_task.original_task.id,
             "task_name": enriched_task.original_task.name,
             "changes": [],
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now().isoformat(),
         }
 
         # Check what to apply based on options

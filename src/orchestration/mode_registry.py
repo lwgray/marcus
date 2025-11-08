@@ -6,7 +6,7 @@ Manages available Marcus modes and handles mode switching.
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from src.detection.board_analyzer import BoardState
@@ -87,7 +87,7 @@ class ModeRegistry:
         switch = ModeSwitch(
             from_mode=self.current_mode,
             to_mode=mode,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(),
             reason=reason,
             user_id=user_id,
         )
@@ -232,8 +232,7 @@ class ModeRegistry:
         # Don't suggest if we just switched
         if (
             self.mode_history
-            and (datetime.now(timezone.utc) - self.mode_history[-1].timestamp).seconds
-            < 300
+            and (datetime.now() - self.mode_history[-1].timestamp).seconds < 300
         ):
             return None
 

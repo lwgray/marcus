@@ -4,7 +4,7 @@ Unit tests for discover_planka_projects MCP tool.
 Tests automatic discovery of projects from Planka.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -183,8 +183,8 @@ class TestDiscoverPlankaProjects:
                         "project_id": "old-proj",
                         "board_id": "stale-board-999",  # This board doesn't exist
                     },
-                    created_at=datetime.now(timezone.utc),
-                    last_used=datetime.now(timezone.utc),
+                    created_at=datetime.now(),
+                    last_used=datetime.now(),
                     tags=["discovered"],
                 ),
                 ProjectConfig(
@@ -195,8 +195,8 @@ class TestDiscoverPlankaProjects:
                         "project_id": "proj-1",
                         "board_id": "board-1",  # This board exists
                     },
-                    created_at=datetime.now(timezone.utc),
-                    last_used=datetime.now(timezone.utc),
+                    created_at=datetime.now(),
+                    last_used=datetime.now(),
                     tags=["discovered"],
                 ),
             ]

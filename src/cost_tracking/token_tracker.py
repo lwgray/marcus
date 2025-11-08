@@ -9,7 +9,7 @@ import asyncio
 import json
 import sys
 from collections import defaultdict, deque
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Deque, Dict, List, Optional
 
@@ -80,7 +80,7 @@ class TokenTracker:
         data = {
             "project_tokens": dict(self.project_tokens),
             "project_costs": dict(self.project_costs),
-            "last_updated": datetime.now(timezone.utc).isoformat(),
+            "last_updated": datetime.now().isoformat(),
         }
         with open(self.data_file, "w") as f:
             json.dump(data, f, indent=2)
@@ -115,7 +115,7 @@ class TokenTracker:
             Dict with usage stats and cost info
         """
         total_tokens = input_tokens + output_tokens
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now()
 
         # Update totals
         self.project_tokens[project_id] += total_tokens
@@ -190,7 +190,7 @@ class TokenTracker:
         # Session duration
         if project_id in self.session_start_times:
             duration = (
-                datetime.now(timezone.utc) - self.session_start_times[project_id]
+                datetime.now() - self.session_start_times[project_id]
             ).total_seconds()
         else:
             duration = 0
@@ -215,7 +215,7 @@ class TokenTracker:
             return 0.0
 
         # Get events from last 5 minutes
-        cutoff = datetime.now(timezone.utc) - timedelta(minutes=5)
+        cutoff = datetime.now() - timedelta(minutes=5)
         recent_events = [e for e in history if e["timestamp"] > cutoff]
 
         if len(recent_events) < 2:
@@ -244,7 +244,7 @@ class TokenTracker:
             return 0.0
 
         duration = (
-            datetime.now(timezone.utc) - self.session_start_times[project_id]
+            datetime.now() - self.session_start_times[project_id]
         ).total_seconds()
         if duration == 0:
             return 0.0

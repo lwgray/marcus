@@ -5,7 +5,7 @@ This module provides tools for collecting system metrics, agent performance data
 and project analytics for visualization in Seneca dashboards.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 from mcp.types import Tool
@@ -50,7 +50,7 @@ async def get_system_metrics(
         "30d": timedelta(days=30),
     }
     delta = window_map.get(time_window, timedelta(hours=1))
-    cutoff_time = datetime.now(timezone.utc) - delta
+    cutoff_time = datetime.now() - delta
 
     # Get all registered agents
     agents = []
@@ -107,7 +107,7 @@ async def get_system_metrics(
             "average_task_duration": round(avg_duration, 1),
             "system_health": round(health_score, 1),
         },
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now().isoformat(),
     }
 
 
@@ -168,7 +168,7 @@ async def get_agent_metrics(
         "30d": timedelta(days=30),
     }
     delta = window_map.get(time_window, timedelta(days=7))
-    cutoff_time = datetime.now(timezone.utc) - delta
+    cutoff_time = datetime.now() - delta
 
     # Get agent's task history
     if not agent_context.kanban_provider:
@@ -234,7 +234,7 @@ async def get_agent_metrics(
             "total_hours_worked": round(active_time, 1),
             "skill_distribution": skill_counts,
         },
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now().isoformat(),
     }
 
 
@@ -289,7 +289,7 @@ async def get_project_metrics(
         "30d": timedelta(days=30),
     }
     delta = window_map.get(time_window, timedelta(days=7))
-    cutoff_time = datetime.now(timezone.utc) - delta
+    cutoff_time = datetime.now() - delta
 
     # Get all tasks
     tasks = await context.kanban_provider.get_tasks()
@@ -339,7 +339,7 @@ async def get_project_metrics(
         health_score -= 20
 
     # Build burndown data
-    current_date = datetime.now(timezone.utc).date()
+    current_date = datetime.now().date()
     remaining = total_tasks
     for i in range(days_in_window):
         date = current_date - timedelta(days=days_in_window - i - 1)
@@ -369,7 +369,7 @@ async def get_project_metrics(
             "health_score": round(health_score, 1),
             "burndown_data": burndown_data,
         },
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now().isoformat(),
     }
 
 
@@ -409,7 +409,7 @@ async def get_task_metrics(
         "30d": timedelta(days=30),
     }
     delta = window_map.get(time_window, timedelta(days=30))
-    cutoff_time = datetime.now(timezone.utc) - delta
+    cutoff_time = datetime.now() - delta
 
     # Collect tasks from all projects
     all_tasks = []
@@ -498,7 +498,7 @@ async def get_task_metrics(
         "group_by": group_by,
         "metrics": grouped_metrics,
         "total_tasks": sum(m["count"] for m in grouped_metrics.values()),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now().isoformat(),
     }
 
 

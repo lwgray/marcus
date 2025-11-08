@@ -4,7 +4,7 @@ Audit and usage analytics tools for Marcus.
 Provides tools for analyzing audit logs and generating usage reports.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Dict
 
 from mcp.types import Tool
@@ -34,7 +34,7 @@ async def get_usage_report(
     audit_logger = get_audit_logger()
 
     # Calculate date range
-    end_date = datetime.now(timezone.utc)
+    end_date = datetime.now()
     start_date = end_date - timedelta(days=days)
 
     # Get usage statistics

@@ -15,7 +15,7 @@ Key features:
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -53,12 +53,12 @@ class AssignmentLease:
     @property
     def time_remaining(self) -> timedelta:
         """Calculate time remaining on lease."""
-        return self.lease_expires - datetime.now(timezone.utc)
+        return self.lease_expires - datetime.now()
 
     @property
     def is_expired(self) -> bool:
         """Check if lease has expired."""
-        return datetime.now(timezone.utc) > self.lease_expires
+        return datetime.now() > self.lease_expires
 
     @property
     def is_expiring_soon(self) -> bool:
@@ -237,7 +237,7 @@ class AssignmentLeaseManager:
             Created assignment lease
         """
         async with self.lease_lock:
-            now = datetime.now(timezone.utc)
+            now = datetime.now()
 
             # Calculate initial lease duration
             base_hours = self.default_lease_hours
@@ -340,7 +340,7 @@ class AssignmentLeaseManager:
             renewal_duration = lease.calculate_renewal_duration(self)
 
             # Renew lease
-            lease.last_renewed = datetime.now(timezone.utc)
+            lease.last_renewed = datetime.now()
             lease.lease_expires = lease.last_renewed + renewal_duration
             lease.renewal_count += 1
 
@@ -365,7 +365,7 @@ class AssignmentLeaseManager:
                 {
                     "event": "lease_renewed",
                     "task_id": task_id,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "timestamp": datetime.now().isoformat(),
                     "progress": progress,
                     "renewal_count": lease.renewal_count,
                     "new_expiry": lease.lease_expires.isoformat(),
@@ -383,7 +383,7 @@ class AssignmentLeaseManager:
             List of expired leases (considering grace period)
         """
         expired_leases = []
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
         grace_delta = timedelta(minutes=self.grace_period_minutes)
 
         async with self.lease_lock:
@@ -450,7 +450,7 @@ class AssignmentLeaseManager:
                     "event": "lease_recovered",
                     "task_id": lease.task_id,
                     "agent_id": lease.agent_id,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "timestamp": datetime.now().isoformat(),
                     "progress_at_recovery": lease.progress_percentage,
                     "total_renewals": lease.renewal_count,
                 }
@@ -487,11 +487,11 @@ class AssignmentLeaseManager:
             assignment["lease_renewed_at"] = lease.last_renewed.isoformat()
             assignment["renewal_count"] = lease.renewal_count
             assignment["progress_percentage"] = lease.progress_percentage
-            assignment["last_progress_update"] = datetime.now(timezone.utc).isoformat()
+            assignment["last_progress_update"] = datetime.now().isoformat()
             await self.assignment_persistence.save_assignment(
                 lease.agent_id,
                 lease.task_id,
-                assignment.get("assigned_at", datetime.now(timezone.utc).isoformat()),
+                assignment.get("assigned_at", datetime.now().isoformat()),
             )
 
     async def load_active_leases(self) -> None:
@@ -507,9 +507,7 @@ class AssignmentLeaseManager:
                 agent_id=agent_id,
                 assigned_at=datetime.fromisoformat(assignment["assigned_at"]),
                 lease_expires=datetime.fromisoformat(
-                    assignment.get(
-                        "lease_expires", datetime.now(timezone.utc).isoformat()
-                    )
+                    assignment.get("lease_expires", datetime.now().isoformat())
                 ),
                 last_renewed=datetime.fromisoformat(
                     assignment.get("lease_renewed_at", assignment["assigned_at"])

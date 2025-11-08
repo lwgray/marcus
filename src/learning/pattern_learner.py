@@ -7,7 +7,7 @@ Learns patterns from completed projects to improve future recommendations.
 import logging
 from collections import defaultdict
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
 from src.core.models import Task, TaskStatus
@@ -338,7 +338,7 @@ class PatternLearner:
                 pattern.recommendations["accuracy_multiplier"] = new_accuracy
                 pattern.evidence_count += 1
                 pattern.confidence = min(0.95, pattern.confidence + 0.05)
-                pattern.last_updated = datetime.now(timezone.utc)
+                pattern.last_updated = datetime.now()
             else:
                 # Create new pattern
                 self.patterns[pattern_id] = Pattern(
@@ -349,7 +349,7 @@ class PatternLearner:
                     recommendations={"accuracy_multiplier": accuracy},
                     confidence=0.6,
                     evidence_count=1,
-                    last_updated=datetime.now(timezone.utc),
+                    last_updated=datetime.now(),
                 )
 
     async def _update_dependency_patterns(
@@ -363,7 +363,7 @@ class PatternLearner:
                 pattern = self.patterns[pattern_id]
                 pattern.evidence_count += 1
                 pattern.confidence = min(0.95, pattern.confidence + 0.02)
-                pattern.last_updated = datetime.now(timezone.utc)
+                pattern.last_updated = datetime.now()
             else:
                 self.patterns[pattern_id] = Pattern(
                     pattern_id=pattern_id,
@@ -373,7 +373,7 @@ class PatternLearner:
                     recommendations={"pattern": pattern_data["pattern"]},
                     confidence=pattern_data.get("confidence", 0.7),
                     evidence_count=1,
-                    last_updated=datetime.now(timezone.utc),
+                    last_updated=datetime.now(),
                 )
 
     async def _update_workflow_patterns(self, workflow_data: Dict[str, Any]) -> None:
@@ -392,7 +392,7 @@ class PatternLearner:
                     )
 
             pattern.evidence_count += 1
-            pattern.last_updated = datetime.now(timezone.utc)
+            pattern.last_updated = datetime.now()
         else:
             self.patterns[pattern_id] = Pattern(
                 pattern_id=pattern_id,
@@ -402,7 +402,7 @@ class PatternLearner:
                 recommendations=workflow_data,
                 confidence=0.7,
                 evidence_count=1,
-                last_updated=datetime.now(timezone.utc),
+                last_updated=datetime.now(),
             )
 
     async def _update_outcome_patterns(
@@ -417,7 +417,7 @@ class PatternLearner:
                 pattern = self.patterns[pattern_id]
                 pattern.evidence_count += 1
                 pattern.confidence = min(0.95, pattern.confidence + 0.03)
-                pattern.last_updated = datetime.now(timezone.utc)
+                pattern.last_updated = datetime.now()
             else:
                 self.patterns[pattern_id] = Pattern(
                     pattern_id=pattern_id,
@@ -427,7 +427,7 @@ class PatternLearner:
                     recommendations={"factor": factor, "positive_impact": True},
                     confidence=0.6,
                     evidence_count=1,
-                    last_updated=datetime.now(timezone.utc),
+                    last_updated=datetime.now(),
                 )
 
         # Update failure patterns
@@ -438,7 +438,7 @@ class PatternLearner:
                 pattern = self.patterns[pattern_id]
                 pattern.evidence_count += 1
                 pattern.confidence = min(0.95, pattern.confidence + 0.03)
-                pattern.last_updated = datetime.now(timezone.utc)
+                pattern.last_updated = datetime.now()
             else:
                 self.patterns[pattern_id] = Pattern(
                     pattern_id=pattern_id,
@@ -448,12 +448,12 @@ class PatternLearner:
                     recommendations={"factor": failure, "negative_impact": True},
                     confidence=0.6,
                     evidence_count=1,
-                    last_updated=datetime.now(timezone.utc),
+                    last_updated=datetime.now(),
                 )
 
     async def _prune_patterns(self) -> None:
         """Remove old or low-confidence patterns."""
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=180)  # 6 months old
+        cutoff_date = datetime.now() - timedelta(days=180)  # 6 months old
         min_confidence = 0.3
         min_evidence = 2
 
@@ -496,7 +496,7 @@ class PatternLearner:
         evidence_bonus = min(0.2, pattern.evidence_count * 0.02)
 
         # Decrease confidence if pattern is old
-        days_old = (datetime.now(timezone.utc) - pattern.last_updated).days
+        days_old = (datetime.now() - pattern.last_updated).days
         age_penalty = min(0.3, days_old * 0.001)
 
         final_confidence = base_confidence + evidence_bonus - age_penalty
@@ -560,7 +560,7 @@ class PatternLearner:
                 pattern_id: asdict(pattern)
                 for pattern_id, pattern in self.patterns.items()
             },
-            "export_timestamp": datetime.now(timezone.utc).isoformat(),
+            "export_timestamp": datetime.now().isoformat(),
             "pattern_count": len(self.patterns),
         }
 

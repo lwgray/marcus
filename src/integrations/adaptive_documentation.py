@@ -8,7 +8,7 @@ pre-defined tasks and GitHub issue fixing.
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set
 
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class DocumentationType(Enum):
     """Types of documentation that can be generated."""
 
-    README_DOCUMENTATION = "readme_documentation"
+    PROJECT_SUCCESS = "project_success"
     BUG_FIX_REPORT = "bug_fix_report"
     FEATURE_UPDATE = "feature_update"
     MODIFICATION_SUMMARY = "modification_summary"
@@ -96,7 +96,7 @@ class AdaptiveDocumentationGenerator:
 
         # For new projects from natural language
         if context.source_type == "nlp_project" and context.work_type == "new_system":
-            doc_types.append(DocumentationType.README_DOCUMENTATION)
+            doc_types.append(DocumentationType.PROJECT_SUCCESS)
 
         # For bug fixes (future: GitHub issues)
         elif context.source_type == "github_issue" and context.work_type == "bug_fix":
@@ -107,7 +107,7 @@ class AdaptiveDocumentationGenerator:
             doc_types.append(DocumentationType.FEATURE_UPDATE)
             # Also add to project docs if significant
             if self._is_significant_feature(context):
-                doc_types.append(DocumentationType.README_DOCUMENTATION)
+                doc_types.append(DocumentationType.PROJECT_SUCCESS)
 
         # For modifications to existing code
         elif context.work_type == "modification":
@@ -120,7 +120,7 @@ class AdaptiveDocumentationGenerator:
         elif not doc_types:
             # Determine based on work analysis
             if self._created_new_system(context):
-                doc_types.append(DocumentationType.README_DOCUMENTATION)
+                doc_types.append(DocumentationType.PROJECT_SUCCESS)
             else:
                 doc_types.append(DocumentationType.MODIFICATION_SUMMARY)
 
@@ -153,8 +153,8 @@ class AdaptiveDocumentationGenerator:
             labels=labels,
             dependencies=dependencies,
             estimated_hours=template.get("estimated_hours", 4.0),
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             assigned_to=None,
             due_date=None,
         )
@@ -166,8 +166,8 @@ class AdaptiveDocumentationGenerator:
     ) -> Dict[str, Any]:
         """Get template for documentation type."""
         templates = {
-            DocumentationType.README_DOCUMENTATION: {
-                "name": "Create {project_name} README documentation",
+            DocumentationType.PROJECT_SUCCESS: {
+                "name": "Create {project_name} PROJECT_SUCCESS documentation",
                 "estimated_hours": 4.0,
                 "priority": Priority.HIGH,
             },
@@ -198,16 +198,14 @@ class AdaptiveDocumentationGenerator:
             },
         }
 
-        return templates.get(
-            doc_type, templates[DocumentationType.README_DOCUMENTATION]
-        )
+        return templates.get(doc_type, templates[DocumentationType.PROJECT_SUCCESS])
 
     def _generate_description(
         self, doc_type: DocumentationType, context: DocumentationContext
     ) -> str:
         """Generate appropriate description for documentation type."""
-        if doc_type == DocumentationType.README_DOCUMENTATION:
-            # Use legacy generator for README documentation
+        if doc_type == DocumentationType.PROJECT_SUCCESS:
+            # Use legacy generator for PROJECT_SUCCESS
             return DocumentationTaskGenerator._generate_documentation_description(
                 has_tests=any("test" in t.name.lower() for t in context.completed_work),
                 has_deployment=any(
@@ -275,8 +273,8 @@ class AdaptiveDocumentationGenerator:
         """Find appropriate dependencies for documentation task."""
         dependencies = []
 
-        # For README documentation, depend on all major implementation and test tasks
-        if doc_type == DocumentationType.README_DOCUMENTATION:
+        # For PROJECT_SUCCESS, depend on all major implementation and test tasks
+        if doc_type == DocumentationType.PROJECT_SUCCESS:
             for task in context.existing_tasks:
                 if any(
                     label in task.labels

@@ -3,7 +3,7 @@ Unit tests for the Memory system
 """
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -28,8 +28,8 @@ class TestTaskOutcome:
             actual_hours=10.0,
             success=True,
             blockers=["database_connection"],
-            started_at=datetime.now(timezone.utc),
-            completed_at=datetime.now(timezone.utc),
+            started_at=datetime.now(),
+            completed_at=datetime.now(),
         )
 
         assert outcome.task_id == "task_1"
@@ -74,7 +74,7 @@ class TestTaskOutcome:
 
     def test_task_outcome_to_dict(self):
         """Test converting TaskOutcome to dictionary"""
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
         outcome = TaskOutcome(
             task_id="task_1",
             agent_id="agent_1",
@@ -153,8 +153,8 @@ class TestMemory:
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
             assigned_to=None,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             due_date=None,
             estimated_hours=8.0,
             labels=["backend", "api"],
@@ -316,8 +316,8 @@ class TestMemory:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 estimated_hours=8.0,
                 labels=labels,
@@ -335,8 +335,8 @@ class TestMemory:
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
             assigned_to=None,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             due_date=None,
             estimated_hours=8.0,
             labels=["backend", "api"],
@@ -375,8 +375,8 @@ class TestMemory:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 estimated_hours=1.0,
             )
@@ -415,8 +415,8 @@ class TestMemory:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 estimated_hours=duration,
             )
@@ -442,8 +442,8 @@ class TestMemory:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 estimated_hours=duration,
             )
@@ -477,8 +477,8 @@ class TestMemory:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 estimated_hours=duration,
             )
@@ -513,8 +513,8 @@ class TestMemory:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 estimated_hours=duration,
             )

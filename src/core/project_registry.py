@@ -8,15 +8,10 @@ for project definitions.
 
 import uuid
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from src.core.persistence import Persistence
-
-
-def _utc_now() -> datetime:
-    """Return current UTC datetime with timezone info."""
-    return datetime.now(timezone.utc)
 
 
 @dataclass
@@ -27,8 +22,8 @@ class ProjectConfig:
     name: str
     provider: str  # 'planka', 'linear', 'github'
     provider_config: Dict[str, Any]  # Provider-specific configuration
-    created_at: datetime = field(default_factory=_utc_now)
-    last_used: datetime = field(default_factory=_utc_now)
+    created_at: datetime = field(default_factory=datetime.now)
+    last_used: datetime = field(default_factory=datetime.now)
     tags: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -53,18 +48,11 @@ class ProjectConfig:
         }
         filtered_data = {k: v for k, v in data.items() if k in expected_fields}
 
-        # Convert datetime strings, ensuring timezone-aware
-        created_at = datetime.fromisoformat(filtered_data["created_at"])
-        if created_at.tzinfo is None:
-            # Convert naive datetime to UTC-aware
-            created_at = created_at.replace(tzinfo=timezone.utc)
-        filtered_data["created_at"] = created_at
-
-        last_used = datetime.fromisoformat(filtered_data["last_used"])
-        if last_used.tzinfo is None:
-            # Convert naive datetime to UTC-aware
-            last_used = last_used.replace(tzinfo=timezone.utc)
-        filtered_data["last_used"] = last_used
+        # Convert datetime strings
+        filtered_data["created_at"] = datetime.fromisoformat(
+            filtered_data["created_at"]
+        )
+        filtered_data["last_used"] = datetime.fromisoformat(filtered_data["last_used"])
 
         return cls(**filtered_data)
 
@@ -193,15 +181,8 @@ class ProjectRegistry:
         if provider:
             projects = [p for p in projects if p.provider == provider]
 
-        # Sort by last used, ensuring all timestamps are timezone-aware
-        def sort_key(p: ProjectConfig) -> datetime:
-            """Get timezone-aware last_used for sorting."""
-            if p.last_used.tzinfo is None:
-                # Convert naive to UTC-aware for sorting
-                return p.last_used.replace(tzinfo=timezone.utc)
-            return p.last_used
-
-        projects.sort(key=sort_key, reverse=True)
+        # Sort by last used
+        projects.sort(key=lambda p: p.last_used, reverse=True)
 
         return projects
 
@@ -230,7 +211,7 @@ class ProjectRegistry:
                 setattr(project, key, value)
 
         # Update last_used timestamp
-        project.last_used = datetime.now(timezone.utc)
+        project.last_used = datetime.now()
 
         # Save to persistence
         await self.persistence.store(self.COLLECTION, project_id, project.to_dict())
@@ -292,7 +273,7 @@ class ProjectRegistry:
         self._active_project_id = project_id
 
         # Update last_used timestamp
-        await self.update_project(project_id, {"last_used": datetime.now(timezone.utc)})
+        await self.update_project(project_id, {"last_used": datetime.now()})
 
         # Store active project ID
         await self.persistence.store(

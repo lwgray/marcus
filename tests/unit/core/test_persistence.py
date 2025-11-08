@@ -5,7 +5,7 @@ Unit tests for the Persistence layer
 import asyncio
 import json
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -98,8 +98,8 @@ class TestFilePersistence:
         # We'll manually set _stored_at for testing
         file_path = file_persistence._get_collection_file("test_collection")
 
-        old_date = (datetime.now(timezone.utc) - timedelta(days=40)).isoformat()
-        recent_date = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+        old_date = (datetime.now() - timedelta(days=40)).isoformat()
+        recent_date = (datetime.now() - timedelta(days=10)).isoformat()
 
         data = {
             "old_key": {"data": "old", "_stored_at": old_date},
@@ -181,9 +181,7 @@ class TestSQLitePersistence:
         with sqlite3.connect(sqlite_persistence.db_path) as conn:
             for i in range(20):
                 # Create timestamps that are clearly different (1 minute apart)
-                timestamp = (
-                    datetime.now(timezone.utc) + timedelta(minutes=i)
-                ).isoformat()
+                timestamp = (datetime.now() + timedelta(minutes=i)).isoformat()
                 conn.execute(
                     "INSERT INTO persistence (collection, key, data, stored_at) VALUES (?, ?, ?, ?)",
                     ("test_collection", f"key{i}", f'{{"value": {i}}}', timestamp),
@@ -205,8 +203,8 @@ class TestSQLitePersistence:
         # We need to manually insert old data for testing
         import sqlite3
 
-        old_date = (datetime.now(timezone.utc) - timedelta(days=40)).isoformat()
-        recent_date = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+        old_date = (datetime.now() - timedelta(days=40)).isoformat()
+        recent_date = (datetime.now() - timedelta(days=10)).isoformat()
 
         with sqlite3.connect(sqlite_persistence.db_path) as conn:
             conn.execute(
@@ -262,7 +260,7 @@ class TestPersistence:
         """Test storing an event"""
         event = Event(
             event_id="evt_123",
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(),
             event_type="test_event",
             source="test",
             data={"key": "value"},
@@ -279,12 +277,12 @@ class TestPersistence:
         mock_backend.query.return_value = [
             {
                 "event_id": "evt_1",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now().isoformat(),
                 "event_type": "test_event",
                 "source": "test",
                 "data": {"key": "value"},
                 "_key": "evt_1",
-                "_stored_at": datetime.now(timezone.utc).isoformat(),
+                "_stored_at": datetime.now().isoformat(),
             }
         ]
 
@@ -302,7 +300,7 @@ class TestPersistence:
             decision_id="dec_123",
             task_id="task_1",
             agent_id="agent_1",
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(),
             what="Use PostgreSQL",
             why="Need ACID",
             impact="All services",
@@ -323,7 +321,7 @@ class TestPersistence:
                 "decision_id": "dec_1",
                 "task_id": "task_1",
                 "agent_id": "agent_1",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now().isoformat(),
                 "what": "Use REST",
                 "why": "Standard",
                 "impact": "APIs",

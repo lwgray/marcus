@@ -7,7 +7,7 @@ compliance, and usage analytics.
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -31,8 +31,7 @@ class AuditLogger:
 
         # Create daily log file
         self.log_file = (
-            self.log_dir
-            / f"audit_{datetime.now(timezone.utc).strftime('%Y%m%d')}.jsonl"
+            self.log_dir / f"audit_{datetime.now().strftime('%Y%m%d')}.jsonl"
         )
 
     async def log_event(
@@ -66,7 +65,7 @@ class AuditLogger:
             Error message if operation failed
         """
         event = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now().isoformat(),
             "event_type": event_type,
             "client_id": client_id,
             "client_type": client_type,

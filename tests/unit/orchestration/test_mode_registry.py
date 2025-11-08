@@ -10,7 +10,7 @@ This module tests the mode registry functionality including:
 - Mode suggestions based on board state
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -279,9 +279,7 @@ class TestModeRegistry:
         await mode_registry.switch_mode(MarcusMode.CREATOR)
 
         # Mock the timestamp to be > 5 minutes ago
-        mode_registry.mode_history[-1].timestamp = datetime.now(
-            timezone.utc
-        ) - timedelta(minutes=6)
+        mode_registry.mode_history[-1].timestamp = datetime.now() - timedelta(minutes=6)
 
         board_state = Mock(spec=BoardState)
         board_state.is_empty = False
@@ -334,9 +332,7 @@ class TestModeRegistry:
         await mode_registry.switch_mode(MarcusMode.CREATOR)
 
         # Mock the timestamp to be > 5 minutes ago
-        mode_registry.mode_history[-1].timestamp = datetime.now(
-            timezone.utc
-        ) - timedelta(minutes=6)
+        mode_registry.mode_history[-1].timestamp = datetime.now() - timedelta(minutes=6)
 
         board_state = Mock(spec=BoardState)
         board_state.is_empty = False
@@ -416,7 +412,7 @@ class TestModeRegistry:
         switch = ModeSwitch(
             from_mode=MarcusMode.ADAPTIVE,
             to_mode=MarcusMode.CREATOR,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(),
             reason="Test switch",
             user_id="test_user",
         )
@@ -468,9 +464,7 @@ class TestModeRegistry:
         """Test no suggestion when board state doesn't match any condition"""
         # Mock the timestamp to avoid recent switch restriction
         await mode_registry.switch_mode(MarcusMode.ADAPTIVE)
-        mode_registry.mode_history[-1].timestamp = datetime.now(
-            timezone.utc
-        ) - timedelta(minutes=6)
+        mode_registry.mode_history[-1].timestamp = datetime.now() - timedelta(minutes=6)
 
         board_state = Mock(spec=BoardState)
         board_state.is_empty = False

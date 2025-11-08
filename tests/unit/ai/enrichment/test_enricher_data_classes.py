@@ -11,7 +11,7 @@ These are unit tests for data structure validation and do not require
 mocking of external services.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from src.ai.enrichment.intelligent_enricher import (
     EnhancementResult,
@@ -32,8 +32,8 @@ class TestEnhancementResultDataClass:
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
             assigned_to=None,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             due_date=None,
             estimated_hours=5.0,
             labels=[],
@@ -50,7 +50,7 @@ class TestEnhancementResultDataClass:
             confidence=0.8,
             reasoning="Test reasoning",
             changes_made={"description": "changed"},
-            enhancement_timestamp=datetime.now(timezone.utc),
+            enhancement_timestamp=datetime.now(),
         )
 
         assert result.original_task == task
@@ -74,8 +74,8 @@ class TestEnhancementResultDataClass:
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
             assigned_to=None,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             due_date=None,
             estimated_hours=5.0,
             labels=[],
@@ -113,8 +113,8 @@ class TestProjectContextDataClass:
             status=TaskStatus.DONE,
             priority=Priority.LOW,
             assigned_to=None,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             due_date=None,
             estimated_hours=2.0,
             labels=[],

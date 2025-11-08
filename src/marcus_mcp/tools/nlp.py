@@ -117,7 +117,7 @@ async def create_project(
         ... )
     """
     import uuid
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     # Validate required parameters
     if (
@@ -270,7 +270,7 @@ async def create_project(
             },
         )
 
-    start_time = datetime.now(timezone.utc)
+    start_time = datetime.now()
 
     try:
         # Create project using natural language processing with pipeline tracking
@@ -328,9 +328,7 @@ async def create_project(
 
         # Track successful completion (non-blocking)
         if hasattr(state, "pipeline_visualizer"):
-            duration_ms = int(
-                (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
-            )
+            duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
 
             def track_completion() -> None:
                 state.pipeline_visualizer.add_event(
@@ -457,9 +455,7 @@ async def create_project(
     except Exception as exc:
         # Track error (non-blocking)
         if hasattr(state, "pipeline_visualizer"):
-            duration_ms = int(
-                (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
-            )
+            duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
             error_type = type(exc).__name__
             error_str = str(exc)
 

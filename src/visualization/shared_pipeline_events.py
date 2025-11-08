@@ -6,7 +6,7 @@ without the full visualization system. The actual visualization
 is now handled by Seneca.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 
@@ -28,7 +28,7 @@ class SharedPipelineEvents:
             Event data.
         """
         event = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now().isoformat(),
             "event_type": event_type,
             "data": data,
         }

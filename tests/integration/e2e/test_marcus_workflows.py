@@ -11,7 +11,7 @@ Tests end-to-end workflows including:
 
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional, cast
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -1177,7 +1177,7 @@ class TestSystemHealthAndMonitoring(BaseTestCase):
                     "kanban_sync": {"status": "ok", "in_sync": True},
                     "monitor": {
                         "status": "running",
-                        "last_sync": datetime.now(timezone.utc).isoformat(),
+                        "last_sync": datetime.now().isoformat(),
                     },
                 }
             )
@@ -1205,7 +1205,7 @@ class TestSystemHealthAndMonitoring(BaseTestCase):
 
         # Register multiple agents
         for i in range(5):
-            start_time = datetime.now(timezone.utc)
+            start_time = datetime.now()
             await handle_tool_call(
                 "register_agent",
                 {
@@ -1216,7 +1216,7 @@ class TestSystemHealthAndMonitoring(BaseTestCase):
                 },
                 server,
             )
-            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+            duration = (datetime.now() - start_time).total_seconds()
             operations.append(("register_agent", duration))
 
         # Request tasks
@@ -1226,11 +1226,11 @@ class TestSystemHealthAndMonitoring(BaseTestCase):
         mock_kanban.get_available_tasks.return_value = tasks
 
         for i in range(5):
-            start_time = datetime.now(timezone.utc)
+            start_time = datetime.now()
             await handle_tool_call(
                 "request_next_task", {"agent_id": f"perf-agent-{i}"}, server
             )
-            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+            duration = (datetime.now() - start_time).total_seconds()
             operations.append(("request_task", duration))
 
         # Analyze performance

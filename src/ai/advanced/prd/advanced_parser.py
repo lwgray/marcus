@@ -8,7 +8,7 @@ deep understanding, intelligent task breakdown, and risk assessment.
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.ai.providers.llm_abstraction import LLMAbstraction
@@ -35,7 +35,6 @@ class PRDAnalysis:
     complexity_assessment: Dict[str, Any]
     risk_factors: List[Dict[str, Any]]
     confidence: float
-    original_description: str = ""  # NEW: Preserve original user description
 
 
 @dataclass
@@ -63,7 +62,6 @@ class ProjectConstraints:
     technology_constraints: Optional[List[str]] = None
     quality_requirements: Optional[Dict[str, Any]] = None
     deployment_target: str = "local"  # local, dev, prod, remote
-    complexity_mode: str = "standard"  # prototype, standard, enterprise
 
     def __post_init__(self) -> None:
         """Initialize post-creation."""
@@ -86,13 +84,8 @@ class AdvancedPRDParser:
     dependencies and risk assessment.
     """
 
-    def __init__(
-        self,
-        hybrid_config: Optional[HybridInferenceConfig] = None,
-        memory: Optional[Any] = None,
-    ):
+    def __init__(self, hybrid_config: Optional[HybridInferenceConfig] = None):
         self.llm_client = LLMAbstraction()
-        self.memory = memory  # Store memory system for learning durations
 
         # Set up hybrid dependency inference with configurable thresholds
         ai_engine = (
@@ -106,15 +99,6 @@ class AdvancedPRDParser:
         self.max_tasks_per_epic = 8
         self.min_task_complexity_hours = 1
         self.max_task_complexity_hours = 40
-
-        # Task pattern constants
-        self.TASK_TYPE_DESIGN = "design"
-        self.TASK_TYPE_IMPLEMENTATION = "implementation"
-        self.TASK_TYPE_TESTING = "testing"
-
-        # Complexity mode constants
-        self.VALID_COMPLEXITY_MODES = ["prototype", "standard", "enterprise"]
-        self.VALID_COMPLEXITIES = ["atomic", "simple", "coordinated", "distributed"]
 
         # Standard project phases for task organization
         self.standard_phases = [
@@ -141,54 +125,6 @@ class AdvancedPRDParser:
 
         logger.info("Advanced PRD parser initialized")
 
-    def _get_learned_task_duration(
-        self, task_type: str, default_minutes: float = 6.0
-    ) -> float:
-        """
-        Get median task duration from historical data.
-
-        Uses memory system to query learned median completion times.
-        Falls back to default if no historical data available.
-
-        Parameters
-        ----------
-        task_type : str
-            Task type: "design", "implement", "test", etc.
-        default_minutes : float
-            Default duration in minutes if no learned data available
-
-        Returns
-        -------
-        float
-            Estimated duration in minutes
-        """
-        try:
-            if self.memory:
-                # Query memory system for median duration
-                median_hours = self.memory.get_median_duration_by_type(task_type)
-                if median_hours is not None:
-                    # Convert hours to minutes
-                    learned_minutes: float = float(median_hours) * 60
-                    logger.info(
-                        f"Using learned duration for {task_type}: "
-                        f"{learned_minutes:.1f} minutes "
-                        f"(from {median_hours:.3f} hours)"
-                    )
-                    return learned_minutes
-                else:
-                    logger.debug(
-                        f"No learned duration for {task_type}, "
-                        f"using default: {default_minutes} minutes"
-                    )
-        except Exception as e:
-            logger.warning(
-                f"Failed to get learned duration for {task_type}: {e}. "
-                f"Using default: {default_minutes} minutes"
-            )
-
-        # Fallback to default
-        return default_minutes
-
     async def parse_prd_to_tasks(
         self, prd_content: str, constraints: ProjectConstraints
     ) -> TaskGenerationResult:
@@ -206,8 +142,8 @@ class AdvancedPRDParser:
         """
         logger.info("Starting advanced PRD parsing and task generation")
 
-        # Step 1: Deep PRD analysis (with complexity-aware enrichment)
-        prd_analysis = await self._analyze_prd_deeply(prd_content, constraints)
+        # Step 1: Deep PRD analysis
+        prd_analysis = await self._analyze_prd_deeply(prd_content)
 
         # Step 2: Generate task hierarchy
         req_count = len(prd_analysis.functional_requirements)
@@ -255,11 +191,8 @@ class AdvancedPRDParser:
             ),
         )
 
-    async def _analyze_prd_deeply(
-        self, prd_content: str, constraints: ProjectConstraints
-    ) -> PRDAnalysis:
-        """Perform deep analysis of PRD using AI with complexity-aware enrichment."""
-        # nosec B608: This is an AI prompt template, not SQL
+    async def _analyze_prd_deeply(self, prd_content: str) -> PRDAnalysis:
+        """Perform deep analysis of PRD using AI."""
         analysis_prompt = f"""
         Analyze this Product Requirements Document in detail:
 
@@ -272,10 +205,7 @@ class AdvancedPRDParser:
                     "id": "unique_feature_id",
                     "name": "Feature Name",
                     "description": "Detailed description of the feature",
-                    "priority": "high|medium|low",
-                    "complexity": "atomic|simple|coordinated|distributed",
-                    "requires_design_artifacts": true|false,
-                    "affected_components": ["component1", "component2"]
+                    "priority": "high|medium|low"
                 }}
             ],
             "nonFunctionalRequirements": [
@@ -312,145 +242,15 @@ class AdvancedPRDParser:
             "confidence": 0.85
         }}
 
-        CRITICAL RULES:
-        - RESPECT EXPLICIT EXCLUSIONS: If the description says
-          "Do not include X" or "Do not add Y", you MUST NOT create
-          requirements for those items
-        - ONLY include features and requirements explicitly mentioned
-          or clearly implied
-        - Do NOT add "best practices" features that were explicitly
-          excluded
+        IMPORTANT:
         - For functionalRequirements, use "id", "name", "description",
-          "priority", "complexity", "requires_design_artifacts", and
-          "affected_components" fields
+          and "priority" fields
         - For nonFunctionalRequirements, use "id", "name", "description",
           and "category" fields
         - Generate meaningful IDs based on the feature name
           (e.g., "crud_operations", "user_auth")
         - Focus on extracting actionable, specific requirements that can
           be converted into development tasks
-
-        COMPLEXITY MODE: {constraints.complexity_mode}
-
-        Use complexity mode to control BOTH feature breadth and implementation depth:
-
-        PROTOTYPE MODE - Speed-focused MVP (MUST have 3-5 core features):
-        FEATURE BREADTH:
-        - Include ONLY the absolute minimum to demonstrate the concept
-        - MINIMUM 3 features required (e.g., create, read, list)
-        - Skip: Authentication (unless core to concept), admin UI, monitoring,
-          logging, comprehensive error handling, data migration, backup/restore
-        - Example "task management": create task, view tasks, list all tasks
-        - Example "twitter clone": create tweets, view tweets, basic feed
-
-        IMPLEMENTATION DEPTH:
-        - Keep requirement descriptions minimal and basic
-        - Use complexity: "atomic" or "simple"
-        - Focus on happy path only
-        - Example "User Auth": Just "basic login/signup"
-
-        STANDARD MODE - Balanced production app (8-15 features):
-        FEATURE BREADTH:
-        - Include core features + essential supporting features
-        - Include: Basic auth (if multi-user), error handling, basic tests
-        - Skip: Advanced ops tooling, comprehensive observability, admin dashboards
-        - Example "twitter clone": CRUD tweets, auth, following, feed, profiles,
-          likes, search
-
-        IMPLEMENTATION DEPTH:
-        - Include standard implementation details in descriptions
-        - Use complexity: "simple" or "coordinated"
-        - Include basic error handling and validation
-        - Example "User Auth": "Login, signup, password reset, session management"
-
-        ENTERPRISE MODE - Production-ready system (15-30+ features):
-        FEATURE BREADTH:
-        - Include everything in STANDARD plus production readiness:
-          * Observability: Monitoring, structured logging, alerting, health checks
-          * Security: Comprehensive auth, RBAC, audit trails, rate limiting
-          * Resilience: Retry logic, circuit breakers, graceful degradation
-          * Data Operations: Backup/restore, migration scripts, data archival
-          * Admin Tooling: Admin dashboard, user management, feature flags
-          * Quality: Comprehensive testing, performance monitoring
-        - Example "twitter clone": All standard features + monitoring, admin UI,
-          content moderation, analytics dashboard, rate limiting, audit logs
-
-        IMPLEMENTATION DEPTH:
-        - Include comprehensive implementation details in descriptions
-        - Use complexity: "coordinated" or "distributed"
-        - Include security hardening, error recovery, edge cases, audit trails
-        - Example "User Auth": "Login, signup, password reset, session management,
-          MFA, account lockout, password policies, OAuth integration, audit logging,
-          rate limiting, account recovery workflows"
-
-        CRITICAL: User exclusions ALWAYS override complexity mode defaults!
-        - If user says "no authentication", omit it even in enterprise mode
-        - If user says "just a simple X", use prototype guidance regardless of mode
-
-        UNIQUENESS AND DEDUPLICATION:
-        - ENSURE UNIQUENESS: Each functional requirement must represent a
-          DISTINCT feature
-          * Check that no two requirements describe the same functionality
-          * Consolidate overlapping features (e.g., "User Auth" +
-            "Login System" → "User Authentication")
-          * IDs must be unique - never reuse an ID or create similar IDs
-            for related features
-          * If a feature appears in multiple contexts (e.g., auth for
-            profiles and auth for messaging), create ONE requirement with
-            both contexts listed in affected_components
-
-        - AVOID OVER-DECOMPOSITION: Keep requirements at consistent
-          granularity level
-          * Don't split "User Authentication" into separate requirements
-            for Login, Registration, Password Reset
-          * These should be ONE requirement that will be broken into
-            parallelizable subtasks during implementation
-          * Parallelization happens at the subtask level, not the
-            requirement level
-          * Implementation details belong in the description, not as
-            separate requirements
-
-        - CROSS-CHECK FEATURE GROUPS: Before finalizing, verify no
-          duplicate features exist across groups
-          * Example: If both "User Profiles" and "Messaging" groups
-            mention authentication, create a single "User Authentication"
-            requirement with affected_components: ["user-profiles",
-            "messaging"]
-          * Same applies for other cross-cutting concerns like logging,
-            validation, error handling
-
-        COMPLEXITY CLASSIFICATION:
-        - "atomic": Single file changes (e.g., set background color, update text)
-        - "simple": One component feature (e.g., score display, button handler)
-        - "coordinated": Multi-component feature requiring coordination
-          (e.g., user auth with API + UI + DB, full CRUD operations)
-        - "distributed": Multi-service architecture
-          (e.g., microservices, separate auth/user/order services)
-
-        DESIGN ARTIFACTS NEEDED:
-        - Set "requires_design_artifacts" to true if the feature needs
-          interface contracts, API specs, or data schemas for coordination
-        - Set to false for atomic or simple features that don't need
-          design documentation
-
-        AFFECTED COMPONENTS:
-        - List all components touched by this feature
-        - Examples: ["frontend"], ["api", "database"], ["auth-service", "user-service"]
-        - Use specific names like "api", "database", "frontend", "auth-service"
-
-        TECHNICAL CONSTRAINTS:
-        - Extract ALL technology constraints from the description
-        - Include explicit constraints: "use X", "vanilla JS", "PostgreSQL"
-        - Include exclusions: "no frameworks", "don't use React", "avoid ORM"
-        - Convert to lowercase with hyphens: "vanilla-js", "no-react", "postgresql"
-
-        EXCLUSION EXAMPLES:
-        - If description says "Do not include API Security", return
-          empty nonFunctionalRequirements array or omit security NFRs
-        - If description says "Do not include API Response Time", do
-          not add performance monitoring
-        - If description says "just a simple X", do not add enterprise
-          features
         """
         try:
             # Use AI to analyze PRD
@@ -459,12 +259,7 @@ class AdvancedPRDParser:
                 def __init__(self, max_tokens: int) -> None:
                     self.max_tokens = max_tokens
 
-            # Increase max_tokens to handle complex PRDs with many requirements
-            # 2000 tokens is too small - causes JSON truncation for 15+ features
-            # Task Management (18 features) and Restaurant Booking (17 features)
-            # need ~4000 tokens for complete JSON response
-            # Note: Claude Haiku max_tokens limit is 4096
-            context = SimpleContext(max_tokens=4096)
+            context = SimpleContext(max_tokens=2000)
 
             logger.info("Attempting to use LLM for PRD analysis...")
 
@@ -555,15 +350,10 @@ class AdvancedPRDParser:
                 else:
                     return []  # Return empty list as default
 
-            # Extract functional requirements and deduplicate
-            functional_reqs = get_key(
-                analysis_data, "functional_requirements", "functionalRequirements"
-            )
-            # Apply deduplication to prevent duplicate tasks
-            functional_reqs = self._deduplicate_functional_requirements(functional_reqs)
-
-            analysis = PRDAnalysis(
-                functional_requirements=functional_reqs,
+            return PRDAnalysis(
+                functional_requirements=get_key(
+                    analysis_data, "functional_requirements", "functionalRequirements"
+                ),
                 non_functional_requirements=get_key(
                     analysis_data,
                     "non_functional_requirements",
@@ -593,28 +383,7 @@ class AdvancedPRDParser:
                 or {},
                 risk_factors=get_key(analysis_data, "risk_factors", "riskFactors"),
                 confidence=analysis_data.get("confidence", 0.8),
-                original_description=prd_content,  # NEW: Preserve original description
             )
-
-            # Validate minimum feature counts based on complexity mode
-            feature_count = len(analysis.functional_requirements)
-            if constraints.complexity_mode == "prototype" and feature_count < 3:
-                logger.warning(
-                    f"Prototype mode requires minimum 3 features, but AI generated "
-                    f"{feature_count}. Project may be incomplete."
-                )
-            elif constraints.complexity_mode == "standard" and feature_count < 8:
-                logger.warning(
-                    f"Standard mode expects 8-15 features, but AI generated "
-                    f"{feature_count}. Project may be incomplete."
-                )
-            elif constraints.complexity_mode == "enterprise" and feature_count < 15:
-                logger.warning(
-                    f"Enterprise mode expects 15-30+ features, but AI generated "
-                    f"{feature_count}. Project may be incomplete."
-                )
-
-            return analysis
 
         except Exception as e:
             from src.core.error_framework import AIProviderError, ErrorContext
@@ -668,279 +437,6 @@ class AdvancedPRDParser:
             # Raise the error instead of falling back to simulation
             raise ai_error
 
-    async def _discover_domains(
-        self, functional_requirements: List[Dict[str, Any]]
-    ) -> Dict[str, List[str]]:
-        """
-        Use AI to discover natural domain groupings from functional requirements.
-
-        Parameters
-        ----------
-        functional_requirements : List[Dict[str, Any]]
-            List of functional requirements with id, name, description, etc.
-
-        Returns
-        -------
-        Dict[str, List[str]]
-            Mapping of domain_name -> [feature_ids]
-            Example: {"User Management": ["user_reg", "user_login"],
-                     "Todo Management": ["todo_create", "todo_list"]}
-        """
-        if not functional_requirements:
-            return {}
-
-        # Build feature list for AI prompt
-        feature_list = []
-        for idx, req in enumerate(functional_requirements, 1):
-            feature_id = req.get("id", f"feature_{idx}")
-            feature_name = req.get("name", "Unknown Feature")
-            description = req.get("description", "")
-            affected_components = req.get("affected_components", [])
-            complexity = req.get("complexity", "simple")
-
-            feature_list.append(
-                f"{idx}. {feature_name} (ID: {feature_id})\n"
-                f"   Description: {description}\n"
-                f"   Components: {', '.join(affected_components)}\n"
-                f"   Complexity: {complexity}"
-            )
-
-        features_text = "\n\n".join(feature_list)
-
-        # Determine target number of domains based on project size
-        num_features = len(functional_requirements)
-        if num_features <= 5:
-            target_domains = "2-3"
-        elif num_features <= 15:
-            target_domains = "3-5"
-        elif num_features <= 30:
-            target_domains = "4-7"
-        else:
-            target_domains = "6-10"
-
-        prompt = f"""Analyze these features and group them into logical domains.
-
-Each domain should represent a cohesive area of functionality that requires
-coordination and shared design artifacts (API contracts, data models, etc.).
-
-Consider:
-- Shared data models (features touching same entities)
-- Integration points (features that communicate)
-- Common components (UI, backend services, databases)
-- Semantic similarity (related business functionality)
-
-Features:
-{features_text}
-
-Return JSON with {target_domains} domains (adaptive to project size):
-{{
-  "domains": [
-    {{
-      "name": "Descriptive Domain Name",
-      "feature_ids": ["feature_id1", "feature_id2"],
-      "rationale": "Why these features belong together (1 sentence)"
-    }}
-  ]
-}}
-
-IMPORTANT:
-- Use the exact feature IDs from above
-- Every feature MUST be assigned to exactly one domain
-- Domain names should be descriptive (e.g., "User Management System",
-  "Product Catalog", "Payment Processing")
-- Group by COORDINATION NEEDS, not just technical similarity
-
-Provide ONLY valid JSON, no preamble."""
-
-        try:
-            # Create context for AI call
-            class SimpleContext:
-                def __init__(self, max_tokens: int) -> None:
-                    self.max_tokens = max_tokens
-
-            context = SimpleContext(max_tokens=500)
-
-            # Use LLM to discover domains
-            result = await self.llm_client.analyze(prompt, context)
-            response_text = str(result) if result else "{}"
-
-            # Parse JSON response
-            import json
-
-            domain_data = json.loads(response_text)
-            domains_list = domain_data.get("domains", [])
-
-            # Convert to simple dict mapping
-            domains = {}
-            for domain in domains_list:
-                domain_name = domain.get("name", "Unknown Domain")
-                feature_ids = domain.get("feature_ids", [])
-                rationale = domain.get("rationale", "")
-
-                domains[domain_name] = feature_ids
-                logger.info(
-                    f"Discovered domain '{domain_name}' with {len(feature_ids)} "
-                    f"features: {rationale}"
-                )
-
-            # Validate: Ensure all features are assigned
-            assigned_features = set()
-            for feature_ids in domains.values():
-                assigned_features.update(feature_ids)
-
-            all_feature_ids = {
-                req.get("id", f"feature_{i+1}")
-                for i, req in enumerate(functional_requirements)
-            }
-            unassigned = all_feature_ids - assigned_features
-
-            if unassigned:
-                logger.warning(
-                    f"AI did not assign {len(unassigned)} features to domains: "
-                    f"{unassigned}. Creating 'Other' domain."
-                )
-                domains["Other"] = list(unassigned)
-
-            # Additional validation: Check for semantically similar feature names
-            # This helps detect potential duplicates that passed through deduplication
-            feature_names = [
-                (req.get("id"), req.get("name")) for req in functional_requirements
-            ]
-
-            normalized_names: Dict[str, Tuple[str, str]] = {}
-            for fid, fname in feature_names:
-                if not fname or not fid:
-                    continue
-                # Type narrowing: fid and fname are guaranteed to be str here
-                fid_str: str = fid
-                fname_str: str = fname
-                normalized = fname_str.lower().strip()
-                # Normalize variations
-                normalized = normalized.replace("authentication", "auth")
-                normalized = normalized.replace("authorization", "auth")
-                normalized = normalized.replace(" system", "")
-                normalized = normalized.replace(" feature", "")
-                normalized = normalized.replace(" component", "")
-                normalized = normalized.replace(" service", "")
-                normalized = normalized.replace("management", "mgmt")
-
-                if normalized in normalized_names:
-                    logger.warning(
-                        f"Potential duplicate features detected: "
-                        f"'{fname_str}' (ID: {fid_str}) and "
-                        f"'{normalized_names[normalized][1]}' "
-                        f"(ID: {normalized_names[normalized][0]}) "
-                        f"have similar normalized names: '{normalized}'. "
-                        f"Consider consolidating these features."
-                    )
-                else:
-                    normalized_names[normalized] = (fid_str, fname_str)
-
-            return domains
-
-        except Exception as e:
-            logger.warning(
-                f"Domain discovery failed: {e}. Falling back to single domain."
-            )
-            # Fallback: Create single domain with all features
-            all_ids = [
-                req.get("id", f"feature_{i+1}")
-                for i, req in enumerate(functional_requirements)
-            ]
-            return {"Project Domain": all_ids}
-
-    async def _create_bundled_design_tasks(
-        self,
-        domains: Dict[str, List[str]],
-        functional_requirements: List[Dict[str, Any]],
-        complexity_mode: str,
-    ) -> List[Dict[str, Any]]:
-        """
-        Create bundled design tasks, one per domain.
-
-        Parameters
-        ----------
-        domains : Dict[str, List[str]]
-            Mapping of domain_name -> [feature_ids]
-        functional_requirements : List[Dict[str, Any]]
-            All functional requirements
-        complexity_mode : str
-            Project complexity mode: "prototype", "standard", or "enterprise"
-
-        Returns
-        -------
-        List[Dict[str, Any]]
-            List of bundled design tasks
-        """
-        bundled_design_tasks = []
-
-        # Create a lookup map for requirements
-        req_map = {req.get("id"): req for req in functional_requirements}
-
-        for domain_name, feature_ids in domains.items():
-            # Get all requirements for this domain (filter out None values)
-            domain_reqs = [req_map[fid] for fid in feature_ids if fid in req_map]
-
-            if not domain_reqs:
-                continue
-
-            # Build detailed description including all features in this domain
-            feature_descriptions = []
-            for idx, req in enumerate(domain_reqs, 1):
-                feature_name = req.get("name", "Unknown Feature")
-                description = req.get("description", "")
-
-                feature_descriptions.append(
-                    f"{idx}. {feature_name.upper()}\n" f"   {description}"
-                )
-
-            features_text = "\n\n".join(feature_descriptions)
-
-            # Create task description
-            task_description = f"""Design the architecture for the {domain_name} \
-which encompasses the following features:
-
-{features_text}
-
-Your design should define:
-- Component boundaries (what components exist and their responsibilities)
-- Data flows (how data moves between components)
-- Integration points (how components communicate)
-- Shared data models (schemas, entities, etc.)
-
-Create design artifacts such as:
-- Architecture diagrams (component relationships, data flow)
-- API contracts (endpoint definitions, request/response schemas)
-- Data models (database schemas, entity relationships)
-- Integration specifications (how components communicate)"""
-
-            # Create bundled design task
-            task_id = f"design_{domain_name.lower().replace(' ', '_')}"
-
-            bundled_design_tasks.append(
-                {
-                    "id": task_id,
-                    "name": f"Design {domain_name}",
-                    "description": task_description,
-                    "type": self.TASK_TYPE_DESIGN,
-                    "domain_name": domain_name,
-                    "feature_ids": feature_ids,  # Track which features this covers
-                    "priority": "high",  # Design tasks should run first
-                    "estimated_hours": self._get_learned_task_duration(
-                        "design", default_minutes=6.0 * len(domain_reqs)
-                    )
-                    / 60.0,  # Scale with number of features
-                    "labels": ["design", "architecture", domain_name.lower()],
-                }
-            )
-
-            logger.info(
-                f"Created bundled design task '{task_id}' for domain "
-                f"'{domain_name}' covering {len(feature_ids)} features"
-            )
-
-        return bundled_design_tasks
-
     async def _generate_task_hierarchy(
         self, analysis: PRDAnalysis, constraints: ProjectConstraints
     ) -> Dict[str, List[str]]:
@@ -957,63 +453,6 @@ Create design artifacts such as:
         functional_requirements = self._filter_requirements_by_size(
             analysis.functional_requirements, project_size, constraints.team_size
         )
-
-        # Get complexity mode from constraints (passed from create_project)
-        complexity_mode = constraints.complexity_mode
-
-        # STEP 1: Discover domains from functional requirements
-        domains = await self._discover_domains(functional_requirements)
-        logger.info(f"Discovered {len(domains)} domains: {list(domains.keys())}")
-
-        # STEP 2: Create bundled design tasks (one per domain)
-        bundled_design_tasks = await self._create_bundled_design_tasks(
-            domains, functional_requirements, complexity_mode
-        )
-
-        # Store bundled design tasks (they don't belong to any epic)
-        if bundled_design_tasks:
-            design_epic_id = "epic_design_architecture"
-            hierarchy[design_epic_id] = []
-
-            for task in bundled_design_tasks:
-                self._task_metadata[task["id"]] = {
-                    "original_name": task["name"],
-                    "type": task["type"],
-                    "epic_id": design_epic_id,
-                    "domain_name": task["domain_name"],
-                    "feature_ids": task["feature_ids"],
-                    "description": task[
-                        "description"
-                    ],  # Store the full detailed description
-                    "estimated_hours": task["estimated_hours"],
-                    "labels": task["labels"],
-                    "priority": task["priority"],
-                }
-                hierarchy[design_epic_id].append(task["id"])
-
-        # Store domain mapping for later dependency resolution
-        self._domain_mapping = domains  # feature_id -> domain_name lookup
-        self._bundled_designs = {
-            task["domain_name"]: task["id"] for task in bundled_design_tasks
-        }
-
-        # Validate functional requirements for duplicates before creating epics
-        req_ids = [req.get("id") for req in functional_requirements]
-        logger.info(
-            f"Creating epics from {len(functional_requirements)} functional "
-            f"requirements: {req_ids}"
-        )
-
-        # Check for duplicate IDs (should not happen after deduplication, but verify)
-        if len(req_ids) != len(set(req_ids)):
-            from collections import Counter
-
-            id_counts = Counter(req_ids)
-            duplicates = [req_id for req_id, count in id_counts.items() if count > 1]
-            logger.error(
-                f"DUPLICATE REQUIREMENT IDs DETECTED: {duplicates} - "
-                f"This will create duplicate tasks! Check deduplication logic."
-            )
 
         # Create epics from functional requirements
         for i, req in enumerate(functional_requirements):
@@ -1208,78 +647,11 @@ Create design artifacts such as:
         template boilerplate, while preserving Design/Implement/Test methodology
         through task names and labels.
         """
-        # Check if this is a bundled design task (already has description)
-        if (
-            hasattr(self, "_task_metadata")
-            and task_id in self._task_metadata
-            and self._task_metadata[task_id].get("type") == self.TASK_TYPE_DESIGN
-            and epic_id == "epic_design_architecture"
-        ):
-            # This is a bundled design task - it already has all its details
-            # from _create_bundled_design_tasks().
-            # Just convert the metadata to a Task object.
-            metadata = self._task_metadata[task_id]
-            task_name = metadata["original_name"]
-            domain_name = metadata.get("domain_name", "Project Domain")
-
-            # Use the pre-built description from _create_bundled_design_tasks
-            # which includes all features in this domain
-            task_description = metadata.get(
-                "description", f"Design the architecture for {domain_name}."
-            )
-
-            # Use the estimated hours calculated during bundled design creation
-            # (scaled by number of features in the domain)
-            estimated_hours = metadata.get("estimated_hours", 0.1)
-
-            # Map priority string to Priority enum
-            priority_str = metadata.get("priority", "high")
-            priority_map = {
-                "high": Priority.HIGH,
-                "medium": Priority.MEDIUM,
-                "low": Priority.LOW,
-            }
-            priority = priority_map.get(priority_str, Priority.HIGH)
-
-            # Create the Task object for bundled design
-            task = Task(
-                id=task_id,
-                name=task_name,
-                description=task_description,
-                status=TaskStatus.TODO,
-                priority=priority,
-                assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
-                due_date=None,
-                estimated_hours=estimated_hours,
-                dependencies=[],
-                labels=metadata.get("labels", ["design", "architecture"]),
-                source_type="bundled_design",
-                source_context={
-                    "domain_name": domain_name,
-                    "feature_ids": metadata.get("feature_ids", []),
-                },
-            )
-
-            feature_count = len(metadata.get("feature_ids", []))
-            logger.info(
-                f"Created bundled design Task object: {task_name} "
-                f"(domain: {domain_name}, features: {feature_count})"
-            )
-            return task
-
         # Extract task type from task_id
         task_type = self._extract_task_type(task_id)
 
         # Find matching requirement from AI analysis
         relevant_req = self._find_matching_requirement(task_id, analysis)
-
-        # Check if we have stored metadata for this task
-        # (NFR tasks, infrastructure tasks store metadata)
-        has_metadata = (
-            hasattr(self, "_task_metadata") and task_id in self._task_metadata
-        )
 
         if relevant_req:
             # Get base information from requirement
@@ -1289,101 +661,32 @@ Create design artifacts such as:
             # Create task name with phase prefix
             task_name = f"{task_type.title()} {feature_name}"
 
-            # Generate task-type-specific description using LLM with constraints
+            # Generate task-type-specific description using LLM
             description = await self._generate_task_description_for_type(
-                base_description=base_description,
-                task_type=task_type,
-                feature_name=feature_name,
-                constraints=analysis.technical_constraints,
-                original_description=analysis.original_description,
+                base_description, task_type, feature_name
             )
 
             # Get estimated hours based on task type
-            # CRITICAL: Use learned median from historical data
-            # Falls back to reality-based estimates (4-8 minutes)
             if task_type == "design":
-                estimated_minutes = self._get_learned_task_duration(
-                    "design", default_minutes=6.0
-                )
+                estimated_hours = 8
             elif task_type == "implement":
-                estimated_minutes = self._get_learned_task_duration(
-                    "implement", default_minutes=8.0
-                )
+                estimated_hours = 16
             elif task_type == "test":
-                estimated_minutes = self._get_learned_task_duration(
-                    "test", default_minutes=6.0
-                )
+                estimated_hours = 8
             else:
-                estimated_minutes = self._get_learned_task_duration(
-                    task_type, default_minutes=7.0
-                )
-
-            # Convert to hours for backward compatibility with existing system
-            estimated_hours = estimated_minutes / 60
-
-        elif has_metadata:
-            # NFR or infrastructure task - use metadata with AI enhancement
-            metadata = self._task_metadata[task_id]
-            task_name = metadata["original_name"]
-
-            # Use stored description if available, otherwise generate with AI
-            base_description = metadata.get("description", "")
-            if not base_description:
-                # Generate description using AI (for infrastructure tasks)
-                base_description = f"Set up and configure {task_name}"
-
-            # For NFR tasks, enhance the description with AI
-            if metadata.get("type") == "nfr":
-                description = await self._generate_task_description_for_type(
-                    base_description=base_description,
-                    task_type="nfr",
-                    feature_name=task_name,
-                    constraints=analysis.technical_constraints,
-                    original_description=analysis.original_description,
-                )
-            else:
-                # Infrastructure/setup tasks - use description as-is or enhance
-                description = base_description
-
-            # Get estimated hours for NFR/infrastructure tasks
-            estimated_minutes = self._get_learned_task_duration(
-                metadata.get("type", "infrastructure"), default_minutes=8.0
-            )
-            estimated_hours = estimated_minutes / 60
-            feature_name = task_name
+                estimated_hours = 12
 
         else:
-            # No matching requirement AND no metadata
-            # This means AI analysis failed or task_id mismatch
-            from src.core.error_framework import AIProviderError, ErrorContext
-
-            available_req_ids = [
-                req.get("id") for req in analysis.functional_requirements
-            ]
-            error_msg = (
-                f"Failed to generate task '{task_id}': "
-                f"No matching requirement found in AI analysis and no stored "
-                f"metadata. This usually means the AI service failed to properly "
-                f"analyze your project description, or there's a mismatch "
-                f"between generated task IDs and requirements. "
-                f"Available requirements: {available_req_ids}"
+            # Fallback: use old template approach if no AI requirement matches
+            logger.warning(f"No matching AI requirement for {task_id}, using fallback")
+            task_info = self._extract_task_info(task_id, epic_id, analysis)
+            enhanced_details = await self._enhance_task_with_ai(
+                task_info, analysis, constraints
             )
-            logger.error(error_msg)
-            raise AIProviderError(
-                provider_name="llm_client",
-                operation="generate_detailed_task",
-                context=ErrorContext(
-                    operation="generate_detailed_task",
-                    integration_name="advanced_prd_parser",
-                    custom_context={
-                        "task_id": task_id,
-                        "epic_id": epic_id,
-                        "requirement_count": len(analysis.functional_requirements),
-                        "available_requirements": available_req_ids,
-                        "has_metadata": has_metadata,
-                    },
-                ),
-            )
+            task_name = enhanced_details.get("name", f"Task {sequence}")
+            description = enhanced_details.get("description", "")
+            estimated_hours = enhanced_details.get("estimated_hours", 12.0)
+            feature_name = task_name  # Use task name for labels in fallback
 
         # Generate labels (methodology preserved here)
         labels = self._generate_task_labels(task_type, feature_name, analysis)
@@ -1396,8 +699,8 @@ Create design artifacts such as:
             status=TaskStatus.TODO,
             priority=self._determine_priority({"type": task_type}, analysis),
             assigned_to=None,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             due_date=None,
             estimated_hours=estimated_hours,
             dependencies=[],  # Will be filled by dependency inference
@@ -1494,10 +797,8 @@ Create design artifacts such as:
         # task_user_auth_implement -> user_auth
 
         if task_id.startswith("nfr_task_"):
-            # Non-functional requirement - strip "nfr_task_" AND phase suffix
-            # Example: nfr_task_scalability_implement -> scalability
-            parts = task_id.replace("nfr_task_", "").rsplit("_", 1)
-            req_id = parts[0] if parts else task_id.replace("nfr_task_", "")
+            # Non-functional requirement
+            req_id = task_id.replace("nfr_task_", "")
         elif task_id.startswith("task_"):
             # Functional requirement - extract between "task_" and last "_phase"
             parts = task_id.replace("task_", "").rsplit("_", 1)
@@ -1505,8 +806,6 @@ Create design artifacts such as:
         else:
             logger.warning(f"Unknown task_id format: {task_id}")
             return None
-
-        logger.debug(f"Extracted req_id '{req_id}' from task_id '{task_id}'")
 
         # Find matching requirement by ID
         for req in all_requirements:
@@ -1523,191 +822,19 @@ Create design artifacts such as:
 
             # Check if this requirement matches
             if req_dict.get("id") == req_id:
-                logger.debug(
-                    f"Matched requirement: task_id='{task_id}' -> "
-                    f"req_id='{req_id}' -> '{req_dict.get('name')}'"
-                )
                 return req_dict
 
         logger.warning(f"No requirement found with id={req_id} for task_id={task_id}")
         return None
 
-    def _deduplicate_functional_requirements(
-        self, requirements: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """
-        Remove duplicate functional requirements based on ID and semantic similarity.
-
-        This prevents the AI from creating duplicate tasks when it generates
-        similar requirements with different names (e.g., "User Auth" and
-        "Authentication System" for the same feature).
-
-        Parameters
-        ----------
-        requirements : List[Dict[str, Any]]
-            Raw functional requirements from AI analysis
-
-        Returns
-        -------
-        List[Dict[str, Any]]
-            Deduplicated requirements
-
-        Notes
-        -----
-        Deduplication strategy:
-        1. Check for exact duplicate IDs
-        2. Normalize feature names to detect semantic duplicates:
-           - Remove common suffixes: " system", " feature", " component", " module"
-           - Normalize variations: "authentication" → "auth", "authorization" → "auth"
-        3. Keep first occurrence, log and skip duplicates
-        """
-        seen_ids = set()
-        seen_names_normalized = set()
-        deduplicated = []
-
-        for req in requirements:
-            req_id = req.get("id", "").lower().strip()
-            req_name = req.get("name", "").lower().strip()
-
-            # Normalize name for similarity checking
-            normalized_name = req_name
-            # Remove common suffix variations
-            for suffix in [" system", " feature", " component", " module", " service"]:
-                normalized_name = normalized_name.replace(suffix, "")
-            # Normalize common variations
-            normalized_name = normalized_name.replace("authentication", "auth")
-            normalized_name = normalized_name.replace("authorization", "auth")
-            normalized_name = normalized_name.replace("management", "mgmt")
-
-            # Check for duplicate ID
-            if req_id in seen_ids:
-                logger.warning(
-                    f"Duplicate requirement ID detected: '{req_id}' - "
-                    f"'{req.get('name')}' - SKIPPING (AI violated uniqueness "
-                    f"constraint)"
-                )
-                continue
-
-            # Check for semantic duplicate (similar name)
-            if normalized_name in seen_names_normalized:
-                logger.warning(
-                    f"Duplicate requirement detected (similar name): "
-                    f"'{req.get('name')}' (normalized: '{normalized_name}') - "
-                    f"SKIPPING (consolidate with existing requirement)"
-                )
-                continue
-
-            # Add to results
-            seen_ids.add(req_id)
-            seen_names_normalized.add(normalized_name)
-            deduplicated.append(req)
-
-        if len(deduplicated) < len(requirements):
-            logger.info(
-                f"Deduplication removed {len(requirements) - len(deduplicated)} "
-                f"duplicate functional requirements"
-            )
-
-        return deduplicated
-
-    def _format_constraints_for_prompt(self, constraints: List[str]) -> str:
-        """
-        Format technical constraints for inclusion in AI prompts.
-
-        Converts constraint tags like "vanilla-js" into readable descriptions
-        that help the AI understand what to include/exclude.
-
-        Parameters
-        ----------
-        constraints : List[str]
-            List of constraint tags (e.g., ["vanilla-js", "no-frameworks"])
-
-        Returns
-        -------
-        str
-            Human-readable constraint description for AI prompts
-        """
-        if not constraints:
-            return ""
-
-        # Separate positive and negative constraints
-        positive = []
-        negative = []
-
-        for constraint in constraints:
-            if constraint.startswith("no-"):
-                # Convert "no-X" to "do not use X"
-                tech = constraint[3:].replace("-", " ")
-                negative.append(tech)
-            else:
-                # Convert "vanilla-js" to "vanilla JavaScript"
-                tech = constraint.replace("-", " ")
-                positive.append(tech)
-
-        parts = []
-        if positive:
-            parts.append(f"Use: {', '.join(positive)}")
-        if negative:
-            parts.append(f"Do not use: {', '.join(negative)}")
-
-        return ". ".join(parts) if parts else ""
-
-    def _check_constraint_violations(
-        self, description: str, constraints: List[str]
-    ) -> List[str]:
-        """
-        Check if a task description violates any technical constraints.
-
-        Parameters
-        ----------
-        description : str
-            The generated task description
-        constraints : List[str]
-            List of constraint tags to check against
-
-        Returns
-        -------
-        List[str]
-            List of detected violations (empty if no violations)
-        """
-        violations = []
-        description_lower = description.lower()
-
-        # Check for specific "no-X" constraints
-        # This catches things like "no-react", "no-orm", "no-typescript", etc.
-        for constraint in constraints:
-            if constraint.startswith("no-"):
-                tech = constraint[3:]  # Remove "no-" prefix
-                # Normalize both the tech name and description for comparison
-                tech_normalized = tech.replace("-", " ").lower()
-
-                # Check if the technology appears in the description
-                if tech_normalized in description_lower:
-                    violations.append(f"Mentions '{tech}' but constraint prohibits it")
-
-        # Special handling for "no-frameworks" - look for the word "framework"
-        if "no-frameworks" in constraints or "vanilla-js" in constraints:
-            if "framework" in description_lower:
-                violations.append(
-                    "Mentions 'framework' but constraints prohibit frameworks"
-                )
-
-        return violations
-
     async def _generate_task_description_for_type(
-        self,
-        base_description: str,
-        task_type: str,
-        feature_name: str,
-        constraints: Optional[List[str]] = None,
-        original_description: Optional[str] = None,
+        self, base_description: str, task_type: str, feature_name: str
     ) -> str:
         """
-        Use LLM to generate task-type-specific descriptions with constraint awareness.
+        Use LLM to generate task-type-specific descriptions.
 
         This ensures Design/Implement/Test tasks get appropriate descriptions
-        that are then passed to subtasks during decomposition. Technical constraints
-        are incorporated to ensure generated descriptions respect project requirements.
+        that are then passed to subtasks during decomposition.
 
         Parameters
         ----------
@@ -1717,58 +844,29 @@ Create design artifacts such as:
             Task type: "design", "implement", or "test"
         feature_name : str
             Name of the feature being worked on
-        constraints : Optional[List[str]], default=None
-            Technical constraints to respect (e.g., "vanilla-js", "no-frameworks")
-        original_description : Optional[str], default=None
-            Original user description for context
 
         Returns
         -------
         str
-            Task-type-specific description that respects constraints
+            Task-type-specific description
         """
-        # Format constraints for the prompt
-        # IMPORTANT (GH-143): Only include tech constraints in DESIGN tasks.
-        # Design tasks establish the tech stack; implementation tasks get it from
-        # design docs via get_task_context(). This prevents conflicting guidance.
-        constraint_text = ""
-        if constraints and task_type == "design":
-            formatted_constraints = self._format_constraints_for_prompt(constraints)
-            if formatted_constraints:
-                constraint_text = (
-                    f"\n\nTECHNICAL CONSTRAINTS (MUST FOLLOW):\n{formatted_constraints}"
-                )
-
-        # Include original description context if available
-        original_context = ""
-        if original_description:
-            original_context = f"\nOriginal Request: {original_description}"
-
         prompt = f"""Given this feature requirement:
 
 Feature: {feature_name}
-Requirement: {base_description}{original_context}{constraint_text}
+Requirement: {base_description}
 
 Generate a clear, specific description for a **{task_type.upper()}** task.
 
 Guidelines:
-- For DESIGN tasks: Create specifications for coordination (NOT implementation
-  prescription). Define: component boundaries, what needs to communicate,
-  data flow patterns, integration points. DO NOT specify: exact API paths,
-  exact field names, exact function signatures, exact technologies. Agents
-  discover these through get_task_context() and document via log_artifact().
-  Example: "Frontend auth component communicates with backend auth service"
-  NOT "LoginForm calls POST /api/v1/auth/login with {{email, password}}".
+- For DESIGN tasks: Create COMPLETE specifications that enable parallel
+  implementation. Must produce: interface contracts (API specs, data schemas,
+  component interfaces), component boundaries, integration points, error
+  handling specifications, and shared conventions. The goal is to enable
+  developers to implement ANY component in parallel using ONLY these specs.
 - For IMPLEMENT tasks: Focus on coding, building features, integrating
-  components, writing the actual code. Agents use get_task_context() to
-  see design artifacts from dependencies. DO NOT specify technologies -
-  implementation agents discover the tech stack from design documentation.
+  components, writing the actual code based on Design specifications.
 - For TEST tasks: Focus on writing tests, creating test scenarios,
   validation, test coverage, quality assurance.
-
-IMPORTANT FOR DESIGN TASKS: Your description MUST respect the technical
-constraints listed above (if any) to ensure the design documents the chosen
-tech stack for implementation agents.
 
 Provide ONLY the description (3-4 sentences), no preamble or
 explanation."""
@@ -1784,45 +882,20 @@ explanation."""
             # Use LLM to generate task-specific description
             result = await self.llm_client.analyze(prompt, context)
             description: str = str(result) if result else ""
-            description = description.strip()
-
-            # Validate that generated description doesn't violate constraints
-            if constraints:
-                violations = self._check_constraint_violations(description, constraints)
-                if violations:
-                    logger.warning(
-                        f"Generated description has constraint violations: "
-                        f"{violations}. Description: {description}"
-                    )
-                    # Note: We log but don't fail
-                    # AI can be retried or manually corrected
-
-            return description
+            return description.strip()
 
         except Exception as e:
-            from src.core.error_framework import AIProviderError, ErrorContext
-
-            error_msg = (
-                f"AI service failed to generate {task_type} task description for "
-                f"'{feature_name}'. The AI service may be unavailable, "
-                f"rate-limited, or encountered an error. Cannot proceed without "
-                f"AI-generated descriptions. Original error: {str(e)}"
+            logger.warning(
+                f"Failed to generate task-specific description: {e}. "
+                f"Falling back to base description."
             )
-            logger.error(error_msg)
-            raise AIProviderError(
-                provider_name="llm_client",
-                operation="generate_task_description",
-                context=ErrorContext(
-                    operation="generate_task_description",
-                    integration_name="advanced_prd_parser",
-                    custom_context={
-                        "task_type": task_type,
-                        "feature_name": feature_name,
-                        "base_description": base_description[:200],
-                        "original_error": str(e),
-                    },
-                ),
-            ) from e
+            # Fallback: use base description with simple prefix
+            if task_type == "design":
+                return f"Design {base_description.lower()}"
+            elif task_type == "test":
+                return f"Test {base_description.lower()}"
+            else:
+                return base_description
 
     def _generate_task_labels(
         self, task_type: str, feature_name: str, analysis: PRDAnalysis
@@ -1903,54 +976,10 @@ explanation."""
                     "dependency_type": edge.dependency_type,
                     "confidence": edge.confidence,
                     "reasoning": edge.reasoning,
-                    "source": edge.source,  # GH-129: Track dependency source
                 }
             )
 
-        # BUGFIX: Filter out ONLY pattern-based design→implement/test dependencies.
-        # Pattern-based inference incorrectly adds ALL design tasks as dependencies
-        # for ALL implement/test tasks. We filter ONLY pattern-sourced ones and
-        # preserve dependencies from other sources (PRD logic, manual, etc.).
-        filtered_dependencies = []
-
-        for dep in dependencies:
-            dep_task = next(
-                (t for t in tasks if t.id == dep["dependency_task_id"]), None
-            )
-            dependent_task = next(
-                (t for t in tasks if t.id == dep["dependent_task_id"]), None
-            )
-
-            # Only filter design→implement/test dependencies FROM PATTERN MATCHING
-            # Preserve deps from other sources (PRD bundled designs, manual, etc.)
-            is_design_task = dep_task and dep_task.name.lower().startswith("design ")
-            is_implement_or_test_task = dependent_task and (
-                dependent_task.name.lower().startswith("implement ")
-                or dependent_task.name.lower().startswith("test ")
-            )
-            is_pattern_sourced = dep.get("source") == "pattern_matching"
-
-            # Filter out ONLY pattern-sourced design→implement/test (GH-129)
-            # This preserves PRD bundled design deps and other manually created deps
-            if is_design_task and is_implement_or_test_task and is_pattern_sourced:
-                # Type narrowing: we know both are not None from conditions above
-                assert dependent_task is not None
-                assert dep_task is not None
-                logger.debug(
-                    f"Filtered pattern-based design dependency: "
-                    f"{dependent_task.name} -x-> {dep_task.name}"
-                )
-                continue
-
-            filtered_dependencies.append(dep)
-
-        dependencies = filtered_dependencies
-        logger.info(
-            f"Filtered {len(dependencies)} dependencies "
-            f"(removed design→implement/test)"
-        )
-
-        # Add PRD-specific dependencies (domain-aware)
+        # Add PRD-specific dependencies
         prd_dependencies = await self._add_prd_specific_dependencies(tasks, analysis)
         dependencies.extend(prd_dependencies)
 
@@ -2005,10 +1034,9 @@ explanation."""
         total_effort = sum(task.estimated_hours or 8 for task in tasks)
 
         # Adjust for team size and parallel work
-        # Ensure team_productivity is at least 1 to avoid division by zero
-        team_productivity = max(
-            1, min(constraints.team_size, len(tasks) // 2)
-        )  # Diminishing returns, min 1
+        team_productivity = min(
+            constraints.team_size, len(tasks) // 2
+        )  # Diminishing returns
         parallel_factor = 0.7 if team_productivity > 1 else 1.0
 
         # Calculate duration
@@ -2022,7 +1050,7 @@ explanation."""
         estimated_days *= buffer_factor
 
         # Timeline prediction
-        start_date = datetime.now(timezone.utc)
+        start_date = datetime.now()
         estimated_completion = start_date + timedelta(days=estimated_days)
 
         timeline = {
@@ -2123,200 +1151,14 @@ explanation."""
     # appropriate errors with actionable feedback
 
     # Additional helper methods would be implemented here...
-    def _select_task_pattern(
-        self, requirement: Dict[str, Any], complexity_mode: str = "standard"
-    ) -> List[Dict[str, str]]:
-        """
-        Select task pattern based on feature complexity and project mode.
-
-        Implements intelligent task pattern selection to avoid over-engineering
-        simple features while maintaining proper structure for complex ones.
-
-        Parameters
-        ----------
-        requirement : Dict[str, Any]
-            The requirement dictionary containing:
-            - id: Feature identifier
-            - name: Feature name
-            - complexity: One of "atomic", "simple", "coordinated", "distributed"
-            - requires_design_artifacts: Boolean (optional)
-        complexity_mode : str, optional
-            Project complexity mode: "prototype", "standard", or "enterprise"
-            Default is "standard"
-
-        Returns
-        -------
-        List[Dict[str, str]]
-            List of task dictionaries, each containing:
-            - id: Task identifier
-            - name: Task name
-            - type: Task type ("design", "implementation", or "testing")
-
-        Notes
-        -----
-        Task patterns by complexity and mode:
-
-        Prototype Mode (speed-focused):
-        - atomic: 1 task (Implementation only)
-        - simple: 1 task (Implementation only)
-        - coordinated: 2 tasks (Implementation + Testing)
-        - distributed: 2 tasks (Implementation + Testing)
-
-        Standard Mode (balanced):
-        - atomic: 1 task (Implementation only)
-        - simple: 2 tasks (Implementation + Testing)
-        - coordinated: 3 tasks (Design + Implementation + Testing)
-        - distributed: 3 tasks (Design + Implementation + Testing)
-
-        Enterprise Mode (full traceability):
-        - atomic: 2 tasks (Implementation + Testing)
-        - simple: 3 tasks (Design + Implementation + Testing)
-        - coordinated: 3 tasks (Design + Implementation + Testing)
-        - distributed: 3 tasks (Design + Implementation + Testing)
-        """
-        # Validate complexity_mode
-        if complexity_mode not in self.VALID_COMPLEXITY_MODES:
-            logger.warning(
-                f"Invalid complexity_mode '{complexity_mode}', "
-                f"defaulting to 'standard'. "
-                f"Valid modes: {self.VALID_COMPLEXITY_MODES}"
-            )
-            complexity_mode = "standard"
-
-        req_id = requirement.get("id", "feature")
-        feature_name = requirement.get("name", "Feature")
-        complexity = requirement.get("complexity", "coordinated")  # Backward compatible
-
-        # Validate complexity
-        if complexity not in self.VALID_COMPLEXITIES:
-            logger.warning(
-                f"Invalid complexity '{complexity}', defaulting to 'coordinated'. "
-                f"Valid complexities: {self.VALID_COMPLEXITIES}"
-            )
-            complexity = "coordinated"
-
-        tasks = []
-
-        # Check if bundled domain designs exist (GH-108)
-        has_bundled_designs = (
-            hasattr(self, "_bundled_designs") and self._bundled_designs
-        )
-
-        # Determine task pattern based on complexity and mode
-        if complexity_mode == "prototype":
-            # Prototype: Speed over structure
-            # Design ONLY for coordinated/distributed (produces artifacts)
-            # Atomic/simple: just implement (nothing to coordinate)
-            # SKIP per-feature designs if bundled domain designs exist (GH-108)
-            if complexity in ["coordinated", "distributed"] and not has_bundled_designs:
-                tasks.append(
-                    {
-                        "id": f"task_{req_id}_design",
-                        "name": f"Design {feature_name}",
-                        "type": self.TASK_TYPE_DESIGN,
-                    }
-                )
-            tasks.append(
-                {
-                    "id": f"task_{req_id}_implement",
-                    "name": f"Implement {feature_name}",
-                    "type": self.TASK_TYPE_IMPLEMENTATION,
-                }
-            )
-            # Add testing for coordinated/distributed features
-            if complexity in ["coordinated", "distributed"]:
-                tasks.append(
-                    {
-                        "id": f"task_{req_id}_test",
-                        "name": f"Test {feature_name}",
-                        "type": self.TASK_TYPE_TESTING,
-                    }
-                )
-
-        elif complexity_mode == "enterprise":
-            # Enterprise: Full traceability with design tasks for all features
-            # SKIP per-feature designs if bundled domain designs exist (GH-108)
-            if not has_bundled_designs:
-                tasks.append(
-                    {
-                        "id": f"task_{req_id}_design",
-                        "name": f"Design {feature_name}",
-                        "type": self.TASK_TYPE_DESIGN,
-                    }
-                )
-            tasks.append(
-                {
-                    "id": f"task_{req_id}_implement",
-                    "name": f"Implement {feature_name}",
-                    "type": self.TASK_TYPE_IMPLEMENTATION,
-                }
-            )
-            tasks.append(
-                {
-                    "id": f"task_{req_id}_test",
-                    "name": f"Test {feature_name}",
-                    "type": self.TASK_TYPE_TESTING,
-                }
-            )
-
-        else:  # standard mode (default)
-            # Design ONLY for coordinated/distributed (produces coordination artifacts)
-            # Atomic/simple: just implement (nothing to coordinate)
-            # SKIP per-feature designs if bundled domain designs exist (GH-108)
-            if complexity in ["coordinated", "distributed"] and not has_bundled_designs:
-                tasks.append(
-                    {
-                        "id": f"task_{req_id}_design",
-                        "name": f"Design {feature_name}",
-                        "type": self.TASK_TYPE_DESIGN,
-                    }
-                )
-            tasks.append(
-                {
-                    "id": f"task_{req_id}_implement",
-                    "name": f"Implement {feature_name}",
-                    "type": self.TASK_TYPE_IMPLEMENTATION,
-                }
-            )
-            # Add testing for simple/coordinated/distributed (not atomic)
-            if complexity != "atomic":
-                tasks.append(
-                    {
-                        "id": f"task_{req_id}_test",
-                        "name": f"Test {feature_name}",
-                        "type": self.TASK_TYPE_TESTING,
-                    }
-                )
-
-        return tasks
-
     async def _break_down_epic(
         self,
         req: Dict[str, Any],
         analysis: PRDAnalysis,
         constraints: ProjectConstraints,
     ) -> List[Dict[str, Any]]:
-        """
-        Break down epic into smaller tasks using intelligent task pattern selection.
-
-        This method now uses _select_task_pattern() to determine the appropriate
-        number and type of tasks based on feature complexity and project mode.
-
-        Parameters
-        ----------
-        req : Dict[str, Any]
-            The requirement dictionary containing complexity metadata
-        analysis : PRDAnalysis
-            The full PRD analysis context
-        constraints : ProjectConstraints
-            Project constraints including quality requirements
-
-        Returns
-        -------
-        List[Dict[str, Any]]
-            List of task dictionaries for this epic
-        """
-        # Ensure requirement has valid ID and name (fallback generation)
+        """Break down epic into smaller tasks."""
+        # First try to use standardized fields (from our template)
         req_id = req.get("id")
         feature_name = req.get("name")
 
@@ -2359,18 +1201,23 @@ explanation."""
                 f"field, generated: {req_id}"
             )
 
-        # Inject the normalized ID and name back into requirement
-        # to ensure _select_task_pattern gets consistent values
-        req["id"] = req_id
-        req["name"] = feature_name
-
-        # Get complexity mode from constraints (passed from create_project)
-        complexity_mode = constraints.complexity_mode
-
-        # Use intelligent task pattern selection
-        tasks = self._select_task_pattern(req, complexity_mode)
-
-        return tasks
+        return [
+            {
+                "id": f"task_{req_id}_design",
+                "name": f"Design {feature_name}",
+                "type": "design",
+            },
+            {
+                "id": f"task_{req_id}_implement",
+                "name": f"Implement {feature_name}",
+                "type": "implementation",
+            },
+            {
+                "id": f"task_{req_id}_test",
+                "name": f"Test {feature_name}",
+                "type": "testing",
+            },
+        ]
 
     async def _create_nfr_tasks(
         self, nfrs: List[Dict[str, Any]], constraints: ProjectConstraints
@@ -2491,31 +1338,31 @@ explanation."""
                 project_context, task_id, original_name
             )
             task_type = "design"
-            estimated_hours = 6 / 60  # 6 minutes in hours
+            estimated_hours = 8
         elif "implement" in task_id.lower():
             name, description = self._generate_implementation_task(
                 project_context, task_id, original_name
             )
             task_type = "implementation"
-            estimated_hours = 8 / 60  # 8 minutes in hours
+            estimated_hours = 16
         elif "test" in task_id.lower():
             name, description = self._generate_testing_task(
                 project_context, task_id, original_name
             )
             task_type = "testing"
-            estimated_hours = 6 / 60  # 6 minutes in hours
+            estimated_hours = 8
         elif "setup" in task_id.lower() or "infra" in task_id.lower():
             name, description = self._generate_infrastructure_task(
                 project_context, task_id, original_name
             )
             task_type = "setup"
-            estimated_hours = 10 / 60  # 10 minutes in hours
+            estimated_hours = 12
         else:
             name, description = self._generate_generic_task(
                 project_context, task_id, original_name
             )
             task_type = "feature"
-            estimated_hours = 7 / 60  # 7 minutes in hours
+            estimated_hours = 12
 
         # Generate appropriate labels based on context and requirements
         labels = self._generate_labels(task_type, project_context, constraints)
@@ -2564,108 +1411,8 @@ explanation."""
     async def _add_prd_specific_dependencies(
         self, tasks: List[Task], analysis: PRDAnalysis
     ) -> List[Dict[str, Any]]:
-        """
-        Add PRD-specific dependencies, including bundled design dependencies.
-
-        Creates dependencies from implement/test tasks to their domain's bundled
-        design task to ensure coordination.
-        """
-        dependencies = []
-
-        # Check if we have bundled designs and domain mapping
-        if not hasattr(self, "_bundled_designs") or not hasattr(
-            self, "_domain_mapping"
-        ):
-            return []
-
-        # Create a reverse mapping: feature_id -> domain_name
-        feature_to_domain = {}
-        for domain_name, feature_ids in self._domain_mapping.items():
-            for feature_id in feature_ids:
-                feature_to_domain[feature_id] = domain_name
-
-        # For each task, check if it needs to depend on a bundled design
-        for task in tasks:
-            # Handle NFR (Non-Functional Requirement) tasks FIRST
-            # NFR tasks are cross-cutting concerns (performance, security, etc.)
-            # They should depend on ALL bundled design tasks since they affect
-            # the entire system architecture
-            if task.id.startswith("nfr_task_"):
-                # Add dependencies to ALL bundled design tasks
-                for domain_name, design_task_id in self._bundled_designs.items():
-                    dependencies.append(
-                        {
-                            "dependent_task_id": task.id,
-                            "dependency_task_id": design_task_id,
-                            "dependency_type": "architectural",
-                            "confidence": 1.0,
-                            "reasoning": (
-                                f"NFR implementation requires {domain_name} "
-                                f"architecture to be defined. NFRs are cross-cutting "
-                                f"concerns that affect all system components."
-                            ),
-                            "source": "prd_bundled_design",
-                        }
-                    )
-                    logger.debug(
-                        f"Added NFR bundled design dependency: "
-                        f"{task.id} -> {design_task_id}"
-                    )
-                continue  # Skip to next task
-
-            task_id_lower = task.id.lower()
-
-            # Only implement and test tasks depend on design
-            if "implement" not in task_id_lower and "test" not in task_id_lower:
-                continue
-
-            # Extract feature_id from task_id
-            # (e.g., "task_user_login_implement" -> "user_login")
-            # Task IDs are in format: "task_{feature_id}_{type}"
-            parts = task.id.split("_")
-            if len(parts) >= 3 and parts[0] == "task":
-                # Find the feature_id (everything between "task_" and the type suffix)
-                type_suffixes = ["design", "implement", "test"]
-                # Remove "task_" prefix
-                remainder = "_".join(parts[1:])
-                # Remove type suffix
-                feature_id = remainder
-                for suffix in type_suffixes:
-                    if remainder.endswith(f"_{suffix}"):
-                        feature_id = remainder[: -len(f"_{suffix}")]
-                        break
-
-                # Find which domain this feature belongs to
-                feature_domain: Optional[str] = feature_to_domain.get(feature_id)
-
-                if feature_domain:
-                    # Get the bundled design task ID for this domain
-                    design_task_id = self._bundled_designs.get(feature_domain)
-
-                    if design_task_id:
-                        # Add dependency: implement/test task depends on bundled design
-                        dependencies.append(
-                            {
-                                "dependent_task_id": task.id,
-                                "dependency_task_id": design_task_id,
-                                "dependency_type": "architectural",
-                                # High confidence - explicit bundled design dep
-                                "confidence": 1.0,
-                                "reasoning": (
-                                    f"Implement/test tasks must wait for "
-                                    f"{feature_domain} design to define "
-                                    f"architecture and interfaces"
-                                ),
-                                "source": "prd_bundled_design",
-                            }
-                        )
-                        logger.debug(
-                            f"Added bundled design dependency: "
-                            f"{task.id} -> {design_task_id}"
-                        )
-
-        logger.info(f"Added {len(dependencies)} bundled design dependencies to tasks")
-        return dependencies
+        """Add PRD-specific dependencies."""
+        return []  # Simplified for now
 
     async def _analyze_complexity_risks(
         self, tasks: List[Task], analysis: PRDAnalysis
@@ -2686,14 +1433,7 @@ explanation."""
         risks = []
         if constraints.deadline:
             total_effort = sum(task.estimated_hours or 8 for task in tasks)
-            # All datetimes should be UTC-aware. If a naive deadline is passed,
-            # assume it's UTC and normalize it to prevent TypeError.
-            deadline_utc = (
-                constraints.deadline.replace(tzinfo=timezone.utc)
-                if constraints.deadline.tzinfo is None
-                else constraints.deadline
-            )
-            days_available = (deadline_utc - datetime.now(timezone.utc)).days
+            days_available = (constraints.deadline - datetime.now()).days
             if (
                 total_effort > days_available * constraints.team_size * 6
             ):  # 6 hours per day

@@ -7,7 +7,7 @@ AI-powered task generation from PRD requirements.
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional, TypedDict
 
 try:
@@ -750,8 +750,8 @@ class IntelligentTaskGenerator:
             status=TaskStatus.TODO,
             priority=priority,
             assigned_to=None,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             due_date=None,
             estimated_hours=estimated_hours,
             dependencies=[],  # Will be resolved later

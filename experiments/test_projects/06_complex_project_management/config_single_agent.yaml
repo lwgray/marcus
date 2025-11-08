@@ -1,0 +1,32 @@
+# Project Management System - Single Agent Configuration
+# Experiment: Complex project with one agent
+
+project_name: "Project Management System - Single Agent"
+project_spec_file: "project_description.txt"
+
+project_options:
+  complexity: "enterprise"
+  provider: "planka"
+  mode: "new_project"
+
+agents:
+  - id: "agent_solo"
+    name: "Solo Expert Agent"
+    role: "fullstack"
+    skills:
+      - "python"
+      - "fastapi"
+      - "sqlalchemy"
+      - "postgresql"
+      - "redis"
+      - "websockets"
+      - "celery"
+      - "s3"
+      - "jwt"
+      - "rbac"
+      - "testing"
+    subagents: 0
+
+timeouts:
+  project_creation: 600
+  agent_startup: 60

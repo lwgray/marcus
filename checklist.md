@@ -13,7 +13,6 @@
 - [ ] [KanbanInterface.update_task() None returns not handled](https://github.com/lwgray/marcus/issues/50) (#50) - Potential for silent failures
 - [ ] [Improve Planka Board Handling in Multi-Project Mode](https://github.com/lwgray/marcus/issues/11) (#11)
 - [ ] [Optimal agent count calculation includes non-workable tasks](https://github.com/lwgray/marcus/issues/81) (#81) - 🔴 Includes parent/done tasks causing over-provisioning
-- [ ] [Fix remaining datetime.now() calls to use UTC timestamps](https://github.com/lwgray/marcus/issues/103) (#103) - 🟡 271 calls creating local time instead of UTC causing timezone inconsistencies
 
 ## 🚀 Enhancements In Progress
 

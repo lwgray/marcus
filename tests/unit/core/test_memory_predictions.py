@@ -2,7 +2,7 @@
 Unit tests for Memory system predictive intelligence features
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -30,8 +30,8 @@ class TestMemoryPredictions:
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
             assigned_to=None,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             due_date=None,
             estimated_hours=8.0,
             dependencies=[],
@@ -53,8 +53,8 @@ class TestMemoryPredictions:
                 actual_hours=10.0 if i % 2 == 0 else 7.0,
                 success=i % 3 != 0,  # Fail every 3rd task
                 blockers=["API unavailable"] if i % 4 == 0 else [],
-                started_at=datetime.now(timezone.utc) - timedelta(days=i),
-                completed_at=datetime.now(timezone.utc) - timedelta(days=i - 1),
+                started_at=datetime.now() - timedelta(days=i),
+                completed_at=datetime.now() - timedelta(days=i - 1),
             )
             for i in range(1, 6)
         ]
@@ -135,8 +135,8 @@ class TestMemoryPredictions:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 estimated_hours=8.0,
                 dependencies=[],
@@ -148,8 +148,8 @@ class TestMemoryPredictions:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 estimated_hours=12.0,
                 dependencies=["task-1"],
@@ -161,8 +161,8 @@ class TestMemoryPredictions:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 estimated_hours=6.0,
                 dependencies=["task-2"],
@@ -203,8 +203,8 @@ class TestMemoryPredictions:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to="agent-001",
-                created_at=datetime.now(timezone.utc) - timedelta(days=35 - i),
-                updated_at=datetime.now(timezone.utc) - timedelta(days=35 - i),
+                created_at=datetime.now() - timedelta(days=35 - i),
+                updated_at=datetime.now() - timedelta(days=35 - i),
                 due_date=None,
                 estimated_hours=8.0,
                 actual_hours=0.0,
@@ -225,8 +225,8 @@ class TestMemoryPredictions:
                 actual_hours=8.5,  # Getting more accurate
                 success=True,  # All successful
                 blockers=[],
-                started_at=datetime.now(timezone.utc) - timedelta(days=30 - i),
-                completed_at=datetime.now(timezone.utc) - timedelta(days=29 - i),
+                started_at=datetime.now() - timedelta(days=30 - i),
+                completed_at=datetime.now() - timedelta(days=29 - i),
             )
             for i in range(5)
         ]
@@ -260,8 +260,8 @@ class TestMemoryPredictions:
                 actual_hours=10.0,
                 success=True,
                 blockers=[],
-                started_at=datetime.now(timezone.utc) - timedelta(days=10),
-                completed_at=datetime.now(timezone.utc) - timedelta(days=9),
+                started_at=datetime.now() - timedelta(days=10),
+                completed_at=datetime.now() - timedelta(days=9),
             ),
             TaskOutcome(
                 task_id="past-2",
@@ -271,8 +271,8 @@ class TestMemoryPredictions:
                 actual_hours=5.0,
                 success=True,
                 blockers=[],
-                started_at=datetime.now(timezone.utc) - timedelta(days=8),
-                completed_at=datetime.now(timezone.utc) - timedelta(days=7),
+                started_at=datetime.now() - timedelta(days=8),
+                completed_at=datetime.now() - timedelta(days=7),
             ),
             TaskOutcome(
                 task_id="past-3",
@@ -282,8 +282,8 @@ class TestMemoryPredictions:
                 actual_hours=5.0,
                 success=False,
                 blockers=["Missing OAuth config"],
-                started_at=datetime.now(timezone.utc) - timedelta(days=5),
-                completed_at=datetime.now(timezone.utc) - timedelta(days=4),
+                started_at=datetime.now() - timedelta(days=5),
+                completed_at=datetime.now() - timedelta(days=4),
             ),
         ]
 
@@ -298,8 +298,8 @@ class TestMemoryPredictions:
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
             assigned_to=None,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             due_date=None,
             estimated_hours=6.0,
             dependencies=[],
@@ -327,8 +327,8 @@ class TestMemoryPredictions:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 estimated_hours=4.0,
                 dependencies=[],

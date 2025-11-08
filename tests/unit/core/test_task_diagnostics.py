@@ -4,7 +4,7 @@ Unit tests for the automatic task diagnostics system.
 Tests the diagnostic collectors, analyzers, and report generators.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import List
 from unittest.mock import Mock
 
@@ -28,7 +28,7 @@ def create_task(
     description: str = "",
 ) -> Task:
     """Helper function to create a task with all required fields."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now()
     return Task(
         id=task_id,
         name=name,
@@ -181,62 +181,6 @@ class TestDependencyChainAnalyzer:
         assert len(chains) >= 1
         # Should find a chain of at least 4 tasks
         assert any(len(chain) >= 4 for chain in chains)
-
-    def test_find_zombie_tasks(self):
-        """Test detection of zombie tasks (IN_PROGRESS with no agent)."""
-        tasks = [
-            create_task("task-1", "Task 1", status=TaskStatus.TODO),
-            create_task("task-2", "Task 2", status=TaskStatus.IN_PROGRESS),
-            create_task("task-3", "Task 3", status=TaskStatus.IN_PROGRESS),
-            create_task("task-4", "Task 4", status=TaskStatus.DONE),
-        ]
-
-        analyzer = DependencyChainAnalyzer(tasks)
-        # task-2 and task-3 are IN_PROGRESS but only task-3 is assigned
-        assigned_task_ids = {"task-3"}
-        zombies = analyzer.find_zombie_tasks(assigned_task_ids)
-
-        assert len(zombies) == 1
-        assert zombies[0]["task_id"] == "task-2"
-        assert zombies[0]["status"] == "in_progress"
-
-    def test_find_transitive_dependencies(self):
-        """Test detection of transitive/redundant dependencies."""
-        tasks = [
-            create_task("task-a", "Task A"),
-            create_task("task-b", "Task B", dependencies=["task-a"]),
-            create_task("task-c", "Task C", dependencies=["task-a", "task-b"]),
-        ]
-
-        analyzer = DependencyChainAnalyzer(tasks)
-        redundant = analyzer.find_transitive_dependencies()
-
-        # task-c depends on both task-a and task-b
-        # Since task-b depends on task-a, task-c's dependency on task-a is redundant
-        assert len(redundant) == 1
-        assert redundant[0]["task_id"] == "task-c"
-        assert redundant[0]["redundant_dependency_id"] == "task-a"
-
-    def test_find_state_inconsistencies_done_with_incomplete_deps(self):
-        """Test detection of DONE tasks with incomplete dependencies."""
-        tasks = [
-            create_task("task-1", "Task 1", status=TaskStatus.TODO),
-            create_task(
-                "task-2", "Task 2", status=TaskStatus.DONE, dependencies=["task-1"]
-            ),
-        ]
-
-        analyzer = DependencyChainAnalyzer(tasks)
-        completed_task_ids = {"task-2"}
-        inconsistencies = analyzer.find_state_inconsistencies(completed_task_ids)
-
-        # task-2 is DONE but task-1 (its dependency) is not completed
-        assert len(inconsistencies) == 1
-        assert inconsistencies[0]["task_id"] == "task-2"
-        assert (
-            inconsistencies[0]["inconsistency_type"] == "completed_with_incomplete_deps"
-        )
-        assert "task-1" in inconsistencies[0]["details"]["incomplete_dependency_ids"]
 
 
 class TestDiagnosticReportGenerator:

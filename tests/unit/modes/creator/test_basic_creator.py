@@ -5,7 +5,7 @@ This module provides comprehensive test coverage for the BasicCreatorMode class,
 which handles project creation from templates, customization, and task generation.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -42,8 +42,8 @@ class MockTask:
         self.estimated_hours = kwargs.get("estimated_hours", 1.0)
         self.dependencies = kwargs.get("dependencies", [])
         self.assigned_to = kwargs.get("assigned_to", None)
-        self.created_at = kwargs.get("created_at", datetime.now(timezone.utc))
-        self.updated_at = kwargs.get("updated_at", datetime.now(timezone.utc))
+        self.created_at = kwargs.get("created_at", datetime.now())
+        self.updated_at = kwargs.get("updated_at", datetime.now())
         self.due_date = kwargs.get("due_date", None)
         self.actual_hours = kwargs.get("actual_hours", 0.0)
         self.project_id = kwargs.get("project_id", None)
@@ -657,8 +657,8 @@ class TestRealTaskCompatibility:
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
             assigned_to=None,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
             due_date=None,
             estimated_hours=5.0,
             labels=["test", "real"],
@@ -733,7 +733,7 @@ class TestEdgeCases:
             },
             assigned_to="worker-123",
             actual_hours=12.5,
-            due_date=datetime.now(timezone.utc),
+            due_date=datetime.now(),
         )
 
         result = basic_creator_mode._task_to_dict(task)

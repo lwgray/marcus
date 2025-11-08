@@ -5,7 +5,7 @@ Tests the phase-based dependency enforcement system that ensures tasks
 follow the correct development lifecycle order.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, List
 from unittest.mock import Mock, patch
 
@@ -32,8 +32,8 @@ def create_test_task(
         "status": TaskStatus.TODO,
         "priority": Priority.MEDIUM,
         "assigned_to": None,
-        "created_at": datetime.now(timezone.utc),
-        "updated_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(),
+        "updated_at": datetime.now(),
         "due_date": None,
         "estimated_hours": 4.0,
         "actual_hours": 0.0,
@@ -81,8 +81,8 @@ class TestPhaseDependencyEnforcer:
                 priority=Priority.HIGH,
                 dependencies=[],
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 estimated_hours=4.0,
             ),
@@ -95,8 +95,8 @@ class TestPhaseDependencyEnforcer:
                 priority=Priority.HIGH,
                 dependencies=[],
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 estimated_hours=8.0,
             ),
@@ -109,8 +109,8 @@ class TestPhaseDependencyEnforcer:
                 priority=Priority.MEDIUM,
                 dependencies=[],
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 estimated_hours=4.0,
             ),
@@ -123,8 +123,8 @@ class TestPhaseDependencyEnforcer:
                 priority=Priority.LOW,
                 dependencies=[],
                 assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 due_date=None,
                 estimated_hours=2.0,
             ),

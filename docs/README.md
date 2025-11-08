@@ -100,7 +100,7 @@ Deep-dive topics for power users.
 
 ### 🏗️ [Systems Documentation](systems/)
 
-**Technical architecture for developers.** Deep-dive into Marcus's 55 systems organized by function.
+**Technical architecture for developers.** Deep-dive into Marcus's 53 systems organized by function.
 
 - **[Architecture](systems/architecture/)** - MCP Server, Event System, Service Registry
 - **[Intelligence](systems/intelligence/)** - AI Engine, Memory, Learning, Recommendations (6 systems)
