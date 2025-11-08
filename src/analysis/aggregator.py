@@ -419,11 +419,11 @@ class ProjectHistoryAggregator:
 
         try:
             # Import Persistence and get backend
-            from pathlib import Path
-
             from src.core.persistence import SQLitePersistence
 
-            backend = SQLitePersistence(db_path=Path("data/marcus.db"))
+            # Use absolute path to database (relative to marcus root)
+            db_path = self.marcus_root / "data" / "marcus.db"
+            backend = SQLitePersistence(db_path=db_path)
 
             # Query all events from persistence
             events_data = await backend.query("events", limit=10000)
@@ -453,11 +453,11 @@ class ProjectHistoryAggregator:
 
         try:
             # Import Persistence and get backend
-            from pathlib import Path
-
             from src.core.persistence import SQLitePersistence
 
-            backend = SQLitePersistence(db_path=Path("data/marcus.db"))
+            # Use absolute path to database (relative to marcus root)
+            db_path = self.marcus_root / "data" / "marcus.db"
+            backend = SQLitePersistence(db_path=db_path)
 
             # Query all task outcomes from persistence
             outcomes_data = await backend.query("task_outcomes", limit=10000)
@@ -516,11 +516,11 @@ class ProjectHistoryAggregator:
 
         try:
             # Import Persistence and get backend
-            from pathlib import Path
-
             from src.core.persistence import SQLitePersistence
 
-            backend = SQLitePersistence(db_path=Path("data/marcus.db"))
+            # Use absolute path to database (relative to marcus root)
+            db_path = self.marcus_root / "data" / "marcus.db"
+            backend = SQLitePersistence(db_path=db_path)
 
             # Query all agent profiles from persistence
             profiles_data = await backend.query("agent_profiles", limit=10000)

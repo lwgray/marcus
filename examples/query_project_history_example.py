@@ -18,14 +18,11 @@ from src.analysis.aggregator import ProjectHistoryAggregator  # noqa: E402
 from src.analysis.query_api import ProjectHistoryQuery  # noqa: E402
 
 
-async def main() -> None:
+async def main(project_id: str) -> None:
     """Demonstrate Phase 1 usage patterns."""
     # Initialize the query API
     aggregator = ProjectHistoryAggregator()
     query = ProjectHistoryQuery(aggregator)
-
-    # Replace with your actual project ID
-    project_id = "your-project-id"
 
     print("=" * 60)
     print("Phase 1: Project History Query Examples")
@@ -173,4 +170,11 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    if len(sys.argv) < 2:
+        print("Usage: python query_project_history_example.py <project_id>")
+        print("\nExample:")
+        print("  python query_project_history_example.py <uuid>")
+        sys.exit(1)
+
+    project_id = sys.argv[1]
+    asyncio.run(main(project_id))
