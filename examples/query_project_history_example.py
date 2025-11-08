@@ -6,10 +6,16 @@ to answer questions like "Did we build what we said we would build?"
 """
 
 import asyncio
+import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
-from src.analysis.aggregator import ProjectHistoryAggregator
-from src.analysis.query_api import ProjectHistoryQuery
+# Add project root to path so we can import src modules
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from src.analysis.aggregator import ProjectHistoryAggregator  # noqa: E402
+from src.analysis.query_api import ProjectHistoryQuery  # noqa: E402
 
 
 async def main() -> None:
