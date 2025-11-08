@@ -1,0 +1,597 @@
+"""
+Project History Persistence Layer.
+
+This module provides persistent storage for ephemeral project execution data:
+- Architectural decisions made by agents
+- Artifact metadata (files already persist in workspace)
+- Project completion snapshots
+
+All data is stored in JSON format under data/project_history/{project_id}/
+"""
+
+import json
+import logging
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class Decision:
+    """
+    An architectural decision made during task implementation.
+
+    Attributes
+    ----------
+    decision_id : str
+        Unique identifier for this decision
+    task_id : str
+        Task where this decision was made
+    agent_id : str
+        Agent who made the decision
+    timestamp : datetime
+        When the decision was made
+    what : str
+        What decision was made (the choice)
+    why : str
+        Rationale for the decision
+    impact : str
+        Expected impact on other tasks/components
+    affected_tasks : list[str]
+        Task IDs that will be affected by this decision
+    confidence : float
+        Agent's confidence in this decision (0.0-1.0)
+    kanban_comment_url : Optional[str]
+        URL to the Kanban comment where this was also logged
+    """
+
+    decision_id: str
+    task_id: str
+    agent_id: str
+    timestamp: datetime
+    what: str
+    why: str
+    impact: str
+    affected_tasks: list[str] = field(default_factory=list)
+    confidence: float = 0.8
+    kanban_comment_url: Optional[str] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "decision_id": self.decision_id,
+            "task_id": self.task_id,
+            "agent_id": self.agent_id,
+            "timestamp": self.timestamp.isoformat(),
+            "what": self.what,
+            "why": self.why,
+            "impact": self.impact,
+            "affected_tasks": self.affected_tasks,
+            "confidence": self.confidence,
+            "kanban_comment_url": self.kanban_comment_url,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Decision":
+        """Create from dictionary loaded from JSON."""
+        return cls(
+            decision_id=data["decision_id"],
+            task_id=data["task_id"],
+            agent_id=data["agent_id"],
+            timestamp=datetime.fromisoformat(data["timestamp"]),
+            what=data["what"],
+            why=data["why"],
+            impact=data["impact"],
+            affected_tasks=data.get("affected_tasks", []),
+            confidence=data.get("confidence", 0.8),
+            kanban_comment_url=data.get("kanban_comment_url"),
+        )
+
+
+@dataclass
+class ArtifactMetadata:
+    """
+    Metadata for an artifact produced during task execution.
+
+    Note: The actual artifact file persists in the project workspace.
+    This is just the metadata registry.
+
+    Attributes
+    ----------
+    artifact_id : str
+        Unique identifier for this artifact
+    task_id : str
+        Task that produced this artifact
+    agent_id : str
+        Agent who created the artifact
+    timestamp : datetime
+        When the artifact was created
+    filename : str
+        Name of the artifact file
+    artifact_type : str
+        Type of artifact (design, specification, api, etc.)
+    relative_path : str
+        Path relative to project root
+    absolute_path : str
+        Full absolute path to the file
+    description : str
+        Description of what this artifact contains
+    file_size_bytes : int
+        Size of the file in bytes
+    sha256_hash : Optional[str]
+        SHA256 hash of file content (for integrity checking)
+    kanban_comment_url : Optional[str]
+        URL to Kanban comment where this was also logged
+    referenced_by_tasks : list[str]
+        Tasks that consumed this artifact
+    """
+
+    artifact_id: str
+    task_id: str
+    agent_id: str
+    timestamp: datetime
+    filename: str
+    artifact_type: str
+    relative_path: str
+    absolute_path: str
+    description: str
+    file_size_bytes: int = 0
+    sha256_hash: Optional[str] = None
+    kanban_comment_url: Optional[str] = None
+    referenced_by_tasks: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "artifact_id": self.artifact_id,
+            "task_id": self.task_id,
+            "agent_id": self.agent_id,
+            "timestamp": self.timestamp.isoformat(),
+            "filename": self.filename,
+            "artifact_type": self.artifact_type,
+            "relative_path": self.relative_path,
+            "absolute_path": self.absolute_path,
+            "description": self.description,
+            "file_size_bytes": self.file_size_bytes,
+            "sha256_hash": self.sha256_hash,
+            "kanban_comment_url": self.kanban_comment_url,
+            "referenced_by_tasks": self.referenced_by_tasks,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ArtifactMetadata":
+        """Create from dictionary loaded from JSON."""
+        return cls(
+            artifact_id=data["artifact_id"],
+            task_id=data["task_id"],
+            agent_id=data["agent_id"],
+            timestamp=datetime.fromisoformat(data["timestamp"]),
+            filename=data["filename"],
+            artifact_type=data["artifact_type"],
+            relative_path=data["relative_path"],
+            absolute_path=data["absolute_path"],
+            description=data.get("description", ""),
+            file_size_bytes=data.get("file_size_bytes", 0),
+            sha256_hash=data.get("sha256_hash"),
+            kanban_comment_url=data.get("kanban_comment_url"),
+            referenced_by_tasks=data.get("referenced_by_tasks", []),
+        )
+
+
+@dataclass
+class ProjectSnapshot:
+    """
+    Complete snapshot of project state at completion.
+
+    Captures final metrics, outcomes, and status for post-project analysis.
+    """
+
+    project_id: str
+    project_name: str
+    snapshot_timestamp: datetime
+    completion_status: str  # "completed", "abandoned", "stalled"
+
+    # Task statistics
+    total_tasks: int
+    completed_tasks: int
+    in_progress_tasks: int
+    blocked_tasks: int
+    completion_rate: float
+
+    # Timing
+    project_started: datetime
+    project_completed: Optional[datetime]
+    total_duration_hours: float
+    estimated_hours: float
+    actual_hours: float
+    estimation_accuracy: float
+
+    # Team
+    total_agents: int
+    agent_summary: list[dict[str, Any]] = field(default_factory=list)
+
+    # Quality metrics
+    team_velocity: float = 0.0
+    risk_level: str = "unknown"
+    average_task_duration: float = 0.0
+    blockage_rate: float = 0.0
+
+    # Technology stack
+    languages: list[str] = field(default_factory=list)
+    frameworks: list[str] = field(default_factory=list)
+    tools: list[str] = field(default_factory=list)
+
+    # Outcome (user feedback)
+    application_works: Optional[bool] = None
+    deployment_status: Optional[str] = None
+    user_satisfaction: Optional[str] = None
+    notes: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "project_id": self.project_id,
+            "project_name": self.project_name,
+            "snapshot_timestamp": self.snapshot_timestamp.isoformat(),
+            "completion_status": self.completion_status,
+            "task_statistics": {
+                "total_tasks": self.total_tasks,
+                "completed": self.completed_tasks,
+                "in_progress": self.in_progress_tasks,
+                "blocked": self.blocked_tasks,
+                "completion_rate": self.completion_rate,
+            },
+            "timing": {
+                "project_started": self.project_started.isoformat(),
+                "project_completed": (
+                    self.project_completed.isoformat()
+                    if self.project_completed
+                    else None
+                ),
+                "total_duration_hours": self.total_duration_hours,
+                "estimated_hours": self.estimated_hours,
+                "actual_hours": self.actual_hours,
+                "estimation_accuracy": self.estimation_accuracy,
+            },
+            "team": {
+                "total_agents": self.total_agents,
+                "agents": self.agent_summary,
+            },
+            "quality_metrics": {
+                "team_velocity": self.team_velocity,
+                "risk_level": self.risk_level,
+                "average_task_duration": self.average_task_duration,
+                "blockage_rate": self.blockage_rate,
+            },
+            "technology_stack": {
+                "languages": self.languages,
+                "frameworks": self.frameworks,
+                "tools": self.tools,
+            },
+            "outcome": {
+                "application_works": self.application_works,
+                "deployment_status": self.deployment_status,
+                "user_satisfaction": self.user_satisfaction,
+                "notes": self.notes,
+            },
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ProjectSnapshot":
+        """Create from dictionary loaded from JSON."""
+        task_stats = data.get("task_statistics", {})
+        timing = data.get("timing", {})
+        team = data.get("team", {})
+        quality = data.get("quality_metrics", {})
+        tech_stack = data.get("technology_stack", {})
+        outcome = data.get("outcome", {})
+
+        return cls(
+            project_id=data["project_id"],
+            project_name=data["project_name"],
+            snapshot_timestamp=datetime.fromisoformat(data["snapshot_timestamp"]),
+            completion_status=data["completion_status"],
+            total_tasks=task_stats.get("total_tasks", 0),
+            completed_tasks=task_stats.get("completed", 0),
+            in_progress_tasks=task_stats.get("in_progress", 0),
+            blocked_tasks=task_stats.get("blocked", 0),
+            completion_rate=task_stats.get("completion_rate", 0.0),
+            project_started=datetime.fromisoformat(timing["project_started"]),
+            project_completed=(
+                datetime.fromisoformat(timing["project_completed"])
+                if timing.get("project_completed")
+                else None
+            ),
+            total_duration_hours=timing.get("total_duration_hours", 0.0),
+            estimated_hours=timing.get("estimated_hours", 0.0),
+            actual_hours=timing.get("actual_hours", 0.0),
+            estimation_accuracy=timing.get("estimation_accuracy", 0.0),
+            total_agents=team.get("total_agents", 0),
+            agent_summary=team.get("agents", []),
+            team_velocity=quality.get("team_velocity", 0.0),
+            risk_level=quality.get("risk_level", "unknown"),
+            average_task_duration=quality.get("average_task_duration", 0.0),
+            blockage_rate=quality.get("blockage_rate", 0.0),
+            languages=tech_stack.get("languages", []),
+            frameworks=tech_stack.get("frameworks", []),
+            tools=tech_stack.get("tools", []),
+            application_works=outcome.get("application_works"),
+            deployment_status=outcome.get("deployment_status"),
+            user_satisfaction=outcome.get("user_satisfaction"),
+            notes=outcome.get("notes", ""),
+        )
+
+
+class ProjectHistoryPersistence:
+    """
+    Manages persistent storage of project history data.
+
+    Stores data in JSON files under data/project_history/{project_id}/:
+    - decisions.json: All architectural decisions
+    - artifacts.json: All artifact metadata
+    - snapshot.json: Project completion snapshot
+    """
+
+    def __init__(self, marcus_root: Optional[Path] = None):
+        """
+        Initialize project history persistence.
+
+        Parameters
+        ----------
+        marcus_root : Optional[Path]
+            Path to Marcus root directory. If None, auto-detects.
+        """
+        if marcus_root is None:
+            # Auto-detect Marcus root
+            self.marcus_root = Path(__file__).parent.parent.parent
+        else:
+            self.marcus_root = Path(marcus_root)
+
+        self.history_dir = self.marcus_root / "data" / "project_history"
+        self.history_dir.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"ProjectHistoryPersistence initialized at {self.history_dir}")
+
+    def _get_project_dir(self, project_id: str) -> Path:
+        """Get directory for a specific project."""
+        project_dir = self.history_dir / project_id
+        project_dir.mkdir(parents=True, exist_ok=True)
+        return project_dir
+
+    def _atomic_write_json(self, file_path: Path, data: Any) -> None:
+        """
+        Atomically write JSON data to file.
+
+        Writes to temporary file first, then renames to avoid corruption.
+        """
+        temp_file = file_path.with_suffix(".tmp")
+        try:
+            with open(temp_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            temp_file.replace(file_path)
+        except Exception as e:
+            if temp_file.exists():
+                temp_file.unlink()
+            raise e
+
+    async def append_decision(
+        self, project_id: str, project_name: str, decision: Decision
+    ) -> None:
+        """
+        Append a decision to the project's decision registry.
+
+        Parameters
+        ----------
+        project_id : str
+            Project identifier
+        project_name : str
+            Project name
+        decision : Decision
+            Decision to append
+
+        Notes
+        -----
+        Uses atomic writes to prevent corruption.
+        Creates file if it doesn't exist.
+        """
+        project_dir = self._get_project_dir(project_id)
+        decisions_file = project_dir / "decisions.json"
+
+        # Load existing decisions or create new structure
+        if decisions_file.exists():
+            with open(decisions_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        else:
+            data = {
+                "project_id": project_id,
+                "project_name": project_name,
+                "decisions": [],
+                "metadata": {
+                    "last_updated": datetime.now(timezone.utc).isoformat(),
+                    "total_decisions": 0,
+                },
+            }
+
+        # Append new decision
+        data["decisions"].append(decision.to_dict())
+        data["metadata"]["last_updated"] = datetime.now(timezone.utc).isoformat()
+        data["metadata"]["total_decisions"] = len(data["decisions"])
+
+        # Atomic write
+        self._atomic_write_json(decisions_file, data)
+
+        logger.info(f"Appended decision {decision.decision_id} to project {project_id}")
+
+    async def append_artifact(
+        self, project_id: str, project_name: str, artifact: ArtifactMetadata
+    ) -> None:
+        """
+        Append artifact metadata to the project's artifact registry.
+
+        Parameters
+        ----------
+        project_id : str
+            Project identifier
+        project_name : str
+            Project name
+        artifact : ArtifactMetadata
+            Artifact metadata to append
+
+        Notes
+        -----
+        Uses atomic writes to prevent corruption.
+        Creates file if it doesn't exist.
+        """
+        project_dir = self._get_project_dir(project_id)
+        artifacts_file = project_dir / "artifacts.json"
+
+        # Load existing artifacts or create new structure
+        if artifacts_file.exists():
+            with open(artifacts_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        else:
+            data = {
+                "project_id": project_id,
+                "project_name": project_name,
+                "project_root": str(Path(artifact.absolute_path).parent.parent),
+                "artifacts": [],
+                "metadata": {
+                    "last_updated": datetime.now(timezone.utc).isoformat(),
+                    "total_artifacts": 0,
+                    "total_size_mb": 0.0,
+                },
+            }
+
+        # Append new artifact
+        data["artifacts"].append(artifact.to_dict())
+        data["metadata"]["last_updated"] = datetime.now(timezone.utc).isoformat()
+        data["metadata"]["total_artifacts"] = len(data["artifacts"])
+        data["metadata"]["total_size_mb"] = sum(
+            a["file_size_bytes"] for a in data["artifacts"]
+        ) / (1024 * 1024)
+
+        # Atomic write
+        self._atomic_write_json(artifacts_file, data)
+
+        logger.info(f"Appended artifact {artifact.artifact_id} to project {project_id}")
+
+    async def save_snapshot(self, snapshot: ProjectSnapshot) -> None:
+        """
+        Save project completion snapshot.
+
+        Parameters
+        ----------
+        snapshot : ProjectSnapshot
+            Project snapshot to save
+
+        Notes
+        -----
+        Overwrites any existing snapshot for this project.
+        Uses atomic writes to prevent corruption.
+        """
+        project_dir = self._get_project_dir(snapshot.project_id)
+        snapshot_file = project_dir / "snapshot.json"
+
+        # Convert snapshot to dict
+        data = snapshot.to_dict()
+
+        # Atomic write
+        self._atomic_write_json(snapshot_file, data)
+
+        logger.info(f"Saved snapshot for project {snapshot.project_id}")
+
+    async def load_decisions(self, project_id: str) -> list[Decision]:
+        """
+        Load all decisions for a project.
+
+        Parameters
+        ----------
+        project_id : str
+            Project identifier
+
+        Returns
+        -------
+        list[Decision]
+            List of decisions (empty if none exist)
+        """
+        project_dir = self._get_project_dir(project_id)
+        decisions_file = project_dir / "decisions.json"
+
+        if not decisions_file.exists():
+            return []
+
+        with open(decisions_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        return [Decision.from_dict(d) for d in data.get("decisions", [])]
+
+    async def load_artifacts(self, project_id: str) -> list[ArtifactMetadata]:
+        """
+        Load all artifact metadata for a project.
+
+        Parameters
+        ----------
+        project_id : str
+            Project identifier
+
+        Returns
+        -------
+        list[ArtifactMetadata]
+            List of artifact metadata (empty if none exist)
+        """
+        project_dir = self._get_project_dir(project_id)
+        artifacts_file = project_dir / "artifacts.json"
+
+        if not artifacts_file.exists():
+            return []
+
+        with open(artifacts_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        return [ArtifactMetadata.from_dict(a) for a in data.get("artifacts", [])]
+
+    async def load_snapshot(self, project_id: str) -> Optional[ProjectSnapshot]:
+        """
+        Load project completion snapshot.
+
+        Parameters
+        ----------
+        project_id : str
+            Project identifier
+
+        Returns
+        -------
+        Optional[ProjectSnapshot]
+            Project snapshot if exists, None otherwise
+        """
+        project_dir = self._get_project_dir(project_id)
+        snapshot_file = project_dir / "snapshot.json"
+
+        if not snapshot_file.exists():
+            return None
+
+        with open(snapshot_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        return ProjectSnapshot.from_dict(data)
+
+    def list_projects(self) -> list[str]:
+        """
+        List all project IDs that have history data.
+
+        Returns
+        -------
+        list[str]
+            List of project IDs
+        """
+        if not self.history_dir.exists():
+            return []
+
+        return [
+            d.name
+            for d in self.history_dir.iterdir()
+            if d.is_dir() and not d.name.startswith(".")
+        ]
