@@ -217,7 +217,6 @@ following the instructions."""
 
         # Skip for prototypes/experiments
         skip_keywords = [
-            "prototype",
             "poc",
             "proof of concept",
             "demo",

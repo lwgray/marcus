@@ -366,7 +366,6 @@ class AdaptiveDocumentationGenerator:
         # Skip for prototypes/experiments (unless from GitHub issue)
         if context.source_type != "github_issue":
             skip_keywords = [
-                "prototype",
                 "poc",
                 "proof of concept",
                 "demo",
