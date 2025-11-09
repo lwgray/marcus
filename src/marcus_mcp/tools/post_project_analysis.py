@@ -18,7 +18,6 @@ from typing import Any, Dict, List, Optional
 
 from mcp.types import Tool
 
-from ...analysis.aggregator import TaskHistory
 from ...analysis.post_project_analyzer import (
     AnalysisScope,
     PostProjectAnalyzer,
@@ -215,7 +214,7 @@ async def analyze_project(
         Which analyzers to run (requirement_divergence, decision_impact,
         instruction_quality, failure_diagnosis)
     state : Any
-        Marcus server state
+        Marcus server state (not used - included for API compatibility)
 
     Returns
     -------
@@ -228,46 +227,20 @@ async def analyze_project(
         - summary: executive summary text
         - metadata: analysis metadata
     """
-    if not state:
-        return {
-            "success": False,
-            "error": "Server state not available",
-        }
-
     try:
-        # Get project context
-        context = state._project_contexts.get(project_id)
-        if not context:
-            return {
-                "success": False,
-                "error": f"Project {project_id} not found",
-            }
+        # Load project history using the aggregator
+        from ...analysis.aggregator import ProjectHistoryAggregator
 
-        # Get project history to extract tasks and decisions
-        if not hasattr(context, "project_history") or not context.project_history:
-            return {
-                "success": False,
-                "error": f"No project history available for {project_id}",
-            }
+        aggregator = ProjectHistoryAggregator()
+        project_history = await aggregator.aggregate_project(
+            project_id=project_id,
+            include_conversations=True,
+            include_kanban=False,
+        )
 
-        # Convert tasks to TaskHistory format
-        tasks = []
-        for conversation in context.project_history.conversations:
-            for task_data in conversation.tasks:
-                # Extract task information
-                tasks.append(
-                    TaskHistory(
-                        task_id=task_data.get("task_id", "unknown"),
-                        name=task_data.get("name", "Unnamed task"),
-                        description=task_data.get("description", ""),
-                        status=task_data.get("status", "unknown"),
-                        estimated_hours=task_data.get("estimated_hours", 0.0),
-                        actual_hours=task_data.get("actual_hours", 0.0),
-                    )
-                )
-
-        # Get all decisions
-        decisions = context.project_history.get_all_decisions()
+        # Extract tasks and decisions from aggregated history
+        tasks = project_history.tasks
+        decisions = project_history.decisions
 
         if not tasks:
             return {
