@@ -82,6 +82,18 @@ from .tools.pipeline import (  # Pipeline tools
     start_what_if_analysis,
     track_flow_progress,
 )
+from .tools.post_project_analysis import (  # Post-project analysis tools
+    ANALYZE_PROJECT_TOOL,
+    GET_DECISION_IMPACTS_TOOL,
+    GET_FAILURE_DIAGNOSES_TOOL,
+    GET_INSTRUCTION_QUALITY_TOOL,
+    GET_REQUIREMENT_DIVERGENCE_TOOL,
+    analyze_project,
+    get_decision_impacts,
+    get_failure_diagnoses,
+    get_instruction_quality,
+    get_requirement_divergence,
+)
 from .tools.predictions import (  # Prediction tools
     get_task_assignment_score,
     predict_blockage_probability,
@@ -122,6 +134,13 @@ def get_all_tool_definitions() -> Dict[str, types.Tool]:
     # Add auth and audit tools
     all_tools["authenticate"] = AUTHENTICATE_TOOL
     all_tools["get_usage_report"] = USAGE_REPORT_TOOL
+
+    # Add post-project analysis tools
+    all_tools["analyze_project"] = ANALYZE_PROJECT_TOOL
+    all_tools["get_requirement_divergence"] = GET_REQUIREMENT_DIVERGENCE_TOOL
+    all_tools["get_decision_impacts"] = GET_DECISION_IMPACTS_TOOL
+    all_tools["get_instruction_quality"] = GET_INSTRUCTION_QUALITY_TOOL
+    all_tools["get_failure_diagnoses"] = GET_FAILURE_DIAGNOSES_TOOL
 
     return all_tools
 
@@ -1596,6 +1615,62 @@ async def handle_tool_call(
                 include_details=arguments.get("include_details", False),
                 state=state,
             )
+
+        # Post-Project Analysis Tools (Phase 2)
+        elif name == "analyze_project":
+            project_id = arguments.get("project_id") if arguments else None
+            if not project_id:
+                result = {"error": "project_id is required"}
+            else:
+                result = await analyze_project(
+                    project_id=project_id,
+                    scope=arguments.get("scope"),
+                    state=state,
+                )
+
+        elif name == "get_requirement_divergence":
+            project_id = arguments.get("project_id") if arguments else None
+            if not project_id:
+                result = {"error": "project_id is required"}
+            else:
+                result = await get_requirement_divergence(
+                    project_id=project_id,
+                    task_ids=arguments.get("task_ids"),
+                    state=state,
+                )
+
+        elif name == "get_decision_impacts":
+            project_id = arguments.get("project_id") if arguments else None
+            if not project_id:
+                result = {"error": "project_id is required"}
+            else:
+                result = await get_decision_impacts(
+                    project_id=project_id,
+                    decision_ids=arguments.get("decision_ids"),
+                    state=state,
+                )
+
+        elif name == "get_instruction_quality":
+            project_id = arguments.get("project_id") if arguments else None
+            if not project_id:
+                result = {"error": "project_id is required"}
+            else:
+                result = await get_instruction_quality(
+                    project_id=project_id,
+                    task_ids=arguments.get("task_ids"),
+                    state=state,
+                )
+
+        elif name == "get_failure_diagnoses":
+            project_id = arguments.get("project_id") if arguments else None
+            if not project_id:
+                result = {"error": "project_id is required"}
+            else:
+                result = await get_failure_diagnoses(
+                    project_id=project_id,
+                    task_ids=arguments.get("task_ids"),
+                    state=state,
+                )
 
         # Pattern Learning Tools removed - only accessible via visualization UI API
         elif name in [

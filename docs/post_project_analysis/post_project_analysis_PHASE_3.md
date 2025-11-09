@@ -1,5 +1,12 @@
 # Phase 3: Cato Integration - Interactive Visualization
 
+> **⚠️ IMPORTANT: This document is the original design spec.**
+>
+> **For accurate implementation guidance based on actual Phase 1 & 2 APIs, see:**
+> **[PHASE_3_IMPLEMENTATION_PLAN.md](./PHASE_3_IMPLEMENTATION_PLAN.md)**
+>
+> This original document contains API examples that don't match the final Phase 1 & 2 implementation. It's kept for reference, but all implementation work should follow the corrected plan.
+
 ## Overview
 
 Phase 3 brings post-project analysis to life with interactive visualizations by:
