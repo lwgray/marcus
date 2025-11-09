@@ -177,8 +177,21 @@ class TestPrototypeDocumentation:
         # Assert
         assert should_add is False, "Legacy generator should skip POC projects"
 
-    def test_tiny_project_skips_documentation(self, sample_tasks: list[Task]) -> None:
-        """Test projects with <3 tasks skip documentation."""
+    def test_legacy_generator_tiny_project_gets_documentation(self) -> None:
+        """Test legacy generator allows tiny projects."""
+        # Arrange & Act
+        should_add = DocumentationTaskGenerator.should_add_documentation_task(
+            project_description="Build a simple blog",
+            task_count=2,
+        )
+
+        # Assert
+        assert (
+            should_add is True
+        ), "Legacy generator should allow tiny projects to have documentation"
+
+    def test_tiny_project_gets_documentation(self, sample_tasks: list[Task]) -> None:
+        """Test projects with <3 tasks get documentation."""
         # Arrange
         generator = AdaptiveDocumentationGenerator()
         tiny_tasks = sample_tasks[:2]  # Only 2 tasks
@@ -196,7 +209,7 @@ class TestPrototypeDocumentation:
         should_add = generator.should_add_documentation(context)
 
         # Assert
-        assert should_add is False, "Projects with <3 tasks should skip documentation"
+        assert should_add is True, "Projects with <3 tasks should get documentation"
 
     def test_github_issue_always_gets_documentation(
         self, sample_tasks: list[Task]

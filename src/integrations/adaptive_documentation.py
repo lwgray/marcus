@@ -359,10 +359,6 @@ class AdaptiveDocumentationGenerator:
 
         Similar to legacy should_add_documentation_task but context-aware.
         """
-        # Skip for tiny projects
-        if len(context.existing_tasks) < 3:
-            return False
-
         # Skip for prototypes/experiments (unless from GitHub issue)
         if context.source_type != "github_issue":
             skip_keywords = [

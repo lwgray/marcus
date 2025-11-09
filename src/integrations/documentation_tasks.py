@@ -211,10 +211,6 @@ following the instructions."""
         bool
             True if documentation should be added
         """
-        # Skip for tiny projects
-        if task_count < 3:
-            return False
-
         # Skip for prototypes/experiments
         skip_keywords = [
             "poc",
