@@ -2,6 +2,11 @@ FILE_MANAGEMENT:
   - Don't ever version files...just change the original file.  No "_fixed", "_v2", "_patched", etc.
   - When modifying files, always overwrite the original file. Never create new versions with suffixes like _fixed, _v2, _new, _updated, _patched, or similar naming patterns.
 
+  GIT_WORKFLOW:
+  - Only merge PRs into the develop branch, NEVER into main
+  - When creating pull requests, always target the develop branch as the base
+  - Main branch is protected and reserved for production releases only
+
   COMMUNICATION_GUIDELINES:
   - Always tell me what you are going to do and why
 
