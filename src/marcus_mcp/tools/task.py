@@ -378,7 +378,12 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
         progress = getattr(task, "progress", 0) or 0
 
         # Calculate elapsed time in seconds
-        elapsed_seconds = (now - assignment.assigned_at).total_seconds()
+        # Ensure assignment.assigned_at is timezone-aware
+        assigned_at = assignment.assigned_at
+        if assigned_at.tzinfo is None:
+            # Make naive datetime timezone-aware (assume UTC)
+            assigned_at = assigned_at.replace(tzinfo=timezone.utc)
+        elapsed_seconds = (now - assigned_at).total_seconds()
 
         # Estimate remaining time
         if progress > 0 and progress < 100:
@@ -1151,12 +1156,12 @@ async def report_task_progress(
             task_assignment = state.agent_tasks.get(agent_id)
             if task_assignment:
                 start_time = task_assignment.assigned_at
-                actual_hours = (
-                    datetime.now(timezone.utc) - start_time
-                ).total_seconds() / 3600
-                duration_seconds = (
-                    datetime.now(timezone.utc) - start_time
-                ).total_seconds()
+                # Ensure start_time is timezone-aware
+                if start_time.tzinfo is None:
+                    start_time = start_time.replace(tzinfo=timezone.utc)
+                now_utc = datetime.now(timezone.utc)
+                actual_hours = (now_utc - start_time).total_seconds() / 3600
+                duration_seconds = (now_utc - start_time).total_seconds()
             else:
                 actual_hours = 1.0  # Default if no assignment found
                 duration_seconds = 3600.0  # 1 hour default
@@ -1247,6 +1252,9 @@ async def report_task_progress(
                 task_assignment = state.agent_tasks.get(agent_id)
                 if task_assignment:
                     start_time = task_assignment.assigned_at
+                    # Ensure start_time is timezone-aware
+                    if start_time.tzinfo is None:
+                        start_time = start_time.replace(tzinfo=timezone.utc)
                     actual_hours = (
                         datetime.now(timezone.utc) - start_time
                     ).total_seconds() / 3600

@@ -205,12 +205,20 @@ class Memory:
                     success=data["success"],
                     blockers=data.get("blockers", []),
                     started_at=(
-                        datetime.fromisoformat(data["started_at"])
+                        (
+                            lambda dt: dt.replace(tzinfo=timezone.utc)
+                            if dt.tzinfo is None
+                            else dt
+                        )(datetime.fromisoformat(data["started_at"]))
                         if data.get("started_at")
                         else None
                     ),
                     completed_at=(
-                        datetime.fromisoformat(data["completed_at"])
+                        (
+                            lambda dt: dt.replace(tzinfo=timezone.utc)
+                            if dt.tzinfo is None
+                            else dt
+                        )(datetime.fromisoformat(data["completed_at"]))
                         if data.get("completed_at")
                         else None
                     ),

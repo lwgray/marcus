@@ -414,16 +414,16 @@ class LiveExperimentMonitor:
 
     def _generate_summary(self) -> str:
         """Generate experiment summary."""
-        duration = (
-            (
-                datetime.now(timezone.utc)
-                - datetime.fromisoformat(
-                    list(self.registered_agents.values())[0]["registered_at"]
-                )
-            ).total_seconds()
-            if self.registered_agents
-            else 0
-        )
+        duration = 0
+        if self.registered_agents:
+            registered_at_str = list(self.registered_agents.values())[0][
+                "registered_at"
+            ]
+            registered_at = datetime.fromisoformat(registered_at_str)
+            # Ensure timezone-aware
+            if registered_at.tzinfo is None:
+                registered_at = registered_at.replace(tzinfo=timezone.utc)
+            duration = (datetime.now(timezone.utc) - registered_at).total_seconds()
 
         summary = f"""
 Live Experiment Summary
