@@ -1522,6 +1522,42 @@ async def _find_optimal_task_original_logic(
             t.id for t in state.project_tasks if t.status == TaskStatus.DONE
         }
 
+        # Build slug-to-ID mapping for dependency resolution
+        # Bundled design tasks are created with slug IDs like
+        # "design_productivity_tools" but get replaced with numeric Planka IDs
+        # when synced to the board. Dependencies still reference the slug, so
+        # we need to map slug → numeric ID.
+        slug_to_id: dict[str, str] = {}
+        for t in state.project_tasks:
+            # Look for Design tasks - they have labels like:
+            # ['design', 'architecture', 'productivity tools']
+            if (
+                t.name
+                and "Design" in t.name
+                and hasattr(t, "labels")
+                and t.labels
+                and len(t.labels) >= 3
+            ):
+                # Extract domain from labels
+                # (last non-design/architecture label)
+                domain_labels = [
+                    label
+                    for label in t.labels
+                    if label.lower() not in ["design", "architecture"]
+                ]
+                if domain_labels:
+                    # Create slug from domain label:
+                    # "productivity tools" → "design_productivity_tools"
+                    domain = domain_labels[-1]
+                    slug = f"design_{domain.lower().replace(' ', '_')}"
+                    slug_to_id[slug] = str(t.id)
+                    logger.debug(f"Mapped slug '{slug}' → task ID {t.id} ('{t.name}')")
+
+        logger.info(
+            f"Built slug-to-ID mapping with {len(slug_to_id)} entries: "
+            f"{dict(list(slug_to_id.items())[:5])}"  # Show first 5
+        )
+
         # Filter tasks: TODO, not assigned, and all dependencies completed
         available_tasks = []
         for t in state.project_tasks:
@@ -1580,20 +1616,66 @@ async def _find_optimal_task_original_logic(
                     )
                     continue
 
-            # Check dependencies
+            # Check dependencies - resolve slugs to actual IDs first
             deps = t.dependencies or []
-            all_deps_complete = all(dep_id in completed_task_ids for dep_id in deps)
+            resolved_deps = []
+            for dep_id in deps:
+                # If it's a slug, try to resolve it; otherwise use as-is
+                if dep_id in slug_to_id:
+                    resolved_deps.append(slug_to_id[dep_id])
+                else:
+                    resolved_deps.append(dep_id)
+
+            all_deps_complete = all(
+                dep_id in completed_task_ids for dep_id in resolved_deps
+            )
 
             if not all_deps_complete:
                 filtering_stats["incomplete_dependencies"] += 1
                 # Log which dependencies are not complete
                 incomplete_deps = [
-                    dep_id for dep_id in deps if dep_id not in completed_task_ids
+                    dep_id
+                    for dep_id in resolved_deps
+                    if dep_id not in completed_task_ids
                 ]
-                logger.debug(
-                    f"Task '{t.name}' has incomplete dependencies: {incomplete_deps}"
+                logger.info(
+                    f"Task '{t.name}' has incomplete dependencies: {incomplete_deps} "
+                    f"(original: {deps}, resolved: {resolved_deps})"
                 )
                 continue
+
+            # CRITICAL: If this is a subtask, also check parent's dependencies
+            # Subtasks should not start until their parent's dependencies are met
+            if t.is_subtask and t.parent_task_id:
+                parent_task = next(
+                    (p for p in state.project_tasks if p.id == t.parent_task_id), None
+                )
+                if parent_task:
+                    parent_deps = parent_task.dependencies or []
+                    parent_resolved_deps = []
+                    for dep_id in parent_deps:
+                        if dep_id in slug_to_id:
+                            parent_resolved_deps.append(slug_to_id[dep_id])
+                        else:
+                            parent_resolved_deps.append(dep_id)
+
+                    parent_deps_complete = all(
+                        dep_id in completed_task_ids for dep_id in parent_resolved_deps
+                    )
+
+                    if not parent_deps_complete:
+                        incomplete_parent_deps = [
+                            dep_id
+                            for dep_id in parent_resolved_deps
+                            if dep_id not in completed_task_ids
+                        ]
+                        logger.info(
+                            f"Subtask '{t.name}' blocked: parent task "
+                            f"'{parent_task.name}' has incomplete dependencies: "
+                            f"{incomplete_parent_deps}"
+                        )
+                        filtering_stats["incomplete_dependencies"] += 1
+                        continue
 
             available_tasks.append(t)
 
