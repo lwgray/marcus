@@ -254,6 +254,7 @@ class AnalysisAIEngine:
             confidence = parsed_result.get("confidence", 0.8)
 
             # Create response
+            await progress.update(100, "Complete")
             response = AnalysisResponse(
                 analysis_type=request.analysis_type,
                 raw_response=raw_response,
@@ -264,12 +265,10 @@ class AnalysisAIEngine:
                 cached=False,
             )
 
-            # Cache the response
-            if use_cache:
-                cache_key = self.get_cache_key(request)
-                self._cache[cache_key] = response
-
-            await progress.update(100, "Complete")
+        # Cache the response
+        if use_cache:
+            cache_key = self.get_cache_key(request)
+            self._cache[cache_key] = response
 
         return response
 

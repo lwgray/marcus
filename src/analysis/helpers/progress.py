@@ -33,6 +33,7 @@ async with reporter.operation("loading_data", total=None) as progress:
 ```
 """
 
+import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -288,6 +289,10 @@ class ProgressReporter:
         )
 
         await self.callback(event)
+
+        # Add small delay to make messages readable (prevent scrolling too fast)
+        # This ensures users can see task progression instead of blur
+        await asyncio.sleep(0.5)  # 500ms delay between progress updates
 
     @asynccontextmanager
     async def operation(
