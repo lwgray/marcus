@@ -51,13 +51,14 @@ class AnalysisType(Enum):
     """
     Types of post-project analysis.
 
-    Maps to the four core analyzers plus overall assessment from Phase 2 spec.
+    Maps to the core analyzers plus overall assessment from Phase 2 spec.
     """
 
     REQUIREMENT_DIVERGENCE = "requirement_divergence"
     DECISION_IMPACT = "decision_impact"
     INSTRUCTION_QUALITY = "instruction_quality"
     FAILURE_DIAGNOSIS = "failure_diagnosis"
+    TASK_REDUNDANCY = "task_redundancy"
     OVERALL_ASSESSMENT = "overall_assessment"
 
 
@@ -373,6 +374,14 @@ ANALYSIS FOCUS: Failure Root Cause Analysis
 - Distinguish symptoms from root causes
 - Trace failure chains (initial cause → effects → outcome)
 - Provide actionable remediation suggestions""",
+            AnalysisType.TASK_REDUNDANCY: """
+ANALYSIS FOCUS: Task Redundancy Detection
+- Identify redundant and duplicate work between tasks
+- Detect tasks completing in < 30 seconds (likely already done)
+- Find over-decomposition from Enterprise complexity mode
+- Calculate redundancy score (0.0-1.0)
+- Recommend appropriate complexity level (prototype/standard/enterprise)
+- Cite specific task_id and timestamps for each redundant pair""",
             AnalysisType.OVERALL_ASSESSMENT: """
 ANALYSIS FOCUS: Overall Project Assessment
 - Synthesize findings from all other analyses

@@ -65,6 +65,10 @@ from src.analysis.analyzers.requirement_divergence import (
     RequirementDivergenceAnalysis,
     RequirementDivergenceAnalyzer,
 )
+from src.analysis.analyzers.task_redundancy import (
+    TaskRedundancyAnalysis,
+    TaskRedundancyAnalyzer,
+)
 from src.analysis.helpers.progress import ProgressCallback, ProgressEvent
 from src.core.project_history import Decision
 
@@ -83,6 +87,7 @@ class AnalysisScope:
     decision_impact: bool = True
     instruction_quality: bool = True
     failure_diagnosis: bool = True
+    task_redundancy: bool = True
 
 
 @dataclass
@@ -100,6 +105,7 @@ class PostProjectAnalysis:
     decision_impacts: list[DecisionImpactAnalysis]
     instruction_quality_issues: list[InstructionQualityAnalysis]
     failure_diagnoses: list[FailureDiagnosis]
+    task_redundancy: Optional[TaskRedundancyAnalysis]
     summary: str
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -118,6 +124,7 @@ class PostProjectAnalyzer:
         decision_tracer: Optional[DecisionImpactTracer] = None,
         instruction_analyzer: Optional[InstructionQualityAnalyzer] = None,
         failure_generator: Optional[FailureDiagnosisGenerator] = None,
+        redundancy_analyzer: Optional[TaskRedundancyAnalyzer] = None,
     ):
         """
         Initialize PostProjectAnalyzer.
@@ -132,6 +139,8 @@ class PostProjectAnalyzer:
             Analyzer for instruction quality. Creates default if not provided.
         failure_generator : FailureDiagnosisGenerator, optional
             Generator for failure diagnoses. Creates default if not provided.
+        redundancy_analyzer : TaskRedundancyAnalyzer, optional
+            Analyzer for task redundancy. Creates default if not provided.
         """
         self.requirement_analyzer = (
             requirement_analyzer or RequirementDivergenceAnalyzer()
@@ -139,6 +148,7 @@ class PostProjectAnalyzer:
         self.decision_tracer = decision_tracer or DecisionImpactTracer()
         self.instruction_analyzer = instruction_analyzer or InstructionQualityAnalyzer()
         self.failure_generator = failure_generator or FailureDiagnosisGenerator()
+        self.redundancy_analyzer = redundancy_analyzer or TaskRedundancyAnalyzer()
         logger.info("PostProjectAnalyzer initialized")
 
     async def analyze_project(
@@ -193,6 +203,7 @@ class PostProjectAnalyzer:
         decision_impacts: list[DecisionImpactAnalysis] = []
         instruction_quality_issues: list[InstructionQualityAnalysis] = []
         failure_diagnoses: list[FailureDiagnosis] = []
+        task_redundancy_analysis: Optional[TaskRedundancyAnalysis] = None
 
         # 1. Analyze requirement divergence for each task
         if scope.requirement_divergence and tasks:
@@ -308,12 +319,35 @@ class PostProjectAnalyzer:
                 )
                 failure_diagnoses.append(diagnosis)
 
-        # 5. Generate summary
+        # 5. Analyze task redundancy across entire project
+        if scope.task_redundancy and tasks:
+            logger.info("Analyzing task redundancy...")
+            if progress_callback:
+                await progress_callback(
+                    ProgressEvent(
+                        operation="task_redundancy",
+                        current=0,
+                        total=len(tasks),
+                        message="Analyzing redundant work patterns",
+                        timestamp=datetime.now(timezone.utc),
+                    )
+                )
+
+            # TODO: Extract conversations from history
+            # For now, pass empty list
+            task_redundancy_analysis = await self.redundancy_analyzer.analyze_project(
+                tasks=tasks,
+                conversations=[],
+                progress_callback=progress_callback,
+            )
+
+        # 6. Generate summary
         summary = self._generate_summary(
             requirement_divergences=requirement_divergences,
             decision_impacts=decision_impacts,
             instruction_quality_issues=instruction_quality_issues,
             failure_diagnoses=failure_diagnoses,
+            task_redundancy=task_redundancy_analysis,
         )
 
         # Build final analysis
@@ -324,6 +358,7 @@ class PostProjectAnalyzer:
             decision_impacts=decision_impacts,
             instruction_quality_issues=instruction_quality_issues,
             failure_diagnoses=failure_diagnoses,
+            task_redundancy=task_redundancy_analysis,
             summary=summary,
             metadata={
                 "tasks_analyzed": len(tasks),
@@ -334,9 +369,16 @@ class PostProjectAnalyzer:
                     "decision_impact": scope.decision_impact,
                     "instruction_quality": scope.instruction_quality,
                     "failure_diagnosis": scope.failure_diagnosis,
+                    "task_redundancy": scope.task_redundancy,
                 },
             },
         )
+
+        redundancy_info = ""
+        if task_redundancy_analysis:
+            redundancy_info = (
+                f", redundancy_score={task_redundancy_analysis.redundancy_score:.2f}"
+            )
 
         logger.info(
             f"Post-project analysis complete for {project_id}: "
@@ -344,6 +386,7 @@ class PostProjectAnalyzer:
             f"impacts={len(decision_impacts)}, "
             f"quality_issues={len(instruction_quality_issues)}, "
             f"diagnoses={len(failure_diagnoses)}"
+            f"{redundancy_info}"
         )
 
         return analysis
@@ -374,6 +417,7 @@ class PostProjectAnalyzer:
         decision_impacts: list[DecisionImpactAnalysis],
         instruction_quality_issues: list[InstructionQualityAnalysis],
         failure_diagnoses: list[FailureDiagnosis],
+        task_redundancy: Optional[TaskRedundancyAnalysis],
     ) -> str:
         """
         Generate executive summary of analysis results.
@@ -388,6 +432,8 @@ class PostProjectAnalyzer:
             Instruction quality analyses
         failure_diagnoses : list[FailureDiagnosis]
             Failure diagnoses
+        task_redundancy : Optional[TaskRedundancyAnalysis]
+            Task redundancy analysis
 
         Returns
         -------
@@ -438,6 +484,16 @@ class PostProjectAnalyzer:
                 f"Failures: {len(failure_diagnoses)} tasks failed, "
                 f"{total_causes} root causes identified, "
                 f"{total_strategies} prevention strategies recommended"
+            )
+
+        # Task redundancy summary
+        if task_redundancy:
+            total_pairs = len(task_redundancy.redundant_pairs)
+            summary_parts.append(
+                f"Redundancy: {task_redundancy.redundancy_score:.2f} score, "
+                f"{total_pairs} redundant pairs, "
+                f"{task_redundancy.total_time_wasted:.1f}h wasted, "
+                f"recommend {task_redundancy.recommended_complexity} complexity"
             )
 
         if not summary_parts:
