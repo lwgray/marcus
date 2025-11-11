@@ -124,6 +124,7 @@ analysis = await analyzer.analyze_project(
 # - decision_impacts: list[DecisionImpactAnalysis]
 # - instruction_quality_issues: list[InstructionQualityAnalysis]
 # - failure_diagnoses: list[FailureDiagnosis]
+# - task_redundancy: Optional[TaskRedundancyAnalysis]
 # - summary: str (executive summary)
 # - metadata: dict
 ```
@@ -135,6 +136,7 @@ Via Marcus MCP server at `src/marcus_mcp/tools/post_project_analysis.py`:
 - `get_decision_impacts(project_id, decision_ids=None)`
 - `get_instruction_quality(project_id, task_ids=None)`
 - `get_failure_diagnoses(project_id, task_ids=None)`
+- `get_task_redundancy(project_id)`
 
 ## Cato Backend API Endpoints
 
@@ -345,6 +347,28 @@ async def get_project_analysis(project_id: str):
             }
             for fd in analysis.failure_diagnoses
         ],
+        "task_redundancy": {
+            "project_id": analysis.task_redundancy.project_id,
+            "redundant_pairs": [
+                {
+                    "task_1_id": rp.task_1_id,
+                    "task_1_name": rp.task_1_name,
+                    "task_2_id": rp.task_2_id,
+                    "task_2_name": rp.task_2_name,
+                    "overlap_score": rp.overlap_score,
+                    "evidence": rp.evidence,
+                    "time_wasted": rp.time_wasted,
+                }
+                for rp in analysis.task_redundancy.redundant_pairs
+            ],
+            "redundancy_score": analysis.task_redundancy.redundancy_score,
+            "total_time_wasted": analysis.task_redundancy.total_time_wasted,
+            "over_decomposition_detected": analysis.task_redundancy.over_decomposition_detected,
+            "recommended_complexity": analysis.task_redundancy.recommended_complexity,
+            "raw_data": analysis.task_redundancy.raw_data,
+            "llm_interpretation": analysis.task_redundancy.llm_interpretation,
+            "recommendations": analysis.task_redundancy.recommendations,
+        } if analysis.task_redundancy else None,
         "metadata": analysis.metadata,
     }
 
@@ -678,6 +702,12 @@ function App() {
             >
               ⚠️ Failure Diagnosis
             </button>
+            <button
+              className={currentLayer === 'redundancy' ? 'active' : ''}
+              onClick={() => setCurrentLayer('redundancy')}
+            >
+              🔁 Task Redundancy
+            </button>
           </div>
         )}
       </header>
@@ -701,6 +731,9 @@ function App() {
           )}
           {mode === 'historical' && currentLayer === 'failures' && (
             <FailureDiagnosisView />
+          )}
+          {mode === 'historical' && currentLayer === 'redundancy' && (
+            <TaskRedundancyView />
           )}
         </div>
 
@@ -761,6 +794,7 @@ The following features from the original Phase 3 spec are **NOT** yet implemente
 4. ✅ **Requirement fidelity visualization** - Data available in analysis results
 5. ✅ **Decision impact visualization** - Data available in analysis results
 6. ✅ **Failure diagnosis display** - Data available in analysis results
+7. ✅ **Task redundancy visualization** - Data available in analysis results
 
 ## Implementation Approach
 
@@ -851,6 +885,7 @@ Phase 3 MVP is complete when:
 ✅ Requirement fidelity view displays divergences
 ✅ Decision impact view displays impact chains
 ✅ Failure diagnosis view displays root causes
+✅ Task redundancy view displays redundant pairs and recommendations
 ✅ UI tests passing for all new components
 ✅ End-to-end test validates live ↔ historical mode switching
 ✅ Documentation with screenshots

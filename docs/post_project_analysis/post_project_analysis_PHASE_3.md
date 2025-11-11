@@ -91,6 +91,7 @@ Completed Project → Project History API (Phase 1) → Analysis API (Phase 2) �
 - Failure diagnosis interface
 - Decision impact graph
 - Requirement fidelity heatmap
+- Task redundancy analyzer (detects duplicate/redundant work)
 
 **Key Difference:**
 - Live mode: "What's happening now?"
@@ -660,6 +661,171 @@ function DecisionImpactGraph({ decisions, tasks }: Props) {
   )
 }
 ```
+
+### 7. Task Redundancy View
+
+Detect duplicate and redundant work across tasks:
+
+```tsx
+// dashboard/src/components/TaskRedundancyView.tsx
+
+interface TaskRedundancyViewProps {
+  projectId: string;
+}
+
+function TaskRedundancyView({ projectId }: TaskRedundancyViewProps) {
+  const [redundancyData, setRedundancyData] = useState<TaskRedundancyAnalysis | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function loadRedundancyAnalysis() {
+      const response = await fetch(`/api/historical/projects/${projectId}/analysis`)
+      const data = await response.json()
+      setRedundancyData(data.task_redundancy)
+      setLoading(false)
+    }
+
+    loadRedundancyAnalysis()
+  }, [projectId])
+
+  if (loading) return <div>Loading redundancy analysis...</div>
+  if (!redundancyData) return <div>No redundancy data available</div>
+
+  return (
+    <div className="task-redundancy-view">
+      <h2>Task Redundancy Analysis</h2>
+
+      {/* Overall Metrics */}
+      <section className="redundancy-metrics">
+        <div className="metric-card">
+          <label>Redundancy Score</label>
+          <div className="score-display">
+            <CircularProgress value={redundancyData.redundancy_score * 100} />
+            <span className="score-value">
+              {(redundancyData.redundancy_score * 100).toFixed(0)}%
+            </span>
+          </div>
+        </div>
+
+        <div className="metric-card">
+          <label>Time Wasted</label>
+          <div className="time-wasted">
+            <span className="hours">{redundancyData.total_time_wasted.toFixed(1)}h</span>
+            <span className="subtitle">on redundant work</span>
+          </div>
+        </div>
+
+        <div className="metric-card">
+          <label>Recommended Complexity</label>
+          <div className={`complexity-badge ${redundancyData.recommended_complexity}`}>
+            {redundancyData.recommended_complexity.toUpperCase()}
+          </div>
+          {redundancyData.over_decomposition_detected && (
+            <div className="warning">
+              ⚠️ Over-decomposition detected
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Redundant Pairs */}
+      {redundancyData.redundant_pairs.length > 0 && (
+        <section className="redundant-pairs">
+          <h3>Redundant Task Pairs ({redundancyData.redundant_pairs.length})</h3>
+          <div className="pairs-list">
+            {redundancyData.redundant_pairs.map((pair, idx) => (
+              <div key={idx} className="redundant-pair-card">
+                <div className="pair-header">
+                  <div className="overlap-score">
+                    <CircularProgress
+                      value={pair.overlap_score * 100}
+                      size="small"
+                    />
+                    <span>{(pair.overlap_score * 100).toFixed(0)}% overlap</span>
+                  </div>
+                  <div className="time-wasted-badge">
+                    {pair.time_wasted.toFixed(1)}h wasted
+                  </div>
+                </div>
+
+                <div className="pair-tasks">
+                  <div className="task-info">
+                    <span className="task-id">{pair.task_1_id}</span>
+                    <span className="task-name">{pair.task_1_name}</span>
+                  </div>
+                  <div className="overlap-indicator">⟷</div>
+                  <div className="task-info">
+                    <span className="task-id">{pair.task_2_id}</span>
+                    <span className="task-name">{pair.task_2_name}</span>
+                  </div>
+                </div>
+
+                {/* Evidence (Collapsible) */}
+                <details className="evidence-details">
+                  <summary>📋 Evidence & Citations</summary>
+                  <div className="evidence-content">
+                    <ReactMarkdown>{pair.evidence}</ReactMarkdown>
+                  </div>
+                </details>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Raw Data (Collapsible) */}
+      <section className="raw-data-section">
+        <details>
+          <summary>
+            📊 Raw Analysis Data ({Object.keys(redundancyData.raw_data).length} fields)
+          </summary>
+          <pre className="raw-data">
+            {JSON.stringify(redundancyData.raw_data, null, 2)}
+          </pre>
+        </details>
+      </section>
+
+      {/* LLM Interpretation */}
+      <section className="llm-interpretation">
+        <h3>Analysis Summary</h3>
+        <div className="interpretation-text">
+          <ReactMarkdown>{redundancyData.llm_interpretation}</ReactMarkdown>
+        </div>
+      </section>
+
+      {/* Recommendations */}
+      {redundancyData.recommendations.length > 0 && (
+        <section className="recommendations">
+          <h3>Recommendations</h3>
+          <ul className="recommendations-list">
+            {redundancyData.recommendations.map((rec, idx) => (
+              <li key={idx} className="recommendation-item">
+                <span className="rec-icon">💡</span>
+                {rec}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  )
+}
+```
+
+**Key Features:**
+- **Redundancy Score**: Overall percentage of redundant work detected (0-100%)
+- **Time Wasted**: Total hours spent on duplicate/redundant tasks
+- **Complexity Recommendation**: Suggests prototype/standard/enterprise based on analysis
+- **Redundant Pairs**: Visual cards showing overlapping tasks with overlap scores
+- **Evidence & Citations**: Collapsible sections with task_id, timestamps, and proof
+- **Quick Completion Detection**: Identifies tasks completing in < 30 seconds
+- **Over-decomposition Warning**: Alerts when enterprise mode created unnecessary breakdowns
+
+**Use Cases:**
+1. **Post-Project Review**: "Why did this take longer than expected?"
+2. **Process Improvement**: Identify patterns of duplicate work across projects
+3. **Complexity Tuning**: Determine if using wrong complexity mode (prototype vs enterprise)
+4. **Resource Optimization**: Calculate time wasted on redundant efforts
 
 ## Backend API Endpoints
 
