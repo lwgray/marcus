@@ -118,32 +118,96 @@ Without conversations, the analyzer can't detect "quick completions" or "already
 
 ### 4. Why are artifacts showing as 0 when artifacts were created?
 
-**Root Cause**: Artifacts are counted only if they match a task_id in the task_histories. If:
-- Artifact's task_id doesn't exist in conversation logs
-- Task_id mismatch between SQLite and conversation logs
-- Artifacts filtered out during aggregation
+**Root Cause CONFIRMED**: Artifacts are filtered by task_id from conversation logs!
 
-**Location**: `src/analysis/aggregator.py:378-383` - artifacts are filtered based on tasks from conversations.
+**The Data Flow**:
+1. Agent calls `log_artifact(task_id="task_123", ...)` MCP tool
+2. Artifact stored to file system at correct location (e.g., `docs/specifications/`)
+3. Artifact metadata persisted to SQLite via `append_artifact()` ✅
+4. **FILTERING HAPPENS HERE** ⚠️: `load_artifacts()` only loads artifacts where `task_id` exists in conversation logs
 
-**Investigation Needed**:
-1. Check if artifacts in SQLite have valid task_ids
-2. Verify task_ids from conversation logs match artifact task_ids
-3. Check if artifact counting uses full list or filtered list
+**Location**: `src/core/project_history.py:627-710`
 
-**Fix**: Count ALL artifacts from persistence, not just those matching tasks:
+**The Problem** (line 664-666):
 ```python
-# In get_project_summary()
-async def get_project_summary(self, project_id: str) -> dict[str, Any]:
-    history = await self.get_project_history(project_id)
+# Get task IDs for this project from conversation logs
+project_task_ids = await self._get_task_ids_from_conversations(project_id)
 
-    # Count ALL artifacts from persistence, not just those in task_histories
-    total_artifacts = len(history.artifacts)  # Use full artifact list
-
-    return {
-        "total_artifacts": total_artifacts,  # Not filtered count
-        # ...
-    }
+# Only load artifacts matching these task IDs
+def task_filter(item: dict[str, Any]) -> bool:
+    return item.get("task_id") in project_task_ids
 ```
+
+**Why This Causes Issues**:
+1. If `task_id` in artifact doesn't match any task_id in conversation logs → **artifact filtered out**
+2. If conversation logs are missing or incomplete → **all artifacts filtered out**
+3. If task_id was mistyped when calling `log_artifact()` → **artifact filtered out**
+
+**Comment from code** (line 636-641):
+> "Design Decision: Conversation logs are the authoritative source of truth
+> for project-task mapping. While artifacts contain a project_id field,
+> we filter by task_id (derived from conversations) to maintain a single
+> source of truth and avoid data inconsistencies."
+
+**The Issue**: This design assumes conversation logs are always complete and accurate, but:
+- Conversation logs may be missing
+- Task IDs may not match exactly
+- Artifacts logged before conversation starts won't have matching task_id
+
+**Solution Options**:
+
+**Option 1: Use project_id instead of task_id filtering** (Recommended)
+```python
+# In load_artifacts() - line 675
+def task_filter(item: dict[str, Any]) -> bool:
+    # Filter by project_id instead of task_id
+    return item.get("project_id") == project_id
+```
+Pros: Simpler, more reliable, artifacts have project_id
+Cons: Loses task-level granularity (but we can still group by task_id in results)
+
+**Option 2: Add fallback to project_id if no conversation tasks found**
+```python
+# In load_artifacts() - line 668
+if not project_task_ids:
+    logger.warning(
+        f"No task IDs found in conversations for {project_id}, "
+        f"falling back to project_id filter"
+    )
+    # Filter by project_id instead
+    def task_filter(item: dict[str, Any]) -> bool:
+        return item.get("project_id") == project_id
+else:
+    # Original task_id filtering
+    def task_filter(item: dict[str, Any]) -> bool:
+        return item.get("task_id") in project_task_ids
+```
+Pros: Preserves design intent, adds safety net
+Cons: Two code paths to maintain
+
+**Option 3: Log warning but include unmatched artifacts**
+```python
+# After loading with task filter, also load by project_id and merge
+artifacts_by_task = await backend.query("artifacts", filter_func=task_filter, ...)
+artifacts_by_project = await backend.query("artifacts",
+    filter_func=lambda x: x.get("project_id") == project_id, ...)
+
+# Merge and deduplicate
+all_artifact_ids = set(a.artifact_id for a in artifacts_by_task)
+orphaned_artifacts = [a for a in artifacts_by_project
+                     if a.artifact_id not in all_artifact_ids]
+
+if orphaned_artifacts:
+    logger.warning(
+        f"Found {len(orphaned_artifacts)} artifacts for {project_id} "
+        f"with task_ids not in conversation logs - including them anyway"
+    )
+    artifacts.extend(orphaned_artifacts)
+```
+Pros: Preserves design, surfaces data quality issues
+Cons: More complex
+
+**Recommended Fix**: Use Option 2 (fallback) to be safe while preserving design intent.
 
 ## What Do These Scores Mean?
 
