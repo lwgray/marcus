@@ -205,6 +205,16 @@ class PostProjectAnalyzer:
         failure_diagnoses: list[FailureDiagnosis] = []
         task_redundancy_analysis: Optional[TaskRedundancyAnalysis] = None
 
+        # Calculate total analysis phases for overall progress tracking
+        # We have 5 main phases that run on different data:
+        # 1. Requirement divergence (per task)
+        # 2. Decision impact (per decision)
+        # 3. Instruction quality (per task)
+        # 4. Failure diagnosis (per failed task)
+        # 5. Task redundancy (entire project - counts as 1 unit)
+        total_phases = 5  # Total number of analysis phases
+        completed_phases = 0  # Track completed phases
+
         # 1. Analyze requirement divergence for each task
         if scope.requirement_divergence and tasks:
             logger.info("Analyzing requirement divergence...")
@@ -213,9 +223,12 @@ class PostProjectAnalyzer:
                     await progress_callback(
                         ProgressEvent(
                             operation="requirement_divergence",
-                            current=idx + 1,
-                            total=len(tasks),
-                            message=f"Analyzing {task.name}",
+                            current=completed_phases + 1,
+                            total=total_phases,
+                            message=(
+                                f"Analyzing requirement fidelity "
+                                f"({idx + 1}/{len(tasks)} tasks)"
+                            ),
                             timestamp=datetime.now(timezone.utc),
                         )
                     )
@@ -224,9 +237,11 @@ class PostProjectAnalyzer:
                     task=task,
                     decisions=self._find_related_decisions(task, decisions),
                     artifacts=[],  # TODO: Extract artifacts from history
-                    progress_callback=progress_callback,
+                    progress_callback=None,  # Don't pass callback to avoid sub-progress
                 )
                 requirement_divergences.append(divergence_analysis)
+
+            completed_phases += 1
 
         # 2. Trace decision impacts
         if scope.decision_impact and decisions:
@@ -236,9 +251,12 @@ class PostProjectAnalyzer:
                     await progress_callback(
                         ProgressEvent(
                             operation="decision_impact",
-                            current=idx + 1,
-                            total=len(decisions),
-                            message=f"Tracing {decision.what}",
+                            current=completed_phases + 1,
+                            total=total_phases,
+                            message=(
+                                f"Analyzing decision impacts "
+                                f"({idx + 1}/{len(decisions)} decisions)"
+                            ),
                             timestamp=datetime.now(timezone.utc),
                         )
                     )
@@ -259,9 +277,11 @@ class PostProjectAnalyzer:
                         d for d in decisions if d.decision_id != decision.decision_id
                     ],
                     all_tasks=all_tasks_dict,
-                    progress_callback=progress_callback,
+                    progress_callback=None,  # Don't pass callback to avoid sub-progress
                 )
                 decision_impacts.append(impact_analysis)
+
+            completed_phases += 1
 
         # 3. Analyze instruction quality for each task
         if scope.instruction_quality and tasks:
@@ -271,24 +291,29 @@ class PostProjectAnalyzer:
                     await progress_callback(
                         ProgressEvent(
                             operation="instruction_quality",
-                            current=idx + 1,
-                            total=len(tasks),
-                            message=f"Evaluating {task.name}",
+                            current=completed_phases + 1,
+                            total=total_phases,
+                            message=(
+                                f"Analyzing instruction quality "
+                                f"({idx + 1}/{len(tasks)} tasks)"
+                            ),
                             timestamp=datetime.now(timezone.utc),
                         )
                     )
 
-                # TODO: Extract clarifications and implementation notes from history
-                # For now, pass empty lists
+                # TODO: Extract clarifications and implementation notes
+                # from history. For now, pass empty lists
                 quality_analysis = (
                     await self.instruction_analyzer.analyze_instruction_quality(
                         task=task,
                         clarifications=[],
                         implementation_notes=[],
-                        progress_callback=progress_callback,
+                        progress_callback=None,  # Avoid sub-progress
                     )
                 )
                 instruction_quality_issues.append(quality_analysis)
+
+            completed_phases += 1
 
         # 4. Generate failure diagnoses for failed tasks
         if scope.failure_diagnosis and tasks:
@@ -301,9 +326,12 @@ class PostProjectAnalyzer:
                     await progress_callback(
                         ProgressEvent(
                             operation="failure_diagnosis",
-                            current=idx + 1,
-                            total=len(failed_tasks),
-                            message=f"Diagnosing {task.name}",
+                            current=completed_phases + 1,
+                            total=total_phases,
+                            message=(
+                                f"Analyzing failure diagnosis "
+                                f"({idx + 1}/{len(failed_tasks)} failed tasks)"
+                            ),
                             timestamp=datetime.now(timezone.utc),
                         )
                     )
@@ -315,9 +343,11 @@ class PostProjectAnalyzer:
                     error_logs=[],
                     related_decisions=self._find_related_decisions(task, decisions),
                     context_notes=[],
-                    progress_callback=progress_callback,
+                    progress_callback=None,  # Don't pass callback to avoid sub-progress
                 )
                 failure_diagnoses.append(diagnosis)
+
+            completed_phases += 1
 
         # 5. Analyze task redundancy across entire project
         if scope.task_redundancy and tasks:
@@ -326,9 +356,12 @@ class PostProjectAnalyzer:
                 await progress_callback(
                     ProgressEvent(
                         operation="task_redundancy",
-                        current=0,
-                        total=len(tasks),
-                        message="Analyzing redundant work patterns",
+                        current=completed_phases + 1,
+                        total=total_phases,
+                        message=(
+                            "Analyzing task redundancy "
+                            "(checking for redundant work patterns)"
+                        ),
                         timestamp=datetime.now(timezone.utc),
                     )
                 )
@@ -338,10 +371,23 @@ class PostProjectAnalyzer:
             task_redundancy_analysis = await self.redundancy_analyzer.analyze_project(
                 tasks=tasks,
                 conversations=[],
-                progress_callback=progress_callback,
+                progress_callback=None,  # Don't pass callback to avoid sub-progress
             )
 
+            completed_phases += 1
+
         # 6. Generate summary
+        if progress_callback:
+            await progress_callback(
+                ProgressEvent(
+                    operation="summary_generation",
+                    current=0,
+                    total=0,
+                    message="Generating final summary",
+                    timestamp=datetime.now(timezone.utc),
+                )
+            )
+
         summary = self._generate_summary(
             requirement_divergences=requirement_divergences,
             decision_impacts=decision_impacts,

@@ -581,9 +581,7 @@ class ProjectHistoryQuery:
 
         return {
             "project_id": project_id,
-            "project_name": (
-                history.snapshot.project_name if history.snapshot else project_id
-            ),
+            "project_name": history.project_name,
             "total_tasks": len(history.tasks),
             "completed_tasks": completed,
             "blocked_tasks": blocked,

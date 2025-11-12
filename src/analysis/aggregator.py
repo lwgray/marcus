@@ -182,6 +182,7 @@ class ProjectHistory:
     """
 
     project_id: str
+    project_name: str
     snapshot: Optional[ProjectSnapshot]
     tasks: list[TaskHistory]
     agents: list[AgentHistory]
@@ -312,6 +313,28 @@ class ProjectHistoryAggregator:
         )
         snapshot = await self.history_persistence.load_snapshot(project_id)
 
+        # Extract project_name from available sources
+        project_name = project_id  # Default fallback
+        if snapshot:
+            project_name = snapshot.project_name
+        else:
+            # Try to get from decisions.json or artifacts.json
+            import json
+
+            history_dir = self.history_persistence.history_dir / project_id
+            for filename in ["decisions.json", "artifacts.json"]:
+                file_path = history_dir / filename
+                if file_path.exists():
+                    try:
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                            if "project_name" in data:
+                                project_name = data["project_name"]
+                                break
+                    except Exception as e:
+                        logger.debug(f"Error reading project_name from {filename}: {e}")
+                        continue
+
         # Load existing data sources
         conversations = (
             await self._load_conversations(project_id) if include_conversations else []
@@ -368,6 +391,7 @@ class ProjectHistoryAggregator:
 
         history = ProjectHistory(
             project_id=project_id,
+            project_name=project_name,
             snapshot=snapshot,
             tasks=tasks,
             agents=agents,
