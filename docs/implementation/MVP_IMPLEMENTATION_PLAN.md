@@ -1,9 +1,9 @@
 # Marcus MVP Implementation Plan
 
-**Last Updated**: 2025-01-06
-**Status**: Complete
-**Timeline**: 6 weeks
-**Version**: 2.0 (Modular)
+**Last Updated**: 2025-01-11
+**Status**: Not Started
+**Timeline**: 6 weeks + 2-3 days (Week 5.5)
+**Version**: 2.1 (Modular + REST API Completion)
 
 ---
 
@@ -18,7 +18,8 @@ This document provides a high-level overview of the Marcus MVP implementation pl
 - **[Week 3: Workspace Isolation - Phase 2 (Git Worktrees)](implementation/WEEK_3_PLAN.md)** - Implement git worktree-based workspace isolation
 - **[Week 4: Feature Context Aggregation](implementation/WEEK_4_PLAN.md)** - Implement comprehensive feature context building
 - **[Week 5: Telemetry & CATO Integration](implementation/WEEK_5_PLAN.md)** - Add user journey tracking and CATO dashboard integration
-- **[Week 6: Production Readiness & MVP Release](implementation/WEEK_6_PLAN.md)** - Core validations, Docker deployment, and MVP release
+- **[Week 5.5: REST API Completion (CRITICAL)](implementation/WEEK_5.5_PLAN.md)** - Add Launch Tab REST APIs and Terminal Streaming
+- **[Week 6: Production Readiness & MVP Release](implementation/WEEK_6_PLAN.md)** - Core validations, pip packaging, and MVP release
 
 ---
 
@@ -35,7 +36,7 @@ This document provides a high-level overview of the Marcus MVP implementation pl
 - Configuration documentation
 - Migration of existing code
 
-**Status**: ✅ Complete
+**Status**: ⏳ Not Started
 **Related Issue**: #68
 **Details**: [Week 1 Plan](implementation/WEEK_1_PLAN.md)
 
@@ -50,7 +51,7 @@ This document provides a high-level overview of the Marcus MVP implementation pl
 - Feature indexing system
 - WorkspaceManager skeleton
 
-**Status**: ✅ Complete
+**Status**: ⏳ Not Started
 **Details**: [Week 2 Plan](implementation/WEEK_2_PLAN.md)
 
 ---
@@ -64,7 +65,7 @@ This document provides a high-level overview of the Marcus MVP implementation pl
 - Workspace conflict detection
 - Integration with task assignment
 
-**Status**: ✅ Complete
+**Status**: ⏳ Not Started
 **Details**: [Week 3 Plan](implementation/WEEK_3_PLAN.md)
 
 ---
@@ -78,7 +79,7 @@ This document provides a high-level overview of the Marcus MVP implementation pl
 - Context injection system
 - `get_feature_context` and `get_feature_status` MCP tools
 
-**Status**: ✅ Complete
+**Status**: ⏳ Not Started
 **Details**: [Week 4 Plan](implementation/WEEK_4_PLAN.md)
 
 ---
@@ -92,22 +93,39 @@ This document provides a high-level overview of the Marcus MVP implementation pl
 - CATO dashboard integration API
 - Real-time event broadcasting (SSE)
 
-**Status**: ✅ Complete
+**Status**: ⏳ Not Started
 **Details**: [Week 5 Plan](implementation/WEEK_5_PLAN.md)
 
 ---
 
+### Week 5.5: REST API Completion (CRITICAL)
+**Goal**: Complete REST API endpoints and terminal streaming infrastructure required for CATO bundling.
+
+**Key Deliverables**:
+- Launch Tab REST APIs (`POST /api/agents`, `GET /api/agents`, `POST /api/projects`, `GET /api/projects`, `POST /api/tasks`, `GET /api/tasks`)
+- Terminal streaming infrastructure (TerminalManager with PTY sessions)
+- Terminal streaming API (`GET /api/agents/{agent_id}/terminal/stream`, `POST /api/agents/{agent_id}/terminal/input`)
+- Command injection support for agent recovery
+
+**Status**: ⏳ Not Started
+**Duration**: 2-3 days
+**Details**: [Week 5.5 Plan](implementation/WEEK_5.5_PLAN.md)
+
+**Why Critical**: Week 5 implemented `/api/cato/*` endpoints for Live/Historical tabs, but Launch and Terminals tabs need different APIs. Without Week 5.5, CATO bundling (Weeks 8-11) will have non-functional Launch and Terminals tabs.
+
+---
+
 ### Week 6: Production Readiness & MVP Release
-**Goal**: Implement core validations, Docker deployment, comprehensive documentation, and prepare for MVP release.
+**Goal**: Implement core validations, pip packaging, comprehensive documentation, and prepare for MVP release.
 
 **Key Deliverables**:
 - Core validations (Issues #118-125)
-- Multi-stage Dockerfile and Docker Compose
+- Pip packaging setup (`pip install marcus`)
 - Comprehensive user documentation
 - Performance testing and bug fixes
 - MVP release (v0.1.0)
 
-**Status**: ✅ Complete
+**Status**: ⏳ Not Started
 **Details**: [Week 6 Plan](implementation/WEEK_6_PLAN.md)
 
 ---
@@ -138,12 +156,18 @@ Marcus MVP Architecture
 ├─ Telemetry & Observability (Week 5)
 │  ├─ User journey tracking
 │  ├─ Research event logging
-│  ├─ CATO integration API
+│  ├─ CATO integration API (/api/cato/*)
 │  └─ Real-time event streaming
+│
+├─ REST API Completion (Week 5.5) [CRITICAL]
+│  ├─ Launch Tab APIs (/api/agents, /api/projects, /api/tasks)
+│  ├─ Terminal streaming infrastructure (PTY management)
+│  ├─ Terminal streaming API (/api/agents/{id}/terminal/stream)
+│  └─ Command injection for agent recovery
 │
 └─ Production Readiness (Week 6)
    ├─ Core validations
-   ├─ Docker deployment
+   ├─ Pip packaging (pip install marcus)
    ├─ Comprehensive documentation
    └─ Release automation
 ```
@@ -200,9 +224,15 @@ CATO Dashboard (real-time visualization)
 - **CATO integration** for real-time visualization
 - **Event broadcasting** with pub-sub pattern
 
-### 5. Production Readiness (Week 6)
+### 5. REST API Completion (Week 5.5) [CRITICAL]
+- **Launch Tab REST APIs** for agent registration, project creation, task management
+- **Terminal streaming infrastructure** with PTY session management
+- **Real-time terminal output** via Server-Sent Events
+- **Command injection** for stuck agent recovery
+
+### 6. Production Readiness (Week 6)
 - **Core validations** (7 critical validations implemented)
-- **Docker deployment** with multi-stage builds
+- **Pip packaging** with `pip install marcus`
 - **Comprehensive documentation** (README, QUICKSTART, API Reference)
 - **Release automation** with validation scripts
 
@@ -218,26 +248,28 @@ CATO Dashboard (real-time visualization)
 - **Documentation Pages**: 20+
 
 ### Feature Completeness
-- ✅ Configuration centralization (#68)
-- ✅ Workspace isolation with git worktrees
-- ✅ Feature context aggregation
-- ✅ Git commit tracking and annotation
-- ✅ User journey tracking
-- ✅ Research event logging
-- ✅ CATO dashboard integration
-- ✅ Real-time event broadcasting
-- ✅ Core validations (#118-125)
-- ✅ Docker deployment
-- ✅ Comprehensive documentation
+- ⏳ Configuration centralization (#68)
+- ⏳ Workspace isolation with git worktrees
+- ⏳ Feature context aggregation
+- ⏳ Git commit tracking and annotation
+- ⏳ User journey tracking
+- ⏳ Research event logging
+- ⏳ CATO dashboard integration
+- ⏳ Real-time event broadcasting
+- ⏳ Launch Tab REST APIs (Week 5.5)
+- ⏳ Terminal streaming infrastructure (Week 5.5)
+- ⏳ Core validations (#118-125)
+- ⏳ Pip packaging
+- ⏳ Comprehensive documentation
 
 ### Quality Gates
-- ✅ All unit tests pass
-- ✅ All integration tests pass
-- ✅ Test coverage >= 95%
-- ✅ All mypy checks pass
-- ✅ All pre-commit hooks pass
-- ✅ Docker builds successfully
-- ✅ Documentation complete
+- ⏳ All unit tests pass
+- ⏳ All integration tests pass
+- ⏳ Test coverage >= 95%
+- ⏳ All mypy checks pass
+- ⏳ All pre-commit hooks pass
+- ⏳ Pip install works successfully
+- ⏳ Documentation complete
 
 ---
 
@@ -271,17 +303,15 @@ Each weekly plan follows these principles:
 
 ### Prerequisites
 - Python 3.11+
-- Docker and Docker Compose
 - Git
 - Kanban board (Planka, GitHub Projects, or Linear)
 - AI provider API key (Anthropic, OpenAI)
 
 ### Quick Start
 
-1. **Clone the repository:**
+1. **Install Marcus:**
    ```bash
-   git clone https://github.com/yourusername/marcus.git
-   cd marcus
+   pip install marcus
    ```
 
 2. **Configure Marcus:**
@@ -300,7 +330,7 @@ Each weekly plan follows these principles:
 
 4. **Start Marcus:**
    ```bash
-   docker-compose up -d
+   marcus start
    ```
 
 5. **Verify installation:**
@@ -351,9 +381,13 @@ For detailed day-by-day implementation instructions, see the individual weekly p
   - Thursday: Real-time event broadcasting
   - Friday: Week 5 testing & documentation
 
+- **[Week 5.5: REST API Completion (CRITICAL)](implementation/WEEK_5.5_PLAN.md)**
+  - Day 1: Launch Tab REST APIs (agent registration, projects, tasks)
+  - Day 2-3: Terminal streaming infrastructure (PTY + SSE streaming)
+
 - **[Week 6: Production Readiness & MVP Release](implementation/WEEK_6_PLAN.md)**
   - Monday: Core validations (Issues #118-125)
-  - Tuesday: Docker deployment enhancement
+  - Tuesday: Pip packaging setup
   - Wednesday: Documentation & examples
   - Thursday: Final testing & bug fixes
   - Friday: MVP release preparation
@@ -364,7 +398,7 @@ For detailed day-by-day implementation instructions, see the individual weekly p
 
 ### Documentation
 - [Configuration Guide](../CONFIGURATION.md)
-- [Deployment Guide](deployment/DOCKER.md)
+- [Installation Guide](../INSTALLATION.md)
 - [API Reference](api/README.md)
 - [Testing Guide](testing/MANUAL_TEST_CHECKLIST.md)
 
@@ -393,8 +427,10 @@ For detailed day-by-day implementation instructions, see the individual weekly p
 - User Journey Tracking with milestone tracking
 - Research Event Logging for MAS studies
 - Event Broadcasting with pub-sub pattern
+- REST APIs for Launch Tab (agent registration, projects, tasks)
+- Terminal Streaming Infrastructure (PTY + SSE)
 - Validation Framework (7 core validations)
-- Docker Support with multi-stage builds
+- Pip Package Support (`pip install marcus`)
 - Comprehensive documentation and examples
 
 **Testing**:
@@ -405,7 +441,7 @@ For detailed day-by-day implementation instructions, see the individual weekly p
 
 **Documentation**:
 - Complete API reference
-- Deployment guides (Docker, AWS, GCP, Kubernetes)
+- Installation guide (pip install)
 - Quick start guide
 - Configuration guide
 - Example projects
@@ -414,44 +450,62 @@ See [CHANGELOG.md](../CHANGELOG.md) for complete release history.
 
 ---
 
-## **Implementation Complete!**
+## **Implementation Status**
 
-🎉 **Congratulations!** The 6-week MVP implementation plan is now complete.
+⏳ **Not Started** - The 6-week + 2-3 day MVP implementation is ready to begin.
 
 ### Summary
 
-**Weeks 1-3**: Foundation
+**Week 1**: Configuration & Foundation (Not Started)
 - Configuration centralization (#68)
-- Workspace isolation with git worktrees
-- Feature context aggregation
-- Git commit tracking
+- Type-safe configuration system
+- Validation framework
+- Environment variable overrides
 
-**Week 4**: Feature Context
+**Week 2**: Workspace Isolation - Phase 1 (Not Started)
+- Feature entity and infrastructure
+- Feature-aware artifact and decision logging
+- Feature indexing system
+- WorkspaceManager skeleton
+
+**Week 3**: Workspace Isolation - Phase 2 (Not Started)
+- Git worktree implementation
+- Workspace conflict detection
+- Integration with task assignment
+
+**Week 4**: Feature Context (Not Started)
 - FeatureContextBuilder
+- Git commit tracking and annotation
 - get_feature_context and get_feature_status tools
 - Automatic context injection
-- Complete test coverage
 
-**Week 5**: Telemetry & CATO
+**Week 5**: Telemetry & CATO (Not Started)
 - User journey tracking
 - Research event logging
-- CATO dashboard integration
+- CATO dashboard integration API
 - Real-time event broadcasting
 
-**Week 6**: Production Readiness
+**Week 5.5**: REST API Completion [CRITICAL] (Not Started)
+- Launch Tab REST APIs (agents, projects, tasks)
+- Terminal streaming infrastructure
+- PTY session management
+- Command injection for agent recovery
+
+**Week 6**: Production Readiness (Not Started)
 - Core validations (#118-125)
-- Docker deployment
+- Pip packaging
 - Comprehensive documentation
-- MVP release
+- MVP release (v0.1.0)
 
 ### Next Steps
 
-1. **Review the weekly plans** for detailed implementation instructions
-2. **Follow the step-by-step guides** for each week
-3. **Run the test suites** to verify implementation
-4. **Deploy to production** using Docker deployment guide
-5. **Monitor with CATO** dashboard for real-time insights
+1. **Complete MVP Weeks 1-5** following the detailed weekly plans
+2. **Complete Week 5.5 (CRITICAL)** - REST APIs and terminal streaming for CATO bundling
+3. **Complete Week 6** - Production readiness and MVP release
+4. **Run the test suites** to verify each week's implementation
+5. **Deploy via pip** using `pip install marcus`
+6. **Monitor with CATO** dashboard for real-time insights
 
 ---
 
-**Happy Building! 🚀**
+**Status**: Work in Progress 🚧
