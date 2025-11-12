@@ -1,6 +1,6 @@
 # Token Tracking Audit & Implementation Plan
 
-**Date**: 2025-01-11
+**Date**: 2025-01-11 (Updated: 2025-11-11)
 **Status**: ⚠️ **INCOMPLETE** - Token tracking infrastructure exists but is not being used for all LLM calls
 **Priority**: HIGH - Need accurate cost tracking for all AI operations
 
@@ -13,12 +13,31 @@
 - ✅ Middleware design is solid and ready to use
 
 **Bad News**:
-- ❌ **AnthropicProvider doesn't return token counts** from API responses
+- ❌ **ALL THREE PROVIDERS discard token usage data** from API responses
+  - AnthropicProvider (line 432-436) - discards `usage` field
+  - OpenAIProvider (line 390-396) - discards `usage` field
+  - LocalLLMProvider (line 374-382) - discards token counts from Ollama
 - ❌ **LLMAbstraction instances are NOT wrapped** by middleware in most places
 - ❌ **Analysis AI calls (Phase 3) are NOT tracked**
 - ❌ **Project creation AI calls are NOT tracked**
 
-**Impact**: We're currently **blind to 90%+ of token usage**.
+**Impact**: We're currently **blind to 90%+ of token usage across ALL providers**.
+
+---
+
+## Why Track Ollama Tokens (Even Though Cost = $0)?
+
+While Ollama is free to use, we still need to track token usage because:
+
+1. **Performance Analytics**: Understand model performance and response times
+2. **Model Comparison**: Compare token efficiency across models (Llama 3 vs Claude Haiku vs GPT-3.5)
+3. **Usage Patterns**: Identify which operations consume the most tokens
+4. **Capacity Planning**: Understand resource requirements for scaling
+5. **Development Insights**: See actual token usage during Marcus development
+6. **Cost Projections**: Estimate costs if switching from Ollama to paid providers
+7. **Quality Metrics**: Correlate token usage with output quality
+
+**Example Use Case**: "Llama 3 8B uses 15k tokens for project creation vs Claude Haiku's 5k tokens. If we switched to Claude, this feature would cost $0.006 per project instead of $0."
 
 ---
 
@@ -97,6 +116,111 @@ return str(data["content"][0]["text"])  # ❌ Throws away usage data
 
 **Impact**: **CRITICAL** - All Anthropic calls lose token data
 
+#### ❌ OpenAIProvider
+**Location**: `src/ai/providers/openai_provider.py`
+**Problem**: Discards token usage data from API response
+
+**Current code** (line 390-396):
+```python
+response = await self.client.post(
+    f"{self.base_url}/chat/completions", json=payload
+)
+response.raise_for_status()
+
+data = response.json()
+return str(data["choices"][0]["message"]["content"])  # ❌ Throws away usage
+```
+
+**OpenAI API Response Structure**:
+```json
+{
+  "id": "chatcmpl-...",
+  "object": "chat.completion",
+  "created": 1234567890,
+  "model": "gpt-3.5-turbo",
+  "choices": [{
+    "index": 0,
+    "message": {"role": "assistant", "content": "..."},
+    "finish_reason": "stop"
+  }],
+  "usage": {
+    "prompt_tokens": 123,
+    "completion_tokens": 456,
+    "total_tokens": 579
+  }
+}
+```
+
+**Impact**: **CRITICAL** - All OpenAI calls lose token data
+
+#### ❌ LocalLLMProvider (Ollama)
+**Location**: `src/ai/providers/local_provider.py`
+**Problem**: Discards token usage data from both APIs
+
+**Current code - OpenAI-compatible endpoint** (line 374-382):
+```python
+response = await self.client.post("/chat/completions", json=request_data)
+response.raise_for_status()
+
+data = response.json()
+content = data["choices"][0]["message"]["content"]
+return content  # ❌ Throws away usage data
+```
+
+**Current code - Ollama native endpoint** (line 417-426):
+```python
+response = await self.client.post(
+    f"{native_url}/api/generate", json=request_data
+)
+response.raise_for_status()
+data = response.json()
+response_text = data["response"]
+return response_text  # ❌ Throws away token counts
+```
+
+**Ollama API Response Structures**:
+
+*OpenAI-compatible format* (`/v1/chat/completions`):
+```json
+{
+  "id": "chatcmpl-...",
+  "object": "chat.completion",
+  "model": "llama3:8b",
+  "choices": [{
+    "message": {"role": "assistant", "content": "..."},
+    "finish_reason": "stop"
+  }],
+  "usage": {
+    "prompt_tokens": 123,
+    "completion_tokens": 456,
+    "total_tokens": 579
+  }
+}
+```
+
+*Native Ollama format* (`/api/generate`):
+```json
+{
+  "model": "llama3:8b",
+  "response": "...",
+  "done": true,
+  "context": [...],
+  "total_duration": 5000000000,
+  "load_duration": 1000000000,
+  "prompt_eval_count": 123,
+  "prompt_eval_duration": 1500000000,
+  "eval_count": 456,
+  "eval_duration": 2500000000
+}
+```
+
+**Note**: Ollama native API uses different field names:
+- `prompt_eval_count` = input tokens
+- `eval_count` = output tokens
+- `total_duration` = time in nanoseconds
+
+**Impact**: **CRITICAL** - All Ollama calls lose token data (needed for analytics even though cost = $0)
+
 #### ❌ LLMAbstraction
 **Location**: `src/ai/providers/llm_abstraction.py`
 **Problem**: Instantiated in multiple places but NOT wrapped
@@ -137,6 +261,8 @@ return str(data["content"][0]["text"])  # ❌ Throws away usage data
 | Component | Token Usage | Tracked? | Priority |
 |-----------|-------------|----------|----------|
 | **AnthropicProvider** | High (all calls) | ❌ NO | CRITICAL |
+| **OpenAIProvider** | High (all calls) | ❌ NO | CRITICAL |
+| **LocalLLMProvider (Ollama)** | High (all calls) | ❌ NO | CRITICAL |
 | **Project Creation** | Medium (5k tokens) | ❌ NO | HIGH |
 | **Post-Project Analysis** | Very High (20k-400k) | ❌ NO | CRITICAL |
 | **Task Enrichment** | Medium (1-2k/task) | ❌ NO | MEDIUM |
@@ -150,11 +276,15 @@ return str(data["content"][0]["text"])  # ❌ Throws away usage data
 
 ## Implementation Plan
 
-### Phase 1: Fix AnthropicProvider (CRITICAL)
+### Phase 1: Fix ALL Providers (CRITICAL)
 **Priority**: P0 - Blocks all other tracking
-**Effort**: 1-2 hours
+**Effort**: 3-4 hours (all three providers)
 
-**Changes Needed**:
+**Goal**: Make ALL providers return token usage data instead of just text.
+
+---
+
+#### 1A. Fix AnthropicProvider
 
 **File**: `src/ai/providers/anthropic_provider.py`
 
@@ -167,12 +297,13 @@ return str(data["content"][0]["text"])
 data = response.json()
 return {
     "text": str(data["content"][0]["text"]),
-    "usage": data.get("usage", {}),
+    "usage": {
+        "input_tokens": data.get("usage", {}).get("input_tokens", 0),
+        "output_tokens": data.get("usage", {}).get("output_tokens", 0),
+    },
     "model": data.get("model", self.model),
 }
 ```
-
-**Impact**: All callers of `_call_claude()` need to handle dict response instead of string.
 
 **Affected Methods** (need updates):
 - `analyze_task()` - line 87
@@ -182,16 +313,106 @@ return {
 - `analyze_blocker()` - line 203
 - `complete()` - line 410
 
-**Pattern for updates**:
+---
+
+#### 1B. Fix OpenAIProvider
+
+**File**: `src/ai/providers/openai_provider.py`
+
 ```python
-# BEFORE:
-response = await self._call_claude(prompt)
-return self._parse_task_analysis_response(response)
+# BEFORE (line 390-396):
+data = response.json()
+return str(data["choices"][0]["message"]["content"])
 
 # AFTER:
-response_data = await self._call_claude(prompt)
-result = self._parse_task_analysis_response(response_data["text"])
-# Token tracking happens in _call_claude via middleware
+data = response.json()
+usage = data.get("usage", {})
+return {
+    "text": str(data["choices"][0]["message"]["content"]),
+    "usage": {
+        "input_tokens": usage.get("prompt_tokens", 0),
+        "output_tokens": usage.get("completion_tokens", 0),
+    },
+    "model": data.get("model", self.model),
+}
+```
+
+**Affected Methods** (need updates):
+- `analyze_task()` - line 136
+- `infer_dependencies()` - line 183
+- `generate_enhanced_description()` - line 209
+- `estimate_effort()` - line 235
+- `analyze_blocker()` - line 267
+- `complete()` - line 513
+
+---
+
+#### 1C. Fix LocalLLMProvider (Ollama)
+
+**File**: `src/ai/providers/local_provider.py`
+
+**Two methods need fixing**:
+
+```python
+# FIX 1: OpenAI-compatible endpoint (line 374-382)
+# BEFORE:
+data = response.json()
+content = data["choices"][0]["message"]["content"]
+return content
+
+# AFTER:
+data = response.json()
+usage = data.get("usage", {})
+return {
+    "text": str(data["choices"][0]["message"]["content"]),
+    "usage": {
+        "input_tokens": usage.get("prompt_tokens", 0),
+        "output_tokens": usage.get("completion_tokens", 0),
+    },
+    "model": data.get("model", self.model),
+}
+
+# FIX 2: Ollama native endpoint (line 417-426)
+# BEFORE:
+data = response.json()
+response_text = data["response"]
+return response_text
+
+# AFTER:
+data = response.json()
+return {
+    "text": str(data["response"]),
+    "usage": {
+        "input_tokens": data.get("prompt_eval_count", 0),
+        "output_tokens": data.get("eval_count", 0),
+    },
+    "model": data.get("model", self.model),
+}
+```
+
+**Affected Methods** (need updates):
+- `analyze_task()` - line 146
+- `infer_dependencies()` - line 179
+- `generate_enhanced_description()` - line 215
+- `estimate_effort()` - line 243
+- `analyze_blocker()` - line 290
+- `complete()` - line 327
+
+---
+
+#### Universal Pattern for All Providers
+
+After fixing the `_call_*()` methods, update all caller methods:
+
+```python
+# BEFORE:
+response = await self._call_provider(prompt)
+return self._parse_response(response)
+
+# AFTER:
+response_data = await self._call_provider(prompt)
+result = self._parse_response(response_data["text"])
+# Token tracking happens in _call_provider via middleware
 return result
 ```
 
@@ -357,12 +578,12 @@ marcus tokens report --start 2025-01-01 --end 2025-01-31
 
 ### Unit Tests Needed
 
-**File**: `tests/unit/cost_tracking/test_anthropic_token_extraction.py`
+**File**: `tests/unit/cost_tracking/test_provider_token_extraction.py`
 ```python
-"""Test that AnthropicProvider returns token usage."""
+"""Test that ALL providers return token usage."""
 
-async def test_call_claude_returns_usage():
-    """Test _call_claude returns usage data."""
+async def test_anthropic_returns_usage():
+    """Test AnthropicProvider returns usage data."""
     provider = AnthropicProvider()
     response = await provider._call_claude("Test prompt")
 
@@ -371,6 +592,48 @@ async def test_call_claude_returns_usage():
     assert "usage" in response
     assert "input_tokens" in response["usage"]
     assert "output_tokens" in response["usage"]
+    assert "model" in response
+
+async def test_openai_returns_usage():
+    """Test OpenAIProvider returns usage data."""
+    provider = OpenAIProvider()
+    response = await provider._call_openai([
+        {"role": "user", "content": "Test prompt"}
+    ])
+
+    assert isinstance(response, dict)
+    assert "text" in response
+    assert "usage" in response
+    assert "input_tokens" in response["usage"]
+    assert "output_tokens" in response["usage"]
+    assert "model" in response
+
+async def test_ollama_openai_compatible_returns_usage():
+    """Test LocalLLMProvider (OpenAI endpoint) returns usage data."""
+    provider = LocalLLMProvider("llama3:8b")
+    response = await provider._call_local_llm("Test prompt")
+
+    assert isinstance(response, dict)
+    assert "text" in response
+    assert "usage" in response
+    assert "input_tokens" in response["usage"]
+    assert "output_tokens" in response["usage"]
+    assert "model" in response
+
+async def test_ollama_native_returns_usage():
+    """Test LocalLLMProvider (native endpoint) returns usage data."""
+    provider = LocalLLMProvider("llama3:8b")
+    response = await provider._call_ollama_native(
+        "Test prompt", max_tokens=100, temperature=0.7
+    )
+
+    assert isinstance(response, dict)
+    assert "text" in response
+    assert "usage" in response
+    # Ollama uses different field names
+    assert "input_tokens" in response["usage"]  # from prompt_eval_count
+    assert "output_tokens" in response["usage"]  # from eval_count
+    assert "model" in response
 ```
 
 **File**: `tests/integration/cost_tracking/test_end_to_end_tracking.py`
@@ -444,12 +707,12 @@ Once tracking is complete, we'll have accurate data for:
 
 | Phase | Effort | Priority | Dependencies |
 |-------|--------|----------|--------------|
-| Phase 1: Fix AnthropicProvider | 2 hours | P0 | None |
+| Phase 1: Fix ALL Providers (Anthropic, OpenAI, Ollama) | 3-4 hours | P0 | None |
 | Phase 2: Wrap all LLM instances | 3 hours | P0 | Phase 1 |
 | Phase 3: Analysis context | 1 hour | P1 | Phase 2 |
 | Phase 4: MCP response enhancement | 2 hours | P2 | Phase 2 |
 | Phase 5: Usage dashboard | 4 hours | P3 | All phases |
-| **Total** | **12 hours** | **~2 days** | - |
+| **Total** | **13-14 hours** | **~2 days** | - |
 
 ---
 
@@ -457,13 +720,15 @@ Once tracking is complete, we'll have accurate data for:
 
 1. **Immediate** (P0):
    - [ ] Fix AnthropicProvider to return token counts
-   - [ ] Update all callers to handle dict response
-   - [ ] Test with a simple project creation
+   - [ ] Fix OpenAIProvider to return token counts
+   - [ ] Fix LocalLLMProvider (Ollama) to return token counts for both endpoints
+   - [ ] Update all callers in all three providers to handle dict response
+   - [ ] Test with a simple project creation using each provider
 
 2. **Short-term** (P0):
    - [ ] Create LLM factory with automatic wrapping
    - [ ] Replace all LLMAbstraction() instantiations
-   - [ ] Verify all providers return token counts
+   - [ ] Verify all three providers return token counts correctly
 
 3. **Medium-term** (P1-P2):
    - [ ] Add project context to analysis
