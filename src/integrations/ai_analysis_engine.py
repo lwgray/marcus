@@ -162,6 +162,9 @@ For DESIGN tasks:
 
 For IMPLEMENTATION tasks:
 - Focus on actual coding and building
+- **Critical: Use Test-Driven Development (TDD)**
+  - Write tests FIRST before any implementation
+  - Follow Red-Green-Refactor cycle
 - Reference the design specifications
 - Include specific code components to build
 - Deliverables: working code with tests
@@ -566,7 +569,11 @@ Identify risks and provide JSON:
    - Break down the task into smaller subtasks
    - Start with the core functionality
    - Follow project coding standards
-   - Write tests as you go"""
+   - **MANDATORY**: Use Test-Driven Development (TDD)**
+   - Write failing tests FIRST (Red)
+   - Implement minimal code to pass tests (Green)
+   - Refactor while keeping tests green (Refactor)
+   """
 
             definition_of_done = """3. **Definition of Done**
    - All requirements from description are met

@@ -3569,7 +3569,6 @@ explanation."""
                     "Create API endpoints",
                     "Add input validation",
                     "Implement error handling",
-                    "Write unit tests",
                     "Add integration tests",
                 ]
         elif task_type == "testing":
