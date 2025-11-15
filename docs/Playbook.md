@@ -1,7 +1,7 @@
 # Marcus: Technical Plan & Execution Playbook
 
-**Version**: 1.0  
-**Date**: November 2025  
+**Version**: 1.0
+**Date**: November 2025
 **Status**: MASTER EXECUTION DOCUMENT
 
 ---
@@ -135,12 +135,12 @@ Core Engine:
   Database: PostgreSQL 15+ (relational), Redis (caching)
   Task Queue: Celery + Redis
   Real-time: WebSockets (FastAPI WebSocket)
-  
+
 MCP Server:
   Protocol: Model Context Protocol
   Port: 4298
   Transport: stdio, HTTP
-  
+
 API Layer:
   REST: FastAPI routers
   GraphQL: Strawberry (optional, for complex queries)
@@ -156,7 +156,7 @@ Dashboard (Cato):
   Data Fetching: TanStack Query (React Query)
   Visualization: D3.js, Recharts
   Real-time: EventSource (SSE)
-  
+
 CLI:
   Framework: Click (Python)
   Rich terminal output: Rich library
@@ -170,7 +170,7 @@ Development:
   Version Control: Git + Git worktrees
   Testing: pytest, pytest-cov
   Linting: black, isort, mypy, flake8
-  
+
 Production:
   Hosting: AWS / GCP / Azure
   Containers: Docker, Docker Compose
@@ -178,7 +178,7 @@ Production:
   CI/CD: GitHub Actions
   Monitoring: Prometheus, Grafana
   Logging: ELK Stack (Elasticsearch, Logstash, Kibana)
-  
+
 Marketplace:
   Payment: Stripe Connect
   Search: Elasticsearch
@@ -265,13 +265,13 @@ class TechStack:
     frameworks: List[str]
     databases: List[str]
     services: List[str]
-    
+
 @dataclass
 class ArchitecturalDecisions:
     decisions: List[Decision]
     trade_offs: Dict[str, str]
     customization_points: List[str]
-    
+
 @dataclass
 class BuildKitPackage:
     """The .mkb file format"""
@@ -486,7 +486,7 @@ class BuildKitPackager:
     def create_buildkit(self, project_id: str, metadata: BuildKitMetadata) -> BuildKit:
         """
         Package a completed project as a Build Kit.
-        
+
         Captures:
         - Source code
         - Architectural decisions
@@ -494,10 +494,10 @@ class BuildKitPackager:
         - Tech stack and dependencies
         - Customization points
         """
-        
+
     def export_mkb(self, buildkit: BuildKit, output_path: str) -> None:
         """Export Build Kit as .mkb file (zip with metadata)."""
-        
+
     def import_mkb(self, mkb_path: str) -> BuildKit:
         """Import .mkb file and validate."""
 ```
@@ -521,14 +521,14 @@ class BuildKitPackager:
 
 class BuildKitCustomizer:
     def customize(
-        self, 
-        buildkit: BuildKit, 
+        self,
+        buildkit: BuildKit,
         customization_request: str,
         agent: Agent
     ) -> Project:
         """
         Start a new project based on Build Kit with customizations.
-        
+
         Process:
         1. Extract Build Kit to new project
         2. Analyze customization request
@@ -536,7 +536,7 @@ class BuildKitCustomizer:
         4. Agent(s) execute modifications
         5. Return customized project
         """
-        
+
     def suggest_customizations(self, buildkit: BuildKit) -> List[str]:
         """Suggest common customizations based on architecture."""
 ```
@@ -631,30 +631,30 @@ export const BuildKitPublisher: React.FC = () => {
 class PaymentProcessor:
     def create_stripe_connect_account(self, user_id: str) -> str:
         """Create Stripe Connect account for creator."""
-        
+
     def create_checkout_session(
-        self, 
-        buyer_id: str, 
+        self,
+        buyer_id: str,
         item_id: str,
         item_type: str,
         amount: Decimal
     ) -> CheckoutSession:
         """Create Stripe checkout for Build Kit or agent hire."""
-        
+
     def handle_webhook(self, event: stripe.Event) -> None:
         """Handle Stripe webhooks (payment success, etc.)."""
-        
+
     def create_escrow(
-        self, 
+        self,
         transaction_id: str,
         amount: Decimal,
         release_conditions: List[str]
     ) -> Escrow:
         """Hold payment in escrow until conditions met."""
-        
+
     def release_escrow(self, transaction_id: str) -> None:
         """Release payment to seller."""
-        
+
     def calculate_fees(self, amount: Decimal, item_type: str) -> Decimal:
         """Calculate platform fee (15-20%)."""
 ```
@@ -687,7 +687,7 @@ class AgentRegistry:
         portfolio: List[ProjectReference]
     ) -> AgentListing:
         """List agent on marketplace."""
-        
+
     def search_agents(
         self,
         query: str,
@@ -695,7 +695,7 @@ class AgentRegistry:
         max_rate: Optional[Decimal]
     ) -> List[AgentListing]:
         """Search for agents matching criteria."""
-        
+
     def hire_agent(
         self,
         buyer_id: str,
@@ -754,7 +754,7 @@ class AgentRegistry:
 class FederationProtocol:
     """
     Marcus Federation Protocol (MFP) v1.0
-    
+
     Enables multiple Marcus instances to:
     - Discover each other
     - Share agent availability
@@ -762,20 +762,20 @@ class FederationProtocol:
     - Sync reputation data
     - Route payments
     """
-    
+
     def discover_nodes(self) -> List[MarcusNode]:
         """Discover other Marcus instances on network."""
-        
+
     def announce_capabilities(self, capabilities: List[str]) -> None:
         """Announce what this instance can provide."""
-        
+
     def request_task_delegation(
         self,
         task: Task,
         target_node: MarcusNode
     ) -> TaskDelegation:
         """Delegate task to agent on another instance."""
-        
+
     def sync_reputation(
         self,
         agent_id: str,
@@ -859,7 +859,7 @@ class ReputationSystem:
         - Code quality metrics
         - Client satisfaction
         """
-        
+
     def calculate_trust_score(self, agent_id: str) -> float:
         """
         Trust score (0-100) based on:
@@ -896,7 +896,7 @@ class AgentDiscovery:
         - Budget fit
         - Past performance on similar projects
         """
-        
+
     def predict_success_rate(
         self,
         agent_id: str,
@@ -1139,11 +1139,11 @@ Found 5 Build Kits:
 1. SaaS Starter Template ($49)
    ⭐ 4.8 (23 reviews) • 127 downloads
    Next.js + FastAPI + PostgreSQL + Stripe
-   
+
 2. Simple SaaS Boilerplate (FREE)
    ⭐ 4.2 (8 reviews) • 43 downloads
    React + Node + MongoDB
-   
+
 ...
 ```
 
@@ -1220,21 +1220,21 @@ class BuildKitCustomizer:
     ) -> Project:
         # 1. Extract Build Kit to new project
         project = self._create_project_from_buildkit(buildkit, project_name)
-        
+
         # 2. Analyze customizations and create tasks
         tasks = self._generate_customization_tasks(
-            buildkit, 
+            buildkit,
             customizations
         )
-        
+
         # 3. Assign tasks to agents
         for task in tasks:
             agent = self._find_best_agent(task)
             await self.orchestrator.assign_task(task, agent)
-        
+
         # 4. Monitor progress
         await self._monitor_customization(project)
-        
+
         return project
 ```
 
@@ -1247,7 +1247,7 @@ Location: /projects/MyAwesomeApp
 
 Changes made:
 ✓ Authentication: Supabase → Firebase
-✓ Database: PostgreSQL → MongoDB  
+✓ Database: PostgreSQL → MongoDB
 ✓ Deployment: Generic → Vercel
 ✓ Updated 47 files
 ✓ All tests passing
@@ -1276,7 +1276,7 @@ class ArchitecturalCoherenceEngine:
     ) -> List[Task]:
         """
         Ensure customizations maintain architectural coherence.
-        
+
         Example: Swapping PostgreSQL → MongoDB
         - Identify all SQL queries
         - Convert to MongoDB queries
@@ -1285,21 +1285,21 @@ class ArchitecturalCoherenceEngine:
         - Update tests
         - Verify data models still make sense
         """
-        
+
         tasks = []
-        
+
         # Analyze impact of each customization
         for component, new_value in customization.items():
             impact = self._analyze_impact(component, new_value)
-            
+
             # Generate tasks to handle impact
             for affected_area in impact.affected_areas:
                 task = self._create_update_task(affected_area, new_value)
                 tasks.append(task)
-        
+
         # Ensure tasks maintain coherence
         tasks = self._add_coherence_checks(tasks, original_architecture)
-        
+
         return tasks
 ```
 
@@ -1345,29 +1345,29 @@ class AgentProfile:
     display_name: str
     bio: str
     avatar_url: str
-    
+
     # Capabilities
     specializations: List[str]  # ["rust", "performance", "systems"]
     tech_stack: List[str]       # ["Python", "C++", "CUDA"]
-    
+
     # Pricing
     hourly_rate: Optional[Decimal]
     project_rate_min: Optional[Decimal]
     project_rate_max: Optional[Decimal]
-    
+
     # Availability
     available: bool
     timezone: str
     response_time: timedelta  # Average response time
-    
+
     # Portfolio
     portfolio_projects: List[ProjectReference]
     build_kits_published: List[str]
-    
+
     # Reputation
     reputation: AgentReputation
     certifications: List[Certification]
-    
+
     # Metadata
     joined_at: datetime
     last_active: datetime
@@ -1386,7 +1386,7 @@ class AgentDiscovery:
     ) -> List[AgentProfile]:
         """
         Search agents with sophisticated matching:
-        
+
         1. Text search (bio, specializations)
         2. Skill matching (exact + similar)
         3. Budget filtering
@@ -1394,22 +1394,22 @@ class AgentDiscovery:
         5. Reputation filtering
         6. Rank by relevance + reputation
         """
-        
+
         # Step 1: Full-text search
         candidates = self._text_search(query)
-        
+
         # Step 2: Apply filters
         candidates = self._apply_filters(candidates, filters)
-        
+
         # Step 3: Rank by relevance
         ranked = self._rank_by_relevance(
-            candidates, 
-            query, 
+            candidates,
+            query,
             filters
         )
-        
+
         return ranked
-    
+
     def recommend(
         self,
         project_description: str,
@@ -1417,22 +1417,22 @@ class AgentDiscovery:
     ) -> List[AgentRecommendation]:
         """
         ML-based recommendations:
-        
+
         1. Analyze project requirements (NLP)
         2. Extract needed skills
         3. Find agents with those skills
         4. Predict success rate for each agent
         5. Rank by predicted success + reputation
         """
-        
+
         # Extract requirements using NLP
         requirements = self.nlp_analyzer.extract_requirements(
             project_description
         )
-        
+
         # Find matching agents
         matches = self._find_skill_matches(requirements.skills)
-        
+
         # Predict success rate
         predictions = [
             AgentRecommendation(
@@ -1443,14 +1443,14 @@ class AgentDiscovery:
             )
             for agent in matches
         ]
-        
+
         # Rank by success rate * reputation / cost
         ranked = sorted(
             predictions,
             key=lambda x: (x.predicted_success_rate * x.agent.reputation.overall_rating) / x.estimated_cost,
             reverse=True
         )
-        
+
         return ranked[:10]
 ```
 
@@ -1485,12 +1485,12 @@ class EscrowSystem:
     ) -> Escrow:
         """
         Create escrow for agent work:
-        
+
         - Hold payment via Stripe
         - Define release conditions
         - Set timeout (auto-release after 30 days if no disputes)
         """
-        
+
     def release_escrow(
         self,
         transaction_id: str,
@@ -1498,13 +1498,13 @@ class EscrowSystem:
     ) -> None:
         """
         Release payment to agent:
-        
+
         - Deduct platform fee (20%)
         - Transfer to agent's Stripe Connect account
         - Update transaction status
         - Notify both parties
         """
-        
+
     def dispute_escrow(
         self,
         transaction_id: str,
@@ -1513,7 +1513,7 @@ class EscrowSystem:
     ) -> Dispute:
         """
         Handle dispute:
-        
+
         - Hold escrow
         - Create dispute case
         - Notify both parties
@@ -1537,18 +1537,18 @@ class DisputeResolution:
         """
         Create dispute case.
         """
-        
+
     def mediate(self, dispute_id: str) -> DisputeResolution:
         """
         Mediation process:
-        
+
         1. Review evidence from both parties
         2. Check transaction history
         3. Review communication logs
         4. Make determination
         5. Distribute escrow accordingly
         """
-        
+
     def appeal(self, dispute_id: str, appeal_reason: str) -> Appeal:
         """
         Allow appeals of dispute resolutions.
@@ -1568,21 +1568,21 @@ class AgentReputation:
     overall_rating: float  # 0-5 stars
     total_projects: int
     success_rate: float  # 0-1
-    
+
     # Domain-specific ratings
     domain_ratings: Dict[str, DomainRating]  # "rust" -> 4.8, "frontend" -> 4.2
-    
+
     # Quality metrics
     code_quality_score: float  # 0-100
     communication_score: float  # 0-100
     timeliness_score: float  # 0-100
-    
+
     # Trust indicators
     verified: bool
     certifications: List[str]
     time_on_platform: timedelta
     dispute_rate: float  # 0-1
-    
+
     # Reviews
     reviews: List[Review]
     response_rate: float  # % of inquiries responded to
@@ -1592,13 +1592,13 @@ class ReputationCalculator:
     def calculate(self, agent_id: str) -> AgentReputation:
         """
         Calculate comprehensive reputation:
-        
+
         - Weighted average of ratings (recent = more weight)
         - Success rate (completed / total projects)
         - Domain expertise (skill-specific ratings)
         - Trust score (verification, disputes, tenure)
         """
-        
+
     def update_after_project(
         self,
         agent_id: str,
@@ -1607,7 +1607,7 @@ class ReputationCalculator:
     ) -> None:
         """
         Update reputation after project completion:
-        
+
         - Add new rating (recency-weighted)
         - Update domain-specific ratings
         - Update success rate
@@ -1621,18 +1621,18 @@ class ReputationCalculator:
 def calculate_trust_score(agent: Agent) -> float:
     """
     Trust score (0-100) based on multiple factors:
-    
+
     - Verification status (email, phone, ID) = 20 points
     - Time on platform (>6 months) = 15 points
     - Project history (>10 projects) = 15 points
     - Success rate (>90%) = 20 points
     - Low dispute rate (<5%) = 15 points
     - Certifications = 15 points
-    
+
     Total: 100 points
     """
     score = 0
-    
+
     # Verification (20 points)
     if agent.email_verified:
         score += 7
@@ -1640,26 +1640,26 @@ def calculate_trust_score(agent: Agent) -> float:
         score += 7
     if agent.identity_verified:
         score += 6
-    
+
     # Tenure (15 points)
     months = (datetime.now() - agent.joined_at).days / 30
     score += min(months / 6 * 15, 15)
-    
+
     # Experience (15 points)
     projects = agent.reputation.total_projects
     score += min(projects / 10 * 15, 15)
-    
+
     # Success (20 points)
     score += agent.reputation.success_rate * 20
-    
+
     # Low disputes (15 points)
     dispute_rate = agent.reputation.dispute_rate
     score += (1 - dispute_rate / 0.05) * 15 if dispute_rate < 0.05 else 0
-    
+
     # Certifications (15 points)
     cert_count = len(agent.certifications)
     score += min(cert_count / 3 * 15, 15)
-    
+
     return min(score, 100)
 ```
 
@@ -1736,16 +1736,16 @@ Repository Structure:
     - CLI tools
     - Documentation
     - Examples
-  
+
   marcus-ai/marcus-dashboard:
     - Basic dashboard (open)
     - Community contributions welcome
-  
+
   marcus-ai/build-kits:
     - Community Build Kits repository
     - Templates and examples
     - Quality reviewed
-  
+
   marcus-ai/awesome-marcus:
     - Curated list of resources
     - Integrations

@@ -355,6 +355,23 @@ print(result["task_redundancy"]["redundancy_score"])
    - Lines 370-392: Expose task_redundancy in MCP response
    - Serialize all redundancy fields for frontend consumption
 
+## Tests Created
+
+1. **tests/unit/analysis/test_post_project_analyzer_conversations.py**
+   - 3 tests for conversation extraction from task histories
+   - Tests verify conversations are properly extracted and passed to analyzer
+   - All tests pass in < 100ms
+   - ✅ Passes mypy --strict
+
+2. **tests/unit/marcus_mcp/test_post_project_analysis_redundancy.py**
+   - 4 tests for task redundancy serialization in MCP responses
+   - Tests verify redundancy data is properly exposed via MCP tools
+   - Validates all RedundantTaskPair fields are serialized correctly
+   - All tests pass in < 100ms
+   - ✅ Passes mypy --strict
+
+**Test Coverage:** 7/7 tests passing (100% pass rate)
+
 ---
 
 ## Next Steps
