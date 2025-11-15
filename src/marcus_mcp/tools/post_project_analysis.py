@@ -268,7 +268,7 @@ async def analyze_project(
         )
 
         # Format results for MCP response
-        return {
+        result = {
             "success": True,
             "project_id": analysis.project_id,
             "analysis_timestamp": analysis.analysis_timestamp.isoformat(),
@@ -366,6 +366,31 @@ async def analyze_project(
             ],
             "metadata": analysis.metadata,
         }
+
+        # Add task redundancy analysis if available
+        if analysis.task_redundancy:
+            redundancy = analysis.task_redundancy
+            result["task_redundancy"] = {
+                "redundancy_score": redundancy.redundancy_score,
+                "total_time_wasted": redundancy.total_time_wasted,
+                "over_decomposition_detected": redundancy.over_decomposition_detected,
+                "recommended_complexity": redundancy.recommended_complexity,
+                "redundant_pairs": [
+                    {
+                        "task_1_id": pair.task_1_id,
+                        "task_1_name": pair.task_1_name,
+                        "task_2_id": pair.task_2_id,
+                        "task_2_name": pair.task_2_name,
+                        "overlap_score": pair.overlap_score,
+                        "evidence": pair.evidence,
+                        "time_wasted": pair.time_wasted,
+                    }
+                    for pair in redundancy.redundant_pairs
+                ],
+                "recommendations": redundancy.recommendations,
+            }
+
+        return result
 
     except Exception as e:
         return {

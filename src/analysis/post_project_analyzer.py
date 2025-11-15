@@ -366,11 +366,19 @@ class PostProjectAnalyzer:
                     )
                 )
 
-            # TODO: Extract conversations from history
-            # For now, pass empty list
+            # Extract all conversations from task histories
+            all_conversations = []
+            for task in tasks:
+                all_conversations.extend(task.conversations)
+
+            logger.debug(
+                f"Extracted {len(all_conversations)} conversation messages "
+                f"from {len(tasks)} tasks for redundancy analysis"
+            )
+
             task_redundancy_analysis = await self.redundancy_analyzer.analyze_project(
                 tasks=tasks,
-                conversations=[],
+                conversations=all_conversations,
                 progress_callback=None,  # Don't pass callback to avoid sub-progress
             )
 

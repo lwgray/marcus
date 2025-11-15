@@ -414,7 +414,7 @@ class LiveExperimentMonitor:
 
     def _generate_summary(self) -> str:
         """Generate experiment summary."""
-        duration = 0
+        duration = 0.0
         if self.registered_agents:
             registered_at_str = list(self.registered_agents.values())[0][
                 "registered_at"
