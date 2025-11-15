@@ -330,6 +330,23 @@ class TestProjectHistoryPersistence:
             languages=["Python"],
         )
 
+    def _create_conversation_log(
+        self, persistence: ProjectHistoryPersistence, project_id: str, task_id: str
+    ) -> None:
+        """Helper to create conversation log for task_id filtering."""
+        import json
+
+        conversations_dir = persistence.marcus_root / "logs" / "conversations"
+        conversations_dir.mkdir(parents=True, exist_ok=True)
+        conv_file = conversations_dir / "conversations_test.jsonl"
+
+        with open(conv_file, "a") as f:  # Append mode
+            entry = {
+                "metadata": {"project_id": project_id, "task_id": task_id},
+                "message": f"Test message for {task_id}",
+            }
+            f.write(json.dumps(entry) + "\n")
+
     def test_persistence_creates_directory_structure(
         self, temp_marcus_root: Path
     ) -> None:
@@ -370,6 +387,10 @@ class TestProjectHistoryPersistence:
         sample_decision: Decision,
     ) -> None:
         """Test appending multiple decisions accumulates them."""
+        # Create conversation logs for task_id filtering
+        self._create_conversation_log(persistence, "proj_test", "task_test")
+        self._create_conversation_log(persistence, "proj_test", "task_test_2")
+
         # Add first decision
         await persistence.append_decision("proj_test", "Test Project", sample_decision)
 
@@ -458,6 +479,9 @@ class TestProjectHistoryPersistence:
         sample_decision: Decision,
     ) -> None:
         """Test loading decisions correctly deserializes from JSON."""
+        # Create conversation log for task_id filtering
+        self._create_conversation_log(persistence, "proj_test", "task_test")
+
         await persistence.append_decision("proj_test", "Test Project", sample_decision)
 
         decisions = await persistence.load_decisions("proj_test")
@@ -472,6 +496,9 @@ class TestProjectHistoryPersistence:
         sample_artifact: ArtifactMetadata,
     ) -> None:
         """Test loading artifacts correctly deserializes from JSON."""
+        # Create conversation log for task_id filtering
+        self._create_conversation_log(persistence, "proj_test", "task_test")
+
         await persistence.append_artifact("proj_test", "Test Project", sample_artifact)
 
         artifacts = await persistence.load_artifacts("proj_test")
@@ -544,6 +571,9 @@ class TestProjectHistoryPersistence:
         sample_snapshot: ProjectSnapshot,
     ) -> None:
         """Test complete workflow: save all types and load them back."""
+        # Create conversation log for task_id filtering
+        self._create_conversation_log(persistence, "proj_test", "task_test")
+
         # Save all data
         await persistence.append_decision("proj_test", "Test Project", sample_decision)
         await persistence.append_artifact("proj_test", "Test Project", sample_artifact)

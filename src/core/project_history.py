@@ -419,6 +419,8 @@ class ProjectHistoryPersistence:
         """
         Append a decision to the project's decision registry.
 
+        Writes to BOTH JSON (archival) and SQLite (queryable) storage.
+
         Parameters
         ----------
         project_id : str
@@ -432,6 +434,7 @@ class ProjectHistoryPersistence:
         -----
         Uses atomic writes to prevent corruption.
         Creates file if it doesn't exist.
+        Persists to both JSON and SQLite for dual storage architecture.
         """
         project_dir = self._get_project_dir(project_id)
         decisions_file = project_dir / "decisions.json"
@@ -456,8 +459,15 @@ class ProjectHistoryPersistence:
         data["metadata"]["last_updated"] = datetime.now(timezone.utc).isoformat()
         data["metadata"]["total_decisions"] = len(data["decisions"])
 
-        # Atomic write
+        # Atomic write to JSON (for archival/export)
         self._atomic_write_json(decisions_file, data)
+
+        # ALSO write to SQLite (for queryable storage)
+        await self._backend.store(
+            collection="decisions",
+            key=decision.decision_id,
+            data=decision.to_dict(),
+        )
 
         logger.info(f"Appended decision {decision.decision_id} to project {project_id}")
 
@@ -466,6 +476,8 @@ class ProjectHistoryPersistence:
     ) -> None:
         """
         Append artifact metadata to the project's artifact registry.
+
+        Writes to BOTH JSON (archival) and SQLite (queryable) storage.
 
         Parameters
         ----------
@@ -480,6 +492,7 @@ class ProjectHistoryPersistence:
         -----
         Uses atomic writes to prevent corruption.
         Creates file if it doesn't exist.
+        Persists to both JSON and SQLite for dual storage architecture.
         """
         project_dir = self._get_project_dir(project_id)
         artifacts_file = project_dir / "artifacts.json"
@@ -509,8 +522,15 @@ class ProjectHistoryPersistence:
             a["file_size_bytes"] for a in data["artifacts"]
         ) / (1024 * 1024)
 
-        # Atomic write
+        # Atomic write to JSON (for archival/export)
         self._atomic_write_json(artifacts_file, data)
+
+        # ALSO write to SQLite (for queryable storage)
+        await self._backend.store(
+            collection="artifacts",
+            key=artifact.artifact_id,
+            data=artifact.to_dict(),
+        )
 
         logger.info(f"Appended artifact {artifact.artifact_id} to project {project_id}")
 

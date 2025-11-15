@@ -853,3 +853,94 @@ class TestConversationLogQueries:
         assert len(project_ids) == 2
         assert "proj_good" in project_ids
         assert "proj_good2" in project_ids
+
+
+class TestArtifactPersistenceRoundtrip:
+    """
+    Test suite for artifact append → load roundtrip.
+
+    This tests the complete flow: append_artifact() should write to BOTH
+    JSON and SQLite, so that load_artifacts() can successfully retrieve them.
+    """
+
+    @pytest.fixture
+    def persistence(self, tmp_path: Path) -> ProjectHistoryPersistence:
+        """Create ProjectHistoryPersistence with temporary database."""
+        marcus_root = tmp_path / "marcus"
+        marcus_root.mkdir()
+        (marcus_root / "data").mkdir()
+
+        # Create conversations directory for task_id filtering
+        conversations_dir = marcus_root / "logs" / "conversations"
+        conversations_dir.mkdir(parents=True, exist_ok=True)
+
+        return ProjectHistoryPersistence(marcus_root=marcus_root)
+
+    @pytest.fixture
+    def sample_artifact(self) -> ArtifactMetadata:
+        """Create a sample artifact for testing."""
+        return ArtifactMetadata(
+            artifact_id="art_roundtrip_test",
+            task_id="task_roundtrip",
+            agent_id="agent_test",
+            timestamp=datetime.now(timezone.utc),
+            filename="test_spec.md",
+            artifact_type="specification",
+            relative_path="docs/specifications/test_spec.md",
+            absolute_path="/tmp/project/docs/specifications/test_spec.md",  # nosec B108 (test data only)
+            description="Test specification",
+            file_size_bytes=1024,
+            sha256_hash="abc123",
+            project_id="roundtrip_project",
+        )
+
+    @pytest.mark.asyncio
+    async def test_append_artifact_persists_to_sqlite(
+        self, persistence: ProjectHistoryPersistence, sample_artifact: ArtifactMetadata
+    ) -> None:
+        """
+        Test that append_artifact writes to SQLite so load_artifacts can retrieve it.
+
+        This test exposes the bug where append_artifact only writes to JSON but
+        load_artifacts reads from SQLite.
+        """
+        import json
+
+        # Arrange - create conversation log so artifact won't be filtered out
+        conversations_dir = persistence.marcus_root / "logs" / "conversations"
+        conv_file = conversations_dir / "conversations_test.jsonl"
+
+        with open(conv_file, "w") as f:
+            entry = {
+                "metadata": {
+                    "project_id": "roundtrip_project",
+                    "task_id": "task_roundtrip",
+                },
+                "message": "Test task for roundtrip",
+            }
+            f.write(json.dumps(entry) + "\n")
+
+        # Act - append artifact
+        await persistence.append_artifact(
+            "roundtrip_project", "Roundtrip Test Project", sample_artifact
+        )
+
+        # Assert - artifact should be in JSON file
+        artifacts_file = (
+            persistence.history_dir / "roundtrip_project" / "artifacts.json"
+        )
+        assert artifacts_file.exists()
+
+        with open(artifacts_file, "r") as f:
+            json_data = json.load(f)
+        assert len(json_data["artifacts"]) == 1
+        assert json_data["artifacts"][0]["artifact_id"] == "art_roundtrip_test"
+
+        # Assert - artifact should ALSO be in SQLite (THIS WILL FAIL - exposes bug)
+        loaded_artifacts = await persistence.load_artifacts("roundtrip_project")
+        assert len(loaded_artifacts) == 1, (
+            f"Expected 1 artifact from SQLite, got {len(loaded_artifacts)}. "
+            "Bug: append_artifact writes to JSON only, not SQLite!"
+        )
+        assert loaded_artifacts[0].artifact_id == "art_roundtrip_test"
+        assert loaded_artifacts[0].filename == "test_spec.md"
