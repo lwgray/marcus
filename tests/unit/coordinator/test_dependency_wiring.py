@@ -14,6 +14,8 @@ import pytest
 
 from src.core.models import Priority, Task, TaskStatus
 from src.marcus_mcp.coordinator.dependency_wiring import (
+    detect_test_task,
+    extract_phase,
     filter_candidates_by_embeddings,
     hybrid_dependency_resolution,
     resolve_dependencies_with_llm,
@@ -674,8 +676,13 @@ class TestValidatePhaseOrder:
         # Assert
         assert is_valid is True, "Test should be able to depend on Implementation"
 
-    def test_allows_unknown_phases(self):
-        """Test that tasks with unknown phases are allowed."""
+    def test_rejects_unknown_phases_conservatively(self):
+        """
+        Test that tasks with unknown phases are conservatively rejected.
+
+        This prevents permissive acceptance of potentially bad dependencies
+        when we can't determine the phase.
+        """
         # Arrange
         task_1 = Task(
             id="task_1",
@@ -716,8 +723,147 @@ class TestValidatePhaseOrder:
 
         # Assert
         assert (
-            is_valid is True
-        ), "Should allow dependencies when phases can't be determined"
+            is_valid is False
+        ), "Should conservatively reject when phases can't be determined"
+
+    def test_rejects_implement_depending_on_write_unit_tests(self):
+        """
+        Test that implementation cannot depend on 'Write unit tests' tasks.
+
+        This is the REAL BUG from production logs where
+        'Implement secure data storage' depended on
+        'Write unit tests for cart and checkout models'.
+        """
+        # Arrange
+        implement_task = Task(
+            id="impl_1",
+            name="Implement secure data storage",
+            description="Implement storage",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            estimated_hours=5.0,
+            dependencies=[],
+            labels=[],
+            assigned_to=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+            is_subtask=True,
+            parent_task_id="parent_impl_security",
+        )
+
+        test_task = Task(
+            id="test_1",
+            name="Write unit tests for cart and checkout models",
+            description="Test models",
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            estimated_hours=3.0,
+            dependencies=[],
+            labels=[],
+            assigned_to=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+            is_subtask=True,
+            parent_task_id="parent_test_checkout",
+        )
+
+        # Act
+        is_valid = validate_phase_order(implement_task, test_task)
+
+        # Assert
+        assert (
+            is_valid is False
+        ), "Implementation should NOT be able to depend on test tasks"
+
+    def test_rejects_implement_depending_on_create_tests(self):
+        """Test that implementation cannot depend on 'Create tests' tasks."""
+        # Arrange
+        implement_task = Task(
+            id="impl_1",
+            name="Implement HTTPS communication",
+            description="Add HTTPS",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            estimated_hours=4.0,
+            dependencies=[],
+            labels=[],
+            assigned_to=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+            is_subtask=True,
+            parent_task_id="parent_impl_security",
+        )
+
+        test_task = Task(
+            id="test_1",
+            name="Create integration tests for cart and checkout",
+            description="Test cart",
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            estimated_hours=3.0,
+            dependencies=[],
+            labels=[],
+            assigned_to=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+            is_subtask=True,
+            parent_task_id="parent_test_checkout",
+        )
+
+        # Act
+        is_valid = validate_phase_order(implement_task, test_task)
+
+        # Assert
+        assert (
+            is_valid is False
+        ), "Implementation should NOT depend on test creation tasks"
+
+    def test_rejects_design_depending_on_write_tests(self):
+        """Test that design cannot depend on 'Write tests' tasks."""
+        # Arrange
+        design_task = Task(
+            id="design_1",
+            name="Design database schema",
+            description="Design DB",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            estimated_hours=3.0,
+            dependencies=[],
+            labels=[],
+            assigned_to=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+            is_subtask=True,
+            parent_task_id="parent_design",
+        )
+
+        test_task = Task(
+            id="test_1",
+            name="Write integration tests for database",
+            description="Test DB",
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            estimated_hours=2.0,
+            dependencies=[],
+            labels=[],
+            assigned_to=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+            is_subtask=True,
+            parent_task_id="parent_test",
+        )
+
+        # Act
+        is_valid = validate_phase_order(design_task, test_task)
+
+        # Assert
+        assert is_valid is False, "Design should NOT depend on test tasks"
 
 
 class TestHybridDependencyResolution:
