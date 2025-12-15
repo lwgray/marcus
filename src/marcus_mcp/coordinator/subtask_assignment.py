@@ -45,10 +45,10 @@ def _determine_task_type(task: Task) -> str:
 
 def _are_dependencies_satisfied(task: Task, all_tasks: List[Task]) -> bool:
     """
-    Check if all dependencies of a task are completed.
+    Check if all HARD dependencies of a task are completed.
 
-    This ensures that subtasks from a parent task are only available
-    after all of the parent task's dependencies are satisfied.
+    Soft dependencies are skipped - agents can start work using design specs
+    as contracts and integrate later.
 
     Parameters
     ----------
@@ -60,24 +60,53 @@ def _are_dependencies_satisfied(task: Task, all_tasks: List[Task]) -> bool:
     Returns
     -------
     bool
-        True if all dependencies are satisfied (or no dependencies exist)
+        True if all hard dependencies are satisfied (or no dependencies exist)
+
+    Notes
+    -----
+    Dependency types:
+    - "hard": Agent must wait for dependency to be DONE before starting
+    - "soft": Agent can start using design specs, integrate when ready
+    - Empty array: Defaults to all "hard" (migration behavior)
     """
     if not task.dependencies:
         return True
 
+    # Get dependency types (default to all "hard" if not specified)
+    dependency_types = task.dependency_types or []
+    if not dependency_types and task.dependencies:
+        dependency_types = ["hard"] * len(task.dependencies)
+        logger.debug(
+            f"Task '{task.name}' has no dependency_types - "
+            f"defaulting all {len(task.dependencies)} dependencies to 'hard'"
+        )
+
     # Create a mapping of task IDs to their status
     task_status_map = {t.id: t.status for t in all_tasks}
 
-    # Check if all dependencies are DONE
-    for dep_id in task.dependencies:
+    # Check each dependency based on its type
+    for idx, dep_id in enumerate(task.dependencies):
+        # Get dependency type (default to "hard" if index out of range)
+        dep_type = dependency_types[idx] if idx < len(dependency_types) else "hard"
+
+        # Skip soft dependencies - agent can use design specs
+        if dep_type == "soft":
+            logger.debug(
+                f"Task '{task.name}' has soft dependency '{dep_id}' - "
+                "can start using design specs as contract"
+            )
+            continue
+
+        # Check hard dependencies - must be DONE
         dep_status = task_status_map.get(dep_id)
         if dep_status != TaskStatus.DONE:
             logger.debug(
-                f"Parent task {task.name} has unsatisfied dependency: "
-                f"{dep_id} (status: {dep_status})"
+                f"Task '{task.name}' blocked by HARD dependency '{dep_id}' "
+                f"(status: {dep_status})"
             )
             return False
 
+    logger.debug(f"Task '{task.name}' - all hard dependencies satisfied")
     return True
 
 
@@ -206,6 +235,7 @@ def convert_subtask_to_task(subtask: Subtask, parent_task: Task) -> Task:
         due_date=parent_task.due_date,  # Inherit from parent
         estimated_hours=subtask.estimated_hours,
         dependencies=subtask.dependencies,
+        dependency_types=subtask.dependency_types,
         labels=parent_task.labels,  # Inherit labels from parent
         project_id=parent_task.project_id,
         project_name=parent_task.project_name,
