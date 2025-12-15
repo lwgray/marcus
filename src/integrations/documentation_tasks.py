@@ -180,7 +180,50 @@ Marcus installation directory.
    - Verify the application runs as documented
    - Confirm tests pass as described
 
-4. **Format for Success Measurement**:
+4. **Log the Artifact**:
+   ⚠️ **CRITICAL**: After creating or updating README.md, you MUST log it
+   as an artifact using:
+   ```
+   log_artifact(
+       task_id="<current_task_id>",
+       filename="README.md",
+       content="<full README content>",
+       artifact_type="documentation",
+       project_root="<project_root>",
+       description="Project README with setup, run, and test instructions"
+   )
+   ```
+   This is required even if you're updating an existing README.md, not
+   creating it from scratch.
+
+5. **Log Test Verification Results**:
+   ⚠️ **CRITICAL**: After verifying tests work (step 3), you MUST log the
+   test execution results:
+   ```
+   log_artifact(
+       task_id="<current_task_id>",
+       filename="verification_results.json",
+       content="<json with test results: command, exit_code, pass/fail counts, output>",
+       artifact_type="verification-results",
+       project_root="<project_root>",
+       description="Test verification results from README validation"
+   )
+   ```
+
+   The JSON should include:
+   ```json
+   {
+     "test_command": "pytest tests/",
+     "exit_code": 0,
+     "passed": 45,
+     "failed": 0,
+     "skipped": 2,
+     "execution_time": "2.3s",
+     "raw_output": "===== test session starts ====="
+   }
+   ```
+
+6. **Format for Success Measurement**:
    - Use clear markdown formatting
    - Include specific commands and expected outputs
    - Document any prerequisites or dependencies

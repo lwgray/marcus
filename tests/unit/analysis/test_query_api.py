@@ -232,10 +232,12 @@ def sample_project_history() -> ProjectHistory:
 
     return ProjectHistory(
         project_id="proj1",
+        project_name="Test Project",
         snapshot=snapshot,
         tasks=[task1, task2, task3],
         agents=[agent1, agent2],
         timeline=timeline,
+        conversations=[],
         decisions=[decision1, decision2],
         artifacts=[artifact1, artifact2],
     )

@@ -187,6 +187,7 @@ class ProjectHistory:
     tasks: list[TaskHistory]
     agents: list[AgentHistory]
     timeline: list[TimelineEvent]
+    conversations: list[Message]
     decisions: list[Decision]
     artifacts: list[ArtifactMetadata]
 
@@ -396,6 +397,7 @@ class ProjectHistoryAggregator:
             tasks=tasks,
             agents=agents,
             timeline=timeline,
+            conversations=conversations,
             decisions=decisions,
             artifacts=artifacts,
         )
