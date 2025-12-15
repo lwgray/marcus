@@ -606,8 +606,11 @@ async def wire_cross_parent_dependencies(
         for dep_id in new_deps:
             if dep_id not in task.dependencies:
                 task.dependencies.append(dep_id)
+                task.dependency_types.append("soft")
                 stats["dependencies_created"] += 1
-                logger.info(f"Added cross-parent dependency: {task.name} → {dep_id}")
+                logger.info(
+                    f"Added cross-parent dependency: {task.name} → {dep_id} (soft)"
+                )
 
     elapsed_time = time.time() - start_time
     stats["total_time_seconds"] = round(elapsed_time, 2)

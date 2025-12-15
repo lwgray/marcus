@@ -148,6 +148,7 @@ class Task:
     estimated_hours: float
     actual_hours: float = 0.0
     dependencies: List[str] = field(default_factory=list)
+    dependency_types: List[str] = field(default_factory=list)
     labels: List[str] = field(default_factory=list)
     project_id: Optional[str] = None
     project_name: Optional[str] = None
