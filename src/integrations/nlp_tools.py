@@ -89,6 +89,45 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             logger.debug(f"PRD result: {prd_result}")
             return []
 
+        # Validate task completeness with retry (NEW)
+        from src.ai.validation import TaskCompletenessValidator
+        from src.core.error_framework import error_context
+
+        with error_context(
+            "task_completeness_validation",
+            custom_context={
+                "project_name": kwargs.get("project_name"),
+                "initial_task_count": len(prd_result.tasks),
+            },
+        ) as validation_context:
+            # Initialize validator
+            validator = TaskCompletenessValidator(
+                ai_client=self.ai_engine,
+                prd_parser=self.prd_parser,
+            )
+
+            # Validate with retry (may re-parse internally)
+            validation_result = await validator.validate_with_retry(
+                description=description,
+                project_name=kwargs.get("project_name", ""),
+                tasks=prd_result.tasks,
+                constraints=constraints,
+                context=validation_context,
+            )
+
+            # Log outcome
+            logger.info(
+                f"Validation {'passed' if validation_result.is_complete else 'failed'}",
+                extra={
+                    "correlation_id": validation_context.correlation_id,
+                    "attempts": validation_result.total_attempts,
+                    "passed_on_attempt": validation_result.passed_on_attempt,
+                },
+            )
+
+            # Use validated tasks
+            prd_result.tasks = validation_result.final_tasks
+
         # Apply the inferred dependencies to the task objects
         if prd_result.dependencies:
             dep_count = len(prd_result.dependencies)
