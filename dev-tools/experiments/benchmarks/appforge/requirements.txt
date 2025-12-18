@@ -1,0 +1,21 @@
+# AppForge Benchmark Tool Dependencies
+# Install with: pip install -r requirements.txt
+
+# HTTP requests for fetching AppForge tasks
+requests>=2.31.0
+
+# YAML parsing for configuration files
+pyyaml>=6.0.1
+
+# Data analysis and HTML report generation
+pandas>=2.1.0
+
+# AppForge library for Android app testing
+# NOTE: User should install from their local AppForge clone:
+# pip install -e ~/dev/AppForge
+# Or from GitHub:
+# pip install git+https://github.com/AppForge-Bench/AppForge.git
+# AppForge>=1.0.0
+
+# NOTE: Marcus connection via Inspector is handled by importing from Marcus source
+# No additional MCP SDK needed - appforge_runner.py imports Inspector directly
