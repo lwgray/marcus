@@ -9,7 +9,7 @@ the necessary Marcus configuration files.
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import requests
 import yaml
@@ -47,10 +47,13 @@ def fetch_appforge_task(
     if cache_file.exists():
         print(f"  Using cached task spec: {cache_file}")
         with open(cache_file, "r") as f:
-            return json.load(f)
+            return cast(dict[str, Any], json.load(f))
 
     # Fetch tasks.json from AppForge repository
-    url = "https://raw.githubusercontent.com/AppForge-Bench/AppForge/main/tasks/tasks.json"
+    url = (
+        "https://raw.githubusercontent.com/AppForge-Bench/AppForge/"
+        "main/tasks/tasks.json"
+    )
 
     print(f"  Fetching task {task_id} from AppForge tasks.json...")
     try:
@@ -59,7 +62,8 @@ def fetch_appforge_task(
         all_tasks = response.json()
 
         if task_id < 0 or task_id >= len(all_tasks):
-            raise ValueError(f"Task ID {task_id} out of range (0-{len(all_tasks)-1})")
+            max_id = len(all_tasks) - 1
+            raise ValueError(f"Task ID {task_id} out of range (0-{max_id})")
 
         task_data = all_tasks[task_id]
         task_data["id"] = task_id  # Add ID field
@@ -95,7 +99,7 @@ def fetch_appforge_task(
     with open(cache_file, "w") as f:
         json.dump(task_data, f, indent=2)
 
-    return task_data
+    return cast(dict[str, Any], task_data)
 
 
 def generate_project_spec(task_data: dict[str, Any]) -> str:
@@ -158,7 +162,8 @@ Add these permissions to AndroidManifest.xml:
 
 This is an Android application development task from the AppForge benchmark suite.
 
-Build a fully functional Android application named "{app_key}" that implements the features described below.
+Build a fully functional Android application named "{app_key}" that
+implements the features described below.
 {package_section}
 
 ## Feature Specifications
@@ -195,8 +200,10 @@ Build a fully functional Android application named "{app_key}" that implements t
 
 ## Development Notes
 
-- **CRITICAL**: Use the exact package name specified above - tests depend on it
-- Read the feature specifications carefully - they include specific resource IDs and UI elements
+- **CRITICAL**: Use the exact package name specified above - tests depend on
+  it
+- Read the feature specifications carefully - they include specific resource
+  IDs and UI elements
 - Follow Android development best practices
 - Ensure proper error handling
 - Test thoroughly before submission
@@ -322,7 +329,9 @@ def convert_appforge_to_marcus_spec(
         Path to created experiment directory
     """
     if output_dir is None:
-        output_dir = Path(f"/tmp/appforge_task_{task_id}")
+        import tempfile
+
+        output_dir = Path(tempfile.gettempdir()) / f"appforge_task_{task_id}"
 
     if cache_dir is None:
         cache_dir = Path.home() / "appforge_benchmarks" / "cache"
@@ -389,5 +398,6 @@ if __name__ == "__main__":
 
     print(f"\nExperiment directory ready: {experiment_dir}")
     print(
-        f"Run Marcus with: python dev-tools/experiments/run_experiment.py {experiment_dir}"
+        f"Run Marcus with: python dev-tools/experiments/run_experiment.py "
+        f"{experiment_dir}"
     )

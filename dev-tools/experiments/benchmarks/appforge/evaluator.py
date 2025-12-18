@@ -161,7 +161,7 @@ def evaluate_benchmark(
         compile_error = evaluator.compile_folder(compile_dir, task_id)
 
         if compile_error:
-            print(f"  ✗ Compilation failed")
+            print("  ✗ Compilation failed")
             result["compile"] = 0
             result["compile_error"] = compile_error
             result["error"] = f"Compilation failed: {compile_error}"
@@ -201,7 +201,8 @@ def evaluate_benchmark(
         print("Evaluation Results")
         print("=" * 60)
         print(f"Compiled: {'✓' if result['compile'] else '✗'}")
-        print(f"Pass Rate: {result['pass_rate'] * 100:.1f}%")
+        pass_rate: float = result["pass_rate"]  # type: ignore[assignment]
+        print(f"Pass Rate: {pass_rate * 100:.1f}%")
         print(f"All Tests Passed: {'✓' if result['all_pass'] else '✗'}")
 
     except Exception as e:
@@ -241,7 +242,7 @@ def evaluate_benchmark(
     return result
 
 
-def save_evaluation_results(result: dict, output_file: Path) -> None:
+def save_evaluation_results(result: dict[str, Any], output_file: Path) -> None:
     """
     Save evaluation results to JSON file.
 

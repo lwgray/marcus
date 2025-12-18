@@ -26,6 +26,7 @@ import json
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -45,14 +46,18 @@ MARCUS_ROOT = Path(__file__).parent.parent.parent.parent.parent
 # Load Inspector module directly to avoid import issues
 inspector_path = MARCUS_ROOT / "src" / "worker" / "inspector.py"
 spec = importlib.util.spec_from_file_location("inspector", inspector_path)
+if spec is None:
+    raise ImportError(f"Could not load inspector from {inspector_path}")
 inspector_module = importlib.util.module_from_spec(spec)
+if spec.loader is None:
+    raise ImportError(f"No loader for inspector spec from {inspector_path}")
 spec.loader.exec_module(inspector_module)
 Inspector = inspector_module.Inspector
 # Marcus MCP server URL (default HTTP endpoint)
 MARCUS_MCP_URL = "http://localhost:4298/mcp"
 
 
-def _extract_text_from_result(result: any) -> str:
+def _extract_text_from_result(result: Any) -> str:
     """
     Safely extract text from MCP result content.
 
@@ -70,7 +75,8 @@ def _extract_text_from_result(result: any) -> str:
     """
     # MCP SDK returns CallToolResult with content array
     if hasattr(result, "content") and result.content:
-        return result.content[0].text if result.content else str(result)
+        text_result: str = result.content[0].text if result.content else str(result)
+        return text_result
     return str(result)
 
 
@@ -252,7 +258,7 @@ def wait_for_marcus_completion(
     experiment_dir: Path, task_id: int, timeout: int = 3600, poll_interval: int = 30
 ) -> bool:
     """
-    Synchronous wrapper for wait_for_marcus_completion_async.
+    Wrap async Marcus completion waiter for synchronous usage.
 
     Parameters
     ----------
@@ -279,7 +285,7 @@ def wait_for_marcus_completion(
 
 def run_appforge_benchmark(
     task_id: int, num_agents: int = 5, skip_marcus: bool = False
-) -> dict:
+) -> dict[str, Any]:
     """
     Run a single AppForge benchmark with Marcus.
 
@@ -374,7 +380,7 @@ def run_appforge_benchmark(
     return result
 
 
-def run_benchmark_suite(suite_config_file: Path) -> list[dict]:
+def run_benchmark_suite(suite_config_file: Path) -> list[dict[str, Any]]:
     """
     Run a suite of benchmarks from configuration file.
 
