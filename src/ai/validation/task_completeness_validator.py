@@ -30,7 +30,6 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from src.ai.advanced.prd.advanced_parser import AdvancedPRDParser
-from src.ai.providers.llm_abstraction import LLMAbstraction
 from src.core.error_framework import BusinessLogicError, ErrorContext
 from src.core.models import Task
 
@@ -99,12 +98,17 @@ class TaskCompletenessValidator:
     Uses AI to extract intents from description and validate semantic coverage
     in generated tasks. Retries with emphasis on missing intents up to MAX_ATTEMPTS.
 
+    Provider-agnostic design supports any AI client with compatible interface.
+
     Attributes
     ----------
     MAX_ATTEMPTS : int
         Maximum validation attempts before failing (class constant = 3)
-    ai_client : LLMAbstraction
+    ai_client : Any
         AI client for intent extraction and validation
+        Must support either:
+        - _call_claude() method (AIAnalysisEngine)
+        - providers with complete() method (LLMAbstraction)
     prd_parser : AdvancedPRDParser
         Parser for regenerating tasks on retry
 
@@ -134,7 +138,7 @@ class TaskCompletenessValidator:
 
     def __init__(
         self,
-        ai_client: LLMAbstraction,
+        ai_client: Any,
         prd_parser: AdvancedPRDParser,
     ) -> None:
         """
@@ -142,8 +146,9 @@ class TaskCompletenessValidator:
 
         Parameters
         ----------
-        ai_client : LLMAbstraction
+        ai_client : Any
             AI client for intent extraction and validation
+            Must support either AIAnalysisEngine or LLMAbstraction interface
         prd_parser : AdvancedPRDParser
             Parser for regenerating tasks on retry
         """
@@ -451,7 +456,10 @@ Return only valid JSON."""
 
     async def _call_ai(self, prompt: str) -> str:
         """
-        Make AI call with proper provider handling.
+        Make AI call using provider-agnostic interface.
+
+        Uses generate_structured_response() if available (AIAnalysisEngine),
+        which internally uses LLMAbstraction to support all configured providers.
 
         Parameters
         ----------
@@ -461,26 +469,38 @@ Return only valid JSON."""
         Returns
         -------
         str
-            AI response text
+            AI response text (JSON string)
 
         Raises
         ------
+        ValueError
+            If AI client doesn't support a compatible interface
         Exception
             If AI call fails
         """
-        # Initialize providers if needed
-        if not self.ai_client._providers_initialized:
-            self.ai_client._initialize_providers()
-
-        # Use the current provider's complete method
-        provider = self.ai_client.providers.get(self.ai_client.current_provider)
-        if provider and hasattr(provider, "complete"):
-            result: str = await provider.complete(prompt, max_tokens=2000)
+        # Check for AIAnalysisEngine interface (has generate_structured_response)
+        if hasattr(self.ai_client, "generate_structured_response"):
+            # Use the provider-agnostic method that supports all AI providers
+            response_dict: dict[str, Any] = (
+                await self.ai_client.generate_structured_response(
+                    prompt=prompt,
+                    system_prompt="You are a helpful AI assistant. "
+                    "Respond with valid JSON only.",
+                )
+            )
+            # Convert dict back to JSON string for compatibility
+            result: str = json.dumps(response_dict)
             return result
 
-        # Fallback: try anthropic directly
-        from src.ai.providers.anthropic_provider import AnthropicProvider
+        # Fallback: check for deprecated _call_claude method
+        if hasattr(self.ai_client, "_call_claude"):
+            result = await self.ai_client._call_claude(prompt)
+            return result
 
-        fallback_provider = AnthropicProvider()
-        fallback_result: str = await fallback_provider.complete(prompt, max_tokens=2000)
-        return fallback_result
+        # No compatible interface found
+        raise ValueError(
+            f"AI client {type(self.ai_client).__name__} does not support "
+            "a compatible interface. Expected:\n"
+            "  - generate_structured_response() method (preferred)\n"
+            "  - _call_claude() method (deprecated)"
+        )
