@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.ai.validation.task_completeness_validator import (
-    CompletenessResult,
     StructuredIntents,
     TaskCompletenessValidator,
 )
@@ -388,6 +387,48 @@ class TestTaskCompletenessValidator:
 class TestCompositionAwareness:
     """Test suite for composition-aware validation features."""
 
+    def test_structured_intents_len(self) -> None:
+        """Test StructuredIntents supports len() for backwards compatibility."""
+        # Arrange
+        intents = StructuredIntents(
+            component_intents=["Feature A", "Feature B"],
+            integration_intents=["Server setup"],
+            all_intents=["Feature A", "Feature B", "Server setup"],
+        )
+
+        # Act & Assert
+        assert len(intents) == 3
+
+    def test_structured_intents_iteration(self) -> None:
+        """Test StructuredIntents supports iteration for backwards compat."""
+        # Arrange
+        intents = StructuredIntents(
+            component_intents=["Feature A", "Feature B"],
+            integration_intents=["Server setup"],
+            all_intents=["Feature A", "Feature B", "Server setup"],
+        )
+
+        # Act
+        items = list(intents)
+
+        # Assert
+        assert items == ["Feature A", "Feature B", "Server setup"]
+
+    def test_structured_intents_iteration_with_any(self) -> None:
+        """Test StructuredIntents works with any() like original list."""
+        # Arrange
+        intents = StructuredIntents(
+            component_intents=["Deck creation", "Card drawing"],
+            integration_intents=["MCP server infrastructure"],
+            all_intents=["Deck creation", "Card drawing", "MCP server infrastructure"],
+        )
+
+        # Act & Assert - Mimics test_task_validation_e2e.py usage
+        server_related = any(
+            "server" in intent.lower() or "mcp" in intent.lower() for intent in intents
+        )
+        assert server_related is True
+
     @pytest.fixture
     def mock_ai_client(self) -> AsyncMock:
         """Create mock AI client."""
@@ -544,9 +585,11 @@ class TestCompositionAwareness:
 
     @pytest.mark.asyncio
     async def test_validate_coverage_detects_missing_integration(
-        self, validator: TaskCompletenessValidator, sample_component_tasks: list[Task]
+        self,
+        validator: TaskCompletenessValidator,
+        sample_component_tasks: list[Task],
     ) -> None:
-        """Test validation fails when integration tasks missing but components present."""
+        """Test validation detects missing integration tasks."""
         # Arrange
         structured_intents = StructuredIntents(
             component_intents=["Deck operations", "Card management"],

@@ -27,7 +27,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 from src.ai.advanced.prd.advanced_parser import AdvancedPRDParser
 from src.core.error_framework import BusinessLogicError, ErrorContext
@@ -40,6 +40,11 @@ logger = logging.getLogger(__name__)
 class StructuredIntents:
     """
     Two-tier intent structure for composition-aware validation.
+
+    This class is backwards compatible with code expecting a list:
+    - len(intents) returns len(all_intents)
+    - Iteration yields items from all_intents
+    - Can still access component_intents and integration_intents explicitly
 
     Attributes
     ----------
@@ -58,11 +63,26 @@ class StructuredIntents:
     ...     all_intents=["Deck operations", "Card management",
     ...                  "MCP server setup", "Tool registration"]
     ... )
+    >>> len(intents)  # Backwards compatible
+    4
+    >>> list(intents)  # Backwards compatible
+    ["Deck operations", "Card management", "MCP server setup",
+     "Tool registration"]
+    >>> intents.component_intents  # New tier-specific access
+    ["Deck operations", "Card management"]
     """
 
     component_intents: list[str]
     integration_intents: list[str]
     all_intents: list[str]
+
+    def __len__(self) -> int:
+        """Return total number of intents (backwards compatible)."""
+        return len(self.all_intents)
+
+    def __iter__(self) -> "Iterator[str]":
+        """Iterate over all intents (backwards compatible)."""
+        return iter(self.all_intents)
 
 
 @dataclass
