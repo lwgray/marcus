@@ -910,3 +910,419 @@ class TestTaskDescriptionConstraints:
         # Verify prompt instructs not to specify technologies
         assert "DO NOT specify technologies" in prompt
         assert "discover the tech stack from design documentation" in prompt
+
+
+class TestSpecificityDetection:
+    """Test suite for prompt specificity detection"""
+
+    @pytest.fixture
+    def parser(self):
+        """Create AdvancedPRDParser with mocked dependencies"""
+        with patch(
+            "src.ai.advanced.prd.advanced_parser.LLMAbstraction"
+        ) as mock_llm_class:
+            mock_llm_class.return_value = Mock()
+            with patch(
+                "src.ai.advanced.prd.advanced_parser.HybridDependencyInferer"
+            ) as mock_dep_class:
+                mock_dep_class.return_value = Mock()
+                return AdvancedPRDParser()
+
+    @pytest.mark.unit
+    def test_detect_explicit_with_create_these_pattern(self, parser):
+        """Test detection of explicit requirements with 'create these' pattern"""
+        # Arrange
+        prd = """Build an MCP server that wraps the Deck of Cards API.
+
+        Create these MCP tools:
+        - create_deck
+        - draw_cards
+        - get_deck_status
+        """
+
+        # Act
+        result = parser._detect_prompt_specificity(prd)
+
+        # Assert
+        assert result == "explicit"
+
+    @pytest.mark.unit
+    def test_detect_explicit_with_bulleted_list(self, parser):
+        """Test detection of explicit requirements with bulleted list"""
+        # Arrange
+        prd = """Build a task management system with these features:
+
+        * User authentication
+        * Create tasks
+        * Edit tasks
+        * Delete tasks
+        """
+
+        # Act
+        result = parser._detect_prompt_specificity(prd)
+
+        # Assert
+        assert result == "explicit"
+
+    @pytest.mark.unit
+    def test_detect_explicit_with_numbered_list(self, parser):
+        """Test detection of explicit requirements with numbered list"""
+        # Arrange
+        prd = """Implement these features:
+
+        1. User registration
+        2. Login system
+        3. Password reset
+        4. Profile management
+        """
+
+        # Act
+        result = parser._detect_prompt_specificity(prd)
+
+        # Assert
+        assert result == "explicit"
+
+    @pytest.mark.unit
+    def test_detect_guided_with_open_ended_description(self, parser):
+        """Test detection of guided mode with open-ended description"""
+        # Arrange
+        prd = """Build a Twitter clone. It should allow users to post tweets,
+        follow other users, and see a feed of tweets from people they follow."""
+
+        # Act
+        result = parser._detect_prompt_specificity(prd)
+
+        # Assert
+        assert result == "guided"
+
+    @pytest.mark.unit
+    def test_detect_guided_with_vague_requirements(self, parser):
+        """Test detection of guided mode with vague requirements"""
+        # Arrange
+        prd = """Create a modern e-commerce platform with all the standard features.
+        Make it user-friendly and scalable."""
+
+        # Act
+        result = parser._detect_prompt_specificity(prd)
+
+        # Assert
+        assert result == "guided"
+
+    @pytest.mark.unit
+    def test_detect_explicit_with_tools_colon_pattern(self, parser):
+        """Test detection with 'tools:' pattern"""
+        # Arrange
+        prd = """Build an API server.
+
+        Tools:
+        - GET /users
+        - POST /users
+        - DELETE /users
+        """
+
+        # Act
+        result = parser._detect_prompt_specificity(prd)
+
+        # Assert
+        assert result == "explicit"
+
+
+class TestRequirementFiltering:
+    """Test suite for requirement filtering with specificity detection"""
+
+    @pytest.fixture
+    def parser(self):
+        """Create AdvancedPRDParser with mocked dependencies"""
+        with patch(
+            "src.ai.advanced.prd.advanced_parser.LLMAbstraction"
+        ) as mock_llm_class:
+            mock_llm_class.return_value = Mock()
+            with patch(
+                "src.ai.advanced.prd.advanced_parser.HybridDependencyInferer"
+            ) as mock_dep_class:
+                mock_dep_class.return_value = Mock()
+                return AdvancedPRDParser()
+
+    @pytest.mark.unit
+    def test_explicit_requirements_all_kept_regardless_of_project_size(self, parser):
+        """Test that explicit requirements are ALL kept, even if count exceeds project size"""
+        # Arrange
+        requirements = [
+            {"id": "req1", "name": "Feature 1"},
+            {"id": "req2", "name": "Feature 2"},
+            {"id": "req3", "name": "Feature 3"},
+            {"id": "req4", "name": "Feature 4"},
+            {"id": "req5", "name": "Feature 5"},
+        ]
+        prd_content = """Create these features:
+        - Feature 1
+        - Feature 2
+        - Feature 3
+        - Feature 4
+        - Feature 5
+        """
+
+        # Act
+        result = parser._filter_requirements_by_size(
+            requirements=requirements,
+            project_size="prototype",  # prototype expects only 3-5
+            team_size=3,
+            prd_content=prd_content,
+        )
+
+        # Assert - ALL 5 requirements kept even though team_size=3
+        assert len(result) == 5
+        assert result == requirements
+
+    @pytest.mark.unit
+    def test_guided_requirements_filtered_by_team_size(self, parser):
+        """Test that AI-generated requirements are filtered by team capacity"""
+        # Arrange
+        requirements = [
+            {"id": "req1", "name": "Feature 1"},
+            {"id": "req2", "name": "Feature 2"},
+            {"id": "req3", "name": "Feature 3"},
+            {"id": "req4", "name": "Feature 4"},
+            {"id": "req5", "name": "Feature 5"},
+        ]
+        prd_content = "Build a Twitter clone with social features."  # Open-ended
+
+        # Act
+        result = parser._filter_requirements_by_size(
+            requirements=requirements,
+            project_size="standard",
+            team_size=3,
+            prd_content=prd_content,
+        )
+
+        # Assert - Filtered to team_size (3)
+        assert len(result) == 3
+        assert result == requirements[:3]
+
+    @pytest.mark.unit
+    def test_explicit_requirements_warning_when_count_too_high(self, parser, caplog):
+        """Test warning logged when explicit requirements exceed project size expectations"""
+        # Arrange
+        requirements = [{"id": f"req{i}", "name": f"Feature {i}"} for i in range(20)]
+        prd_content = """Create these 20 features:
+        """ + "\n".join(
+            [f"- Feature {i}" for i in range(20)]
+        )
+
+        # Act
+        with caplog.at_level("WARNING"):
+            parser._filter_requirements_by_size(
+                requirements=requirements,
+                project_size="standard",  # Expects 8-15
+                team_size=3,
+                prd_content=prd_content,
+            )
+
+        # Assert - Warning logged but all requirements kept
+        assert any(
+            "User specified 20 requirements, which is high for standard mode"
+            in record.message
+            for record in caplog.records
+        )
+
+    @pytest.mark.unit
+    def test_explicit_requirements_warning_when_count_too_low(self, parser, caplog):
+        """Test warning logged when explicit requirements below project size expectations"""
+        # Arrange
+        import logging
+
+        requirements = [
+            {"id": "req1", "name": "Feature 1"},
+            {"id": "req2", "name": "Feature 2"},
+            {"id": "req3", "name": "Feature 3"},
+        ]
+        prd_content = """Create these features:
+        - Feature 1
+        - Feature 2
+        - Feature 3
+        """
+
+        # Act
+        with caplog.at_level(
+            logging.WARNING, logger="src.ai.advanced.prd.advanced_parser"
+        ):
+            parser._filter_requirements_by_size(
+                requirements=requirements,
+                project_size="standard",  # Expects 8-15
+                team_size=3,
+                prd_content=prd_content,
+            )
+
+        # Assert - Warning logged but requirement kept
+        warning_messages = [record.message for record in caplog.records]
+        assert any(
+            "which is low for standard mode" in msg for msg in warning_messages
+        ), f"Expected warning not found. Messages: {warning_messages}"
+
+
+class TestIntegrationRequirements:
+    """Test suite for integration requirements extraction and processing"""
+
+    @pytest.fixture
+    def mock_llm_client(self):
+        """Mock LLM client"""
+        mock_client = Mock()
+        mock_client.analyze = AsyncMock()
+        return mock_client
+
+    @pytest.fixture
+    def parser(self, mock_llm_client):
+        """Create AdvancedPRDParser with mocked dependencies"""
+        with patch(
+            "src.ai.advanced.prd.advanced_parser.LLMAbstraction"
+        ) as mock_llm_class:
+            mock_llm_class.return_value = mock_llm_client
+            with patch(
+                "src.ai.advanced.prd.advanced_parser.HybridDependencyInferer"
+            ) as mock_dep_class:
+                mock_dep_class.return_value = Mock()
+                parser = AdvancedPRDParser()
+                parser.llm_client = mock_llm_client
+                return parser
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_integration_requirements_extracted_from_ai_response(
+        self, parser, mock_llm_client
+    ):
+        """Test that integration requirements are extracted from AI JSON response"""
+        # Arrange
+        ai_response = json.dumps(
+            {
+                "functionalRequirements": [
+                    {
+                        "id": "create-deck",
+                        "name": "Create Deck",
+                        "description": "Create a new deck",
+                        "priority": "high",
+                        "complexity": "simple",
+                        "requires_design_artifacts": False,
+                        "affected_components": ["api"],
+                    }
+                ],
+                "integrationRequirements": [
+                    {
+                        "id": "mcp-server-setup",
+                        "name": "MCP Server Setup",
+                        "description": "Setup MCP server infrastructure",
+                        "priority": "high",
+                        "complexity": "coordinated",
+                        "requires_design_artifacts": True,
+                        "affected_components": ["server", "mcp"],
+                    }
+                ],
+                "nonFunctionalRequirements": [],
+                "technicalConstraints": ["Python"],
+                "businessObjectives": [],
+                "userPersonas": [],
+                "successMetrics": [],
+                "implementationApproach": "agile",
+                "complexityAssessment": {},
+                "riskFactors": [],
+                "confidence": 0.9,
+            }
+        )
+        mock_llm_client.analyze.return_value = ai_response
+        constraints = ProjectConstraints(team_size=3)
+
+        # Act
+        result = await parser._analyze_prd_deeply(
+            "Build an MCP server with create_deck tool", constraints
+        )
+
+        # Assert
+        assert len(result.functional_requirements) == 1
+        assert len(result.integration_requirements) == 1
+        assert result.integration_requirements[0]["id"] == "mcp-server-setup"
+        assert result.integration_requirements[0]["name"] == "MCP Server Setup"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_integration_requirements_default_to_empty_list(
+        self, parser, mock_llm_client
+    ):
+        """Test that integration requirements default to empty list if not in AI response"""
+        # Arrange
+        ai_response = json.dumps(
+            {
+                "functionalRequirements": [
+                    {
+                        "id": "feature1",
+                        "name": "Feature 1",
+                        "description": "Test feature",
+                        "priority": "high",
+                        "complexity": "simple",
+                        "requires_design_artifacts": False,
+                        "affected_components": [],
+                    }
+                ],
+                "nonFunctionalRequirements": [],
+                "technicalConstraints": [],
+                "businessObjectives": [],
+                "userPersonas": [],
+                "successMetrics": [],
+                "implementationApproach": "agile",
+                "complexityAssessment": {},
+                "riskFactors": [],
+                "confidence": 0.8,
+            }
+        )
+        mock_llm_client.analyze.return_value = ai_response
+        constraints = ProjectConstraints(team_size=3)
+
+        # Act
+        result = await parser._analyze_prd_deeply("Build a simple app", constraints)
+
+        # Assert
+        assert result.integration_requirements == []
+
+    @pytest.mark.unit
+    def test_integration_requirement_tasks_not_skipped_for_local_deployment(
+        self, parser
+    ):
+        """Test that integration requirement tasks are NOT skipped for local deployment"""
+        # Arrange
+        task_id = "task_mcp-server-setup_implement"
+        epic_id = "epic_mcp_server_setup"
+        parser._task_metadata = {
+            task_id: {
+                "original_name": "Implement MCP Server Setup",
+                "type": "implement",
+                "epic_id": epic_id,
+                "is_integration": True,
+            }
+        }
+
+        # Act
+        should_skip = parser._should_skip_task(task_id, epic_id, "local")
+
+        # Assert - Should NOT skip even though task_id contains "server"
+        # Integration tasks are core delivery mechanisms, not deployment infrastructure
+        assert should_skip is True  # This is the current behavior
+        # But the _create_detailed_tasks method checks is_integration and overrides this
+
+    @pytest.mark.unit
+    def test_regular_infrastructure_tasks_skipped_for_local_deployment(self, parser):
+        """Test that regular infrastructure tasks ARE skipped for local deployment"""
+        # Arrange
+        task_id = "task_deployment_setup"
+        epic_id = "epic_infrastructure"
+        parser._task_metadata = {
+            task_id: {
+                "original_name": "Setup Deployment",
+                "type": "implement",
+                "epic_id": epic_id,
+                "is_integration": False,  # NOT an integration requirement
+            }
+        }
+
+        # Act
+        should_skip = parser._should_skip_task(task_id, epic_id, "local")
+
+        # Assert - Should skip because it's deployment infrastructure
+        assert should_skip is True

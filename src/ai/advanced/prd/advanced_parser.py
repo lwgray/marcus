@@ -7,7 +7,7 @@ deep understanding, intelligent task breakdown, and risk assessment.
 
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -36,6 +36,7 @@ class PRDAnalysis:
     risk_factors: List[Dict[str, Any]]
     confidence: float
     original_description: str = ""  # NEW: Preserve original user description
+    integration_requirements: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -211,7 +212,13 @@ class AdvancedPRDParser:
 
         # Step 2: Generate task hierarchy
         req_count = len(prd_analysis.functional_requirements)
-        logger.info(f"PRD analysis found {req_count} functional requirements")
+        req_ids = [
+            req.get("id", req.get("name", "unknown"))
+            for req in prd_analysis.functional_requirements
+        ]
+        logger.info(
+            f"PRD analysis found {req_count} functional requirements: {req_ids}"
+        )
         task_hierarchy = await self._generate_task_hierarchy(prd_analysis, constraints)
 
         # Step 3: Create detailed tasks
@@ -278,6 +285,17 @@ class AdvancedPRDParser:
                     "affected_components": ["component1", "component2"]
                 }}
             ],
+            "integrationRequirements": [
+                {{
+                    "id": "integration_id",
+                    "name": "Integration Name",
+                    "description": "Description of integration/delivery mechanism",
+                    "priority": "high|medium|low",
+                    "complexity": "atomic|simple|coordinated|distributed",
+                    "requires_design_artifacts": true|false,
+                    "affected_components": ["component1", "component2"]
+                }}
+            ],
             "nonFunctionalRequirements": [
                 {{
                     "id": "nfr_id",
@@ -323,12 +341,60 @@ class AdvancedPRDParser:
         - For functionalRequirements, use "id", "name", "description",
           "priority", "complexity", "requires_design_artifacts", and
           "affected_components" fields
+        - For integrationRequirements, use "id", "name", "description",
+          "priority", "complexity", "requires_design_artifacts", and
+          "affected_components" fields
         - For nonFunctionalRequirements, use "id", "name", "description",
           and "category" fields
         - Generate meaningful IDs based on the feature name
           (e.g., "crud_operations", "user_auth")
         - Focus on extracting actionable, specific requirements that can
           be converted into development tasks
+
+        FUNCTIONAL VS INTEGRATION REQUIREMENTS:
+
+        FUNCTIONAL REQUIREMENTS = Individual features/capabilities (the WHAT):
+        - Discrete business features or tools to build
+        - Examples: "create-deck", "draw-cards", "user-authentication",
+          "search-tweets", "send-message"
+        - These are the components/building blocks
+
+        INTEGRATION REQUIREMENTS = Infrastructure/delivery mechanisms (the HOW):
+        - HOW the functional components are assembled and delivered
+        - Infrastructure setup to make components accessible
+        - Examples:
+          * "mcp-server-setup" - Sets up MCP server infrastructure to expose
+            the functional tools (create-deck, draw-cards, etc.)
+          * "rest-api-server" - Sets up REST API server to expose endpoints
+          * "cli-entry-point" - Creates CLI interface to access commands
+          * "web-server-setup" - Sets up web server to serve the application
+          * "graphql-api-server" - Sets up GraphQL API layer
+          * "package-distribution" - Packaging/deployment infrastructure
+
+        CRITICAL DISTINCTION:
+        - If user says "Build an MCP server with these tools: X, Y, Z"
+          * Functional Requirements: X, Y, Z (the individual tools)
+          * Integration Requirement: "mcp-server-setup" (the infrastructure
+            that exposes X, Y, Z via MCP protocol)
+        - If user says "Build a REST API with these endpoints: A, B, C"
+          * Functional Requirements: A, B, C (the endpoint logic)
+          * Integration Requirement: "rest-api-server" (the server framework
+            that exposes A, B, C via HTTP)
+        - If user says "Build a CLI tool with commands: foo, bar, baz"
+          * Functional Requirements: foo, bar, baz (the command logic)
+          * Integration Requirement: "cli-entry-point" (the CLI framework
+            that makes foo, bar, baz runnable from command line)
+
+        WHEN TO EXTRACT INTEGRATION REQUIREMENTS:
+        - When user specifies a delivery mechanism: "MCP server", "API server",
+          "CLI tool", "web application", "microservice", "package"
+        - When a technology wrapper/framework is needed to make components usable
+        - When infrastructure setup is required beyond the feature logic itself
+
+        WHEN NOT TO EXTRACT INTEGRATION REQUIREMENTS:
+        - For pure library code with no delivery mechanism
+        - For internal utilities that don't need external interfaces
+        - When no specific delivery mechanism is mentioned
 
         COMPLEXITY MODE: {constraints.complexity_mode}
 
@@ -562,8 +628,14 @@ class AdvancedPRDParser:
             # Apply deduplication to prevent duplicate tasks
             functional_reqs = self._deduplicate_functional_requirements(functional_reqs)
 
+            # Extract integration requirements (infrastructure/delivery mechanisms)
+            integration_reqs = get_key(
+                analysis_data, "integration_requirements", "integrationRequirements"
+            )
+
             analysis = PRDAnalysis(
                 functional_requirements=functional_reqs,
+                integration_requirements=integration_reqs,
                 non_functional_requirements=get_key(
                     analysis_data,
                     "non_functional_requirements",
@@ -955,7 +1027,11 @@ Create design artifacts such as:
             "project_size", "medium"
         )
         functional_requirements = self._filter_requirements_by_size(
-            analysis.functional_requirements, project_size, constraints.team_size
+            analysis.functional_requirements,
+            project_size,
+            constraints.team_size,
+            # Pass original PRD for specificity detection
+            analysis.original_description,
         )
 
         # Get complexity mode from constraints (passed from create_project)
@@ -1074,6 +1150,65 @@ Create design artifacts such as:
 
             hierarchy[epic_id] = [task["id"] for task in epic_tasks]
 
+        # Create epics from integration requirements (infrastructure/delivery)
+        integration_requirements = analysis.integration_requirements or []
+        if integration_requirements:
+            logger.info(
+                f"Creating epics from {len(integration_requirements)} integration "
+                f"requirements: {[req.get('id') for req in integration_requirements]}"
+            )
+            for i, req in enumerate(integration_requirements):
+                # Get requirement ID (same logic as functional requirements)
+                req_id = req.get("id")
+                if not req_id:
+                    feature_name = (
+                        req.get("name")
+                        or req.get("feature")
+                        or req.get("description")
+                        or f"integration_{i}"
+                    )
+                    feature_id = feature_name.lower()
+                    for word in ["for", "the", "a", "an", "and", "or", "with", "using"]:
+                        feature_id = feature_id.replace(f" {word} ", " ")
+                    feature_id = (
+                        feature_id.strip()
+                        .replace(" ", "_")
+                        .replace("-", "_")
+                        .replace(":", "")
+                    )
+                    feature_id = "".join(
+                        c if c.isalnum() or c == "_" else "" for c in feature_id
+                    )
+                    if not feature_id or feature_id == "feature":
+                        feature_id = f"integration_{i}"
+                    req_id = feature_id
+                    logger.debug(
+                        f"Generated fallback ID '{req_id}' for integration "
+                        f"requirement without 'id' field"
+                    )
+
+                epic_id = f"epic_{req_id}"
+                hierarchy[epic_id] = []
+
+                # Break epic into smaller tasks
+                epic_tasks = await self._break_down_epic(req, analysis, constraints)
+                logger.debug(
+                    f"Integration epic {epic_id} broken down "
+                    f"into {len(epic_tasks)} tasks"
+                )
+
+                # Store task metadata
+                for task in epic_tasks:
+                    self._task_metadata[task["id"]] = {
+                        "original_name": task["name"],
+                        "type": task["type"],
+                        "epic_id": epic_id,
+                        "requirement": req,
+                        "is_integration": True,  # Mark as integration task
+                    }
+
+                hierarchy[epic_id] = [task["id"] for task in epic_tasks]
+
         # Add non-functional requirement tasks (skip for prototype projects)
         if project_size not in ["prototype", "mvp"]:
             nfr_epic_id = "epic_non_functional"
@@ -1136,15 +1271,31 @@ Create design artifacts such as:
         task_sequence = 1
 
         for epic_id, task_ids in list(task_hierarchy.items()):
-            # Skip deployment-related epics based on deployment_target
+            # Don't skip integration epics - check if any task is integration
+            is_integration_epic = any(
+                self._task_metadata.get(tid, {}).get("is_integration", False)
+                for tid in task_ids
+            )
+
+            # Skip deployment epics EXCEPT integration epics
+            # Integration epics (MCP server, API server) are core delivery
             deploy_target = constraints.deployment_target
-            if self._should_skip_epic(epic_id, deploy_target):
-                logger.info(f"Skipping {epic_id} for deployment_target={deploy_target}")
+            if not is_integration_epic and self._should_skip_epic(
+                epic_id, deploy_target
+            ):
+                logger.info(
+                    f"Skipping {epic_id} for " f"deployment_target={deploy_target}"
+                )
                 continue
 
             for task_id in task_ids:
-                # Skip deployment-related tasks based on deployment_target
-                if self._should_skip_task(
+                # Don't skip integration tasks - core delivery mechanisms
+                task_meta = self._task_metadata.get(task_id, {})
+                is_integration = task_meta.get("is_integration", False)
+
+                # Skip deployment tasks EXCEPT integration tasks
+                # Integration tasks (MCP/API server) are core delivery
+                if not is_integration and self._should_skip_task(
                     task_id, epic_id, constraints.deployment_target
                 ):
                     logger.info(
@@ -3712,20 +3863,170 @@ explanation."""
         return False
 
     def _filter_requirements_by_size(
-        self, requirements: List[Dict[str, Any]], project_size: str, team_size: int
+        self,
+        requirements: List[Dict[str, Any]],
+        project_size: str,
+        team_size: int,
+        prd_content: str,
     ) -> List[Dict[str, Any]]:
-        """Filter functional requirements based on project size and team capacity."""
+        """
+        Filter functional requirements based on project size and team capacity.
+
+        Now respects user-specified requirements - if the user explicitly listed
+        features, all of them are kept regardless of project size.
+
+        Parameters
+        ----------
+        requirements : List[Dict[str, Any]]
+            Functional requirements from AI analysis
+        project_size : str
+            Project size (prototype, standard, enterprise)
+        team_size : int
+            Number of team members
+        prd_content : str
+            Original PRD content to detect specificity
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            Filtered requirements
+        """
+        original_count = len(requirements)
+        original_ids = [
+            req.get("id", req.get("name", "unknown")) for req in requirements
+        ]
+
+        # Detect if user provided explicit requirements
+        specificity = self._detect_prompt_specificity(prd_content)
+
+        if specificity == "explicit":
+            # User explicitly listed requirements - keep ALL of them
+            logger.info(
+                f"User provided explicit requirements ({original_count} items), "
+                f"keeping all regardless of project_size={project_size}"
+            )
+
+            # Warn if count seems high for project size
+            expected_ranges = {
+                "prototype": (3, 5),
+                "mvp": (3, 5),
+                "standard": (8, 15),
+                "small": (5, 10),
+                "medium": (8, 15),
+                "enterprise": (15, 30),
+                "large": (15, 30),
+            }
+
+            if project_size in expected_ranges:
+                min_expected, max_expected = expected_ranges[project_size]
+                if original_count > max_expected:
+                    logger.warning(
+                        f"User specified {original_count} requirements, "
+                        f"which is high for {project_size} mode "
+                        f"(expected {min_expected}-{max_expected}). "
+                        f"Consider using a larger project size."
+                    )
+                elif original_count < min_expected:
+                    logger.warning(
+                        f"User specified {original_count} requirements, "
+                        f"which is low for {project_size} mode "
+                        f"(expected {min_expected}-{max_expected}). "
+                        f"Consider using a smaller project size."
+                    )
+
+            return requirements
+
+        # Guided mode - AI features, apply capacity filtering
+        logger.info(
+            f"AI-guided requirements ({original_count} items), "
+            f"filtering for project_size={project_size}"
+        )
+
         # Map to new 3-option system (with legacy support)
         if project_size in ["prototype", "mvp"]:
             # Prototype: only keep the most essential 1-2 requirements
-            return requirements[:2]
+            filtered = requirements[:2]
         elif project_size in ["standard", "small", "medium"]:
             # Standard: limit based on team size (typically 3-5 features)
             max_reqs = min(len(requirements), max(3, team_size))
-            return requirements[:max_reqs]
+            filtered = requirements[:max_reqs]
         else:
             # Enterprise/Large: include all requirements
-            return requirements
+            filtered = requirements
+
+        if len(filtered) < original_count:
+            filtered_ids = [
+                req.get("id", req.get("name", "unknown")) for req in filtered
+            ]
+            dropped_ids = [id for id in original_ids if id not in filtered_ids]
+            logger.warning(
+                f"Filtered {original_count} -> {len(filtered)} "
+                f"(size={project_size}, team={team_size}). "
+                f"Kept: {filtered_ids}, Dropped: {dropped_ids}"
+            )
+
+        return filtered
+
+    def _detect_prompt_specificity(self, prd_content: str) -> str:
+        """
+        Detect if user provided explicit requirements or open-ended description.
+
+        Returns
+        -------
+        str
+            "explicit" - User listed specific requirements/features
+            "guided" - Open-ended description, AI should generate features
+
+        Examples
+        --------
+        Explicit:
+            - "Create these tools: foo, bar, baz"
+            - "Features: 1. X, 2. Y, 3. Z"
+            - Contains bullet/numbered lists of features
+
+        Guided:
+            - "Build a Twitter clone"
+            - "Create a task management system"
+        """
+        content_lower = prd_content.lower()
+
+        # Strong explicit indicators
+        explicit_patterns = [
+            "create these",
+            "create the following",
+            "implement these",
+            "build these",
+            "these tools:",
+            "these features:",
+            "these functions:",
+            "these mcp tools:",
+            "tools:",
+            "features:",
+            "functions:",
+            "requirements:",
+        ]
+
+        # Check for explicit patterns
+        has_explicit_pattern = any(
+            pattern in content_lower for pattern in explicit_patterns
+        )
+
+        # Check for list formatting (bullets or numbers)
+        lines = prd_content.split("\n")
+        list_lines = sum(
+            1
+            for line in lines
+            if line.strip().startswith(("-", "*", "•"))
+            or (len(line.strip()) > 0 and line.strip()[0].isdigit() and "." in line[:5])
+        )
+
+        # If 3+ list items, likely explicit
+        has_list_structure = list_lines >= 3
+
+        if has_explicit_pattern or has_list_structure:
+            return "explicit"
+        else:
+            return "guided"
 
     def _filter_nfrs_by_size(
         self, nfrs: List[Dict[str, Any]], project_size: str
