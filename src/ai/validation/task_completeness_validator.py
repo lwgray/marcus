@@ -406,10 +406,29 @@ Return only valid JSON."""
 
             missing_components = response_data.get("missing_component_intents", [])
             missing_integration = response_data.get("missing_integration_intents", [])
+            missing = response_data.get("missing", [])
+
+            # Legacy format fallback: if AI returns old format without tiers,
+            # distribute missing intents to tiers by matching against originals
+            if missing and not missing_components and not missing_integration:
+                missing_components = [
+                    intent
+                    for intent in missing
+                    if intent in structured_intents.component_intents
+                ]
+                missing_integration = [
+                    intent
+                    for intent in missing
+                    if intent in structured_intents.integration_intents
+                ]
+                # If no matches (AI rephrased), treat all as components
+                # to preserve retry emphasis behavior
+                if not missing_components and not missing_integration:
+                    missing_components = missing
 
             return {
                 "complete": response_data.get("complete", False),
-                "missing": response_data.get("missing", []),
+                "missing": missing,
                 "missing_component_intents": missing_components,
                 "missing_integration_intents": missing_integration,
             }

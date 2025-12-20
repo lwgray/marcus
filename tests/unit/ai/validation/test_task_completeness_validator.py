@@ -835,3 +835,81 @@ class TestCompositionAwareness:
             # Old format should be treated as components
             assert len(intents.component_intents) >= 1
             assert len(intents.all_intents) >= 1
+
+    @pytest.mark.asyncio
+    async def test_legacy_validation_format_populates_tiers(
+        self, validator: TaskCompletenessValidator
+    ) -> None:
+        """Test legacy validation response populates tiers for retry emphasis."""
+        # Arrange - Create structured intents
+        structured_intents = StructuredIntents(
+            component_intents=["Feature A", "Feature B"],
+            integration_intents=["Server setup"],
+            all_intents=["Feature A", "Feature B", "Server setup"],
+        )
+
+        # Mock AI returning legacy format (no tier breakdown)
+        legacy_response = json.dumps(
+            {
+                "complete": False,
+                "missing": ["Feature A", "Server setup"],
+                # Note: missing_component_intents and missing_integration_intents
+                # are ABSENT (legacy format)
+            }
+        )
+
+        with patch.object(validator, "_call_ai", return_value=legacy_response):
+            # Act
+            result = await validator.validate_coverage(
+                structured_intents, []  # Empty task list
+            )
+
+            # Assert - Should populate tiers from missing list
+            assert result["complete"] is False
+            assert result["missing"] == ["Feature A", "Server setup"]
+            # Should match against original tiers
+            assert "Feature A" in result["missing_component_intents"]
+            assert "Server setup" in result["missing_integration_intents"]
+            # Both tiers should be populated for retry emphasis
+            assert len(result["missing_component_intents"]) > 0
+            assert len(result["missing_integration_intents"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_legacy_format_with_rephrased_intents(
+        self, validator: TaskCompletenessValidator
+    ) -> None:
+        """Test legacy format with rephrased intents treats all as components."""
+        # Arrange - Create structured intents
+        structured_intents = StructuredIntents(
+            component_intents=["Feature A", "Feature B"],
+            integration_intents=["Server setup"],
+            all_intents=["Feature A", "Feature B", "Server setup"],
+        )
+
+        # Mock AI returning legacy format with REPHRASED intents
+        # (doesn't match original intent names)
+        legacy_response = json.dumps(
+            {
+                "complete": False,
+                "missing": [
+                    "Functionality A implementation",
+                    "HTTP server configuration",
+                ],
+                # No tier breakdown AND rephrased names
+            }
+        )
+
+        with patch.object(validator, "_call_ai", return_value=legacy_response):
+            # Act
+            result = await validator.validate_coverage(
+                structured_intents, []  # Empty task list
+            )
+
+            # Assert - When no exact matches, treat all as components
+            # to preserve retry emphasis
+            assert result["complete"] is False
+            assert len(result["missing"]) == 2
+            # Should have components populated (fallback)
+            assert len(result["missing_component_intents"]) > 0
+            # Integration may be empty since no matches
+            # but retry will still have emphasis from components
