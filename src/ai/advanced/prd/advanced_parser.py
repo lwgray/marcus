@@ -16,7 +16,6 @@ from src.config.hybrid_inference_config import HybridInferenceConfig
 from src.core.models import Priority, Task, TaskStatus
 from src.integrations.ai_analysis_engine import AIAnalysisEngine
 from src.intelligence.dependency_inferer_hybrid import HybridDependencyInferer
-from src.visualization.shared_pipeline_events import PipelineStage
 
 logger = logging.getLogger(__name__)
 
@@ -400,7 +399,7 @@ class AdvancedPRDParser:
 
         Use complexity mode to control BOTH feature breadth and implementation depth:
 
-        PROTOTYPE MODE - Speed-focused MVP (MUST have 3-5 core features):
+        PROTOTYPE MODE - Speed-focused MVP (3-5 core features):
         FEATURE BREADTH:
         - Include ONLY the absolute minimum to demonstrate the concept
         - MINIMUM 3 features required (e.g., create, read, list)
@@ -533,22 +532,6 @@ class AdvancedPRDParser:
             context = SimpleContext(max_tokens=4096)
 
             logger.info("Attempting to use LLM for PRD analysis...")
-
-            # Track AI analysis start
-            flow_id = getattr(self, "_current_flow_id", None)
-            if flow_id and hasattr(self, "_pipeline_visualizer"):
-                self._pipeline_visualizer.add_event(
-                    flow_id=flow_id,
-                    stage=PipelineStage.AI_ANALYSIS,
-                    event_type="ai_analysis_started",
-                    data={
-                        "prd_length": len(prd_content),
-                        "model": getattr(
-                            self.llm_client, "current_provider", "unknown"
-                        ),
-                    },
-                    status="in_progress",
-                )
 
             # Use the actual LLM to analyze the PRD
             analysis_result = await self.llm_client.analyze(
@@ -1080,11 +1063,12 @@ Create design artifacts such as:
             f"requirements: {req_ids}"
         )
 
-        # Check for duplicate IDs (should not happen after deduplication, but verify)
-        if len(req_ids) != len(set(req_ids)):
+        # Check for duplicate IDs (exclude None which will be generated later)
+        non_none_ids = [req_id for req_id in req_ids if req_id is not None]
+        if len(non_none_ids) != len(set(non_none_ids)):
             from collections import Counter
 
-            id_counts = Counter(req_ids)
+            id_counts = Counter(non_none_ids)
             duplicates = [req_id for req_id, count in id_counts.items() if count > 1]
             logger.error(
                 f"DUPLICATE REQUIREMENT IDs DETECTED: {duplicates} - "
@@ -1722,6 +1706,10 @@ Create design artifacts such as:
 
             # Normalize name for similarity checking
             normalized_name = req_name
+            # Remove common prefix variations
+            for prefix in ["user ", "admin ", "system "]:
+                if normalized_name.startswith(prefix):
+                    normalized_name = normalized_name[len(prefix) :]
             # Remove common suffix variations
             for suffix in [" system", " feature", " component", " module", " service"]:
                 normalized_name = normalized_name.replace(suffix, "")
@@ -2355,18 +2343,9 @@ explanation."""
 
         # Determine task pattern based on complexity and mode
         if complexity_mode == "prototype":
-            # Prototype: Speed over structure
-            # Design ONLY for coordinated/distributed (produces artifacts)
-            # Atomic/simple: just implement (nothing to coordinate)
-            # SKIP per-feature designs if bundled domain designs exist (GH-108)
-            if complexity in ["coordinated", "distributed"] and not has_bundled_designs:
-                tasks.append(
-                    {
-                        "id": f"task_{req_id}_design",
-                        "name": f"Design {feature_name}",
-                        "type": self.TASK_TYPE_DESIGN,
-                    }
-                )
+            # Prototype: Speed over structure - skip design tasks
+            # Atomic/simple: just implement
+            # Coordinated/distributed: implement + test
             tasks.append(
                 {
                     "id": f"task_{req_id}_implement",
@@ -2385,9 +2364,10 @@ explanation."""
                 )
 
         elif complexity_mode == "enterprise":
-            # Enterprise: Full traceability with design tasks for all features
+            # Enterprise: Full traceability with design tasks for simple+ features
+            # Atomic features skip design (too simple to need coordination artifacts)
             # SKIP per-feature designs if bundled domain designs exist (GH-108)
-            if not has_bundled_designs:
+            if complexity != "atomic" and not has_bundled_designs:
                 tasks.append(
                     {
                         "id": f"task_{req_id}_design",

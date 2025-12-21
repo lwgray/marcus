@@ -27,7 +27,6 @@ from mcp.server import Server  # noqa: E402
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 from mcp.server.stdio import stdio_server  # noqa: E402
 
-from src.communication.communication_hub import CommunicationHub  # noqa: E402
 from src.config.config_loader import get_config  # noqa: E402
 from src.config.settings import Settings  # noqa: E402
 
@@ -63,9 +62,6 @@ from src.marcus_mcp.handlers import handle_tool_call  # noqa: E402
 from src.marcus_mcp.tool_groups import get_tools_for_endpoint  # noqa: E402
 from src.monitoring.assignment_monitor import AssignmentMonitor  # noqa: E402
 from src.monitoring.project_monitor import ProjectMonitor  # noqa: E402
-from src.visualization.shared_pipeline_events import (  # noqa: E402
-    SharedPipelineVisualizer,
-)
 
 
 class MarcusServer:
@@ -106,7 +102,6 @@ class MarcusServer:
         )
         self.ai_engine = AIAnalysisEngine()
         self.monitor = ProjectMonitor()
-        self.comm_hub = CommunicationHub()
 
         # Token tracking for cost monitoring
         self.token_tracker = token_tracker
@@ -149,9 +144,6 @@ class MarcusServer:
             alert_cooldown_minutes=10,
         )
 
-        # Pipeline flow visualization (shared between processes)
-        self.pipeline_visualizer = SharedPipelineVisualizer()
-
         # Track active connections and cleanup state
         self._cleanup_done = False
         self._active_operations: Set[Any] = set()
@@ -168,7 +160,6 @@ class MarcusServer:
         events_config = config_loader.get_feature_config("events")
         context_config = config_loader.get_feature_config("context")
         memory_config = config_loader.get_feature_config("memory")
-        visibility_config = config_loader.get_feature_config("visibility")
 
         # Persistence layer (if any enhanced features are enabled)
         self.persistence = None
@@ -238,14 +229,8 @@ class MarcusServer:
         else:
             self.memory = None
 
-        # Event-integrated visualization (if events and visibility enabled)
+        # Visualization removed
         self.event_visualizer = None
-        if events_config["enabled"] and visibility_config["enabled"]:
-            from src.visualization.event_integrated_visualizer import (
-                EventIntegratedVisualizer,
-            )
-
-            self.event_visualizer = EventIntegratedVisualizer()
 
         # Log startup
         self.log_event(
@@ -880,9 +865,9 @@ class MarcusServer:
                 )
 
                 if not self._subtasks_migrated:
-                    # First time: just use parent tasks directly
+                    # First time: copy parent tasks to avoid mutating source
                     # Migration will append subtasks to this list
-                    self.project_tasks = parent_tasks
+                    self.project_tasks = parent_tasks.copy()
                     logger.info(
                         f"[DEBUG] First refresh: set project_tasks to "
                         f"{len(parent_tasks)} parent tasks"
@@ -2170,138 +2155,7 @@ class MarcusServer:
                     state=server,
                 )
 
-        # Pipeline tools
-        if "pipeline_replay_start" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def pipeline_replay_start(flow_id: str) -> Dict[str, Any]:
-                """Start replay session for a pipeline flow."""
-                from .tools.pipeline import start_replay as impl
-
-                return await impl(server, {"flow_id": flow_id})
-
-        if "pipeline_replay_forward" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def pipeline_replay_forward() -> Dict[str, Any]:
-                """Step forward in pipeline replay."""
-                from .tools.pipeline import replay_step_forward as impl
-
-                return await impl(server, {})
-
-        if "pipeline_replay_backward" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def pipeline_replay_backward() -> Dict[str, Any]:
-                """Step backward in pipeline replay."""
-                from .tools.pipeline import replay_step_backward as impl
-
-                return await impl(server, {})
-
-        if "pipeline_replay_jump" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def pipeline_replay_jump(position: int) -> Dict[str, Any]:
-                """Jump to specific position in replay."""
-                from .tools.pipeline import replay_jump_to as impl
-
-                return await impl(server, {"position": position})
-
-        if "what_if_start" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def what_if_start(flow_id: str) -> Dict[str, Any]:
-                """Start what-if analysis session."""
-                from .tools.pipeline import start_what_if_analysis as impl
-
-                return await impl(server, {"flow_id": flow_id})
-
-        if "what_if_simulate" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def what_if_simulate(
-                modifications: List[Dict[str, Any]],
-            ) -> Dict[str, Any]:
-                """Simulate pipeline with modifications."""
-                from .tools.pipeline import simulate_modification as impl
-
-                return await impl(server, {"modifications": modifications})
-
-        if "what_if_compare" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def what_if_compare() -> Dict[str, Any]:
-                """Compare all what-if scenarios."""
-                from .tools.pipeline import compare_what_if_scenarios as impl
-
-                return await impl(server, {})
-
-        if "pipeline_compare" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def pipeline_compare(flow_ids: List[str]) -> Dict[str, Any]:
-                """Compare multiple pipeline flows."""
-                from .tools.pipeline import compare_pipelines as impl
-
-                return await impl(server, {"flow_ids": flow_ids})
-
-        if "pipeline_report" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def pipeline_report(
-                flow_id: str, format: str = "html"
-            ) -> Dict[str, Any]:
-                """Generate pipeline report."""
-                from .tools.pipeline import generate_report as impl
-
-                return await impl(server, {"flow_id": flow_id, "format": format})
-
-        if "pipeline_monitor_dashboard" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def pipeline_monitor_dashboard() -> Dict[str, Any]:
-                """Get live monitoring dashboard data."""
-                from .tools.pipeline import get_live_dashboard as impl
-
-                return await impl(server, {})
-
-        if "pipeline_monitor_flow" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def pipeline_monitor_flow(flow_id: str) -> Dict[str, Any]:
-                """Track specific flow progress."""
-                from .tools.pipeline import track_flow_progress as impl
-
-                return await impl(server, {"flow_id": flow_id})
-
-        if "pipeline_predict_risk" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def pipeline_predict_risk(flow_id: str) -> Dict[str, Any]:
-                """Predict failure risk for a flow."""
-                from .tools.pipeline import predict_failure_risk as impl
-
-                return await impl(server, {"flow_id": flow_id})
-
-        if "pipeline_recommendations" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def pipeline_recommendations(flow_id: str) -> Dict[str, Any]:
-                """Get recommendations for a pipeline flow."""
-                from .tools.pipeline import get_recommendations as impl
-
-                return await impl(server, {"flow_id": flow_id})
-
-        if "pipeline_find_similar" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def pipeline_find_similar(
-                flow_id: str, limit: int = 5
-            ) -> Dict[str, Any]:
-                """Find similar pipeline flows."""
-                from .tools.pipeline import find_similar_flows as impl
-
-                return await impl(server, {"flow_id": flow_id, "limit": limit})
+        # Pipeline tools removed - all pipeline functionality moved to Seneca
 
         # Project management tools
         if "add_project" in allowed_tools:

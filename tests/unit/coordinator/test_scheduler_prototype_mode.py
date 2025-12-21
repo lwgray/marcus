@@ -7,10 +7,28 @@ Tests verify that calculate_optimal_agents() correctly schedules:
 3. Mixed scenarios with both parents and subtasks
 """
 
+from datetime import datetime, timezone
+
 import pytest
 
 from src.core.models import Priority, Task, TaskStatus
 from src.marcus_mcp.coordinator.scheduler import calculate_optimal_agents
+
+
+def create_task(**kwargs):
+    """
+    Helper to create Task with required fields.
+
+    Provides defaults for required fields that tests don't care about.
+    """
+    now = datetime.now(timezone.utc)
+    defaults = {
+        "assigned_to": None,
+        "created_at": now,
+        "updated_at": now,
+        "due_date": None,
+    }
+    return Task(**{**defaults, **kwargs})
 
 
 class TestSchedulerPrototypeMode:
@@ -20,7 +38,7 @@ class TestSchedulerPrototypeMode:
     def prototype_tasks(self):
         """Create parent tasks without subtasks (prototype mode)."""
         return [
-            Task(
+            create_task(
                 id="task_1",
                 name="Design Calculator",
                 description="Design the calculator",
@@ -31,7 +49,7 @@ class TestSchedulerPrototypeMode:
                 labels=["type:design"],
                 is_subtask=False,
             ),
-            Task(
+            create_task(
                 id="task_2",
                 name="Implement Addition",
                 description="Implement addition feature",
@@ -42,7 +60,7 @@ class TestSchedulerPrototypeMode:
                 labels=["type:implementation"],
                 is_subtask=False,
             ),
-            Task(
+            create_task(
                 id="task_3",
                 name="Implement Division",
                 description="Implement division with error handling",
@@ -108,7 +126,7 @@ class TestSchedulerStandardMode:
         """Create parent tasks with subtasks (standard mode)."""
         return [
             # Parent task
-            Task(
+            create_task(
                 id="task_1",
                 name="Design Calculator",
                 description="Design the calculator",
@@ -120,7 +138,7 @@ class TestSchedulerStandardMode:
                 is_subtask=False,
             ),
             # Subtasks of task_1
-            Task(
+            create_task(
                 id="task_1_sub_1",
                 name="Create UI mockups",
                 description="Design UI",
@@ -132,7 +150,7 @@ class TestSchedulerStandardMode:
                 is_subtask=True,
                 parent_task_id="task_1",
             ),
-            Task(
+            create_task(
                 id="task_1_sub_2",
                 name="Define API contract",
                 description="Define API",
@@ -177,7 +195,7 @@ class TestSchedulerMixedMode:
         """Test that completed tasks are not scheduled."""
         # Arrange
         tasks = [
-            Task(
+            create_task(
                 id="task_1",
                 name="Done Task",
                 description="Already done",
@@ -188,7 +206,7 @@ class TestSchedulerMixedMode:
                 labels=[],
                 is_subtask=False,
             ),
-            Task(
+            create_task(
                 id="task_2",
                 name="Todo Task",
                 description="Still to do",
@@ -213,7 +231,7 @@ class TestSchedulerMixedMode:
         """Test that all completed tasks returns zero agents."""
         # Arrange
         tasks = [
-            Task(
+            create_task(
                 id="task_1",
                 name="Done Task 1",
                 description="Done",
@@ -224,7 +242,7 @@ class TestSchedulerMixedMode:
                 labels=[],
                 is_subtask=False,
             ),
-            Task(
+            create_task(
                 id="task_2",
                 name="Done Task 2",
                 description="Done",
@@ -247,7 +265,7 @@ class TestSchedulerMixedMode:
     def test_tasks_without_is_subtask_attribute(self):
         """Test backward compatibility with tasks missing is_subtask attribute."""
         # Arrange - simulate old Task objects without is_subtask field
-        task = Task(
+        task = create_task(
             id="task_1",
             name="Old Task",
             description="Task without is_subtask",
@@ -275,7 +293,7 @@ class TestSchedulerMixedMode:
         # - Parent C: Decomposed into 2 subtasks
         tasks = [
             # Parent A (container - should be excluded)
-            Task(
+            create_task(
                 id="parent_a",
                 name="Parent A",
                 description="Parent with subtasks",
@@ -287,7 +305,7 @@ class TestSchedulerMixedMode:
                 is_subtask=False,
             ),
             # Parent A subtasks (should be included)
-            Task(
+            create_task(
                 id="parent_a_sub_1",
                 name="Subtask A1",
                 description="First subtask",
@@ -299,7 +317,7 @@ class TestSchedulerMixedMode:
                 is_subtask=True,
                 parent_task_id="parent_a",
             ),
-            Task(
+            create_task(
                 id="parent_a_sub_2",
                 name="Subtask A2",
                 description="Second subtask",
@@ -312,7 +330,7 @@ class TestSchedulerMixedMode:
                 parent_task_id="parent_a",
             ),
             # Parent B (atomic - should be included)
-            Task(
+            create_task(
                 id="parent_b",
                 name="Parent B",
                 description="Parent without subtasks (atomic)",
@@ -324,7 +342,7 @@ class TestSchedulerMixedMode:
                 is_subtask=False,
             ),
             # Parent C (container - should be excluded)
-            Task(
+            create_task(
                 id="parent_c",
                 name="Parent C",
                 description="Parent with subtasks",
@@ -336,7 +354,7 @@ class TestSchedulerMixedMode:
                 is_subtask=False,
             ),
             # Parent C subtasks (should be included)
-            Task(
+            create_task(
                 id="parent_c_sub_1",
                 name="Subtask C1",
                 description="First subtask",
@@ -348,7 +366,7 @@ class TestSchedulerMixedMode:
                 is_subtask=True,
                 parent_task_id="parent_c",
             ),
-            Task(
+            create_task(
                 id="parent_c_sub_2",
                 name="Subtask C2",
                 description="Second subtask",

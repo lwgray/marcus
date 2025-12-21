@@ -16,6 +16,5 @@ Systems for project creation, monitoring, and health analysis.
    task-graph-auto-fix
    gridlock-detection
    24-analysis-tools
-   25-report-generation
    53-workflow-management
    54-hierarchical-task-decomposition

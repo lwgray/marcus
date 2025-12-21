@@ -782,19 +782,6 @@ async def create_item(item: Item):
         assert any("Frontend developers" in rec for rec in result["recommendations"])
 
     @pytest.mark.asyncio
-    async def test_find_models_not_implemented(self, analyzer):
-        """Test that _find_models method returns empty list (not implemented)."""
-        # The method exists but returns empty list as it's not implemented
-        result = await analyzer._find_models("owner", "repo")
-        assert result == []
-
-    @pytest.mark.asyncio
-    async def test_find_schemas_not_implemented(self, analyzer):
-        """Test that _find_schemas method returns empty list (not implemented)."""
-        # The method exists but returns empty list as it's not implemented
-        result = await analyzer._find_schemas("owner", "repo")
-        assert result == []
-
     def test_endpoint_patterns_coverage(self, analyzer):
         """Test all endpoint pattern variations."""
         test_cases = [

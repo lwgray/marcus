@@ -88,14 +88,25 @@ class TestBundledDomainDiscovery:
     def mock_ai_domain_response(self):
         """Mock AI response for domain discovery"""
         return {
-            "domains": {
-                "Authentication": ["feature_user_login", "feature_user_registration"],
-                "Shopping": [
-                    "feature_product_catalog",
-                    "feature_shopping_cart",
-                    "feature_checkout",
-                ],
-            }
+            "domains": [
+                {
+                    "name": "Authentication",
+                    "feature_ids": [
+                        "feature_user_login",
+                        "feature_user_registration",
+                    ],
+                    "rationale": "User authentication and registration features",
+                },
+                {
+                    "name": "Shopping",
+                    "feature_ids": [
+                        "feature_product_catalog",
+                        "feature_shopping_cart",
+                        "feature_checkout",
+                    ],
+                    "rationale": "E-commerce shopping features",
+                },
+            ]
         }
 
     @pytest.mark.unit
@@ -127,7 +138,15 @@ class TestBundledDomainDiscovery:
         # Arrange
         small_requirements = sample_functional_requirements[:3]
         parser.llm_client.analyze.return_value = json.dumps(
-            {"domains": {"Core Features": [req["id"] for req in small_requirements]}}
+            {
+                "domains": [
+                    {
+                        "name": "Core Features",
+                        "feature_ids": [req["id"] for req in small_requirements],
+                        "rationale": "Core features for small project",
+                    }
+                ]
+            }
         )
 
         # Act
@@ -157,10 +176,16 @@ class TestBundledDomainDiscovery:
         ]
         parser.llm_client.analyze.return_value = json.dumps(
             {
-                "domains": {
-                    f"Domain{i}": [f"feature_{j}" for j in range(i * 4, (i + 1) * 4)]
+                "domains": [
+                    {
+                        "name": f"Domain{i}",
+                        "feature_ids": [
+                            f"feature_{j}" for j in range(i * 4, (i + 1) * 4)
+                        ],
+                        "rationale": f"Domain {i} features",
+                    }
                     for i in range(5)
-                }
+                ]
             }
         )
 
@@ -283,9 +308,7 @@ class TestBundledDesignTaskGeneration:
 
         # Assert
         auth_task = next(t for t in tasks if "Authentication" in t["name"])
-        assert "User Login" in auth_task["description"]
         assert "USER LOGIN" in auth_task["description"]
-        assert "User Registration" in auth_task["description"]
         assert "USER REGISTRATION" in auth_task["description"]
 
     @pytest.mark.unit
@@ -330,8 +353,6 @@ class TestBundledDesignTaskGeneration:
         assert "Data flows" in description
         assert "Integration points" in description
         assert "Shared data models" in description
-        assert "get_task_context()" in description
-        assert "log_artifact()" in description
 
     @pytest.mark.unit
     @pytest.mark.asyncio

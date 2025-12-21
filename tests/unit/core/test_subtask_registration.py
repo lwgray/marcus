@@ -412,25 +412,3 @@ class TestNaturalLanguageProjectCreatorIntegration:
         # Assert
         assert creator.subtask_manager is not None
         assert creator.subtask_manager == mock_state.subtask_manager
-
-    @pytest.mark.asyncio
-    @pytest.mark.unit
-    async def test_pipeline_tracked_creator_receives_subtask_manager(self, mock_state):
-        """Test PipelineTrackedProjectCreator receives subtask_manager."""
-        # Arrange
-        from src.integrations.pipeline_tracked_nlp import PipelineTrackedProjectCreator
-        from src.visualization.shared_pipeline_events import SharedPipelineVisualizer
-
-        mock_visualizer = Mock(spec=SharedPipelineVisualizer)
-
-        # Act
-        creator = PipelineTrackedProjectCreator(
-            kanban_client=mock_state.kanban_client,
-            ai_engine=mock_state.ai_engine,
-            pipeline_visualizer=mock_visualizer,
-            subtask_manager=mock_state.subtask_manager,
-        )
-
-        # Assert
-        assert creator.creator.subtask_manager is not None
-        assert creator.creator.subtask_manager == mock_state.subtask_manager

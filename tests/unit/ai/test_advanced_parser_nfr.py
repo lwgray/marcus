@@ -10,8 +10,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from src.ai.advanced.prd.advanced_parser import AdvancedPRDParser
-from src.ai.advanced.prd.constraints import ProjectConstraints
+from src.ai.advanced.prd.advanced_parser import (
+    AdvancedPRDParser,
+    ProjectConstraints,
+)
 
 
 class TestNFRTaskIDParsing:

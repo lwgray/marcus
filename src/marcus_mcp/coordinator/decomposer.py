@@ -7,6 +7,7 @@ breaking complex tasks into manageable subtasks with clear interfaces.
 
 import json
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 from src.core.models import Task
@@ -124,7 +125,7 @@ def should_decompose(task: Task, project_complexity: Optional[str] = None) -> bo
             "api",
             "database",
             "model",
-            "ui",
+            r"\bui\b",  # Word boundary to avoid matching "build", "suite", etc.
             "frontend",
             "backend",
         ]
@@ -132,7 +133,11 @@ def should_decompose(task: Task, project_complexity: Optional[str] = None) -> bo
         indicator_count = sum(
             1
             for indicator in multi_component_indicators
-            if indicator in description_lower
+            if (
+                re.search(indicator, description_lower)
+                if indicator.startswith(r"\b")
+                else indicator in description_lower
+            )
         )
 
         if indicator_count >= 2:
@@ -169,13 +174,19 @@ def should_decompose(task: Task, project_complexity: Optional[str] = None) -> bo
         "api",
         "database",
         "model",
-        "ui",
+        r"\bui\b",  # Word boundary to avoid matching "build", "suite", etc.
         "frontend",
         "backend",
     ]
 
     indicator_count = sum(
-        1 for indicator in multi_component_indicators if indicator in description_lower
+        1
+        for indicator in multi_component_indicators
+        if (
+            re.search(indicator, description_lower)
+            if indicator.startswith(r"\b")
+            else indicator in description_lower
+        )
     )
 
     if indicator_count >= 3:
