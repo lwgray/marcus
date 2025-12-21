@@ -224,29 +224,25 @@ class TestMarcusServerInitialization:
         monkeypatch.setenv("PLANKA_AGENT_EMAIL", "test@test.com")
         monkeypatch.setenv("PLANKA_AGENT_PASSWORD", "testpass")
 
-    def test_server_initialization_success(self, mock_config):
+    @patch("src.config.marcus_config.get_config")
+    def test_server_initialization_success(self, mock_get_config, mock_config):
         """Test successful server initialization"""
-        mock_config_loader = MockConfigLoader(mock_config)
+        from src.config.marcus_config import AISettings, KanbanSettings, MarcusConfig
 
-        # Set the singleton directly
-        import src.config.config_loader as config_module
+        # Create mock config using new dataclass-based system
+        mock_config_instance = MarcusConfig(
+            kanban=KanbanSettings(provider="planka"),
+            ai=AISettings(enabled=False),
+        )
+        mock_get_config.return_value = mock_config_instance
 
-        original_singleton = config_module._config_loader
-        config_module._config_loader = mock_config_loader
-
-        try:
-            with patch(
-                "src.learning.project_pattern_learner.ProjectPatternLearner._load_existing_patterns"
-            ):
-                with patch(
-                    "pathlib.Path.exists", selective_path_exists_for_config(False)
-                ):
-                    with patch("builtins.open", mock_open()):
-                        with patch("src.marcus_mcp.server.Path.mkdir"):
-                            server = MarcusServer()
-        finally:
-            # Restore original singleton
-            config_module._config_loader = original_singleton
+        with patch(
+            "src.learning.project_pattern_learner.ProjectPatternLearner._load_existing_patterns"
+        ):
+            with patch("pathlib.Path.exists", selective_path_exists_for_config(False)):
+                with patch("builtins.open", mock_open()):
+                    with patch("src.marcus_mcp.server.Path.mkdir"):
+                        server = MarcusServer()
 
         # Verify initialization
         assert server.provider == "planka"
