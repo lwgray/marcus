@@ -83,12 +83,10 @@ class AIAnalysisEngine:
         self.current_agent_id: Optional[str] = None
         try:
             # Get API key from config first, fall back to environment
-            from src.config.config_loader import get_config
+            from src.config.marcus_config import get_config
 
             config = get_config()
-            api_key = config.get("ai.anthropic_api_key") or os.environ.get(
-                "ANTHROPIC_API_KEY"
-            )
+            api_key = config.ai.anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY")
             if not api_key:
                 print(
                     "⚠️  Anthropic API key not found - "
@@ -118,9 +116,7 @@ class AIAnalysisEngine:
             self.client = None
 
         self.model: str = (
-            config.get("ai.model", "claude-3-5-sonnet-20241022")
-            if "config" in locals()
-            else "claude-3-5-sonnet-20241022"
+            config.ai.model or "claude-3-5-sonnet-20241022"
         )  # Using Sonnet 3.5 for speed/cost balance
 
         # Analysis prompts
