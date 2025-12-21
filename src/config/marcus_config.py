@@ -474,7 +474,8 @@ class MarcusConfig:
         elif isinstance(data, str) and data.startswith("${") and data.endswith("}"):
             # Extract env var name: "${VAR_NAME}" -> "VAR_NAME"
             env_var = data[2:-1]
-            return os.getenv(env_var, data)  # Return original if not found
+            # Return None if env var not found - this ensures validation catches it
+            return os.getenv(env_var, None)
         else:
             return data
 

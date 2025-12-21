@@ -274,6 +274,45 @@ class TestMarcusConfigValidation:
         assert data_dir.exists()
         assert cache_dir.exists()
 
+    def test_validation_fails_with_unresolved_env_placeholder(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that validation catches unresolved environment variable placeholders.
+
+        This is a critical security test - unresolved placeholders like
+        ${ANTHROPIC_API_KEY} should be treated as missing values (None), not
+        as literal strings. This prevents the API provider from attempting to
+        use the placeholder string as an actual API key.
+        """
+        config_file = tmp_path / "test_config.json"
+        config_data = {
+            "ai": {
+                "provider": "anthropic",
+                "anthropic_api_key": "${UNDEFINED_ANTHROPIC_KEY}",  # Env var not set
+            },
+            "kanban": {
+                "provider": "planka",
+                "planka_base_url": "http://localhost:3333",
+                "planka_email": "test@test.com",
+                "planka_password": "testpass",  # pragma: allowlist secret
+            },
+        }
+
+        with open(config_file, "w") as f:
+            json.dump(config_data, f)
+
+        config = MarcusConfig.from_file(str(config_file))
+
+        # Config should have None for the API key (not the literal "${...}" string)
+        assert config.ai.anthropic_api_key is None
+
+        # Validation should fail because Anthropic key is required
+        with pytest.raises(ValueError) as exc_info:
+            config.validate()
+
+        error_msg = str(exc_info.value)
+        assert "anthropic_api_key is not set" in error_msg
+
     def test_validation_aggregates_multiple_errors(self, tmp_path: Path) -> None:
         """Test that validation reports all errors at once."""
         config_file = tmp_path / "test_config.json"

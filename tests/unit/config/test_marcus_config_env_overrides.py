@@ -76,10 +76,8 @@ class TestMarcusConfigEnvOverrides:
         assert config.kanban.planka_email == "admin@example.com"
         assert config.kanban.planka_password == "secure-password"
 
-    def test_env_var_substitution_preserves_literal_if_not_set(
-        self, tmp_path: Path
-    ) -> None:
-        """Test that undefined env vars are preserved as literals."""
+    def test_env_var_substitution_returns_none_if_not_set(self, tmp_path: Path) -> None:
+        """Test that undefined env vars return None to enable validation."""
         config_file = tmp_path / "test_config.json"
         config_data = {
             "ai": {
@@ -99,8 +97,8 @@ class TestMarcusConfigEnvOverrides:
 
         config = MarcusConfig.from_file(str(config_file))
 
-        # Should preserve the literal string if env var doesn't exist
-        assert config.ai.anthropic_api_key == "${UNDEFINED_VAR}"
+        # Should return None if env var doesn't exist, allowing validation to catch it
+        assert config.ai.anthropic_api_key is None
 
     def test_env_var_substitution_in_nested_structures(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
