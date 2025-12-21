@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 async def capture_snapshot() -> Optional[str]:
     """Capture a stall snapshot from the current Marcus instance."""
-    from src.config.config_loader import get_config
+    from src.config.marcus_config import get_config
     from src.core.project_context_manager import ProjectContextManager
     from src.core.project_registry import ProjectRegistry
     from src.integrations.ai_analysis_engine import AIAnalysisEngine
@@ -50,7 +50,7 @@ async def capture_snapshot() -> Optional[str]:
 
         async def initialize_kanban(self) -> None:
             if not self.kanban_client:
-                provider = self.config.get("kanban.provider", "planka")
+                provider = self.config.kanban.provider or "planka"
                 self.kanban_client = KanbanFactory.create(provider)
                 if hasattr(self.kanban_client, "connect"):
                     await self.kanban_client.connect()

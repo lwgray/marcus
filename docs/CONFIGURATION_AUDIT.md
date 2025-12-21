@@ -1,5 +1,7 @@
 # Marcus Configuration Audit
 
+> **STATUS: DEPRECATED** - This audit document was created before the centralized configuration migration. The issues documented here have been resolved in PR #161. See [`docs/CONFIGURATION.md`](CONFIGURATION.md) for the new type-safe configuration system using `src/config/marcus_config.py`.
+
 **Date**: 2025-12-20
 **Purpose**: Document existing scattered configuration before Week 1 consolidation
 **Issue**: #68 - Configuration Centralization

@@ -1,5 +1,7 @@
 # Configuration Management System
 
+> **Note**: This document describes the legacy `config_loader` system. For new development, please use the **centralized type-safe configuration system** documented in [`docs/CONFIGURATION.md`](../../CONFIGURATION.md). The new system uses `src/config/marcus_config.py` and provides better type safety, IDE autocomplete, and validation.
+
 ## Overview
 
 Marcus's Configuration Management System provides a comprehensive, hierarchical configuration framework that manages settings from multiple sources with sophisticated validation, type conversion, and environment-specific overrides. The system supports both legacy single-project configurations and modern multi-project setups, serving as the backbone for all system configuration needs.
