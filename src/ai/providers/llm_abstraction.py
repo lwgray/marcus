@@ -86,10 +86,10 @@ class LLMAbstraction:
         self.providers: Dict[str, BaseLLMProvider] = {}
 
         # Get provider from config first, then env var as override
-        from src.config.config_loader import get_config
+        from src.config.marcus_config import get_config
 
         config = get_config()
-        self.current_provider = config.get("ai.provider", "anthropic")
+        self.current_provider = config.ai.provider or "anthropic"
 
         # Build fallback list based on available providers
         self.fallback_providers: List[str] = []
@@ -125,20 +125,22 @@ class LLMAbstraction:
 
         # Load config to get API keys directly
         try:
-            from src.config.config_loader import get_config
+            from src.config.marcus_config import get_config
 
             config = get_config()
-            ai_config = config.get("ai", {})
         except Exception as e:
             logger.warning(f"Failed to load config, falling back to env vars: {e}")
-            ai_config = {}
+            # Create minimal config with defaults
+            from src.config.marcus_config import MarcusConfig
+
+            config = MarcusConfig()
 
         # Check if user explicitly configured a provider
         # If so, only initialize that provider (no fallbacks to env vars)
-        configured_provider = ai_config.get("provider", "").strip()
+        configured_provider = config.ai.provider or ""
 
         # Try to initialize Anthropic provider
-        anthropic_key = ai_config.get("anthropic_api_key", "").strip()
+        anthropic_key = config.ai.anthropic_api_key or ""
         # Only fall back to env var if no specific provider is configured
         # or if anthropic is the configured provider
         should_fallback_anthropic = (
@@ -170,7 +172,7 @@ class LLMAbstraction:
             )
 
         # Only try OpenAI if we have a valid API key
-        openai_key = ai_config.get("openai_api_key", "").strip()
+        openai_key = config.ai.openai_api_key or ""
         # Only fall back to env var if no specific provider is configured
         # or if openai is the configured provider
         should_fallback_openai = (
@@ -202,7 +204,7 @@ class LLMAbstraction:
             )
 
         # Add local provider if configured
-        local_model_path = ai_config.get("local_model", "").strip()
+        local_model_path = config.ai.local_model or ""
         # Only fall back to env var if no specific provider is configured
         # or if local is the configured provider
         should_fallback_local = (

@@ -301,13 +301,12 @@ class MarcusAIEngine:
         self.hybrid_coordinator = HybridDecisionFramework()
 
         # Configuration - get from config first, env var as override
-        from src.config.config_loader import get_config
+        from src.config.marcus_config import get_config
 
         config = get_config()
-        ai_config = config.get("ai", {})
 
         # Check config first, then env var, default to true
-        self.ai_enabled = ai_config.get("enabled", True)
+        self.ai_enabled = config.ai.enabled
         if os.getenv("MARCUS_AI_ENABLED") is not None:
             self.ai_enabled = os.getenv("MARCUS_AI_ENABLED", "true").lower() == "true"
 

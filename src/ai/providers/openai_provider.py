@@ -80,13 +80,17 @@ class OpenAIProvider(BaseLLMProvider):
     """
 
     def __init__(self) -> None:
-        self.api_key = os.getenv("OPENAI_API_KEY")
+        # Get configuration from centralized config
+        from src.config.marcus_config import get_config
+
+        config = get_config()
+        self.api_key = config.ai.openai_api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
-            raise ValueError("OPENAI_API_KEY environment variable not set")
+            raise ValueError("OpenAI API key not found in config or environment")
 
         self.base_url = "https://api.openai.com/v1"
-        self.model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")  # Cost-effective model
-        self.max_tokens = 2048
+        self.model = config.ai.model or "gpt-3.5-turbo"
+        self.max_tokens = config.ai.max_tokens
         self.timeout = 30.0
 
         # HTTP client
@@ -478,19 +482,23 @@ Provide JSON array of 3-5 specific solutions:
     def _parse_blocker_response(self, response: str) -> List[str]:
         """Parse blocker analysis response."""
         try:
-            suggestions = json.loads(response)
-            if isinstance(suggestions, list):
-                return [str(s) for s in suggestions]
+            suggestions_raw: Any = json.loads(response)
+            if isinstance(suggestions_raw, list):
+                return [str(s) for s in suggestions_raw]
             else:
-                return [str(suggestions)]
+                return [str(suggestions_raw)]
         except (json.JSONDecodeError, ValueError):
             # Extract from text format
             lines = response.strip().split("\n")
-            suggestions = []
+            suggestions_list: List[str] = []
             for line in lines:
                 if line.strip() and not line.startswith("#"):
-                    suggestions.append(line.strip("- ").strip())
-            return suggestions[:5] if suggestions else ["Review task requirements"]
+                    suggestions_list.append(line.strip("- ").strip())
+            return (
+                suggestions_list[:5]
+                if suggestions_list
+                else ["Review task requirements"]
+            )
 
     async def complete(self, prompt: str, max_tokens: int = 2000) -> str:
         """
