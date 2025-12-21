@@ -173,6 +173,38 @@ class BaseTestCase:
 
     # Mock creation helpers
 
+    def create_mock_config(self) -> Any:
+        """Create a properly configured mock MarcusConfig object."""
+        from src.config.marcus_config import (
+            AISettings,
+            FeaturesSettings,
+            KanbanSettings,
+            MarcusConfig,
+            MCPSettings,
+            MemorySettings,
+            TaskLeaseSettings,
+            TransportSettings,
+        )
+
+        return MarcusConfig(
+            mcp=MCPSettings(),
+            ai=AISettings(
+                provider="anthropic",
+                model="claude-3-haiku-20240307",
+                enabled=False,  # Disable AI in tests by default
+            ),
+            kanban=KanbanSettings(
+                provider="planka",
+                board_name="Test Board",
+            ),
+            features=FeaturesSettings(events=False, context=False, memory=False),
+            memory=MemorySettings(),
+            transport=TransportSettings(type="stdio"),
+            task_lease=TaskLeaseSettings(),
+            single_project_mode=True,
+            log_level="ERROR",  # Reduce log noise in tests
+        )
+
     def create_mock_kanban_client(self) -> AsyncMock:
         """Create a properly configured mock kanban client."""
         client = AsyncMock()

@@ -1074,6 +1074,7 @@ System-wide analytics across all projects.
 | **Workspace Isolation Design** | `docs/design/workspace-isolation-and-feature-context.md` | Git worktree architecture |
 | **Feature Context Design** | `docs/design/feature-context.md` | Context aggregation design |
 | **Telemetry Design** | `docs/design/telemetry-system.md` | Event tracking architecture |
+| **MCP Tool Logging** | `src/logging/mcp_tool_logger.py` | Centralized tool response logging with failure categorization |
 
 ### User Documentation
 
