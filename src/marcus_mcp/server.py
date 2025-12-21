@@ -585,18 +585,7 @@ class MarcusServer:
         # Wrap AI engine for token tracking
         self.ai_engine = ai_usage_middleware.wrap_ai_provider(self.ai_engine)
 
-        # Initialize pattern learning components for API
-        from src.api.pattern_learning_init import init_pattern_learning_components
-
-        try:
-            init_pattern_learning_components(
-                kanban_client=self.kanban_client, ai_engine=self.ai_engine
-            )
-            # Don't print during initialization - it interferes with MCP stdio
-        except Exception:
-            # Log error without printing to stderr during initialization
-            pass  # nosec B110
-
+        # Pattern learning components removed (API infrastructure cleanup)
         # Don't print during initialization - it interferes with MCP stdio
 
     async def _migrate_to_multi_project(self) -> None:
