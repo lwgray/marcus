@@ -52,6 +52,12 @@ class AISettings:
         Anthropic API key (required if provider="anthropic")
     openai_api_key : Optional[str]
         OpenAI API key (required if provider="openai")
+    local_model : Optional[str]
+        Local model name (e.g., "qwen2.5:7b-instruct" for Ollama)
+    local_url : Optional[str]
+        Local LLM API URL (e.g., "http://localhost:11434/v1")
+    local_key : Optional[str]
+        Local LLM API key (if required)
     model : Optional[str]
         Model name (e.g., "claude-3-haiku-20240307")
     temperature : float
@@ -65,6 +71,9 @@ class AISettings:
     provider: str = "anthropic"
     anthropic_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
+    local_model: Optional[str] = None
+    local_url: Optional[str] = None
+    local_key: Optional[str] = None
     model: Optional[str] = "claude-3-haiku-20240307"
     temperature: float = 0.7
     max_tokens: int = 4096
