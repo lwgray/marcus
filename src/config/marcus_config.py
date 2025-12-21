@@ -159,6 +159,163 @@ class TransportSettings:
 
 
 @dataclass
+class TaskLeaseSettings:
+    """Task lease configuration for agent task management.
+
+    Parameters
+    ----------
+    default_hours : float
+        Default lease duration in hours
+    max_renewals : int
+        Maximum number of lease renewals
+    warning_hours : float
+        Hours before expiry to warn
+    grace_period_minutes : int
+        Grace period after expiry
+    renewal_decay_factor : float
+        Decay factor for renewal duration
+    min_lease_hours : float
+        Minimum lease duration
+    max_lease_hours : float
+        Maximum lease duration
+    stuck_threshold_renewals : int
+        Renewals before considering task stuck
+    enable_adaptive : bool
+        Enable adaptive lease durations
+    priority_multipliers : dict[str, float]
+        Priority-based duration multipliers
+    complexity_multipliers : dict[str, float]
+        Complexity-based duration multipliers
+    """
+
+    default_hours: float = 2.0
+    max_renewals: int = 10
+    warning_hours: float = 0.5
+    grace_period_minutes: int = 30
+    renewal_decay_factor: float = 0.9
+    min_lease_hours: float = 1.0
+    max_lease_hours: float = 24.0
+    stuck_threshold_renewals: int = 5
+    enable_adaptive: bool = True
+    priority_multipliers: dict[str, float] = field(
+        default_factory=lambda: {
+            "critical": 0.5,
+            "high": 0.75,
+            "medium": 1.0,
+            "low": 1.5,
+        }
+    )
+    complexity_multipliers: dict[str, float] = field(
+        default_factory=lambda: {
+            "simple": 0.5,
+            "complex": 1.5,
+            "research": 2.0,
+            "epic": 3.0,
+        }
+    )
+
+
+@dataclass
+class BoardHealthSettings:
+    """Board health monitoring configuration.
+
+    Parameters
+    ----------
+    stale_task_days : int
+        Days before a task is considered stale
+    max_tasks_per_agent : int
+        Maximum tasks per agent before warning
+    """
+
+    stale_task_days: int = 7
+    max_tasks_per_agent: int = 3
+
+
+@dataclass
+class EndpointSettings:
+    """Configuration for a single MCP endpoint.
+
+    Parameters
+    ----------
+    port : int
+        Port number for the endpoint
+    host : str
+        Host address for the endpoint
+    path : str
+        URL path for the endpoint
+    enabled : bool
+        Whether this endpoint is enabled
+    """
+
+    port: int
+    host: str = "127.0.0.1"
+    path: str = "/mcp"
+    enabled: bool = True
+
+
+@dataclass
+class MultiEndpointSettings:
+    """Multi-endpoint configuration for different client types.
+
+    Parameters
+    ----------
+    human : EndpointSettings
+        Endpoint for human clients
+    agent : EndpointSettings
+        Endpoint for agent clients
+    analytics : EndpointSettings
+        Endpoint for analytics clients
+    """
+
+    human: EndpointSettings = field(
+        default_factory=lambda: EndpointSettings(port=4298, host="127.0.0.1")
+    )
+    agent: EndpointSettings = field(
+        default_factory=lambda: EndpointSettings(port=4299, host="127.0.0.1")
+    )
+    analytics: EndpointSettings = field(
+        default_factory=lambda: EndpointSettings(port=4300, host="127.0.0.1")
+    )
+
+
+@dataclass
+class HybridInferenceSettings:
+    """Hybrid inference configuration for dependency detection.
+
+    Parameters
+    ----------
+    pattern_confidence_threshold : float
+        Confidence threshold for pattern-based inference
+    ai_confidence_threshold : float
+        Confidence threshold for AI-based inference
+    combined_confidence_boost : float
+        Boost when both methods agree
+    max_ai_pairs_per_batch : int
+        Maximum task pairs to send to AI per batch
+    min_shared_keywords : int
+        Minimum shared keywords for pattern match
+    enable_ai_inference : bool
+        Whether to enable AI inference
+    cache_ttl_hours : int
+        Cache TTL in hours
+    require_component_match : bool
+        Require component match for dependencies
+    max_dependency_chain_length : int
+        Maximum allowed dependency chain length
+    """
+
+    pattern_confidence_threshold: float = 0.8
+    ai_confidence_threshold: float = 0.7
+    combined_confidence_boost: float = 0.15
+    max_ai_pairs_per_batch: int = 20
+    min_shared_keywords: int = 2
+    enable_ai_inference: bool = True
+    cache_ttl_hours: int = 24
+    require_component_match: bool = True
+    max_dependency_chain_length: int = 10
+
+
+@dataclass
 class MarcusConfig:
     """Central configuration for Marcus.
 
@@ -177,6 +334,14 @@ class MarcusConfig:
         Feature flags
     transport : TransportSettings
         MCP transport settings
+    task_lease : TaskLeaseSettings
+        Task lease management settings
+    board_health : BoardHealthSettings
+        Board health monitoring settings
+    multi_endpoint : MultiEndpointSettings
+        Multi-endpoint configuration
+    hybrid_inference : HybridInferenceSettings
+        Hybrid inference settings
     auto_find_board : bool
         Automatically find board by name
     single_project_mode : bool
@@ -194,6 +359,12 @@ class MarcusConfig:
     kanban: KanbanSettings = field(default_factory=KanbanSettings)
     features: FeaturesSettings = field(default_factory=FeaturesSettings)
     transport: TransportSettings = field(default_factory=TransportSettings)
+    task_lease: TaskLeaseSettings = field(default_factory=TaskLeaseSettings)
+    board_health: BoardHealthSettings = field(default_factory=BoardHealthSettings)
+    multi_endpoint: MultiEndpointSettings = field(default_factory=MultiEndpointSettings)
+    hybrid_inference: HybridInferenceSettings = field(
+        default_factory=HybridInferenceSettings
+    )
 
     # Global settings
     auto_find_board: bool = False
@@ -333,6 +504,37 @@ class MarcusConfig:
             else:
                 # Old flat format
                 nested_configs["transport"] = TransportSettings(**transport_data)
+
+        if "task_lease" in data:
+            nested_configs["task_lease"] = TaskLeaseSettings(**data["task_lease"])
+
+        if "board_health" in data:
+            nested_configs["board_health"] = BoardHealthSettings(**data["board_health"])
+
+        if "multi_endpoint" in data:
+            multi_ep_data = data["multi_endpoint"]
+            nested_configs["multi_endpoint"] = MultiEndpointSettings(
+                human=(
+                    EndpointSettings(**multi_ep_data.get("human", {}))
+                    if "human" in multi_ep_data
+                    else EndpointSettings(port=4298)
+                ),
+                agent=(
+                    EndpointSettings(**multi_ep_data.get("agent", {}))
+                    if "agent" in multi_ep_data
+                    else EndpointSettings(port=4299)
+                ),
+                analytics=(
+                    EndpointSettings(**multi_ep_data.get("analytics", {}))
+                    if "analytics" in multi_ep_data
+                    else EndpointSettings(port=4300)
+                ),
+            )
+
+        if "hybrid_inference" in data:
+            nested_configs["hybrid_inference"] = HybridInferenceSettings(
+                **data["hybrid_inference"]
+            )
 
         # Extract top-level settings
         top_level = {
