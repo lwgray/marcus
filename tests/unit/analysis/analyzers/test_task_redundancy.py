@@ -69,9 +69,7 @@ class TestTaskRedundancyAnalysis:
                 "total_tasks": 10,
                 "quick_completions": 3,
             },
-            llm_interpretation=(
-                "Project shows signs of over-decomposition"
-            ),
+            llm_interpretation=("Project shows signs of over-decomposition"),
             recommendations=[
                 "Switch from enterprise to standard complexity",
                 "Combine related setup tasks",
@@ -252,9 +250,7 @@ class TestTaskRedundancyAnalyzer:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_analyze_project_with_redundancy(
-        self, mock_ai_engine, sample_tasks
-    ):
+    async def test_analyze_project_with_redundancy(self, mock_ai_engine, sample_tasks):
         """Test analyzing project that has redundant work."""
         # Arrange
         analyzer = TaskRedundancyAnalyzer(ai_engine=mock_ai_engine)
@@ -286,9 +282,7 @@ class TestTaskRedundancyAnalyzer:
     ):
         """Test analyzing project with no redundancy."""
         # Arrange
-        analyzer = TaskRedundancyAnalyzer(
-            ai_engine=mock_ai_engine_no_redundancy
-        )
+        analyzer = TaskRedundancyAnalyzer(ai_engine=mock_ai_engine_no_redundancy)
 
         # Act
         result = await analyzer.analyze_project(
@@ -334,9 +328,7 @@ class TestTaskRedundancyAnalyzer:
         analyzer = TaskRedundancyAnalyzer(quick_completion_threshold=30.0)
 
         # Act
-        quick_tasks = analyzer._find_quick_completions(
-            quick_completion_tasks
-        )
+        quick_tasks = analyzer._find_quick_completions(quick_completion_tasks)
 
         # Assert
         assert len(quick_tasks) == 2
@@ -344,17 +336,13 @@ class TestTaskRedundancyAnalyzer:
         assert all(t.actual_hours < 0.01 for t in quick_tasks)  # < 36s
 
     @pytest.mark.unit
-    def test_find_quick_completions_with_custom_threshold(
-        self, quick_completion_tasks
-    ):
+    def test_find_quick_completions_with_custom_threshold(self, quick_completion_tasks):
         """Test quick completion detection with custom threshold."""
         # Arrange - Set threshold to 10 seconds
         analyzer = TaskRedundancyAnalyzer(quick_completion_threshold=10.0)
 
         # Act
-        quick_tasks = analyzer._find_quick_completions(
-            quick_completion_tasks
-        )
+        quick_tasks = analyzer._find_quick_completions(quick_completion_tasks)
 
         # Assert - 15 second tasks should NOT be detected
         assert len(quick_tasks) == 0
@@ -386,7 +374,7 @@ class TestTaskRedundancyAnalyzer:
                 description=f"Description {i}",
                 status="completed",
                 started_at=base_time + timedelta(hours=i),
-                completed_at=base_time + timedelta(hours=i+1),
+                completed_at=base_time + timedelta(hours=i + 1),
                 estimated_hours=1.0,
                 actual_hours=1.0,
                 assigned_to="agent-1",
@@ -420,7 +408,7 @@ class TestTaskRedundancyAnalyzer:
                 description=f"Description {i}",
                 status="completed",
                 started_at=base_time + timedelta(hours=i),
-                completed_at=base_time + timedelta(hours=i+1),
+                completed_at=base_time + timedelta(hours=i + 1),
                 estimated_hours=1.0,
                 actual_hours=1.0,
                 assigned_to="agent-1",
@@ -454,7 +442,7 @@ class TestTaskRedundancyAnalyzer:
                 description=f"Description {i}",
                 status="completed",
                 started_at=base_time + timedelta(hours=i),
-                completed_at=base_time + timedelta(hours=i+1),
+                completed_at=base_time + timedelta(hours=i + 1),
                 estimated_hours=1.0,
                 actual_hours=1.0,
                 assigned_to="agent-1",
@@ -488,7 +476,7 @@ class TestTaskRedundancyAnalyzer:
                 description=f"Description {i}",
                 status="completed",
                 started_at=base_time + timedelta(hours=i),
-                completed_at=base_time + timedelta(hours=i+1),
+                completed_at=base_time + timedelta(hours=i + 1),
                 estimated_hours=1.0,
                 actual_hours=1.0,
                 assigned_to="agent-1",
@@ -530,7 +518,7 @@ class TestTaskRedundancyAnalyzer:
                 description=f"Description {i}",
                 status="completed",
                 started_at=base_time + timedelta(hours=i),
-                completed_at=base_time + timedelta(hours=i+1),
+                completed_at=base_time + timedelta(hours=i + 1),
                 estimated_hours=1.0,
                 actual_hours=1.0,
                 assigned_to="agent-1",
@@ -549,9 +537,7 @@ class TestTaskRedundancyAnalyzer:
     async def test_analyze_empty_project(self, mock_ai_engine_no_redundancy):
         """Test analyzing project with no tasks."""
         # Arrange
-        analyzer = TaskRedundancyAnalyzer(
-            ai_engine=mock_ai_engine_no_redundancy
-        )
+        analyzer = TaskRedundancyAnalyzer(ai_engine=mock_ai_engine_no_redundancy)
 
         # Act
         result = await analyzer.analyze_project(
@@ -566,9 +552,7 @@ class TestTaskRedundancyAnalyzer:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_raw_data_includes_task_info(
-        self, mock_ai_engine, sample_tasks
-    ):
+    async def test_raw_data_includes_task_info(self, mock_ai_engine, sample_tasks):
         """Test that raw_data includes task summaries."""
         # Arrange
         analyzer = TaskRedundancyAnalyzer(ai_engine=mock_ai_engine)
@@ -582,16 +566,12 @@ class TestTaskRedundancyAnalyzer:
         # Assert
         assert "task_summaries" in result.raw_data
         assert len(result.raw_data["task_summaries"]) == len(sample_tasks)
-        assert all(
-            "task_id" in task for task in result.raw_data["task_summaries"]
-        )
+        assert all("task_id" in task for task in result.raw_data["task_summaries"])
         assert all("name" in task for task in result.raw_data["task_summaries"])
 
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_llm_interpretation_present(
-        self, mock_ai_engine, sample_tasks
-    ):
+    async def test_llm_interpretation_present(self, mock_ai_engine, sample_tasks):
         """Test that LLM interpretation is included in results."""
         # Arrange
         analyzer = TaskRedundancyAnalyzer(ai_engine=mock_ai_engine)
