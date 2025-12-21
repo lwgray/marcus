@@ -49,17 +49,14 @@ class TestLLMProviderSelection:
 
         # Mock config to return local provider
         mock_config = Mock()
-        mock_config.get.side_effect = lambda key, default=None: {
-            "ai": {
-                "provider": "local",
-                "local_model": "test-model",
-                "local_url": "http://localhost:11434/v1",
-                "local_key": "none",
-            },
-            "ai.provider": "local",
-        }.get(key, default)
+        mock_config.ai.provider = "local"
+        mock_config.ai.local_model = "test-model"
+        mock_config.ai.local_url = "http://localhost:11434/v1"
+        mock_config.ai.local_key = "none"
+        mock_config.ai.anthropic_api_key = None
+        mock_config.ai.openai_api_key = None
 
-        with patch("src.config.config_loader.get_config", return_value=mock_config):
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
             llm = LLMAbstraction()
             llm._initialize_providers()
 
@@ -79,15 +76,13 @@ class TestLLMProviderSelection:
 
         # Mock config to return OpenAI provider with valid key
         mock_config = Mock()
-        mock_config.get.side_effect = lambda key, default=None: {
-            "ai": {
-                "provider": "openai",
-                "openai_api_key": "sk-fake-openai-key",
-            },
-            "ai.provider": "openai",
-        }.get(key, default)
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "sk-fake-openai-key"
+        mock_config.ai.model = "gpt-3.5-turbo"
+        mock_config.ai.anthropic_api_key = None
+        mock_config.ai.local_model = None
 
-        with patch("src.config.config_loader.get_config", return_value=mock_config):
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
             llm = LLMAbstraction()
             llm._initialize_providers()
 
@@ -107,12 +102,14 @@ class TestLLMProviderSelection:
 
         # Mock config with no provider specified
         mock_config = Mock()
-        mock_config.get.side_effect = lambda key, default=None: {
-            "ai": {},
-            "ai.provider": "",
-        }.get(key, default)
+        mock_config.ai.provider = ""
+        mock_config.ai.openai_api_key = "sk-fake-openai-key"
+        mock_config.ai.local_model = "test-model"
+        mock_config.ai.local_url = "http://localhost:11434/v1"
+        mock_config.ai.local_key = "none"
+        mock_config.ai.anthropic_api_key = None
 
-        with patch("src.config.config_loader.get_config", return_value=mock_config):
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
             llm = LLMAbstraction()
             llm._initialize_providers()
 
@@ -131,15 +128,13 @@ class TestLLMProviderSelection:
 
         # Mock config to return Anthropic provider
         mock_config = Mock()
-        mock_config.get.side_effect = lambda key, default=None: {
-            "ai": {
-                "provider": "anthropic",
-                "anthropic_api_key": "sk-ant-fake-key-for-testing",
-            },
-            "ai.provider": "anthropic",
-        }.get(key, default)
+        mock_config.ai.provider = "anthropic"
+        mock_config.ai.anthropic_api_key = "sk-ant-fake-key-for-testing"
+        mock_config.ai.model = "claude-3-haiku-20240307"
+        mock_config.ai.openai_api_key = None
+        mock_config.ai.local_model = None
 
-        with patch("src.config.config_loader.get_config", return_value=mock_config):
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
             llm = LLMAbstraction()
             llm._initialize_providers()
 
@@ -158,17 +153,14 @@ class TestLLMProviderSelection:
 
         # Mock config with different model
         mock_config = Mock()
-        mock_config.get.side_effect = lambda key, default=None: {
-            "ai": {
-                "provider": "local",
-                "local_model": "config-model",
-                "local_url": "http://localhost:11434/v1",
-                "local_key": "none",
-            },
-            "ai.provider": "local",
-        }.get(key, default)
+        mock_config.ai.provider = "local"
+        mock_config.ai.local_model = "config-model"
+        mock_config.ai.local_url = "http://localhost:11434/v1"
+        mock_config.ai.local_key = "none"
+        mock_config.ai.anthropic_api_key = None
+        mock_config.ai.openai_api_key = None
 
-        with patch("src.config.config_loader.get_config", return_value=mock_config):
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
             llm = LLMAbstraction()
             llm._initialize_providers()
 
