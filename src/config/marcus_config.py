@@ -143,6 +143,25 @@ class FeaturesSettings:
 
 
 @dataclass
+class MemorySettings:
+    """Memory system configuration.
+
+    Parameters
+    ----------
+    learning_rate : float
+        Learning rate for memory system (0.0-1.0)
+    min_samples : int
+        Minimum samples required for confidence threshold
+    use_v2_predictions : bool
+        Whether to use enhanced memory v2 predictions
+    """
+
+    learning_rate: float = 0.1
+    min_samples: int = 3
+    use_v2_predictions: bool = False
+
+
+@dataclass
 class TransportSettings:
     """MCP transport configuration.
 
@@ -341,6 +360,8 @@ class MarcusConfig:
         Kanban provider settings
     features : FeaturesSettings
         Feature flags
+    memory : MemorySettings
+        Memory system settings
     transport : TransportSettings
         MCP transport settings
     task_lease : TaskLeaseSettings
@@ -367,6 +388,7 @@ class MarcusConfig:
     ai: AISettings = field(default_factory=AISettings)
     kanban: KanbanSettings = field(default_factory=KanbanSettings)
     features: FeaturesSettings = field(default_factory=FeaturesSettings)
+    memory: MemorySettings = field(default_factory=MemorySettings)
     transport: TransportSettings = field(default_factory=TransportSettings)
     task_lease: TaskLeaseSettings = field(default_factory=TaskLeaseSettings)
     board_health: BoardHealthSettings = field(default_factory=BoardHealthSettings)
@@ -378,6 +400,7 @@ class MarcusConfig:
     # Global settings
     auto_find_board: bool = False
     single_project_mode: bool = True
+    default_project_name: Optional[str] = None
     log_level: str = "INFO"
     data_dir: str = "~/.marcus/data"
     cache_dir: str = "~/.marcus/cache"
@@ -493,6 +516,9 @@ class MarcusConfig:
 
         if "features" in data:
             nested_configs["features"] = FeaturesSettings(**data["features"])
+
+        if "memory" in data:
+            nested_configs["memory"] = MemorySettings(**data["memory"])
 
         if "transport" in data:
             transport_data = data["transport"]
