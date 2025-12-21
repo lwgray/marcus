@@ -452,22 +452,34 @@ marcus/
 
 ## 12-Month Development Roadmap
 
-### Month 1-2: MVP Foundation (Existing Plan)
-**Goal:** Validate core coordination works
+### Month 1-2: MVP Foundation (Updated 8-Week Plan)
+**Goal:** Validate core coordination works + deliver unified dashboard
+
+**Timeline**: Weeks 1-8 (see DEVELOPMENT_GUIDE.md for updated schedule)
 
 **Deliverables:**
-- ✅ Configuration system (Week 1)
-- ✅ Feature entity & infrastructure (Week 2)
-- ✅ Git worktree workspace isolation (Week 3)
-- ✅ Feature context aggregation (Week 4)
-- ✅ Telemetry & CATO API (Week 5)
-- ✅ REST APIs & terminal streaming (Week 5.5)
-- ✅ Production validations & Docker (Week 6)
+- ✅ Configuration system (Week 1 - polish only)
+- ✅ Telemetry & CATO API integration (Week 2)
+  - Includes REST APIs for Launch tab
+  - Includes terminal streaming for Terminals tab
+- ✅ Production validations & Docker (Week 3)
+- ✅ Unified Cato Dashboard (Weeks 4-7)
+  - Git submodule setup (Week 4)
+  - Unified installation (Week 5)
+  - Unified startup command (Week 6)
+  - 6-tab dashboard UI (Week 7)
+- ✅ Web Console (Week 8 - optional development tool)
+
+**What Was Removed from Original Plan:**
+- Feature entities (not needed for Cato dashboard)
+- Git worktrees (deferred - not needed for 5-agent MVP)
+- Feature context aggregation (deferred to Build Kits phase)
 
 **Success Metrics:**
 - 20+ projects completed successfully
 - 80%+ success rate
 - 5+ alpha users
+- Unified dashboard with all 6 tabs functional
 
 **Team:** 3-4 engineers
 
@@ -476,7 +488,9 @@ marcus/
 ### Month 3-4: Domain Expansion + Build Kits Launch
 **Goal:** Prove coordination works beyond code + seed Build Kits marketplace
 
-#### Week 9-10: Build Kit System Foundation
+**Note**: Build Kits may benefit from Feature entities and Context aggregation - can be implemented in this phase if needed.
+
+#### Week 9-10: Build Kit System Foundation (Formerly Week 9-10, now follows 8-week MVP)
 
 **Build Kit Package Format:**
 ```python
@@ -2348,23 +2362,24 @@ Total: $2.1M-2.6M for 12 months
 - Start Week 1 (Configuration system)
 
 **Next 4 Weeks:**
-- Complete Weeks 1-4 (MVP foundation)
+- Complete Weeks 1-3 (MVP core: Config, Telemetry, Validations)
 - Get to 10 projects completed
 - Start recruiting alpha users
 
-**Next 3 Months:**
-- Complete MVP (Weeks 1-6)
-- Launch Build Kits (Weeks 9-16)
-- Hit 100 users, 50 Build Kits
+**Next 2 Months (8 weeks):**
+- Complete MVP + Unified Dashboard (Weeks 1-8)
+- All 6 dashboard tabs functional (Launch, Terminals, Kanban, Live, Historical, Global)
+- Begin Build Kits development (Weeks 9-10 start)
+- Hit 100 users, 20+ projects
 
 **Next 6 Months:**
-- Launch marketplace (Weeks 17-40)
+- Launch Build Kits marketplace (Weeks 9-16 foundation)
 - Reach $50K GMV
-- 500 users, 50 agents
+- 500 users, 50 Build Kits
 
 **Next 12 Months:**
 - Federation (Weeks 25-32)
-- Scale (Weeks 41-48)
+- Scale to enterprise (Weeks 33-48)
 - 1,000 users, $100K GMV, enterprise pilots
 
 ### Key Success Factors

@@ -1,13 +1,34 @@
 # Marcus Unified Master Implementation Plan
 
-**Date**: 2025-01-11
-**Status**: Active Implementation
-**Total Duration**: 13-16 weeks
+**Date**: 2025-01-11 (Original), 2025-12-21 (Supersession Notice Added)
+**Status**: SUPERSEDED - See DEVELOPMENT_GUIDE.md for current 8-week plan
+**Total Duration**: 13-16 weeks (HISTORICAL - Current plan is 8 weeks)
 **Current Phase**: Phase 3 (In Progress)
 
 ---
 
-## Executive Summary
+## ⚠️ SUPERSESSION NOTICE
+
+**This document reflects the original 13-week implementation plan and is preserved for historical reference.**
+
+**Current Active Plan**: See [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) for the streamlined 8-week implementation schedule.
+
+**What Changed**:
+- **Original**: 13 weeks (Week 1 Config, Weeks 2-4 Features/Worktrees/Context, Week 5 Telemetry, Week 5.5 REST APIs, Week 6 Validations, Weeks 8-11 Cato, Weeks 12-13 Console)
+- **Current**: 8 weeks (Weeks 1-3 MVP, Weeks 4-7 Cato, Week 8 Console)
+
+**Removed Features**:
+- Feature entities (Week 2 original) - not needed for Cato dashboard
+- Git worktrees (Week 3 original) - deferred until needed
+- Feature context aggregation (Week 4 original) - deferred to Build Kits phase
+- Week 5.5 REST APIs - integrated into Week 2 Telemetry
+
+**Week Plan Files Referenced Below**:
+The week plan files mentioned in this document (WEEK_1_PLAN.md through WEEK_6_PLAN.md) reflect the original schedule. See DEVELOPMENT_GUIDE.md for current week assignments.
+
+---
+
+## Executive Summary (HISTORICAL)
 
 This document unifies all Marcus implementation plans into a single, coherent roadmap. It integrates:
 - **Phase 3**: Post-project analysis (historical UI in Cato)

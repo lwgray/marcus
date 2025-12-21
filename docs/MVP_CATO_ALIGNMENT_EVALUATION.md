@@ -1,28 +1,34 @@
 # MVP → CATO Bundling Alignment Evaluation
 
-**Date**: 2025-11-11
+**Date**: 2025-12-21 (Updated for 8-week schedule)
 **Evaluator**: Development team
-**Purpose**: Ensure MVP (Weeks 1-6) provides exactly what CATO Bundling (Weeks 8-11) needs
+**Purpose**: Ensure MVP (Weeks 1-3) provides exactly what CATO Bundling (Weeks 4-7) needs
 
 ---
 
 ## Executive Summary
 
-**Status**: ⚠️ **CRITICAL GAPS IDENTIFIED** - MVP requires additions to support CATO bundling
+**Status**: ✅ **ALIGNED** - New 8-week plan provides exactly what CATO bundling needs
 
 **Key Findings**:
-- ✅ **Live Tab**: Fully supported by MVP Week 5 CATO API endpoints
-- ⚠️ **Launch Tab**: Missing REST API endpoints (only MCP tools exist)
-- ❌ **Terminals Tab**: Terminal streaming API completely missing from MVP
+- ✅ **Live Tab**: Fully supported by Week 2 CATO API endpoints
+- ✅ **Launch Tab**: REST API endpoints included in Week 2
+- ✅ **Terminals Tab**: Terminal streaming integrated into Week 2
 - ⚠️ **Kanban Tab**: Depends on external Kanban provider (not Marcus responsibility)
 - ✅ **Historical Tab**: Supported by existing project history system
-- ⚠️ **Global Tab**: Can be built on existing APIs, but needs aggregation logic
+- ⚠️ **Global Tab**: Can be built on existing APIs, needs aggregation logic
 
-**Recommendation**: **Add Week 5.5 (2-3 days)** to implement missing REST APIs before Week 6
+**Recommendation**: The new 8-week plan is **ready for Cato bundling** - no gaps identified.
+
+**What Changed from Original Plan:**
+- Removed Feature entities (Week 2 original) - not needed for Cato dashboard
+- Removed Git worktrees (Week 3 original) - not needed for current use case
+- Removed Feature context (Week 4 original) - not needed for Cato dashboard
+- Integrated REST APIs and Terminal streaming into Week 2 Telemetry
 
 ---
 
-## What MVP (Weeks 1-6) Builds
+## What MVP (Weeks 1-3) Builds
 
 ### Week 1: Configuration System
 **Deliverables**:
@@ -30,98 +36,84 @@
 - Environment variable override support
 - Single source of truth for settings
 
+**Status**: ✅ ~80% complete (polish only)
+
 **Relevance to CATO**: ✅ Foundation for configuring dashboard port, features
 
 ---
 
-### Week 2: Feature Entity & Infrastructure
-**Deliverables**:
-- Project and Feature dataclasses
-- Feature-aware artifact and decision logging
-- Feature indexing system
-- WorkspaceManager skeleton
-
-**Relevance to CATO**: ✅ Data models that CATO dashboard will visualize
-
----
-
-### Week 3: Workspace Isolation (Git Worktrees)
-**Deliverables**:
-- GitOperations for safe git command execution
-- WorkspaceManager with worktree creation/cleanup
-- Workspace conflict prevention
-- Integration with task assignment
-
-**Relevance to CATO**: ✅ Enables parallel agent execution (visible in Live tab)
-
----
-
-### Week 4: Feature Context Aggregation
-**Deliverables**:
-- CommitTracker for git commit tracking by task_id and feature_id
-- Feature context aggregation (tasks + artifacts + decisions + commits)
-- Git commit tracking and annotation
-
-**Relevance to CATO**: ✅ Provides rich context for Historical tab retrospectives
-
----
-
-### Week 5: Telemetry & CATO API Integration ⭐
+### Week 2: Telemetry & CATO API Integration ⭐
 **Deliverables**:
 - User journey tracking (JourneyMilestone, AuditLogger)
 - Research event logging (ResearchEventLogger)
 - **CATO API Endpoints**:
-  - ✅ `GET /api/cato/snapshot` - System snapshot (agents, tasks, projects, features)
+  - ✅ `GET /api/cato/snapshot` - System snapshot
   - ✅ `GET /api/cato/events/stream` - Real-time SSE event stream
   - ✅ `GET /api/cato/metrics/journey` - User journey metrics
   - ✅ `GET /api/cato/metrics/research` - Research-grade MAS metrics
-  - ✅ `GET /api/cato/agent/{agent_id}` - Agent detail view
+- **Launch Tab REST APIs** (formerly Week 5.5):
+  - ✅ `POST /api/agents`, `GET /api/agents`
+  - ✅ `POST /api/projects`, `GET /api/projects`
+  - ✅ `POST /api/tasks`, `GET /api/tasks`
+- **Terminal Streaming** (formerly Week 5.5):
+  - ✅ `GET /api/agents/{agent_id}/terminal/stream` - SSE terminal output
+  - ✅ `POST /api/agents/{agent_id}/terminal/input` - Command injection
+  - ✅ TerminalManager with PTY sessions
 
-**Relevance to CATO**: ✅ **CRITICAL** - Powers Live tab and Historical tab
+**Relevance to CATO**: ✅ **CRITICAL** - Powers Live, Launch, and Terminals tabs
 
 ---
 
-### Week 6: Production Readiness
+### Week 3: Production Validations & Docker
 **Deliverables**:
 - Validation framework (TaskValidator, ProjectValidator)
 - Core validations (#118-125)
 - Docker multi-stage builds
 - Comprehensive documentation
 
+**Status**: ✅ ~70% complete (fill gaps)
+
 **Relevance to CATO**: ✅ Production deployment infrastructure
 
 ---
 
-## What CATO Bundling (Weeks 8-11) Needs
+## What CATO Bundling (Weeks 4-7) Needs
 
-### Week 8: Git Submodule Setup
+### Week 4: Git Submodule Setup
+(Now Week 4 in new schedule)
+
 **Requirements**:
 - Marcus must be functional with working MCP server
 - CATO API endpoints must exist for integration testing
 
-**MVP Provides**: ✅ Yes (if missing APIs are added in Week 5.5)
+**MVP Provides**: ✅ Yes (Week 2 includes all APIs)
 
 ---
 
-### Week 9: Unified Installation
+### Week 5: Unified Installation
+(Now Week 5 in new schedule)
+
 **Requirements**:
 - Marcus installable via `pip install marcus`
 - All dependencies manageable via Python packaging
 
-**MVP Provides**: ✅ Yes (Week 1 configuration + Week 6 Docker)
+**MVP Provides**: ✅ Yes (Week 1 configuration + Week 3 Docker)
 
 ---
 
-### Week 10: Unified Startup
+### Week 6: Unified Startup
+(Now Week 6 in new schedule)
+
 **Requirements**:
 - Marcus MCP Server launchable on port 4298
 - Cato Backend can connect to Marcus APIs
 
-**MVP Provides**: ✅ Yes (Marcus MCP server exists, API endpoints in Week 5)
+**MVP Provides**: ✅ Yes (Marcus MCP server exists, API endpoints in Week 2)
 
 ---
 
-### Week 11: Unified Dashboard UI
+### Week 7: Unified Dashboard UI
+(Now Week 7 in new schedule)
 **Requirements by Tab**:
 
 #### Tab 1: 🚀 Launch
@@ -133,21 +125,21 @@
 - `POST /api/tasks` - Create task
 - `GET /api/tasks` - List tasks
 
-**MVP Provides**: ❌ **MISSING** - Only MCP tools exist (`register_agent`, `create_project`), no REST endpoints
+**MVP Provides**: ✅ **PROVIDED** - Week 2 includes all REST endpoints
 
-**Impact**: **CRITICAL** - Launch tab cannot function without these APIs
+**Impact**: **NONE** - Fully supported
 
 ---
 
 #### Tab 2: 💻 Terminals
 **Needs**:
-- `GET /api/agents/{agent_id}/terminal/stream` - WebSocket or SSE stream of agent terminal output
+- `GET /api/agents/{agent_id}/terminal/stream` - SSE stream of agent terminal output
 - Terminal output capture system
 - PTY (pseudo-terminal) management
 
-**MVP Provides**: ❌ **COMPLETELY MISSING** - No terminal streaming in MVP
+**MVP Provides**: ✅ **PROVIDED** - Week 2 includes TerminalManager + streaming API
 
-**Impact**: **CRITICAL** - Terminals tab cannot function
+**Impact**: **NONE** - Fully supported
 
 ---
 
@@ -157,7 +149,7 @@
 
 **MVP Provides**: ⚠️ **PARTIAL** - Marcus has Kanban integration via MCP tools, but no REST API proxy
 
-**Impact**: **MEDIUM** - Can embed Planka iframe, but ideal UX needs REST proxy
+**Impact**: **MEDIUM** - Can embed Planka iframe (sufficient for v1.0), REST proxy optional for Week 7
 
 ---
 
@@ -165,9 +157,9 @@
 **Needs**:
 - `GET /api/cato/snapshot` - System state snapshot
 - `GET /api/cato/events/stream` - Real-time event stream
-- Agent, task, project, feature serialization
+- Agent, task, project serialization
 
-**MVP Provides**: ✅ **FULLY PROVIDED** by Week 5
+**MVP Provides**: ✅ **FULLY PROVIDED** by Week 2
 
 **Impact**: **NONE** - Live tab will work perfectly
 
@@ -179,7 +171,7 @@
 - `GET /api/cato/metrics/journey` - Journey metrics
 - Access to project history files (`~/.marcus/history/{project_id}/`)
 
-**MVP Provides**: ✅ **FULLY PROVIDED** by Week 5 + existing history system
+**MVP Provides**: ✅ **FULLY PROVIDED** by Week 2 + existing history system
 
 **Impact**: **NONE** - Historical tab will work
 
@@ -192,31 +184,43 @@
 
 **MVP Provides**: ⚠️ **PARTIAL** - Can aggregate from `/api/cato/snapshot` calls, but needs dedicated endpoint
 
-**Impact**: **LOW** - Can be implemented in Week 11 on top of existing APIs
+**Impact**: **LOW** - Can be implemented in Week 7 on top of existing APIs
 
 ---
 
 ## Gap Analysis Summary
 
-### CRITICAL Gaps (Must Fix Before Week 8)
+### CRITICAL Gaps
+**NONE** - All critical dependencies provided by new Week 2
+
+### Medium Priority Gaps (Can Address in Week 7)
 
 | Gap | Location | Impact | Recommendation |
 |-----|----------|--------|----------------|
-| **REST API for Launch Tab** | MVP Week 5 | Launch tab non-functional | Add Week 5.5 (2 days) |
-| **Terminal Streaming API** | MVP Week 5 | Terminals tab non-functional | Add Week 5.5 (2 days) |
-
-### Medium Priority Gaps (Can Address in Week 11)
-
-| Gap | Location | Impact | Recommendation |
-|-----|----------|--------|----------------|
-| **Kanban REST proxy** | Week 11 | Sub-optimal Kanban UX | Implement during Week 11 Tab 3 work |
-| **Global metrics endpoint** | Week 11 | Global tab less efficient | Implement during Week 11 Tab 6 work |
+| **Kanban REST proxy** | Week 7 | Sub-optimal Kanban UX | Implement during Week 7 Tab 3 work |
+| **Global metrics endpoint** | Week 7 | Global tab less efficient | Implement during Week 7 Tab 6 work |
 
 ---
 
-## Detailed Gap Specifications
+## What Was Removed from Original Plan
 
-### Gap 1: Launch Tab REST APIs ❌ CRITICAL
+### Feature Entity & Infrastructure (Original Week 2)
+**Why Removed**: Cato dashboard works with project → task → subtask hierarchy. It doesn't need or expect feature entities. The Feature dataclass would add complexity without providing value for the MVP dashboard.
+
+### Git Worktree Workspace Isolation (Original Week 3)
+**Why Removed**: Current system with 5 agents working on main branch works fine without conflicts. Git worktrees add complexity that isn't needed yet. Can be added later if scaling to 50+ agents.
+
+### Feature Context Aggregation (Original Week 4)
+**Why Removed**: Depends on Feature entities which were removed. Context aggregation for Build Kits can be implemented later when Build Kits development begins (Months 3-4).
+
+### Week 5.5 REST API Completion (Original insertion)
+**Why Removed**: Integrated into Week 2. REST APIs and Terminal streaming are now part of the main Telemetry week instead of a separate week.
+
+**Result**: 13-week plan → 8-week plan with same Cato bundling outcome
+
+---
+
+## Original Gap 1: Launch Tab REST APIs (NOW RESOLVED)
 
 **What's Missing**:
 ```python
@@ -459,7 +463,112 @@ async def get_global_metrics() -> dict:
 - Global tab is a new feature
 - Can be built on top of existing `/api/cato/snapshot` by calling it for each project
 
-**Solution**: Implement during Week 11 Tab 6 work. Not a blocker.
+**Solution**: Implement during Week 7 Tab 6 work. Not a blocker (optional).
+
+---
+
+## Recommendations
+
+### No Action Required
+
+The new 8-week plan provides **100% of critical dependencies** for Cato bundling.
+
+### Updated MVP Timeline
+
+**New 8-Week Structure**:
+```
+Week 1: Configuration (polish existing)
+Week 2: Telemetry & CATO API (includes REST APIs + Terminal streaming)
+Week 3: Production Validations & Docker
+---
+Week 4: Git Submodule Setup (READY - no blockers)
+Week 5: Unified Installation
+Week 6: Unified Startup
+Week 7: Unified Dashboard UI
+Week 8: Web Console (optional)
+```
+
+**What This Achieves**:
+- ✅ All 6 dashboard tabs supported
+- ✅ Launch tab: REST APIs in Week 2
+- ✅ Terminals tab: Terminal streaming in Week 2
+- ✅ Live tab: Event streaming in Week 2
+- ✅ Historical tab: Existing history system
+- ✅ Kanban tab: Iframe fallback (REST proxy optional)
+- ⚠️ Global tab: Can aggregate from existing APIs
+
+---
+
+## Alignment Verification Checklist
+
+Use this checklist to verify alignment before starting Week 4 (Git Submodule):
+
+### Launch Tab Requirements (Week 2 Deliverables)
+- [ ] `POST /api/agents` endpoint exists and tested
+- [ ] `GET /api/agents` endpoint exists and tested
+- [ ] `POST /api/projects` endpoint exists and tested
+- [ ] `GET /api/projects` endpoint exists and tested
+- [ ] `POST /api/tasks` endpoint exists and tested
+- [ ] `GET /api/tasks` endpoint exists and tested
+
+### Terminals Tab Requirements (Week 2 Deliverables)
+- [ ] `GET /api/agents/{agent_id}/terminal/stream` endpoint exists
+- [ ] `POST /api/agents/{agent_id}/terminal/input` endpoint exists
+- [ ] TerminalManager captures agent output
+- [ ] Streaming works for multiple agents
+- [ ] Command injection tested
+
+### Live Tab Requirements (Week 2 Deliverables)
+- [ ] `GET /api/cato/snapshot` exists
+- [ ] `GET /api/cato/events/stream` exists
+
+### Historical Tab Requirements (Already Exists)
+- [x] `GET /api/cato/metrics/journey` exists
+- [x] `GET /api/cato/metrics/research` exists
+- [x] Project history system exists
+
+### Kanban Tab Requirements (Deferred to Week 7)
+- [ ] Kanban REST proxy (implement in Week 7, or use iframe fallback)
+
+### Global Tab Requirements (Deferred to Week 7)
+- [ ] `/api/cato/global/metrics` (implement in Week 7 on top of existing APIs)
+
+---
+
+## Conclusion
+
+**Final Verdict**: ✅ **MVP IS ALIGNED WITH CATO BUNDLING**
+
+**Summary**:
+- New 8-week plan provides **100% of critical dependencies**
+- **Medium gaps**: Kanban proxy and Global metrics can be deferred to Week 7
+- **Removed complexity**: Features, Worktrees, Context not needed for Cato dashboard
+
+**Timeline Comparison**:
+- **Original**: 13 weeks (6 weeks MVP + Week 5.5 + 4 weeks Cato + 2 weeks Console)
+- **New**: 8 weeks (3 weeks MVP + 4 weeks Cato + 1 week Console)
+- **Savings**: 5 weeks removed by eliminating unused features
+
+**Action Items**:
+1. ✅ Complete Week 1 polish (1-2 days)
+2. ✅ Execute Week 2 Telemetry & APIs (5 days)
+3. ✅ Execute Week 3 Validations & Docker (5 days)
+4. ✅ Proceed to Week 4 Git Submodule (no blockers)
+
+**Once Week 3 is complete**, MVP will provide **100% of what Cato bundling needs**, with remaining items (Kanban proxy, Global metrics) implementable during Week 7 tab-specific work.
+
+---
+
+**Status**: ✅ **READY TO EXECUTE** - No planning gaps identified
+
+**Last Updated**: 2025-12-21 (Revised for 8-week schedule)
+
+---
+---
+
+# HISTORICAL ANALYSIS (Original 13-Week Plan)
+
+The sections below document the original gap analysis from the 13-week plan. These are kept for historical reference only. The current 8-week plan resolves all identified gaps.
 
 ---
 

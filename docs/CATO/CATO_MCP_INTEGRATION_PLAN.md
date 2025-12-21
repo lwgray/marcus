@@ -1,8 +1,9 @@
 # Cato Bundled Architecture Implementation Plan
 
-**Date:** 2025-11-11 (Updated)
+**Date:** 2025-11-11 (Original), 2025-12-21 (Updated for 8-week schedule)
 **Goal:** Bundle Cato dashboard with Marcus for unified user experience
-**Timeline:** Covered by Weeks 8-11 in UNIFIED_MASTER_IMPLEMENTATION_PLAN.md
+**Timeline:** Covered by Weeks 4-7 in current 8-week implementation plan (see DEVELOPMENT_GUIDE.md)
+**Note:** This plan was originally Weeks 8-11 in the 13-week schedule
 **For:** Junior engineers and contributors
 
 ---
@@ -131,12 +132,12 @@ Marcus CLI starts:
 
 ### Alignment with UNIFIED_MASTER_IMPLEMENTATION_PLAN.md
 
-This plan implements **Weeks 8-11** from the Unified Master Plan:
+This plan implements **Weeks 4-7** from the current 8-week implementation plan (originally Weeks 8-11 in the 13-week plan):
 
-- **Week 8**: Git submodule setup, repository integration
-- **Week 9**: Unified installation (`pip install marcus` bundles everything)
-- **Week 10**: Unified startup (`marcus start` launches everything)
-- **Week 11**: Unified dashboard UI (6 tabs: Launch, Terminals, Kanban, Live, Historical, Global)
+- **Week 4**: Git submodule setup, repository integration (originally Week 8)
+- **Week 5**: Unified installation (`pip install marcus` bundles everything) (originally Week 9)
+- **Week 6**: Unified startup (`marcus start` launches everything) (originally Week 10)
+- **Week 7**: Unified dashboard UI (6 tabs: Launch, Terminals, Kanban, Live, Historical, Global) (originally Week 11)
 
 ### Key Principles
 
@@ -149,9 +150,9 @@ This plan implements **Weeks 8-11** from the Unified Master Plan:
 
 ## Detailed Implementation Steps
 
-### Week 8: Git Submodule Setup
+### Week 4: Git Submodule Setup (Originally Week 8)
 
-**Reference**: [Week 8 Plan in Unified Master Plan](../UNIFIED_MASTER_IMPLEMENTATION_PLAN.md#week-8-git-submodule-setup)
+**Reference**: See DEVELOPMENT_GUIDE.md Week 4 section for current plan
 
 #### Day 1-2: Initialize Submodule
 
@@ -249,9 +250,9 @@ marcus --version
 
 ---
 
-### Week 9: Unified Installation
+### Week 5: Unified Installation (Originally Week 9)
 
-**Reference**: [Week 9 Plan in Unified Master Plan](../UNIFIED_MASTER_IMPLEMENTATION_PLAN.md#week-9-unified-installation)
+**Reference**: See DEVELOPMENT_GUIDE.md Week 5 section for current plan
 
 #### Consolidate Dependencies
 
@@ -322,9 +323,9 @@ ls src/dashboard/frontend/dist/index.html || echo "Frontend build failed!"
 
 ---
 
-### Week 10: Unified Startup
+### Week 6: Unified Startup (Originally Week 10)
 
-**Reference**: [Week 10 Plan in Unified Master Plan](../UNIFIED_MASTER_IMPLEMENTATION_PLAN.md#week-10-unified-startup-command)
+**Reference**: See DEVELOPMENT_GUIDE.md Week 6 section for current plan
 
 #### Implement `marcus start` Command
 
@@ -501,9 +502,9 @@ marcus start
 
 ---
 
-### Week 11: Unified Dashboard UI
+### Week 7: Unified Dashboard UI (Originally Week 11)
 
-**Reference**: [Week 11 Plan in Unified Master Plan](../UNIFIED_MASTER_IMPLEMENTATION_PLAN.md#week-11-unified-dashboard-ui)
+**Reference**: See DEVELOPMENT_GUIDE.md Week 7 section for current plan
 
 #### Design: 6-Tab Unified Dashboard
 
@@ -834,9 +835,9 @@ Script that runs automatically after `pip install` completes. Used to build Cato
 4. ✅ **Independent Development**: Cato remains a separate repository for independent releases
 5. ✅ **Simplified UX**: Users don't need to know Marcus and Cato are separate projects
 
-**Timeline**: Covered by **Weeks 8-11** in [UNIFIED_MASTER_IMPLEMENTATION_PLAN.md](../UNIFIED_MASTER_IMPLEMENTATION_PLAN.md)
+**Timeline**: Covered by **Weeks 4-7** in current 8-week implementation plan (see DEVELOPMENT_GUIDE.md)
 
-**Status**: ⏳ Not yet started (waiting for Weeks 1-7 to complete)
+**Status**: ⏳ Not yet started (waiting for Weeks 1-3 MVP to complete)
 
 ---
 

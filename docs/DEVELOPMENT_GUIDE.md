@@ -1,11 +1,11 @@
 # Marcus Development Guide
 
-**Version**: 1.0
-**Last Updated**: 2025-11-11
+**Version**: 2.0
+**Last Updated**: 2025-12-21
 **Audience**: Junior engineers and new contributors
 **Purpose**: Step-by-step guide for building Marcus from foundation to production
 
-**⚠️ CRITICAL**: Read [MVP_CATO_ALIGNMENT_EVALUATION.md](MVP_CATO_ALIGNMENT_EVALUATION.md) first to understand MVP→CATO alignment and required Week 5.5 addition.
+**Updated Schedule**: This guide now follows an 8-week implementation plan focused on telemetry and unified dashboard delivery.
 
 ---
 
@@ -16,10 +16,10 @@
 3. [Architecture Overview](#architecture-overview)
 4. [Prerequisites](#prerequisites)
 5. [Development Roadmap](#development-roadmap)
-6. [Phase 1: MVP Foundation (Weeks 1-6 + Week 5.5)](#phase-1-mvp-foundation-weeks-1-6--week-55)
-7. [Phase 2: Cato Bundling (Weeks 8-11)](#phase-2-cato-bundling-weeks-8-11)
-8. [Phase 3: Web Console (Development Tool)](#phase-3-web-console-development-tool)
-9. [Phase 4: Advanced Features (Weeks 12+)](#phase-4-advanced-features-weeks-12)
+6. [Phase 1: MVP Foundation (Weeks 1-3)](#phase-1-mvp-foundation-weeks-1-3)
+7. [Phase 2: Unified Dashboard (Weeks 4-7)](#phase-2-unified-dashboard-weeks-4-7)
+8. [Phase 3: Web Console (Week 8 - Optional)](#phase-3-web-console-week-8---optional)
+9. [Phase 4: Advanced Features](#phase-4-advanced-features)
 10. [Documentation Index](#documentation-index)
 11. [Verification & Testing](#verification--testing)
 12. [Getting Help](#getting-help)
@@ -40,9 +40,9 @@ When building software with AI agents:
 
 Marcus provides:
 ✅ Task orchestration with dependency management
-✅ Workspace isolation (git worktrees for parallel work)
-✅ Feature context aggregation (automatic context from commits/artifacts/decisions)
 ✅ Real-time visualization (unified dashboard)
+✅ Telemetry and event broadcasting
+✅ Production-ready validations
 ✅ BYOA architecture (Bring Your Own Agent - agents voluntarily pull work)
 
 ---
@@ -53,24 +53,22 @@ By following this guide, you will build a complete multi-agent orchestration sys
 
 ```
 End State: Marcus v1.0
-    ├── Core Orchestration (MVP - Weeks 1-6)
+    ├── Core Orchestration (MVP - Weeks 1-3)
     │   ├── Configuration system
-    │   ├── Workspace isolation (git worktrees)
-    │   ├── Feature context aggregation
     │   ├── Telemetry & event broadcasting
     │   └── Production validations
     │
-    ├── Unified Dashboard (Weeks 8-11)
+    ├── Unified Dashboard (Weeks 4-7)
     │   ├── Git submodule integration (Cato)
     │   ├── Single installation (pip install marcus)
     │   ├── Single startup (marcus start)
     │   └── 6-tab dashboard (Launch, Terminals, Kanban, Live, Historical, Global)
     │
     └── Development Tools (Optional)
-        └── Web Console (experiment dashboard with terminal monitoring)
+        └── Web Console (Week 8 - experiment dashboard with terminal monitoring)
 ```
 
-**Timeline**: 11 weeks (MVP) + 2 weeks (Web Console) = **13 weeks total**
+**Timeline**: 3 weeks (MVP) + 4 weeks (Dashboard) + 1 week (Web Console) = **8 weeks total**
 
 ---
 
@@ -117,26 +115,21 @@ End State: Marcus v1.0
 ### Key Components
 
 1. **Marcus MCP Server** - Core orchestration engine
-   - Manages tasks, projects, features
+   - Manages tasks and projects
    - Provides MCP tools for agents
-   - Tracks history and context
+   - Tracks history and telemetry
 
-2. **Workspace Manager** - Git worktree isolation
-   - Creates isolated workspaces for parallel work
-   - Manages feature branches
-   - Prevents conflicts
+2. **Telemetry System** - Event tracking and broadcasting
+   - User journey tracking
+   - Research event logging
+   - Real-time event streaming (SSE)
 
-3. **Feature Context Builder** - Automatic context aggregation
-   - Tracks commits by feature/task
-   - Aggregates artifacts and decisions
-   - Provides rich context for agents
-
-4. **Cato Dashboard** - Real-time visualization
+3. **Cato Dashboard** - Real-time visualization
    - Live network graph (agents, tasks, dependencies)
    - Historical analysis
    - Global insights
 
-5. **Web Console** (Optional) - Development tool
+4. **Web Console** (Optional) - Development tool
    - Multi-agent terminal monitoring
    - Health checks and auto-recovery
    - Experiment dashboard
@@ -209,33 +202,27 @@ pip install -e .
 ### Overview
 
 ```
-Weeks 1-6:   MVP Foundation (Core Marcus features)
-Weeks 8-11:  Cato Bundling (Unified dashboard)
-Weeks 12-13: Web Console (Development tool - OPTIONAL)
-Weeks 14+:   Advanced Features (Progressive feedback, UX improvements)
-
-Note: Reserve buffer time after Week 6 for integration testing before Week 8
+Weeks 1-3:  MVP Foundation (Core Marcus features)
+Weeks 4-7:  Unified Dashboard (Cato bundling)
+Week 8:     Web Console (Development tool - OPTIONAL)
 ```
 
 ### Timeline
 
 | Phase | Duration | What You Build | Status |
 |-------|----------|----------------|--------|
-| **Week 1** | 5 days | Configuration system | ⏳ Not started |
-| **Week 2** | 5 days | Feature entity & infrastructure | ⏳ Not started |
-| **Week 3** | 5 days | Git worktree workspace isolation | ⏳ Not started |
-| **Week 4** | 5 days | Feature context aggregation | ⏳ Not started |
-| **Week 5** | 5 days | Telemetry & CATO API integration | ⏳ Not started |
-| **Week 6** | 5 days | Production validations & Docker | ⏳ Not started |
-| **Week 8** | 5 days | Git submodule setup | ⏳ Not started |
-| **Week 9** | 5 days | Unified installation | ⏳ Not started |
-| **Week 10** | 5 days | Unified startup command | ⏳ Not started |
-| **Week 11** | 5 days | Unified dashboard UI | ⏳ Not started |
-| **Week 12-13** | 10 days | Web Console (OPTIONAL) | ⏳ Not started |
+| **Week 1** | 1-2 days | Configuration system polish | ⏳ Mostly complete |
+| **Week 2** | 5 days | Telemetry & CATO API integration | ⏳ Not started |
+| **Week 3** | 5 days | Production validations & Docker | ⏳ Not started |
+| **Week 4** | 5 days | Git submodule setup | ⏳ Not started |
+| **Week 5** | 5 days | Unified installation | ⏳ Not started |
+| **Week 6** | 5 days | Unified startup command | ⏳ Not started |
+| **Week 7** | 5 days | Unified dashboard UI | ⏳ Not started |
+| **Week 8** | 5-10 days | Web Console (OPTIONAL) | ⏳ Not started |
 
 ---
 
-## Phase 1: MVP Foundation (Weeks 1-6 + Week 5.5)
+## Phase 1: MVP Foundation (Weeks 1-3)
 
 ### Overview
 
@@ -243,29 +230,19 @@ Note: Reserve buffer time after Week 6 for integration testing before Week 8
 
 **What You'll Build**:
 - Type-safe configuration system
-- Feature entity for grouping tasks
-- Git worktree-based workspace isolation
-- Automatic feature context building
 - Telemetry and event broadcasting
-- REST APIs for Launch Tab (agents, projects, tasks)
-- Terminal streaming infrastructure (PTY + SSE)
 - Production validations
 - Pip packaging
 
 **Status**: ⏳ **NOT STARTED** (ready to begin)
 
-**⚠️ CRITICAL UPDATE REQUIRED**: After completing this evaluation, **Week 5.5 (REST API Completion)** must be added between Week 5 and Week 6. See [MVP_CATO_ALIGNMENT_EVALUATION.md](MVP_CATO_ALIGNMENT_EVALUATION.md) for details.
-
-**Missing Components Identified**:
-- Launch tab REST APIs (`/api/agents`, `/api/projects`, `/api/tasks`)
-- Terminal streaming API (`/api/agents/{agent_id}/terminal/stream`)
-- These are CRITICAL for CATO bundling (Weeks 8-11) to function
-
-**Recommendation**: Plan for **Week 5.5 (2-3 days)** before starting Week 6.
-
 ---
 
 ### Step 1: Week 1 - Configuration System
+
+**Status Update**: Configuration system is ~80% complete. Existing `src/config/settings.py` provides working config management. Week 1 focus should be on polish and type-safe dataclass conversion if desired.
+
+**Recommended Effort**: 1-2 days (reduced from 5 days)
 
 #### What You're Building
 
@@ -330,207 +307,21 @@ pytest tests/unit/config/ -v --cov=src.config
 
 ---
 
-### Step 2: Week 2 - Feature Entity & Infrastructure
+### Step 2: Week 2 - Telemetry & CATO API Integration
 
 #### What You're Building
 
-Add a "Feature" entity that groups related tasks together, and extend artifact/decision logging to track by feature.
-
-**Why This Matters**: Projects are too large to visualize as one unit. Features (like "user authentication" or "payment processing") are the right level of granularity for:
-- Context building (what's the state of this feature?)
-- Workspace isolation (each feature gets its own worktree)
-- Progress tracking (how's this feature coming along?)
-
-#### Documentation
-
-📄 **Plan**: `docs/implementation/WEEK_2_PLAN.md`
-
-#### Key Deliverables
-
-```python
-# src/core/models.py - Feature dataclass
-@dataclass
-class Feature:
-    feature_id: str
-    feature_name: str
-    project_id: str
-    design_task_id: Optional[str]
-    feature_branch: str
-    status: str
-    created_at: datetime
-    task_ids: list[str]
-```
-
-- Feature entity dataclass
-- Extended artifact logging with `feature_id`
-- Extended decision logging with `feature_id`
-- Feature indexing system
-- WorkspaceManager skeleton
-
-#### What to Do
-
-```bash
-# 1. Read the week plan
-cat docs/implementation/WEEK_2_PLAN.md
-
-# 2. Follow day-by-day instructions:
-#    Monday: Add Project and Feature entities
-#    Tuesday: Extend artifact and decision logging with feature_id
-#    Wednesday: Artifact and decision indexing by feature
-#    Thursday: Create WorkspaceManager skeleton
-#    Friday: Week 2 integration & testing
-
-# 3. Verify completion
-python -c "from src.core.models import Feature; print('Week 2: ✓')"
-pytest tests/unit/core/ -v
-```
-
-#### Success Criteria
-
-✅ `Feature` dataclass exists in `src/core/models.py`
-✅ Artifact logging includes `feature_id` parameter
-✅ Decision logging includes `feature_id` parameter
-✅ Feature indexing system works
-✅ `WorkspaceManager` skeleton created
-✅ All tests pass: `pytest tests/unit/core/ -v`
-
----
-
-### Step 3: Week 3 - Git Worktree Workspace Isolation
-
-#### What You're Building
-
-Full implementation of WorkspaceManager using git worktrees for parallel task execution.
-
-**Why This Matters**: Multiple agents working on the same codebase will conflict (file locks, merge conflicts). Git worktrees solve this by:
-- Creating isolated working directories for each task
-- Sharing the same .git directory (efficient)
-- Allowing parallel work without conflicts
-- Automatic cleanup after task completion
-
-#### Documentation
-
-📄 **Plan**: `docs/implementation/WEEK_3_PLAN.md`
-
-#### Key Deliverables
-
-```python
-# src/workspace/manager.py - Full WorkspaceManager
-class WorkspaceManager:
-    async def create_workspace(self, task: Task, feature_branch: str) -> WorkspaceInfo:
-        """Create isolated workspace using git worktrees."""
-        # Creates git worktree at .marcus/worktrees/{task_id}/
-```
-
-- GitOperations class for feature branch management
-- Full WorkspaceManager with worktree creation/cleanup
-- Integration with `request_next_task` MCP tool
-- Automatic workspace cleanup on task completion
-
-#### What to Do
-
-```bash
-# 1. Read the week plan
-cat docs/implementation/WEEK_3_PLAN.md
-
-# 2. Follow day-by-day instructions:
-#    Monday: Implement git worktree creation
-#    Tuesday: Implement workspace cleanup
-#    Wednesday: Integrate with task assignment
-#    Thursday: Add workspace conflict detection
-#    Friday: Week 3 testing & documentation
-
-# 3. Verify completion
-python -c "from src.workspace.manager import WorkspaceManager; print('Week 3: ✓')"
-pytest tests/unit/workspace/ -v
-```
-
-#### Success Criteria
-
-✅ `WorkspaceManager.create_workspace()` creates git worktrees
-✅ `WorkspaceManager.cleanup_workspace()` removes worktrees
-✅ Integration with `request_next_task` works
-✅ Conflict detection prevents double-assignment
-✅ All tests pass: `pytest tests/unit/workspace/ -v`
-
----
-
-### Step 4: Week 4 - Feature Context Aggregation
-
-#### What You're Building
-
-Automatic context building that aggregates everything about a feature: commits, artifacts, decisions, and task history.
-
-**Why This Matters**: Agents need rich context to work effectively. When an agent picks up a task, they should know:
-- What's been done so far?
-- What decisions were made?
-- What files were changed?
-- What artifacts exist?
-
-The FeatureContextBuilder automatically aggregates this from git commits, artifact logs, and decision logs.
-
-#### Documentation
-
-📄 **Plan**: `docs/implementation/WEEK_4_PLAN.md`
-
-#### Key Deliverables
-
-```python
-# src/context/feature_builder.py - FeatureContextBuilder
-class FeatureContextBuilder:
-    def build_feature_context(self, feature_id: str, ...) -> FeatureContext:
-        """Build complete context for a feature from artifacts, decisions, commits."""
-```
-
-- `CommitTracker` for tracking commits by feature/task
-- `FeatureContextBuilder` for aggregating feature data
-- `get_feature_context` MCP tool
-- `get_feature_status` MCP tool
-- Integration with task assignment (automatic context injection)
-
-#### What to Do
-
-```bash
-# 1. Read the week plan
-cat docs/implementation/WEEK_4_PLAN.md
-
-# 2. Follow day-by-day instructions:
-#    Monday: Create FeatureContextBuilder
-#    Tuesday: Implement git commit tracking
-#    Wednesday: Implement context injection
-#    Thursday: Add get_feature_context MCP tool
-#    Friday: Add get_feature_status tool & testing
-
-# 3. Verify completion
-python -c "from src.context.feature_builder import FeatureContextBuilder; print('Week 4: ✓')"
-pytest tests/unit/context/ -v
-```
-
-#### Success Criteria
-
-✅ `CommitTracker` tracks commits by feature/task
-✅ `FeatureContextBuilder.build_feature_context()` aggregates all data
-✅ `get_feature_context` MCP tool works
-✅ `get_feature_status` MCP tool works
-✅ Context automatically injected into task assignments
-✅ All tests pass: `pytest tests/unit/context/ -v`
-
----
-
-### Step 5: Week 5 - Telemetry & CATO API Integration
-
-#### What You're Building
-
-Telemetry system for user journey tracking and research events, plus API endpoints for the Cato dashboard.
+Comprehensive telemetry system for user journey tracking and research events, plus real-time event broadcasting for the Cato dashboard.
 
 **Why This Matters**:
 - **Research**: Track agent behavior for MAS (Multi-Agent System) research
 - **Observability**: See what agents are doing in real-time
-- **Visualization**: Provide data for the Cato dashboard
+- **Visualization**: Provide real-time data streams for the Cato dashboard
+- **User Analytics**: Understand how users interact with Marcus
 
 #### Documentation
 
-📄 **Plan**: `docs/implementation/WEEK_5_PLAN.md`
+📄 **Plan**: `docs/implementation/WEEK_2_PLAN.md` (formerly WEEK_5_PLAN.md)
 
 #### Key Deliverables
 
@@ -538,11 +329,21 @@ Telemetry system for user journey tracking and research events, plus API endpoin
 # src/telemetry/journey_tracker.py - User journey tracking
 class UserJourneyTracker:
     def log_milestone(self, milestone: str, metadata: dict) -> None:
-        """Log user journey milestone."""
+        """Log user journey milestone (first project, first agent, etc.)"""
 
-# API endpoints for Cato
-# /api/cato/snapshot - Get current project state
-# /api/cato/events/stream - SSE stream for real-time events
+# src/telemetry/research_logger.py - Research event logging
+class ResearchEventLogger:
+    def log_event(self, event_type: str, data: dict) -> None:
+        """Log research events for MAS behavioral study"""
+
+# src/api/cato_routes.py - CATO dashboard integration
+@router.get("/api/cato/snapshot")
+async def get_snapshot():
+    """Get current project state snapshot"""
+
+@router.get("/api/cato/events/stream")
+async def stream_events() -> StreamingResponse:
+    """SSE stream for real-time Marcus events"""
 ```
 
 - User journey tracking system
@@ -554,17 +355,18 @@ class UserJourneyTracker:
 
 ```bash
 # 1. Read the week plan
-cat docs/implementation/WEEK_5_PLAN.md
+cat docs/implementation/WEEK_2_PLAN.md
 
 # 2. Follow day-by-day instructions:
 #    Monday: User journey tracking
 #    Tuesday: Research event logging
-#    Wednesday: CATO dashboard integration API
-#    Thursday: Real-time event broadcasting
-#    Friday: Week 5 testing & documentation
+#    Wednesday: CATO snapshot API
+#    Thursday: Real-time event broadcasting (SSE)
+#    Friday: Week 2 testing & documentation
 
 # 3. Verify completion
-curl http://localhost:4301/api/cato/snapshot && echo "Week 5: ✓"
+curl http://localhost:4301/api/cato/snapshot && echo "Week 2: ✓"
+curl http://localhost:4301/api/cato/events/stream && echo "SSE: ✓"
 pytest tests/unit/telemetry/ -v
 ```
 
@@ -573,104 +375,28 @@ pytest tests/unit/telemetry/ -v
 ✅ User journey tracking logs milestones
 ✅ Research events captured with structured data
 ✅ `/api/cato/snapshot` returns project state
-✅ `/api/cato/events/stream` broadcasts real-time events
+✅ `/api/cato/events/stream` broadcasts real-time events via SSE
 ✅ All tests pass: `pytest tests/unit/telemetry/ -v`
+✅ Cato dashboard receives real-time updates
 
 ---
 
-### Step 5.5: Week 5.5 - REST API Completion [CRITICAL]
+### Step 3: Week 3 - Production Validations & Docker
 
-#### What You're Building
-
-REST API endpoints for the Launch Tab and terminal streaming infrastructure for the Terminals Tab.
-
-**Why This Matters**: Week 5 implemented `/api/cato/*` endpoints for Live/Historical tabs, but Launch and Terminals tabs need different APIs:
-- **Launch Tab** needs REST endpoints for agent registration, project creation, task management
-- **Terminals Tab** needs real-time terminal output streaming via PTY sessions
-- Without these, **CATO bundling (Weeks 8-11) will have non-functional tabs**
-
-#### Documentation
-
-📄 **Plan**: `docs/implementation/WEEK_5.5_PLAN.md`
-
-#### Key Deliverables
-
-```python
-# src/api/marcus_routes.py - Launch Tab REST APIs
-@router.post("/api/agents")
-async def register_agent_rest(request: RegisterAgentRequest):
-    """Register a new agent (REST wrapper for MCP tool)."""
-
-@router.get("/api/agents")
-async def list_agents():
-    """List all registered agents."""
-
-@router.post("/api/projects")
-async def create_project_rest(request: CreateProjectRequest):
-    """Create a new project from natural language."""
-
-# src/terminal/manager.py - Terminal streaming
-class TerminalManager:
-    async def create_terminal(self, agent_id: str) -> TerminalSession:
-        """Create PTY session for agent."""
-
-    async def get_output(self, agent_id: str) -> list[dict]:
-        """Get buffered output from agent terminal."""
-
-# src/api/terminal_routes.py - Terminal streaming API
-@router.get("/api/agents/{agent_id}/terminal/stream")
-async def stream_agent_terminal(agent_id: str) -> StreamingResponse:
-    """Stream agent terminal output via Server-Sent Events."""
-```
-
-- Launch Tab REST APIs (`POST /api/agents`, `GET /api/agents`, `POST /api/projects`, `GET /api/projects`, `POST /api/tasks`, `GET /api/tasks`)
-- Terminal streaming infrastructure (TerminalManager with PTY sessions)
-- Terminal streaming API (`GET /api/agents/{agent_id}/terminal/stream`, `POST /api/agents/{agent_id}/terminal/input`)
-- Command injection support for agent recovery
-
-#### What to Do
-
-```bash
-# 1. Read the week plan
-cat docs/implementation/WEEK_5.5_PLAN.md
-
-# 2. Follow day-by-day instructions:
-#    Day 1: Launch Tab REST APIs (marcus_routes.py)
-#    Day 2-3: Terminal streaming infrastructure (manager.py + terminal_routes.py)
-
-# 3. Verify completion
-curl http://localhost:4301/api/agents && echo "Launch APIs: ✓"
-curl http://localhost:4301/api/agents/test-agent/terminal/stream && echo "Terminal streaming: ✓"
-pytest tests/unit/api/test_marcus_routes.py -v
-pytest tests/unit/terminal/ -v
-```
-
-#### Success Criteria
-
-✅ All Launch Tab REST endpoints functional (`/api/agents`, `/api/projects`, `/api/tasks`)
-✅ Terminal streaming infrastructure working with PTY sessions
-✅ SSE streaming endpoint delivers real-time terminal output
-✅ Command injection works for stuck agent recovery
-✅ All tests pass: `pytest tests/unit/api/ tests/unit/terminal/ -v`
-
-**⚠️ CRITICAL**: Do NOT skip Week 5.5. Without these APIs, CATO bundling in Weeks 8-11 will be non-functional.
-
----
-
-### Step 6: Week 6 - Production Validations & Pip Packaging
+**Status Update**: Marcus already has extensive validation systems and pip packaging. Week 3 focuses on filling gaps, adding Docker support, and final polish.
 
 #### What You're Building
 
 Core validations to prevent runtime errors, pip packaging setup, and comprehensive documentation.
 
-**Why This Matters**: The MVP is feature-complete but not production-ready. Week 6 adds:
+**Why This Matters**: The MVP is feature-complete but not production-ready. Week 3 adds:
 - **Validations**: Catch errors before they cause problems (invalid dependencies, circular deps, invalid status transitions)
 - **Pip Packaging**: Easy installation with `pip install marcus`
 - **Documentation**: Complete user and API documentation
 
 #### Documentation
 
-📄 **Plan**: `docs/implementation/WEEK_6_PLAN.md`
+📄 **Plan**: `docs/implementation/WEEK_3_PLAN.md` (formerly WEEK_6_PLAN.md)
 
 #### Key Deliverables
 
@@ -716,7 +442,7 @@ setup(
 
 ```bash
 # 1. Read the week plan
-cat docs/implementation/WEEK_6_PLAN.md
+cat docs/implementation/WEEK_3_PLAN.md
 
 # 2. Follow day-by-day instructions:
 #    Monday: Core validations (Issues #118-125)
@@ -726,7 +452,7 @@ cat docs/implementation/WEEK_6_PLAN.md
 #    Friday: MVP release preparation
 
 # 3. Verify completion
-pip install -e . && marcus --version && echo "Week 6: ✓"
+pip install -e . && marcus --version && echo "Week 3: ✓"
 pytest tests/ --cov=src --cov-report=term-missing
 ```
 
@@ -745,11 +471,7 @@ pytest tests/ --cov=src --cov-report=term-missing
 
 ---
 
-**Note**: After completing Week 5.5 and Week 6, reserve time for integration testing, bug fixes, and documentation improvements before proceeding to Cato bundling.
-
----
-
-## Phase 2: Cato Bundling (Weeks 8-11)
+## Phase 2: Unified Dashboard (Weeks 4-7)
 
 ### Overview
 
@@ -765,7 +487,7 @@ pytest tests/ --cov=src --cov-report=term-missing
 
 ---
 
-### Step 7: Week 8 - Git Submodule Setup
+### Step 4: Week 4 - Git Submodule Setup
 
 #### What You're Building
 
@@ -778,12 +500,12 @@ Integrate Cato as a git submodule at `src/dashboard/` and configure build system
 
 #### Documentation
 
-📄 **Plan**: `docs/CATO/CATO_MCP_INTEGRATION_PLAN.md` (Week 8 section)
+📄 **Plan**: `docs/CATO/CATO_MCP_INTEGRATION_PLAN.md` (Week 4 section)
 
 #### Key Deliverables
 
 ```bash
-# Repository structure after Week 8
+# Repository structure after Week 4
 ~/dev/marcus/
 ├── src/
 │   ├── dashboard/          ← Git submodule pointing to Cato
@@ -806,7 +528,7 @@ Integrate Cato as a git submodule at `src/dashboard/` and configure build system
 ```bash
 # 1. Read the plan
 cat docs/CATO/CATO_MCP_INTEGRATION_PLAN.md
-# Focus on "Week 8: Git Submodule Setup" section
+# Focus on "Week 4: Git Submodule Setup" section
 
 # 2. Add Cato as submodule
 cd ~/dev/marcus
@@ -824,7 +546,7 @@ ls src/dashboard/frontend/dist/  # Should contain built frontend
 
 # 6. Verify
 git submodule status
-python -c "import src.dashboard.backend.main; print('Week 8: ✓')"
+python -c "import src.dashboard.backend.main; print('Week 4: ✓')"
 ```
 
 #### Success Criteria
@@ -838,7 +560,7 @@ python -c "import src.dashboard.backend.main; print('Week 8: ✓')"
 
 ---
 
-### Step 8: Week 9 - Unified Installation
+### Step 5: Week 5 - Unified Installation
 
 #### What You're Building
 
@@ -848,7 +570,7 @@ Consolidate all dependencies so `pip install marcus` installs Marcus + Cato in o
 
 #### Documentation
 
-📄 **Plan**: `docs/CATO/CATO_MCP_INTEGRATION_PLAN.md` (Week 9 section)
+📄 **Plan**: `docs/CATO/CATO_MCP_INTEGRATION_PLAN.md` (Week 5 section)
 
 #### Key Deliverables
 
@@ -871,7 +593,7 @@ class PostInstallCommand(install):
 ```bash
 # 1. Read the plan
 cat docs/CATO/CATO_MCP_INTEGRATION_PLAN.md
-# Focus on "Week 9: Unified Installation" section
+# Focus on "Week 5: Unified Installation" section
 
 # 2. Update setup.py (see plan for PostInstallCommand class)
 
@@ -903,7 +625,7 @@ marcus --version
 
 ---
 
-### Step 9: Week 10 - Unified Startup Command
+### Step 6: Week 6 - Unified Startup Command
 
 #### What You're Building
 
@@ -913,7 +635,7 @@ Implement `marcus start` command that launches Marcus MCP server + Cato backend 
 
 #### Documentation
 
-📄 **Plan**: `docs/CATO/CATO_MCP_INTEGRATION_PLAN.md` (Week 10 section)
+📄 **Plan**: `docs/CATO/CATO_MCP_INTEGRATION_PLAN.md` (Week 6 section)
 
 #### Key Deliverables
 
@@ -942,7 +664,7 @@ def start(port: int, no_browser: bool, dev: bool) -> None:
 ```bash
 # 1. Read the plan
 cat docs/CATO/CATO_MCP_INTEGRATION_PLAN.md
-# Focus on "Week 10: Unified Startup" section
+# Focus on "Week 6: Unified Startup" section
 
 # 2. Create src/cli/commands/start.py (see plan for complete code)
 
@@ -982,7 +704,7 @@ curl http://localhost:4301/        # Cato frontend (static)
 
 ---
 
-### Step 10: Week 11 - Unified Dashboard UI
+### Step 7: Week 7 - Unified Dashboard UI
 
 #### What You're Building
 
@@ -998,7 +720,7 @@ Create the unified 6-tab dashboard that combines Marcus launch interface with Ca
 
 #### Documentation
 
-📄 **Plan**: `docs/CATO/CATO_MCP_INTEGRATION_PLAN.md` (Week 11 section)
+📄 **Plan**: `docs/CATO/CATO_MCP_INTEGRATION_PLAN.md` (Week 7 section)
 
 #### Key Deliverables
 
@@ -1039,7 +761,7 @@ export const UnifiedDashboard: React.FC = () => {
 ```bash
 # 1. Read the plan
 cat docs/CATO/CATO_MCP_INTEGRATION_PLAN.md
-# Focus on "Week 11: Unified Dashboard UI" section
+# Focus on "Week 7: Unified Dashboard UI" section
 
 # 2. Create unified layout
 cd src/dashboard/frontend
@@ -1090,11 +812,13 @@ marcus start
 
 ---
 
-## Phase 3: Web Console (Development Tool)
+## Phase 3: Web Console (Week 8 - Optional)
 
 ### Overview
 
 **Goal**: Build a web-based experiment dashboard for developers testing Marcus locally.
+
+**Timeline**: Week 8 (5-10 days, optional)
 
 **What You'll Build**:
 - Multi-agent terminal monitoring (xterm.js)
@@ -1113,24 +837,26 @@ marcus start
 
 ---
 
-### Step 11: Week 12 - Web Console Backend
+### Step 8: Week 8 - Web Console
 
 #### What You're Building
 
-FastAPI backend that manages experiments, terminal sessions, and Marcus MCP integration.
+Complete web-based experiment dashboard with FastAPI backend and xterm.js frontend for managing multi-agent experiments.
 
 **Why This Matters**: Developers need a way to:
 - Configure experiments with optimal agent counts
 - Launch multiple AI tools (Claude, Cursor, Amp) in terminals
-- Monitor agent health
+- Monitor agent health in real-time
 - Recover stuck agents automatically
+- Run controlled MAS research experiments
 
 #### Documentation
 
-📄 **Plan**: `dev-tools/web-console/IMPLEMENTATION_PLAN.md` (Phase 1)
+📄 **Plan**: `dev-tools/web-console/IMPLEMENTATION_PLAN.md`
 
 #### Key Deliverables
 
+**Backend**:
 ```python
 # Terminal management with PTY sessions
 class TerminalSession:
@@ -1140,7 +866,7 @@ class TerminalSession:
     def check_health(self, timeout_seconds: float) -> bool:
         """Check if session is healthy (detect stuck agents)."""
 
-# Marcus MCP client (calls via Claude Code CLI)
+# Marcus MCP client
 class MarcusMCPClient:
     async def create_project(self, name: str, description: str, options: dict) -> dict:
         """Create Marcus project."""
@@ -1149,80 +875,10 @@ class MarcusMCPClient:
         """Get optimal agent count for project."""
 ```
 
-- `terminal.py` - Terminal session management with PTY
-- `marcus_client.py` - Marcus MCP integration
-- `server.py` - FastAPI server with REST API + WebSocket
-- Experiment management (create, analyze, launch, monitor)
-- Health monitoring and auto-recovery
-
-#### What to Do
-
-```bash
-# 1. Read the plan
-cat dev-tools/web-console/IMPLEMENTATION_PLAN.md
-# Focus on "Phase 1: Backend Foundation"
-
-# 2. Create project structure
-mkdir -p dev-tools/web-console/backend/marcus_web_console
-cd dev-tools/web-console/backend
-
-# 3. Create pyproject.toml (see plan)
-# 4. Create terminal.py (see plan for complete code)
-# 5. Create marcus_client.py (see plan)
-# 6. Create server.py (see plan)
-
-# 7. Install and test
-pip install -e .
-marcus-web-console
-
-# 8. Test API
-curl http://localhost:8000/api/health
-curl -X POST http://localhost:8000/api/experiments \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Test", "description": "Test project", "complexity": "prototype"}'
-
-# 9. Visit API docs
-open http://localhost:8000/docs
-```
-
-#### Success Criteria
-
-✅ FastAPI server starts on port 8000
-✅ Can create experiments via API
-✅ Can analyze projects (calls Marcus MCP)
-✅ Can launch agent terminals
-✅ WebSocket streams terminal I/O
-✅ Health monitoring detects inactive sessions
-✅ Recovery endpoint can inject commands
-
----
-
-### Step 12: Week 13 - Web Console Frontend
-
-#### What You're Building
-
-Single-page web UI for the experiment dashboard with xterm.js terminals.
-
-**Why This Matters**: Developers need a visual interface to:
-- Configure experiments (wizard flow)
-- See optimal agent recommendations
-- Launch agents with different AI tools
-- Monitor multiple terminal windows
-- Recover stuck agents with one click
-
-#### Documentation
-
-📄 **Plan**: `dev-tools/web-console/IMPLEMENTATION_PLAN.md` (Phase 2)
-
-#### Key Deliverables
-
+**Frontend**:
 ```html
-<!-- Wizard flow -->
-Step 1: Configure → Step 2: Analyze → Step 3: Launch → Step 4: Monitor
-
-<!-- Terminal grid with xterm.js -->
+<!-- Wizard flow: Configure → Analyze → Launch → Monitor -->
 <div class="terminals-grid">
-  <!-- Each agent gets a terminal window -->
   <div class="terminal-container">
     <div class="terminal-header">
       agent-1 <span class="health-indicator"></span>
@@ -1232,67 +888,71 @@ Step 1: Configure → Step 2: Analyze → Step 3: Launch → Step 4: Monitor
 </div>
 ```
 
-- `static/index.html` - Single-page application
-- Wizard flow (Configure → Analyze → Launch → Monitor)
-- xterm.js terminal grid
-- Health indicators with auto-recovery
+Complete deliverables:
+- Backend: Terminal management, Marcus MCP integration, FastAPI server
+- Frontend: Wizard UI, xterm.js terminal grid, health monitoring
+- Health checks and auto-recovery system
 - Browser notifications for unhealthy agents
 
 #### What to Do
 
 ```bash
-# 1. Read the plan
+# 1. Read the implementation plan
 cat dev-tools/web-console/IMPLEMENTATION_PLAN.md
-# Focus on "Phase 2: Frontend"
 
-# 2. Create static directory
+# 2. Create project structure
+mkdir -p dev-tools/web-console/backend/marcus_web_console
 mkdir -p dev-tools/web-console/backend/static
+cd dev-tools/web-console/backend
 
-# 3. Create index.html (see plan for complete code)
-# Includes:
-#   - CSS for dark theme
-#   - JavaScript for wizard flow
-#   - xterm.js integration
-#   - WebSocket connection per terminal
-#   - Health monitoring
+# 3. Implement backend (Phase 1)
+# - Create terminal.py (PTY session management)
+# - Create marcus_client.py (Marcus MCP integration)
+# - Create server.py (FastAPI with REST + WebSocket)
 
-# 4. Enable static file serving in server.py
-# Uncomment:
-# app.mount("/", StaticFiles(directory="static", html=True), name="static")
+# 4. Implement frontend (Phase 2)
+# - Create static/index.html (wizard flow + xterm.js grid)
+# - Add CSS for dark theme and responsive layout
+# - Add JavaScript for wizard logic and WebSocket connections
 
-# 5. Test full workflow
-marcus serve  # Start Marcus MCP server
+# 5. Install and test
+pip install -e .
+marcus serve  # Start Marcus MCP server (separate terminal)
 marcus-web-console  # Start web console
-open http://localhost:8000
 
-# 6. Walk through wizard
-# - Step 1: Create experiment
+# 6. Test full workflow
+open http://localhost:8000
+# - Step 1: Create experiment configuration
 # - Step 2: View optimal agent analysis
-# - Step 3: Configure agents (backend: 2, frontend: 2)
-# - Step 4: Monitor terminals
-# - Test recovery button
+# - Step 3: Launch agents in terminals
+# - Step 4: Monitor health and test recovery
 ```
 
 #### Success Criteria
 
-✅ Wizard flow works (Configure → Analyze → Launch → Monitor)
-✅ Terminal grid displays correctly with xterm.js
-✅ WebSocket streams terminal I/O in real-time
-✅ Health indicators update (green = healthy, red = unhealthy)
-✅ Recovery button injects commands to restart agents
-✅ Browser notifications appear for unhealthy agents
-✅ Auto-recovery triggers after 2 minutes of inactivity
+✅ Backend: FastAPI server starts on port 8000
+✅ Backend: Can create experiments and call Marcus MCP
+✅ Backend: WebSocket streams terminal I/O
+✅ Backend: Health monitoring detects inactive sessions
+✅ Frontend: Wizard flow works (Configure → Analyze → Launch → Monitor)
+✅ Frontend: Terminal grid displays with xterm.js
+✅ Frontend: Health indicators update in real-time
+✅ Frontend: Recovery button can inject commands
+✅ Integration: Browser notifications for unhealthy agents
+✅ Integration: Auto-recovery triggers after inactivity
 
 ---
 
-## Phase 4: Advanced Features (Weeks 12+)
+## Phase 4: Advanced Features (Post-MVP)
 
 ### Overview
 
 **Status**: ⏳ **Not Started**
-**Priority**: OPTIONAL (post-MVP enhancements)
+**Priority**: OPTIONAL (post-v1.0 enhancements)
 
-These features enhance the user experience but are not required for v1.0 release.
+**Timeline**: After Week 8 (as needed)
+
+These features enhance the user experience but are not required for v1.0 release. Implement based on user feedback and priorities.
 
 ---
 
@@ -1393,19 +1053,19 @@ System-wide analytics across all projects.
 
 | Document | Location | Purpose |
 |----------|----------|---------|
-| **This Guide** | `docs/DEVELOPMENT_GUIDE.md` | Step-by-step implementation roadmap |
-| **Unified Master Plan** | `docs/UNIFIED_MASTER_IMPLEMENTATION_PLAN.md` | Complete 13-16 week overview |
-| **MVP Summary** | `docs/MVP_IMPLEMENTATION_PLAN.md` | MVP overview (Weeks 1-6) |
-| **Week 1 Plan** | `docs/implementation/WEEK_1_PLAN.md` | Configuration system |
-| **Week 2 Plan** | `docs/implementation/WEEK_2_PLAN.md` | Feature entity |
-| **Week 3 Plan** | `docs/implementation/WEEK_3_PLAN.md` | Workspace isolation |
-| **Week 4 Plan** | `docs/implementation/WEEK_4_PLAN.md` | Feature context |
-| **Week 5 Plan** | `docs/implementation/WEEK_5_PLAN.md` | Telemetry & CATO API |
-| **Week 6 Plan** | `docs/implementation/WEEK_6_PLAN.md` | Validations & Docker |
-| **Cato Bundling** | `docs/CATO/CATO_MCP_INTEGRATION_PLAN.md` | Weeks 8-11 (git submodules, unified dashboard) |
-| **Web Console** | `dev-tools/web-console/IMPLEMENTATION_PLAN.md` | Development tool (OPTIONAL) |
+| **This Guide** | `docs/DEVELOPMENT_GUIDE.md` | Step-by-step 8-week implementation roadmap |
+| **Unified Master Plan** | `docs/UNIFIED_MASTER_IMPLEMENTATION_PLAN.md` | Complete implementation overview |
+| **MVP Summary** | `docs/MVP_IMPLEMENTATION_PLAN.md` | MVP overview (updated for 8-week schedule) |
+| **Week 1 Plan** | `docs/implementation/WEEK_1_PLAN.md` | Configuration system (polish only) |
+| **Week 2 Plan** | `docs/implementation/WEEK_2_PLAN.md` | Telemetry & CATO API (formerly Week 5) |
+| **Week 3 Plan** | `docs/implementation/WEEK_3_PLAN.md` | Production validations & Docker (formerly Week 6) |
+| **Cato Bundling** | `docs/CATO/CATO_MCP_INTEGRATION_PLAN.md` | Weeks 4-7 (git submodules, unified dashboard) |
+| **Web Console** | `dev-tools/web-console/IMPLEMENTATION_PLAN.md` | Week 8 development tool (OPTIONAL) |
 | **Progressive Feedback** | `docs/CATO/PROGRESSIVE_FEEDBACK_REQUIREMENTS.md` | UX feature spec |
 | **UX Improvements** | `docs/CATO/CATO_UX_ANALYSIS_AND_RECOMMENDATIONS.md` | Dashboard UX audit |
+| **Alignment Evaluation** | `docs/MVP_CATO_ALIGNMENT_EVALUATION.md` | MVP→CATO alignment analysis |
+
+**Note**: Original Week 2-4 plans (Feature entity, Git worktrees, Feature context) are marked as DEFERRED in `docs/implementation/` - not needed for MVP.
 
 ### Architecture & Design
 
@@ -1536,38 +1196,44 @@ open http://localhost:8000  # Should show experiment wizard
 ### Week-by-Week Roadmap
 
 ```
-⏳ Week 1:  Configuration System (START HERE)
-⏳ Week 2:  Feature Entity
-⏳ Week 3:  Workspace Isolation (Git Worktrees)
-⏳ Week 4:  Feature Context Aggregation
-⏳ Week 5:  Telemetry & CATO API
-⏳ Week 6:  Validations & Docker
-⏳ Week 8:  Git Submodule Setup (after Week 6 testing)
-⏳ Week 9:  Unified Installation
-⏳ Week 10: Unified Startup Command
-⏳ Week 11: Unified Dashboard UI
-⏳ Week 12: Web Console Backend (OPTIONAL)
-⏳ Week 13: Web Console Frontend (OPTIONAL)
+⏳ Week 1:  Configuration System Polish (START HERE - mostly complete)
+⏳ Week 2:  Telemetry & CATO API Integration
+⏳ Week 3:  Production Validations & Docker
+⏳ Week 4:  Git Submodule Setup
+⏳ Week 5:  Unified Installation
+⏳ Week 6:  Unified Startup Command
+⏳ Week 7:  Unified Dashboard UI
+⏳ Week 8:  Web Console (OPTIONAL)
 ```
+
+**Total**: 8 weeks (7 weeks required + 1 week optional)
+
+**What Was Removed from Original Plan:**
+- Week 2: Feature entity & infrastructure (deferred - not needed for MVP)
+- Week 3: Git worktree workspace isolation (deferred - not needed for MVP)
+- Week 4: Feature context aggregation (deferred - not needed for MVP)
+- Week 5.5: REST API Completion (integrated into Week 2)
+
+**Why These Were Removed:**
+The original plan included feature-level abstraction, git worktree isolation, and feature context building. After evaluating current needs and the Cato dashboard's data requirements, these features are not necessary for the MVP. The Cato dashboard works with project → task → subtask hierarchy without requiring feature entities. These capabilities can be added later if needed.
 
 ### What You'll Have Built
 
 After completing this guide:
 
-**Core System** (Weeks 1-6):
+**Core System** (Weeks 1-3):
 - Multi-agent orchestration engine
-- Workspace isolation with git worktrees
-- Automatic feature context building
 - Real-time telemetry and event broadcasting
+- CATO API integration (snapshot + SSE event streaming)
 - Production-ready with validations and Docker
 
-**Unified Dashboard** (Weeks 8-11):
+**Unified Dashboard** (Weeks 4-7):
 - Single installation (`pip install marcus`)
 - Single startup (`marcus start`)
 - 6-tab dashboard (Launch, Terminals, Kanban, Live, Historical, Global)
 - Bundled Cato visualization
 
-**Development Tools** (Weeks 12-13, OPTIONAL):
+**Development Tools** (Week 8, OPTIONAL):
 - Web-based experiment dashboard
 - Multi-agent terminal monitoring
 - Health checks and auto-recovery
@@ -1579,22 +1245,28 @@ After completing this guide:
 ### If You're Starting Fresh
 
 ```bash
-# 1. START WITH WEEK 1 (Configuration System)
+# 1. START WITH WEEK 1 (Configuration System Polish)
 cat docs/implementation/WEEK_1_PLAN.md
-# Follow the day-by-day instructions
+# Note: ~80% complete, focus on polish only (1-2 days)
 
-# 2. Continue sequentially through Weeks 2-6
-# Each week has detailed instructions in docs/implementation/
+# 2. Continue with Week 2 (Telemetry & CATO API)
+cat docs/implementation/WEEK_2_PLAN.md
+# This is the NEW Week 2 (formerly Week 5 + Week 5.5 content)
+# Includes telemetry, REST APIs, and terminal streaming
 
-# 3. After Week 6, test the complete MVP
+# 3. Complete Week 3 (Production Validations & Docker)
+cat docs/implementation/WEEK_3_PLAN.md
+# This is the NEW Week 3 (formerly Week 6)
+
+# 4. After Week 3, test the complete MVP
 pytest tests/ -v --cov=src
 # Fix any bugs, improve documentation
 
-# 4. Move to Week 8 (Git Submodule Setup)
+# 5. Move to Weeks 4-7 (Cato Bundling)
 cat docs/CATO/CATO_MCP_INTEGRATION_PLAN.md
-# Follow Week 8-11 instructions
+# Follow Week 4-7 instructions for unified dashboard
 
-# 5. (Optional) Build Web Console (Weeks 12-13)
+# 6. (Optional) Build Web Console (Week 8)
 cat dev-tools/web-console/IMPLEMENTATION_PLAN.md
 ```
 
@@ -1602,19 +1274,20 @@ cat dev-tools/web-console/IMPLEMENTATION_PLAN.md
 
 ```bash
 # 1. Read this guide completely (DEVELOPMENT_GUIDE.md)
-# 2. Check project status (which weeks are done?)
+
+# 2. Check project status
 git log --oneline --graph --all
 # Look for commit messages indicating completed weeks
 
-# 3. Read all completed week plans to understand what was built
-cat docs/implementation/WEEK_*_PLAN.md
+# 3. Read completed week plans
+# Note: Original Week 2-4 plans are DEFERRED (not implemented)
+# Current plan: Week 1 → Week 2 (Telemetry) → Week 3 (Validations) → Weeks 4-7 (Cato)
 
 # 4. Run verification tests
 pytest tests/ -v
 
 # 5. Continue from next incomplete week
-# Example: If Week 3 is done, start with Week 4
-cat docs/implementation/WEEK_4_PLAN.md
+# Check the roadmap in this guide to see current status
 ```
 
 ---
