@@ -53,21 +53,19 @@ class DualTransportServer:
     async def run(self) -> None:
         """Run both stdio and HTTP transports simultaneously."""
         # Get config
-        from src.config.config_loader import get_config
+        from src.config.marcus_config import get_config
 
         config = get_config()
-        transport_config = config.get("transport", {})
 
         # Check if dual mode is enabled
-        if transport_config.get("dual_mode", False):
-            http_config = transport_config.get("http", {})
-            if http_config.get("enabled", True):
+        if config.transport.dual_mode:
+            if config.transport.http_enabled:
                 # Start HTTP server in background thread
                 self.http_thread = threading.Thread(
                     target=self.run_http_server,
                     args=(
-                        http_config.get("host", "127.0.0.1"),
-                        http_config.get("port", 8080),
+                        config.transport.http_host,
+                        config.transport.http_port,
                     ),
                     daemon=True,
                 )
@@ -78,7 +76,8 @@ class DualTransportServer:
 
                 print(
                     f"HTTP transport available at "
-                    f"http://{http_config.get('host')}:{http_config.get('port')}/mcp",
+                    f"http://{config.transport.http_host}:"
+                    f"{config.transport.http_port}/mcp",
                     file=sys.stderr,
                 )
 

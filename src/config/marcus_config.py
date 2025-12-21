@@ -177,6 +177,10 @@ class TransportSettings:
         HTTP endpoint path
     log_level : str
         Logging level
+    dual_mode : bool
+        Enable both stdio and HTTP transports simultaneously
+    http_enabled : bool
+        Enable HTTP transport in dual mode
     """
 
     type: str = "http"
@@ -184,6 +188,8 @@ class TransportSettings:
     http_port: int = 4298
     http_path: str = "/mcp"
     log_level: str = "info"
+    dual_mode: bool = False
+    http_enabled: bool = True
 
 
 @dataclass
