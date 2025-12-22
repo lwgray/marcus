@@ -7,6 +7,7 @@ Systems for monitoring, testing, and quality assurance.
    :maxdepth: 2
 
    11-monitoring-systems
+   12-mcp-tool-logging
    18-quality-assurance
    29-detection-systems
    30-testing-framework
