@@ -1009,7 +1009,7 @@ Create design artifacts such as:
         project_size = (constraints.quality_requirements or {}).get(
             "project_size", "medium"
         )
-        functional_requirements = self._filter_requirements_by_size(
+        functional_requirements = await self._filter_requirements_by_size(
             analysis.functional_requirements,
             project_size,
             constraints.team_size,
@@ -3842,7 +3842,7 @@ explanation."""
         # Include everything for prod and remote
         return False
 
-    def _filter_requirements_by_size(
+    async def _filter_requirements_by_size(
         self,
         requirements: List[Dict[str, Any]],
         project_size: str,
@@ -3851,6 +3851,10 @@ explanation."""
     ) -> List[Dict[str, Any]]:
         """
         Filter functional requirements based on project size and team capacity.
+
+        Integration requirements (infrastructure, glue, assembly) are ALWAYS
+        preserved regardless of complexity mode. Only component/feature
+        requirements are filtered by mode.
 
         Now respects user-specified requirements - if the user explicitly listed
         features, all of them are kept regardless of project size.
@@ -3864,12 +3868,12 @@ explanation."""
         team_size : int
             Number of team members
         prd_content : str
-            Original PRD content to detect specificity
+            Original PRD content to detect specificity and extract intents
 
         Returns
         -------
         List[Dict[str, Any]]
-            Filtered requirements
+            Filtered requirements (features limited by mode + all integration)
         """
         original_count = len(requirements)
         original_ids = [
@@ -3916,33 +3920,112 @@ explanation."""
 
             return requirements
 
-        # Guided mode - AI features, apply capacity filtering
+        # Guided mode - AI features, apply capacity filtering WITH
+        # integration protection
         logger.info(
             f"AI-guided requirements ({original_count} items), "
-            f"filtering for project_size={project_size}"
+            f"filtering for project_size={project_size} with integration "
+            f"protection"
         )
 
+        # Extract intents to identify integration vs component requirements
+        # Integration intents (infrastructure, glue, assembly) must NEVER be filtered
+        try:
+            from src.ai.validation import TaskCompletenessValidator
+
+            validator = TaskCompletenessValidator(
+                ai_client=self.llm_client, prd_parser=self
+            )
+            structured_intents = await validator.extract_intents(
+                description=prd_content, project_name="filtering"
+            )
+
+            integration_intents = structured_intents.integration_intents
+            logger.info(
+                f"Extracted {len(integration_intents)} integration intents: "
+                f"{integration_intents}"
+            )
+
+            # Classify each requirement as integration or component
+            # Integration requirements match integration intents
+            integration_reqs = []
+            component_reqs = []
+
+            for req in requirements:
+                req_name = req.get("name", "").lower()
+                req_desc = req.get("description", "").lower()
+                req_text = f"{req_name} {req_desc}"
+
+                is_integration = False
+                for intent in integration_intents:
+                    intent_lower = intent.lower()
+                    # Semantic matching: check if requirement relates to
+                    # integration intent. Look for key terms from the intent
+                    # in the requirement
+                    intent_keywords = set(intent_lower.split())
+                    req_keywords = set(req_text.split())
+                    overlap = intent_keywords & req_keywords
+                    if len(overlap) >= 2:  # At least 2 keywords match
+                        is_integration = True
+                        logger.info(
+                            f"Requirement '{req.get('name')}' matches integration "
+                            f"intent '{intent}' (overlap: {overlap})"
+                        )
+                        break
+
+                if is_integration:
+                    integration_reqs.append(req)
+                else:
+                    component_reqs.append(req)
+
+            logger.info(
+                f"Classified: {len(integration_reqs)} integration, "
+                f"{len(component_reqs)} component requirements"
+            )
+
+        except Exception as e:
+            logger.warning(
+                f"Failed to extract integration intents: {e}. "
+                f"Falling back to filtering all requirements."
+            )
+            integration_reqs = []
+            component_reqs = requirements
+
+        # Apply filtering to component requirements only
         # Map to new 3-option system (with legacy support)
         if project_size in ["prototype", "mvp"]:
-            # Prototype: only keep the most essential 1-2 requirements
-            filtered = requirements[:2]
+            # Prototype: only keep the most essential 1-2 component features
+            filtered_components = component_reqs[:2]
         elif project_size in ["standard", "small", "medium"]:
             # Standard: limit based on team size (typically 3-5 features)
-            max_reqs = min(len(requirements), max(3, team_size))
-            filtered = requirements[:max_reqs]
+            max_reqs = min(len(component_reqs), max(3, team_size))
+            filtered_components = component_reqs[:max_reqs]
         else:
-            # Enterprise/Large: include all requirements
-            filtered = requirements
+            # Enterprise/Large: include all component requirements
+            filtered_components = component_reqs
 
+        # ALWAYS append integration requirements (never filtered)
+        filtered = filtered_components + integration_reqs
+
+        # Log filtering results
         if len(filtered) < original_count:
             filtered_ids = [
                 req.get("id", req.get("name", "unknown")) for req in filtered
             ]
             dropped_ids = [id for id in original_ids if id not in filtered_ids]
-            logger.warning(
-                f"Filtered {original_count} -> {len(filtered)} "
-                f"(size={project_size}, team={team_size}). "
+            logger.info(
+                f"Filtered {original_count} -> {len(filtered)} requirements "
+                f"({len(filtered_components)} features + "
+                f"{len(integration_reqs)} integration) "
+                f"for {project_size} mode. "
                 f"Kept: {filtered_ids}, Dropped: {dropped_ids}"
+            )
+        else:
+            logger.info(
+                f"Keeping all {original_count} requirements "
+                f"({len(filtered_components)} features + "
+                f"{len(integration_reqs)} integration) "
+                f"for {project_size} mode"
             )
 
         return filtered
