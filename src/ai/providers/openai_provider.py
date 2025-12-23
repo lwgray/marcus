@@ -89,7 +89,11 @@ class OpenAIProvider(BaseLLMProvider):
             raise ValueError("OpenAI API key not found in config or environment")
 
         self.base_url = "https://api.openai.com/v1"
-        self.model = config.ai.model or "gpt-3.5-turbo"
+        # Use OpenAI-specific default when model is not set or is a Claude model
+        if not config.ai.model or config.ai.model.startswith("claude"):
+            self.model = "gpt-3.5-turbo"
+        else:
+            self.model = config.ai.model
         self.max_tokens = config.ai.max_tokens
         self.timeout = 30.0
 
