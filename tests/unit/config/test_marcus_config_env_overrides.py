@@ -302,3 +302,104 @@ class TestMarcusConfigEnvOverrides:
         assert config.ai.anthropic_api_key == "$VAR"
         assert config.kanban.planka_base_url == "${VAR"
         assert config.kanban.planka_email == "VAR}"
+
+    def test_missing_env_var_logs_warning(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that missing environment variables trigger a warning log."""
+        import logging
+
+        caplog.set_level(logging.WARNING)
+
+        config_file = tmp_path / "test_config.json"
+        config_data = {
+            "ai": {
+                "provider": "anthropic",
+                "anthropic_api_key": "${MISSING_KEY}",
+            },
+            "kanban": {
+                "provider": "planka",
+                "planka_base_url": "http://localhost:3333",
+                "planka_email": "test@test.com",
+                "planka_password": "testpass",  # pragma: allowlist secret
+            },
+        }
+
+        with open(config_file, "w") as f:
+            json.dump(config_data, f)
+
+        config = MarcusConfig.from_file(str(config_file))
+
+        # Should have logged a warning
+        assert any("MISSING_KEY" in record.message for record in caplog.records)
+        assert any("not set" in record.message for record in caplog.records)
+        assert config.ai.anthropic_api_key is None
+
+    def test_port_from_env_var_is_validated(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that port from env var is cast to int and validated."""
+        monkeypatch.setenv("HTTP_PORT", "5000")
+
+        config_file = tmp_path / "test_config.json"
+        config_data = {
+            "ai": {"provider": "anthropic", "anthropic_api_key": "sk-ant-test"},
+            "kanban": {
+                "provider": "planka",
+                "planka_base_url": "http://localhost:3333",
+                "planka_email": "test@test.com",
+                "planka_password": "testpass",  # pragma: allowlist secret
+            },
+            "transport": {
+                "type": "http",
+                "http": {
+                    "host": "127.0.0.1",
+                    "port": "${HTTP_PORT}",
+                },
+            },
+        }
+
+        with open(config_file, "w") as f:
+            json.dump(config_data, f)
+
+        config = MarcusConfig.from_file(str(config_file))
+
+        # Port should be converted to int
+        assert config.transport.http_port == 5000
+        assert isinstance(config.transport.http_port, int)
+
+        # Validation should pass
+        config.validate()  # Should not raise
+
+    def test_invalid_port_from_env_var_uses_default(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that invalid port string from env var falls back to default."""
+        monkeypatch.setenv("HTTP_PORT", "not-a-number")
+
+        config_file = tmp_path / "test_config.json"
+        config_data = {
+            "ai": {"provider": "anthropic", "anthropic_api_key": "sk-ant-test"},
+            "kanban": {
+                "provider": "planka",
+                "planka_base_url": "http://localhost:3333",
+                "planka_email": "test@test.com",
+                "planka_password": "testpass",  # pragma: allowlist secret
+            },
+            "transport": {
+                "type": "http",
+                "http": {
+                    "host": "127.0.0.1",
+                    "port": "${HTTP_PORT}",
+                },
+            },
+        }
+
+        with open(config_file, "w") as f:
+            json.dump(config_data, f)
+
+        config = MarcusConfig.from_file(str(config_file))
+
+        # Should fall back to default port
+        assert config.transport.http_port == 4298
+        assert isinstance(config.transport.http_port, int)
