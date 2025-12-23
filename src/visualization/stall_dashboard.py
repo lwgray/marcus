@@ -1,7 +1,11 @@
-"""
-Terminal dashboard for visualizing project stall snapshots.
+"""Terminal dashboard for visualizing project stall snapshots.
 
 Uses rich library for beautiful terminal output with colors, tables, and trees.
+
+NOTE: This dashboard uses a simplified diagnostic mode. The full causal analysis
+engine was removed in the visualization system cleanup (commit e1bad09).
+The causal_analyzer module now provides a minimal stub that returns empty analysis.
+Basic snapshot visualization (project info, tasks, dependencies, timeline) still works.
 """
 
 from datetime import datetime
@@ -74,10 +78,13 @@ class StallDashboard:
             console.print()
 
         # Dependency Locks
-        locks = self.snapshot.get("dependency_locks", {})
-        if locks.get("total_locks", 0) > 0:
-            console.print(self._build_dependency_locks(locks))
-            console.print()
+        locks = self.snapshot.get("dependency_locks", [])
+        # dependency_locks is a list containing a single dict
+        if locks and isinstance(locks, list) and len(locks) > 0:
+            lock_data = locks[0]
+            if lock_data.get("total_locks", 0) > 0:
+                console.print(self._build_dependency_locks(lock_data))
+                console.print()
 
         # Early Completions
         early_completions = self.snapshot.get("early_completions", [])

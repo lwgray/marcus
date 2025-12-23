@@ -147,3 +147,93 @@ class TestMarcusConfigBasic:
         assert config.transport.http_host == "127.0.0.1"
         assert config.transport.http_port == 9999
         assert config.transport.http_path == "/api"
+
+    def test_default_project_name_loaded_from_config(self, tmp_path: Path) -> None:
+        """Test that default_project_name is loaded from JSON config."""
+        config_file = tmp_path / "test_config.json"
+        config_data = {
+            "default_project_name": "My Project",
+            "ai": {"provider": "anthropic", "anthropic_api_key": "test-key"},
+            "kanban": {
+                "provider": "planka",
+                "planka_base_url": "http://localhost:3333",
+                "planka_email": "test@test.com",
+                "planka_password": "testpass",  # pragma: allowlist secret
+            },
+        }
+
+        with open(config_file, "w") as f:
+            json.dump(config_data, f)
+
+        config = MarcusConfig.from_file(str(config_file))
+
+        # Verify default_project_name is loaded correctly
+        assert config.default_project_name == "My Project"
+
+    def test_default_project_name_defaults_to_none(self, tmp_path: Path) -> None:
+        """Test that default_project_name defaults to None when not provided."""
+        config_file = tmp_path / "test_config.json"
+        config_data = {
+            "ai": {"provider": "anthropic", "anthropic_api_key": "test-key"},
+            "kanban": {
+                "provider": "planka",
+                "planka_base_url": "http://localhost:3333",
+                "planka_email": "test@test.com",
+                "planka_password": "testpass",  # pragma: allowlist secret
+            },
+        }
+
+        with open(config_file, "w") as f:
+            json.dump(config_data, f)
+
+        config = MarcusConfig.from_file(str(config_file))
+
+        # Verify default_project_name defaults to None
+        assert config.default_project_name is None
+
+    def test_default_project_name_in_from_dict(self) -> None:
+        """Test _from_dict extracts default_project_name correctly."""
+        # Test with default_project_name set
+        data_with_name = {
+            "default_project_name": "Test Project",
+            "log_level": "INFO",
+        }
+        config = MarcusConfig._from_dict(data_with_name)
+        assert config.default_project_name == "Test Project"
+
+        # Test with default_project_name omitted
+        data_without_name = {"log_level": "DEBUG"}
+        config_no_name = MarcusConfig._from_dict(data_without_name)
+        assert config_no_name.default_project_name is None
+
+    def test_all_top_level_settings_extracted(self, tmp_path: Path) -> None:
+        """Test that all top-level settings are extracted correctly."""
+        config_file = tmp_path / "test_config.json"
+        config_data = {
+            "auto_find_board": True,
+            "single_project_mode": False,
+            "default_project_name": "Marcus Development",
+            "log_level": "DEBUG",
+            "data_dir": "~/.custom/data",
+            "cache_dir": "~/.custom/cache",
+            "ai": {"provider": "anthropic", "anthropic_api_key": "test-key"},
+            "kanban": {
+                "provider": "planka",
+                "planka_base_url": "http://localhost:3333",
+                "planka_email": "test@test.com",
+                "planka_password": "testpass",  # pragma: allowlist secret
+            },
+        }
+
+        with open(config_file, "w") as f:
+            json.dump(config_data, f)
+
+        config = MarcusConfig.from_file(str(config_file))
+
+        # Verify all top-level settings
+        assert config.auto_find_board is True
+        assert config.single_project_mode is False
+        assert config.default_project_name == "Marcus Development"
+        assert config.log_level == "DEBUG"
+        assert config.data_dir == "~/.custom/data"
+        assert config.cache_dir == "~/.custom/cache"

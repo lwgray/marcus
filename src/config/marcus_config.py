@@ -595,6 +595,7 @@ class MarcusConfig:
         top_level = {
             "auto_find_board": data.get("auto_find_board", False),
             "single_project_mode": data.get("single_project_mode", True),
+            "default_project_name": data.get("default_project_name", None),
             "log_level": data.get("log_level", "INFO"),
             "data_dir": data.get("data_dir", "~/.marcus/data"),
             "cache_dir": data.get("cache_dir", "~/.marcus/cache"),

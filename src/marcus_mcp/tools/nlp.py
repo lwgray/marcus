@@ -13,17 +13,6 @@ from src.integrations.nlp_tools import add_feature_natural_language
 
 logger = logging.getLogger(__name__)
 
-# Import PipelineStage with fallback for compatibility
-try:
-    from src.visualization.pipeline_flow import PipelineStage
-except ImportError:
-    # Fallback if PipelineStage is not available
-    class PipelineStage:  # type: ignore[no-redef]
-        """Fallback for PipelineStage when not available."""
-
-        MCP_REQUEST = "mcp_request"
-        TASK_COMPLETION = "task_completion"
-
 
 async def create_project(
     description: str, project_name: str, options: Optional[Dict[str, Any]], state: Any
@@ -117,8 +106,6 @@ async def create_project(
         ...     }
         ... )
     """
-    import uuid
-
     # Validate required parameters
     if (
         not description
@@ -235,42 +222,6 @@ async def create_project(
                     "error": "team_size must be a number",
                     "current_value": options["team_size"],
                 }
-
-    # Start tracking pipeline flow
-    flow_id = str(uuid.uuid4())
-    if hasattr(state, "pipeline_visualizer"):
-        # Make pipeline tracking non-blocking
-        def track_start() -> None:
-            state.pipeline_visualizer.start_flow(flow_id, project_name)
-            # Track the MCP request
-            state.pipeline_visualizer.add_event(
-                flow_id=flow_id,
-                stage=PipelineStage.MCP_REQUEST,
-                event_type="create_project_request",
-                data={
-                    "project_name": project_name,
-                    "description_length": len(description),
-                    "options": options or {},
-                },
-                status="completed",
-            )
-
-        # Run tracking synchronously to avoid hanging
-        # This is fast enough to not impact response time
-        track_start()
-
-        # Also log to real-time log for UI server
-        state.log_event(
-            "pipeline_flow_started",
-            {
-                "flow_id": flow_id,
-                "project_name": project_name,
-                "stage": "mcp_request",
-                "event_type": "create_project_request",
-            },
-        )
-
-    start_time = datetime.now(timezone.utc)
 
     try:
         # Create project using natural language processing
@@ -430,33 +381,6 @@ async def create_project(
                 # Log but don't fail the operation
                 logger.warning(f"Failed to register project with Marcus: {str(e)}")
 
-        # Track successful completion (non-blocking)
-        if hasattr(state, "pipeline_visualizer"):
-            duration_ms = int(
-                (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
-            )
-
-            def track_completion() -> None:
-                state.pipeline_visualizer.add_event(
-                    flow_id=flow_id,
-                    stage=PipelineStage.TASK_COMPLETION,
-                    event_type="pipeline_completed",
-                    data={
-                        "success": result.get("success", False),
-                        "task_count": result.get(
-                            "tasks_created", result.get("task_count", 0)
-                        ),
-                        "total_duration_ms": duration_ms,
-                    },
-                    duration_ms=duration_ms,
-                    status="completed",
-                )
-                # Complete the flow
-                state.pipeline_visualizer.complete_flow(flow_id)
-
-            # Run tracking synchronously to avoid hanging
-            track_completion()
-
         # Normalize result to include task_count
         if isinstance(result, dict):
             if "tasks_created" in result and "task_count" not in result:
@@ -558,29 +482,7 @@ async def create_project(
 
         return result
 
-    except Exception as exc:
-        # Track error (non-blocking)
-        if hasattr(state, "pipeline_visualizer"):
-            duration_ms = int(
-                (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
-            )
-            error_type = type(exc).__name__
-            error_str = str(exc)
-
-            def track_error() -> None:
-                state.pipeline_visualizer.add_event(
-                    flow_id=flow_id,
-                    stage=PipelineStage.TASK_COMPLETION,
-                    event_type="pipeline_failed",
-                    data={"error_type": error_type},
-                    duration_ms=duration_ms,
-                    status="failed",
-                    error=error_str,
-                )
-
-            # Run tracking synchronously to avoid hanging
-            track_error()
-
+    except Exception:
         raise
 
 
