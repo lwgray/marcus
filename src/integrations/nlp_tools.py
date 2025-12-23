@@ -24,9 +24,6 @@ from src.ai.advanced.prd.advanced_parser import (  # noqa: E402
 from src.core.models import Priority, Task, TaskStatus  # noqa: E402
 from src.detection.board_analyzer import BoardAnalyzer  # noqa: E402
 from src.detection.context_detector import ContextDetector, MarcusMode  # noqa: E402
-from src.integrations.documentation_tasks import (  # noqa: E402
-    enhance_project_with_documentation,
-)
 
 # Import refactored base classes and utilities
 from src.integrations.nlp_base import NaturalLanguageTaskCreator  # noqa: E402
@@ -163,12 +160,6 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                     )
         else:
             logger.info("No dependencies returned from PRD parser")
-
-        # Add documentation task if appropriate
-        prd_result.tasks = enhance_project_with_documentation(
-            prd_result.tasks, description, kwargs.get("project_name", "")
-        )
-        logger.info(f"After documentation enhancement: {len(prd_result.tasks)} tasks")
 
         return prd_result.tasks
 
