@@ -350,51 +350,6 @@ class AdvancedPRDParser:
         - Focus on extracting actionable, specific requirements that can
           be converted into development tasks
 
-        FUNCTIONAL VS INTEGRATION REQUIREMENTS:
-
-        FUNCTIONAL REQUIREMENTS = Individual features/capabilities (the WHAT):
-        - Discrete business features or tools to build
-        - Examples: "create-deck", "draw-cards", "user-authentication",
-          "search-tweets", "send-message"
-        - These are the components/building blocks
-
-        INTEGRATION REQUIREMENTS = Infrastructure/delivery mechanisms (the HOW):
-        - HOW the functional components are assembled and delivered
-        - Infrastructure setup to make components accessible
-        - Examples:
-          * "mcp-server-setup" - Sets up MCP server infrastructure to expose
-            the functional tools (create-deck, draw-cards, etc.)
-          * "rest-api-server" - Sets up REST API server to expose endpoints
-          * "cli-entry-point" - Creates CLI interface to access commands
-          * "web-server-setup" - Sets up web server to serve the application
-          * "graphql-api-server" - Sets up GraphQL API layer
-          * "package-distribution" - Packaging/deployment infrastructure
-
-        CRITICAL DISTINCTION:
-        - If user says "Build an MCP server with these tools: X, Y, Z"
-          * Functional Requirements: X, Y, Z (the individual tools)
-          * Integration Requirement: "mcp-server-setup" (the infrastructure
-            that exposes X, Y, Z via MCP protocol)
-        - If user says "Build a REST API with these endpoints: A, B, C"
-          * Functional Requirements: A, B, C (the endpoint logic)
-          * Integration Requirement: "rest-api-server" (the server framework
-            that exposes A, B, C via HTTP)
-        - If user says "Build a CLI tool with commands: foo, bar, baz"
-          * Functional Requirements: foo, bar, baz (the command logic)
-          * Integration Requirement: "cli-entry-point" (the CLI framework
-            that makes foo, bar, baz runnable from command line)
-
-        WHEN TO EXTRACT INTEGRATION REQUIREMENTS:
-        - When user specifies a delivery mechanism: "MCP server", "API server",
-          "CLI tool", "web application", "microservice", "package"
-        - When a technology wrapper/framework is needed to make components usable
-        - When infrastructure setup is required beyond the feature logic itself
-
-        WHEN NOT TO EXTRACT INTEGRATION REQUIREMENTS:
-        - For pure library code with no delivery mechanism
-        - For internal utilities that don't need external interfaces
-        - When no specific delivery mechanism is mentioned
-
         COMPLEXITY MODE: {constraints.complexity_mode}
 
         Use complexity mode to control BOTH feature breadth and implementation depth:
@@ -612,9 +567,11 @@ class AdvancedPRDParser:
             functional_reqs = self._deduplicate_functional_requirements(functional_reqs)
 
             # Extract integration requirements (infrastructure/delivery mechanisms)
-            integration_reqs = get_key(
-                analysis_data, "integration_requirements", "integrationRequirements"
-            )
+            # DISABLED: Phase 1 - Remove two-tier intent system
+            # System handles infrastructure inherently
+            integration_reqs: list[dict[str, Any]] = []
+            # Was: get_key(analysis_data, "integration_requirements",
+            #              "integrationRequirements")
 
             analysis = PRDAnalysis(
                 functional_requirements=functional_reqs,
@@ -1134,64 +1091,10 @@ Create design artifacts such as:
 
             hierarchy[epic_id] = [task["id"] for task in epic_tasks]
 
-        # Create epics from integration requirements (infrastructure/delivery)
-        integration_requirements = analysis.integration_requirements or []
-        if integration_requirements:
-            logger.info(
-                f"Creating epics from {len(integration_requirements)} integration "
-                f"requirements: {[req.get('id') for req in integration_requirements]}"
-            )
-            for i, req in enumerate(integration_requirements):
-                # Get requirement ID (same logic as functional requirements)
-                req_id = req.get("id")
-                if not req_id:
-                    feature_name = (
-                        req.get("name")
-                        or req.get("feature")
-                        or req.get("description")
-                        or f"integration_{i}"
-                    )
-                    feature_id = feature_name.lower()
-                    for word in ["for", "the", "a", "an", "and", "or", "with", "using"]:
-                        feature_id = feature_id.replace(f" {word} ", " ")
-                    feature_id = (
-                        feature_id.strip()
-                        .replace(" ", "_")
-                        .replace("-", "_")
-                        .replace(":", "")
-                    )
-                    feature_id = "".join(
-                        c if c.isalnum() or c == "_" else "" for c in feature_id
-                    )
-                    if not feature_id or feature_id == "feature":
-                        feature_id = f"integration_{i}"
-                    req_id = feature_id
-                    logger.debug(
-                        f"Generated fallback ID '{req_id}' for integration "
-                        f"requirement without 'id' field"
-                    )
-
-                epic_id = f"epic_{req_id}"
-                hierarchy[epic_id] = []
-
-                # Break epic into smaller tasks
-                epic_tasks = await self._break_down_epic(req, analysis, constraints)
-                logger.debug(
-                    f"Integration epic {epic_id} broken down "
-                    f"into {len(epic_tasks)} tasks"
-                )
-
-                # Store task metadata
-                for task in epic_tasks:
-                    self._task_metadata[task["id"]] = {
-                        "original_name": task["name"],
-                        "type": task["type"],
-                        "epic_id": epic_id,
-                        "requirement": req,
-                        "is_integration": True,  # Mark as integration task
-                    }
-
-                hierarchy[epic_id] = [task["id"] for task in epic_tasks]
+        # REMOVED: Integration epic generation loop
+        # (Phase 1 - Remove two-tier intent system)
+        # Integration requirements now disabled (set to empty list at line 572)
+        # System handles infrastructure inherently
 
         # Add non-functional requirement tasks (skip for prototype projects)
         if project_size not in ["prototype", "mvp"]:

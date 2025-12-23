@@ -5,10 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.ai.validation.task_completeness_validator import (
-    StructuredIntents,
-    TaskCompletenessValidator,
-)
+from src.ai.validation.task_completeness_validator import TaskCompletenessValidator
 from src.core.error_framework import BusinessLogicError, ErrorContext
 from src.core.models import Task
 
@@ -82,7 +79,7 @@ class TestTaskCompletenessValidator:
     async def test_extract_intents_success(
         self, validator: TaskCompletenessValidator, mock_ai_client: AsyncMock
     ) -> None:
-        """Test successful intent extraction from description (backwards compat)."""
+        """Test successful intent extraction from description."""
         # Arrange
         with patch.object(
             validator,
@@ -97,15 +94,12 @@ class TestTaskCompletenessValidator:
                 "deck-mcp",
             )
 
-            # Assert - test backwards compatibility with flat format
-            assert isinstance(result, StructuredIntents)
-            assert len(result.all_intents) == 3
-            assert "MCP server" in result.all_intents
-            assert "Deck of Cards API wrapper" in result.all_intents
-            assert "card tools" in result.all_intents
-            # When AI returns flat format, all treated as components
-            assert result.component_intents == result.all_intents
-            assert result.integration_intents == []
+            # Assert - returns simple list of intents
+            assert isinstance(result, list)
+            assert len(result) == 3
+            assert "MCP server" in result
+            assert "Deck of Cards API wrapper" in result
+            assert "card tools" in result
             mock_call.assert_called_once()
 
     @pytest.mark.asyncio
@@ -117,11 +111,7 @@ class TestTaskCompletenessValidator:
     ) -> None:
         """Test validation passes when all intents are covered."""
         # Arrange
-        structured_intents = StructuredIntents(
-            component_intents=["MCP tools", "API client"],
-            integration_intents=[],
-            all_intents=["MCP tools", "API client"],
-        )
+        intents = ["MCP tools", "API client"]
         with patch.object(
             validator,
             "_call_ai",
@@ -129,19 +119,15 @@ class TestTaskCompletenessValidator:
                 {
                     "complete": True,
                     "missing": [],
-                    "missing_component_intents": [],
-                    "missing_integration_intents": [],
                 }
             ),
         ):
             # Act
-            result = await validator.validate_coverage(structured_intents, sample_tasks)
+            result = await validator.validate_coverage(intents, sample_tasks)
 
             # Assert
             assert result["complete"] is True
             assert result["missing"] == []
-            assert result["missing_component_intents"] == []
-            assert result["missing_integration_intents"] == []
 
     @pytest.mark.asyncio
     async def test_validate_coverage_incomplete(
@@ -152,11 +138,7 @@ class TestTaskCompletenessValidator:
     ) -> None:
         """Test validation fails when intents are missing."""
         # Arrange
-        structured_intents = StructuredIntents(
-            component_intents=["MCP tools", "API client"],
-            integration_intents=["MCP server"],
-            all_intents=["MCP tools", "API client", "MCP server"],
-        )
+        intents = ["MCP tools", "API client", "MCP server"]
         with patch.object(
             validator,
             "_call_ai",
@@ -164,18 +146,15 @@ class TestTaskCompletenessValidator:
                 {
                     "complete": False,
                     "missing": ["MCP server"],
-                    "missing_component_intents": [],
-                    "missing_integration_intents": ["MCP server"],
                 }
             ),
         ):
             # Act
-            result = await validator.validate_coverage(structured_intents, sample_tasks)
+            result = await validator.validate_coverage(intents, sample_tasks)
 
             # Assert
             assert result["complete"] is False
             assert "MCP server" in result["missing"]
-            assert "MCP server" in result["missing_integration_intents"]
 
     @pytest.mark.asyncio
     async def test_validate_with_retry_passes_first_attempt(
