@@ -201,15 +201,14 @@ Be concise. Return only valid JSON."""
 
         try:
             # Use the provider's complete method for simple prompts
-            response_text = await self._call_ai(prompt)
-            response_data = json.loads(response_text)
+            response_data: dict[str, Any] = await self._call_ai(prompt)
             intents: list[str] = response_data["intents"]
             return intents
 
         except (json.JSONDecodeError, KeyError) as e:
             self.logger.error(
                 f"Failed to parse intent extraction response: {e}",
-                extra={"response": response_text},
+                extra={"response": str(response_data)},
             )
             # Fallback: try to extract reasonable intents from description
             return [description[:100]]  # Use truncated description as fallback
@@ -267,12 +266,7 @@ If ANY intent is missing, return complete=false with the missing ones.
 Return only valid JSON."""
 
         try:
-            response_text = await self._call_ai(prompt)
-            response_data = json.loads(response_text)
-
-            missing_components = response_data.get("missing_component_intents", [])
-            missing_integration = response_data.get("missing_integration_intents", [])
-            missing = response_data.get("missing", [])
+            response_data: dict[str, Any] = await self._call_ai(prompt)
 
             return {
                 "complete": response_data.get("complete", False),
@@ -282,7 +276,7 @@ Return only valid JSON."""
         except (json.JSONDecodeError, KeyError) as e:
             self.logger.error(
                 f"Failed to parse validation response: {e}",
-                extra={"response": response_text},
+                extra={"response": str(response_data)},
             )
             # Fallback: assume incomplete to be safe
             return {"complete": False, "missing": intents}
@@ -459,7 +453,7 @@ Return only valid JSON."""
 
         return "\n".join(parts)
 
-    async def _call_ai(self, prompt: str) -> str:
+    async def _call_ai(self, prompt: str) -> dict[str, Any]:
         """
         Make AI call using provider-agnostic interface.
 
@@ -473,15 +467,15 @@ Return only valid JSON."""
 
         Returns
         -------
-        str
-            AI response text (JSON string)
+        dict[str, Any]
+            AI response as dictionary (parsed JSON)
 
         Raises
         ------
         ValueError
             If AI client doesn't support a compatible interface
         Exception
-            If AI call fails
+            If AI call fails or response is invalid JSON
         """
         # Check for AIAnalysisEngine interface (has generate_structured_response)
         if hasattr(self.ai_client, "generate_structured_response"):
@@ -493,14 +487,23 @@ Return only valid JSON."""
                     "Respond with valid JSON only.",
                 )
             )
-            # Convert dict back to JSON string for compatibility
-            result: str = json.dumps(response_dict)
-            return result
+            return response_dict
 
         # Fallback: check for deprecated _call_claude method
         if hasattr(self.ai_client, "_call_claude"):
-            result = await self.ai_client._call_claude(prompt)
-            return result
+            import warnings
+
+            warnings.warn(
+                f"AI client {type(self.ai_client).__name__} is using deprecated "
+                "_call_claude() method. Please update to use "
+                "generate_structured_response() interface.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            result_str: str = await self.ai_client._call_claude(prompt)
+            # Parse JSON string to dict for consistent return type
+            parsed_result: dict[str, Any] = json.loads(result_str)
+            return parsed_result
 
         # No compatible interface found
         raise ValueError(

@@ -1081,8 +1081,6 @@ class TestRequirementFiltering:
     @pytest.mark.asyncio
     async def test_guided_requirements_filtered_by_team_size(self, parser):
         """Test that AI-generated requirements are filtered by team capacity"""
-        from src.ai.validation.task_completeness_validator import StructuredIntents
-
         # Arrange
         requirements = [
             {"id": "req1", "name": "Feature 1"},
@@ -1093,12 +1091,8 @@ class TestRequirementFiltering:
         ]
         prd_content = "Build a Twitter clone with social features."  # Open-ended
 
-        # Mock validator (no integration intents)
-        mock_intents = StructuredIntents(
-            component_intents=[f"Feature {i}" for i in range(1, 6)],
-            integration_intents=[],
-            all_intents=[f"Feature {i}" for i in range(1, 6)],
-        )
+        # Mock validator - extract_intents now returns list[str]
+        mock_intents = [f"Feature {i}" for i in range(1, 6)]
 
         # Act
         with patch("src.ai.validation.TaskCompletenessValidator") as MockValidator:
