@@ -1044,8 +1044,11 @@ class TestRequirementFiltering:
                 return AdvancedPRDParser()
 
     @pytest.mark.unit
-    def test_explicit_requirements_all_kept_regardless_of_project_size(self, parser):
-        """Test that explicit requirements are ALL kept, even if count exceeds project size"""
+    @pytest.mark.asyncio
+    async def test_explicit_requirements_all_kept_regardless_of_project_size(
+        self, parser
+    ):
+        """Test that explicit user requirements bypass filtering logic"""
         # Arrange
         requirements = [
             {"id": "req1", "name": "Feature 1"},
@@ -1063,20 +1066,23 @@ class TestRequirementFiltering:
         """
 
         # Act
-        result = parser._filter_requirements_by_size(
+        result = await parser._filter_requirements_by_size(
             requirements=requirements,
-            project_size="prototype",  # prototype expects only 3-5
+            project_size="prototype",  # prototype would limit to 2
             team_size=3,
             prd_content=prd_content,
         )
 
-        # Assert - ALL 5 requirements kept even though team_size=3
+        # Assert - All 5 kept because explicit (bypasses filtering)
         assert len(result) == 5
         assert result == requirements
 
     @pytest.mark.unit
-    def test_guided_requirements_filtered_by_team_size(self, parser):
+    @pytest.mark.asyncio
+    async def test_guided_requirements_filtered_by_team_size(self, parser):
         """Test that AI-generated requirements are filtered by team capacity"""
+        from src.ai.validation.task_completeness_validator import StructuredIntents
+
         # Arrange
         requirements = [
             {"id": "req1", "name": "Feature 1"},
@@ -1087,20 +1093,36 @@ class TestRequirementFiltering:
         ]
         prd_content = "Build a Twitter clone with social features."  # Open-ended
 
-        # Act
-        result = parser._filter_requirements_by_size(
-            requirements=requirements,
-            project_size="standard",
-            team_size=3,
-            prd_content=prd_content,
+        # Mock validator (no integration intents)
+        mock_intents = StructuredIntents(
+            component_intents=[f"Feature {i}" for i in range(1, 6)],
+            integration_intents=[],
+            all_intents=[f"Feature {i}" for i in range(1, 6)],
         )
+
+        # Act
+        with patch("src.ai.validation.TaskCompletenessValidator") as MockValidator:
+            mock_validator_instance = MockValidator.return_value
+            mock_validator_instance.extract_intents = AsyncMock(
+                return_value=mock_intents
+            )
+
+            result = await parser._filter_requirements_by_size(
+                requirements=requirements,
+                project_size="standard",
+                team_size=3,
+                prd_content=prd_content,
+            )
 
         # Assert - Filtered to team_size (3)
         assert len(result) == 3
         assert result == requirements[:3]
 
     @pytest.mark.unit
-    def test_explicit_requirements_warning_when_count_too_high(self, parser, caplog):
+    @pytest.mark.asyncio
+    async def test_explicit_requirements_warning_when_count_too_high(
+        self, parser, caplog
+    ):
         """Test warning logged when explicit requirements exceed project size expectations"""
         # Arrange
         requirements = [{"id": f"req{i}", "name": f"Feature {i}"} for i in range(20)]
@@ -1111,23 +1133,27 @@ class TestRequirementFiltering:
 
         # Act
         with caplog.at_level("WARNING"):
-            parser._filter_requirements_by_size(
+            result = await parser._filter_requirements_by_size(
                 requirements=requirements,
                 project_size="standard",  # Expects 8-15
                 team_size=3,
                 prd_content=prd_content,
             )
 
-        # Assert - Warning logged but all requirements kept
+        # Assert - All 20 kept (explicit bypasses filtering) with warning
+        assert len(result) == 20
         assert any(
-            "User specified 20 requirements, which is high for standard mode"
-            in record.message
+            "User specified 20 requirements" in record.message
+            and "which is high for standard mode" in record.message
             for record in caplog.records
         )
 
     @pytest.mark.unit
-    def test_explicit_requirements_warning_when_count_too_low(self, parser, caplog):
-        """Test warning logged when explicit requirements below project size expectations"""
+    @pytest.mark.asyncio
+    async def test_explicit_requirements_warning_when_count_too_low(
+        self, parser, caplog
+    ):
+        """Test that explicit requirements are kept when count is within project size limits"""
         # Arrange
         import logging
 
@@ -1146,18 +1172,22 @@ class TestRequirementFiltering:
         with caplog.at_level(
             logging.WARNING, logger="src.ai.advanced.prd.advanced_parser"
         ):
-            parser._filter_requirements_by_size(
+            result = await parser._filter_requirements_by_size(
                 requirements=requirements,
                 project_size="standard",  # Expects 8-15
                 team_size=3,
                 prd_content=prd_content,
             )
 
-        # Assert - Warning logged but requirement kept
-        warning_messages = [record.message for record in caplog.records]
+        # Assert - All 3 requirements kept (explicit bypasses filtering)
+        # Warning logged because 3 < 8 (min expected)
+        assert len(result) == 3
+        assert result == requirements
         assert any(
-            "which is low for standard mode" in msg for msg in warning_messages
-        ), f"Expected warning not found. Messages: {warning_messages}"
+            "User specified 3 requirements" in record.message
+            and "which is low for standard mode" in record.message
+            for record in caplog.records
+        )
 
 
 class TestIntegrationRequirements:

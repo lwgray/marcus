@@ -12,6 +12,8 @@ from typing import Any, Dict, List, Optional
 
 import mcp.types as types
 
+from src.logging.mcp_tool_logger import log_mcp_tool_response
+
 from .audit import get_audit_logger
 from .tools import (  # Agent tools; Task tools; Project tools; System tools; NLP tools
     add_feature,
@@ -886,170 +888,6 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                 "required": ["feature_description"],
             },
         ),
-        # Pipeline Enhancement Tools (only for humans)
-        types.Tool(
-            name="pipeline_replay_start",
-            description="Start replay session for a pipeline flow",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "flow_id": {"type": "string", "description": "Flow ID to replay"}
-                },
-                "required": ["flow_id"],
-            },
-        ),
-        types.Tool(
-            name="pipeline_replay_forward",
-            description="Step forward in pipeline replay",
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        types.Tool(
-            name="pipeline_replay_backward",
-            description="Step backward in pipeline replay",
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        types.Tool(
-            name="pipeline_replay_jump",
-            description="Jump to specific position in replay",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "position": {
-                        "type": "integer",
-                        "description": "Position to jump to",
-                    }
-                },
-                "required": ["position"],
-            },
-        ),
-        types.Tool(
-            name="what_if_start",
-            description="Start what-if analysis session",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "flow_id": {"type": "string", "description": "Flow ID to analyze"}
-                },
-                "required": ["flow_id"],
-            },
-        ),
-        types.Tool(
-            name="what_if_simulate",
-            description="Simulate pipeline with modifications",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "modifications": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "parameter_type": {"type": "string"},
-                                "parameter_name": {"type": "string"},
-                                "new_value": {},
-                                "old_value": {},
-                                "description": {"type": "string"},
-                            },
-                            "required": [
-                                "parameter_type",
-                                "parameter_name",
-                                "new_value",
-                            ],
-                        },
-                    }
-                },
-                "required": ["modifications"],
-            },
-        ),
-        types.Tool(
-            name="what_if_compare",
-            description="Compare all what-if scenarios",
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        types.Tool(
-            name="pipeline_compare",
-            description="Compare multiple pipeline flows",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "flow_ids": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "List of flow IDs to compare",
-                    }
-                },
-                "required": ["flow_ids"],
-            },
-        ),
-        types.Tool(
-            name="pipeline_report",
-            description="Generate pipeline report",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "flow_id": {"type": "string", "description": "Flow ID"},
-                    "format": {
-                        "type": "string",
-                        "enum": ["html", "markdown", "json"],
-                        "description": "Report format",
-                        "default": "html",
-                    },
-                },
-                "required": ["flow_id"],
-            },
-        ),
-        types.Tool(
-            name="pipeline_monitor_dashboard",
-            description="Get live monitoring dashboard data",
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        types.Tool(
-            name="pipeline_monitor_flow",
-            description="Track specific flow progress",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "flow_id": {"type": "string", "description": "Flow ID to track"}
-                },
-                "required": ["flow_id"],
-            },
-        ),
-        types.Tool(
-            name="pipeline_predict_risk",
-            description="Predict failure risk for a flow",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "flow_id": {"type": "string", "description": "Flow ID to assess"}
-                },
-                "required": ["flow_id"],
-            },
-        ),
-        types.Tool(
-            name="pipeline_recommendations",
-            description="Get recommendations for a pipeline flow",
-            inputSchema={
-                "type": "object",
-                "properties": {"flow_id": {"type": "string", "description": "Flow ID"}},
-                "required": ["flow_id"],
-            },
-        ),
-        types.Tool(
-            name="pipeline_find_similar",
-            description="Find similar pipeline flows",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "flow_id": {"type": "string", "description": "Flow ID"},
-                    "limit": {
-                        "type": "integer",
-                        "description": "Max similar flows to return",
-                        "default": 5,
-                    },
-                },
-                "required": ["flow_id"],
-            },
-        ),
         # Scheduling and Planning Tools
         types.Tool(
             name="get_optimal_agent_count",
@@ -1385,6 +1223,7 @@ async def handle_tool_call(
                     filename=filename,
                     content=content,
                     artifact_type=artifact_type,
+                    project_root=arguments.get("project_root"),
                     description=arguments.get("description", ""),
                     location=arguments.get("location"),  # Optional override
                     state=state,
@@ -1574,6 +1413,14 @@ async def handle_tool_call(
         response: List[
             types.TextContent | types.ImageContent | types.EmbeddedResource
         ] = [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        # Log MCP tool response (especially failures) for diagnostics
+        if isinstance(result, dict):
+            log_mcp_tool_response(
+                tool_name=name,
+                arguments=arguments,
+                response=result,
+            )
 
         # Ensure stdio buffer is flushed for immediate response delivery
         import sys
