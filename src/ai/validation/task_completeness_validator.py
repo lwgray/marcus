@@ -270,6 +270,10 @@ Return only valid JSON."""
             response_text = await self._call_ai(prompt)
             response_data = json.loads(response_text)
 
+            missing_components = response_data.get("missing_component_intents", [])
+            missing_integration = response_data.get("missing_integration_intents", [])
+            missing = response_data.get("missing", [])
+
             return {
                 "complete": response_data.get("complete", False),
                 "missing": response_data.get("missing", []),
