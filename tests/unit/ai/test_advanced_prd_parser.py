@@ -1066,7 +1066,7 @@ class TestRequirementFiltering:
         """
 
         # Act
-        result = await parser._filter_requirements_by_size(
+        result = parser._filter_requirements_by_size(
             requirements=requirements,
             project_size="prototype",  # prototype would limit to 2
             team_size=3,
@@ -1107,7 +1107,7 @@ class TestRequirementFiltering:
                 return_value=mock_intents
             )
 
-            result = await parser._filter_requirements_by_size(
+            result = parser._filter_requirements_by_size(
                 requirements=requirements,
                 project_size="standard",
                 team_size=3,
@@ -1133,7 +1133,7 @@ class TestRequirementFiltering:
 
         # Act
         with caplog.at_level("WARNING"):
-            result = await parser._filter_requirements_by_size(
+            result = parser._filter_requirements_by_size(
                 requirements=requirements,
                 project_size="standard",  # Expects 8-15
                 team_size=3,
@@ -1172,7 +1172,7 @@ class TestRequirementFiltering:
         with caplog.at_level(
             logging.WARNING, logger="src.ai.advanced.prd.advanced_parser"
         ):
-            result = await parser._filter_requirements_by_size(
+            result = parser._filter_requirements_by_size(
                 requirements=requirements,
                 project_size="standard",  # Expects 8-15
                 team_size=3,
@@ -1267,9 +1267,9 @@ class TestIntegrationRequirements:
 
         # Assert
         assert len(result.functional_requirements) == 1
-        assert len(result.integration_requirements) == 1
-        assert result.integration_requirements[0]["id"] == "mcp-server-setup"
-        assert result.integration_requirements[0]["name"] == "MCP Server Setup"
+        # Phase 1: Integration requirements are now disabled (always empty)
+        assert len(result.integration_requirements) == 0
+        # Integration requirements removed - system handles infrastructure via functional requirements
 
     @pytest.mark.unit
     @pytest.mark.asyncio
