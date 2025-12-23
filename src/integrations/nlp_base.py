@@ -267,13 +267,17 @@ class NaturalLanguageTaskCreator(ABC):
         """
         # Skip decomposition if no AI engine is available
         if not self.ai_engine:
-            logger.debug("No AI engine available for task decomposition - skipping")
+            logger.warning(
+                "⚠️  No AI engine available for task decomposition - skipping. "
+                "Subtasks will not be created!"
+            )
             return
 
         # Log decomposition context
-        logger.debug(
-            f"Task decomposition started: {len(created_tasks)} tasks, "
-            f"SubtaskManager available: {self.subtask_manager is not None}"
+        logger.info(
+            f"🔍 Task decomposition started: {len(created_tasks)} tasks, "
+            f"SubtaskManager available: {self.subtask_manager is not None}, "
+            f"Complexity: {self.complexity}"
         )
 
         # Note: AI engine now uses LLMAbstraction which automatically
