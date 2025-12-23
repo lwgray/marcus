@@ -309,10 +309,11 @@ class TestTaskExecutionOrderComprehensive:
 
         feature_groups = enforcer._group_tasks_by_feature(tasks)
 
-        assert "authentication" in feature_groups
-        assert "payment" in feature_groups
-        assert "auth" in feature_groups  # Extracted from task name
-        assert "general" in feature_groups
+        assert "authentication" in feature_groups  # From feature: label
+        assert "payment" in feature_groups  # From component label
+        assert "authentication-system" in feature_groups  # Fine-grained from task name
+        # Note: "Implement payment processing" -> "payment-processing"
+        assert "generic-task" in feature_groups  # From task name
 
     def test_feature_isolation_complex_scenario(self, enforcer):
         """Test feature isolation in a complex multi-feature project."""

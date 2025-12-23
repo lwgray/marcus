@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from src.config.config_loader import get_config
+from src.config.marcus_config import get_config
 from src.core.assignment_persistence import AssignmentPersistence
 from src.core.context import Context
 from src.core.event_loop_utils import EventLoopLockManager
@@ -391,20 +391,17 @@ class ProjectContextManager:
 
         # Get global provider credentials
         if project.provider == "planka":
-            planka_config = self.config.get("planka", {})
             config.update(
                 {
-                    "base_url": planka_config.get("base_url"),
-                    "email": planka_config.get("email"),
-                    "password": planka_config.get("password"),
+                    "base_url": self.config.kanban.planka_base_url,
+                    "email": self.config.kanban.planka_email,
+                    "password": self.config.kanban.planka_password,
                 }
             )
         elif project.provider == "github":
-            github_config = self.config.get("github", {})
-            config.update({"token": github_config.get("token")})
+            config.update({"token": self.config.kanban.github_token})
         elif project.provider == "linear":
-            linear_config = self.config.get("linear", {})
-            config.update({"api_key": linear_config.get("api_key")})
+            config.update({"api_key": self.config.kanban.linear_api_key})
 
         # Merge with project-specific config
         config.update(project.provider_config)

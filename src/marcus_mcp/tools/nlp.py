@@ -6,6 +6,7 @@ This module contains tools for natural language project/task creation:
 """
 
 import logging
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from src.integrations.nlp_tools import add_feature_natural_language
@@ -117,7 +118,6 @@ async def create_project(
         ... )
     """
     import uuid
-    from datetime import datetime, timezone
 
     # Validate required parameters
     if (
@@ -273,22 +273,28 @@ async def create_project(
     start_time = datetime.now(timezone.utc)
 
     try:
-        # Create project using natural language processing with pipeline tracking
-        from src.integrations.pipeline_tracked_nlp import (
-            create_project_from_natural_language_tracked,
-        )
+        # Create project using natural language processing
+        from src.integrations.nlp_tools import NaturalLanguageProjectCreator
 
         # Log before calling the function
         state.log_event("create_project_calling", {"project_name": project_name})
 
+        # Get subtask_manager if available
+        subtask_manager = getattr(state, "subtask_manager", None)
+
+        # Initialize project creator
+        creator = NaturalLanguageProjectCreator(
+            kanban_client=state.kanban_client,
+            ai_engine=state.ai_engine,
+            subtask_manager=subtask_manager,
+        )
+
         # Ensure we await the result properly
         try:
-            result = await create_project_from_natural_language_tracked(
+            result: Dict[str, Any] = await creator.create_project_from_description(
                 description=description,
                 project_name=project_name,
-                state=state,
-                options=options,
-                flow_id=flow_id,
+                options=options or {},
             )
         except Exception as e:
             state.log_event(

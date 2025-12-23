@@ -35,21 +35,17 @@ class AnthropicProvider(BaseLLMProvider):
     """
 
     def __init__(self) -> None:
-        # Try to get API key from config first, fall back to env var
-        from src.config.config_loader import get_config
+        # Get configuration from centralized config
+        from src.config.marcus_config import get_config
 
         config = get_config()
-        self.api_key = config.get("ai.anthropic_api_key") or os.getenv(
-            "ANTHROPIC_API_KEY"
-        )
+        self.api_key = config.ai.anthropic_api_key or os.getenv("ANTHROPIC_API_KEY")
         if not self.api_key:
             raise ValueError("Anthropic API key not found in config or environment")
 
         self.base_url = "https://api.anthropic.com/v1"
-        self.model = config.get(
-            "ai.model", "claude-3-haiku-20240307"
-        )  # Fast model for quick responses
-        self.max_tokens = config.get("ai.max_tokens", 2048)
+        self.model = config.ai.model or "claude-3-haiku-20240307"
+        self.max_tokens = config.ai.max_tokens
         self.timeout = 30.0
 
         # HTTP client with proper headers

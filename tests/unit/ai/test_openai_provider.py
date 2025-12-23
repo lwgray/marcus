@@ -33,7 +33,15 @@ class TestOpenAIProviderInitialization:
 
     def test_initialization_with_api_key(self):
         """Test provider initializes successfully with API key"""
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-api-key"}):
+        from unittest.mock import Mock
+
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-3.5-turbo"
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
             provider = OpenAIProvider()
 
             assert provider.api_key == "test-api-key"
@@ -45,20 +53,81 @@ class TestOpenAIProviderInitialization:
 
     def test_initialization_with_custom_model(self):
         """Test provider uses custom model from environment"""
-        with patch.dict(
-            "os.environ", {"OPENAI_API_KEY": "test-api-key", "OPENAI_MODEL": "gpt-4"}
-        ):
+        from unittest.mock import Mock
+
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-4"
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
             provider = OpenAIProvider()
 
             assert provider.model == "gpt-4"
 
+    def test_openai_default_model_used_when_none(self):
+        """Test provider uses gpt-3.5-turbo when model is None"""
+        from unittest.mock import Mock
+
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = None
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
+            provider = OpenAIProvider()
+
+            assert provider.model == "gpt-3.5-turbo"
+
+    def test_claude_model_replaced_with_openai_default(self):
+        """Test provider replaces Claude model with OpenAI default"""
+        from unittest.mock import Mock
+
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "claude-3-haiku-20240307"  # Claude model
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
+            provider = OpenAIProvider()
+
+            # Should replace Claude model with OpenAI default
+            assert provider.model == "gpt-3.5-turbo"
+
+    def test_custom_openai_model_preserved(self):
+        """Test provider preserves custom GPT model"""
+        from unittest.mock import Mock
+
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-4-turbo"  # Custom OpenAI model
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
+            provider = OpenAIProvider()
+
+            # Should preserve custom OpenAI model
+            assert provider.model == "gpt-4-turbo"
+
     def test_initialization_without_api_key(self):
         """Test provider raises error without API key"""
-        with patch.dict("os.environ", {}, clear=True):
-            with pytest.raises(
-                ValueError, match="OPENAI_API_KEY environment variable not set"
-            ):
-                OpenAIProvider()
+        from unittest.mock import Mock
+
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = None
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
+            with patch.dict("os.environ", {}, clear=True):
+                with pytest.raises(
+                    ValueError,
+                    match="OpenAI API key not found in config or environment",
+                ):
+                    OpenAIProvider()
 
     def test_http_client_configuration(self):
         """Test HTTP client is configured correctly"""

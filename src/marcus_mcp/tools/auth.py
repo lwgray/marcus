@@ -28,17 +28,8 @@ ROLE_TOOLS = {
         "check_task_dependencies",
         # Scheduling and resource planning
         "get_optimal_agent_count",  # Calculate optimal agent count using CPM
-        # Analytics and monitoring (Seneca use case)
-        "pipeline_monitor_dashboard",
-        "pipeline_monitor_flow",
-        "pipeline_report",
-        "pipeline_predict_risk",
-        "pipeline_find_similar",
-        "pipeline_compare",
-        "pipeline_replay_start",
-        "pipeline_replay_forward",
-        "pipeline_replay_backward",
-        "pipeline_replay_jump",
+        # Analytics and monitoring (delegated to Seneca)
+        # Pipeline tools removed - functionality moved to Seneca system
         # Project management (PMs need this)
         "remove_project",  # Delete projects
         # System health monitoring

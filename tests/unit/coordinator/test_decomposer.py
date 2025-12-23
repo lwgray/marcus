@@ -53,9 +53,11 @@ class TestShouldDecompose:
         assert result is True
 
     def test_should_not_decompose_small_task(self, base_task):
-        """Test small tasks (<3 hours) are not decomposed."""
+        """Test small tasks (< 12 minutes / 0.2 hours) are not decomposed."""
         # Arrange
-        base_task.estimated_hours = 2.0
+        base_task.estimated_hours = 0.15  # 9 minutes - below 12 min threshold
+        # Change description to avoid multi-component indicators
+        base_task.description = "Create user service"
 
         # Act
         result = should_decompose(base_task)
@@ -209,10 +211,10 @@ class TestShouldDecompose:
             (0.15, "Simple task", False, True),  # Time: 9 min (enterprise yes)
             (
                 0.05,
-                "Build api and database",
+                "Build api endpoint",
                 False,
                 True,
-            ),  # 2 indicators (enterprise yes)
+            ),  # 2 indicators (enterprise yes): api + endpoint
             (
                 0.1,
                 "Implement feature",
@@ -378,15 +380,15 @@ class TestDecomposeTask:
         # Assert
         assert result["success"] is True
         assert "subtasks" in result
-        # Should have original 2 + 1 integration subtask
-        assert len(result["subtasks"]) == 3
+        # No longer adds integration subtask automatically
+        assert len(result["subtasks"]) == 2
         assert "shared_conventions" in result
 
     @pytest.mark.asyncio
-    async def test_decompose_task_adds_integration_subtask(
+    async def test_decompose_task_preserves_subtasks(
         self, task, mock_ai_engine, sample_decomposition
     ):
-        """Test integration subtask is automatically added."""
+        """Test decomposition preserves AI-generated subtasks."""
         # Arrange
         mock_ai_engine.generate_structured_response.return_value = sample_decomposition
 
@@ -394,9 +396,10 @@ class TestDecomposeTask:
         result = await decompose_task(task, mock_ai_engine)
 
         # Assert
-        integration_subtask = result["subtasks"][-1]
-        assert "Integrate and validate" in integration_subtask["name"]
-        assert len(integration_subtask["dependencies"]) == 2  # Depends on both previous
+        # Verify both subtasks from AI response are preserved
+        assert len(result["subtasks"]) == 2
+        assert result["subtasks"][0]["name"] == "Create User model"
+        assert result["subtasks"][1]["name"] == "Build login endpoint"
 
     @pytest.mark.asyncio
     async def test_decompose_task_adjusts_dependencies_to_ids(
@@ -451,84 +454,6 @@ class TestDecomposeTask:
         assert "soft_dependency_count" in analysis
         assert "hard_dependency_count" in analysis
         assert "parallelism_score" in analysis
-
-
-class TestCreateIntegrationSubtask:
-    """Test suite for integration subtask creation."""
-
-    def test_create_integration_subtask_includes_all_dependencies(self):
-        """Test integration subtask depends on all previous subtasks."""
-        # Arrange
-        task = Task(
-            id="task-1",
-            name="Test task",
-            description="Test",
-            status=TaskStatus.TODO,
-            priority=Priority.MEDIUM,
-            assigned_to=None,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
-            due_date=None,
-            estimated_hours=6.0,
-        )
-        previous_subtasks = [
-            {"name": "Subtask 1", "file_artifacts": ["file1.py"]},
-            {"name": "Subtask 2", "file_artifacts": ["file2.py"]},
-        ]
-
-        # Act
-        integration = _create_integration_subtask(task, previous_subtasks)
-
-        # Assert
-        assert integration["dependencies"] == [0, 1]
-
-    def test_create_integration_subtask_has_doc_artifacts(self):
-        """Test integration subtask creates documentation."""
-        # Arrange
-        task = Task(
-            id="task-1",
-            name="Test task",
-            description="Test",
-            status=TaskStatus.TODO,
-            priority=Priority.MEDIUM,
-            assigned_to=None,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
-            due_date=None,
-            estimated_hours=6.0,
-        )
-        previous_subtasks = [{"name": "Subtask 1"}]
-
-        # Act
-        integration = _create_integration_subtask(task, previous_subtasks)
-
-        # Assert
-        assert "docs/integration_report.md" in integration["file_artifacts"]
-        assert any("test" in artifact for artifact in integration["file_artifacts"])
-
-    def test_create_integration_subtask_estimates_time(self):
-        """Test integration subtask time estimate is reasonable."""
-        # Arrange
-        task = Task(
-            id="task-1",
-            name="Test task",
-            description="Test",
-            status=TaskStatus.TODO,
-            priority=Priority.MEDIUM,
-            assigned_to=None,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
-            due_date=None,
-            estimated_hours=10.0,
-        )
-        previous_subtasks = [{"name": "Subtask 1"}]
-
-        # Act
-        integration = _create_integration_subtask(task, previous_subtasks)
-
-        # Assert
-        # Should be capped at 1.5 hours even though 20% of 10 = 2
-        assert integration["estimated_hours"] == 1.5
 
 
 class TestValidateDecomposition:

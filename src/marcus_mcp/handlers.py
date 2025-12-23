@@ -66,22 +66,6 @@ from .tools.context import (  # Context tools
 #     get_similar_projects,
 #     learn_from_completed_project,
 # )
-from .tools.pipeline import (  # Pipeline tools
-    compare_pipelines,
-    compare_what_if_scenarios,
-    find_similar_flows,
-    generate_report,
-    get_live_dashboard,
-    get_recommendations,
-    predict_failure_risk,
-    replay_jump_to,
-    replay_step_backward,
-    replay_step_forward,
-    simulate_modification,
-    start_replay,
-    start_what_if_analysis,
-    track_flow_progress,
-)
 from .tools.predictions import (  # Prediction tools
     get_task_assignment_score,
     predict_blockage_probability,
@@ -1419,49 +1403,6 @@ async def handle_tool_call(
             result = await remove_project(state, arguments)
         elif name == "update_project":
             result = await update_project(state, arguments)
-
-        # Pipeline Enhancement Tools
-        elif name == "pipeline_replay_start":
-            result = await start_replay(state, arguments)
-
-        elif name == "pipeline_replay_forward":
-            result = await replay_step_forward(state, arguments)
-
-        elif name == "pipeline_replay_backward":
-            result = await replay_step_backward(state, arguments)
-
-        elif name == "pipeline_replay_jump":
-            result = await replay_jump_to(state, arguments)
-
-        elif name == "what_if_start":
-            result = await start_what_if_analysis(state, arguments)
-
-        elif name == "what_if_simulate":
-            result = await simulate_modification(state, arguments)
-
-        elif name == "what_if_compare":
-            result = await compare_what_if_scenarios(state, arguments)
-
-        elif name == "pipeline_compare":
-            result = await compare_pipelines(state, arguments)
-
-        elif name == "pipeline_report":
-            result = await generate_report(state, arguments)
-
-        elif name == "pipeline_monitor_dashboard":
-            result = await get_live_dashboard(state, arguments)
-
-        elif name == "pipeline_monitor_flow":
-            result = await track_flow_progress(state, arguments)
-
-        elif name == "pipeline_predict_risk":
-            result = await predict_failure_risk(state, arguments)
-
-        elif name == "pipeline_recommendations":
-            result = await get_recommendations(state, arguments)
-
-        elif name == "pipeline_find_similar":
-            result = await find_similar_flows(state, arguments)
 
         # Prediction and AI intelligence tools
         elif name == "predict_completion_time":

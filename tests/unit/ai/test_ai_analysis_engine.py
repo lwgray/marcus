@@ -586,10 +586,11 @@ Remember: Take your time, test thoroughly, and ask questions!"""
         # Mock environment variable
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-api-key")
 
-        # Mock config loader to return test API key
-        with patch("src.config.config_loader.get_config") as mock_get_config:
+        # Mock config to return test API key
+        with patch("src.config.marcus_config.get_config") as mock_get_config:
             mock_config = Mock()
-            mock_config.get.return_value = "test-api-key"
+            mock_config.ai.anthropic_api_key = "test-api-key"
+            mock_config.ai.provider = "anthropic"
             mock_get_config.return_value = mock_config
 
             # Mock anthropic module

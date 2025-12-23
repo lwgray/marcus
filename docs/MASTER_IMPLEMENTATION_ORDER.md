@@ -1,23 +1,32 @@
 # Master Implementation Order
-**Date**: 2025-01-11
-**Status**: SUPERSEDED - See UNIFIED_MASTER_IMPLEMENTATION_PLAN.md
-**Scope**: Coordinates three major workstreams
+**Date**: 2025-01-11 (Original), 2025-12-21 (Supersession Notice Updated)
+**Status**: SUPERSEDED - See DEVELOPMENT_GUIDE.md for current 8-week schedule
+**Scope**: Historical reference for original 13-week plan
 
 ---
 
-## ⚠️ IMPORTANT: This Document is Superseded
+## ⚠️ IMPORTANT: This Document is SUPERSEDED
 
-**Please refer to the new unified plan**: [UNIFIED_MASTER_IMPLEMENTATION_PLAN.md](UNIFIED_MASTER_IMPLEMENTATION_PLAN.md)
+**Current Implementation Plan**: See [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) for the current 8-week schedule.
 
-The unified plan integrates all four implementation phases into a single coherent roadmap:
-1. **Phase 3**: Post-Project Analysis (Week 1 - In Progress)
-2. **MVP Weeks 1-6**: Features, Workspaces, Telemetry (Weeks 2-7)
-3. **Cato MCP Integration**: No Docker Required (Weeks 8-10)
-4. **Web Console**: Multi-Agent Experiment Launcher + Full Kanban (Weeks 11-13)
+**What Changed**: The original 13-week plan described in this document has been streamlined to an 8-week implementation focused on Telemetry and Cato bundling:
 
-**Total Duration**: 13-16 weeks
+**New 8-Week Schedule**:
+- **Weeks 1-3**: MVP Foundation (Config, Telemetry, Validations)
+- **Weeks 4-7**: Unified Dashboard (Cato bundling)
+- **Week 8**: Web Console (optional)
 
-This document is kept for historical reference only.
+**What Was Removed from Original Plan**:
+- Feature entities (Week 2 original) - not needed for Cato dashboard
+- Git worktrees (Week 3 original) - deferred until needed for larger agent teams
+- Feature context aggregation (Week 4 original) - deferred to Build Kits phase
+- Week 5.5 REST APIs - integrated into Week 2 Telemetry
+
+**Why**: Cato dashboard works with project→task→subtask hierarchy without requiring feature entities. The 8-week plan delivers the same unified dashboard outcome with reduced complexity.
+
+**Historical Context**: This document reflects the original 13-week plan with Features, Worktrees, and Context aggregation. It is preserved for historical reference and to understand the original architectural thinking.
+
+**For Current Work**: Always refer to [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) which contains the active 8-week implementation roadmap.
 
 ---
 

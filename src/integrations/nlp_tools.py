@@ -179,63 +179,48 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             logger.debug(f"Description: {description[:200]}...")
             logger.debug(f"Options: {options}")
 
-            # Check if project/board already set up (by tracked version)
-            # If so, skip project creation to avoid duplication
-            if self.kanban_client and (
-                self.kanban_client.project_id and self.kanban_client.board_id
-            ):
-                proj_id = self.kanban_client.project_id
-                bd_id = self.kanban_client.board_id
+            # ALWAYS create a new Planka project/board for each create_project call
+            # Clear any existing project/board IDs to force new project creation
+            if self.kanban_client:
                 logger.info(
-                    f"Project already created: project_id={proj_id}, "
-                    f"board_id={bd_id}"
+                    f"Creating new project '{project_name}' "
+                    f"(clearing any existing project/board IDs)"
                 )
-            elif options and options.get("mode") == "new_project":
-                # Only create project if not already created
-                if self.kanban_client:
-                    logger.info(
-                        f"Clearing project/board IDs for new_project mode "
-                        f"(current: project_id={self.kanban_client.project_id}, "
-                        f"board_id={self.kanban_client.board_id})"
-                    )
-                    # Set on the underlying client
-                    # (Planka wrapper has read-only properties)
-                    if hasattr(self.kanban_client, "client"):
-                        self.kanban_client.client.project_id = None
-                        self.kanban_client.client.board_id = None
-                    else:
-                        # Direct client (not a wrapper)
-                        self.kanban_client.project_id = None
-                        self.kanban_client.board_id = None
-                    logger.info(
-                        "Cleared project/board IDs to force new project creation"
-                    )
+                # Set on the underlying client
+                # (Planka wrapper has read-only properties)
+                if hasattr(self.kanban_client, "client"):
+                    self.kanban_client.client.project_id = None
+                    self.kanban_client.client.board_id = None
+                else:
+                    # Direct client (not a wrapper)
+                    self.kanban_client.project_id = None
+                    self.kanban_client.board_id = None
 
-                    # Now create the new project/board
-                    from src.integrations.project_auto_setup import ProjectAutoSetup
+                # Now create the new project/board
+                from src.integrations.project_auto_setup import ProjectAutoSetup
 
-                    auto_setup = ProjectAutoSetup()
-                    try:
-                        # Pass the underlying client (not the wrapper) if available
-                        client_to_use = (
-                            self.kanban_client.client
-                            if hasattr(self.kanban_client, "client")
-                            else self.kanban_client
-                        )
-                        project_config = await auto_setup.setup_planka_project(
-                            kanban_client=client_to_use,
-                            project_name=project_name,
-                            options=options,
-                        )
-                        proj_id = project_config.provider_config.get("project_id")
-                        bd_id = project_config.provider_config.get("board_id")
-                        logger.info(
-                            f"Created new Planka project: "
-                            f"project_id={proj_id}, board_id={bd_id}"
-                        )
-                    except Exception as e:
-                        logger.error(f"Failed to create new project: {e}")
-                        raise
+                auto_setup = ProjectAutoSetup()
+                try:
+                    # Pass the underlying client (not the wrapper) if available
+                    client_to_use = (
+                        self.kanban_client.client
+                        if hasattr(self.kanban_client, "client")
+                        else self.kanban_client
+                    )
+                    project_config = await auto_setup.setup_planka_project(
+                        kanban_client=client_to_use,
+                        project_name=project_name,
+                        options=options,
+                    )
+                    proj_id = project_config.provider_config.get("project_id")
+                    bd_id = project_config.provider_config.get("board_id")
+                    logger.info(
+                        f"Created new Planka project: "
+                        f"project_id={proj_id}, board_id={bd_id}"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to create new project: {e}")
+                    raise
 
             # Parse tasks
             from src.core.error_framework import ErrorContext, error_context

@@ -71,12 +71,12 @@ from src.core.models import (
     Task,
     TaskStatus,
 )
+from src.core.types import ProjectOutcome
 from src.integrations.ai_analysis_engine import AIAnalysisEngine
 from src.integrations.github_mcp_interface import GitHubMCPInterface
 from src.integrations.kanban_client import KanbanClient
 from src.learning.project_pattern_learner import ProjectPatternLearner
 from src.quality.project_quality_assessor import ProjectQualityAssessor
-from src.recommendations.recommendation_engine import ProjectOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -156,14 +156,7 @@ class ProjectMonitor:
         self.pattern_learner = ProjectPatternLearner(ai_engine=self.ai_engine)
         self.quality_assessor = ProjectQualityAssessor(ai_engine=self.ai_engine)
 
-        # Connect pattern learner to recommendation engine
-        from src.recommendations.recommendation_engine import (
-            PipelineRecommendationEngine,
-        )
-
-        self.recommendation_engine = PipelineRecommendationEngine(
-            pattern_learner=self.pattern_learner
-        )
+        # Recommendation engine removed (pipeline infrastructure dependency)
 
         # State tracking
         self.current_state: Optional[ProjectState] = None
@@ -1457,34 +1450,10 @@ class ProjectMonitor:
                 "Unable to retrieve project state for pattern recommendations"
             )
 
-        # Build project context
-        await self._get_all_tasks()
-
-        project_context = {
-            "total_tasks": self.current_state.total_tasks,
-            "progress": self.current_state.progress_percent,
-            "velocity": self.current_state.team_velocity,
-            "risk_level": self.current_state.risk_level.value,
-            "team_size": 3,  # Would need to track actual team size
-            "blocked_tasks": self.current_state.blocked_tasks,
-        }
-
-        # Get recommendations from recommendation engine
-        recommendations = self.recommendation_engine.get_pattern_based_recommendations(
-            project_context
+        # Recommendation engine was removed (pipeline infrastructure dependency)
+        # Return empty list until reimplemented without pipeline dependencies
+        logger.warning(
+            "Pattern-based recommendations not available - "
+            "recommendation engine removed during pipeline cleanup"
         )
-
-        # Convert to dict format
-        rec_dicts = []
-        for rec in recommendations:
-            rec_dict = {
-                "type": rec.type,
-                "message": rec.message,
-                "confidence": rec.confidence,
-                "impact": rec.impact,
-            }
-            if rec.supporting_data:
-                rec_dict["supporting_data"] = rec.supporting_data
-            rec_dicts.append(rec_dict)
-
-        return rec_dicts
+        return []

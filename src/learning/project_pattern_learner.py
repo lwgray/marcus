@@ -16,9 +16,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from src.core.code_analyzer import CodeAnalyzer
 from src.core.models import ProjectState, Task, TaskStatus, WorkerStatus
+from src.core.types import ProjectOutcome
 from src.integrations.ai_analysis_engine import AIAnalysisEngine
 from src.quality.board_quality_validator import BoardQualityValidator, QualityReport
-from src.recommendations.recommendation_engine import PatternDatabase, ProjectOutcome
 
 
 @dataclass
@@ -63,7 +63,7 @@ class ProjectPatternLearner:
 
     def __init__(
         self,
-        pattern_db: Optional[PatternDatabase] = None,
+        pattern_db: Optional[Any] = None,
         ai_engine: Optional[AIAnalysisEngine] = None,
         code_analyzer: Optional[CodeAnalyzer] = None,
     ) -> None:
@@ -72,14 +72,15 @@ class ProjectPatternLearner:
 
         Parameters
         ----------
-        pattern_db : Optional[PatternDatabase]
-            Database for storing patterns. Creates new if not provided.
+        pattern_db : Optional[Any]
+            Database for storing patterns (deprecated, no longer used).
         ai_engine : Optional[AIAnalysisEngine]
             AI engine for analysis. Creates new if not provided.
         code_analyzer : Optional[CodeAnalyzer]
             Code analyzer for GitHub integration.
         """
-        self.pattern_db = pattern_db or PatternDatabase()
+        # Pattern database removed (was part of pipeline recommendation system)
+        self.pattern_db = pattern_db  # Keep for backward compatibility
         self.ai_engine = ai_engine or AIAnalysisEngine()
         self.code_analyzer = code_analyzer
         self.quality_validator = BoardQualityValidator()
@@ -88,8 +89,8 @@ class ProjectPatternLearner:
         self.learned_patterns: List[ProjectPattern] = []
         self._load_existing_patterns()
 
-        # Update pattern database with pattern learner reference
-        if hasattr(self.pattern_db, "pattern_learner"):
+        # Pattern database reference (deprecated)
+        if self.pattern_db and hasattr(self.pattern_db, "pattern_learner"):
             self.pattern_db.pattern_learner = self
 
     def _load_existing_patterns(self) -> None:
@@ -201,13 +202,14 @@ class ProjectPatternLearner:
         # Store pattern
         self._store_pattern(pattern)
 
-        # Update pattern database
-        if outcome.successful:
-            self.pattern_db.add_success_pattern(self._pattern_to_flow_data(pattern))
-        else:
-            self.pattern_db.add_failure_pattern(
-                self._pattern_to_flow_data(pattern), outcome.failure_reasons or []
-            )
+        # Update pattern database (deprecated - kept for backward compatibility)
+        if self.pattern_db and hasattr(self.pattern_db, "add_success_pattern"):
+            if outcome.successful:
+                self.pattern_db.add_success_pattern(self._pattern_to_flow_data(pattern))
+            else:
+                self.pattern_db.add_failure_pattern(
+                    self._pattern_to_flow_data(pattern), outcome.failure_reasons or []
+                )
 
         return pattern
 

@@ -154,7 +154,7 @@ class TestMarcusAIEngine:
 
         mock_config.get = MagicMock(side_effect=config_get)
 
-        with patch("src.config.config_loader.get_config", return_value=mock_config):
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
             return MarcusAIEngine()
 
     @pytest.fixture
@@ -439,7 +439,7 @@ class TestIntegration:
 
         mock_config.get = MagicMock(side_effect=config_get)
 
-        with patch("src.config.config_loader.get_config", return_value=mock_config):
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
             return MarcusAIEngine()
 
     @pytest.fixture

@@ -168,9 +168,11 @@ class CodeAnalyzer:
         if feature_type == "endpoints":
             details["implementations"] = await self._find_endpoints(owner, repo)
         elif feature_type == "models":
-            details["implementations"] = await self._find_models(owner, repo)
+            # Model finding not implemented - returning empty list
+            details["implementations"] = []
         elif feature_type == "schemas":
-            details["implementations"] = await self._find_schemas(owner, repo)
+            # Schema finding not implemented - returning empty list
+            details["implementations"] = []
 
         return details
 
@@ -364,6 +366,44 @@ class CodeAnalyzer:
         except Exception as e:
             print(f"Error analyzing PR: {e}", file=sys.stderr)
             return {}
+
+    async def _find_models(self, owner: str, repo: str) -> List[Dict[str, Any]]:
+        """
+        Find database models in the repository.
+
+        Parameters
+        ----------
+        owner : str
+            Repository owner
+        repo : str
+            Repository name
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of model dictionaries
+        """
+        # Stub method - not yet implemented
+        return []
+
+    async def _find_schemas(self, owner: str, repo: str) -> List[Dict[str, Any]]:
+        """
+        Find API schemas in the repository.
+
+        Parameters
+        ----------
+        owner : str
+            Repository owner
+        repo : str
+            Repository name
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of schema dictionaries
+        """
+        # Stub method - not yet implemented
+        return []
 
     async def _find_endpoints(self, owner: str, repo: str) -> List[Dict[str, Any]]:
         """
@@ -703,13 +743,3 @@ class CodeAnalyzer:
         added = len(re.findall(r"^\+[^+]", patch, re.MULTILINE))
         removed = len(re.findall(r"^-[^-]", patch, re.MULTILINE))
         return f"{added} additions, {removed} deletions"
-
-    async def _find_models(self, owner: str, repo: str) -> List[Dict[str, Any]]:
-        """Find data models in the repository."""
-        # TODO: Implement model finding logic
-        return []
-
-    async def _find_schemas(self, owner: str, repo: str) -> List[Dict[str, Any]]:
-        """Find data schemas in the repository."""
-        # TODO: Implement schema finding logic
-        return []

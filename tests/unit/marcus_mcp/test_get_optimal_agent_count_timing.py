@@ -8,6 +8,7 @@ Bug: get_optimal_agent_count returned 0 tasks after create_project but 40 tasks
 after request_next_task. Root cause: refresh_project_state() migration timing.
 """
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -16,24 +17,41 @@ from src.core.models import Priority, Task, TaskStatus
 from src.marcus_mcp.server import MarcusServer
 
 
+def create_task(**kwargs):
+    """Helper to create Task with required fields."""
+    now = datetime.now(timezone.utc)
+    defaults = {
+        "assigned_to": None,
+        "created_at": now,
+        "updated_at": now,
+        "due_date": None,
+    }
+    return Task(**{**defaults, **kwargs})
+
+
 class TestGetOptimalAgentCountTiming:
     """Test get_optimal_agent_count works immediately after project creation."""
 
     @pytest.fixture
     async def mock_server(self):
         """Create a mock Marcus server with subtask_manager."""
-        server = MarcusServer(None)
+        server = MarcusServer()
 
         # Mock kanban client
         server.kanban_client = Mock()
         server.kanban_client.get_all_tasks = AsyncMock()
 
+        # Mock log_event to prevent JSON serialization errors with Mock objects
+        server.log_event = Mock()
+
         # Create real subtask_manager
+        import tempfile
+        from pathlib import Path
+
         from src.marcus_mcp.coordinator.subtask_manager import SubtaskManager
 
-        import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
-            temp_file = f.name
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as f:
+            temp_file = Path(f.name)
         server.subtask_manager = SubtaskManager(state_file=temp_file)
 
         # Initialize state
@@ -46,7 +64,7 @@ class TestGetOptimalAgentCountTiming:
     def parent_tasks(self):
         """Create mock parent tasks."""
         return [
-            Task(
+            create_task(
                 id=f"task_{i}",
                 name=f"Parent Task {i}",
                 description=f"Description for task {i}",

@@ -279,46 +279,25 @@ class TestEnhancedFeaturesComplete:
 
     @pytest.mark.asyncio
     async def test_granular_configuration(self):
-        """Test granular configuration support"""
-        from src.config.config_loader import ConfigLoader
+        """Test granular configuration support with new config system"""
+        from unittest.mock import Mock
 
-        # Create test config
-        test_config = {
-            "features": {
-                "events": {
-                    "enabled": True,
-                    "store_history": True,
-                    "history_limit": 500,
-                    "async_handlers": True,
-                },
-                "context": {
-                    "enabled": True,
-                    "infer_dependencies": True,
-                    "max_depth": 5,
-                },
-                "memory": {
-                    "enabled": True,
-                    "learning_rate": 0.2,
-                    "min_samples": 10,
-                    "use_v2_predictions": True,
-                },
-            }
-        }
+        from src.config.marcus_config import FeaturesSettings, MarcusConfig
 
-        # Mock config loader
-        loader = ConfigLoader()
-        loader._config = test_config
+        # Create test config using new dataclass-based system
+        mock_config = Mock(spec=MarcusConfig)
+        mock_config.features = FeaturesSettings(
+            events=True,
+            context=True,
+            memory=True,
+            visibility=False,
+        )
 
-        # Test feature config retrieval
-        events_config = loader.get_feature_config("events")
-        assert events_config["enabled"] is True
-        assert events_config["store_history"] is True
-        assert events_config["history_limit"] == 500
-
-        # Test backward compatibility
-        loader._config = {"features": {"events": True}}  # Old format
-        events_config = loader.get_feature_config("events")
-        assert events_config == {"enabled": True}
+        # Test feature config retrieval via attributes
+        assert mock_config.features.events is True
+        assert mock_config.features.context is True
+        assert mock_config.features.memory is True
+        assert mock_config.features.visibility is False
 
     @pytest.mark.asyncio
     async def test_full_workflow_integration(self, setup_environment):

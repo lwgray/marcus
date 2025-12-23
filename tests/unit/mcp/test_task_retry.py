@@ -21,6 +21,7 @@ class TestCalculateRetryAfterSeconds:
         mock_state = Mock()
         mock_state.agent_tasks = {}  # No tasks assigned
         mock_state.project_tasks = []
+        mock_state.agent_status = {}  # No agents
 
         # Act
         result = await calculate_retry_after_seconds(mock_state)
@@ -38,6 +39,7 @@ class TestCalculateRetryAfterSeconds:
 
         # Task that started 30 min ago and is 75% done
         # Expected: 30 min / 75% = 40 min total, 10 min remaining
+        # ETA = 600s, but retry uses 60% of ETA = 360s, capped at 300s max
         task = Task(
             id="task_1",
             name="Database Setup",
@@ -69,6 +71,7 @@ class TestCalculateRetryAfterSeconds:
 
         mock_state.agent_tasks = {"agent_1": assignment}
         mock_state.project_tasks = [task]
+        mock_state.agent_status = {"agent_1": Mock()}  # Mock agent status
 
         # Mock memory (not needed for progress-based calculation)
         mock_memory = AsyncMock()
@@ -79,9 +82,9 @@ class TestCalculateRetryAfterSeconds:
         result = await calculate_retry_after_seconds(mock_state)
 
         # Assert
-        # Should be roughly 10 minutes (600 seconds) + 10% buffer
-        # 600 + 60 = 660 seconds = 11 minutes
-        assert 600 <= result["retry_after_seconds"] <= 720  # Allow some margin
+        # Retry is capped at 5 minutes (300s) for regular re-polling
+        # (design changed in commit 473a82f to prevent excessive wait times)
+        assert result["retry_after_seconds"] == 300  # Capped at 5 min max
         assert "Database Setup" in result["reason"]
         assert result["blocking_task"]["id"] == "task_1"
         assert result["blocking_task"]["progress"] == 75
@@ -123,6 +126,7 @@ class TestCalculateRetryAfterSeconds:
 
         mock_state.agent_tasks = {"agent_1": assignment}
         mock_state.project_tasks = [task]
+        mock_state.agent_status = {"agent_1": Mock()}  # Mock agent status
 
         # Mock memory with 2-hour historical median
         mock_memory = AsyncMock()
@@ -133,9 +137,9 @@ class TestCalculateRetryAfterSeconds:
         result = await calculate_retry_after_seconds(mock_state)
 
         # Assert
-        # Should use 2 hour median: 2 * 3600 = 7200 seconds + 10% buffer
-        # But capped at 1 hour (3600 seconds)
-        assert result["retry_after_seconds"] == 3600  # Capped at 1 hour
+        # Historical median suggests 2 hours (7200s), but retry is capped at 300s
+        # (design changed in commit 473a82f for regular re-polling)
+        assert result["retry_after_seconds"] == 300  # Capped at 5 min max
         assert "API Development" in result["reason"]
 
     @pytest.mark.asyncio
@@ -202,6 +206,10 @@ class TestCalculateRetryAfterSeconds:
 
         mock_state.agent_tasks = {"agent_1": assignment1, "agent_2": assignment2}
         mock_state.project_tasks = [task1, task2]
+        mock_state.agent_status = {
+            "agent_1": Mock(),
+            "agent_2": Mock(),
+        }  # Mock agent status
 
         mock_memory = AsyncMock()
         mock_memory.get_global_median_duration = AsyncMock(return_value=1.0)
@@ -216,8 +224,8 @@ class TestCalculateRetryAfterSeconds:
         assert result["blocking_task"]["name"] == "Quick Task"
 
     @pytest.mark.asyncio
-    async def test_caps_maximum_wait_at_one_hour(self):
-        """Test wait time is capped at 1 hour maximum"""
+    async def test_caps_maximum_wait_at_five_minutes(self):
+        """Test wait time is capped at 5 minutes maximum for regular re-polling"""
         # Arrange
         mock_state = Mock()
 
@@ -251,6 +259,7 @@ class TestCalculateRetryAfterSeconds:
 
         mock_state.agent_tasks = {"agent_1": assignment}
         mock_state.project_tasks = [task]
+        mock_state.agent_status = {"agent_1": Mock()}  # Mock agent status
 
         # Mock memory with very long median (10 hours)
         mock_memory = AsyncMock()
@@ -261,5 +270,6 @@ class TestCalculateRetryAfterSeconds:
         result = await calculate_retry_after_seconds(mock_state)
 
         # Assert
-        # Should be capped at 1 hour (3600 seconds)
-        assert result["retry_after_seconds"] == 3600
+        # Even with 10 hour estimate, capped at 5 minutes (300s) for re-polling
+        # (design changed in commit 473a82f: "Long task (10min): Still check every 5min max")
+        assert result["retry_after_seconds"] == 300

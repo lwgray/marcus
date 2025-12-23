@@ -50,7 +50,7 @@ class TestComplexityClassification:
 
         # Act
         result = await parser._analyze_prd_deeply(
-            "Set background to green. Use vanilla JS.", ProjectConstraints()
+            "Set background to green. Use vanilla JS."
         )
 
         # Assert
@@ -79,9 +79,7 @@ class TestComplexityClassification:
         }"""
 
         # Act
-        result = await parser._analyze_prd_deeply(
-            "Add score tracking", ProjectConstraints()
-        )
+        result = await parser._analyze_prd_deeply("Add score tracking")
 
         # Assert
         req = result.functional_requirements[0]
@@ -107,9 +105,7 @@ class TestComplexityClassification:
         }"""
 
         # Act
-        result = await parser._analyze_prd_deeply(
-            "Implement user authentication", ProjectConstraints()
-        )
+        result = await parser._analyze_prd_deeply("Implement user authentication")
 
         # Assert
         req = result.functional_requirements[0]
@@ -136,9 +132,7 @@ class TestComplexityClassification:
         }"""
 
         # Act
-        result = await parser._analyze_prd_deeply(
-            "Build microservice architecture", ProjectConstraints()
-        )
+        result = await parser._analyze_prd_deeply("Build microservice architecture")
 
         # Assert
         req = result.functional_requirements[0]
@@ -176,7 +170,7 @@ class TestConstraintExtraction:
 
         # Act
         result = await parser._analyze_prd_deeply(
-            "Build a snake game. Use vanilla HTML/CSS/JS", ProjectConstraints()
+            "Build a snake game. Use vanilla HTML/CSS/JS"
         )
 
         # Assert
@@ -196,8 +190,7 @@ class TestConstraintExtraction:
 
         # Act
         result = await parser._analyze_prd_deeply(
-            "Build API with Python 3, PostgreSQL, REST. Don't use ORM.",
-            ProjectConstraints(),
+            "Build API with Python 3, PostgreSQL, REST. Don't use ORM."
         )
 
         # Assert
@@ -220,7 +213,7 @@ class TestConstraintExtraction:
 
         # Act
         result = await parser._analyze_prd_deeply(
-            "Build frontend. Don't use React, Vue, or Angular.", ProjectConstraints()
+            "Build frontend. Don't use React, Vue, or Angular."
         )
 
         # Assert
@@ -274,8 +267,7 @@ class TestSnakeGameExample:
             - Classic gameplay (grow on eating, die on collision)
             - Keyboard controls
             - Score tracking
-            Use vanilla HTML/CSS/JS""",
-            ProjectConstraints(),
+            Use vanilla HTML/CSS/JS"""
         )
 
         # Assert
@@ -370,9 +362,7 @@ class TestAffectedComponents:
         }"""
 
         # Act
-        result = await parser._analyze_prd_deeply(
-            "Add UI feature", ProjectConstraints()
-        )
+        result = await parser._analyze_prd_deeply("Add UI feature")
 
         # Assert
         req = result.functional_requirements[0]
@@ -398,9 +388,7 @@ class TestAffectedComponents:
         }"""
 
         # Act
-        result = await parser._analyze_prd_deeply(
-            "Add full stack feature", ProjectConstraints()
-        )
+        result = await parser._analyze_prd_deeply("Add full stack feature")
 
         # Assert
         req = result.functional_requirements[0]

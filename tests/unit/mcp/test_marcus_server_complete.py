@@ -79,7 +79,6 @@ async def test_server_initialization():
     assert server.provider == "planka"
     assert server.ai_engine is not None
     assert server.monitor is not None
-    assert server.comm_hub is not None
     assert server.project_tasks == []
     assert server.agent_tasks == {}
     assert server.agent_status == {}

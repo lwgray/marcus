@@ -460,9 +460,9 @@ class AIAnalysisEngine:
         """Initialize with Anthropic client."""
 
         # Load API key
-        from src.config.config_loader import get_config
+        from src.config.marcus_config import get_config
         config = get_config()
-        api_key = config.get("ai.anthropic_api_key") or os.getenv("ANTHROPIC_API_KEY")
+        api_key = config.ai.anthropic_api_key or os.getenv("ANTHROPIC_API_KEY")
 
         # Initialize client (None if no key)
         if api_key:
