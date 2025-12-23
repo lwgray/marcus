@@ -15,10 +15,13 @@ Example
 """
 
 import json
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -184,7 +187,7 @@ class TransportSettings:
     """
 
     type: str = "http"
-    http_host: str = "0.0.0.0"  # nosec B104
+    http_host: str = "127.0.0.1"
     http_port: int = 4298
     http_path: str = "/mcp"
     log_level: str = "info"
@@ -475,7 +478,13 @@ class MarcusConfig:
             # Extract env var name: "${VAR_NAME}" -> "VAR_NAME"
             env_var = data[2:-1]
             # Return None if env var not found - this ensures validation catches it
-            return os.getenv(env_var, None)
+            value = os.getenv(env_var, None)
+            if value is None:
+                logger.warning(
+                    f"Environment variable {env_var} not set, using None. "
+                    f"This may cause validation errors if the variable is required."
+                )
+            return value
         else:
             return data
 
@@ -535,10 +544,14 @@ class MarcusConfig:
                 port = http_config.get("port", 4298)
                 # Convert string to int if needed (from env var substitution)
                 if isinstance(port, str):
-                    port = int(port)
+                    try:
+                        port = int(port)
+                    except ValueError:
+                        # Invalid port string, use default
+                        port = 4298
                 nested_configs["transport"] = TransportSettings(
                     type=transport_data.get("type", "http"),
-                    http_host=http_config.get("host", "0.0.0.0"),  # nosec B104
+                    http_host=http_config.get("host", "127.0.0.1"),
                     http_port=port,
                     http_path=http_config.get("path", "/mcp"),
                     log_level=http_config.get("log_level", "info"),
@@ -679,7 +692,7 @@ class MarcusConfig:
             try:
                 path = Path(dir_path).expanduser()
                 path.mkdir(parents=True, exist_ok=True)
-            except Exception as e:
+            except (PermissionError, OSError, FileNotFoundError) as e:
                 errors.append(f"Cannot create {dir_name} at {dir_path}: {e}")
 
         # If there are errors, raise with clear message
