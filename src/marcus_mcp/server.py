@@ -27,7 +27,11 @@ from mcp.server import Server  # noqa: E402
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 from mcp.server.stdio import stdio_server  # noqa: E402
 
-from src.config.marcus_config import TaskLeaseSettings, get_config  # noqa: E402
+from src.config.marcus_config import (  # noqa: E402
+    TaskLeaseSettings,
+    get_config,
+    setup_logging,
+)
 from src.config.settings import Settings  # noqa: E402
 
 # Import for type annotations only
@@ -2462,6 +2466,9 @@ async def main() -> None:
 if __name__ == "__main__":
     # Load config first to get transport settings
     config = get_config()
+
+    # Setup logging IMMEDIATELY after config load
+    setup_logging()
 
     # Get transport type from config, with command line override
     transport = config.transport.type or "stdio"
