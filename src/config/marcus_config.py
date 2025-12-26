@@ -437,8 +437,8 @@ class MarcusConfig:
     single_project_mode: bool = True
     default_project_name: Optional[str] = None
     log_level: str = "INFO"
-    data_dir: str = "~/.marcus/data"
-    cache_dir: str = "~/.marcus/cache"
+    data_dir: str = "./data"
+    cache_dir: str = "./cache"
 
     @classmethod
     def from_file(cls, path: str = "config_marcus.json") -> "MarcusConfig":
@@ -626,8 +626,8 @@ class MarcusConfig:
             "single_project_mode": data.get("single_project_mode", True),
             "default_project_name": data.get("default_project_name", None),
             "log_level": data.get("log_level", "INFO"),
-            "data_dir": data.get("data_dir", "~/.marcus/data"),
-            "cache_dir": data.get("cache_dir", "~/.marcus/cache"),
+            "data_dir": data.get("data_dir", "./data"),
+            "cache_dir": data.get("cache_dir", "./cache"),
         }
 
         # Combine nested and top-level

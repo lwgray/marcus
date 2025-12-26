@@ -283,8 +283,11 @@ class Memory:
         """Record task completion and learn from it."""
         # Get task info from working memory
         active_task = self.working["active_tasks"].get(agent_id, {})
+
         if not active_task or active_task["task"].id != task_id:
-            logger.warning(f"No active task found for agent {agent_id}")
+            logger.warning(
+                f"No active task found for agent {agent_id} with task {task_id}"
+            )
             return None
 
         task = active_task["task"]
@@ -315,9 +318,12 @@ class Memory:
 
         # Persist if available
         if self.persistence:
+            outcome_key = (
+                f"{task_id}_{agent_id}_{datetime.now(timezone.utc).timestamp()}"
+            )
             await self.persistence.store(
                 "task_outcomes",
-                f"{task_id}_{agent_id}_{datetime.now(timezone.utc).timestamp()}",
+                outcome_key,
                 outcome.to_dict(),
             )
 
