@@ -1072,11 +1072,27 @@ class MarcusServer:
             agent_id: str, name: str, role: str, skills: List[str] = []
         ) -> Dict[str, Any]:
             """Register a new agent with the Marcus system."""
+            from src.logging.mcp_tool_logger import log_mcp_tool_response
+
             from .tools.agent import register_agent as impl
 
-            return await impl(
+            result = await impl(
                 agent_id=agent_id, name=name, role=role, skills=skills, state=server
             )
+
+            # Log MCP tool response
+            log_mcp_tool_response(
+                tool_name="register_agent",
+                arguments={
+                    "agent_id": agent_id,
+                    "name": name,
+                    "role": role,
+                    "skills": skills,
+                },
+                response=result,
+            )
+
+            return result
 
         @self._fastmcp.tool()  # type: ignore[misc]
         async def get_agent_status(agent_id: str) -> Dict[str, Any]:
@@ -1215,11 +1231,27 @@ class MarcusServer:
                 agent_id: str, name: str, role: str, skills: List[str] = []
             ) -> Dict[str, Any]:
                 """Register a new agent with the Marcus system."""
+                from src.logging.mcp_tool_logger import log_mcp_tool_response
+
                 from .tools.agent import register_agent as impl
 
-                return await impl(
+                result = await impl(
                     agent_id=agent_id, name=name, role=role, skills=skills, state=server
                 )
+
+                # Log MCP tool response
+                log_mcp_tool_response(
+                    tool_name="register_agent",
+                    arguments={
+                        "agent_id": agent_id,
+                        "name": name,
+                        "role": role,
+                        "skills": skills,
+                    },
+                    response=result,
+                )
+
+                return result
 
         if "get_agent_status" in allowed_tools:
 
@@ -1235,14 +1267,25 @@ class MarcusServer:
             @app.tool()  # type: ignore[misc]
             async def request_next_task(agent_id: str) -> Dict[str, Any]:
                 """Request the next optimal task assignment for an agent."""
+                from src.logging.mcp_tool_logger import log_mcp_tool_response
+
                 from .tools.task import request_next_task as impl
 
                 result = await impl(agent_id=agent_id, state=server)
-                return (
+                final_result = (
                     dict(result)
                     if isinstance(result, dict)
                     else {"error": "Invalid response format"}
                 )
+
+                # Log MCP tool response
+                log_mcp_tool_response(
+                    tool_name="request_next_task",
+                    arguments={"agent_id": agent_id},
+                    response=final_result,
+                )
+
+                return final_result
 
         if "report_task_progress" in allowed_tools:
 
@@ -1255,9 +1298,11 @@ class MarcusServer:
                 message: str = "",
             ) -> Dict[str, Any]:
                 """Report progress on a task."""
+                from src.logging.mcp_tool_logger import log_mcp_tool_response
+
                 from .tools.task import report_task_progress as impl
 
-                return await impl(
+                result = await impl(
                     agent_id=agent_id,
                     task_id=task_id,
                     status=status,
@@ -1265,6 +1310,21 @@ class MarcusServer:
                     message=message,
                     state=server,
                 )
+
+                # Log MCP tool response
+                log_mcp_tool_response(
+                    tool_name="report_task_progress",
+                    arguments={
+                        "agent_id": agent_id,
+                        "task_id": task_id,
+                        "status": status,
+                        "progress": progress,
+                        "message": message,
+                    },
+                    response=result,
+                )
+
+                return result
 
         if "report_blocker" in allowed_tools:
 
@@ -1276,15 +1336,31 @@ class MarcusServer:
                 severity: str = "medium",
             ) -> Dict[str, Any]:
                 """Report a blocker on a task."""
+                from src.logging.mcp_tool_logger import log_mcp_tool_response
+
                 from .tools.task import report_blocker as impl
 
-                return await impl(
+                result = await impl(
                     agent_id=agent_id,
                     task_id=task_id,
                     blocker_description=blocker_description,
                     severity=severity,
                     state=server,
                 )
+
+                # Log MCP tool response
+                log_mcp_tool_response(
+                    tool_name="report_blocker",
+                    arguments={
+                        "agent_id": agent_id,
+                        "task_id": task_id,
+                        "blocker_description": blocker_description,
+                        "severity": severity,
+                    },
+                    response=result,
+                )
+
+                return result
 
         if "unassign_task" in allowed_tools:
 
@@ -1360,14 +1436,29 @@ class MarcusServer:
                 Dict[str, Any]
                     Dict with success, project_id, tasks_created, and board info.
                 """
+                from src.logging.mcp_tool_logger import log_mcp_tool_response
+
                 from .tools.nlp import create_project as impl
 
-                return await impl(
+                result = await impl(
                     description=description,
                     project_name=project_name,
                     options=options,
                     state=server,
                 )
+
+                # Log MCP tool response
+                log_mcp_tool_response(
+                    tool_name="create_project",
+                    arguments={
+                        "description": description,
+                        "project_name": project_name,
+                        "options": options,
+                    },
+                    response=result,
+                )
+
+                return result
 
         if "create_tasks" in allowed_tools:
 
@@ -1809,9 +1900,20 @@ class MarcusServer:
             @app.tool()  # type: ignore[misc]
             async def get_task_context(task_id: str) -> Dict[str, Any]:
                 """Get the full context for a specific task."""
+                from src.logging.mcp_tool_logger import log_mcp_tool_response
+
                 from .tools.context import get_task_context as impl
 
-                return await impl(task_id=task_id, state=server)
+                result = await impl(task_id=task_id, state=server)
+
+                # Log MCP tool response
+                log_mcp_tool_response(
+                    tool_name="get_task_context",
+                    arguments={"task_id": task_id},
+                    response=result,
+                )
+
+                return result
 
         if "log_decision" in allowed_tools:
 
@@ -1822,14 +1924,29 @@ class MarcusServer:
                 decision: str,
             ) -> Dict[str, Any]:
                 """Log an architectural decision."""
+                from src.logging.mcp_tool_logger import log_mcp_tool_response
+
                 from .tools.context import log_decision as impl
 
-                return await impl(
+                result = await impl(
                     agent_id=agent_id,
                     task_id=task_id,
                     decision=decision,
                     state=server,
                 )
+
+                # Log MCP tool response
+                log_mcp_tool_response(
+                    tool_name="log_decision",
+                    arguments={
+                        "agent_id": agent_id,
+                        "task_id": task_id,
+                        "decision": decision,
+                    },
+                    response=result,
+                )
+
+                return result
 
         if "log_artifact" in allowed_tools:
 
@@ -1888,9 +2005,11 @@ class MarcusServer:
                 Dict[str, Any]
                     Result with artifact location and storage details
                 """
+                from src.logging.mcp_tool_logger import log_mcp_tool_response
+
                 from .tools.attachment import log_artifact as impl
 
-                return await impl(
+                result = await impl(
                     task_id=task_id,
                     filename=filename,
                     content=content,
@@ -1900,6 +2019,23 @@ class MarcusServer:
                     location=location,
                     state=server,
                 )
+
+                # Log MCP tool response
+                log_mcp_tool_response(
+                    tool_name="log_artifact",
+                    arguments={
+                        "task_id": task_id,
+                        "filename": filename,
+                        "content": content,
+                        "artifact_type": artifact_type,
+                        "project_root": project_root,
+                        "description": description,
+                        "location": location,
+                    },
+                    response=result,
+                )
+
+                return result
 
         if "check_task_dependencies" in allowed_tools:
 

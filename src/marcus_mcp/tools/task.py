@@ -75,6 +75,98 @@ async def get_project_board_context(state: Any) -> Dict[str, Optional[str]]:
     return context
 
 
+def _get_task_type(task: Task) -> str:
+    """
+    Determine task type using the same logic as AI instruction generation.
+
+    This function mirrors the task type determination logic from
+    ai_analysis_engine.generate_task_instructions() to ensure consistency
+    between instruction generation and workflow enforcement.
+
+    Parameters
+    ----------
+    task : Task
+        Task to check
+
+    Returns
+    -------
+    str
+        Task type: "implementation", "design", or "testing"
+
+    Notes
+    -----
+    Task type priority:
+    1. _parent_task_type attribute (for subtasks)
+    2. Inference from name/labels
+    3. Defaults to "implementation"
+
+    This matches the logic in src/integrations/ai_analysis_engine.py:460-473
+    """
+    # CRITICAL: Check parent task type first for subtasks (same as ai_analysis_engine)
+    if hasattr(task, "_parent_task_type"):
+        parent_type = getattr(task, "_parent_task_type")
+        return str(parent_type)
+
+    # Fall back to inferring from name or labels (same logic as ai_analysis_engine)
+    task_type = "implementation"  # default
+    task_labels = getattr(task, "labels", []) or []
+
+    if "design" in task.name.lower() or "type:design" in task_labels:
+        task_type = "design"
+    elif "test" in task.name.lower() or "type:testing" in task_labels:
+        task_type = "testing"
+
+    return task_type
+
+
+def _build_mandatory_workflow_prompt(task: Task) -> str:
+    """
+    Build mandatory workflow prompt that agents MUST follow.
+
+    This prompt creates a forcing function by requiring agents to
+    write a todo list with enumerated workflow steps.
+
+    Parameters
+    ----------
+    task : Task
+        Task being assigned (used to insert task description)
+
+    Returns
+    -------
+    str
+        Formatted mandatory workflow prompt
+
+    Notes
+    -----
+    This addresses Issue #168: Agents not following CLAUDE.md workflow.
+    The todo list requirement makes workflow visible and trackable.
+    """
+    workflow_prompt = f"""🔴 MANDATORY WORKFLOW 🔴
+
+Before starting work, you MUST write a todo list with these steps:
+
+1. Call get_task_context to check dependencies and artifacts
+2. Read artifacts from dependency tasks
+3. [TASK WORK: {task.name}]
+   {task.description}
+4. Report progress at 25%, 50%, 75% milestones
+5. Log decisions (log_decision) and artifacts (log_artifact) as needed
+6. Report completion with implementation summary
+7. Be prepared for remediation work if validation fails and resubmit progress
+8. Immediately request next task
+
+⚠️ CRITICAL BEHAVIORS:
+- Check dependencies with get_task_context BEFORE starting work
+- Read artifacts from dependency tasks to understand prior work
+- Report progress at each milestone (not just at completion)
+- Log decisions as they're made (not after task completion)
+- Be ready to address validation feedback and resubmit
+
+This workflow ensures coordination with other agents and prevents
+incomplete implementations."""
+    return workflow_prompt
+
+
 def build_tiered_instructions(
     base_instructions: str,
     task: Task,
@@ -106,14 +198,26 @@ def build_tiered_instructions(
     Notes
     -----
     Instruction layers:
+    0. Mandatory workflow (ONLY for implementation tasks - Issue #168)
     1. Base instructions (always included)
     2. Subtask context (if this is a subtask)
     3. Implementation context (if previous work exists)
     4. Dependency awareness (if task has dependents)
     5. Decision logging (if task affects others)
     6. Predictions and warnings (if available)
+    7. Task-specific guidance (based on labels)
     """
-    instructions_parts = [base_instructions]
+    instructions_parts = []
+
+    # Layer 0: Mandatory Workflow (ONLY for implementation tasks)
+    # Use same task type logic as AI instruction generation
+    task_type = _get_task_type(task)
+    if task_type == "implementation":
+        workflow_prompt = _build_mandatory_workflow_prompt(task)
+        instructions_parts.append(workflow_prompt)
+
+    # Layer 1: Base instructions
+    instructions_parts.append(base_instructions)
 
     # Layer 1.5: Subtask Context (if this is a subtask)
     if hasattr(task, "_is_subtask") and task._is_subtask:
