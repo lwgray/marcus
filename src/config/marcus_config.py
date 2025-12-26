@@ -17,6 +17,7 @@ Example
 import json
 import logging
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -353,6 +354,28 @@ class HybridInferenceSettings:
 
 
 @dataclass
+class LoggingSettings:
+    """Logging configuration.
+
+    Parameters
+    ----------
+    level : str
+        Logging level: DEBUG, INFO, WARNING, ERROR, or CRITICAL
+    log_dir : str
+        Directory for log files
+    enable_file_logging : bool
+        Whether to enable file logging
+    enable_console_logging : bool
+        Whether to enable console logging
+    """
+
+    level: str = "INFO"
+    log_dir: str = "logs"
+    enable_file_logging: bool = True
+    enable_console_logging: bool = True
+
+
+@dataclass
 class MarcusConfig:
     """Central configuration for Marcus.
 
@@ -381,6 +404,8 @@ class MarcusConfig:
         Multi-endpoint configuration
     hybrid_inference : HybridInferenceSettings
         Hybrid inference settings
+    logging : LoggingSettings
+        Logging configuration
     auto_find_board : bool
         Automatically find board by name
     single_project_mode : bool
@@ -405,6 +430,7 @@ class MarcusConfig:
     hybrid_inference: HybridInferenceSettings = field(
         default_factory=HybridInferenceSettings
     )
+    logging: LoggingSettings = field(default_factory=LoggingSettings)
 
     # Global settings
     auto_find_board: bool = False
@@ -591,6 +617,9 @@ class MarcusConfig:
                 **data["hybrid_inference"]
             )
 
+        if "logging" in data:
+            nested_configs["logging"] = LoggingSettings(**data["logging"])
+
         # Extract top-level settings
         top_level = {
             "auto_find_board": data.get("auto_find_board", False),
@@ -767,3 +796,38 @@ def reload_config() -> MarcusConfig:
     _config = MarcusConfig.from_file(config_path)
     _config.validate()
     return _config
+
+
+def setup_logging() -> None:
+    """Configure Python logging to write to stderr.
+
+    This function configures Python's logging system to write to stderr,
+    which the Marcus CLI script redirects to log files. This ensures that
+    all logging from Marcus modules appears in the log files.
+
+    The logging format matches the historical format:
+    LEVEL:module.name:message
+
+    Notes
+    -----
+    - Logs go to stderr, which the CLI redirects to logs/marcus_*.log
+    - Uses force=True to override any existing configuration
+    - Configures the root logger so all Marcus loggers inherit the config
+
+    Examples
+    --------
+    >>> setup_logging()  # Call once at application startup
+    """
+    config = get_config()
+
+    # Get log level from config, default to INFO
+    log_level_str = config.logging.level.upper()
+    log_level = getattr(logging, log_level_str, logging.INFO)
+
+    # Simple basicConfig - logs go to stderr, CLI redirects to files
+    logging.basicConfig(
+        level=log_level,
+        format="%(levelname)s:%(name)s:%(message)s",
+        stream=sys.stderr,
+        force=True,  # Override any existing configuration
+    )

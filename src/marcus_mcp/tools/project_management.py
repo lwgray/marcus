@@ -658,7 +658,7 @@ async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
 
     else:  # not_found
         # Check if auto_sync is enabled and provide helpful guidance
-        auto_sync_enabled = server.config.get("auto_sync_projects", False)
+        auto_sync_enabled = getattr(server.config, "auto_sync_projects", False)
 
         if auto_sync_enabled:
             hint = (
@@ -716,14 +716,20 @@ async def discover_planka_projects(
 
     auto_sync = arguments.get("auto_sync", False)
 
-    # Get Planka config
-    planka_config = server.config.get("planka", {})
-    if not planka_config.get("base_url"):
+    # Get Planka config from MarcusConfig.kanban
+    kanban_config = server.config.kanban
+    if not kanban_config.planka_base_url:
         return {
             "success": False,
             "error": "Planka not configured. Check config_marcus.json",
         }
 
+    # Create Planka client config dict from MarcusConfig
+    planka_config = {
+        "base_url": kanban_config.planka_base_url,
+        "email": kanban_config.planka_email,
+        "password": kanban_config.planka_password,
+    }
     # Create temporary Planka client to fetch projects
     planka = Planka(planka_config)
 

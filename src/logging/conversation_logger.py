@@ -329,6 +329,8 @@ class ConversationLogger:
         )
         conversation_handler.setLevel(logging.DEBUG)
         conversation_handler.addFilter(ConversationLogFilter())
+        # Use simple formatter - structlog already creates JSON
+        conversation_handler.setFormatter(logging.Formatter("%(message)s"))
 
         # Decision log for Marcus decisions
         decision_handler = logging.FileHandler(
@@ -336,11 +338,18 @@ class ConversationLogger:
         )
         decision_handler.setLevel(logging.INFO)
         decision_handler.addFilter(ConversationLogFilter())
+        # Use simple formatter - structlog already creates JSON
+        decision_handler.setFormatter(logging.Formatter("%(message)s"))
 
-        # Add handlers to root logger
-        root_logger = logging.getLogger()
-        root_logger.addHandler(conversation_handler)
-        root_logger.addHandler(decision_handler)
+        # Add handlers to the specific loggers used by structlog, not root logger
+        # This prevents interference with other logging in the application
+        for logger_name in ["marcus", "worker", "kanban"]:
+            logger = logging.getLogger(logger_name)
+            logger.setLevel(logging.DEBUG)
+            logger.addHandler(conversation_handler)
+            logger.addHandler(decision_handler)
+            # Prevent propagation to root logger to avoid duplicate logs
+            logger.propagate = False
 
     def log_worker_message(
         self,
