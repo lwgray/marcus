@@ -174,10 +174,8 @@ class MarcusServer:
             from src.core.persistence import Persistence, SQLitePersistence
 
             # Use SQLite for better performance
-            persistence_path = config_loader.data_dir + "/marcus.db"
-            self.persistence = Persistence(
-                backend=SQLitePersistence(Path(persistence_path))
-            )
+            persistence_path = Path(config_loader.data_dir).expanduser() / "marcus.db"
+            self.persistence = Persistence(backend=SQLitePersistence(persistence_path))
 
         # Events system for loose coupling
         if config_loader.features.events:
