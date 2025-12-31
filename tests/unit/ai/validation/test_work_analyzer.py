@@ -8,14 +8,12 @@ Tests the core validation engine that:
 
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
 from src.ai.validation.validation_models import (
     SourceFile,
-    ValidationIssue,
-    ValidationResult,
     ValidationSeverity,
     WorkEvidence,
 )
@@ -61,22 +59,21 @@ class TestWorkAnalyzer:
         self, analyzer: WorkAnalyzer, mock_task: Mock, mock_state: Mock
     ) -> None:
         """Test gathering evidence retrieves project_root from workspace manager."""
-        with patch("src.ai.validation.work_analyzer.Path") as mock_path:
-            # Mock os.walk to return empty (no files)
-            with patch("src.ai.validation.work_analyzer.os.walk", return_value=[]):
-                # Mock get_task_context
-                with patch(
-                    "src.ai.validation.work_analyzer.get_task_context",
-                    new_callable=AsyncMock,
-                ) as mock_context:
-                    mock_context.return_value = {
-                        "success": True,
-                        "context": {"decisions": []},
-                    }
+        # Mock os.walk to return empty (no files)
+        with patch("src.ai.validation.work_analyzer.os.walk", return_value=[]):
+            # Mock get_task_context
+            with patch(
+                "src.ai.validation.work_analyzer.get_task_context",
+                new_callable=AsyncMock,
+            ) as mock_context:
+                mock_context.return_value = {
+                    "success": True,
+                    "context": {"decisions": []},
+                }
 
-                    evidence = await analyzer.gather_evidence(mock_task, mock_state)
+                evidence = await analyzer.gather_evidence(mock_task, mock_state)
 
-                    assert evidence.project_root == "/fake/project/root"
+                assert evidence.project_root == "/fake/project/root"
 
     @pytest.mark.asyncio
     async def test_gather_evidence_discovers_source_files(
@@ -231,7 +228,14 @@ class TestWorkAnalyzer:
                     path="/fake/project/root/src/registration.js",
                     relative_path="src/registration.js",
                     size_bytes=2000,
-                    content="function validateEmail(email) { return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email); }\nfunction validatePassword(pwd) { return pwd.length >= 8; }\nfunction passwordsMatch(p1, p2) { return p1 === p2; }",
+                    content=(
+                        "function validateEmail(email) { "
+                        "return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email); }"
+                        "\nfunction validatePassword(pwd) { "
+                        "return pwd.length >= 8; }\n"
+                        "function passwordsMatch(p1, p2) { "
+                        "return p1 === p2; }"
+                    ),
                     has_placeholders=False,
                     extension=".js",
                     modified_time=datetime.utcnow(),
@@ -248,7 +252,7 @@ VALIDATION RESULT: PASS
 
 All acceptance criteria have been fully implemented:
 
-1. ✅ Form includes email, password, confirm password fields - VERIFIED in registration.js
+1. ✅ Form includes email, password, confirm - VERIFIED in registration.js
 2. ✅ Email validation implemented - validateEmail() function found
 3. ✅ Password strength validation implemented - validatePassword() function found
 4. ✅ Passwords match validation implemented - passwordsMatch() function found
@@ -279,7 +283,10 @@ The implementation is complete and functional.
                     path="/fake/project/root/src/registration.js",
                     relative_path="src/registration.js",
                     size_bytes=500,
-                    content="function validateEmail(email) { return true; }  // TODO: implement proper validation",
+                    content=(
+                        "function validateEmail(email) { return true; }  "
+                        "// TODO: implement proper validation"
+                    ),
                     has_placeholders=True,
                     extension=".js",
                     modified_time=datetime.utcnow(),
@@ -299,7 +306,7 @@ Missing implementations:
 1. ❌ Password strength validation - No validatePassword() function found
    SEVERITY: CRITICAL
    EVIDENCE: Source code has no password validation logic
-   REMEDIATION: Add validatePassword() function to check minimum 8 characters
+   REMEDIATION: Add validatePassword() function to check minimum 8 chars
    CRITERION: Password strength validation implemented
 
 2. ❌ Passwords match validation - No passwordsMatch() function found
