@@ -1,13 +1,23 @@
-"""AI validation modules for task completeness checking."""
+"""Validation system for ensuring implementation task completeness.
 
-from src.ai.validation.task_completeness_validator import (
-    CompletenessResult,
-    TaskCompletenessValidator,
-    ValidationAttempt,
+This module provides tools to validate that implementation tasks fully meet
+their acceptance criteria before being marked as complete.
+"""
+
+from src.ai.validation.validation_models import (
+    SourceFile,
+    ValidationAttemptRecord,
+    ValidationIssue,
+    ValidationResult,
+    ValidationSeverity,
+    WorkEvidence,
 )
 
 __all__ = [
-    "TaskCompletenessValidator",
-    "CompletenessResult",
-    "ValidationAttempt",
+    "SourceFile",
+    "WorkEvidence",
+    "ValidationIssue",
+    "ValidationResult",
+    "ValidationAttemptRecord",
+    "ValidationSeverity",
 ]
