@@ -22,6 +22,10 @@ from src.marcus_mcp.utils import serialize_for_mcp
 
 logger = logging.getLogger(__name__)
 
+# Module-level singletons for validation system (initialized lazily)
+_work_analyzer: Optional[Any] = None
+_retry_tracker: Optional[Any] = None
+
 
 async def get_project_board_context(state: Any) -> Dict[str, Optional[str]]:
     """
@@ -1143,6 +1147,148 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
         return {"success": False, "error": str(e)}
 
 
+async def _validate_task_completion(task: Task, agent_id: str, state: Any) -> Any:
+    """Validate task completion using WorkAnalyzer.
+
+    Parameters
+    ----------
+    task : Task
+        Task to validate
+    agent_id : str
+        Agent ID for logging
+    state : Any
+        Marcus server state
+
+    Returns
+    -------
+    ValidationResult
+        Validation result with pass/fail and issues
+    """
+    global _work_analyzer, _retry_tracker
+
+    # Lazy imports to avoid circular dependency
+    from src.ai.validation.retry_tracker import RetryTracker
+    from src.ai.validation.work_analyzer import WorkAnalyzer
+
+    # Initialize singletons if needed
+    if _work_analyzer is None:
+        _work_analyzer = WorkAnalyzer()
+    if _retry_tracker is None:
+        _retry_tracker = RetryTracker()
+
+    # Run validation
+    validation_result = await _work_analyzer.validate_implementation_task(task, state)
+
+    # Record attempt for retry tracking
+    _retry_tracker.record_attempt(task.id, validation_result)
+
+    return validation_result
+
+
+async def _handle_validation_failure(
+    task: Task, agent_id: str, validation_result: Any, state: Any
+) -> Dict[str, Any]:
+    """Handle validation failure with hybrid remediation.
+
+    First failure: Return response (task stays IN_PROGRESS, agent can retry)
+    Retry with same issues: Create blocker
+
+    Parameters
+    ----------
+    task : Task
+        Task that failed validation
+    agent_id : str
+        Agent ID
+    validation_result : ValidationResult
+        Validation result with issues
+    state : Any
+        Marcus server state
+
+    Returns
+    -------
+    Dict[str, Any]
+        Response indicating validation failure
+    """
+    # Check if this is a retry with same issues
+    is_retry_with_same_issues = False
+    if _retry_tracker is not None:
+        is_retry_with_same_issues = _retry_tracker.is_retry_with_same_issues(
+            task.id, validation_result
+        )
+
+    # Format issues for response
+    issues_list = [issue.to_dict() for issue in validation_result.issues]
+
+    if is_retry_with_same_issues:
+        # Agent is stuck - create blocker
+        blocker_description = _format_blocker_description(validation_result)
+
+        # Call report_blocker with WorkAnalyzer's validation advice
+        await report_blocker(
+            agent_id=agent_id,
+            task_id=task.id,
+            blocker_description=blocker_description,
+            severity="high",
+            state=state,
+            skip_ai_analysis=True,  # Use WorkAnalyzer's advice, not Marcus's AI
+        )
+
+        return {
+            "success": False,
+            "status": "validation_failed",
+            "issues": issues_list,
+            "blocker_created": True,
+            "message": "Validation failed with same issues - blocker created. Review AI suggestions in blocker.",  # noqa: E501
+        }
+    else:
+        # First failure or different issues - return response
+        return {
+            "success": False,
+            "status": "validation_failed",
+            "issues": issues_list,
+            "message": "Task did not pass validation. Fix issues and retry completion.",
+        }
+
+
+def _format_blocker_description(validation_result: Any) -> str:
+    """Format validation issues as blocker description.
+
+    Parameters
+    ----------
+    validation_result : ValidationResult
+        Validation result with issues
+
+    Returns
+    -------
+    str
+        Formatted blocker description
+    """
+    lines = [
+        "🚫 VALIDATION BLOCKER - REPEATED FAILURES",
+        "",
+        "You've attempted to complete this task multiple times with the same issues.",
+        "This suggests you may be stuck. Please carefully review the issues below:",
+        "",
+    ]
+
+    for i, issue in enumerate(validation_result.issues, 1):
+        lines.append(f"{i}. ❌ {issue.issue}")
+        lines.append(f"   SEVERITY: {issue.severity.value.upper()}")
+        lines.append(f"   EVIDENCE: {issue.evidence}")
+        lines.append(f"   REMEDIATION: {issue.remediation}")
+        lines.append(f"   CRITERION: {issue.criterion}")
+        lines.append("")
+
+    lines.append("IMPORTANT:")
+    lines.append("- READ the remediation carefully - it tells you EXACTLY what to fix")
+    lines.append("- Don't rebuild everything - fix the SPECIFIC issues listed above")
+    lines.append("- If you're unsure, ask for help understanding the requirements")
+    lines.append("")
+    lines.append("Once you've fixed the issues, report progress to unblock the task.")
+
+    return "\n".join(lines)
+
+
 async def report_task_progress(
     agent_id: str, task_id: str, status: str, progress: int, message: str, state: Any
 ) -> Dict[str, Any]:
@@ -1208,6 +1354,30 @@ async def report_task_progress(
 
         # Update task in kanban
         update_data: Dict[str, Any] = {"progress": progress}
+
+        # VALIDATION GATE: Check if implementation task needs validation
+        if status == "completed":
+            task = next((t for t in state.project_tasks if t.id == task_id), None)
+
+            # Lazy import to avoid circular dependency
+            from src.ai.validation.task_filter import should_validate_task
+
+            if task and should_validate_task(task):
+                try:
+                    # Run validation
+                    validation_result = await _validate_task_completion(
+                        task, agent_id, state
+                    )
+
+                    # Handle failure
+                    if not validation_result.passed:
+                        return await _handle_validation_failure(
+                            task, agent_id, validation_result, state
+                        )
+                except Exception as e:
+                    # Validation system failed - log and allow completion
+                    logger.error(f"Validation system error: {e}")
+                    logger.exception("Validation exception details:")
 
         if status == "completed":
             update_data["status"] = TaskStatus.DONE
@@ -1420,7 +1590,12 @@ async def report_task_progress(
 
 
 async def report_blocker(
-    agent_id: str, task_id: str, blocker_description: str, severity: str, state: Any
+    agent_id: str,
+    task_id: str,
+    blocker_description: str,
+    severity: str,
+    state: Any,
+    skip_ai_analysis: bool = False,
 ) -> Dict[str, Any]:
     """
     Report a blocker on a task with AI-powered analysis.
@@ -1440,6 +1615,9 @@ async def report_blocker(
         Blocker severity (low, medium, high)
     state : Any
         Marcus server state instance
+    skip_ai_analysis : bool, default=False
+        If True, skip Marcus's AI analysis (use when blocker_description
+        already contains WorkAnalyzer's validation advice)
 
     Returns
     -------
@@ -1473,12 +1651,16 @@ async def report_blocker(
         )
 
         # Use AI to analyze the blocker and suggest solutions
-        agent = state.agent_status.get(agent_id)
-        task = await state.kanban_client.get_task_by_id(task_id)
+        # (skip if WorkAnalyzer already provided validation advice)
+        if skip_ai_analysis:
+            suggestions = blocker_description  # Use WorkAnalyzer's advice directly
+        else:
+            agent = state.agent_status.get(agent_id)
+            task = await state.kanban_client.get_task_by_id(task_id)
 
-        suggestions = await state.ai_engine.analyze_blocker(
-            task_id, blocker_description, severity, agent, task
-        )
+            suggestions = await state.ai_engine.analyze_blocker(
+                task_id, blocker_description, severity, agent, task
+            )
 
         # Update task status
         await state.kanban_client.update_task(
