@@ -449,8 +449,23 @@ class KanbanClient:
                             card_details = json.loads(first_content.text)
 
                             # Update card with label data from details
+                            # NOTE: kanban-mcp returns ALL board labels
+                            # Filter using labelIds to get assigned labels
                             if "labels" in card_details:
-                                card["labels"] = card_details["labels"]
+                                all_labels = card_details["labels"]
+                                card_label_ids = card.get("labelIds", [])
+
+                                # Filter to only labels assigned to this card
+                                if card_label_ids:
+                                    filtered_labels = [
+                                        label
+                                        for label in all_labels
+                                        if label.get("id") in card_label_ids
+                                    ]
+                                    card["labels"] = filtered_labels
+                                else:
+                                    # No labelIds means no labels assigned
+                                    card["labels"] = []
 
                 except Exception as e:
                     logger.warning(f"Failed to fetch card details for labels: {e}")
@@ -627,8 +642,23 @@ class KanbanClient:
                             card_details = json.loads(first_content.text)
 
                             # Update card with label data from details
+                            # NOTE: kanban-mcp returns ALL board labels
+                            # Filter using labelIds to get assigned labels
                             if "labels" in card_details:
-                                card["labels"] = card_details["labels"]
+                                all_labels = card_details["labels"]
+                                card_label_ids = card.get("labelIds", [])
+
+                                # Filter to only labels assigned to this card
+                                if card_label_ids:
+                                    filtered_labels = [
+                                        label
+                                        for label in all_labels
+                                        if label.get("id") in card_label_ids
+                                    ]
+                                    card["labels"] = filtered_labels
+                                else:
+                                    # No labelIds means no labels assigned
+                                    card["labels"] = []
 
                 except Exception as e:
                     logger.warning(f"Failed to fetch card details for labels: {e}")

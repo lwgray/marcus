@@ -1,8 +1,8 @@
 """
-Unit tests for verifying labels are fetched from Planka.
+Unit tests for verifying labels are fetched from Planka and filtered correctly.
 
-Simple discovery test to understand how labels work before
-building comprehensive test suite.
+Tests verify that kanban-mcp returns ALL board labels in get_details,
+and Marcus filters them based on card's labelIds field.
 """
 
 import json
@@ -63,7 +63,7 @@ class TestLabelFetchDiscovery:
         return client
 
     @pytest.mark.asyncio
-    async def test_get_available_tasks_calls_get_details(
+    async def test_get_available_tasks_filters_labels_by_label_ids(
         self,
         kanban_client: KanbanClient,
         mock_client_session: AsyncMock,
@@ -71,9 +71,10 @@ class TestLabelFetchDiscovery:
         mock_session_context: Any,
     ) -> None:
         """
-        Verify get_available_tasks calls get_details for each card.
+        Verify get_available_tasks filters labels based on card's labelIds.
 
-        This test checks that the label fetching code is executed.
+        kanban-mcp returns ALL board labels in get_details, but only
+        labels whose IDs are in the card's labelIds array should be kept.
         """
         # Arrange: Mock responses
         lists_response = MagicMock()
@@ -83,14 +84,18 @@ class TestLabelFetchDiscovery:
             )
         ]
 
+        # Card has labelIds indicating which labels are assigned
         cards_response = MagicMock()
         cards_response.content = [
             TextContent(
                 type="text",
-                text=json.dumps([{"id": "card_1", "name": "Test Card"}]),
+                text=json.dumps(
+                    [{"id": "card_1", "name": "Test Card", "labelIds": ["l1"]}]
+                ),
             )
         ]
 
+        # get_details returns ALL board labels (not filtered)
         card_details_response = MagicMock()
         card_details_response.content = [
             TextContent(
@@ -99,7 +104,12 @@ class TestLabelFetchDiscovery:
                     {
                         "id": "card_1",
                         "name": "Test Card",
-                        "labels": [{"id": "l1", "name": "implementation"}],
+                        "labelIds": ["l1"],
+                        "labels": [
+                            {"id": "l1", "name": "implementation"},
+                            {"id": "l2", "name": "design"},
+                            {"id": "l3", "name": "documentation"},
+                        ],
                     }
                 ),
             )
@@ -129,12 +139,12 @@ class TestLabelFetchDiscovery:
         assert third_call[0][1]["action"] == "get_details"
         assert third_call[0][1]["cardId"] == "card_1"
 
-        # Verify task was created with labels
+        # Verify task has ONLY the label in labelIds (filtered)
         assert len(tasks) == 1
         assert tasks[0].labels == ["implementation"]
 
     @pytest.mark.asyncio
-    async def test_get_all_tasks_calls_get_details(
+    async def test_get_all_tasks_filters_multiple_labels(
         self,
         kanban_client: KanbanClient,
         mock_client_session: AsyncMock,
@@ -142,7 +152,7 @@ class TestLabelFetchDiscovery:
         mock_session_context: Any,
     ) -> None:
         """
-        Verify get_all_tasks also calls get_details for each card.
+        Verify get_all_tasks filters when card has multiple labelIds.
         """
         # Arrange: Mock responses
         lists_response = MagicMock()
@@ -152,14 +162,24 @@ class TestLabelFetchDiscovery:
             )
         ]
 
+        # Card has multiple labelIds
         cards_response = MagicMock()
         cards_response.content = [
             TextContent(
                 type="text",
-                text=json.dumps([{"id": "card_2", "name": "Backend Task"}]),
+                text=json.dumps(
+                    [
+                        {
+                            "id": "card_2",
+                            "name": "Backend Task",
+                            "labelIds": ["l1", "l2"],
+                        }
+                    ]
+                ),
             )
         ]
 
+        # get_details returns ALL board labels
         card_details_response = MagicMock()
         card_details_response.content = [
             TextContent(
@@ -168,9 +188,12 @@ class TestLabelFetchDiscovery:
                     {
                         "id": "card_2",
                         "name": "Backend Task",
+                        "labelIds": ["l1", "l2"],
                         "labels": [
                             {"id": "l1", "name": "backend"},
                             {"id": "l2", "name": "api"},
+                            {"id": "l3", "name": "frontend"},
+                            {"id": "l4", "name": "design"},
                         ],
                     }
                 ),
@@ -197,14 +220,17 @@ class TestLabelFetchDiscovery:
         third_call = mock_client_session.call_tool.call_args_list[2]
         assert third_call[0][1]["action"] == "get_details"
 
-        # Verify task has multiple labels
+        # Verify task has ONLY the labels in labelIds (filtered)
         assert len(tasks) == 1
         assert len(tasks[0].labels) == 2
         assert "backend" in tasks[0].labels
         assert "api" in tasks[0].labels
+        # These should NOT be present (not in labelIds)
+        assert "frontend" not in tasks[0].labels
+        assert "design" not in tasks[0].labels
 
     @pytest.mark.asyncio
-    async def test_handles_card_without_labels_field(
+    async def test_handles_card_without_label_ids(
         self,
         kanban_client: KanbanClient,
         mock_client_session: AsyncMock,
@@ -212,9 +238,12 @@ class TestLabelFetchDiscovery:
         mock_session_context: Any,
     ) -> None:
         """
-        Verify graceful handling when card details don't include labels.
+        Verify graceful handling when card has no labelIds field.
+
+        If a card has no labelIds, it means no labels are assigned,
+        even if get_details returns board labels.
         """
-        # Arrange: get_details response WITHOUT labels field
+        # Arrange: Card without labelIds field
         lists_response = MagicMock()
         lists_response.content = [
             TextContent(
@@ -230,12 +259,21 @@ class TestLabelFetchDiscovery:
             )
         ]
 
-        # Card details without labels field
+        # get_details returns board labels but card has no labelIds
         card_details_response = MagicMock()
         card_details_response.content = [
             TextContent(
                 type="text",
-                text=json.dumps({"id": "card_3", "name": "No Labels Card"}),
+                text=json.dumps(
+                    {
+                        "id": "card_3",
+                        "name": "No Labels Card",
+                        "labels": [
+                            {"id": "l1", "name": "implementation"},
+                            {"id": "l2", "name": "design"},
+                        ],
+                    }
+                ),
             )
         ]
 
@@ -253,7 +291,73 @@ class TestLabelFetchDiscovery:
             ):
                 tasks = await kanban_client.get_available_tasks()
 
-        # Assert: Task created with empty labels (no crash)
+        # Assert: Task created with empty labels (no labelIds means no labels)
+        assert len(tasks) == 1
+        assert tasks[0].labels == []
+
+    @pytest.mark.asyncio
+    async def test_handles_empty_label_ids_array(
+        self,
+        kanban_client: KanbanClient,
+        mock_client_session: AsyncMock,
+        mock_stdio_client: Any,
+        mock_session_context: Any,
+    ) -> None:
+        """
+        Verify graceful handling when card has empty labelIds array.
+        """
+        # Arrange: Card with empty labelIds
+        lists_response = MagicMock()
+        lists_response.content = [
+            TextContent(
+                type="text", text=json.dumps([{"id": "list_1", "name": "TODO"}])
+            )
+        ]
+
+        cards_response = MagicMock()
+        cards_response.content = [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    [{"id": "card_4", "name": "Empty Labels", "labelIds": []}]
+                ),
+            )
+        ]
+
+        # get_details returns board labels but labelIds is empty
+        card_details_response = MagicMock()
+        card_details_response.content = [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "id": "card_4",
+                        "name": "Empty Labels",
+                        "labelIds": [],
+                        "labels": [
+                            {"id": "l1", "name": "implementation"},
+                            {"id": "l2", "name": "design"},
+                        ],
+                    }
+                ),
+            )
+        ]
+
+        mock_client_session.call_tool.side_effect = [
+            lists_response,
+            cards_response,
+            card_details_response,
+        ]
+
+        # Act
+        with patch("src.integrations.kanban_client.stdio_client", mock_stdio_client):
+            with patch(
+                "src.integrations.kanban_client.ClientSession",
+                mock_session_context,
+            ):
+                tasks = await kanban_client.get_available_tasks()
+
+        # Assert: Task has empty labels (empty labelIds)
         assert len(tasks) == 1
         assert tasks[0].labels == []
 
@@ -280,7 +384,7 @@ class TestLabelFetchDiscovery:
         cards_response.content = [
             TextContent(
                 type="text",
-                text=json.dumps([{"id": "card_4", "name": "Error Card"}]),
+                text=json.dumps([{"id": "card_5", "name": "Error Card"}]),
             )
         ]
 
@@ -304,7 +408,7 @@ class TestLabelFetchDiscovery:
         assert tasks[0].labels == []
 
     @pytest.mark.asyncio
-    async def test_handles_multiple_cards(
+    async def test_handles_multiple_cards_with_different_label_ids(
         self,
         kanban_client: KanbanClient,
         mock_client_session: AsyncMock,
@@ -312,9 +416,11 @@ class TestLabelFetchDiscovery:
         mock_session_context: Any,
     ) -> None:
         """
-        Verify get_details called for each card when multiple cards exist.
+        Verify get_details called for each card and labels filtered correctly.
+
+        Each card should only get labels whose IDs are in its labelIds array.
         """
-        # Arrange: Multiple cards with different labels
+        # Arrange: Multiple cards with different labelIds
         lists_response = MagicMock()
         lists_response.content = [
             TextContent(
@@ -328,13 +434,14 @@ class TestLabelFetchDiscovery:
                 type="text",
                 text=json.dumps(
                     [
-                        {"id": "card_a", "name": "Card A"},
-                        {"id": "card_b", "name": "Card B"},
+                        {"id": "card_a", "name": "Card A", "labelIds": ["l1"]},
+                        {"id": "card_b", "name": "Card B", "labelIds": ["l2"]},
                     ]
                 ),
             )
         ]
 
+        # Both cards get ALL board labels from get_details
         details_a = MagicMock()
         details_a.content = [
             TextContent(
@@ -342,7 +449,12 @@ class TestLabelFetchDiscovery:
                 text=json.dumps(
                     {
                         "id": "card_a",
-                        "labels": [{"id": "l1", "name": "frontend"}],
+                        "labelIds": ["l1"],
+                        "labels": [
+                            {"id": "l1", "name": "frontend"},
+                            {"id": "l2", "name": "backend"},
+                            {"id": "l3", "name": "design"},
+                        ],
                     }
                 ),
             )
@@ -355,7 +467,12 @@ class TestLabelFetchDiscovery:
                 text=json.dumps(
                     {
                         "id": "card_b",
-                        "labels": [{"id": "l2", "name": "backend"}],
+                        "labelIds": ["l2"],
+                        "labels": [
+                            {"id": "l1", "name": "frontend"},
+                            {"id": "l2", "name": "backend"},
+                            {"id": "l3", "name": "design"},
+                        ],
                     }
                 ),
             )
@@ -379,7 +496,7 @@ class TestLabelFetchDiscovery:
         # Assert: get_details called for both cards
         assert mock_client_session.call_tool.call_count == 4
 
-        # Verify each task has correct labels
+        # Verify each task has ONLY its assigned labels (filtered)
         assert len(tasks) == 2
-        assert tasks[0].labels == ["frontend"]
-        assert tasks[1].labels == ["backend"]
+        assert tasks[0].labels == ["frontend"]  # Only l1
+        assert tasks[1].labels == ["backend"]  # Only l2
