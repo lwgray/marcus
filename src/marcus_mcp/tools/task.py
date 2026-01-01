@@ -155,15 +155,19 @@ Before starting work, you MUST write a todo list with these steps:
    {task.description}
 4. Report progress at 25%, 50%, 75% milestones
 5. Log decisions (log_decision) and artifacts (log_artifact) as needed
-6. Report completion with implementation summary
-7. Be prepared for remediation work if validation fails and resubmit progress
-8. Immediately request next task
+6. BEFORE reporting "completed", verify:
+   - Does your code actually run without errors?
+   - Do all the tests for this task pass?
+7. Report completion with implementation summary
+8. Be prepared for remediation work if validation fails and resubmit progress
+9. Immediately request next task
 
 ⚠️ CRITICAL BEHAVIORS:
 - Check dependencies with get_task_context BEFORE starting work
 - Read artifacts from dependency tasks to understand prior work
 - Report progress at each milestone (not just at completion)
 - Log decisions as they're made (not after task completion)
+- VERIFY code runs and tests pass BEFORE reporting completed
 - Be ready to address validation feedback and resubmit
 
 This workflow ensures coordination with other agents and prevents
