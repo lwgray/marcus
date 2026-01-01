@@ -959,6 +959,16 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                         "implementation_context": previous_implementations,
                         "project_id": active_project.id if active_project else None,
                         "project_name": active_project.name if active_project else None,
+                        "labels": (
+                            optimal_task.labels
+                            if hasattr(optimal_task, "labels")
+                            else []
+                        ),
+                        "completion_criteria": (
+                            optimal_task.completion_criteria
+                            if hasattr(optimal_task, "completion_criteria")
+                            else []
+                        ),
                     },
                 }
 
