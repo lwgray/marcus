@@ -503,7 +503,12 @@ class WorkAnalyzer:
     def _discover_task_tests(
         self, source_files: list[SourceFile], project_root: Path
     ) -> list[str]:
-        """Find test files related to source files.
+        """Find test files related to source files using hybrid strategy.
+
+        Strategy:
+        1. Look for co-located tests (fast, specific)
+        2. Search common test directories (comprehensive)
+        3. Use naming patterns to match tests to source files
 
         Parameters
         ----------
@@ -517,31 +522,115 @@ class WorkAnalyzer:
         list[str]
             Test file paths
         """
-        test_files = []
+        test_files: set[str] = set()  # Use set to avoid duplicates
 
+        # PHASE 1: Co-located tests (original approach - still valuable)
         for source_file in source_files:
             file_path = Path(source_file.path)
 
-            # Test file patterns for different languages
-            patterns = [
-                # JavaScript/TypeScript
+            # Co-located test patterns
+            colocated_patterns = [
+                # JavaScript/TypeScript (same directory)
                 file_path.with_suffix(".test.js"),
                 file_path.with_suffix(".spec.js"),
                 file_path.with_suffix(".test.ts"),
                 file_path.with_suffix(".spec.ts"),
-                # Python
-                file_path.with_name(f"test_{file_path.stem}.py"),
-                file_path.parent / "tests" / f"test_{file_path.stem}.py",
-                # React (JSX/TSX)
                 file_path.with_suffix(".test.jsx"),
                 file_path.with_suffix(".test.tsx"),
+                # Python (same directory)
+                file_path.with_name(f"test_{file_path.stem}.py"),
+                # React __tests__ convention
+                file_path.parent / "__tests__" / f"{file_path.stem}.test.js",
+                file_path.parent / "__tests__" / f"{file_path.stem}.test.tsx",
             ]
 
-            for pattern in patterns:
+            for pattern in colocated_patterns:
                 if pattern.exists():
-                    test_files.append(str(pattern.relative_to(project_root)))
+                    try:
+                        test_files.add(str(pattern.relative_to(project_root)))
+                    except ValueError:
+                        # Pattern not relative to project_root - skip
+                        pass
 
-        return test_files
+        # PHASE 2: Common test directories (comprehensive search)
+        # Search standard test directory locations
+        common_test_dirs = [
+            project_root / "tests",  # Python standard
+            project_root / "test",  # Alternative
+            project_root / "__tests__",  # Jest standard
+            project_root / "spec",  # RSpec/Jasmine style
+            project_root / "implementation" / "tests",  # Marcus structure
+        ]
+
+        for test_dir in common_test_dirs:
+            if not test_dir.exists():
+                continue
+
+            # Find all test files in this directory
+            for source_file in source_files:
+                source_path = Path(source_file.path)
+                source_name = source_path.stem  # e.g., "calculator"
+                source_ext = source_path.suffix  # e.g., ".py"
+
+                # Python test naming patterns
+                if source_ext == ".py":
+                    # Look for test_<name>.py in test directory
+                    test_patterns = [
+                        test_dir / f"test_{source_name}.py",
+                        test_dir / f"{source_name}_test.py",
+                    ]
+
+                    # Also check subdirectories that mirror source structure
+                    # e.g., app/models/user.py -> tests/models/test_user.py
+                    try:
+                        rel_to_project = source_path.relative_to(project_root)
+                        source_parent = rel_to_project.parent
+
+                        # Try different mirroring strategies:
+                        # 1. Full path: app/models/ -> tests/app/models/
+                        # 2. Skip root: app/models/ -> tests/models/
+                        # 3. Each subdirectory level
+                        parts = source_parent.parts
+                        for i in range(len(parts)):
+                            # Try each suffix of the path
+                            # e.g., for app/models: try models, then app/models
+                            subpath = Path(*parts[i:]) if i < len(parts) else Path()
+                            mirrored_test_dir = test_dir / subpath
+                            if mirrored_test_dir.exists():
+                                test_patterns.extend(
+                                    [
+                                        mirrored_test_dir / f"test_{source_name}.py",
+                                        mirrored_test_dir / f"{source_name}_test.py",
+                                    ]
+                                )
+                    except ValueError:
+                        pass  # source_path not relative to project_root
+
+                    for pattern in test_patterns:
+                        if pattern.exists():
+                            try:
+                                test_files.add(str(pattern.relative_to(project_root)))
+                            except ValueError:
+                                pass
+
+                # JavaScript/TypeScript test naming patterns
+                elif source_ext in {".js", ".jsx", ".ts", ".tsx"}:
+                    test_patterns = [
+                        test_dir / f"{source_name}.test.js",
+                        test_dir / f"{source_name}.spec.js",
+                        test_dir / f"{source_name}.test.ts",
+                        test_dir / f"{source_name}.spec.ts",
+                        test_dir / f"{source_name}.test.tsx",
+                    ]
+
+                    for pattern in test_patterns:
+                        if pattern.exists():
+                            try:
+                                test_files.add(str(pattern.relative_to(project_root)))
+                            except ValueError:
+                                pass
+
+        return list(test_files)
 
     def _build_test_command(
         self, project_type: dict[str, str], test_files: list[str], project_root: Path

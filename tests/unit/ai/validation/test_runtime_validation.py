@@ -357,3 +357,102 @@ class TestRuntimeValidation:
             assert result.passed is False
             assert len(result.issues) == 1
             assert "timed out" in result.issues[0].issue.lower()
+
+    def test_discover_tests_in_separate_directory(
+        self, analyzer: WorkAnalyzer, tmp_path: Path
+    ) -> None:
+        """Test discovery of tests in separate tests/ directory."""
+        # Create source file
+        src_dir = tmp_path / "app"
+        src_dir.mkdir()
+        src_file = src_dir / "calculator.py"
+        src_file.write_text("def add(a, b): return a + b")
+
+        # Create test in separate tests/ directory
+        tests_dir = tmp_path / "tests"
+        tests_dir.mkdir()
+        test_file = tests_dir / "test_calculator.py"
+        test_file.write_text("def test_add(): assert add(1, 2) == 3")
+
+        source_files = [
+            SourceFile(
+                path=str(src_file),
+                relative_path="app/calculator.py",
+                size_bytes=100,
+                content="def add(a, b): return a + b",
+                has_placeholders=False,
+                extension=".py",
+                modified_time=datetime.utcnow(),
+            )
+        ]
+
+        test_files = analyzer._discover_task_tests(source_files, tmp_path)
+
+        assert len(test_files) == 1
+        assert "tests/test_calculator.py" in test_files[0]
+
+    def test_discover_tests_mirrored_structure(
+        self, analyzer: WorkAnalyzer, tmp_path: Path
+    ) -> None:
+        """Test discovery with mirrored directory structure."""
+        # Create source file in app/models/
+        src_dir = tmp_path / "app" / "models"
+        src_dir.mkdir(parents=True)
+        src_file = src_dir / "user.py"
+        src_file.write_text("class User: pass")
+
+        # Create test in tests/models/ (mirrored structure)
+        test_dir = tmp_path / "tests" / "models"
+        test_dir.mkdir(parents=True)
+        test_file = test_dir / "test_user.py"
+        test_file.write_text("def test_user_creation(): pass")
+
+        source_files = [
+            SourceFile(
+                path=str(src_file),
+                relative_path="app/models/user.py",
+                size_bytes=100,
+                content="class User: pass",
+                has_placeholders=False,
+                extension=".py",
+                modified_time=datetime.utcnow(),
+            )
+        ]
+
+        test_files = analyzer._discover_task_tests(source_files, tmp_path)
+
+        assert len(test_files) == 1
+        assert "tests/models/test_user.py" in test_files[0]
+
+    def test_discover_react_tests_in_tests_subdir(
+        self, analyzer: WorkAnalyzer, tmp_path: Path
+    ) -> None:
+        """Test discovery of React tests in __tests__/ subdirectory."""
+        # Create source component
+        src_dir = tmp_path / "src" / "components"
+        src_dir.mkdir(parents=True)
+        src_file = src_dir / "Calculator.tsx"
+        src_file.write_text("export const Calculator = () => <div>Calc</div>")
+
+        # Create test in __tests__/ subdirectory
+        test_dir = src_dir / "__tests__"
+        test_dir.mkdir()
+        test_file = test_dir / "Calculator.test.tsx"
+        test_file.write_text("test('renders', () => {})")
+
+        source_files = [
+            SourceFile(
+                path=str(src_file),
+                relative_path="src/components/Calculator.tsx",
+                size_bytes=100,
+                content="export const Calculator = () => <div>Calc</div>",
+                has_placeholders=False,
+                extension=".tsx",
+                modified_time=datetime.utcnow(),
+            )
+        ]
+
+        test_files = analyzer._discover_task_tests(source_files, tmp_path)
+
+        assert len(test_files) == 1
+        assert "src/components/__tests__/Calculator.test.tsx" in test_files[0]
