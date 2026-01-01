@@ -1368,26 +1368,46 @@ async def report_task_progress(
         # VALIDATION GATE: Check if implementation task needs validation
         if status == "completed":
             task = next((t for t in state.project_tasks if t.id == task_id), None)
+            logger.info(
+                f"VALIDATION GATE: Task {task_id} completed, "
+                f"found task object: {task is not None}"
+            )
 
             # Lazy import to avoid circular dependency
             from src.ai.validation.task_filter import should_validate_task
 
-            if task and should_validate_task(task):
-                try:
-                    # Run validation
-                    validation_result = await _validate_task_completion(
-                        task, agent_id, state
-                    )
+            if task:
+                task_labels = task.labels if hasattr(task, "labels") else None
+                should_validate = should_validate_task(task)
+                logger.info(
+                    f"VALIDATION GATE: Task {task_id} ({task.name}) - "
+                    f"labels={task_labels}, should_validate={should_validate}"
+                )
 
-                    # Handle failure
-                    if not validation_result.passed:
-                        return await _handle_validation_failure(
-                            task, agent_id, validation_result, state
+                if should_validate:
+                    try:
+                        logger.info(
+                            f"VALIDATION GATE: Starting validation for {task_id}"
                         )
-                except Exception as e:
-                    # Validation system failed - log and allow completion
-                    logger.error(f"Validation system error: {e}")
-                    logger.exception("Validation exception details:")
+                        # Run validation
+                        validation_result = await _validate_task_completion(
+                            task, agent_id, state
+                        )
+
+                        # Handle failure
+                        if not validation_result.passed:
+                            return await _handle_validation_failure(
+                                task, agent_id, validation_result, state
+                            )
+                    except Exception as e:
+                        # Validation system failed - log and allow completion
+                        logger.error(f"Validation system error: {e}")
+                        logger.exception("Validation exception details:")
+                else:
+                    logger.info(
+                        f"VALIDATION GATE: Skipping validation for {task_id} "
+                        f"(not an implementation task)"
+                    )
 
         if status == "completed":
             update_data["status"] = TaskStatus.DONE
