@@ -426,6 +426,36 @@ class KanbanClient:
                                         card["listName"] = lst.get("name", "")
                                         all_cards.append(card)
 
+                # Fetch detailed card information including labels
+                # NOTE: Planka's list card API doesn't include labels, use get_details
+                try:
+                    for card in all_cards:
+                        card_id = card.get("id")
+                        if not card_id:
+                            continue
+
+                        # Get full card details which includes labels
+                        details_result = await session.call_tool(
+                            "mcp_kanban_card_manager",
+                            {"action": "get_details", "cardId": card_id},
+                        )
+
+                        if (
+                            details_result
+                            and hasattr(details_result, "content")
+                            and details_result.content
+                        ):
+                            first_content = cast(TextContent, details_result.content[0])
+                            card_details = json.loads(first_content.text)
+
+                            # Update card with label data from details
+                            if "labels" in card_details:
+                                card["labels"] = card_details["labels"]
+
+                except Exception as e:
+                    logger.warning(f"Failed to fetch card details for labels: {e}")
+                    # Continue without labels rather than failing entirely
+
                 # First, convert ALL cards to tasks to build complete ID mapping
                 all_tasks = []
                 for card in all_cards:
@@ -573,6 +603,36 @@ class KanbanClient:
                                     for card in cards_list:
                                         card["listName"] = lst.get("name", "")
                                         all_cards.append(card)
+
+                # Fetch detailed card information including labels
+                # NOTE: Planka's list card API doesn't include labels, use get_details
+                try:
+                    for card in all_cards:
+                        card_id = card.get("id")
+                        if not card_id:
+                            continue
+
+                        # Get full card details which includes labels
+                        details_result = await session.call_tool(
+                            "mcp_kanban_card_manager",
+                            {"action": "get_details", "cardId": card_id},
+                        )
+
+                        if (
+                            details_result
+                            and hasattr(details_result, "content")
+                            and details_result.content
+                        ):
+                            first_content = cast(TextContent, details_result.content[0])
+                            card_details = json.loads(first_content.text)
+
+                            # Update card with label data from details
+                            if "labels" in card_details:
+                                card["labels"] = card_details["labels"]
+
+                except Exception as e:
+                    logger.warning(f"Failed to fetch card details for labels: {e}")
+                    # Continue without labels rather than failing entirely
 
                 tasks = []
 
