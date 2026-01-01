@@ -196,6 +196,22 @@ class WorkAnalyzer:
         # Parse AI response into ValidationResult
         result = self._parse_validation_response(ai_response)
 
+        # Run runtime validation if source code validation passed
+        if result.passed:
+            runtime_result = await self._validate_runtime(task, evidence)
+            if not runtime_result.passed:
+                # Merge runtime issues with source validation
+                logger.warning(
+                    f"Runtime validation FAILED for task {task.id} - "
+                    f"{len(runtime_result.issues)} issue(s)"
+                )
+                return ValidationResult(
+                    passed=False,
+                    issues=result.issues + runtime_result.issues,
+                    ai_reasoning=f"Source code complete but runtime validation failed: {runtime_result.ai_reasoning}",  # noqa: E501
+                    validation_time=datetime.utcnow(),
+                )
+
         if result.passed:
             logger.info(f"Validation PASSED for task {task.id} ({task.name})")
         else:
@@ -351,6 +367,332 @@ class WorkAnalyzer:
             logger.warning(f"Failed to get task context for decisions: {e}")
 
         return []
+
+    async def _validate_runtime(
+        self, task: Any, evidence: WorkEvidence
+    ) -> ValidationResult:
+        """Validate runtime behavior by running task-scoped tests.
+
+        Parameters
+        ----------
+        task : Any
+            Task being validated
+        evidence : WorkEvidence
+            Gathered evidence with source files
+
+        Returns
+        -------
+        ValidationResult
+            Pass/fail result from test execution
+        """
+        import asyncio
+        import subprocess
+
+        project_root = Path(evidence.project_root)
+
+        # Detect project type
+        project_type = self._detect_project_type(project_root)
+        if not project_type:
+            # No test runner detected - skip runtime validation
+            logger.info(
+                f"No test runner detected in {project_root} - "
+                "skipping runtime validation"
+            )
+            return ValidationResult(passed=True, issues=[], ai_reasoning="")
+
+        # Find test files related to task's source files
+        test_files = self._discover_task_tests(evidence.source_files, project_root)
+        if not test_files:
+            # No tests for this task - skip runtime validation
+            logger.info(
+                f"No tests found for task {task.id} - skipping runtime validation"
+            )
+            return ValidationResult(passed=True, issues=[], ai_reasoning="")
+
+        # Build test command (task-scoped, not full suite)
+        test_command = self._build_test_command(project_type, test_files, project_root)
+        logger.info(f"Running task-scoped tests: {test_command}")
+
+        # Run tests with timeout
+        try:
+            proc = await asyncio.create_subprocess_shell(
+                test_command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd=str(project_root),
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+
+            if proc.returncode != 0:
+                # Test failed - parse error
+                error_output = stderr.decode("utf-8", errors="ignore")
+                issues = self._parse_test_failure(error_output, project_type)
+                return ValidationResult(
+                    passed=False,
+                    issues=issues,
+                    ai_reasoning=f"Tests failed: {error_output[:500]}",
+                    validation_time=datetime.utcnow(),
+                )
+
+            # Tests passed
+            logger.info(f"Runtime validation PASSED for task {task.id}")
+            return ValidationResult(passed=True, issues=[], ai_reasoning="")
+
+        except asyncio.TimeoutError:
+            logger.warning(f"Test execution timed out after 30s for task {task.id}")
+            return ValidationResult(
+                passed=False,
+                issues=[
+                    ValidationIssue(
+                        severity=ValidationSeverity.CRITICAL,
+                        issue="Test execution timed out after 30 seconds",
+                        evidence="Tests did not complete in time",
+                        remediation="Optimize tests or check for infinite loops",
+                        criterion="All tests run successfully without errors",
+                    )
+                ],
+                ai_reasoning="Test timeout",
+                validation_time=datetime.utcnow(),
+            )
+        except Exception as e:
+            logger.error(f"Runtime validation failed with error: {e}")
+            return ValidationResult(
+                passed=False,
+                issues=[
+                    ValidationIssue(
+                        severity=ValidationSeverity.CRITICAL,
+                        issue=f"Runtime validation error: {str(e)}",
+                        evidence=str(e),
+                        remediation="Check test configuration and environment",
+                        criterion="All tests run successfully without errors",
+                    )
+                ],
+                ai_reasoning=f"Validation error: {str(e)}",
+                validation_time=datetime.utcnow(),
+            )
+
+    def _detect_project_type(self, project_root: Path) -> dict[str, str] | None:
+        """Detect project type and test runner.
+
+        Parameters
+        ----------
+        project_root : Path
+            Project root directory
+
+        Returns
+        -------
+        dict[str, str] | None
+            Project type info or None if no test runner detected
+        """
+        # Node.js project
+        if (project_root / "package.json").exists():
+            return {"type": "nodejs", "test_runner": "npm"}
+
+        # Python project
+        if (project_root / "pyproject.toml").exists() or (
+            project_root / "setup.py"
+        ).exists():
+            return {"type": "python", "test_runner": "pytest"}
+
+        # Java project
+        if (project_root / "pom.xml").exists():
+            return {"type": "java", "test_runner": "maven"}
+
+        return None
+
+    def _discover_task_tests(
+        self, source_files: list[SourceFile], project_root: Path
+    ) -> list[str]:
+        """Find test files related to source files.
+
+        Parameters
+        ----------
+        source_files : list[SourceFile]
+            Source files from task
+        project_root : Path
+            Project root directory
+
+        Returns
+        -------
+        list[str]
+            Test file paths
+        """
+        test_files = []
+
+        for source_file in source_files:
+            file_path = Path(source_file.path)
+
+            # Test file patterns for different languages
+            patterns = [
+                # JavaScript/TypeScript
+                file_path.with_suffix(".test.js"),
+                file_path.with_suffix(".spec.js"),
+                file_path.with_suffix(".test.ts"),
+                file_path.with_suffix(".spec.ts"),
+                # Python
+                file_path.with_name(f"test_{file_path.stem}.py"),
+                file_path.parent / "tests" / f"test_{file_path.stem}.py",
+                # React (JSX/TSX)
+                file_path.with_suffix(".test.jsx"),
+                file_path.with_suffix(".test.tsx"),
+            ]
+
+            for pattern in patterns:
+                if pattern.exists():
+                    test_files.append(str(pattern.relative_to(project_root)))
+
+        return test_files
+
+    def _build_test_command(
+        self, project_type: dict[str, str], test_files: list[str], project_root: Path
+    ) -> str:
+        """Build test command for specific files.
+
+        Automatically detects the test framework and builds appropriate command.
+
+        Parameters
+        ----------
+        project_type : dict[str, str]
+            Project type info
+        test_files : list[str]
+            Test files to run
+        project_root : Path
+            Project root directory
+
+        Returns
+        -------
+        str
+            Test command to execute
+        """
+        files_arg = " ".join(test_files)
+
+        if project_type["type"] == "nodejs":
+            # Read test script from package.json
+            package_json_path = project_root / "package.json"
+            if package_json_path.exists():
+                import json
+
+                try:
+                    package_data = json.loads(package_json_path.read_text())
+                    test_script = package_data.get("scripts", {}).get("test", "")
+
+                    # Map common test frameworks
+                    if "jest" in test_script:
+                        return f"npx jest {files_arg}"
+                    elif "mocha" in test_script:
+                        return f"npx mocha {files_arg}"
+                    elif "vitest" in test_script:
+                        return f"npx vitest run {files_arg}"
+                    elif "ava" in test_script:
+                        return f"npx ava {files_arg}"
+                    elif "tap" in test_script:
+                        return f"npx tap {files_arg}"
+                    else:
+                        # Use npm test if we can't detect framework
+                        return "npm test"
+                except Exception:
+                    pass
+
+            # Default fallback
+            return f"npx jest {files_arg}"
+
+        elif project_type["type"] == "python":
+            # Detect Python test framework
+            # Check for pytest.ini, pyproject.toml [tool.pytest], or tox.ini
+            if (project_root / "pytest.ini").exists() or (
+                project_root / "pyproject.toml"
+            ).exists():
+                return f"pytest {files_arg}"
+            # Check for unittest
+            elif (project_root / "setup.py").exists():
+                return f"python -m unittest {files_arg}"
+            # Default to pytest
+            return f"pytest {files_arg}"
+
+        elif project_type["type"] == "java":
+            # Maven or Gradle
+            if (project_root / "pom.xml").exists():
+                return "mvn test"
+            elif (project_root / "build.gradle").exists() or (
+                project_root / "build.gradle.kts"
+            ).exists():
+                return "./gradlew test"
+            return "mvn test"
+
+        return "echo 'No test command configured'"
+
+    def _parse_test_failure(
+        self, error_output: str, project_type: dict[str, str]
+    ) -> list[ValidationIssue]:
+        """Parse test failure output to extract issues.
+
+        Parameters
+        ----------
+        error_output : str
+            Test stderr output
+        project_type : dict[str, str]
+            Project type info
+
+        Returns
+        -------
+        list[ValidationIssue]
+            Extracted issues from test failure
+        """
+        issues = []
+
+        # Generic patterns that work across test frameworks
+        if (
+            "Cannot find module" in error_output
+            or "ModuleNotFoundError" in error_output
+        ):
+            # Missing dependency
+            match = None
+            if "Cannot find module '" in error_output:
+                # Node.js error
+                start_idx = error_output.find("Cannot find module '") + 20
+                end_idx = error_output.find("'", start_idx)
+                if end_idx > start_idx:
+                    match = error_output[start_idx:end_idx]
+            elif "ModuleNotFoundError: No module named" in error_output:
+                # Python error - find the module name after the text
+                prefix = "ModuleNotFoundError: No module named '"
+                start_idx = error_output.find(prefix)
+                if start_idx != -1:
+                    start_idx += len(prefix)
+                    end_idx = error_output.find("'", start_idx)
+                    if end_idx > start_idx:
+                        match = error_output[start_idx:end_idx]
+
+            if match:
+                remediation = ""
+                if project_type["type"] == "nodejs":
+                    remediation = f"Run: npm install --save-dev {match}"
+                elif project_type["type"] == "python":
+                    remediation = f"Run: pip install {match}"
+
+                issues.append(
+                    ValidationIssue(
+                        severity=ValidationSeverity.CRITICAL,
+                        issue=f"Missing dependency: {match}",
+                        evidence=f"Test failed with module not found error: {match}",
+                        remediation=remediation,
+                        criterion="All tests run successfully without errors",
+                    )
+                )
+
+        # Generic test failure (no specific dependency issue)
+        if not issues:
+            issues.append(
+                ValidationIssue(
+                    severity=ValidationSeverity.CRITICAL,
+                    issue="Tests failed",
+                    evidence=error_output[:500],  # First 500 chars
+                    remediation="Fix failing tests before marking task complete",
+                    criterion="All tests run successfully without errors",
+                )
+            )
+
+        return issues
 
     @with_retry(RetryConfig(max_attempts=3, base_delay=1.0))
     async def _validate_with_ai(self, task: Any, evidence: WorkEvidence) -> str:

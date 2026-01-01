@@ -3495,7 +3495,7 @@ explanation."""
         elif task_type == "implementation":
             criteria = [
                 "All functionality is implemented as per specifications",
-                "Code passes all unit tests with >80% coverage",
+                "All tests run successfully without errors",
                 "Code follows project coding standards and conventions",
                 "API endpoints are documented and tested",
                 "Error handling and validation are implemented",
