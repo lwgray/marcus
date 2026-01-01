@@ -20,6 +20,8 @@ from src.ai.validation.validation_models import (
     ValidationSeverity,
     WorkEvidence,
 )
+from src.core.error_framework import ErrorContext, ProjectRootNotFoundError
+from src.core.resilience import RetryConfig, with_retry
 from src.marcus_mcp.tools.context import get_task_context
 
 logger = logging.getLogger(__name__)
@@ -116,17 +118,26 @@ class WorkAnalyzer:
         WorkEvidence
             Bundle of source files + design artifacts + decisions
         """
+        logger.info(f"Gathering validation evidence for task {task.id} ({task.name})")
+
         # 1. Get project_root from workspace manager or artifacts
         project_root = self._get_project_root(task, state)
+        logger.debug(f"Project root: {project_root}")
 
         # 2. Discover source files by scanning project_root
         source_files = self._discover_source_files(project_root)
+        logger.info(
+            f"Discovered {len(source_files)} source files "
+            f"({sum(f.size_bytes for f in source_files)} total bytes)"
+        )
 
         # 3. Get design artifacts from state
         design_artifacts = state.task_artifacts.get(task.id, []).copy()
+        logger.debug(f"Found {len(design_artifacts)} design artifacts")
 
         # 4. Get decisions from get_task_context
         decisions = await self._get_decisions(task, state)
+        logger.debug(f"Retrieved {len(decisions)} architectural decisions")
 
         return WorkEvidence(
             source_files=source_files,
@@ -153,11 +164,16 @@ class WorkAnalyzer:
         ValidationResult
             Pass/fail result with issues and remediation
         """
+        logger.info(f"Starting validation for task {task.id} ({task.name})")
+
         # Gather evidence
         evidence = await self.gather_evidence(task, state)
 
         # Check if no source files discovered (immediate failure)
         if not evidence.has_source_files():
+            logger.warning(
+                f"No source files found for task {task.id} in {evidence.project_root}"
+            )
             return ValidationResult(
                 passed=False,
                 issues=[
@@ -174,10 +190,19 @@ class WorkAnalyzer:
             )
 
         # Validate with AI
+        logger.debug(f"Calling AI validator for task {task.id}")
         ai_response = await self._validate_with_ai(task, evidence)
 
         # Parse AI response into ValidationResult
         result = self._parse_validation_response(ai_response)
+
+        if result.passed:
+            logger.info(f"Validation PASSED for task {task.id} ({task.name})")
+        else:
+            logger.warning(
+                f"Validation FAILED for task {task.id} ({task.name}) "
+                f"- {len(result.issues)} issue(s) found"
+            )
 
         return result
 
@@ -218,8 +243,16 @@ class WorkAnalyzer:
             return str(artifacts[0]["project_root"])
 
         # Cannot determine project location
-        raise ValueError(
-            "Cannot determine project_root - no workspace config and no artifacts logged"  # noqa: E501
+        logger.error(
+            f"Cannot determine project_root for task {task.id} - "
+            "no workspace config and no artifacts logged"
+        )
+        raise ProjectRootNotFoundError(
+            task_id=task.id,
+            context=ErrorContext(
+                operation="get_project_root",
+                task_id=task.id,
+            ),
         )
 
     def _discover_source_files(self, project_root: str) -> list[SourceFile]:
@@ -235,6 +268,9 @@ class WorkAnalyzer:
         list[SourceFile]
             Discovered source files with content
         """
+        logger.debug(
+            f"Scanning {project_root} for source files (excluding {self.EXCLUDE_DIRS})"
+        )
         source_files: list[SourceFile] = []
         project_path = Path(project_root)
 
@@ -316,8 +352,9 @@ class WorkAnalyzer:
 
         return []
 
+    @with_retry(RetryConfig(max_attempts=3, base_delay=1.0))
     async def _validate_with_ai(self, task: Any, evidence: WorkEvidence) -> str:
-        """Validate implementation using AI analysis.
+        """Validate implementation using AI analysis with retry logic.
 
         Parameters
         ----------
@@ -330,6 +367,11 @@ class WorkAnalyzer:
         -------
         str
             AI's validation analysis
+
+        Notes
+        -----
+        Uses retry logic (3 attempts, 1s base delay) to handle transient
+        network failures when calling the AI provider.
         """
         # Build validation prompt
         task_prompt = self._build_validation_prompt(task, evidence)
@@ -360,10 +402,12 @@ Focus on FUNCTIONALITY, not understanding. Code must WORK, not just exist.
         # Create simple context object
         context = type("ValidationContext", (), {"max_tokens": 4000})()
 
-        # Call dedicated validation LLM
+        # Call dedicated validation LLM with retry support
+        logger.debug("Calling AI provider for validation analysis")
         response: str = await self._validation_llm.analyze(
             prompt=full_prompt, context=context
         )
+        logger.debug("Received AI validation response")
 
         return response
 
