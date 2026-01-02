@@ -449,27 +449,17 @@ class KanbanClient:
                             card_details = json.loads(first_content.text)
 
                             # Update card with label data from details
-                            # NOTE: kanban-mcp returns ALL board labels
-                            # Filter using labelIds to get assigned labels
+                            # kanban-mcp now returns FILTERED labels
+                            # (as of fix in feature/fix-card-label-filtering)
+                            # No need to filter again, use labels directly
                             if "labels" in card_details:
-                                all_labels = card_details["labels"]
-                                # Get labelIds from card_details, not card
-                                card_label_ids = card_details.get("labelIds", [])
-
-                                # Filter to only labels assigned to this card
-                                if card_label_ids:
-                                    filtered_labels = [
-                                        label
-                                        for label in all_labels
-                                        if label.get("id") in card_label_ids
-                                    ]
-                                    card["labels"] = filtered_labels
-                                else:
-                                    # No labelIds means no labels assigned
-                                    card["labels"] = []
+                                card["labels"] = card_details["labels"]
 
                 except Exception as e:
-                    logger.warning(f"Failed to fetch card details for labels: {e}")
+                    logger.error(
+                        f"Failed to fetch card details for labels: {e}",
+                        exc_info=True,
+                    )
                     # Continue without labels rather than failing entirely
 
                 # First, convert ALL cards to tasks to build complete ID mapping
@@ -643,27 +633,17 @@ class KanbanClient:
                             card_details = json.loads(first_content.text)
 
                             # Update card with label data from details
-                            # NOTE: kanban-mcp returns ALL board labels
-                            # Filter using labelIds to get assigned labels
+                            # kanban-mcp now returns FILTERED labels
+                            # (as of fix in feature/fix-card-label-filtering)
+                            # No need to filter again, use labels directly
                             if "labels" in card_details:
-                                all_labels = card_details["labels"]
-                                # Get labelIds from card_details, not card
-                                card_label_ids = card_details.get("labelIds", [])
-
-                                # Filter to only labels assigned to this card
-                                if card_label_ids:
-                                    filtered_labels = [
-                                        label
-                                        for label in all_labels
-                                        if label.get("id") in card_label_ids
-                                    ]
-                                    card["labels"] = filtered_labels
-                                else:
-                                    # No labelIds means no labels assigned
-                                    card["labels"] = []
+                                card["labels"] = card_details["labels"]
 
                 except Exception as e:
-                    logger.warning(f"Failed to fetch card details for labels: {e}")
+                    logger.error(
+                        f"Failed to fetch card details for labels: {e}",
+                        exc_info=True,
+                    )
                     # Continue without labels rather than failing entirely
 
                 tasks = []
