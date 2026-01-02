@@ -4,6 +4,9 @@ This module provides tools to validate that implementation tasks fully meet
 their acceptance criteria before being marked as complete.
 """
 
+from src.ai.validation.task_completeness_validator import (
+    TaskCompletenessValidator,
+)
 from src.ai.validation.validation_models import (
     SourceFile,
     ValidationAttemptRecord,
@@ -20,4 +23,5 @@ __all__ = [
     "ValidationResult",
     "ValidationAttemptRecord",
     "ValidationSeverity",
+    "TaskCompletenessValidator",
 ]

@@ -1371,7 +1371,12 @@ async def report_task_progress(
 
         # VALIDATION GATE: Check if implementation task needs validation
         if status == "completed":
-            task = next((t for t in state.project_tasks if t.id == task_id), None)
+            # CRITICAL: Fetch fresh task from Kanban to get current labels
+            # state.project_tasks has stale data from project initialization
+            # Labels are added AFTER task creation, so we need fresh data
+            fresh_tasks = await state.kanban_client.get_all_tasks()
+            task = next((t for t in fresh_tasks if t.id == task_id), None)
+
             logger.info(
                 f"VALIDATION GATE: Task {task_id} completed, "
                 f"found task object: {task is not None}"
