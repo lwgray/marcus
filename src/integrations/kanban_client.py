@@ -453,7 +453,8 @@ class KanbanClient:
                             # Filter using labelIds to get assigned labels
                             if "labels" in card_details:
                                 all_labels = card_details["labels"]
-                                card_label_ids = card.get("labelIds", [])
+                                # Get labelIds from card_details, not card
+                                card_label_ids = card_details.get("labelIds", [])
 
                                 # Filter to only labels assigned to this card
                                 if card_label_ids:
@@ -646,7 +647,8 @@ class KanbanClient:
                             # Filter using labelIds to get assigned labels
                             if "labels" in card_details:
                                 all_labels = card_details["labels"]
-                                card_label_ids = card.get("labelIds", [])
+                                # Get labelIds from card_details, not card
+                                card_label_ids = card_details.get("labelIds", [])
 
                                 # Filter to only labels assigned to this card
                                 if card_label_ids:
