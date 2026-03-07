@@ -223,7 +223,7 @@ class WorkAnalyzer:
         return result
 
     def _get_project_root(self, task: Any, state: Any) -> str:
-        """Get project_root from workspace manager or artifacts.
+        """Get project_root from workspace state, manager, or artifacts.
 
         Parameters
         ----------
@@ -242,7 +242,15 @@ class WorkAnalyzer:
         ValueError
             If project_root cannot be determined
         """
-        # Try workspace manager first
+        # Try workspace state file first (.marcus_workspace.json)
+        if hasattr(state, "kanban_client") and state.kanban_client:
+            workspace_state = state.kanban_client._load_workspace_state()
+            if workspace_state and "project_root" in workspace_state:
+                project_root = workspace_state["project_root"]
+                logger.info(f"Found project_root from workspace state: {project_root}")
+                return str(project_root)
+
+        # Try workspace manager
         if (
             hasattr(state, "workspace_manager")
             and state.workspace_manager

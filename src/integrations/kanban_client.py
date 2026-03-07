@@ -1216,7 +1216,10 @@ class KanbanClient:
                         )
 
     async def auto_setup_project(
-        self, project_name: str, board_name: str = "Main Board"
+        self,
+        project_name: str,
+        board_name: str = "Main Board",
+        project_root: str | None = None,
     ) -> Dict[str, str]:
         """
         Automatically create a Planka project and board if they don't exist.
@@ -1233,6 +1236,8 @@ class KanbanClient:
             Name of the project to create
         board_name : str
             Name of the board to create (default: "Main Board")
+        project_root : str | None, optional
+            Absolute path to project implementation directory
 
         Returns
         -------
@@ -1299,6 +1304,7 @@ class KanbanClient:
                     board_id=board_id,
                     project_name=project_name,
                     board_name=board_name,
+                    project_root=project_root,
                 )
 
                 # Update instance variables
@@ -1402,7 +1408,12 @@ class KanbanClient:
                 return []
 
     def _save_workspace_state(
-        self, project_id: str, board_id: str, project_name: str, board_name: str
+        self,
+        project_id: str,
+        board_id: str,
+        project_name: str,
+        board_name: str,
+        project_root: str | None = None,
     ) -> None:
         """
         Save project and board IDs to workspace state file.
@@ -1417,6 +1428,8 @@ class KanbanClient:
             Name of the project
         board_name : str
             Name of the board
+        project_root : str | None, optional
+            Absolute path to project implementation directory
         """
         from pathlib import Path
 
@@ -1431,6 +1444,10 @@ class KanbanClient:
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
 
+        # Add project_root if provided
+        if project_root:
+            workspace_data["project_root"] = project_root
+
         with open(workspace_file, "w") as f:
             json.dump(workspace_data, f, indent=2)
 
@@ -1443,7 +1460,7 @@ class KanbanClient:
         Returns
         -------
         Optional[Dict[str, str]]
-            Dictionary with project_id and board_id if file exists, None otherwise
+            Dictionary with project_id, board_id, and project_root if available
         """
         from pathlib import Path
 
@@ -1455,10 +1472,14 @@ class KanbanClient:
         try:
             with open(workspace_file, "r") as f:
                 data = json.load(f)
-                return {
+                result = {
                     "project_id": data.get("project_id"),
                     "board_id": data.get("board_id"),
                 }
+                # Include project_root if present
+                if "project_root" in data:
+                    result["project_root"] = data["project_root"]
+                return result
         except Exception as e:
             logger.warning(f"Failed to load workspace state: {e}")
             return None

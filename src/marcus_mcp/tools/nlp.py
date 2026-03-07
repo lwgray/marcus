@@ -48,6 +48,10 @@ async def create_project(
           (defaults to "Main Board")
 
         Project Settings:
+        - project_root (str): **REQUIRED** Absolute path to project directory
+          where implementation files will be created
+          Example: "/Users/username/experiments/myproject/implementation"
+          This is critical for the validation system to locate source files.
         - complexity (str): "prototype", "standard" (default), "enterprise"
         - deployment (str): "none" (default), "internal", "production"
         - team_size (int): Team size 1-20 for estimation (default: 1)
@@ -98,6 +102,7 @@ async def create_project(
         ...     description="E-commerce platform with payment integration",
         ...     project_name="ShopFlow",
         ...     options={
+        ...         "project_root": "/Users/agent/projects/shopflow/implementation",
         ...         "complexity": "enterprise",
         ...         "deployment": "production",
         ...         "team_size": 5,
