@@ -6,6 +6,7 @@ This module provides the WorkAnalyzer class which:
 3. Validates implementations against acceptance criteria using AI
 """
 
+import json
 import logging
 import os
 from datetime import datetime
@@ -42,8 +43,8 @@ class WorkAnalyzer:
         Dedicated LLM instance for validation (isolated from Marcus's context)
     """
 
-    # Source file extensions to include in validation
-    SOURCE_EXTENSIONS = {
+    # Default source file extensions to include in validation
+    DEFAULT_SOURCE_EXTENSIONS = {
         ".py",
         ".js",
         ".jsx",
@@ -98,10 +99,23 @@ class WorkAnalyzer:
         "unimplemented!()",  # Rust
     }
 
-    def __init__(self) -> None:
-        """Initialize WorkAnalyzer with dedicated LLM instance."""
+    def __init__(self, config: dict[str, Any] | None = None) -> None:
+        """Initialize WorkAnalyzer with dedicated LLM instance.
+
+        Parameters
+        ----------
+        config : dict[str, Any] | None, optional
+            Configuration overrides. Supported keys:
+            - source_extensions: set[str] - File extensions to validate
+        """
         # Dedicated LLM instance - does NOT share context with Marcus
         self._validation_llm = LLMAbstraction()
+
+        # Allow configuration of source extensions
+        config = config or {}
+        self.SOURCE_EXTENSIONS = set(
+            config.get("source_extensions", self.DEFAULT_SOURCE_EXTENSIONS)
+        )
 
     async def gather_evidence(self, task: Any, state: Any) -> WorkEvidence:
         """Gather evidence for validation by discovering source files.
@@ -164,6 +178,9 @@ class WorkAnalyzer:
         ValidationResult
             Pass/fail result with issues and remediation
         """
+        import time
+
+        start_time = time.time()
         logger.info(f"Starting validation for task {task.id} ({task.name})")
 
         # Gather evidence
@@ -171,8 +188,16 @@ class WorkAnalyzer:
 
         # Check if no source files discovered (immediate failure)
         if not evidence.has_source_files():
+            duration_ms = int((time.time() - start_time) * 1000)
             logger.warning(
                 f"No source files found for task {task.id} in {evidence.project_root}"
+            )
+            self._record_metrics(
+                task_id=task.id,
+                task_type=getattr(task, "type", "unknown"),
+                result="fail",
+                reason="no_source_files",
+                duration_ms=duration_ms,
             )
             return ValidationResult(
                 passed=False,
@@ -212,12 +237,30 @@ class WorkAnalyzer:
                     validation_time=datetime.utcnow(),
                 )
 
+        duration_ms = int((time.time() - start_time) * 1000)
         if result.passed:
-            logger.info(f"Validation PASSED for task {task.id} ({task.name})")
+            logger.info(
+                f"Validation PASSED for task {task.id} ({task.name}) "
+                f"in {duration_ms}ms"
+            )
+            self._record_metrics(
+                task_id=task.id,
+                task_type=getattr(task, "type", "unknown"),
+                result="pass",
+                duration_ms=duration_ms,
+            )
         else:
             logger.warning(
                 f"Validation FAILED for task {task.id} ({task.name}) "
-                f"- {len(result.issues)} issue(s) found"
+                f"- {len(result.issues)} issue(s) found in {duration_ms}ms"
+            )
+            self._record_metrics(
+                task_id=task.id,
+                task_type=getattr(task, "type", "unknown"),
+                result="fail",
+                reason="criteria_not_met",
+                duration_ms=duration_ms,
+                issue_count=len(result.issues),
             )
 
         return result
@@ -296,7 +339,11 @@ class WorkAnalyzer:
             f"Scanning {project_root} for source files (excluding {self.EXCLUDE_DIRS})"
         )
         source_files: list[SourceFile] = []
-        project_path = Path(project_root)
+        project_path = Path(project_root).resolve()  # Resolve to absolute path
+
+        # Track total content size to prevent memory exhaustion
+        total_content_bytes = 0
+        MAX_TOTAL_CONTENT = 10_000_000  # 10MB total limit across all files
 
         for root, dirs, files in os.walk(project_root):
             # Filter out excluded directories (in-place modification)
@@ -305,26 +352,47 @@ class WorkAnalyzer:
             for file in files:
                 file_path = Path(root) / file
 
+                # SECURITY: Resolve symlinks and validate path stays within project_root
+                try:
+                    resolved_path = file_path.resolve()
+                    if not resolved_path.is_relative_to(project_path):
+                        logger.warning(
+                            f"Skipping file outside project root: {file_path} "
+                            f"(resolves to {resolved_path})"
+                        )
+                        continue
+                except (ValueError, OSError) as e:
+                    logger.warning(f"Failed to resolve path {file_path}: {e}")
+                    continue
+
                 # Filter by extension
-                if file_path.suffix not in self.SOURCE_EXTENSIONS:
+                if resolved_path.suffix not in self.SOURCE_EXTENSIONS:
                     continue
 
                 try:
                     # Get file metadata
-                    stat = file_path.stat()
+                    stat = resolved_path.stat()
                     size_bytes = stat.st_size
                     modified_time = datetime.fromtimestamp(stat.st_mtime)
 
-                    # Read content
+                    # Read content with memory limit protection
                     if size_bytes == 0:
                         content = ""
-                    elif size_bytes > 1_000_000:  # 1MB safety limit
+                    elif total_content_bytes + size_bytes > MAX_TOTAL_CONTENT:
+                        logger.warning(
+                            f"Skipping {resolved_path} - total content limit "
+                            f"({MAX_TOTAL_CONTENT} bytes) would be exceeded"
+                        )
+                        continue
+                    elif size_bytes > 1_000_000:  # 1MB per-file safety limit
                         # File too large - read first 100KB and flag
-                        content = file_path.read_text(errors="ignore")[:100000]
+                        content = resolved_path.read_text(errors="ignore")[:100000]
                         content += "\n\n[FILE TRUNCATED - Too large for validation]"
+                        total_content_bytes += len(content)
                     else:
                         # Read complete file
-                        content = file_path.read_text(errors="ignore")
+                        content = resolved_path.read_text(errors="ignore")
+                        total_content_bytes += len(content)
 
                     # Detect placeholders
                     has_placeholders = any(
@@ -333,21 +401,25 @@ class WorkAnalyzer:
 
                     source_files.append(
                         SourceFile(
-                            path=str(file_path),
-                            relative_path=str(file_path.relative_to(project_path)),
+                            path=str(resolved_path),
+                            relative_path=str(resolved_path.relative_to(project_path)),
                             size_bytes=size_bytes,
                             content=content,
                             has_placeholders=has_placeholders,
-                            extension=file_path.suffix,
+                            extension=resolved_path.suffix,
                             modified_time=modified_time,
                         )
                     )
 
                 except Exception as e:
                     # Don't fail entire discovery if one file has issues
-                    logger.warning(f"Failed to read {file_path}: {e}")
+                    logger.warning(f"Failed to read {resolved_path}: {e}")
                     continue
 
+        logger.info(
+            f"Discovered {len(source_files)} files, "
+            f"total {total_content_bytes:,} bytes loaded"
+        )
         return source_files
 
     async def _get_decisions(self, task: Any, state: Any) -> list[dict[str, Any]]:
@@ -946,6 +1018,8 @@ Focus on FUNCTIONALITY - code must WORK."""
     def _parse_validation_response(self, ai_response: str) -> ValidationResult:
         """Parse AI validation response into ValidationResult.
 
+        Supports both JSON and text formats for robustness across different AI models.
+
         Parameters
         ----------
         ai_response : str
@@ -955,6 +1029,73 @@ Focus on FUNCTIONALITY - code must WORK."""
         -------
         ValidationResult
             Parsed validation result
+        """
+        # Try JSON parsing first (more robust)
+        try:
+            import json
+
+            response_stripped = ai_response.strip()
+            if response_stripped.startswith("{"):
+                return self._parse_json_response(response_stripped)
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            logger.debug(f"JSON parsing failed, falling back to text: {e}")
+
+        # Fall back to text parsing
+        return self._parse_text_response(ai_response)
+
+    def _parse_json_response(self, json_str: str) -> ValidationResult:
+        """Parse JSON-formatted validation response.
+
+        Parameters
+        ----------
+        json_str : str
+            JSON string from AI
+
+        Returns
+        -------
+        ValidationResult
+            Parsed result
+        """
+        import json
+
+        data = json.loads(json_str)
+        passed = data.get("passed", False)
+
+        issues = []
+        for issue_data in data.get("issues", []):
+            issues.append(
+                ValidationIssue(
+                    severity=ValidationSeverity[
+                        issue_data.get("severity", "CRITICAL").upper()
+                    ],
+                    issue=issue_data.get("issue", "Unknown issue"),
+                    evidence=issue_data.get("evidence", "No evidence provided"),
+                    remediation=issue_data.get(
+                        "remediation", "No remediation provided"
+                    ),
+                    criterion=issue_data.get("criterion", "Unknown criterion"),
+                )
+            )
+
+        return ValidationResult(
+            passed=passed,
+            issues=issues,
+            ai_reasoning=data.get("reasoning", json_str),
+            validation_time=datetime.utcnow(),
+        )
+
+    def _parse_text_response(self, ai_response: str) -> ValidationResult:
+        """Parse text-formatted validation response (emoji-based).
+
+        Parameters
+        ----------
+        ai_response : str
+            Text response from AI
+
+        Returns
+        -------
+        ValidationResult
+            Parsed result
         """
         # Check if validation passed
         passed = "VALIDATION RESULT: PASS" in ai_response
@@ -984,7 +1125,7 @@ Focus on FUNCTIONALITY - code must WORK."""
                     )
                 # Remove ❌ emoji
                 issue_text = issue_text.replace("❌", "").strip()
-                # Remove trailing " - " if present (some formats have "❌ Issue - Description")  # noqa: E501
+                # Remove trailing " - " if present
                 if " - " in issue_text:
                     issue_text = issue_text.split(" - ")[0].strip()
 
@@ -1013,6 +1154,49 @@ Focus on FUNCTIONALITY - code must WORK."""
             issues=issues,
             ai_reasoning=ai_response,
             validation_time=datetime.utcnow(),
+        )
+
+    def _record_metrics(
+        self,
+        task_id: str,
+        task_type: str,
+        result: str,
+        duration_ms: int,
+        reason: str | None = None,
+        issue_count: int = 0,
+    ) -> None:
+        """Record validation metrics for monitoring.
+
+        Parameters
+        ----------
+        task_id : str
+            Task ID
+        task_type : str
+            Task type (implementation, design, etc.)
+        result : str
+            Validation result (pass/fail)
+        duration_ms : int
+            Validation duration in milliseconds
+        reason : str | None, optional
+            Failure reason if applicable
+        issue_count : int, optional
+            Number of issues found
+        """
+        # Log metrics in structured format for easy parsing/aggregation
+        metrics_data = {
+            "task_id": task_id,
+            "task_type": task_type,
+            "result": result,
+            "duration_ms": duration_ms,
+        }
+        if reason:
+            metrics_data["reason"] = reason
+        if issue_count:
+            metrics_data["issue_count"] = issue_count
+
+        logger.info(
+            f"VALIDATION_METRICS: {json.dumps(metrics_data)}",
+            extra={"metrics": metrics_data},
         )
 
     def _create_issue_from_dict(self, issue_dict: dict[str, str]) -> ValidationIssue:

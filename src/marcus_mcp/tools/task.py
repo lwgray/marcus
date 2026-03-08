@@ -11,6 +11,7 @@ This module contains tools for task operations in the Marcus system:
 import json
 import logging
 import os
+import threading
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 # Module-level singletons for validation system (initialized lazily)
 _work_analyzer: Optional[Any] = None
 _retry_tracker: Optional[Any] = None
+_singleton_lock = threading.Lock()  # Thread-safe initialization
 
 
 async def get_project_board_context(state: Any) -> Dict[str, Optional[str]]:
@@ -1184,11 +1186,13 @@ async def _validate_task_completion(task: Task, agent_id: str, state: Any) -> An
     from src.ai.validation.retry_tracker import RetryTracker
     from src.ai.validation.work_analyzer import WorkAnalyzer
 
-    # Initialize singletons if needed
-    if _work_analyzer is None:
-        _work_analyzer = WorkAnalyzer()
-    if _retry_tracker is None:
-        _retry_tracker = RetryTracker()
+    # Initialize singletons with double-checked locking pattern
+    if _work_analyzer is None or _retry_tracker is None:
+        with _singleton_lock:
+            if _work_analyzer is None:
+                _work_analyzer = WorkAnalyzer()
+            if _retry_tracker is None:
+                _retry_tracker = RetryTracker()
 
     # Run validation
     validation_result = await _work_analyzer.validate_implementation_task(task, state)
