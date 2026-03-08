@@ -1197,9 +1197,6 @@ async def _validate_task_completion(task: Task, agent_id: str, state: Any) -> An
     # Run validation
     validation_result = await _work_analyzer.validate_implementation_task(task, state)
 
-    # Record attempt for retry tracking
-    _retry_tracker.record_attempt(task.id, validation_result)
-
     return validation_result
 
 
@@ -1227,6 +1224,10 @@ async def _handle_validation_failure(
     Dict[str, Any]
         Response indicating validation failure
     """
+    # Record failed attempt for retry tracking
+    if _retry_tracker is not None:
+        _retry_tracker.record_attempt(task.id, validation_result)
+
     # Check if this is a retry with same issues
     is_retry_with_same_issues = False
     if _retry_tracker is not None:
