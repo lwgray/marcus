@@ -156,7 +156,7 @@ class TestOpenAIProviderTaskAnalysis:
                 "PLANKA_PASSWORD": "test-password",
             },
         ):
-            return OpenAIProvider()
+            yield OpenAIProvider()
 
     @pytest.fixture
     def sample_task(self):
@@ -310,7 +310,7 @@ class TestOpenAIProviderDependencyInference:
                 "PLANKA_PASSWORD": "test-password",
             },
         ):
-            return OpenAIProvider()
+            yield OpenAIProvider()
 
     @pytest.fixture
     def sample_tasks(self):
@@ -481,7 +481,7 @@ class TestOpenAIProviderDescriptionEnhancement:
                 "PLANKA_PASSWORD": "test-password",
             },
         ):
-            return OpenAIProvider()
+            yield OpenAIProvider()
 
     @pytest.fixture
     def sample_task(self):
@@ -582,7 +582,7 @@ class TestOpenAIProviderEffortEstimation:
                 "PLANKA_PASSWORD": "test-password",
             },
         ):
-            return OpenAIProvider()
+            yield OpenAIProvider()
 
     @pytest.fixture
     def sample_task(self):
@@ -682,7 +682,7 @@ class TestOpenAIProviderBlockerAnalysis:
                 "PLANKA_PASSWORD": "test-password",
             },
         ):
-            return OpenAIProvider()
+            yield OpenAIProvider()
 
     @pytest.fixture
     def sample_task(self):
@@ -803,7 +803,7 @@ class TestOpenAIProviderAPICall:
                 "PLANKA_PASSWORD": "test-password",
             },
         ):
-            return OpenAIProvider()
+            yield OpenAIProvider()
 
     async def test_call_openai_success(self, provider):
         """Test successful OpenAI API call"""
@@ -882,7 +882,7 @@ class TestOpenAIProviderResponseParsing:
                 "PLANKA_PASSWORD": "test-password",
             },
         ):
-            return OpenAIProvider()
+            yield OpenAIProvider()
 
     def test_parse_task_analysis_response_success(self, provider):
         """Test successful task analysis response parsing"""
@@ -1046,7 +1046,7 @@ class TestOpenAIProviderComplete:
                 "PLANKA_PASSWORD": "test-password",
             },
         ):
-            return OpenAIProvider()
+            yield OpenAIProvider()
 
     async def test_complete_success(self, provider):
         """Test successful completion generation"""
@@ -1186,7 +1186,7 @@ class TestOpenAIProviderCleanup:
                 "PLANKA_PASSWORD": "test-password",
             },
         ):
-            return OpenAIProvider()
+            yield OpenAIProvider()
 
     async def test_close_client(self, provider):
         """Test HTTP client cleanup"""
@@ -1214,7 +1214,7 @@ class TestOpenAIProviderIntegration:
                 "PLANKA_PASSWORD": "test-password",
             },
         ):
-            return OpenAIProvider()
+            yield OpenAIProvider()
 
     def test_prompt_building_consistency(self, provider):
         """Test all prompt builders return non-empty strings"""
