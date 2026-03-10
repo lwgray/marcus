@@ -65,8 +65,7 @@ async def show_ai_input() -> None:
     print("\n" + "=" * 70)
     print("KEY INSIGHT")
     print("=" * 70)
-    print(
-        f"""
+    print(f"""
 ✅ Task NAME is specific: "{task_data['name']}"
    - Contains: "User Authentication"
    - AI can infer from this!
@@ -90,8 +89,7 @@ So the AI pieces together:
    1. Task name → Feature context
    2. All task names → Project scope
    3. Generic description → Task type (design/implement/test)
-"""
-    )
+""")
 
     print("\n" + "=" * 70)
     print("ALL TASKS IN PROJECT (visible to agent)")

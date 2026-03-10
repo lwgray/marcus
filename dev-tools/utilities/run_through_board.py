@@ -5,6 +5,7 @@ Quickly run through all available tasks on the board.
 This script spawns multiple agents that request tasks, complete them immediately,
 and move on to the next task. Useful for testing task flow and board behavior.
 """
+
 import argparse
 import asyncio
 import sys

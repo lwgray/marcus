@@ -844,8 +844,7 @@ def create_experiment_structure(experiment_dir: Path, templates_dir: Path) -> bo
     # Create project spec template
     if not spec_file.exists():
         with open(spec_file, "w") as f:
-            f.write(
-                """# Project Specification
+            f.write("""# Project Specification
 
 Build a simple [description of what you want to build]
 
@@ -885,8 +884,7 @@ The runner will wrap this with checkpoint and timing instructions.
 4. Run: python run_single_agent_experiment.py <experiment_dir>
 
 Claude will get the raw description with no scaffolding.
-"""
-            )
+""")
         print("✓ Created project_spec.md template")
         print(f"  Edit {spec_file} to paste Marcus task breakdown (structured)")
         print("  or write your own description (unstructured)")

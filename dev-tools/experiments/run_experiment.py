@@ -42,8 +42,7 @@ def create_experiment_structure(experiment_dir: Path, templates_dir: Path) -> bo
     if not spec_file.exists():
         # Create a minimal project spec template
         with open(spec_file, "w") as f:
-            f.write(
-                """# Project Specification
+            f.write("""# Project Specification
 
 ## Overview
 [Describe what you want to build]
@@ -71,8 +70,7 @@ def create_experiment_structure(experiment_dir: Path, templates_dir: Path) -> bo
 ## Agent Notes
 All agents are full-stack "unicorn" developers capable of working on any task.
 They will accept and complete tasks regardless of their listed skill preferences.
-"""
-            )
+""")
         print("✓ Created project_spec.md template")
         print(f"  Edit {spec_file} to describe your project")
 
