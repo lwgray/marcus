@@ -5,19 +5,20 @@ Quickly run through all available tasks on the board.
 This script spawns multiple agents that request tasks, complete them immediately,
 and move on to the next task. Useful for testing task flow and board behavior.
 """
+
 import argparse
 import asyncio
 import sys
 from pathlib import Path
 
+from src.worker.inspector import Inspector
+
 # Add project root to path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from src.worker.inspector import Inspector
 
-
-async def worker_agent(agent_num: int, max_tasks: int = 5):
+async def worker_agent(agent_num: int, max_tasks: int = 5) -> None:
     """
     Worker agent that requests and immediately completes tasks.
 
@@ -111,7 +112,8 @@ async def worker_agent(agent_num: int, max_tasks: int = 5):
                 )
                 completed_count += 1
                 print(
-                    f"[Agent {agent_num}] ✅ Completed: {task_name[:50]}... ({completed_count}/{max_tasks})"
+                    f"[Agent {agent_num}] ✅ Completed: {task_name[:50]}... "
+                    f"({completed_count}/{max_tasks})"
                 )
 
                 await asyncio.sleep(0.5)
@@ -125,7 +127,7 @@ async def worker_agent(agent_num: int, max_tasks: int = 5):
         traceback.print_exc()
 
 
-async def main(num_agents: int = 3, tasks_per_agent: int = 10):
+async def main(num_agents: int = 3, tasks_per_agent: int = 10) -> None:
     """
     Spawn multiple agents to run through the board quickly.
 
@@ -138,7 +140,7 @@ async def main(num_agents: int = 3, tasks_per_agent: int = 10):
     """
     print("🚀 Speed Run Through Board")
     print("=" * 70)
-    print(f"Configuration:")
+    print("Configuration:")
     print(f"  Agents: {num_agents}")
     print(f"  Tasks per agent: {tasks_per_agent}")
     print(f"  Max total tasks: {num_agents * tasks_per_agent}")

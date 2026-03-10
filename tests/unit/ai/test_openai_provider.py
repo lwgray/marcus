@@ -25,6 +25,7 @@ from src.ai.providers.base_provider import (
     SemanticDependency,
 )
 from src.ai.providers.openai_provider import OpenAIProvider
+from src.config import marcus_config
 from src.core.models import Priority, Task, TaskStatus
 
 
@@ -145,9 +146,21 @@ class TestOpenAIProviderTaskAnalysis:
 
     @pytest.fixture
     def provider(self):
-        """Create provider instance with mocked environment"""
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-api-key"}):
-            return OpenAIProvider()
+        """Create provider instance with mocked configuration"""
+        # Reset global config cache
+        marcus_config._config = None
+
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-3.5-turbo"
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
+            yield OpenAIProvider()
+
+        # Reset config cache after test
+        marcus_config._config = None
 
     @pytest.fixture
     def sample_task(self):
@@ -290,9 +303,21 @@ class TestOpenAIProviderDependencyInference:
 
     @pytest.fixture
     def provider(self):
-        """Create provider instance with mocked environment"""
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-api-key"}):
-            return OpenAIProvider()
+        """Create provider instance with mocked configuration"""
+        # Reset global config cache
+        marcus_config._config = None
+
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-3.5-turbo"
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
+            yield OpenAIProvider()
+
+        # Reset config cache after test
+        marcus_config._config = None
 
     @pytest.fixture
     def sample_tasks(self):
@@ -452,9 +477,21 @@ class TestOpenAIProviderDescriptionEnhancement:
 
     @pytest.fixture
     def provider(self):
-        """Create provider instance with mocked environment"""
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-api-key"}):
-            return OpenAIProvider()
+        """Create provider instance with mocked configuration"""
+        # Reset global config cache
+        marcus_config._config = None
+
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-3.5-turbo"
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
+            yield OpenAIProvider()
+
+        # Reset config cache after test
+        marcus_config._config = None
 
     @pytest.fixture
     def sample_task(self):
@@ -544,9 +581,21 @@ class TestOpenAIProviderEffortEstimation:
 
     @pytest.fixture
     def provider(self):
-        """Create provider instance with mocked environment"""
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-api-key"}):
-            return OpenAIProvider()
+        """Create provider instance with mocked configuration"""
+        # Reset global config cache
+        marcus_config._config = None
+
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-3.5-turbo"
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
+            yield OpenAIProvider()
+
+        # Reset config cache after test
+        marcus_config._config = None
 
     @pytest.fixture
     def sample_task(self):
@@ -635,9 +684,21 @@ class TestOpenAIProviderBlockerAnalysis:
 
     @pytest.fixture
     def provider(self):
-        """Create provider instance with mocked environment"""
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-api-key"}):
-            return OpenAIProvider()
+        """Create provider instance with mocked configuration"""
+        # Reset global config cache
+        marcus_config._config = None
+
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-3.5-turbo"
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
+            yield OpenAIProvider()
+
+        # Reset config cache after test
+        marcus_config._config = None
 
     @pytest.fixture
     def sample_task(self):
@@ -702,21 +763,13 @@ class TestOpenAIProviderBlockerAnalysis:
     async def test_analyze_blocker_non_json_response(self, provider, sample_task):
         """Test blocker analysis with non-JSON response parsing"""
         mock_response = Mock()
-        mock_response.json.return_value = {
-            "choices": [
-                {
-                    "message": {
-                        "content": """
+        mock_response.json.return_value = {"choices": [{"message": {"content": """
                     - Check configuration files
                     - Restart the service
                     - Monitor system logs
                     # Additional notes
                     - Contact support if needed
-                    """
-                    }
-                }
-            ]
-        }
+                    """}}]}
         mock_response.raise_for_status = Mock()
 
         provider.client.post = AsyncMock(return_value=mock_response)
@@ -747,9 +800,21 @@ class TestOpenAIProviderAPICall:
 
     @pytest.fixture
     def provider(self):
-        """Create provider instance with mocked environment"""
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-api-key"}):
-            return OpenAIProvider()
+        """Create provider instance with mocked configuration"""
+        # Reset global config cache
+        marcus_config._config = None
+
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-3.5-turbo"
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
+            yield OpenAIProvider()
+
+        # Reset config cache after test
+        marcus_config._config = None
 
     async def test_call_openai_success(self, provider):
         """Test successful OpenAI API call"""
@@ -817,9 +882,21 @@ class TestOpenAIProviderResponseParsing:
 
     @pytest.fixture
     def provider(self):
-        """Create provider instance with mocked environment"""
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-api-key"}):
-            return OpenAIProvider()
+        """Create provider instance with mocked configuration"""
+        # Reset global config cache
+        marcus_config._config = None
+
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-3.5-turbo"
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
+            yield OpenAIProvider()
+
+        # Reset config cache after test
+        marcus_config._config = None
 
     def test_parse_task_analysis_response_success(self, provider):
         """Test successful task analysis response parsing"""
@@ -972,9 +1049,21 @@ class TestOpenAIProviderComplete:
 
     @pytest.fixture
     def provider(self):
-        """Create provider instance with mocked environment"""
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-api-key"}):
-            return OpenAIProvider()
+        """Create provider instance with mocked configuration"""
+        # Reset global config cache
+        marcus_config._config = None
+
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-3.5-turbo"
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
+            yield OpenAIProvider()
+
+        # Reset config cache after test
+        marcus_config._config = None
 
     async def test_complete_success(self, provider):
         """Test successful completion generation"""
@@ -1103,9 +1192,21 @@ class TestOpenAIProviderCleanup:
 
     @pytest.fixture
     def provider(self):
-        """Create provider instance with mocked environment"""
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-api-key"}):
-            return OpenAIProvider()
+        """Create provider instance with mocked configuration"""
+        # Reset global config cache
+        marcus_config._config = None
+
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-3.5-turbo"
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
+            yield OpenAIProvider()
+
+        # Reset config cache after test
+        marcus_config._config = None
 
     async def test_close_client(self, provider):
         """Test HTTP client cleanup"""
@@ -1122,9 +1223,21 @@ class TestOpenAIProviderIntegration:
 
     @pytest.fixture
     def provider(self):
-        """Create provider instance with mocked environment"""
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-api-key"}):
-            return OpenAIProvider()
+        """Create provider instance with mocked configuration"""
+        # Reset global config cache
+        marcus_config._config = None
+
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-3.5-turbo"
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
+            yield OpenAIProvider()
+
+        # Reset config cache after test
+        marcus_config._config = None
 
     def test_prompt_building_consistency(self, provider):
         """Test all prompt builders return non-empty strings"""

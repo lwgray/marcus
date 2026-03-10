@@ -9,19 +9,20 @@ and overall winner.
 import argparse
 import json
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Optional, cast
 
 
-def load_score(file_path: Path) -> Dict[str, Any]:
+def load_score(file_path: Path) -> dict[str, Any]:
     """Load a score JSON file."""
-    return json.loads(file_path.read_text())
+    with open(file_path) as f:
+        return cast(dict[str, Any], json.load(f))
 
 
 def generate_comparison_report(
-    marcus_score: Dict[str, Any],
-    single_score: Dict[str, Any],
-    time_marcus: float = None,
-    time_single: float = None,
+    marcus_score: dict[str, Any],
+    single_score: dict[str, Any],
+    time_marcus: Optional[float] = None,
+    time_single: Optional[float] = None,
 ) -> str:
     """
     Generate a markdown comparison report.
@@ -59,8 +60,10 @@ def generate_comparison_report(
         score_winner = "Tie"
 
     report.append(
-        f"| **Total Score** | {marcus_total:.1f}/100 ({marcus_score['percentage']:.1f}%) | "
-        f"{single_total:.1f}/100 ({single_score['percentage']:.1f}%) | **{score_winner}** |"
+        f"| **Total Score** | {marcus_total:.1f}/100 "
+        f"({marcus_score['percentage']:.1f}%) | "
+        f"{single_total:.1f}/100 ({single_score['percentage']:.1f}%) | "
+        f"**{score_winner}** |"
     )
 
     if time_marcus and time_single:
@@ -69,7 +72,8 @@ def generate_comparison_report(
             time_winner = "Tie"
 
         report.append(
-            f"| **Time** | {time_marcus:.1f} min | {time_single:.1f} min | **{time_winner}** |"
+            f"| **Time** | {time_marcus:.1f} min | "
+            f"{time_single:.1f} min | **{time_winner}** |"
         )
 
         # Quality/Time Ratio (higher is better)
@@ -78,8 +82,8 @@ def generate_comparison_report(
         ratio_winner = "Marcus" if marcus_ratio > single_ratio else "Single Agent"
 
         report.append(
-            f"| **Quality/Time** | {marcus_ratio:.2f} pts/min | {single_ratio:.2f} pts/min | "
-            f"**{ratio_winner}** |"
+            f"| **Quality/Time** | {marcus_ratio:.2f} pts/min | "
+            f"{single_ratio:.2f} pts/min | **{ratio_winner}** |"
         )
 
     report.append("\n")
@@ -154,7 +158,8 @@ def generate_comparison_report(
             f"({m_cat['percentage']:.0f}%)"
         )
         report.append(
-            f"- **Single Agent**: {s_cat['points_earned']:.1f}/{s_cat['points_possible']} "
+            f"- **Single Agent**: "
+            f"{s_cat['points_earned']:.1f}/{s_cat['points_possible']} "
             f"({s_cat['percentage']:.0f}%)"
         )
 
@@ -213,7 +218,7 @@ def generate_comparison_report(
 
     if overall_winner == "Marcus":
         report.append("**Winner: Marcus Multi-Agent System** 🏆\n")
-        report.append(f"Marcus outperformed the single agent with:")
+        report.append("Marcus outperformed the single agent with:")
         if time_marcus and time_single:
             report.append(
                 f"- {marcus_ratio - single_ratio:.2f} higher quality/time ratio"
@@ -221,7 +226,7 @@ def generate_comparison_report(
         report.append(f"- {marcus_total - single_total:.1f} point score advantage")
     elif overall_winner == "Single Agent":
         report.append("**Winner: Single Agent** 🏆\n")
-        report.append(f"The single agent outperformed Marcus with:")
+        report.append("The single agent outperformed Marcus with:")
         if time_marcus and time_single:
             report.append(
                 f"- {single_ratio - marcus_ratio:.2f} higher quality/time ratio"
@@ -235,7 +240,8 @@ def generate_comparison_report(
         )
         if time_marcus and time_single:
             report.append(
-                f"- Quality/time difference: {abs(marcus_ratio - single_ratio):.2f} pts/min"
+                f"- Quality/time difference: "
+                f"{abs(marcus_ratio - single_ratio):.2f} pts/min"
             )
 
     report.append("\n")
@@ -316,7 +322,7 @@ def generate_comparison_report(
     return "\n".join(report)
 
 
-def main():
+def main() -> int:
     """Run the comparison tool."""
     parser = argparse.ArgumentParser(
         description="Compare Marcus and Single Agent project scores"
@@ -372,4 +378,4 @@ def main():
 
 
 if __name__ == "__main__":
-    exit(main())
+    raise SystemExit(main())

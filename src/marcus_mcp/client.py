@@ -7,9 +7,8 @@ import json
 import sys
 from typing import Any, Dict, Optional
 
-from mcp.client.stdio import stdio_client
-
 from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
 
 class SimpleMarcusClient:

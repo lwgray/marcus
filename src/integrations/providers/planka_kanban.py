@@ -9,10 +9,10 @@ import logging
 import os
 from typing import Any, Dict, List, Optional, Union
 
+from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.types import TextContent
 
-from mcp import ClientSession, StdioServerParameters
 from src.core.models import Task, TaskStatus
 from src.integrations.kanban_client import KanbanClient
 from src.integrations.kanban_interface import KanbanInterface, KanbanProvider

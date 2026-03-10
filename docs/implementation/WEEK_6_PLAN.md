@@ -1165,7 +1165,7 @@ Create `.env` file (never commit):
 ```bash
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
-DATABASE_URL=postgresql://user:pass@host:5432/db
+DATABASE_URL=postgresql://user:pass@host:5432/db  # pragma: allowlist secret
 ```
 
 Load in docker-compose:
@@ -1818,7 +1818,7 @@ kanban:
   api_url: "http://localhost:3000"
   credentials:
     username: "user"
-    password: "pass"
+    password: "pass"  # pragma: allowlist secret
 
 # Telemetry
 telemetry:

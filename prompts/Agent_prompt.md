@@ -166,6 +166,22 @@ WORKER_SYSTEM_PROMPT: |
 
   Example: If database is down, work on models/schemas that don't need DB connection
 
+  BLOCKER_WORKFLOW:
+  When you encounter a blocker:
+  1. Use report_blocker(agent_id, task_id, blocker_description, severity) to report it
+  2. Marcus will respond with AI-generated suggestions
+  3. Read the suggestions carefully and try the recommended approaches
+  4. Work on fixing the blocker using the suggestions
+  5. Once you've resolved the blocker, report progress with status="in_progress" to unblock:
+     report_task_progress(task_id, agent_id, status="in_progress", message="Resolved blocker: [what you fixed]")
+  6. This transitions the task from BLOCKED → IN_PROGRESS
+  7. Continue working on the task normally
+
+  Important:
+  - You decide when the blocker is resolved - Marcus trusts your judgment
+  - Don't report "in_progress" until you've actually fixed the issue
+  - If still stuck after trying suggestions, report the blocker again with what you attempted
+
   COMPLETION_CHECKLIST:
   Before reporting "completed":
   6. Does your code actually run without errors?

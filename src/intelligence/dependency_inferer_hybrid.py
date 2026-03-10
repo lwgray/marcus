@@ -653,8 +653,7 @@ Focus on logical dependencies based on:
             else 0
         )
 
-        logger.info(
-            f"""
+        logger.info(f"""
 Dependency Inference Statistics:
 - Pattern matches: {pattern_count}
 - AI inferences: {ai_count}
@@ -663,8 +662,7 @@ Dependency Inference Statistics:
   - Pattern only: {pattern_only}
   - AI only: {ai_only}
 - Average confidence: {avg_conf:.2f}
-"""
-        )
+""")
 
     async def explain_dependency(
         self, dependent_id: str, dependency_id: str, graph: DependencyGraph

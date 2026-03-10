@@ -2,6 +2,7 @@
 """
 Simple test to create a project and verify it appears on the board
 """
+
 import asyncio
 import sys
 from pathlib import Path

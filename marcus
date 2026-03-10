@@ -31,7 +31,7 @@ import os
 import signal
 import subprocess  # nosec B404 - subprocess required for CLI daemon management
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -148,7 +148,8 @@ class MarcusCLI:
         else:
             # Run as daemon
             log_file = (
-                self.log_dir / f"marcus_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+                self.log_dir
+                / f"marcus_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.log"
             )
             log_file.parent.mkdir(exist_ok=True)
 
@@ -367,7 +368,9 @@ class MarcusCLI:
                 process = psutil.Process(pid)
                 print(f"   CPU: {process.cpu_percent(interval=0.1):.1f}%")
                 print(f"   Memory: {process.memory_info().rss / 1024 / 1024:.1f} MB")
-                uptime = datetime.now() - datetime.fromtimestamp(process.create_time())
+                uptime = datetime.now(timezone.utc) - datetime.fromtimestamp(
+                    process.create_time(), tz=timezone.utc
+                )
                 print(f"   Uptime: {uptime}")
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 # Process info not accessible - not critical for status check

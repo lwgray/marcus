@@ -6,6 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue?logo=docker)](https://hub.docker.com/r/marcus/marcus)
 [![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-green)](https://modelcontextprotocol.io/)
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/lwgray/marcus?quickstart=1)
 
 ## What is Marcus?
 Marcus is a **domain-agnostic AI agent coordination platform**. While it excels at turning your ideas into working software, Marcus can coordinate AI agents for **any multi-step project** - from software development to content creation, research, marketing, and beyond.
@@ -42,6 +43,22 @@ Marcus accepts **any artifact type** (code, research, scripts, designs, marketin
 ---
 
 ## 🚀 **Quick Start**
+
+### **Choose Your Setup**
+
+**Option 1: GitHub Codespaces** ☁️ (Recommended for trying Marcus)
+- ✅ No local installation required
+- ✅ Everything runs in the cloud
+- ✅ Ready in 5 minutes
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/lwgray/marcus?quickstart=1)
+
+📖 **[Follow the Codespaces Guide](CODESPACES_QUICKSTART.md)** for step-by-step instructions.
+
+**Option 2: Local Docker** 🐳 (Recommended for regular use)
+- ✅ Full control over your environment
+- ✅ Works offline after initial setup
+- ✅ Better performance
 
 ### **Prerequisites**
 - Docker

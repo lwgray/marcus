@@ -17,9 +17,8 @@ import shutil
 import sys
 from typing import List, Optional, Tuple
 
-from mcp.client.stdio import stdio_client
-
 from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
 # Add parent directories to path
 sys.path.insert(

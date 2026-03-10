@@ -161,7 +161,9 @@ async def demo_task_decomposition() -> None:
         shared_conventions=decomposition["shared_conventions"],
         decomposed_by="ai",
     )
-    subtasks = manager.add_subtasks(task.id, decomposition["subtasks"], metadata)
+    subtasks = manager.add_subtasks(
+        task.id, decomposition["subtasks"], project_tasks=None, metadata=metadata
+    )
     print(f"   ✓ {len(subtasks)} subtasks stored in manager")
 
     # 5. Simulate subtask assignment workflow
@@ -176,19 +178,28 @@ async def demo_task_decomposition() -> None:
             print("\n   Agent requests task...")
             print(f"   → Assigned: {next_subtask.name}")
             print(f"     ID: {next_subtask.id}")
-            print(f"     Files: {', '.join(next_subtask.file_artifacts)}")
+            # Get file_artifacts from the legacy subtask storage
+            legacy_subtask = manager.subtasks.get(next_subtask.id)
+            if legacy_subtask and legacy_subtask.file_artifacts:
+                print(f"     Files: {', '.join(legacy_subtask.file_artifacts)}")
             if next_subtask.requires:
                 print(f"     Requires: {next_subtask.requires}")
 
             # Simulate work
             manager.update_subtask_status(
-                next_subtask.id, TaskStatus.IN_PROGRESS, f"agent-{i+1}"
+                next_subtask.id,
+                TaskStatus.IN_PROGRESS,
+                project_tasks=None,
+                assigned_to=f"agent-{i+1}",
             )
             print("   ⚙️  Agent working...")
 
             # Complete subtask
             manager.update_subtask_status(
-                next_subtask.id, TaskStatus.DONE, f"agent-{i+1}"
+                next_subtask.id,
+                TaskStatus.DONE,
+                project_tasks=None,
+                assigned_to=f"agent-{i+1}",
             )
             completed_subtasks.add(next_subtask.id)
             print("   ✓ Subtask completed!")

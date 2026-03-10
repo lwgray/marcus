@@ -672,7 +672,7 @@ class TestMarcusConfig:
         config_data = {
             "ai": {
                 "provider": "openai",
-                "openai_api_key": "test-key-123",
+                "openai_api_key": "test-key-123",  # pragma: allowlist secret
                 "temperature": 0.5
             },
             "kanban": {
@@ -690,7 +690,7 @@ class TestMarcusConfig:
 
         # Verify
         assert config.ai.provider == "openai"
-        assert config.ai.openai_api_key == "test-key-123"
+        assert config.ai.openai_api_key == "test-key-123"  # pragma: allowlist secret
         assert config.ai.temperature == 0.5
         assert config.kanban.provider == "github"
         assert config.kanban.board_name == "Test Board"
@@ -717,7 +717,7 @@ class TestMarcusConfig:
         config = MarcusConfig.from_file(str(config_file))
 
         # Verify env var was substituted
-        assert config.ai.anthropic_api_key == "secret-key-from-env"
+        assert config.ai.anthropic_api_key == "secret-key-from-env"  # pragma: allowlist secret
 
     def test_backward_compatibility_planka(self, tmp_path):
         """Test that old 'planka' config key still works."""
@@ -726,7 +726,7 @@ class TestMarcusConfig:
             "planka": {
                 "base_url": "http://localhost:3333",
                 "email": "test@test.com",
-                "password": "testpass"
+                "password": "testpass"  # pragma: allowlist secret
             }
         }
 
@@ -738,7 +738,7 @@ class TestMarcusConfig:
         # Should map to kanban.planka_* fields
         assert config.kanban.planka_base_url == "http://localhost:3333"
         assert config.kanban.planka_email == "test@test.com"
-        assert config.kanban.planka_password == "testpass"
+        assert config.kanban.planka_password == "testpass"  # pragma: allowlist secret
 
     def test_nonexistent_config_returns_defaults(self, tmp_path):
         """Test that missing config file returns defaults."""
@@ -1070,7 +1070,7 @@ class TestConfigValidation:
         config_data = {
             "ai": {
                 "provider": "anthropic",
-                "anthropic_api_key": "test-key",
+                "anthropic_api_key": "test-key"  # pragma: allowlist secret,  # pragma: allowlist secret
                 "temperature": 1.5  # Invalid: must be 0.0-1.0
             }
         }
@@ -1112,14 +1112,14 @@ class TestConfigValidation:
         config_data = {
             "ai": {
                 "provider": "anthropic",
-                "anthropic_api_key": "sk-test-key-123",
+                "anthropic_api_key": "sk-test-key-123",  # pragma: allowlist secret
                 "enabled": True
             },
             "kanban": {
                 "provider": "planka",
                 "planka_base_url": "http://localhost:3333",
                 "planka_email": "test@test.com",
-                "planka_password": "testpass"
+                "planka_password": "testpass"  # pragma: allowlist secret
             }
         }
 
@@ -1145,10 +1145,10 @@ class TestEnvironmentOverrides:
 
         config = MarcusConfig.from_env()
 
-        assert config.ai.anthropic_api_key == "sk-env-key"
+        assert config.ai.anthropic_api_key == "sk-env-key"  # pragma: allowlist secret
         assert config.kanban.planka_base_url == "http://planka:1337"
         assert config.kanban.planka_email == "env@test.com"
-        assert config.kanban.planka_password == "envpass"
+        assert config.kanban.planka_password == "envpass"  # pragma: allowlist secret
         assert config.log_level == "DEBUG"
 ```
 
@@ -1326,11 +1326,11 @@ except ValueError as e:
 
 # Test 3: Environment variables work
 echo "3. Testing environment variable overrides..."
-export ANTHROPIC_API_KEY="test-key-from-env"
+export ANTHROPIC_API_KEY="test-key-from-env"  # pragma: allowlist secret
 python -c "
 from src.config.marcus_config import MarcusConfig
 config = MarcusConfig.from_env()
-assert config.ai.anthropic_api_key == 'test-key-from-env'
+assert config.ai.anthropic_api_key == 'test-key-from-env'  # pragma: allowlist secret
 print('✓ Environment variables work')
 "
 
@@ -1616,14 +1616,14 @@ Create `docs/CONFIGURATION.md`:
    ```json
    {
      "ai": {
-       "anthropic_api_key": "sk-ant-api03-your-key-here"
+       "anthropic_api_key": "sk-ant-api03-your-key-here"  # pragma: allowlist secret
      }
    }
    ```
 
    Or use environment variable:
    ```bash
-   export ANTHROPIC_API_KEY="sk-ant-api03-your-key-here"
+   export ANTHROPIC_API_KEY="sk-ant-api03-your-key-here"  # pragma: allowlist secret
    ```
 
 3. **Configure Kanban:**
@@ -1635,7 +1635,7 @@ Create `docs/CONFIGURATION.md`:
        "provider": "planka",
        "planka_base_url": "http://localhost:3333",
        "planka_email": "demo@demo.demo",
-       "planka_password": "demo"
+       "planka_password": "demo"  # pragma: allowlist secret
      }
    }
    ```
@@ -1675,10 +1675,10 @@ See `config_marcus.example.json` for complete documentation of all options.
 You can override any config value with environment variables:
 
 ```bash
-export ANTHROPIC_API_KEY="sk-..."
+export ANTHROPIC_API_KEY="sk-..."  # pragma: allowlist secret
 export PLANKA_BASE_URL="http://localhost:3333"
 export PLANKA_AGENT_EMAIL="agent@example.com"
-export PLANKA_AGENT_PASSWORD="password"
+export PLANKA_AGENT_PASSWORD="password"  # pragma: allowlist secret
 export MARCUS_LOG_LEVEL="DEBUG"
 ```
 
@@ -1720,7 +1720,7 @@ When using Docker, you can:
 
 **Solution:** Set your API key in `config_marcus.json` or environment:
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-api03-..."
+export ANTHROPIC_API_KEY="sk-ant-api03-..."  # pragma: allowlist secret
 ```
 
 ### "Cannot connect to Planka server"
@@ -1800,7 +1800,7 @@ Marcus uses a single configuration file for all settings.
 
 2. Set your API key:
    ```bash
-   export ANTHROPIC_API_KEY="sk-ant-api03-your-key-here"
+   export ANTHROPIC_API_KEY="sk-ant-api03-your-key-here"  # pragma: allowlist secret
    ```
 
 3. Configure Kanban (for Planka):
@@ -1810,7 +1810,7 @@ Marcus uses a single configuration file for all settings.
        "provider": "planka",
        "planka_base_url": "http://localhost:3333",
        "planka_email": "demo@demo.demo",
-       "planka_password": "demo"
+       "planka_password": "demo"  # pragma: allowlist secret
      }
    }
    ```
@@ -1876,11 +1876,11 @@ class TestBackwardCompatibility:
             "planka": {
                 "base_url": "http://old-style:3333",
                 "email": "old@test.com",
-                "password": "oldpass"
+                "password": "oldpass"  # pragma: allowlist secret
             },
             "ai": {
                 "provider": "anthropic",
-                "anthropic_api_key": "test-key"
+                "anthropic_api_key": "test-key"  # pragma: allowlist secret
             }
         }
 
@@ -1894,7 +1894,7 @@ class TestBackwardCompatibility:
         # Should map to new kanban.planka_* fields
         assert config.kanban.planka_base_url == "http://old-style:3333"
         assert config.kanban.planka_email == "old@test.com"
-        assert config.kanban.planka_password == "oldpass"
+        assert config.kanban.planka_password == "oldpass"  # pragma: allowlist secret
 
     def test_env_vars_still_work(self, monkeypatch):
         """Test that environment variables still override config."""
@@ -1903,7 +1903,7 @@ class TestBackwardCompatibility:
         from src.config.marcus_config import MarcusConfig
         config = MarcusConfig.from_env()
 
-        assert config.ai.anthropic_api_key == "env-override-key"
+        assert config.ai.anthropic_api_key == "env-override-key"  # pragma: allowlist secret
 
     def test_missing_optional_fields_use_defaults(self, tmp_path, monkeypatch):
         """Test that missing optional config fields use defaults."""
@@ -1914,13 +1914,13 @@ class TestBackwardCompatibility:
         config_data = {
             "ai": {
                 "provider": "anthropic",
-                "anthropic_api_key": "test-key"
+                "anthropic_api_key": "test-key"  # pragma: allowlist secret
             },
             "kanban": {
                 "provider": "planka",
                 "planka_base_url": "http://localhost:3333",
                 "planka_email": "test@test.com",
-                "planka_password": "testpass"
+                "planka_password": "testpass"  # pragma: allowlist secret
             }
             # Missing: features, hybrid_inference, task_lease, etc.
         }
@@ -1948,14 +1948,14 @@ def test_server_starts_with_new_config(tmp_path, monkeypatch):
     config_data = {
         "ai": {
             "provider": "anthropic",
-            "anthropic_api_key": "sk-test-key-for-server-start",
+            "anthropic_api_key": "sk-test-key-for-server-start",  # pragma: allowlist secret
             "enabled": True
         },
         "kanban": {
             "provider": "planka",
             "planka_base_url": "http://localhost:3333",
             "planka_email": "test@test.com",
-            "planka_password": "testpass"
+            "planka_password": "testpass"  # pragma: allowlist secret
         }
     }
 
@@ -1971,7 +1971,7 @@ def test_server_starts_with_new_config(tmp_path, monkeypatch):
     config = get_config()
 
     # Should have loaded our test config
-    assert config.ai.anthropic_api_key == "sk-test-key-for-server-start"
+    assert config.ai.anthropic_api_key == "sk-test-key-for-server-start"  # pragma: allowlist secret
     assert config.kanban.planka_base_url == "http://localhost:3333"
 ```
 

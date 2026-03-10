@@ -1121,9 +1121,7 @@ class TestRequirementFiltering:
         # Arrange
         requirements = [{"id": f"req{i}", "name": f"Feature {i}"} for i in range(20)]
         prd_content = """Create these 20 features:
-        """ + "\n".join(
-            [f"- Feature {i}" for i in range(20)]
-        )
+        """ + "\n".join([f"- Feature {i}" for i in range(20)])
 
         # Act
         with caplog.at_level("WARNING"):

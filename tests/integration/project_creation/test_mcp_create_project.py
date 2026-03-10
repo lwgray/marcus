@@ -2,12 +2,12 @@
 """
 Test creating a project through the MCP server
 """
+
 import asyncio
 import json
 
-from mcp.client.stdio import stdio_client
-
 from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
 
 async def test_create_project_via_mcp():

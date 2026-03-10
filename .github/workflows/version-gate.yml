@@ -1,0 +1,82 @@
+name: Version Gate
+
+on:
+  pull_request:
+    branches: [main]  # Only enforce on PRs to main, not develop
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Get full history for comparison
+
+      - name: Check if version bump needed
+        id: version-check
+        run: |
+          # Get target branch
+          TARGET_BRANCH="${{ github.base_ref }}"
+
+          # Get version from current PR branch
+          CURRENT_VERSION=$(grep '^version = ' pyproject.toml | cut -d'"' -f2)
+
+          # Get version from target branch
+          git fetch origin "$TARGET_BRANCH"
+          TARGET_VERSION=$(git show "origin/$TARGET_BRANCH:pyproject.toml" | grep '^version = ' | cut -d'"' -f2)
+
+          echo "Current version: $CURRENT_VERSION"
+          echo "Target branch version: $TARGET_VERSION"
+
+          # Check if version changed
+          if [ "$CURRENT_VERSION" == "$TARGET_VERSION" ]; then
+            echo "❌ Version must be bumped when merging to $TARGET_BRANCH"
+            echo "needs_bump=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Version bumped: $TARGET_VERSION → $CURRENT_VERSION"
+            echo "needs_bump=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "target_version=$TARGET_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check CHANGELOG updated
+        id: changelog-check
+        run: |
+          if ! git diff origin/${{ github.base_ref }} --name-only | grep -q "CHANGELOG.md"; then
+            echo "❌ CHANGELOG.md must be updated"
+            echo "needs_update=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ CHANGELOG.md updated"
+            echo "needs_update=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Fail if requirements not met
+        if: steps.version-check.outputs.needs_bump == 'true' || steps.changelog-check.outputs.needs_update == 'true'
+        run: |
+          echo "::error::Version Gate Failed"
+          echo ""
+          echo "Required before merging to ${{ github.base_ref }}:"
+          if [ "${{ steps.version-check.outputs.needs_bump }}" == "true" ]; then
+            echo "❌ Bump version in pyproject.toml (currently ${{ steps.version-check.outputs.target_version }})"
+          fi
+          if [ "${{ steps.changelog-check.outputs.needs_update }}" == "true" ]; then
+            echo "❌ Update CHANGELOG.md with changes"
+          fi
+          exit 1
+
+      - name: Comment on PR
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '## ⚠️ Version Gate Check Failed\n\n' +
+                    'Before merging to `${{ github.base_ref }}`, you must:\n\n' +
+                    '- [ ] Bump version in `pyproject.toml`\n' +
+                    '- [ ] Update `CHANGELOG.md`\n\n' +
+                    'See [Versioning Guide](../blob/develop/docs/VERSIONING.md) for help.'
+            })

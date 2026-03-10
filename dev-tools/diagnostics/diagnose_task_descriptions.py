@@ -128,7 +128,7 @@ async def main() -> None:
                             "name": st.name,
                             "description": st.description,
                             "status": st.status.value,
-                            "order": st.order,
+                            "order": st.subtask_index or 0,
                         }
                         for st in subtasks
                     ]

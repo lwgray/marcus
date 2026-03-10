@@ -398,7 +398,7 @@ class TestCommitTracker:
     def test_track_commit(self, tracker):
         """Test tracking a commit."""
         tracker.track_commit(
-            commit_hash="abc123def456",
+            commit_hash="abc123def456",  # pragma: allowlist secret
             task_id="T-IMPL-1",
             feature_id="F-100",
             branch="feature/F-100-auth",
@@ -413,7 +413,7 @@ class TestCommitTracker:
         # Should be retrievable
         commits = tracker.get_task_commits("T-IMPL-1")
         assert len(commits) == 1
-        assert commits[0].commit_hash == "abc123def456"
+        assert commits[0].commit_hash == "abc123def456"  # pragma: allowlist secret
         assert commits[0].short_hash == "abc123d"
 
     def test_get_feature_commits(self, tracker):

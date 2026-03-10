@@ -322,10 +322,12 @@ class TestTaskRedundancyAnalyzer:
         assert True  # If no exception, callback was accepted
 
     @pytest.mark.unit
-    def test_find_quick_completions(self, quick_completion_tasks):
+    def test_find_quick_completions(self, mock_ai_engine, quick_completion_tasks):
         """Test identifying tasks completed in < 30 seconds."""
         # Arrange
-        analyzer = TaskRedundancyAnalyzer(quick_completion_threshold=30.0)
+        analyzer = TaskRedundancyAnalyzer(
+            ai_engine=mock_ai_engine, quick_completion_threshold=30.0
+        )
 
         # Act
         quick_tasks = analyzer._find_quick_completions(quick_completion_tasks)
@@ -336,10 +338,14 @@ class TestTaskRedundancyAnalyzer:
         assert all(t.actual_hours < 0.01 for t in quick_tasks)  # < 36s
 
     @pytest.mark.unit
-    def test_find_quick_completions_with_custom_threshold(self, quick_completion_tasks):
+    def test_find_quick_completions_with_custom_threshold(
+        self, mock_ai_engine, quick_completion_tasks
+    ):
         """Test quick completion detection with custom threshold."""
         # Arrange - Set threshold to 10 seconds
-        analyzer = TaskRedundancyAnalyzer(quick_completion_threshold=10.0)
+        analyzer = TaskRedundancyAnalyzer(
+            ai_engine=mock_ai_engine, quick_completion_threshold=10.0
+        )
 
         # Act
         quick_tasks = analyzer._find_quick_completions(quick_completion_tasks)
@@ -348,10 +354,12 @@ class TestTaskRedundancyAnalyzer:
         assert len(quick_tasks) == 0
 
     @pytest.mark.unit
-    def test_find_quick_completions_none_found(self, sample_tasks):
+    def test_find_quick_completions_none_found(self, mock_ai_engine, sample_tasks):
         """Test quick completion detection when none exist."""
         # Arrange
-        analyzer = TaskRedundancyAnalyzer(quick_completion_threshold=30.0)
+        analyzer = TaskRedundancyAnalyzer(
+            ai_engine=mock_ai_engine, quick_completion_threshold=30.0
+        )
 
         # Act
         quick_tasks = analyzer._find_quick_completions(sample_tasks)
@@ -360,10 +368,10 @@ class TestTaskRedundancyAnalyzer:
         assert len(quick_tasks) == 0
 
     @pytest.mark.unit
-    def test_recommend_complexity_high_redundancy(self):
+    def test_recommend_complexity_high_redundancy(self, mock_ai_engine):
         """Test complexity recommendation with high redundancy score."""
         # Arrange
-        analyzer = TaskRedundancyAnalyzer()
+        analyzer = TaskRedundancyAnalyzer(ai_engine=mock_ai_engine)
         base_time = datetime.now(timezone.utc)
 
         # Create 20 tasks, 5 quick completions
@@ -394,10 +402,10 @@ class TestTaskRedundancyAnalyzer:
         assert recommendation == "prototype"
 
     @pytest.mark.unit
-    def test_recommend_complexity_medium_redundancy(self):
+    def test_recommend_complexity_medium_redundancy(self, mock_ai_engine):
         """Test complexity recommendation with medium redundancy."""
         # Arrange
-        analyzer = TaskRedundancyAnalyzer()
+        analyzer = TaskRedundancyAnalyzer(ai_engine=mock_ai_engine)
         base_time = datetime.now(timezone.utc)
 
         # Create 20 tasks, 2 quick completions
@@ -428,10 +436,10 @@ class TestTaskRedundancyAnalyzer:
         assert recommendation == "standard"
 
     @pytest.mark.unit
-    def test_recommend_complexity_low_redundancy(self):
+    def test_recommend_complexity_low_redundancy(self, mock_ai_engine):
         """Test complexity recommendation with low redundancy."""
         # Arrange
-        analyzer = TaskRedundancyAnalyzer()
+        analyzer = TaskRedundancyAnalyzer(ai_engine=mock_ai_engine)
         base_time = datetime.now(timezone.utc)
 
         # Create 20 tasks, 1 quick completion
@@ -462,10 +470,10 @@ class TestTaskRedundancyAnalyzer:
         assert recommendation == "enterprise"
 
     @pytest.mark.unit
-    def test_recommend_complexity_many_quick_completions(self):
+    def test_recommend_complexity_many_quick_completions(self, mock_ai_engine):
         """Test recommendation prioritizes quick completions."""
         # Arrange
-        analyzer = TaskRedundancyAnalyzer()
+        analyzer = TaskRedundancyAnalyzer(ai_engine=mock_ai_engine)
         base_time = datetime.now(timezone.utc)
 
         # Create 20 tasks, 8 quick completions (40%)
@@ -496,10 +504,10 @@ class TestTaskRedundancyAnalyzer:
         assert recommendation == "standard"
 
     @pytest.mark.unit
-    def test_recommend_complexity_edge_cases(self):
+    def test_recommend_complexity_edge_cases(self, mock_ai_engine):
         """Test complexity recommendation edge cases."""
         # Arrange
-        analyzer = TaskRedundancyAnalyzer()
+        analyzer = TaskRedundancyAnalyzer(ai_engine=mock_ai_engine)
         base_time = datetime.now(timezone.utc)
 
         # Act & Assert - Zero tasks

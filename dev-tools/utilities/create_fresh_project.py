@@ -5,16 +5,17 @@ Create a fresh test project on the Kanban board.
 Default: Creates a Simple Weather API project
 Can also create custom projects via command line or description file.
 """
+
 import argparse
 import asyncio
 import sys
 from pathlib import Path
 
+from src.worker.inspector import Inspector
+
 # Add project root to path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
-
-from src.worker.inspector import Inspector
 
 # Default project description
 DEFAULT_DESCRIPTION = """Create a Weather API service with:
@@ -30,7 +31,7 @@ async def create_project(
     description: str,
     complexity: str = "prototype",
     provider: str = "planka",
-):
+) -> None:
     """
     Create a new project on the Kanban board.
 
@@ -87,7 +88,7 @@ async def create_project(
             )
 
             # Parse result
-            if hasattr(result, "structuredContent"):
+            if hasattr(result, "structuredContent") and result.structuredContent:
                 result_data = result.structuredContent.get("result", {})
 
                 print("\n" + "=" * 70)
@@ -98,7 +99,7 @@ async def create_project(
 
                 task_breakdown = result_data.get("task_breakdown", {})
                 if task_breakdown:
-                    print(f"\nTask breakdown:")
+                    print("\nTask breakdown:")
                     print(f"  Total: {task_breakdown.get('total')}")
                     print(f"  Design: {task_breakdown.get('design', 0)}")
                     print(
@@ -111,7 +112,7 @@ async def create_project(
                 print(f"Dependencies mapped: {result_data.get('dependencies_mapped')}")
                 print("=" * 70)
             else:
-                print(f"\n✅ Project created!")
+                print("\n✅ Project created!")
                 print(f"Result: {result}")
 
     except Exception as e:
@@ -132,7 +133,8 @@ Examples:
   python3 create_fresh_project.py
 
   # Create custom project via command line
-  python3 create_fresh_project.py -n "Task Manager" -d "Build a task management system with users and projects"
+  python3 create_fresh_project.py -n "Task Manager" \\
+      -d "Build a task management system with users and projects"
 
   # Create project from description file
   python3 create_fresh_project.py -n "E-commerce Platform" -f project_description.txt
