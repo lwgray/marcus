@@ -8,9 +8,8 @@ import sys
 from typing import Any, Tuple, Union
 
 import httpx
-from mcp.client.stdio import stdio_client
-
 from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
 # Add parent directory to Python path for imports
 sys.path.insert(

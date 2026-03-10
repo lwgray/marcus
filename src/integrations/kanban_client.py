@@ -22,10 +22,10 @@ import sys
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, cast
 
+from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.types import TextContent
 
-from mcp import ClientSession, StdioServerParameters
 from src.core.models import Priority, Task, TaskStatus
 
 logger = logging.getLogger(__name__)

@@ -9,9 +9,8 @@ import json
 import os
 import sys
 
-from mcp.client.stdio import stdio_client
-
 from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
 # Add parent directories to path
 sys.path.insert(

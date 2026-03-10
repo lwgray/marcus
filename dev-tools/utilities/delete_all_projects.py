@@ -12,9 +12,8 @@ import sys
 from typing import Any, List
 
 import httpx
-from mcp.client.stdio import stdio_client
-
 from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
 # Set environment - demo credentials for local development only
 os.environ["PLANKA_BASE_URL"] = "http://localhost:3333"

@@ -13,9 +13,8 @@ from pathlib import Path
 from typing import Any, List
 
 import httpx
-from mcp.client.stdio import stdio_client
-
 from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
 # Add project root to path for imports
 project_root = Path(__file__).parent.parent.parent

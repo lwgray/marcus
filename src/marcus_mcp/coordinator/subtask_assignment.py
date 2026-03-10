@@ -505,10 +505,9 @@ async def _mark_checklist_item_complete(parent_card_id: str, subtask_name: str) 
         # Use local path for kanban-mcp
         import os
 
+        from mcp import ClientSession, StdioServerParameters
         from mcp.client.stdio import stdio_client
         from mcp.types import TextContent
-
-        from mcp import ClientSession, StdioServerParameters
 
         kanban_mcp_path = os.path.expanduser("~/dev/kanban-mcp/dist/index.js")
         server_params = StdioServerParameters(
