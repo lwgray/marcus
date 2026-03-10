@@ -224,7 +224,7 @@ class TestTaskExecutionOrderIntegration:
         tasks = [
             Task(
                 id="1",
-                name="Fix bug in login",
+                name="Implement login authentication",
                 description="",
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
@@ -235,11 +235,11 @@ class TestTaskExecutionOrderIntegration:
                 estimated_hours=2.0,
                 actual_hours=0.0,
                 dependencies=[],
-                labels=["login", "bugfix"],  # Add login label for relation
+                labels=["login", "authentication"],
             ),
             Task(
                 id="2",
-                name="Test login bug fix",
+                name="Test login authentication",
                 description="",
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
@@ -250,7 +250,7 @@ class TestTaskExecutionOrderIntegration:
                 estimated_hours=1.0,
                 actual_hours=0.0,
                 dependencies=[],
-                labels=["login", "bugfix"],  # Add login label for relation
+                labels=["login", "authentication"],
             ),
         ]
 
