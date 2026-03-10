@@ -490,8 +490,7 @@ class TestBlockerReportingAndResolution(BaseTestCase):
 
         # Mock AI blocker analysis
         mock_ai = cast(AsyncMock, server.ai_engine)
-        mock_ai.analyze_blocker = AsyncMock(
-            return_value="""
+        mock_ai.analyze_blocker = AsyncMock(return_value="""
 ## Blocker Analysis: Missing Payment Gateway API Documentation
 
 ### Suggested Solutions:
@@ -515,8 +514,7 @@ class TestBlockerReportingAndResolution(BaseTestCase):
 - **Impact**: High - blocks critical feature
 - **Urgency**: Medium - have workaround options
 - **Recommendation**: Proceed with option 2 or 3
-"""
-        )
+""")
 
         # Report blocker
         result = await handle_tool_call(
@@ -592,8 +590,7 @@ class TestBlockerReportingAndResolution(BaseTestCase):
 
         # Mock critical blocker analysis
         mock_ai = cast(AsyncMock, server.ai_engine)
-        mock_ai.analyze_blocker = AsyncMock(
-            return_value="""
+        mock_ai.analyze_blocker = AsyncMock(return_value="""
 ## CRITICAL BLOCKER: Production Database Failure
 
 ### Immediate Actions Required:
@@ -616,8 +613,7 @@ class TestBlockerReportingAndResolution(BaseTestCase):
 ### Emergency Contacts:
 - DBA On-call: +1-555-0123
 - AWS Support: Premium support ticket opened
-"""
-        )
+""")
 
         # Report critical blocker
         result = await handle_tool_call(

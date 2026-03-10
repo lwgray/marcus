@@ -2,6 +2,7 @@
 """
 Test creating a project directly using the integration
 """
+
 import asyncio
 import sys
 from pathlib import Path

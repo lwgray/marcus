@@ -112,31 +112,26 @@ class TestValidationWorkflow:
         src_dir.mkdir()
 
         # warranty-form.html with all fields
-        (src_dir / "warranty-form.html").write_text(
-            """
+        (src_dir / "warranty-form.html").write_text("""
         <form id="warranty-form">
             <input name="name" required>
             <input name="email" type="email" required>
             <input name="phone" required>
         </form>
-        """
-        )
+        """)
 
         # validation.js with validation functions
-        (src_dir / "validation.js").write_text(
-            """
+        (src_dir / "validation.js").write_text("""
         function validateEmail(email) {
             return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email);
         }
         function validatePhone(phone) {
             return /^\\d{3}-\\d{3}-\\d{4}$/.test(phone);
         }
-        """
-        )
+        """)
 
         # styles.css with professional styling
-        (src_dir / "styles.css").write_text(
-            """
+        (src_dir / "styles.css").write_text("""
         .form-container {
             padding: 20px;
             border-radius: 8px;
@@ -145,8 +140,7 @@ class TestValidationWorkflow:
             border: 1px solid #ccc;
             padding: 8px;
         }
-        """
-        )
+        """)
 
         mock_state.workspace_manager.project_config.main_workspace = str(tmp_path)
         mock_state.project_tasks = [implementation_task]
@@ -161,8 +155,7 @@ class TestValidationWorkflow:
             # Mock the LLMAbstraction.analyze method
             with patch("src.ai.validation.work_analyzer.LLMAbstraction") as MockLLM:
                 mock_llm_instance = MockLLM.return_value
-                mock_llm_instance.analyze = AsyncMock(
-                    return_value="""
+                mock_llm_instance.analyze = AsyncMock(return_value="""
 VALIDATION RESULT: PASS
 
 ✅ Form includes all required fields - VERIFIED in warranty-form.html
@@ -170,8 +163,7 @@ VALIDATION RESULT: PASS
 ✅ Professional CSS styling applied - VERIFIED in styles.css
 
 All acceptance criteria have been met with working code.
-"""
-                )
+""")
 
                 # Test the validation helper directly
                 validation_result = await _validate_task_completion(
@@ -192,24 +184,20 @@ All acceptance criteria have been met with working code.
         src_dir.mkdir()
 
         # warranty-form.html has phone field
-        (src_dir / "warranty-form.html").write_text(
-            """
+        (src_dir / "warranty-form.html").write_text("""
         <form id="warranty-form">
             <input name="name" required>
             <input name="email" type="email" required>
             <input name="phone" required>
         </form>
-        """
-        )
+        """)
 
         # validation.js missing validatePhone function!
-        (src_dir / "validation.js").write_text(
-            """
+        (src_dir / "validation.js").write_text("""
         function validateEmail(email) {
             return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email);
         }
-        """
-        )
+        """)
 
         mock_state.workspace_manager.project_config.main_workspace = str(tmp_path)
         mock_state.project_tasks = [implementation_task]
@@ -224,8 +212,7 @@ All acceptance criteria have been met with working code.
             # Mock the LLMAbstraction.analyze method
             with patch("src.ai.validation.work_analyzer.LLMAbstraction") as MockLLM:
                 mock_llm_instance = MockLLM.return_value
-                mock_llm_instance.analyze = AsyncMock(
-                    return_value="""
+                mock_llm_instance.analyze = AsyncMock(return_value="""
 VALIDATION RESULT: FAIL
 
 ✅ Form includes all required fields - VERIFIED in warranty-form.html
@@ -234,8 +221,7 @@ VALIDATION RESULT: FAIL
    EVIDENCE: Code has <input name='phone'> but no validatePhone()
    REMEDIATION: Add validatePhone() to check format /^\\d{3}-\\d{3}-\\d{4}$/
    CRITERION: Fields are properly validated
-"""
-                )
+""")
 
                 from src.ai.validation.work_analyzer import WorkAnalyzer
 

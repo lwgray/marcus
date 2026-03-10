@@ -2,6 +2,7 @@
 """
 Test creating a project through the MCP server
 """
+
 import asyncio
 import json
 

@@ -763,21 +763,13 @@ class TestOpenAIProviderBlockerAnalysis:
     async def test_analyze_blocker_non_json_response(self, provider, sample_task):
         """Test blocker analysis with non-JSON response parsing"""
         mock_response = Mock()
-        mock_response.json.return_value = {
-            "choices": [
-                {
-                    "message": {
-                        "content": """
+        mock_response.json.return_value = {"choices": [{"message": {"content": """
                     - Check configuration files
                     - Restart the service
                     - Monitor system logs
                     # Additional notes
                     - Contact support if needed
-                    """
-                    }
-                }
-            ]
-        }
+                    """}}]}
         mock_response.raise_for_status = Mock()
 
         provider.client.post = AsyncMock(return_value=mock_response)
