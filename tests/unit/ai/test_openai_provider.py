@@ -25,6 +25,7 @@ from src.ai.providers.base_provider import (
     SemanticDependency,
 )
 from src.ai.providers.openai_provider import OpenAIProvider
+from src.config import marcus_config
 from src.core.models import Priority, Task, TaskStatus
 
 
@@ -146,6 +147,9 @@ class TestOpenAIProviderTaskAnalysis:
     @pytest.fixture
     def provider(self):
         """Create provider instance with mocked environment"""
+        # Reset global config cache to ensure fresh config with env patches
+        marcus_config._config = None
+
         with patch.dict(
             "os.environ",
             {
@@ -157,6 +161,9 @@ class TestOpenAIProviderTaskAnalysis:
             },
         ):
             yield OpenAIProvider()
+
+        # Reset config cache after test
+        marcus_config._config = None
 
     @pytest.fixture
     def sample_task(self):
@@ -300,6 +307,9 @@ class TestOpenAIProviderDependencyInference:
     @pytest.fixture
     def provider(self):
         """Create provider instance with mocked environment"""
+        # Reset global config cache to ensure fresh config with env patches
+        marcus_config._config = None
+
         with patch.dict(
             "os.environ",
             {
@@ -311,6 +321,9 @@ class TestOpenAIProviderDependencyInference:
             },
         ):
             yield OpenAIProvider()
+
+        # Reset config cache after test
+        marcus_config._config = None
 
     @pytest.fixture
     def sample_tasks(self):
@@ -471,6 +484,9 @@ class TestOpenAIProviderDescriptionEnhancement:
     @pytest.fixture
     def provider(self):
         """Create provider instance with mocked environment"""
+        # Reset global config cache to ensure fresh config with env patches
+        marcus_config._config = None
+
         with patch.dict(
             "os.environ",
             {
@@ -482,6 +498,9 @@ class TestOpenAIProviderDescriptionEnhancement:
             },
         ):
             yield OpenAIProvider()
+
+        # Reset config cache after test
+        marcus_config._config = None
 
     @pytest.fixture
     def sample_task(self):
@@ -572,6 +591,9 @@ class TestOpenAIProviderEffortEstimation:
     @pytest.fixture
     def provider(self):
         """Create provider instance with mocked environment"""
+        # Reset global config cache to ensure fresh config with env patches
+        marcus_config._config = None
+
         with patch.dict(
             "os.environ",
             {
@@ -583,6 +605,9 @@ class TestOpenAIProviderEffortEstimation:
             },
         ):
             yield OpenAIProvider()
+
+        # Reset config cache after test
+        marcus_config._config = None
 
     @pytest.fixture
     def sample_task(self):
@@ -672,6 +697,9 @@ class TestOpenAIProviderBlockerAnalysis:
     @pytest.fixture
     def provider(self):
         """Create provider instance with mocked environment"""
+        # Reset global config cache to ensure fresh config with env patches
+        marcus_config._config = None
+
         with patch.dict(
             "os.environ",
             {
@@ -683,6 +711,9 @@ class TestOpenAIProviderBlockerAnalysis:
             },
         ):
             yield OpenAIProvider()
+
+        # Reset config cache after test
+        marcus_config._config = None
 
     @pytest.fixture
     def sample_task(self):
@@ -793,6 +824,9 @@ class TestOpenAIProviderAPICall:
     @pytest.fixture
     def provider(self):
         """Create provider instance with mocked environment"""
+        # Reset global config cache to ensure fresh config with env patches
+        marcus_config._config = None
+
         with patch.dict(
             "os.environ",
             {
@@ -804,6 +838,9 @@ class TestOpenAIProviderAPICall:
             },
         ):
             yield OpenAIProvider()
+
+        # Reset config cache after test
+        marcus_config._config = None
 
     async def test_call_openai_success(self, provider):
         """Test successful OpenAI API call"""
@@ -872,6 +909,9 @@ class TestOpenAIProviderResponseParsing:
     @pytest.fixture
     def provider(self):
         """Create provider instance with mocked environment"""
+        # Reset global config cache to ensure fresh config with env patches
+        marcus_config._config = None
+
         with patch.dict(
             "os.environ",
             {
@@ -883,6 +923,9 @@ class TestOpenAIProviderResponseParsing:
             },
         ):
             yield OpenAIProvider()
+
+        # Reset config cache after test
+        marcus_config._config = None
 
     def test_parse_task_analysis_response_success(self, provider):
         """Test successful task analysis response parsing"""
@@ -1036,6 +1079,9 @@ class TestOpenAIProviderComplete:
     @pytest.fixture
     def provider(self):
         """Create provider instance with mocked environment"""
+        # Reset global config cache to ensure fresh config with env patches
+        marcus_config._config = None
+
         with patch.dict(
             "os.environ",
             {
@@ -1047,6 +1093,9 @@ class TestOpenAIProviderComplete:
             },
         ):
             yield OpenAIProvider()
+
+        # Reset config cache after test
+        marcus_config._config = None
 
     async def test_complete_success(self, provider):
         """Test successful completion generation"""
@@ -1176,6 +1225,9 @@ class TestOpenAIProviderCleanup:
     @pytest.fixture
     def provider(self):
         """Create provider instance with mocked environment"""
+        # Reset global config cache to ensure fresh config with env patches
+        marcus_config._config = None
+
         with patch.dict(
             "os.environ",
             {
@@ -1187,6 +1239,9 @@ class TestOpenAIProviderCleanup:
             },
         ):
             yield OpenAIProvider()
+
+        # Reset config cache after test
+        marcus_config._config = None
 
     async def test_close_client(self, provider):
         """Test HTTP client cleanup"""
@@ -1204,6 +1259,9 @@ class TestOpenAIProviderIntegration:
     @pytest.fixture
     def provider(self):
         """Create provider instance with mocked environment"""
+        # Reset global config cache to ensure fresh config with env patches
+        marcus_config._config = None
+
         with patch.dict(
             "os.environ",
             {
@@ -1215,6 +1273,9 @@ class TestOpenAIProviderIntegration:
             },
         ):
             yield OpenAIProvider()
+
+        # Reset config cache after test
+        marcus_config._config = None
 
     def test_prompt_building_consistency(self, provider):
         """Test all prompt builders return non-empty strings"""
