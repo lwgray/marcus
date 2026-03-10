@@ -146,7 +146,16 @@ class TestOpenAIProviderTaskAnalysis:
     @pytest.fixture
     def provider(self):
         """Create provider instance with mocked environment"""
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-api-key"}):
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENAI_API_KEY": "test-api-key",
+                "ANTHROPIC_API_KEY": "test-anthropic-key",
+                "PLANKA_BASE_URL": "http://test.example.com",
+                "PLANKA_EMAIL": "test@example.com",
+                "PLANKA_PASSWORD": "test-password",
+            },
+        ):
             return OpenAIProvider()
 
     @pytest.fixture
@@ -291,7 +300,16 @@ class TestOpenAIProviderDependencyInference:
     @pytest.fixture
     def provider(self):
         """Create provider instance with mocked environment"""
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-api-key"}):
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENAI_API_KEY": "test-api-key",
+                "ANTHROPIC_API_KEY": "test-anthropic-key",
+                "PLANKA_BASE_URL": "http://test.example.com",
+                "PLANKA_EMAIL": "test@example.com",
+                "PLANKA_PASSWORD": "test-password",
+            },
+        ):
             return OpenAIProvider()
 
     @pytest.fixture
@@ -453,7 +471,16 @@ class TestOpenAIProviderDescriptionEnhancement:
     @pytest.fixture
     def provider(self):
         """Create provider instance with mocked environment"""
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-api-key"}):
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENAI_API_KEY": "test-api-key",
+                "ANTHROPIC_API_KEY": "test-anthropic-key",
+                "PLANKA_BASE_URL": "http://test.example.com",
+                "PLANKA_EMAIL": "test@example.com",
+                "PLANKA_PASSWORD": "test-password",
+            },
+        ):
             return OpenAIProvider()
 
     @pytest.fixture
@@ -545,7 +572,16 @@ class TestOpenAIProviderEffortEstimation:
     @pytest.fixture
     def provider(self):
         """Create provider instance with mocked environment"""
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-api-key"}):
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENAI_API_KEY": "test-api-key",
+                "ANTHROPIC_API_KEY": "test-anthropic-key",
+                "PLANKA_BASE_URL": "http://test.example.com",
+                "PLANKA_EMAIL": "test@example.com",
+                "PLANKA_PASSWORD": "test-password",
+            },
+        ):
             return OpenAIProvider()
 
     @pytest.fixture
@@ -636,7 +672,16 @@ class TestOpenAIProviderBlockerAnalysis:
     @pytest.fixture
     def provider(self):
         """Create provider instance with mocked environment"""
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-api-key"}):
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENAI_API_KEY": "test-api-key",
+                "ANTHROPIC_API_KEY": "test-anthropic-key",
+                "PLANKA_BASE_URL": "http://test.example.com",
+                "PLANKA_EMAIL": "test@example.com",
+                "PLANKA_PASSWORD": "test-password",
+            },
+        ):
             return OpenAIProvider()
 
     @pytest.fixture
@@ -748,7 +793,16 @@ class TestOpenAIProviderAPICall:
     @pytest.fixture
     def provider(self):
         """Create provider instance with mocked environment"""
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-api-key"}):
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENAI_API_KEY": "test-api-key",
+                "ANTHROPIC_API_KEY": "test-anthropic-key",
+                "PLANKA_BASE_URL": "http://test.example.com",
+                "PLANKA_EMAIL": "test@example.com",
+                "PLANKA_PASSWORD": "test-password",
+            },
+        ):
             return OpenAIProvider()
 
     async def test_call_openai_success(self, provider):
@@ -818,7 +872,16 @@ class TestOpenAIProviderResponseParsing:
     @pytest.fixture
     def provider(self):
         """Create provider instance with mocked environment"""
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-api-key"}):
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENAI_API_KEY": "test-api-key",
+                "ANTHROPIC_API_KEY": "test-anthropic-key",
+                "PLANKA_BASE_URL": "http://test.example.com",
+                "PLANKA_EMAIL": "test@example.com",
+                "PLANKA_PASSWORD": "test-password",
+            },
+        ):
             return OpenAIProvider()
 
     def test_parse_task_analysis_response_success(self, provider):
@@ -973,7 +1036,16 @@ class TestOpenAIProviderComplete:
     @pytest.fixture
     def provider(self):
         """Create provider instance with mocked environment"""
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-api-key"}):
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENAI_API_KEY": "test-api-key",
+                "ANTHROPIC_API_KEY": "test-anthropic-key",
+                "PLANKA_BASE_URL": "http://test.example.com",
+                "PLANKA_EMAIL": "test@example.com",
+                "PLANKA_PASSWORD": "test-password",
+            },
+        ):
             return OpenAIProvider()
 
     async def test_complete_success(self, provider):
@@ -1104,7 +1176,16 @@ class TestOpenAIProviderCleanup:
     @pytest.fixture
     def provider(self):
         """Create provider instance with mocked environment"""
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-api-key"}):
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENAI_API_KEY": "test-api-key",
+                "ANTHROPIC_API_KEY": "test-anthropic-key",
+                "PLANKA_BASE_URL": "http://test.example.com",
+                "PLANKA_EMAIL": "test@example.com",
+                "PLANKA_PASSWORD": "test-password",
+            },
+        ):
             return OpenAIProvider()
 
     async def test_close_client(self, provider):
@@ -1123,7 +1204,16 @@ class TestOpenAIProviderIntegration:
     @pytest.fixture
     def provider(self):
         """Create provider instance with mocked environment"""
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-api-key"}):
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENAI_API_KEY": "test-api-key",
+                "ANTHROPIC_API_KEY": "test-anthropic-key",
+                "PLANKA_BASE_URL": "http://test.example.com",
+                "PLANKA_EMAIL": "test@example.com",
+                "PLANKA_PASSWORD": "test-password",
+            },
+        ):
             return OpenAIProvider()
 
     def test_prompt_building_consistency(self, provider):
