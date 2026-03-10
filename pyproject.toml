@@ -93,6 +93,16 @@ disable_error_code = ["misc"]
 module = "examples.multi_agent_demo.implementation.tests.*"
 disable_error_code = ["misc"]
 
+[[tool.mypy.overrides]]
+module = "src.marcus_mcp.server"
+disable_error_code = ["misc", "unused-ignore"]
+warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
+module = "src.marcus_mcp.agent_server"
+disable_error_code = ["misc", "unused-ignore", "no-untyped-call"]
+warn_unused_ignores = false
+
 [tool.pydocstyle]
 convention = "numpy"
 add-ignore = ["D100", "D104", "D202", "D400"]  # D100/D104: module/package docstrings (TODO: add these), D202: blank lines after docstring (conflicts with black), D400: period after first line optional

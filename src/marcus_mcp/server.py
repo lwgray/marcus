@@ -283,7 +283,7 @@ class MarcusServer:
     def _register_handlers(self) -> None:
         """Register MCP tool handlers."""
 
-        @self.server.list_tools()  # type: ignore[misc]
+        @self.server.list_tools()  # type: ignore[no-untyped-call,misc]
         async def handle_list_tools() -> List[types.Tool]:
             """Return list of available tools based on client role."""
             # Import here to avoid circular dependency
@@ -324,22 +324,22 @@ class MarcusServer:
                     # For other exceptions, re-raise so they're handled normally
                     raise
 
-        @self.server.list_prompts()  # type: ignore[misc]
+        @self.server.list_prompts()  # type: ignore[no-untyped-call,misc]
         async def handle_list_prompts() -> List[types.Prompt]:
             """Return list of available prompts - not used by Marcus."""
             return []
 
-        @self.server.list_resources()  # type: ignore[misc]
+        @self.server.list_resources()  # type: ignore[no-untyped-call,misc]
         async def handle_list_resources() -> List[types.Resource]:
             """Return list of available resources - not used by Marcus."""
             return []
 
-        @self.server.read_resource()  # type: ignore[misc]
+        @self.server.read_resource()  # type: ignore[no-untyped-call,misc]
         async def handle_read_resource(uri: str) -> str:
             """Read a resource - Marcus doesn't use resources currently."""
             raise ValueError(f"Resource not found: {uri}")
 
-        @self.server.get_prompt()  # type: ignore[misc]
+        @self.server.get_prompt()  # type: ignore[no-untyped-call,misc]
         async def handle_get_prompt(
             name: str, arguments: Optional[Dict[str, str]] = None
         ) -> types.GetPromptResult:
