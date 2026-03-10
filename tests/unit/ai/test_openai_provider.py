@@ -146,20 +146,17 @@ class TestOpenAIProviderTaskAnalysis:
 
     @pytest.fixture
     def provider(self):
-        """Create provider instance with mocked environment"""
-        # Reset global config cache to ensure fresh config with env patches
+        """Create provider instance with mocked configuration"""
+        # Reset global config cache
         marcus_config._config = None
 
-        with patch.dict(
-            "os.environ",
-            {
-                "OPENAI_API_KEY": "test-api-key",
-                "ANTHROPIC_API_KEY": "test-anthropic-key",
-                "PLANKA_BASE_URL": "http://test.example.com",
-                "PLANKA_EMAIL": "test@example.com",
-                "PLANKA_PASSWORD": "test-password",
-            },
-        ):
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-3.5-turbo"
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
             yield OpenAIProvider()
 
         # Reset config cache after test
@@ -306,20 +303,17 @@ class TestOpenAIProviderDependencyInference:
 
     @pytest.fixture
     def provider(self):
-        """Create provider instance with mocked environment"""
-        # Reset global config cache to ensure fresh config with env patches
+        """Create provider instance with mocked configuration"""
+        # Reset global config cache
         marcus_config._config = None
 
-        with patch.dict(
-            "os.environ",
-            {
-                "OPENAI_API_KEY": "test-api-key",
-                "ANTHROPIC_API_KEY": "test-anthropic-key",
-                "PLANKA_BASE_URL": "http://test.example.com",
-                "PLANKA_EMAIL": "test@example.com",
-                "PLANKA_PASSWORD": "test-password",
-            },
-        ):
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-3.5-turbo"
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
             yield OpenAIProvider()
 
         # Reset config cache after test
@@ -483,20 +477,17 @@ class TestOpenAIProviderDescriptionEnhancement:
 
     @pytest.fixture
     def provider(self):
-        """Create provider instance with mocked environment"""
-        # Reset global config cache to ensure fresh config with env patches
+        """Create provider instance with mocked configuration"""
+        # Reset global config cache
         marcus_config._config = None
 
-        with patch.dict(
-            "os.environ",
-            {
-                "OPENAI_API_KEY": "test-api-key",
-                "ANTHROPIC_API_KEY": "test-anthropic-key",
-                "PLANKA_BASE_URL": "http://test.example.com",
-                "PLANKA_EMAIL": "test@example.com",
-                "PLANKA_PASSWORD": "test-password",
-            },
-        ):
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-3.5-turbo"
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
             yield OpenAIProvider()
 
         # Reset config cache after test
@@ -590,20 +581,17 @@ class TestOpenAIProviderEffortEstimation:
 
     @pytest.fixture
     def provider(self):
-        """Create provider instance with mocked environment"""
-        # Reset global config cache to ensure fresh config with env patches
+        """Create provider instance with mocked configuration"""
+        # Reset global config cache
         marcus_config._config = None
 
-        with patch.dict(
-            "os.environ",
-            {
-                "OPENAI_API_KEY": "test-api-key",
-                "ANTHROPIC_API_KEY": "test-anthropic-key",
-                "PLANKA_BASE_URL": "http://test.example.com",
-                "PLANKA_EMAIL": "test@example.com",
-                "PLANKA_PASSWORD": "test-password",
-            },
-        ):
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-3.5-turbo"
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
             yield OpenAIProvider()
 
         # Reset config cache after test
@@ -696,20 +684,17 @@ class TestOpenAIProviderBlockerAnalysis:
 
     @pytest.fixture
     def provider(self):
-        """Create provider instance with mocked environment"""
-        # Reset global config cache to ensure fresh config with env patches
+        """Create provider instance with mocked configuration"""
+        # Reset global config cache
         marcus_config._config = None
 
-        with patch.dict(
-            "os.environ",
-            {
-                "OPENAI_API_KEY": "test-api-key",
-                "ANTHROPIC_API_KEY": "test-anthropic-key",
-                "PLANKA_BASE_URL": "http://test.example.com",
-                "PLANKA_EMAIL": "test@example.com",
-                "PLANKA_PASSWORD": "test-password",
-            },
-        ):
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-3.5-turbo"
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
             yield OpenAIProvider()
 
         # Reset config cache after test
@@ -823,20 +808,17 @@ class TestOpenAIProviderAPICall:
 
     @pytest.fixture
     def provider(self):
-        """Create provider instance with mocked environment"""
-        # Reset global config cache to ensure fresh config with env patches
+        """Create provider instance with mocked configuration"""
+        # Reset global config cache
         marcus_config._config = None
 
-        with patch.dict(
-            "os.environ",
-            {
-                "OPENAI_API_KEY": "test-api-key",
-                "ANTHROPIC_API_KEY": "test-anthropic-key",
-                "PLANKA_BASE_URL": "http://test.example.com",
-                "PLANKA_EMAIL": "test@example.com",
-                "PLANKA_PASSWORD": "test-password",
-            },
-        ):
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-3.5-turbo"
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
             yield OpenAIProvider()
 
         # Reset config cache after test
@@ -908,20 +890,17 @@ class TestOpenAIProviderResponseParsing:
 
     @pytest.fixture
     def provider(self):
-        """Create provider instance with mocked environment"""
-        # Reset global config cache to ensure fresh config with env patches
+        """Create provider instance with mocked configuration"""
+        # Reset global config cache
         marcus_config._config = None
 
-        with patch.dict(
-            "os.environ",
-            {
-                "OPENAI_API_KEY": "test-api-key",
-                "ANTHROPIC_API_KEY": "test-anthropic-key",
-                "PLANKA_BASE_URL": "http://test.example.com",
-                "PLANKA_EMAIL": "test@example.com",
-                "PLANKA_PASSWORD": "test-password",
-            },
-        ):
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-3.5-turbo"
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
             yield OpenAIProvider()
 
         # Reset config cache after test
@@ -1078,20 +1057,17 @@ class TestOpenAIProviderComplete:
 
     @pytest.fixture
     def provider(self):
-        """Create provider instance with mocked environment"""
-        # Reset global config cache to ensure fresh config with env patches
+        """Create provider instance with mocked configuration"""
+        # Reset global config cache
         marcus_config._config = None
 
-        with patch.dict(
-            "os.environ",
-            {
-                "OPENAI_API_KEY": "test-api-key",
-                "ANTHROPIC_API_KEY": "test-anthropic-key",
-                "PLANKA_BASE_URL": "http://test.example.com",
-                "PLANKA_EMAIL": "test@example.com",
-                "PLANKA_PASSWORD": "test-password",
-            },
-        ):
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-3.5-turbo"
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
             yield OpenAIProvider()
 
         # Reset config cache after test
@@ -1224,20 +1200,17 @@ class TestOpenAIProviderCleanup:
 
     @pytest.fixture
     def provider(self):
-        """Create provider instance with mocked environment"""
-        # Reset global config cache to ensure fresh config with env patches
+        """Create provider instance with mocked configuration"""
+        # Reset global config cache
         marcus_config._config = None
 
-        with patch.dict(
-            "os.environ",
-            {
-                "OPENAI_API_KEY": "test-api-key",
-                "ANTHROPIC_API_KEY": "test-anthropic-key",
-                "PLANKA_BASE_URL": "http://test.example.com",
-                "PLANKA_EMAIL": "test@example.com",
-                "PLANKA_PASSWORD": "test-password",
-            },
-        ):
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-3.5-turbo"
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
             yield OpenAIProvider()
 
         # Reset config cache after test
@@ -1258,20 +1231,17 @@ class TestOpenAIProviderIntegration:
 
     @pytest.fixture
     def provider(self):
-        """Create provider instance with mocked environment"""
-        # Reset global config cache to ensure fresh config with env patches
+        """Create provider instance with mocked configuration"""
+        # Reset global config cache
         marcus_config._config = None
 
-        with patch.dict(
-            "os.environ",
-            {
-                "OPENAI_API_KEY": "test-api-key",
-                "ANTHROPIC_API_KEY": "test-anthropic-key",
-                "PLANKA_BASE_URL": "http://test.example.com",
-                "PLANKA_EMAIL": "test@example.com",
-                "PLANKA_PASSWORD": "test-password",
-            },
-        ):
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-3.5-turbo"
+        mock_config.ai.max_tokens = 2048
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
             yield OpenAIProvider()
 
         # Reset config cache after test
