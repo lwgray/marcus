@@ -280,8 +280,7 @@ class SQLitePersistence(PersistenceBackend):
     def _init_db(self) -> None:
         """Initialize database schema."""
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                """
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS persistence (
                     collection TEXT NOT NULL,
                     key TEXT NOT NULL,
@@ -289,14 +288,11 @@ class SQLitePersistence(PersistenceBackend):
                     stored_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (collection, key)
                 )
-            """
-            )
-            conn.execute(
-                """
+            """)
+            conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_stored_at
                 ON persistence(stored_at)
-            """
-            )
+            """)
             conn.commit()
 
     async def store(self, collection: str, key: str, data: Dict[str, Any]) -> None:
@@ -413,14 +409,12 @@ class SQLitePersistence(PersistenceBackend):
         def _calculate_median() -> float:
             with sqlite3.connect(self.db_path) as conn:
                 # First, get count of successful tasks
-                count_cursor = conn.execute(
-                    """
+                count_cursor = conn.execute("""
                     SELECT COUNT(*) FROM persistence
                     WHERE collection = 'task_outcomes'
                       AND json_extract(data, '$.success') = 1
                       AND CAST(json_extract(data, '$.actual_hours') AS REAL) > 0
-                    """
-                )
+                    """)
                 count = count_cursor.fetchone()[0]
 
                 if count == 0:

@@ -981,8 +981,7 @@ Focus on FUNCTIONALITY, not understanding. Code must WORK, not just exist.
                     prompt_parts.append(f"    Why: {decision.get('why')}")
 
         # Add validation instructions
-        prompt_parts.append(
-            """
+        prompt_parts.append("""
 
 YOUR JOB: For EACH acceptance criterion, verify it was FULLY implemented in SOURCE CODE.
 
@@ -1010,8 +1009,7 @@ ANALYSIS RULES:
 ❌ FAIL if source files are empty (0 bytes)
 ❌ FAIL if obvious integrations missing
 
-Focus on FUNCTIONALITY - code must WORK."""
-        )
+Focus on FUNCTIONALITY - code must WORK.""")
 
         return "\n".join(prompt_parts)
 

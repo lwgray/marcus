@@ -473,14 +473,12 @@ or commentary."""
             else:
                 duration = f"{task.actual_hours * 3600:.1f}s"
 
-            formatted.append(
-                f"""Task {task.task_id}:
+            formatted.append(f"""Task {task.task_id}:
   Name: {task.name}
   Duration: {duration}
   Estimated: {task.estimated_hours}h
   Status: {task.status}
-  Description: {task.description[:150] if task.description else 'N/A'}"""
-            )
+  Description: {task.description[:150] if task.description else 'N/A'}""")
 
         return "\n\n".join(formatted)
 
@@ -503,13 +501,11 @@ or commentary."""
 
         formatted = []
         for task in tasks:
-            formatted.append(
-                f"""Task {task.task_id}:
+            formatted.append(f"""Task {task.task_id}:
   Name: {task.name}
   Status: {task.status}
   Time: {task.actual_hours}h (estimated {task.estimated_hours}h)
-  Description: {task.description[:200] if task.description else 'N/A'}"""
-            )
+  Description: {task.description[:200] if task.description else 'N/A'}""")
 
         return "\n\n".join(formatted)
 
@@ -557,10 +553,8 @@ or commentary."""
 
         formatted = []
         for msg in relevant_convos:
-            formatted.append(
-                f"""[{msg.timestamp.isoformat()}] {msg.direction} "
+            formatted.append(f"""[{msg.timestamp.isoformat()}] {msg.direction} "
                 f"(agent: {msg.agent_id}):
-  {msg.content[:300]}"""
-            )
+  {msg.content[:300]}""")
 
         return "\n\n".join(formatted)
