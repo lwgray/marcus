@@ -283,7 +283,7 @@ class MarcusServer:
     def _register_handlers(self) -> None:
         """Register MCP tool handlers."""
 
-        @self.server.list_tools()  # type: ignore[no-untyped-call,misc]
+        @self.server.list_tools()  # type: ignore[untyped-decorator,no-untyped-call,misc]  # noqa: E501
         async def handle_list_tools() -> List[types.Tool]:
             """Return list of available tools based on client role."""
             # Import here to avoid circular dependency
@@ -297,7 +297,7 @@ class MarcusServer:
             # Get tools based on client access
             return get_tool_definitions_for_client(client_id, self)
 
-        @self.server.call_tool()  # type: ignore[misc]
+        @self.server.call_tool()  # type: ignore[untyped-decorator,misc]
         async def handle_call_tool(
             name: str, arguments: Optional[Dict[str, Any]]
         ) -> List[types.TextContent | types.ImageContent | types.EmbeddedResource]:
@@ -324,22 +324,22 @@ class MarcusServer:
                     # For other exceptions, re-raise so they're handled normally
                     raise
 
-        @self.server.list_prompts()  # type: ignore[no-untyped-call,misc]
+        @self.server.list_prompts()  # type: ignore[untyped-decorator,no-untyped-call,misc]  # noqa: E501
         async def handle_list_prompts() -> List[types.Prompt]:
             """Return list of available prompts - not used by Marcus."""
             return []
 
-        @self.server.list_resources()  # type: ignore[no-untyped-call,misc]
+        @self.server.list_resources()  # type: ignore[untyped-decorator,no-untyped-call,misc]  # noqa: E501
         async def handle_list_resources() -> List[types.Resource]:
             """Return list of available resources - not used by Marcus."""
             return []
 
-        @self.server.read_resource()  # type: ignore[no-untyped-call,misc]
+        @self.server.read_resource()  # type: ignore[untyped-decorator,no-untyped-call,misc]  # noqa: E501
         async def handle_read_resource(uri: str) -> str:
             """Read a resource - Marcus doesn't use resources currently."""
             raise ValueError(f"Resource not found: {uri}")
 
-        @self.server.get_prompt()  # type: ignore[no-untyped-call,misc]
+        @self.server.get_prompt()  # type: ignore[untyped-decorator,no-untyped-call,misc]  # noqa: E501
         async def handle_get_prompt(
             name: str, arguments: Optional[Dict[str, str]] = None
         ) -> types.GetPromptResult:
