@@ -1224,11 +1224,7 @@ async def _handle_validation_failure(
     Dict[str, Any]
         Response indicating validation failure
     """
-    # Record failed attempt for retry tracking
-    if _retry_tracker is not None:
-        _retry_tracker.record_attempt(task.id, validation_result)
-
-    # Check if this is a retry with same issues
+    # Check if this is a retry with same issues BEFORE recording
     is_retry_with_same_issues = False
     if _retry_tracker is not None:
         is_retry_with_same_issues = _retry_tracker.is_retry_with_same_issues(
@@ -1260,7 +1256,10 @@ async def _handle_validation_failure(
             "message": "Validation failed with same issues - blocker created. Review AI suggestions in blocker.",  # noqa: E501
         }
     else:
-        # First failure or different issues - return response
+        # First failure or different issues - record attempt and return response
+        if _retry_tracker is not None:
+            _retry_tracker.record_attempt(task.id, validation_result)
+
         return {
             "success": False,
             "status": "validation_failed",
