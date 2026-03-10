@@ -7,13 +7,13 @@ from collections import defaultdict
 from pathlib import Path
 from statistics import mean, median, stdev
 
+from src.core.persistence import Persistence, SQLitePersistence
+
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.core.persistence import Persistence, SQLitePersistence
 
-
-async def main():
+async def main() -> None:
     """Query memory data and show statistics."""
     # Use SQLite persistence (default location)
     db_path = Path(__file__).parent.parent / "data" / "marcus.db"
@@ -29,7 +29,7 @@ async def main():
     # Query task outcomes
     outcomes_data = await persistence.query("task_outcomes", limit=1000)
 
-    print(f"\n📊 Memory Statistics")
+    print("\n📊 Memory Statistics")
     print("=" * 70)
     print(f"Total task outcomes: {len(outcomes_data)}")
 
@@ -61,36 +61,36 @@ async def main():
 
     # Overall statistics
     if all_durations:
-        print(f"\n📈 Overall Statistics")
+        print("\n📈 Overall Statistics")
         print("=" * 70)
         avg_duration = mean(all_durations)
         median_duration = median(all_durations)
 
-        print(
-            f"Average actual duration: {avg_duration:.4f}h ({avg_duration * 60:.2f} min)"
-        )
-        print(
-            f"Median actual duration:  {median_duration:.4f}h ({median_duration * 60:.2f} min)"
-        )
+        avg_min = avg_duration * 60
+        median_min = median_duration * 60
+        print(f"Average actual duration: {avg_duration:.4f}h ({avg_min:.2f} min)")
+        print(f"Median actual duration:  {median_duration:.4f}h ({median_min:.2f} min)")
         if len(all_durations) > 1:
-            print(
-                f"Std deviation:           {stdev(all_durations):.4f}h ({stdev(all_durations) * 60:.2f} min)"
-            )
-        print(
-            f"Min duration:            {min(all_durations):.4f}h ({min(all_durations) * 60:.2f} min)"
-        )
-        print(
-            f"Max duration:            {max(all_durations):.4f}h ({max(all_durations) * 60:.2f} min)"
-        )
+            std = stdev(all_durations)
+            std_min = std * 60
+            print(f"Std deviation:           {std:.4f}h ({std_min:.2f} min)")
+        min_dur = min(all_durations)
+        max_dur = max(all_durations)
+        min_min = min_dur * 60
+        max_min = max_dur * 60
+        print(f"Min duration:            {min_dur:.4f}h ({min_min:.2f} min)")
+        print(f"Max duration:            {max_dur:.4f}h ({max_min:.2f} min)")
 
         # Show what the current default should be (using median as more robust)
         median_minutes = median_duration * 60
         avg_minutes = avg_duration * 60
         print(
-            f"\n💡 Recommended default (median): {median_duration:.4f}h ({median_minutes:.2f} min)"
+            f"\n💡 Recommended default (median): "
+            f"{median_duration:.4f}h ({median_minutes:.2f} min)"
         )
         print(
-            f"   Alternative (mean):           {avg_duration:.4f}h ({avg_minutes:.2f} min)"
+            f"   Alternative (mean):           "
+            f"{avg_duration:.4f}h ({avg_minutes:.2f} min)"
         )
 
     # Query agent profiles (to see if they exist)
@@ -100,7 +100,7 @@ async def main():
     # Query task patterns (the important one!)
     # Note: task_patterns aren't persisted separately in current implementation
     # They're only in memory.semantic["task_patterns"]
-    print(f"\n⚠️  Note: TaskPattern data is not persisted to database")
+    print("\n⚠️  Note: TaskPattern data is not persisted to database")
     print("   (only TaskOutcome records are persisted)")
 
 

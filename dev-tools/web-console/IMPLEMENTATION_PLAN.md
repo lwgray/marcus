@@ -1272,49 +1272,49 @@ Create a single-page application using vanilla HTML/JS (no framework needed for 
             display: flex;
             flex-direction: column;
         }
-        
+
         .header {
             background: #252526;
             padding: 20px;
             border-bottom: 2px solid #3e3e3e;
         }
-        
+
         h1 {
             font-size: 24px;
             margin-bottom: 10px;
         }
-        
+
         .wizard-steps {
             display: flex;
             gap: 20px;
             margin-top: 10px;
         }
-        
+
         .step {
             padding: 10px 20px;
             background: #3e3e3e;
             border-radius: 4px;
             opacity: 0.5;
         }
-        
+
         .step.active {
             opacity: 1;
             background: #0e639c;
         }
-        
+
         .content {
             flex: 1;
             padding: 20px;
             overflow: auto;
         }
-        
+
         .card {
             background: #252526;
             padding: 20px;
             border-radius: 8px;
             margin-bottom: 20px;
         }
-        
+
         button {
             background: #0e639c;
             color: white;
@@ -1324,13 +1324,13 @@ Create a single-page application using vanilla HTML/JS (no framework needed for 
             cursor: pointer;
             font-size: 14px;
         }
-        
+
         button:hover { background: #1177bb; }
         button:disabled {
             background: #666;
             cursor: not-allowed;
         }
-        
+
         input, select, textarea {
             width: 100%;
             padding: 10px;
@@ -1340,13 +1340,13 @@ Create a single-page application using vanilla HTML/JS (no framework needed for 
             border-radius: 4px;
             margin-bottom: 15px;
         }
-        
+
         .terminals-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
             gap: 10px;
         }
-        
+
         .terminal-container {
             background: #1e1e1e;
             border: 1px solid #3e3e3e;
@@ -1355,7 +1355,7 @@ Create a single-page application using vanilla HTML/JS (no framework needed for 
             display: flex;
             flex-direction: column;
         }
-        
+
         .terminal-header {
             background: #2d2d30;
             padding: 8px 12px;
@@ -1363,23 +1363,23 @@ Create a single-page application using vanilla HTML/JS (no framework needed for 
             justify-content: space-between;
             align-items: center;
         }
-        
+
         .health-indicator {
             width: 10px;
             height: 10px;
             border-radius: 50%;
             background: #4ec9b0;
         }
-        
+
         .health-indicator.unhealthy {
             background: #f48771;
         }
-        
+
         .terminal-body {
             flex: 1;
             padding: 5px;
         }
-        
+
         .hidden { display: none; }
     </style>
 </head>
@@ -1393,7 +1393,7 @@ Create a single-page application using vanilla HTML/JS (no framework needed for 
             <div class="step" id="step-4">4. Monitor</div>
         </div>
     </div>
-    
+
     <div class="content">
         <!-- Step 1: Configure Experiment -->
         <div id="page-configure" class="page">
@@ -1401,22 +1401,22 @@ Create a single-page application using vanilla HTML/JS (no framework needed for 
                 <h2>Create Experiment</h2>
                 <label>Project Name:</label>
                 <input type="text" id="project-name" placeholder="My Awesome Project" />
-                
+
                 <label>Project Description:</label>
-                <textarea id="project-description" rows="8" 
+                <textarea id="project-description" rows="8"
                           placeholder="Describe what you want to build..."></textarea>
-                
+
                 <label>Complexity:</label>
                 <select id="complexity">
                     <option value="prototype">Prototype (Simple)</option>
                     <option value="standard" selected>Standard</option>
                     <option value="enterprise">Enterprise (Complex)</option>
                 </select>
-                
+
                 <button onclick="createExperiment()">Create & Analyze</button>
             </div>
         </div>
-        
+
         <!-- Step 2: Analyze Results -->
         <div id="page-analyze" class="page hidden">
             <div class="card">
@@ -1425,7 +1425,7 @@ Create a single-page application using vanilla HTML/JS (no framework needed for 
                 <button onclick="showAgentConfig()">Configure Agents</button>
             </div>
         </div>
-        
+
         <!-- Step 3: Configure Agents -->
         <div id="page-agents" class="page hidden">
             <div class="card">
@@ -1434,7 +1434,7 @@ Create a single-page application using vanilla HTML/JS (no framework needed for 
                 <button onclick="launchAgents()">Launch Experiment</button>
             </div>
         </div>
-        
+
         <!-- Step 4: Monitor Terminals -->
         <div id="page-monitor" class="page hidden">
             <div class="card">
@@ -1443,17 +1443,17 @@ Create a single-page application using vanilla HTML/JS (no framework needed for 
             </div>
         </div>
     </div>
-    
+
     <script>
         let currentExperiment = null;
         let terminals = [];
         let healthCheckInterval = null;
-        
+
         // Page navigation
         function showPage(pageId) {
             document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
             document.getElementById(`page-${pageId}`).classList.remove('hidden');
-            
+
             // Update step indicators
             const stepMap = {
                 'configure': 1,
@@ -1466,40 +1466,40 @@ Create a single-page application using vanilla HTML/JS (no framework needed for 
                 step.classList.toggle('active', idx + 1 <= activeStep);
             });
         }
-        
+
         // Step 1: Create experiment
         async function createExperiment() {
             const name = document.getElementById('project-name').value;
             const description = document.getElementById('project-description').value;
             const complexity = document.getElementById('complexity').value;
-            
+
             if (!name || !description) {
                 alert('Please fill in all fields');
                 return;
             }
-            
+
             // Create experiment
             const createResp = await fetch('/api/experiments', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, description, complexity })
             });
-            
+
             currentExperiment = await createResp.json();
-            
+
             // Analyze project
             const analyzeResp = await fetch(
                 `/api/experiments/${currentExperiment.experiment_id}/analyze`,
                 { method: 'POST' }
             );
-            
+
             const analysis = await analyzeResp.json();
-            
+
             // Display results
             displayAnalysis(analysis);
             showPage('analyze');
         }
-        
+
         // Display analysis results
         function displayAnalysis(analysis) {
             const html = `
@@ -1512,11 +1512,11 @@ Create a single-page application using vanilla HTML/JS (no framework needed for 
             document.getElementById('analysis-results').innerHTML = html;
             currentExperiment.analysis = analysis;
         }
-        
+
         // Step 2: Show agent configuration
         function showAgentConfig() {
             const optimal = currentExperiment.analysis.optimal_agents;
-            
+
             // Simple config: distribute agents across roles
             const html = `
                 <p>Configure ${optimal} agents across different roles:</p>
@@ -1528,7 +1528,7 @@ Create a single-page application using vanilla HTML/JS (no framework needed for 
                     <option value="cursor">Cursor CLI</option>
                     <option value="amp">Amp</option>
                 </select>
-                
+
                 <label>Frontend Agents:</label>
                 <input type="number" id="frontend-count" value="${Math.ceil(optimal / 2)}" min="0" />
                 <label>Frontend Tool:</label>
@@ -1540,16 +1540,16 @@ Create a single-page application using vanilla HTML/JS (no framework needed for 
             document.getElementById('agent-config-ui').innerHTML = html;
             showPage('agents');
         }
-        
+
         // Step 3: Launch agents
         async function launchAgents() {
             const backendCount = parseInt(document.getElementById('backend-count').value);
             const backendTool = document.getElementById('backend-tool').value;
             const frontendCount = parseInt(document.getElementById('frontend-count').value);
             const frontendTool = document.getElementById('frontend-tool').value;
-            
+
             const agentConfigs = [];
-            
+
             if (backendCount > 0) {
                 agentConfigs.push({
                     role: 'backend',
@@ -1558,7 +1558,7 @@ Create a single-page application using vanilla HTML/JS (no framework needed for 
                     skills: ['python', 'fastapi', 'postgresql']
                 });
             }
-            
+
             if (frontendCount > 0) {
                 agentConfigs.push({
                     role: 'frontend',
@@ -1567,7 +1567,7 @@ Create a single-page application using vanilla HTML/JS (no framework needed for 
                     skills: ['react', 'typescript', 'tailwind']
                 });
             }
-            
+
             const resp = await fetch(
                 `/api/experiments/${currentExperiment.experiment_id}/agents/launch`,
                 {
@@ -1576,23 +1576,23 @@ Create a single-page application using vanilla HTML/JS (no framework needed for 
                     body: JSON.stringify({ agent_configs: agentConfigs })
                 }
             );
-            
+
             const result = await resp.json();
             terminals = result.terminals;
-            
+
             // Show monitoring page
             setupTerminals();
             showPage('monitor');
-            
+
             // Start health monitoring
             startHealthMonitoring();
         }
-        
+
         // Step 4: Setup terminal grid
         function setupTerminals() {
             const grid = document.getElementById('terminals-grid');
             grid.innerHTML = '';
-            
+
             terminals.forEach(terminalId => {
                 const container = document.createElement('div');
                 container.className = 'terminal-container';
@@ -1607,7 +1607,7 @@ Create a single-page application using vanilla HTML/JS (no framework needed for 
                     <div class="terminal-body" id="term-${terminalId}"></div>
                 `;
                 grid.appendChild(container);
-                
+
                 // Create xterm instance
                 const term = new Terminal({
                     fontSize: 13,
@@ -1616,27 +1616,27 @@ Create a single-page application using vanilla HTML/JS (no framework needed for 
                         foreground: '#d4d4d4'
                     }
                 });
-                
+
                 const fitAddon = new FitAddon.FitAddon();
                 term.loadAddon(fitAddon);
                 term.open(document.getElementById(`term-${terminalId}`));
                 fitAddon.fit();
-                
+
                 // Connect WebSocket
                 const ws = new WebSocket(`ws://${location.host}/ws/terminal/${terminalId}`);
-                
+
                 ws.onmessage = (event) => {
                     event.data.arrayBuffer().then(buffer => {
                         term.write(new Uint8Array(buffer));
                     });
                 };
-                
+
                 term.onData((data) => {
                     ws.send(new TextEncoder().encode(data));
                 });
             });
         }
-        
+
         // Health monitoring
         function startHealthMonitoring() {
             healthCheckInterval = setInterval(async () => {
@@ -1644,12 +1644,12 @@ Create a single-page application using vanilla HTML/JS (no framework needed for 
                     `/api/experiments/${currentExperiment.experiment_id}/health`
                 );
                 const health = await resp.json();
-                
+
                 health.terminals.forEach(t => {
                     const indicator = document.getElementById(`health-${t.terminal_id}`);
                     if (indicator) {
                         indicator.classList.toggle('unhealthy', !t.is_healthy);
-                        
+
                         // Auto-recover if unhealthy for > 2 minutes
                         if (!t.is_healthy && t.inactive_seconds > 120) {
                             console.log(`Auto-recovering ${t.terminal_id}`);
@@ -1659,7 +1659,7 @@ Create a single-page application using vanilla HTML/JS (no framework needed for 
                 });
             }, 30000); // Check every 30 seconds
         }
-        
+
         // Recover terminal
         async function recoverTerminal(terminalId) {
             await fetch(`/api/terminals/${terminalId}/recover`, {
@@ -1719,7 +1719,7 @@ Create a single-page application using vanilla HTML/JS (no framework needed for 
   ```python
   def check_health(self, timeout_seconds: float = 300) -> bool:
       # Existing checks...
-      
+
       # Pattern detection
       if "No suitable tasks found" in self.last_output:
           # Count consecutive occurrences
@@ -1727,7 +1727,7 @@ Create a single-page application using vanilla HTML/JS (no framework needed for 
               logger.warning("Agent stuck in 'no tasks' loop")
               self.is_healthy = False
               return False
-      
+
       return True
   ```
 
@@ -1757,7 +1757,7 @@ When an agent gets stuck, we can "inject" commands directly into its terminal to
 def inject_command(self, command: str) -> None:
     """
     Write command directly to the PTY master file descriptor.
-    
+
     This is like typing into the terminal - the AI tool receives it
     as if the user typed it.
     """
@@ -1792,7 +1792,7 @@ def inject_command(self, command: str) -> None:
 @app.post("/api/terminals/{terminal_id}/recover")
 async def recover_terminal(terminal_id: str):
     session = terminal_manager.get_session(terminal_id)
-    
+
     # Just request next task
     session.inject_command(
         f"mcp__marcus__request_next_task(agent_id='{terminal_id}')"
@@ -1804,11 +1804,11 @@ async def recover_terminal(terminal_id: str):
 @app.post("/api/terminals/{terminal_id}/restart")
 async def restart_terminal(terminal_id: str):
     session = terminal_manager.get_session(terminal_id)
-    
+
     # Send Ctrl+C to interrupt
     session.write(b"\x03")
     await asyncio.sleep(0.5)
-    
+
     # Re-inject startup script
     startup = f"""
 # Restarting agent...
@@ -1823,7 +1823,7 @@ mcp__marcus__request_next_task(agent_id='{terminal_id}')
 @app.post("/api/terminals/{terminal_id}/refresh")
 async def refresh_context(terminal_id: str):
     session = terminal_manager.get_session(terminal_id)
-    
+
     # Get current task
     session.inject_command(f"""
 # Refreshing context...
@@ -1854,10 +1854,10 @@ function checkHealth() {
                             tag: t.terminal_id  // Prevent duplicates
                         });
                     }
-                    
+
                     // Update UI indicator
                     updateHealthIndicator(t.terminal_id, false);
-                    
+
                     // Auto-recover after 2 minutes
                     if (t.inactive_seconds > 120) {
                         autoRecover(t.terminal_id);
@@ -1901,13 +1901,13 @@ if (Notification.permission === 'default') {
 # In server.py - health monitoring callback
 async def on_unhealthy_session(session_id: str, inactive_seconds: float):
     """Called when a session becomes unhealthy."""
-    
+
     # Send notification
     await send_slack_notification(
         channel="#marcus-experiments",
         message=f"🚨 Agent {session_id} stuck (inactive {inactive_seconds}s)"
     )
-    
+
     # Or email
     await send_email(
         to=user_email,

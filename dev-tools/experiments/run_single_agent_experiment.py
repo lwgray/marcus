@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -465,10 +465,8 @@ class SingleAgentExperiment:
         prompt = generator.generate_prompt()
 
         # Save prompt
-        prompt_file = (
-            self.config.prompts_dir
-            / f"single_agent_prompt_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
-        )
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        prompt_file = self.config.prompts_dir / f"single_agent_prompt_{timestamp}.md"
 
         with open(prompt_file, "w") as f:
             f.write(prompt)
@@ -500,10 +498,8 @@ class SingleAgentExperiment:
             )
 
             # Set up logging with pipe-pane
-            log_file = (
-                self.config.logs_dir
-                / f"single_agent_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-            )
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            log_file = self.config.logs_dir / f"single_agent_{timestamp}.log"
             self.current_log_file = log_file
 
             subprocess.run(

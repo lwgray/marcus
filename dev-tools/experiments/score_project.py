@@ -8,12 +8,10 @@ project implementations.
 
 import argparse
 import json
-import os
 import re
-import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any
 
 
 @dataclass
@@ -24,7 +22,7 @@ class CategoryScore:
     points_earned: float
     points_possible: float
     percentage: float
-    details: Dict[str, any]
+    details: dict[str, Any]
 
 
 @dataclass
@@ -35,8 +33,8 @@ class ProjectScore:
     total_score: float
     total_possible: float
     percentage: float
-    categories: List[CategoryScore]
-    metadata: Dict[str, any]
+    categories: list[CategoryScore]
+    metadata: dict[str, Any]
 
 
 class ProjectScorer:
@@ -73,7 +71,7 @@ class ProjectScorer:
             Functionality score breakdown
         """
         points = 0.0
-        details = {}
+        details: dict[str, Any] = {}
 
         # 1.1 Application runs (10 points)
         # Look for main entry point
@@ -82,31 +80,31 @@ class ProjectScorer:
         ]
         if main_files:
             details["has_main_file"] = True
-            # Assume it runs if main file exists (actual run test would be more complex)
-            points += 7  # Conservative score without actual execution
-            details["app_runs_score"] = 7
+            # Assume it runs if main file exists (actual run test would be complex)
+            points += 7.0  # Conservative score without actual execution
+            details["app_runs_score"] = 7.0
         else:
             details["has_main_file"] = False
-            details["app_runs_score"] = 0
+            details["app_runs_score"] = 0.0
 
         # 1.2 Tests exist and pass (10 points)
         test_files = [f for f in self.python_files if "test" in f.name.lower()]
         if test_files:
             details["test_files_count"] = len(test_files)
             # Conservative: assume tests exist and likely pass
-            points += 7  # Would need actual pytest run for full score
-            details["tests_score"] = 7
+            points += 7.0  # Would need actual pytest run for full score
+            details["tests_score"] = 7.0
         else:
             details["test_files_count"] = 0
-            details["tests_score"] = 0
+            details["tests_score"] = 0.0
 
         # 1.3 Test coverage (5 points)
-        # This would require running pytest --cov, give partial credit if tests exist
+        # Would require running pytest --cov, give partial credit if tests exist
         if test_files:
-            points += 3  # Conservative estimate
-            details["coverage_score"] = 3
+            points += 3.0  # Conservative estimate
+            details["coverage_score"] = 3.0
         else:
-            details["coverage_score"] = 0
+            details["coverage_score"] = 0.0
 
         return CategoryScore(
             category="Functionality",
@@ -126,7 +124,7 @@ class ProjectScorer:
             Code quality score breakdown
         """
         points = 0.0
-        details = {}
+        details: dict[str, Any] = {}
 
         # 2.1 Static analysis (8 points) - count basic issues
         total_lines = 0
@@ -144,7 +142,7 @@ class ProjectScorer:
                 # Count docstrings (simple heuristic)
                 docstring_count += len(re.findall(r'""".*?"""', content, re.DOTALL))
                 docstring_count += len(re.findall(r"'''.*?'''", content, re.DOTALL))
-            except Exception:
+            except Exception:  # nosec B112
                 continue
 
         details["total_lines"] = total_lines
@@ -155,40 +153,42 @@ class ProjectScorer:
         if function_count > 0:
             doc_ratio = docstring_count / function_count
             if doc_ratio >= 0.8:
-                points += 6
+                points += 6.0
             elif doc_ratio >= 0.5:
-                points += 4
+                points += 4.0
             elif doc_ratio >= 0.3:
-                points += 2
+                points += 2.0
         details["static_analysis_score"] = points
 
         # 2.2 Code complexity (6 points) - file size heuristic
         if self.python_files:
             avg_file_size = total_lines / len(self.python_files)
             if avg_file_size < 100:  # Simple, focused files
-                points += 6
+                points += 6.0
             elif avg_file_size < 200:
-                points += 4
+                points += 4.0
             elif avg_file_size < 400:
-                points += 2
+                points += 2.0
             details["avg_file_size"] = avg_file_size
-            details["complexity_score"] = points - details["static_analysis_score"]
+            static_score = details["static_analysis_score"]
+            assert isinstance(static_score, float)
+            details["complexity_score"] = points - static_score
 
         # 2.3 Documentation coverage (6 points)
         if function_count > 0:
             doc_coverage = (docstring_count / function_count) * 100
             if doc_coverage >= 90:
-                points += 6
+                points += 6.0
             elif doc_coverage >= 70:
-                points += 4
+                points += 4.0
             elif doc_coverage >= 50:
-                points += 2
+                points += 2.0
             details["documentation_coverage"] = doc_coverage
-            details["documentation_score"] = (
-                points
-                - details["static_analysis_score"]
-                - details.get("complexity_score", 0)
-            )
+            static_score = details["static_analysis_score"]
+            complexity_score = details.get("complexity_score", 0.0)
+            assert isinstance(static_score, float)
+            assert isinstance(complexity_score, float)
+            details["documentation_score"] = points - static_score - complexity_score
 
         return CategoryScore(
             category="Code Quality",
@@ -208,7 +208,7 @@ class ProjectScorer:
             Completeness score breakdown
         """
         points = 0.0
-        details = {}
+        details: dict[str, Any] = {}
 
         # 3.1 Required deliverables (10 points)
         deliverables = {
@@ -227,18 +227,18 @@ class ProjectScorer:
             if f.is_file() and f.suffix in [".py", ".md", ".txt"]:
                 try:
                     all_content += f.read_text().lower()
-                except Exception:
+                except Exception:  # nosec B112
                     continue
 
         # Check for API spec
         if any("spec" in f.name.lower() or "api" in f.name.lower() for f in all_files):
             deliverables["api_spec"] = True
-            points += 2
+            points += 2.0
 
         # Check for models
         if any("model" in f.name.lower() for f in all_files) or "class " in all_content:
             deliverables["models"] = True
-            points += 2
+            points += 2.0
 
         # Check for endpoints
         if any(
@@ -246,17 +246,17 @@ class ProjectScorer:
             for x in ["@app.route", "@router", "def get", "def post", "fastapi"]
         ):
             deliverables["endpoints"] = True
-            points += 2
+            points += 2.0
 
         # Check for error handling
         if "try:" in all_content and "except" in all_content:
             deliverables["error_handling"] = True
-            points += 2
+            points += 2.0
 
         # Check for tests
         if any("test" in f.name.lower() for f in self.python_files):
             deliverables["tests"] = True
-            points += 2
+            points += 2.0
 
         details["deliverables"] = deliverables
         details["deliverables_score"] = points
@@ -277,13 +277,13 @@ class ProjectScorer:
             )
 
         if stub_count == 0:
-            points += 5
+            points += 5.0
         elif stub_count <= 2:
-            points += 3
+            points += 3.0
 
         details["stub_count"] = stub_count
         details["no_stubs_score"] = (
-            5 if stub_count == 0 else (3 if stub_count <= 2 else 0)
+            5.0 if stub_count == 0 else (3.0 if stub_count <= 2 else 0.0)
         )
 
         # 3.3 All subtasks completed (5 points)
@@ -298,14 +298,14 @@ class ProjectScorer:
         )
 
         if has_date_endpoint and has_time_endpoint:
-            points += 5
+            points += 5.0
             details["both_endpoints"] = True
         elif has_date_endpoint or has_time_endpoint:
-            points += 3
+            points += 3.0
             details["both_endpoints"] = False
 
         details["subtasks_score"] = (
-            5 if (has_date_endpoint and has_time_endpoint) else 0
+            5.0 if (has_date_endpoint and has_time_endpoint) else 0.0
         )
 
         return CategoryScore(
@@ -326,7 +326,7 @@ class ProjectScorer:
             Project structure score breakdown
         """
         points = 0.0
-        details = {}
+        details: dict[str, Any] = {}
 
         all_dirs = [d for d in self.project_dir.rglob("*") if d.is_dir()]
         dir_names = [d.name.lower() for d in all_dirs]
@@ -343,11 +343,11 @@ class ProjectScorer:
 
         structure_count = sum(has_structure.values())
         if structure_count >= 3:
-            points += 8
+            points += 8.0
         elif structure_count == 2:
-            points += 6
+            points += 6.0
         elif structure_count == 1:
-            points += 4
+            points += 4.0
 
         details["structure"] = has_structure
         details["structure_score"] = points
@@ -355,16 +355,18 @@ class ProjectScorer:
         # 4.2 Appropriate file count (4 points)
         file_count = len(self.python_files)
         if 8 <= file_count <= 15:
-            points += 4
+            points += 4.0
         elif 6 <= file_count <= 7 or 16 <= file_count <= 20:
-            points += 3
+            points += 3.0
         elif 4 <= file_count <= 5 or 21 <= file_count <= 25:
-            points += 2
+            points += 2.0
         elif 2 <= file_count <= 3 or file_count > 25:
-            points += 1
+            points += 1.0
 
         details["python_file_count"] = file_count
-        details["file_count_score"] = points - details["structure_score"]
+        structure_score = details["structure_score"]
+        assert isinstance(structure_score, float)
+        details["file_count_score"] = points - structure_score
 
         # 4.3 Configuration separated (3 points)
         config_files = [
@@ -374,12 +376,12 @@ class ProjectScorer:
             in ["config.py", "settings.py", ".env", "config.yaml", "config.json"]
         ]
         if config_files:
-            points += 3
+            points += 3.0
             details["has_config_file"] = True
         else:
             details["has_config_file"] = False
 
-        details["config_score"] = 3 if config_files else 0
+        details["config_score"] = 3.0 if config_files else 0.0
 
         return CategoryScore(
             category="Project Structure",
@@ -399,7 +401,7 @@ class ProjectScorer:
             Documentation score breakdown
         """
         points = 0.0
-        details = {}
+        details: dict[str, Any] = {}
 
         doc_files = [
             f
@@ -435,11 +437,11 @@ class ProjectScorer:
                 section_count = sum([has_how_to_run, has_how_to_test, has_how_it_works])
 
                 if word_count >= 500 and section_count >= 3:
-                    points += 6
+                    points += 6.0
                 elif word_count >= 300 and section_count >= 2:
-                    points += 4
+                    points += 4.0
                 elif word_count >= 100:
-                    points += 2
+                    points += 2.0
 
                 details["project_success_word_count"] = word_count
                 details["project_success_sections"] = section_count
@@ -453,20 +455,20 @@ class ProjectScorer:
         for f in doc_files:
             try:
                 all_doc_content += f.read_text().lower()
-            except Exception:
+            except Exception:  # nosec B112
                 continue
 
         has_endpoints = "/api/date" in all_doc_content or "/api/time" in all_doc_content
         has_examples = "curl" in all_doc_content or "example" in all_doc_content
         has_responses = "response" in all_doc_content or "json" in all_doc_content
 
-        api_doc_score = 0
+        api_doc_score = 0.0
         if has_endpoints and has_examples and has_responses:
-            api_doc_score = 3
+            api_doc_score = 3.0
         elif has_endpoints and (has_examples or has_responses):
-            api_doc_score = 2
+            api_doc_score = 2.0
         elif has_endpoints:
-            api_doc_score = 1
+            api_doc_score = 1.0
 
         points += api_doc_score
         details["api_documentation_score"] = api_doc_score
@@ -480,13 +482,13 @@ class ProjectScorer:
             x in all_doc_content for x in ["python", "npm", "run", "start"]
         )
 
-        setup_score = 0
+        setup_score = 0.0
         if has_dependencies and has_steps and has_startup:
-            setup_score = 3
+            setup_score = 3.0
         elif (has_dependencies and has_steps) or (has_steps and has_startup):
-            setup_score = 2
+            setup_score = 2.0
         elif any([has_dependencies, has_steps, has_startup]):
-            setup_score = 1
+            setup_score = 1.0
 
         points += setup_score
         details["setup_instructions_score"] = setup_score
@@ -509,14 +511,14 @@ class ProjectScorer:
             Usability score breakdown
         """
         points = 0.0
-        details = {}
+        details: dict[str, Any] = {}
 
         # 6.1 Single-command startup (4 points)
         main_files = [
             f for f in self.python_files if f.name in ["main.py", "app.py", "run.py"]
         ]
         if main_files:
-            points += 4
+            points += 4.0
             details["single_command_startup"] = True
         else:
             details["single_command_startup"] = False
@@ -535,7 +537,7 @@ class ProjectScorer:
             ]
         ]
         if dep_files:
-            points += 2
+            points += 2.0
             details["has_dependency_file"] = True
         else:
             details["has_dependency_file"] = False
@@ -551,7 +553,7 @@ class ProjectScorer:
         for f in doc_files:
             try:
                 all_doc_content += f.read_text().lower()
-            except Exception:
+            except Exception:  # nosec B112
                 continue
 
         has_curl = "curl" in all_doc_content
@@ -561,7 +563,7 @@ class ProjectScorer:
         )
 
         if has_curl or has_request_example:
-            points += 2
+            points += 2.0
             details["has_examples"] = True
         else:
             details["has_examples"] = False
@@ -610,7 +612,7 @@ class ProjectScorer:
         )
 
 
-def main():
+def main() -> int:
     """Run the automated scoring system."""
     parser = argparse.ArgumentParser(
         description="Automatically score a project implementation"
@@ -644,14 +646,16 @@ def main():
     print(f"\n{'='*70}")
     print(f"Project: {result.project_name}")
     print(
-        f"Total Score: {result.total_score:.1f}/{result.total_possible} ({result.percentage:.1f}%)"
+        f"Total Score: {result.total_score:.1f}/{result.total_possible} "
+        f"({result.percentage:.1f}%)"
     )
     print(f"{'='*70}\n")
 
     print("Category Breakdown:")
     for category in result.categories:
         print(
-            f"  {category.category:20s}: {category.points_earned:5.1f}/{category.points_possible:5.1f} "
+            f"  {category.category:20s}: "
+            f"{category.points_earned:5.1f}/{category.points_possible:5.1f} "
             f"({category.percentage:5.1f}%)"
         )
 

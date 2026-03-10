@@ -289,10 +289,9 @@ def get_user_selection(
         List of selected projects
     """
     action_verb = "delete" if mode == "delete" else "keep"
-    inverse_verb = "keep" if mode == "delete" else "delete"
 
     print(f"\n🎯 Select projects to {action_verb.upper()}:")
-    print(f"   • Enter numbers: 1,3,5 or ranges: 1-5 or both: 1-3,7,9-11")
+    print("   • Enter numbers: 1,3,5 or ranges: 1-5 or both: 1-3,7,9-11")
     print(f"   • Type 'all' to {action_verb} all projects")
     print(f"   • Type 'none' or press Enter to {action_verb} none")
     print()

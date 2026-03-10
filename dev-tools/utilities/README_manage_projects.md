@@ -170,7 +170,7 @@ The script automatically loads Planka configuration from `config_marcus.json`:
   "planka": {
     "base_url": "http://localhost:3333",
     "email": "your-email@example.com",
-    "password": "your-password"
+    "password": "your-password"  # pragma: allowlist secret
   }
 }
 ```
@@ -203,7 +203,7 @@ cat > config_marcus.json << 'EOF'
   "planka": {
     "base_url": "http://localhost:3333",
     "email": "demo@demo.demo",
-    "password": "demo"
+    "password": "demo"  # pragma: allowlist secret
   }
 }
 EOF

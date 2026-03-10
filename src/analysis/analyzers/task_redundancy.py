@@ -26,7 +26,6 @@ for pair in analysis.redundant_pairs:
 
 import logging
 from dataclasses import dataclass, field
-from datetime import timedelta, timezone
 from typing import Any, Optional
 
 from src.analysis.aggregator import Message, TaskHistory
