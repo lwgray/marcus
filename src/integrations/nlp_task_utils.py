@@ -66,6 +66,13 @@ class TaskClassifier:
             "refactor",
             "program",
             "engineer",
+            "fix",
+            "bugfix",
+            "bug",
+            "patch",
+            "hotfix",
+            "repair",
+            "resolve",
         ],
         TaskType.TESTING: [
             "test",
