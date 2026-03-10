@@ -397,7 +397,12 @@ class TestNaturalLanguageProjectCreatorIntegration:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_project_creator_receives_subtask_manager(self, mock_state):
+    @patch("src.integrations.nlp_tools.AdvancedPRDParser")
+    @patch("src.integrations.nlp_tools.BoardAnalyzer")
+    @patch("src.integrations.nlp_tools.ContextDetector")
+    async def test_project_creator_receives_subtask_manager(
+        self, mock_context_detector, mock_board_analyzer, mock_prd_parser, mock_state
+    ):
         """Test NaturalLanguageProjectCreator receives subtask_manager from state."""
         # Arrange
         from src.integrations.nlp_tools import NaturalLanguageProjectCreator
