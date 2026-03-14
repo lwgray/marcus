@@ -470,7 +470,7 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
     # If no tasks in progress, use default wait time
     if not in_progress_tasks:
         return {
-            "retry_after_seconds": 30,  # 30 second
+            "retry_after_seconds": 30,  # 30 seconds
             "reason": "No tasks currently in progress - check back soon",
             "blocking_task": None,
         }
