@@ -61,6 +61,24 @@ class Planka(KanbanInterface):
         """Get project ID from the client."""
         return self.client.project_id if self.client else None
 
+    def _load_workspace_state(self) -> Optional[Dict[str, str]]:
+        """
+        Load project and board IDs from workspace state file.
+
+        This method delegates to the underlying KanbanClient to maintain
+        compatibility with validation and other systems that expect this
+        method to be available on the kanban_client interface.
+
+        Returns
+        -------
+        Optional[Dict[str, str]]
+            Dictionary with project_id, board_id, and project_root if
+            available, or None if no workspace state file exists.
+        """
+        if not self.client:
+            return None
+        return self.client._load_workspace_state()
+
     async def connect(self) -> bool:
         """Connect to Planka via MCP."""
         try:
