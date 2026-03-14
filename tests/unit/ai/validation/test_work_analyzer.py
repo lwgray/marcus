@@ -42,6 +42,8 @@ class TestWorkAnalyzer:
             "Passwords match validation implemented",
         ]
         task.dependencies = []
+        # Explicitly set type to prevent Mock auto-creation in getattr()
+        task.type = "implementation"
         return task
 
     @pytest.fixture
@@ -52,6 +54,8 @@ class TestWorkAnalyzer:
         state.workspace_manager = Mock()
         state.workspace_manager.project_config = Mock()
         state.workspace_manager.project_config.main_workspace = "/fake/project/root"
+        # Set kanban_client to None to avoid Mock auto-creation
+        state.kanban_client = None
         return state
 
     @pytest.mark.asyncio
