@@ -470,7 +470,7 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
     # If no tasks in progress, use default wait time
     if not in_progress_tasks:
         return {
-            "retry_after_seconds": 300,  # 5 minutes
+            "retry_after_seconds": 30,  # 30 second
             "reason": "No tasks currently in progress - check back soon",
             "blocking_task": None,
         }
@@ -554,8 +554,8 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
     # Minimum 30 seconds to avoid excessive polling
     retry_after = max(30, retry_after)
 
-    # Cap at 5 minutes for re-polling (catch unexpected early completions)
-    retry_after = min(retry_after, 300)
+    # Cap at 30 seconds for re-polling (catch unexpected early completions)
+    retry_after = min(retry_after, 30)
 
     # Format reason
     eta_minutes = int(target_task["eta_seconds"] / 60)
