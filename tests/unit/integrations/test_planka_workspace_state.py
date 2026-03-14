@@ -74,6 +74,19 @@ class TestPlankaWorkspaceState:
         assert result is None
         planka_instance.client._load_workspace_state.assert_called_once()
 
+    def test_load_workspace_state_returns_none_when_client_is_none(
+        self, planka_instance
+    ):
+        """Test that _load_workspace_state returns None when client is None."""
+        # Arrange - Simulate edge case where client is None
+        planka_instance.client = None
+
+        # Act
+        result = planka_instance._load_workspace_state()
+
+        # Assert
+        assert result is None
+
     def test_validation_can_call_load_workspace_state(self, planka_instance, tmp_path):
         """
         Test validation code pattern - state.kanban_client._load_workspace_state().

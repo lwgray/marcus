@@ -75,6 +75,8 @@ class Planka(KanbanInterface):
             Dictionary with project_id, board_id, and project_root if
             available, or None if no workspace state file exists.
         """
+        if not self.client:
+            return None
         return self.client._load_workspace_state()
 
     async def connect(self) -> bool:
