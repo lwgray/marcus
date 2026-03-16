@@ -11,7 +11,7 @@ Tests cover normal operations, edge cases, and error scenarios.
 """
 
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -44,8 +44,8 @@ class TestBoardAnalyzer:
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=0.0,
             dependencies=[],
@@ -63,9 +63,9 @@ class TestBoardAnalyzer:
             status=TaskStatus.IN_PROGRESS,
             priority=Priority.HIGH,
             assigned_to="agent-001",
-            created_at=datetime.now() - timedelta(days=2),
-            updated_at=datetime.now(),
-            due_date=datetime.now() + timedelta(days=5),
+            created_at=datetime.now(timezone.utc) - timedelta(days=2),
+            updated_at=datetime.now(timezone.utc),
+            due_date=datetime.now(timezone.utc) + timedelta(days=5),
             estimated_hours=16.0,
             dependencies=["TASK-001"],
             labels=["backend", "security", "auth"],
@@ -88,8 +88,8 @@ class TestBoardAnalyzer:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,  # All same priority
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=0.0,  # No estimates
                 dependencies=[],
@@ -101,7 +101,7 @@ class TestBoardAnalyzer:
     @pytest.fixture
     def well_structured_board(self) -> List[Task]:
         """Create a well-structured board with diverse tasks."""
-        base_time = datetime.now()
+        base_time = datetime.now(timezone.utc)
         tasks = [
             Task(
                 id="TASK-001",
@@ -223,8 +223,8 @@ class TestBoardAnalyzer:
                     assigned_to=(
                         "agent-001" if status == TaskStatus.IN_PROGRESS else None
                     ),
-                    created_at=datetime.now() - timedelta(days=20 - i * 3),
-                    updated_at=datetime.now() - timedelta(days=20 - i * 3),
+                    created_at=datetime.now(timezone.utc) - timedelta(days=20 - i * 3),
+                    updated_at=datetime.now(timezone.utc) - timedelta(days=20 - i * 3),
                     due_date=None,
                     estimated_hours=8.0,
                     dependencies=[],
@@ -367,8 +367,8 @@ class TestBoardAnalyzer:
                     else Priority.MEDIUM if i < 7 else Priority.LOW
                 ),
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=8.0 if i % 3 == 0 else 0.0,
                 dependencies=["TASK-000"] if i > 5 else [],
@@ -406,8 +406,8 @@ class TestBoardAnalyzer:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,  # All same
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=5.0,
                 dependencies=[],
@@ -432,8 +432,8 @@ class TestBoardAnalyzer:
                 status=TaskStatus.TODO,
                 priority=priority,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=5.0,
                 dependencies=[],
@@ -472,8 +472,8 @@ class TestBoardAnalyzer:
                 status=status,
                 priority=Priority.MEDIUM,
                 assigned_to="agent-001" if status == TaskStatus.IN_PROGRESS else None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=4.0,
                 dependencies=[f"TASK-{i-1:03d}"] if i > 0 else [],
@@ -500,8 +500,8 @@ class TestBoardAnalyzer:
                 assigned_to=(
                     f"agent-{i:03d}" if status == TaskStatus.IN_PROGRESS else None
                 ),
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=4.0,
                 dependencies=[],
@@ -533,8 +533,8 @@ class TestBoardAnalyzer:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=0.0,
                 dependencies=[],
@@ -735,8 +735,8 @@ class TestBoardAnalyzer:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,  # Priority is required, can't be None
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=0.0,  # Using 0 instead of None
                 dependencies=[],  # Uses default factory
@@ -765,8 +765,8 @@ class TestBoardAnalyzer:
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=5.0,
             dependencies=[],
@@ -957,8 +957,8 @@ class TestBoardAnalyzer:
                 status=TaskStatus.TODO,
                 priority=None,  # No priority set
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=8.0,
                 dependencies=[],
@@ -981,8 +981,8 @@ class TestBoardAnalyzer:
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=0.0,
             dependencies=[],
@@ -1000,8 +1000,8 @@ class TestBoardAnalyzer:
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=0.0,
             dependencies=[],
@@ -1024,8 +1024,8 @@ class TestBoardAnalyzer:
             status=status,
             priority=Priority.MEDIUM,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=0.0,
             dependencies=[],

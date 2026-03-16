@@ -7,7 +7,7 @@ user interactions, and explicit preferences.
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Dict, List, Optional
 
@@ -305,7 +305,7 @@ class ContextDetector:
     def record_mode_switch(self, user_id: str, new_mode: MarcusMode) -> None:
         """Record when a user switches modes."""
         context = self._get_user_context(user_id)
-        context.last_mode_switch = datetime.now()
+        context.last_mode_switch = datetime.now(timezone.utc)
         context.current_mode = new_mode
         context.mode_preferences[new_mode] += 1
 

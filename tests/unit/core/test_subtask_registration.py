@@ -5,7 +5,7 @@ Tests verify that subtasks created during task decomposition are properly
 registered with SubtaskManager so they can be assigned individually to agents.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 from unittest.mock import AsyncMock, Mock, call, patch
 
@@ -53,7 +53,7 @@ class TestSubtaskRegistration:
     @pytest.fixture
     def sample_task(self):
         """Create sample task for decomposition."""
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         return Task(
             id="task-123",
             name="Implement Get Current Time",
@@ -397,7 +397,12 @@ class TestNaturalLanguageProjectCreatorIntegration:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_project_creator_receives_subtask_manager(self, mock_state):
+    @patch("src.integrations.nlp_tools.AdvancedPRDParser")
+    @patch("src.integrations.nlp_tools.BoardAnalyzer")
+    @patch("src.integrations.nlp_tools.ContextDetector")
+    async def test_project_creator_receives_subtask_manager(
+        self, mock_context_detector, mock_board_analyzer, mock_prd_parser, mock_state
+    ):
         """Test NaturalLanguageProjectCreator receives subtask_manager from state."""
         # Arrange
         from src.integrations.nlp_tools import NaturalLanguageProjectCreator
@@ -412,25 +417,3 @@ class TestNaturalLanguageProjectCreatorIntegration:
         # Assert
         assert creator.subtask_manager is not None
         assert creator.subtask_manager == mock_state.subtask_manager
-
-    @pytest.mark.asyncio
-    @pytest.mark.unit
-    async def test_pipeline_tracked_creator_receives_subtask_manager(self, mock_state):
-        """Test PipelineTrackedProjectCreator receives subtask_manager."""
-        # Arrange
-        from src.integrations.pipeline_tracked_nlp import PipelineTrackedProjectCreator
-        from src.visualization.shared_pipeline_events import SharedPipelineVisualizer
-
-        mock_visualizer = Mock(spec=SharedPipelineVisualizer)
-
-        # Act
-        creator = PipelineTrackedProjectCreator(
-            kanban_client=mock_state.kanban_client,
-            ai_engine=mock_state.ai_engine,
-            pipeline_visualizer=mock_visualizer,
-            subtask_manager=mock_state.subtask_manager,
-        )
-
-        # Assert
-        assert creator.creator.subtask_manager is not None
-        assert creator.creator.subtask_manager == mock_state.subtask_manager

@@ -2,7 +2,7 @@
 Unit tests for project stall analyzer.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -21,7 +21,7 @@ from src.marcus_mcp.tools.project_stall_analyzer import (
 @pytest.fixture
 def sample_tasks():
     """Create sample tasks for testing."""
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
     tasks = [
         Task(
@@ -153,7 +153,7 @@ class TestConversationReplayAnalyzer:
         # Create sample log file
         log_file = log_dir / "realtime_20251006_120000.jsonl"
 
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         events = [
             {
                 "timestamp": (now - timedelta(hours=2)).isoformat(),
@@ -360,5 +360,20 @@ class TestCaptureStallSnapshot:
         assert "dependency_locks" in summary
         assert "early_completions" in summary
 
+        # Check new diagnostic fields in summary
+        assert "zombie_tasks" in summary
+        assert "redundant_dependencies" in summary
+        assert "state_inconsistencies" in summary
+        assert "circular_dependencies" in summary
+        assert "bottlenecks" in summary
+
         # Should detect early completion of "Project Success"
         assert summary["early_completions"] >= 1
+
+        # Check snapshot has diagnostic data
+        snapshot = result["snapshot"]
+        assert "zombie_tasks" in snapshot
+        assert "redundant_dependencies" in snapshot
+        assert "state_inconsistencies" in snapshot
+        assert "circular_dependencies" in snapshot
+        assert "bottlenecks" in snapshot

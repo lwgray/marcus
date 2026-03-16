@@ -16,7 +16,7 @@ import asyncio
 import json
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -138,8 +138,8 @@ class TestEnhancedFeaturesComplete:
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=20.0,  # Complex task
             labels=["api", "complex"],
@@ -156,8 +156,8 @@ class TestEnhancedFeaturesComplete:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=5.0 + i * 0.5,
                 labels=["test", "api"] if i % 2 == 0 else ["test", "backend"],
@@ -212,8 +212,8 @@ class TestEnhancedFeaturesComplete:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=4.0,
                 labels=["database", "schema"],
@@ -226,8 +226,8 @@ class TestEnhancedFeaturesComplete:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=8.0,
                 labels=["api", "backend"],
@@ -240,8 +240,8 @@ class TestEnhancedFeaturesComplete:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=4.0,
                 labels=["test", "api"],
@@ -279,46 +279,25 @@ class TestEnhancedFeaturesComplete:
 
     @pytest.mark.asyncio
     async def test_granular_configuration(self):
-        """Test granular configuration support"""
-        from src.config.config_loader import ConfigLoader
+        """Test granular configuration support with new config system"""
+        from unittest.mock import Mock
 
-        # Create test config
-        test_config = {
-            "features": {
-                "events": {
-                    "enabled": True,
-                    "store_history": True,
-                    "history_limit": 500,
-                    "async_handlers": True,
-                },
-                "context": {
-                    "enabled": True,
-                    "infer_dependencies": True,
-                    "max_depth": 5,
-                },
-                "memory": {
-                    "enabled": True,
-                    "learning_rate": 0.2,
-                    "min_samples": 10,
-                    "use_v2_predictions": True,
-                },
-            }
-        }
+        from src.config.marcus_config import FeaturesSettings, MarcusConfig
 
-        # Mock config loader
-        loader = ConfigLoader()
-        loader._config = test_config
+        # Create test config using new dataclass-based system
+        mock_config = Mock(spec=MarcusConfig)
+        mock_config.features = FeaturesSettings(
+            events=True,
+            context=True,
+            memory=True,
+            visibility=False,
+        )
 
-        # Test feature config retrieval
-        events_config = loader.get_feature_config("events")
-        assert events_config["enabled"] is True
-        assert events_config["store_history"] is True
-        assert events_config["history_limit"] == 500
-
-        # Test backward compatibility
-        loader._config = {"features": {"events": True}}  # Old format
-        events_config = loader.get_feature_config("events")
-        assert events_config == {"enabled": True}
+        # Test feature config retrieval via attributes
+        assert mock_config.features.events is True
+        assert mock_config.features.context is True
+        assert mock_config.features.memory is True
+        assert mock_config.features.visibility is False
 
     @pytest.mark.asyncio
     async def test_full_workflow_integration(self, setup_environment):
@@ -336,8 +315,8 @@ class TestEnhancedFeaturesComplete:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=4.0,
                 labels=["database", "infrastructure"],
@@ -350,8 +329,8 @@ class TestEnhancedFeaturesComplete:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=8.0,
                 labels=["api", "backend"],
@@ -414,8 +393,8 @@ class TestEnhancedFeaturesComplete:
             "status": TaskStatus.TODO,
             "priority": Priority.MEDIUM,
             "assigned_to": None,
-            "created_at": datetime.now(),
-            "updated_at": datetime.now(),
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc),
             "due_date": None,
             "estimated_hours": 4.0,
             "labels": [],

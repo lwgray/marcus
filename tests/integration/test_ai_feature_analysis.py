@@ -16,7 +16,7 @@ import pytest
 # Add parent directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from src.core.models import Priority, Task, TaskStatus
 from src.integrations.ai_analysis_engine import AIAnalysisEngine
@@ -64,8 +64,8 @@ class TestAIFeatureAnalysis:
                 priority=Priority.HIGH,
                 labels=["api", "backend"],
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 estimated_hours=8,
                 due_date=None,
                 dependencies=[],
@@ -81,8 +81,8 @@ class TestAIFeatureAnalysis:
                 priority=Priority.HIGH,
                 labels=["auth", "backend"],
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 estimated_hours=12,
                 due_date=None,
                 dependencies=[],
@@ -118,8 +118,8 @@ class TestAIFeatureAnalysis:
                 priority=Priority.HIGH,
                 labels=["database", "backend"],
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 estimated_hours=4,
                 due_date=None,
                 dependencies=[],

@@ -2,6 +2,7 @@
 """
 Test creating a project directly using the integration
 """
+
 import asyncio
 import sys
 from pathlib import Path
@@ -9,7 +10,7 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from src.config.config_loader import get_config
+from src.config.marcus_config import get_config
 from src.core.models import ProjectState
 from src.integrations.kanban_factory import KanbanFactory
 from src.integrations.nlp_tools import create_project_from_natural_language
@@ -23,7 +24,7 @@ async def test_create_todo_project():
 
     # Create Kanban client
     kanban_client = await KanbanFactory.create_client(
-        provider=config.get("kanban.provider", "planka"), config=config
+        provider=config.kanban.provider or "planka", config=config
     )
 
     # Create a minimal state object

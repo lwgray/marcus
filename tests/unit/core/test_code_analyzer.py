@@ -8,7 +8,7 @@ All external dependencies are mocked to ensure unit test isolation.
 
 import base64
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -41,8 +41,8 @@ class TestCodeAnalyzer:
             priority=Priority.HIGH,
             dependencies=[],
             assigned_to="worker-1",
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=8.0,
             actual_hours=6.0,
@@ -519,8 +519,8 @@ interface Product {
             priority=Priority.HIGH,
             dependencies=[],
             assigned_to="worker-1",
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=8.0,
             actual_hours=5.0,
@@ -782,19 +782,6 @@ async def create_item(item: Item):
         assert any("Frontend developers" in rec for rec in result["recommendations"])
 
     @pytest.mark.asyncio
-    async def test_find_models_not_implemented(self, analyzer):
-        """Test that _find_models method returns empty list (not implemented)."""
-        # The method exists but returns empty list as it's not implemented
-        result = await analyzer._find_models("owner", "repo")
-        assert result == []
-
-    @pytest.mark.asyncio
-    async def test_find_schemas_not_implemented(self, analyzer):
-        """Test that _find_schemas method returns empty list (not implemented)."""
-        # The method exists but returns empty list as it's not implemented
-        result = await analyzer._find_schemas("owner", "repo")
-        assert result == []
-
     def test_endpoint_patterns_coverage(self, analyzer):
         """Test all endpoint pattern variations."""
         test_cases = [

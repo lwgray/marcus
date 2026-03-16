@@ -13,7 +13,7 @@ All tests use mocked dependencies and verify:
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, Mock, call, patch
 
@@ -300,8 +300,8 @@ class TestParallelSubtaskDecomposition:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=6.0,
             ),
@@ -312,8 +312,8 @@ class TestParallelSubtaskDecomposition:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=8.0,
             ),
@@ -324,8 +324,8 @@ class TestParallelSubtaskDecomposition:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=2.0,  # Should not be decomposed
             ),
@@ -361,7 +361,9 @@ class TestParallelSubtaskDecomposition:
                 "src.marcus_mcp.coordinator.decompose_task"
             ) as mock_decompose_task:
                 # Only tasks with >= 4 hours should decompose
-                mock_should_decompose.side_effect = lambda t: t.estimated_hours >= 4.0
+                mock_should_decompose.side_effect = (
+                    lambda t, project_complexity=None: t.estimated_hours >= 4.0
+                )
                 mock_decompose_task.side_effect = mock_decompose
 
                 # Mock _add_subtasks_as_checklist to avoid MCP calls
@@ -422,7 +424,9 @@ class TestParallelSubtaskDecomposition:
             with patch(
                 "src.marcus_mcp.coordinator.decompose_task"
             ) as mock_decompose_task:
-                mock_should_decompose.side_effect = lambda t: t.estimated_hours >= 4.0
+                mock_should_decompose.side_effect = (
+                    lambda t, project_complexity=None: t.estimated_hours >= 4.0
+                )
                 mock_decompose_task.side_effect = mock_decompose_with_failures
 
                 # Track checklist additions
@@ -462,7 +466,9 @@ class TestParallelSubtaskDecomposition:
             with patch(
                 "src.marcus_mcp.coordinator.decompose_task"
             ) as mock_decompose_task:
-                mock_should_decompose.side_effect = lambda t: t.estimated_hours >= 4.0
+                mock_should_decompose.side_effect = (
+                    lambda t, project_complexity=None: t.estimated_hours >= 4.0
+                )
                 mock_decompose_task.side_effect = mock_decompose_with_failed_response
 
                 task_creator._add_subtasks_as_checklist = AsyncMock()
@@ -505,7 +511,9 @@ class TestParallelSubtaskDecomposition:
             with patch(
                 "src.marcus_mcp.coordinator.decompose_task"
             ) as mock_decompose_task:
-                mock_should_decompose.side_effect = lambda t: t.estimated_hours >= 4.0
+                mock_should_decompose.side_effect = (
+                    lambda t, project_complexity=None: t.estimated_hours >= 4.0
+                )
                 mock_decompose_task.side_effect = mock_decompose_mixed_results
 
                 task_creator._add_subtasks_as_checklist = AsyncMock()
@@ -545,8 +553,8 @@ class TestParallelSubtaskDecomposition:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=2.0,
             )

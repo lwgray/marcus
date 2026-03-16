@@ -10,7 +10,7 @@ import logging
 import secrets
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import wraps
 from typing import Any, Callable, Dict, Optional
 
@@ -52,7 +52,9 @@ class CircuitBreaker:
         if self.state == "open":
             # Check if we should try half-open
             if self.last_failure_time:
-                elapsed = (datetime.now() - self.last_failure_time).total_seconds()
+                elapsed = (
+                    datetime.now(timezone.utc) - self.last_failure_time
+                ).total_seconds()
                 if elapsed > self.config.recovery_timeout:
                     self.state = "half-open"
                     return False
@@ -67,7 +69,7 @@ class CircuitBreaker:
     def record_failure(self) -> None:
         """Record failed call."""
         self.failure_count += 1
-        self.last_failure_time = datetime.now()
+        self.last_failure_time = datetime.now(timezone.utc)
 
         if self.failure_count >= self.config.failure_threshold:
             self.state = "open"

@@ -4,10 +4,12 @@ Unit tests for discover_planka_projects MCP tool.
 Tests automatic discovery of projects from Planka.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+
+from src.config.marcus_config import KanbanSettings, MarcusConfig
 
 
 class TestDiscoverPlankaProjects:
@@ -15,14 +17,15 @@ class TestDiscoverPlankaProjects:
 
     @pytest.fixture
     def mock_server(self):
-        """Create mock server"""
+        """Create mock server with real MarcusConfig"""
         server = Mock()
-        server.config = Mock()
-        server.config.get = Mock(
-            return_value={
-                "base_url": "http://localhost:3333",
-                "email": "demo@demo.demo",
-            }
+        # Use real MarcusConfig dataclass instead of dict
+        server.config = MarcusConfig()
+        server.config.kanban = KanbanSettings(
+            provider="planka",
+            planka_base_url="http://localhost:3333",
+            planka_email="demo@demo.demo",
+            planka_password="demo",
         )
         # Mock project registry with async methods
         server.project_registry = Mock()
@@ -138,13 +141,21 @@ class TestDiscoverPlankaProjects:
                 assert result["sync_result"]["success"] is True
                 mock_sync.assert_called_once()
 
-    async def test_discover_no_planka_config(self, mock_server):
+    async def test_discover_no_planka_config(self):
         """Test discovery fails gracefully when Planka not configured"""
         from src.marcus_mcp.tools.project_management import discover_planka_projects
 
-        mock_server.config.get = Mock(return_value={})
+        # Create server with empty Planka config
+        server = Mock()
+        server.config = MarcusConfig()
+        server.config.kanban = KanbanSettings(
+            provider="planka",
+            planka_base_url="",  # Empty base URL
+            planka_email="",
+            planka_password="",
+        )
 
-        result = await discover_planka_projects(mock_server, {})
+        result = await discover_planka_projects(server, {})
 
         assert result["success"] is False
         assert "not configured" in result["error"].lower()
@@ -183,8 +194,8 @@ class TestDiscoverPlankaProjects:
                         "project_id": "old-proj",
                         "board_id": "stale-board-999",  # This board doesn't exist
                     },
-                    created_at=datetime.now(),
-                    last_used=datetime.now(),
+                    created_at=datetime.now(timezone.utc),
+                    last_used=datetime.now(timezone.utc),
                     tags=["discovered"],
                 ),
                 ProjectConfig(
@@ -195,8 +206,8 @@ class TestDiscoverPlankaProjects:
                         "project_id": "proj-1",
                         "board_id": "board-1",  # This board exists
                     },
-                    created_at=datetime.now(),
-                    last_used=datetime.now(),
+                    created_at=datetime.now(timezone.utc),
+                    last_used=datetime.now(timezone.utc),
                     tags=["discovered"],
                 ),
             ]

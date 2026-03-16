@@ -12,9 +12,9 @@ import logging
 import os
 import signal
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Union
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +27,11 @@ from mcp.server import Server  # noqa: E402
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 from mcp.server.stdio import stdio_server  # noqa: E402
 
-from src.communication.communication_hub import CommunicationHub  # noqa: E402
-from src.config.config_loader import get_config  # noqa: E402
+from src.config.marcus_config import (  # noqa: E402
+    TaskLeaseSettings,
+    get_config,
+    setup_logging,
+)
 from src.config.settings import Settings  # noqa: E402
 
 # Import for type annotations only
@@ -49,7 +52,7 @@ from src.core.models import (  # noqa: E402
     WorkerStatus,
 )
 from src.core.project_context_manager import ProjectContextManager  # noqa: E402
-from src.core.project_registry import ProjectConfig, ProjectRegistry  # noqa: E402
+from src.core.project_registry import ProjectRegistry  # noqa: E402
 from src.core.service_registry import (  # noqa: E402
     register_marcus_service,
     unregister_marcus_service,
@@ -63,9 +66,6 @@ from src.marcus_mcp.handlers import handle_tool_call  # noqa: E402
 from src.marcus_mcp.tool_groups import get_tools_for_endpoint  # noqa: E402
 from src.monitoring.assignment_monitor import AssignmentMonitor  # noqa: E402
 from src.monitoring.project_monitor import ProjectMonitor  # noqa: E402
-from src.visualization.shared_pipeline_events import (  # noqa: E402
-    SharedPipelineVisualizer,
-)
 
 
 class MarcusServer:
@@ -81,11 +81,11 @@ class MarcusServer:
         self.project_registry = ProjectRegistry()
         self.project_manager = ProjectContextManager(self.project_registry)
 
-        # For backwards compatibility - get default provider
-        self.provider = self.config.get("kanban.provider", "planka")
+        # Get default provider from config
+        self.provider = self.config.kanban.provider or "planka"
 
         # Check if in multi-project mode
-        self.is_multi_project_mode = self.config.is_multi_project_mode()
+        self.is_multi_project_mode = self.config.single_project_mode is False
 
         # Create realtime log with line buffering
         # Use absolute path based on Marcus root directory
@@ -93,7 +93,7 @@ class MarcusServer:
         log_dir = marcus_root / "logs" / "conversations"
         log_dir.mkdir(parents=True, exist_ok=True)
         self.realtime_log = open(
-            log_dir / f"realtime_{datetime.now():%Y%m%d_%H%M%S}.jsonl",
+            log_dir / f"realtime_{datetime.now(timezone.utc):%Y%m%d_%H%M%S}.jsonl",
             "a",
             buffering=1,  # Line buffering
         )
@@ -106,7 +106,6 @@ class MarcusServer:
         )
         self.ai_engine = AIAnalysisEngine()
         self.monitor = ProjectMonitor()
-        self.comm_hub = CommunicationHub()
 
         # Token tracking for cost monitoring
         self.token_tracker = token_tracker
@@ -149,9 +148,6 @@ class MarcusServer:
             alert_cooldown_minutes=10,
         )
 
-        # Pipeline flow visualization (shared between processes)
-        self.pipeline_visualizer = SharedPipelineVisualizer()
-
         # Track active connections and cleanup state
         self._cleanup_done = False
         self._active_operations: Set[Any] = set()
@@ -163,64 +159,57 @@ class MarcusServer:
         self.context: Optional[Context] = None
         self.memory: Any = None
 
-        # Get feature configurations with granular settings
+        # Get feature configurations
         config_loader = get_config()
-        events_config = config_loader.get_feature_config("events")
-        context_config = config_loader.get_feature_config("context")
-        memory_config = config_loader.get_feature_config("memory")
-        visibility_config = config_loader.get_feature_config("visibility")
 
         # Persistence layer (if any enhanced features are enabled)
         self.persistence = None
         if any(
-            cfg["enabled"] for cfg in [events_config, context_config, memory_config]
+            [
+                config_loader.features.events,
+                config_loader.features.context,
+                config_loader.features.memory,
+            ]
         ):
             from src.core.persistence import Persistence, SQLitePersistence
 
             # Use SQLite for better performance
-            persistence_path = self.config.get(
-                "features.persistence_path", "./data/marcus.db"
-            )
-            self.persistence = Persistence(
-                backend=SQLitePersistence(Path(persistence_path))
-            )
+            persistence_path = Path(config_loader.data_dir).expanduser() / "marcus.db"
+            self.persistence = Persistence(backend=SQLitePersistence(persistence_path))
 
         # Events system for loose coupling
-        if events_config["enabled"]:
+        if config_loader.features.events:
             self.events = Events(
-                store_history=events_config.get("store_history", True),
+                store_history=True,
                 persistence=self.persistence,
             )
         else:
             self.events = None
 
         # Context system for rich task assignments
-        if context_config["enabled"]:
-            # Check if we should use hybrid inference
-            hybrid_config = config_loader.get_hybrid_inference_config()
-            use_hybrid = context_config.get("use_hybrid_inference", True)
+        if config_loader.features.context:
+            # Use hybrid inference settings from config
+            use_hybrid = True
 
             self.context = Context(
                 events=self.events,
                 persistence=self.persistence,
-                use_hybrid_inference=use_hybrid and hybrid_config.enable_ai_inference,
+                use_hybrid_inference=use_hybrid
+                and config_loader.hybrid_inference.enable_ai_inference,
                 ai_engine=self.ai_engine if use_hybrid else None,
             )
-            # Apply context-specific settings
-            if "infer_dependencies" in context_config:
-                self.context.default_infer_dependencies = context_config[
-                    "infer_dependencies"
-                ]
+            # Link global context to project manager for project_id syncing
+            self.project_manager.set_global_context(self.context)
         else:
             self.context = None
 
         # Memory system for learning and prediction
-        if memory_config["enabled"]:
+        if config_loader.features.memory:
             # Check if we should use enhanced memory
-            if memory_config.get("use_v2_predictions", False):
-                from src.core.memory_advanced import MemoryAdvanced
+            if config_loader.memory.use_v2_predictions:
+                from src.core.memory_enhanced import MemoryEnhanced
 
-                self.memory = MemoryAdvanced(
+                self.memory = MemoryEnhanced(
                     events=self.events, persistence=self.persistence
                 )
             else:
@@ -229,26 +218,23 @@ class MarcusServer:
                 self.memory = Memory(events=self.events, persistence=self.persistence)
 
             # Apply memory-specific settings
-            if "learning_rate" in memory_config:
-                self.memory.learning_rate = memory_config["learning_rate"]
-            if "min_samples" in memory_config:
-                self.memory.confidence_threshold = memory_config["min_samples"]
+            if config_loader.memory.learning_rate:
+                self.memory.learning_rate = config_loader.memory.learning_rate
+            if config_loader.memory.min_samples:
+                self.memory.confidence_threshold = config_loader.memory.min_samples
         else:
             self.memory = None
 
-        # Event-integrated visualization (if events and visibility enabled)
+        # Visualization removed
         self.event_visualizer = None
-        if events_config["enabled"] and visibility_config["enabled"]:
-            from src.visualization.event_integrated_visualizer import (
-                EventIntegratedVisualizer,
-            )
-
-            self.event_visualizer = EventIntegratedVisualizer()
 
         # Log startup
         self.log_event(
             "server_startup",
-            {"provider": self.provider, "timestamp": datetime.now().isoformat()},
+            {
+                "provider": self.provider,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
         )
 
         # Create MCP server instance
@@ -270,10 +256,34 @@ class MarcusServer:
         """Get assignment lock for the current event loop."""
         return self._lock_manager.get_lock()
 
+    @property
+    def current_project_id(self) -> Optional[str]:
+        """
+        Get the current active project ID.
+
+        Returns
+        -------
+        Optional[str]
+            Active project ID or None if no project is active.
+        """
+        return self.project_manager.active_project_id
+
+    @property
+    def current_project_name(self) -> Optional[str]:
+        """
+        Get the current active project name.
+
+        Returns
+        -------
+        Optional[str]
+            Active project name or None if no project is active.
+        """
+        return self.project_manager.active_project_name
+
     def _register_handlers(self) -> None:
         """Register MCP tool handlers."""
 
-        @self.server.list_tools()  # type: ignore[misc]
+        @self.server.list_tools()  # type: ignore[untyped-decorator,no-untyped-call,misc]  # noqa: E501
         async def handle_list_tools() -> List[types.Tool]:
             """Return list of available tools based on client role."""
             # Import here to avoid circular dependency
@@ -287,7 +297,7 @@ class MarcusServer:
             # Get tools based on client access
             return get_tool_definitions_for_client(client_id, self)
 
-        @self.server.call_tool()  # type: ignore[misc]
+        @self.server.call_tool()  # type: ignore[untyped-decorator,misc]
         async def handle_call_tool(
             name: str, arguments: Optional[Dict[str, Any]]
         ) -> List[types.TextContent | types.ImageContent | types.EmbeddedResource]:
@@ -314,22 +324,22 @@ class MarcusServer:
                     # For other exceptions, re-raise so they're handled normally
                     raise
 
-        @self.server.list_prompts()  # type: ignore[misc]
+        @self.server.list_prompts()  # type: ignore[untyped-decorator,no-untyped-call,misc]  # noqa: E501
         async def handle_list_prompts() -> List[types.Prompt]:
             """Return list of available prompts - not used by Marcus."""
             return []
 
-        @self.server.list_resources()  # type: ignore[misc]
+        @self.server.list_resources()  # type: ignore[untyped-decorator,no-untyped-call,misc]  # noqa: E501
         async def handle_list_resources() -> List[types.Resource]:
             """Return list of available resources - not used by Marcus."""
             return []
 
-        @self.server.read_resource()  # type: ignore[misc]
+        @self.server.read_resource()  # type: ignore[untyped-decorator,no-untyped-call,misc]  # noqa: E501
         async def handle_read_resource(uri: str) -> str:
             """Read a resource - Marcus doesn't use resources currently."""
             raise ValueError(f"Resource not found: {uri}")
 
-        @self.server.get_prompt()  # type: ignore[misc]
+        @self.server.get_prompt()  # type: ignore[untyped-decorator,no-untyped-call,misc]  # noqa: E501
         async def handle_get_prompt(
             name: str, arguments: Optional[Dict[str, str]] = None
         ) -> types.GetPromptResult:
@@ -481,7 +491,7 @@ class MarcusServer:
             logger.warning(f"Failed to auto-sync projects: {e}")
 
         # Auto-select default project if configured
-        default_project_name = self.config.get("default_project_name")
+        default_project_name = get_config().default_project_name
         if default_project_name:
             logger.info(f"Auto-selecting default project: {default_project_name}")
             try:
@@ -513,7 +523,7 @@ class MarcusServer:
             _ = self.project_manager.lock  # Force lock creation
 
         # Check if we're in multi-project mode or legacy mode
-        if self.config.is_multi_project_mode():
+        if not get_config().single_project_mode:
             # Get kanban client from project manager
             self.kanban_client = await self.project_manager.get_kanban_client()
             if self.kanban_client:
@@ -527,41 +537,20 @@ class MarcusServer:
             # Migrate to multi-project if needed
             await self._migrate_to_multi_project()
 
-        # If still no kanban client, check if we need to sync config
-        if not self.kanban_client and self.config.is_multi_project_mode():
-            # Config might have been migrated but not synced to registry
-            active_project_id = self.config.get_active_project_id()
-            if active_project_id:
-                # Check if project exists in registry
-                project = await self.project_registry.get_project(active_project_id)
-                if not project:
-                    # Project is in config but not in registry - sync it
-                    projects_config = self.config.get_projects_config()
-                    if active_project_id in projects_config:
-                        proj_data = projects_config[active_project_id]
-                        project = ProjectConfig(
-                            id=active_project_id,
-                            name=proj_data.get("name", "Default Project"),
-                            provider=proj_data.get("provider", "planka"),
-                            provider_config=proj_data.get("config", {}),
-                            tags=proj_data.get("tags", ["default"]),
-                        )
-                        await self.project_registry.add_project(project)
-                        await self.project_registry.set_active_project(
-                            active_project_id
-                        )
+        # If still no kanban client in multi-project mode, check project registry
+        if not self.kanban_client and not get_config().single_project_mode:
+            # Get active project from registry
+            active_project = await self.project_registry.get_active_project()
+            if active_project:
+                # Switch to the active project
+                await self.project_manager.switch_project(active_project.id)
+                self.kanban_client = await self.project_manager.get_kanban_client()
 
-                        # Now switch to the project
-                        await self.project_manager.switch_project(active_project_id)
-                        self.kanban_client = (
-                            await self.project_manager.get_kanban_client()
-                        )
+                # Initialize monitoring systems for the synced project
+                if self.kanban_client:
+                    await self._initialize_monitoring_systems()
 
-                        # Initialize monitoring systems for the synced project
-                        if self.kanban_client:
-                            await self._initialize_monitoring_systems()
-
-                        # Project synced - don't print as it interferes with MCP
+                # Project synced - don't print as it interferes with MCP
 
         # Initialize event visualizer if available
         if self.event_visualizer:
@@ -571,18 +560,7 @@ class MarcusServer:
         # Wrap AI engine for token tracking
         self.ai_engine = ai_usage_middleware.wrap_ai_provider(self.ai_engine)
 
-        # Initialize pattern learning components for API
-        from src.api.pattern_learning_init import init_pattern_learning_components
-
-        try:
-            init_pattern_learning_components(
-                kanban_client=self.kanban_client, ai_engine=self.ai_engine
-            )
-            # Don't print during initialization - it interferes with MCP stdio
-        except Exception:
-            # Log error without printing to stderr during initialization
-            pass  # nosec B110
-
+        # Pattern learning components removed (API infrastructure cleanup)
         # Don't print during initialization - it interferes with MCP stdio
 
     async def _migrate_to_multi_project(self) -> None:
@@ -593,7 +571,7 @@ class MarcusServer:
         Auto-sync discovers real projects from the Kanban provider on startup,
         so Default Project creation is skipped in most cases.
         """
-        if self.kanban_client and not self.config.is_multi_project_mode():
+        if self.kanban_client and get_config().single_project_mode:
             # Check if we've already migrated (have projects in registry)
             existing_projects = await self.project_registry.list_projects()
             if existing_projects:
@@ -631,7 +609,7 @@ class MarcusServer:
             )
 
             # Get lease configuration - project-specific or global
-            lease_config = {}
+            lease_config: Union[TaskLeaseSettings, Dict[str, Any]] = {}
 
             # Check for project-specific lease config
             if hasattr(self, "project_registry") and self.project_registry:
@@ -641,25 +619,46 @@ class MarcusServer:
 
             # Fall back to global config
             if not lease_config:
-                lease_config = self.config.get("task_lease", {})
+                global_config = get_config()
+                lease_config = global_config.task_lease
 
-            self.lease_manager = AssignmentLeaseManager(
-                self.kanban_client,
-                self.assignment_persistence,
-                default_lease_hours=lease_config.get("default_hours", 2.0),
-                max_renewals=lease_config.get("max_renewals", 10),
-                warning_threshold_hours=lease_config.get("warning_hours", 0.5),
-                priority_multipliers=lease_config.get("priority_multipliers"),
-                complexity_multipliers=lease_config.get("complexity_multipliers"),
-                grace_period_minutes=lease_config.get("grace_period_minutes", 30),
-                renewal_decay_factor=lease_config.get("renewal_decay_factor", 0.9),
-                min_lease_hours=lease_config.get("min_lease_hours", 1.0),
-                max_lease_hours=lease_config.get("max_lease_hours", 24.0),
-                stuck_task_threshold_renewals=lease_config.get(
-                    "stuck_threshold_renewals", 5
-                ),
-                enable_adaptive_leases=lease_config.get("enable_adaptive", True),
-            )
+            # Extract values from dataclass or dict
+            if isinstance(lease_config, TaskLeaseSettings):
+                # It's a TaskLeaseSettings dataclass
+                self.lease_manager = AssignmentLeaseManager(
+                    self.kanban_client,
+                    self.assignment_persistence,
+                    default_lease_hours=lease_config.default_hours,
+                    max_renewals=lease_config.max_renewals,
+                    warning_threshold_hours=lease_config.warning_hours,
+                    priority_multipliers=lease_config.priority_multipliers,
+                    complexity_multipliers=lease_config.complexity_multipliers,
+                    grace_period_minutes=lease_config.grace_period_minutes,
+                    renewal_decay_factor=lease_config.renewal_decay_factor,
+                    min_lease_hours=lease_config.min_lease_hours,
+                    max_lease_hours=lease_config.max_lease_hours,
+                    stuck_task_threshold_renewals=lease_config.stuck_threshold_renewals,
+                    enable_adaptive_leases=lease_config.enable_adaptive,
+                )
+            else:
+                # It's a dict from project config
+                self.lease_manager = AssignmentLeaseManager(
+                    self.kanban_client,
+                    self.assignment_persistence,
+                    default_lease_hours=lease_config.get("default_hours", 2.0),
+                    max_renewals=lease_config.get("max_renewals", 10),
+                    warning_threshold_hours=lease_config.get("warning_hours", 0.5),
+                    priority_multipliers=lease_config.get("priority_multipliers"),
+                    complexity_multipliers=lease_config.get("complexity_multipliers"),
+                    grace_period_minutes=lease_config.get("grace_period_minutes", 30),
+                    renewal_decay_factor=lease_config.get("renewal_decay_factor", 0.9),
+                    min_lease_hours=lease_config.get("min_lease_hours", 1.0),
+                    max_lease_hours=lease_config.get("max_lease_hours", 24.0),
+                    stuck_task_threshold_renewals=lease_config.get(
+                        "stuck_threshold_renewals", 5
+                    ),
+                    enable_adaptive_leases=lease_config.get("enable_adaptive", True),
+                )
             self.lease_monitor = LeaseMonitor(self.lease_manager)
             await self.lease_monitor.start()
             logger.info("Assignment lease system initialized")
@@ -726,58 +725,37 @@ class MarcusServer:
         from src.core.error_framework import ConfigurationError, ErrorContext
 
         try:
-            # Load from config_marcus.json if environment variables aren't set
-            import json
-            from pathlib import Path
+            # Load from centralized config
+            config = get_config()
 
-            config_path = Path(__file__).parent.parent.parent / "config_marcus.json"
-            if config_path.exists():
-                with open(config_path, "r") as f:
-                    config = json.load(f)
+            # Set Planka environment variables if not already set
+            if config.kanban.planka_base_url and "PLANKA_BASE_URL" not in os.environ:
+                os.environ["PLANKA_BASE_URL"] = config.kanban.planka_base_url
+            if config.kanban.planka_email and "PLANKA_AGENT_EMAIL" not in os.environ:
+                os.environ["PLANKA_AGENT_EMAIL"] = config.kanban.planka_email
+            if (
+                config.kanban.planka_password
+                and "PLANKA_AGENT_PASSWORD" not in os.environ
+            ):
+                os.environ["PLANKA_AGENT_PASSWORD"] = config.kanban.planka_password
+            if config.kanban.board_name and "PLANKA_PROJECT_NAME" not in os.environ:
+                os.environ["PLANKA_PROJECT_NAME"] = config.kanban.board_name
 
-                # Set Planka environment variables if not already set
-                if "planka" in config:
-                    planka_config = config["planka"]
-                    if "PLANKA_BASE_URL" not in os.environ:
-                        os.environ["PLANKA_BASE_URL"] = planka_config.get(
-                            "base_url", "http://localhost:3333"
-                        )
-                    if "PLANKA_AGENT_EMAIL" not in os.environ:
-                        os.environ["PLANKA_AGENT_EMAIL"] = planka_config.get(
-                            "email", "demo@demo.demo"
-                        )
-                    if "PLANKA_AGENT_PASSWORD" not in os.environ:
-                        os.environ["PLANKA_AGENT_PASSWORD"] = planka_config.get(
-                            "password", "demo"
-                        )
-                    if "PLANKA_PROJECT_NAME" not in os.environ:
-                        os.environ["PLANKA_PROJECT_NAME"] = config.get(
-                            "project_name", "Task Master Test"
-                        )
+            # Support GitHub
+            if config.kanban.github_token and "GITHUB_TOKEN" not in os.environ:
+                os.environ["GITHUB_TOKEN"] = config.kanban.github_token
+            if config.kanban.github_owner and "GITHUB_OWNER" not in os.environ:
+                os.environ["GITHUB_OWNER"] = config.kanban.github_owner
+            if config.kanban.github_repo and "GITHUB_REPO" not in os.environ:
+                os.environ["GITHUB_REPO"] = config.kanban.github_repo
 
-                # Support GitHub if configured in the future
-                if "github" in config:
-                    github_config = config["github"]
-                    if "GITHUB_TOKEN" not in os.environ and github_config.get("token"):
-                        os.environ["GITHUB_TOKEN"] = github_config["token"]
-                    if "GITHUB_OWNER" not in os.environ and github_config.get("owner"):
-                        os.environ["GITHUB_OWNER"] = github_config["owner"]
-                    if "GITHUB_REPO" not in os.environ and github_config.get("repo"):
-                        os.environ["GITHUB_REPO"] = github_config["repo"]
+            # Support Linear
+            if config.kanban.linear_api_key and "LINEAR_API_KEY" not in os.environ:
+                os.environ["LINEAR_API_KEY"] = config.kanban.linear_api_key
+            if config.kanban.linear_team_id and "LINEAR_TEAM_ID" not in os.environ:
+                os.environ["LINEAR_TEAM_ID"] = config.kanban.linear_team_id
 
-                # Support Linear if configured in the future
-                if "linear" in config:
-                    linear_config = config["linear"]
-                    if "LINEAR_API_KEY" not in os.environ and linear_config.get(
-                        "api_key"
-                    ):
-                        os.environ["LINEAR_API_KEY"] = linear_config["api_key"]
-                    if "LINEAR_TEAM_ID" not in os.environ and linear_config.get(
-                        "team_id"
-                    ):
-                        os.environ["LINEAR_TEAM_ID"] = linear_config["team_id"]
-
-                # Configuration loaded successfully from config_marcus.json
+            # Configuration loaded successfully from config_marcus.json
 
         except FileNotFoundError as e:
             raise ConfigurationError(
@@ -806,7 +784,11 @@ class MarcusServer:
 
     def log_event(self, event_type: str, data: Dict[str, Any]) -> None:
         """Log events immediately to realtime log and optionally to Events system."""
-        event = {"timestamp": datetime.now().isoformat(), "type": event_type, **data}
+        event = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "type": event_type,
+            **data,
+        }
         self.realtime_log.write(json.dumps(event) + "\n")
 
         # Also publish to Events system if available
@@ -831,11 +813,45 @@ class MarcusServer:
 
         try:
             # Get all tasks from the board
-            # CRITICAL: Skip if subtasks already migrated to avoid losing them
-            # (get_all_tasks only returns parent tasks from Planka,
-            # not migrated subtasks)
-            if self.kanban_client is not None and not self._subtasks_migrated:
-                self.project_tasks = await self.kanban_client.get_all_tasks()
+            # CRITICAL: After subtasks are migrated, we need to update parent tasks
+            # while preserving the migrated subtasks in memory
+            if self.kanban_client is not None:
+                parent_tasks = await self.kanban_client.get_all_tasks()
+
+                subtask_count = (
+                    len(self.subtask_manager.subtasks) if self.subtask_manager else 0
+                )
+                logger.info(
+                    f"[DEBUG] refresh_project_state: got {len(parent_tasks)} "
+                    f"parent tasks, _subtasks_migrated={self._subtasks_migrated}, "
+                    f"subtask_manager exists={self.subtask_manager is not None}, "
+                    f"subtask_manager.subtasks count={subtask_count}"
+                )
+
+                if not self._subtasks_migrated:
+                    # First time: copy parent tasks to avoid mutating source
+                    # Migration will append subtasks to this list
+                    self.project_tasks = parent_tasks.copy()
+                    logger.info(
+                        f"[DEBUG] First refresh: set project_tasks to "
+                        f"{len(parent_tasks)} parent tasks"
+                    )
+                else:
+                    # After migration: preserve subtasks, update parents
+                    # Extract existing subtasks
+                    existing_subtasks = []
+                    if self.project_tasks:
+                        for task in self.project_tasks:
+                            if getattr(task, "is_subtask", False):
+                                existing_subtasks.append(task)
+
+                    # Combine refreshed parents with preserved subtasks
+                    self.project_tasks = parent_tasks + existing_subtasks
+
+                    logger.info(
+                        f"Refreshed {len(parent_tasks)} parent tasks, "
+                        f"preserved {len(existing_subtasks)} subtasks"
+                    )
 
             # Migrate subtasks from SubtaskManager to unified project_tasks storage
             # ONLY run migration once to avoid duplicate subtasks
@@ -844,8 +860,34 @@ class MarcusServer:
                 and self.project_tasks is not None
                 and not self._subtasks_migrated
             ):
-                self.subtask_manager.migrate_to_unified_storage(self.project_tasks)
-                self._subtasks_migrated = True
+                logger.info(
+                    f"[DEBUG] Before migration: project_tasks has "
+                    f"{len(self.project_tasks)} tasks"
+                )
+
+                # CRITICAL FIX: Only set migration flag if we have parent tasks
+                # If project_tasks is empty, migration will skip all subtasks,
+                # but we need to allow retry on next refresh when parents exist
+                has_parent_tasks = any(
+                    not getattr(t, "is_subtask", False) for t in self.project_tasks
+                )
+
+                if has_parent_tasks:
+                    self.subtask_manager.migrate_to_unified_storage(self.project_tasks)
+                    self._subtasks_migrated = True
+                    migrated_subtasks = sum(
+                        1 for t in self.project_tasks if getattr(t, "is_subtask", False)
+                    )
+                    logger.info(
+                        f"[DEBUG] After migration: project_tasks has "
+                        f"{len(self.project_tasks)} tasks, "
+                        f"subtasks: {migrated_subtasks}"
+                    )
+                else:
+                    logger.warning(
+                        "[DEBUG] Skipping migration: no parent tasks in project_tasks. "
+                        "Will retry on next refresh when parent tasks are available."
+                    )
 
                 # Wire cross-parent dependencies after migration completes
                 # Creates fine-grained dependencies between different parents
@@ -922,7 +964,7 @@ class MarcusServer:
                     overdue_tasks=[],  # Would need to check due dates
                     team_velocity=0.0,  # Would need to calculate
                     risk_level=RiskLevel.LOW,  # Simplified
-                    last_updated=datetime.now(),
+                    last_updated=datetime.now(timezone.utc),
                 )
 
             # Create a JSON-serializable version of project_state
@@ -1028,11 +1070,27 @@ class MarcusServer:
             agent_id: str, name: str, role: str, skills: List[str] = []
         ) -> Dict[str, Any]:
             """Register a new agent with the Marcus system."""
+            from src.logging.mcp_tool_logger import log_mcp_tool_response
+
             from .tools.agent import register_agent as impl
 
-            return await impl(
+            result = await impl(
                 agent_id=agent_id, name=name, role=role, skills=skills, state=server
             )
+
+            # Log MCP tool response
+            log_mcp_tool_response(
+                tool_name="register_agent",
+                arguments={
+                    "agent_id": agent_id,
+                    "name": name,
+                    "role": role,
+                    "skills": skills,
+                },
+                response=result,
+            )
+
+            return result
 
         @self._fastmcp.tool()  # type: ignore[misc]
         async def get_agent_status(agent_id: str) -> Dict[str, Any]:
@@ -1171,11 +1229,27 @@ class MarcusServer:
                 agent_id: str, name: str, role: str, skills: List[str] = []
             ) -> Dict[str, Any]:
                 """Register a new agent with the Marcus system."""
+                from src.logging.mcp_tool_logger import log_mcp_tool_response
+
                 from .tools.agent import register_agent as impl
 
-                return await impl(
+                result = await impl(
                     agent_id=agent_id, name=name, role=role, skills=skills, state=server
                 )
+
+                # Log MCP tool response
+                log_mcp_tool_response(
+                    tool_name="register_agent",
+                    arguments={
+                        "agent_id": agent_id,
+                        "name": name,
+                        "role": role,
+                        "skills": skills,
+                    },
+                    response=result,
+                )
+
+                return result
 
         if "get_agent_status" in allowed_tools:
 
@@ -1191,14 +1265,25 @@ class MarcusServer:
             @app.tool()  # type: ignore[misc]
             async def request_next_task(agent_id: str) -> Dict[str, Any]:
                 """Request the next optimal task assignment for an agent."""
+                from src.logging.mcp_tool_logger import log_mcp_tool_response
+
                 from .tools.task import request_next_task as impl
 
                 result = await impl(agent_id=agent_id, state=server)
-                return (
+                final_result = (
                     dict(result)
                     if isinstance(result, dict)
                     else {"error": "Invalid response format"}
                 )
+
+                # Log MCP tool response
+                log_mcp_tool_response(
+                    tool_name="request_next_task",
+                    arguments={"agent_id": agent_id},
+                    response=final_result,
+                )
+
+                return final_result
 
         if "report_task_progress" in allowed_tools:
 
@@ -1211,9 +1296,11 @@ class MarcusServer:
                 message: str = "",
             ) -> Dict[str, Any]:
                 """Report progress on a task."""
+                from src.logging.mcp_tool_logger import log_mcp_tool_response
+
                 from .tools.task import report_task_progress as impl
 
-                return await impl(
+                result = await impl(
                     agent_id=agent_id,
                     task_id=task_id,
                     status=status,
@@ -1221,6 +1308,21 @@ class MarcusServer:
                     message=message,
                     state=server,
                 )
+
+                # Log MCP tool response
+                log_mcp_tool_response(
+                    tool_name="report_task_progress",
+                    arguments={
+                        "agent_id": agent_id,
+                        "task_id": task_id,
+                        "status": status,
+                        "progress": progress,
+                        "message": message,
+                    },
+                    response=result,
+                )
+
+                return result
 
         if "report_blocker" in allowed_tools:
 
@@ -1232,15 +1334,31 @@ class MarcusServer:
                 severity: str = "medium",
             ) -> Dict[str, Any]:
                 """Report a blocker on a task."""
+                from src.logging.mcp_tool_logger import log_mcp_tool_response
+
                 from .tools.task import report_blocker as impl
 
-                return await impl(
+                result = await impl(
                     agent_id=agent_id,
                     task_id=task_id,
                     blocker_description=blocker_description,
                     severity=severity,
                     state=server,
                 )
+
+                # Log MCP tool response
+                log_mcp_tool_response(
+                    tool_name="report_blocker",
+                    arguments={
+                        "agent_id": agent_id,
+                        "task_id": task_id,
+                        "blocker_description": blocker_description,
+                        "severity": severity,
+                    },
+                    response=result,
+                )
+
+                return result
 
         if "unassign_task" in allowed_tools:
 
@@ -1316,14 +1434,29 @@ class MarcusServer:
                 Dict[str, Any]
                     Dict with success, project_id, tasks_created, and board info.
                 """
+                from src.logging.mcp_tool_logger import log_mcp_tool_response
+
                 from .tools.nlp import create_project as impl
 
-                return await impl(
+                result = await impl(
                     description=description,
                     project_name=project_name,
                     options=options,
                     state=server,
                 )
+
+                # Log MCP tool response
+                log_mcp_tool_response(
+                    tool_name="create_project",
+                    arguments={
+                        "description": description,
+                        "project_name": project_name,
+                        "options": options,
+                    },
+                    response=result,
+                )
+
+                return result
 
         if "create_tasks" in allowed_tools:
 
@@ -1601,14 +1734,184 @@ class MarcusServer:
 
                 return await impl()
 
+        if "query_project_history" in allowed_tools:
+
+            @app.tool()  # type: ignore[misc]
+            async def query_project_history(
+                project_id: str,
+                query_type: str,
+                status: Optional[str] = None,
+                agent_id: Optional[str] = None,
+                task_id: Optional[str] = None,
+                artifact_type: Optional[str] = None,
+                affecting_task_id: Optional[str] = None,
+                event_type: Optional[str] = None,
+                keyword: Optional[str] = None,
+                start_time: Optional[str] = None,
+                end_time: Optional[str] = None,
+            ) -> Dict[str, Any]:
+                """
+                Query project history with flexible filtering.
+
+                Unified tool for querying project execution history across
+                tasks, decisions, artifacts, agents, timeline, and conversations.
+
+                Query Types:
+                - summary: Get project summary statistics
+                - tasks: Find tasks (filter by status, agent_id, or timerange)
+                - blocked_tasks: Find tasks with blockers
+                - task_dependencies: Get dependency chain (requires task_id)
+                - decisions: Find decisions (filter by task_id, agent_id, or
+                  affecting_task_id)
+                - artifacts: Find artifacts (filter by task_id, artifact_type,
+                  or agent_id)
+                - agent_history: Get agent history (requires agent_id)
+                - agent_metrics: Get agent performance metrics (requires agent_id)
+                - timeline: Search timeline events (filter by event_type, agent_id,
+                  task_id, or timerange)
+                - conversations: Search conversations (filter by keyword, agent_id,
+                  or task_id)
+
+                Parameters
+                ----------
+                project_id : str
+                    Project to query
+                query_type : str
+                    Type of query (see above for options)
+                status : Optional[str]
+                    Filter by task status (for tasks query)
+                agent_id : Optional[str]
+                    Filter by agent ID (for tasks/decisions/artifacts/timeline/
+                    conversations queries, or required for agent_history/agent_metrics)
+                task_id : Optional[str]
+                    Filter by task ID (for decisions/artifacts/timeline/conversations,
+                    or required for task_dependencies)
+                artifact_type : Optional[str]
+                    Filter by artifact type (for artifacts query)
+                affecting_task_id : Optional[str]
+                    Find decisions affecting this task (for decisions query)
+                event_type : Optional[str]
+                    Filter by event type (for timeline query)
+                keyword : Optional[str]
+                    Search keyword (for conversations query)
+                start_time : Optional[str]
+                    Start of time range in ISO format (for tasks/timeline queries)
+                end_time : Optional[str]
+                    End of time range in ISO format (for tasks/timeline queries)
+
+                Returns
+                -------
+                Dict[str, Any]
+                    Query results with success status and data
+
+                Examples
+                --------
+                Get project summary:
+                >>> query_project_history("proj123", "summary")
+
+                Find completed tasks:
+                >>> query_project_history("proj123", "tasks", status="completed")
+
+                Find decisions by agent:
+                >>> query_project_history("proj123", "decisions", agent_id="agent1")
+
+                Search conversations for keyword:
+                >>> query_project_history("proj123", "conversations", keyword="API")
+                """
+                from .tools.history import query_project_history as impl
+
+                # Build filters dict from optional parameters
+                filters = {}
+                if status is not None:
+                    filters["status"] = status
+                if agent_id is not None:
+                    filters["agent_id"] = agent_id
+                if task_id is not None:
+                    filters["task_id"] = task_id
+                if artifact_type is not None:
+                    filters["artifact_type"] = artifact_type
+                if affecting_task_id is not None:
+                    filters["affecting_task_id"] = affecting_task_id
+                if event_type is not None:
+                    filters["event_type"] = event_type
+                if keyword is not None:
+                    filters["keyword"] = keyword
+                if start_time is not None:
+                    filters["start_time"] = start_time
+                if end_time is not None:
+                    filters["end_time"] = end_time
+
+                return await impl(
+                    project_id=project_id,
+                    query_type=query_type,
+                    state=server,
+                    **filters,
+                )
+
+        if "list_project_history_files" in allowed_tools:
+
+            @app.tool()  # type: ignore[misc]
+            async def list_project_history_files() -> Dict[str, Any]:
+                """
+                List all projects with available history data.
+
+                Scans the project history storage directory to find all projects
+                that have recorded history data (decisions, artifacts, snapshots).
+
+                Returns
+                -------
+                Dict[str, Any]
+                    Dict with success status and list of projects with history:
+                    - projects: List of project dicts with:
+                      - project_id: Project identifier
+                      - project_name: Human-readable project name
+                      - has_decisions: Whether decision history exists
+                      - has_artifacts: Whether artifact history exists
+                      - has_snapshot: Whether snapshot exists
+                      - last_updated: ISO timestamp of last update
+                    - count: Number of projects found
+
+                Examples
+                --------
+                >>> list_project_history_files()
+                {
+                    "success": True,
+                    "projects": [
+                        {
+                            "project_id": "proj123",
+                            "project_name": "My App",
+                            "has_decisions": True,
+                            "has_artifacts": True,
+                            "has_snapshot": False,
+                            "last_updated": "2025-11-07T12:00:00Z"
+                        }
+                    ],
+                    "count": 1
+                }
+                """
+                from .tools.history import list_project_history_files as impl
+
+                return await impl(state=server)
+
         if "get_task_context" in allowed_tools:
 
             @app.tool()  # type: ignore[misc]
             async def get_task_context(task_id: str) -> Dict[str, Any]:
                 """Get the full context for a specific task."""
+                from src.logging.mcp_tool_logger import log_mcp_tool_response
+
                 from .tools.context import get_task_context as impl
 
-                return await impl(task_id=task_id, state=server)
+                result = await impl(task_id=task_id, state=server)
+
+                # Log MCP tool response
+                log_mcp_tool_response(
+                    tool_name="get_task_context",
+                    arguments={"task_id": task_id},
+                    response=result,
+                )
+
+                return result
 
         if "log_decision" in allowed_tools:
 
@@ -1619,14 +1922,29 @@ class MarcusServer:
                 decision: str,
             ) -> Dict[str, Any]:
                 """Log an architectural decision."""
+                from src.logging.mcp_tool_logger import log_mcp_tool_response
+
                 from .tools.context import log_decision as impl
 
-                return await impl(
+                result = await impl(
                     agent_id=agent_id,
                     task_id=task_id,
                     decision=decision,
                     state=server,
                 )
+
+                # Log MCP tool response
+                log_mcp_tool_response(
+                    tool_name="log_decision",
+                    arguments={
+                        "agent_id": agent_id,
+                        "task_id": task_id,
+                        "decision": decision,
+                    },
+                    response=result,
+                )
+
+                return result
 
         if "log_artifact" in allowed_tools:
 
@@ -1685,9 +2003,11 @@ class MarcusServer:
                 Dict[str, Any]
                     Result with artifact location and storage details
                 """
+                from src.logging.mcp_tool_logger import log_mcp_tool_response
+
                 from .tools.attachment import log_artifact as impl
 
-                return await impl(
+                result = await impl(
                     task_id=task_id,
                     filename=filename,
                     content=content,
@@ -1697,6 +2017,23 @@ class MarcusServer:
                     location=location,
                     state=server,
                 )
+
+                # Log MCP tool response
+                log_mcp_tool_response(
+                    tool_name="log_artifact",
+                    arguments={
+                        "task_id": task_id,
+                        "filename": filename,
+                        "content": content,
+                        "artifact_type": artifact_type,
+                        "project_root": project_root,
+                        "description": description,
+                        "location": location,
+                    },
+                    response=result,
+                )
+
+                return result
 
         if "check_task_dependencies" in allowed_tools:
 
@@ -1918,138 +2255,7 @@ class MarcusServer:
                     state=server,
                 )
 
-        # Pipeline tools
-        if "pipeline_replay_start" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def pipeline_replay_start(flow_id: str) -> Dict[str, Any]:
-                """Start replay session for a pipeline flow."""
-                from .tools.pipeline import start_replay as impl
-
-                return await impl(server, {"flow_id": flow_id})
-
-        if "pipeline_replay_forward" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def pipeline_replay_forward() -> Dict[str, Any]:
-                """Step forward in pipeline replay."""
-                from .tools.pipeline import replay_step_forward as impl
-
-                return await impl(server, {})
-
-        if "pipeline_replay_backward" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def pipeline_replay_backward() -> Dict[str, Any]:
-                """Step backward in pipeline replay."""
-                from .tools.pipeline import replay_step_backward as impl
-
-                return await impl(server, {})
-
-        if "pipeline_replay_jump" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def pipeline_replay_jump(position: int) -> Dict[str, Any]:
-                """Jump to specific position in replay."""
-                from .tools.pipeline import replay_jump_to as impl
-
-                return await impl(server, {"position": position})
-
-        if "what_if_start" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def what_if_start(flow_id: str) -> Dict[str, Any]:
-                """Start what-if analysis session."""
-                from .tools.pipeline import start_what_if_analysis as impl
-
-                return await impl(server, {"flow_id": flow_id})
-
-        if "what_if_simulate" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def what_if_simulate(
-                modifications: List[Dict[str, Any]],
-            ) -> Dict[str, Any]:
-                """Simulate pipeline with modifications."""
-                from .tools.pipeline import simulate_modification as impl
-
-                return await impl(server, {"modifications": modifications})
-
-        if "what_if_compare" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def what_if_compare() -> Dict[str, Any]:
-                """Compare all what-if scenarios."""
-                from .tools.pipeline import compare_what_if_scenarios as impl
-
-                return await impl(server, {})
-
-        if "pipeline_compare" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def pipeline_compare(flow_ids: List[str]) -> Dict[str, Any]:
-                """Compare multiple pipeline flows."""
-                from .tools.pipeline import compare_pipelines as impl
-
-                return await impl(server, {"flow_ids": flow_ids})
-
-        if "pipeline_report" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def pipeline_report(
-                flow_id: str, format: str = "html"
-            ) -> Dict[str, Any]:
-                """Generate pipeline report."""
-                from .tools.pipeline import generate_report as impl
-
-                return await impl(server, {"flow_id": flow_id, "format": format})
-
-        if "pipeline_monitor_dashboard" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def pipeline_monitor_dashboard() -> Dict[str, Any]:
-                """Get live monitoring dashboard data."""
-                from .tools.pipeline import get_live_dashboard as impl
-
-                return await impl(server, {})
-
-        if "pipeline_monitor_flow" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def pipeline_monitor_flow(flow_id: str) -> Dict[str, Any]:
-                """Track specific flow progress."""
-                from .tools.pipeline import track_flow_progress as impl
-
-                return await impl(server, {"flow_id": flow_id})
-
-        if "pipeline_predict_risk" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def pipeline_predict_risk(flow_id: str) -> Dict[str, Any]:
-                """Predict failure risk for a flow."""
-                from .tools.pipeline import predict_failure_risk as impl
-
-                return await impl(server, {"flow_id": flow_id})
-
-        if "pipeline_recommendations" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def pipeline_recommendations(flow_id: str) -> Dict[str, Any]:
-                """Get recommendations for a pipeline flow."""
-                from .tools.pipeline import get_recommendations as impl
-
-                return await impl(server, {"flow_id": flow_id})
-
-        if "pipeline_find_similar" in allowed_tools:
-
-            @app.tool()  # type: ignore[misc]
-            async def pipeline_find_similar(
-                flow_id: str, limit: int = 5
-            ) -> Dict[str, Any]:
-                """Find similar pipeline flows."""
-                from .tools.pipeline import find_similar_flows as impl
-
-                return await impl(server, {"flow_id": flow_id, "limit": limit})
+        # Pipeline tools removed - all pipeline functionality moved to Seneca
 
         # Project management tools
         if "add_project" in allowed_tools:
@@ -2220,19 +2426,17 @@ async def run_multi_endpoint_server(server: MarcusServer) -> None:
 
     # Get multi-endpoint config
     config = get_config()
-    base_config = config.get(
-        "multi_endpoint",
-        {
-            "human": {"port": 4298, "enabled": True},
-            "agent": {"port": 4299, "enabled": True},
-            "analytics": {"port": 4300, "enabled": True},
-        },
-    )
 
     # Override ports with command line arguments if provided
     multi_endpoint_config = {}
     for endpoint_type in ["human", "agent", "analytics"]:
-        multi_endpoint_config[endpoint_type] = base_config.get(endpoint_type, {}).copy()
+        endpoint_cfg = getattr(config.multi_endpoint, endpoint_type)
+        multi_endpoint_config[endpoint_type] = {
+            "port": endpoint_cfg.port,
+            "enabled": endpoint_cfg.enabled,
+            "host": endpoint_cfg.host,
+            "path": endpoint_cfg.path,
+        }
 
         # Check for command line override
         port_arg = getattr(args, f"{endpoint_type}_port", None)
@@ -2308,8 +2512,7 @@ async def main() -> None:
     """Run the Marcus MCP server."""
     # Get transport from config
     config = get_config()
-    transport_config = config.get("transport", {})
-    transport = transport_config.get("type", "stdio")
+    transport = config.transport.type or "stdio"
 
     # Command line overrides
     if "--http" in sys.argv:
@@ -2356,11 +2559,10 @@ async def main() -> None:
             fastmcp = server._create_fastmcp()
 
             # Get HTTP configuration from config file
-            http_config = transport_config.get("http", {})
-            host = http_config.get("host", "127.0.0.1")
-            port = http_config.get("port", 4298)
-            path = http_config.get("path", "/mcp")
-            log_level = http_config.get("log_level", "info")
+            host = config.transport.http_host
+            port = config.transport.http_port
+            path = config.transport.http_path
+            log_level = config.transport.log_level
 
             # Pretty output similar to Jupyter
             print("\n" + "=" * 70)
@@ -2399,9 +2601,11 @@ if __name__ == "__main__":
     # Load config first to get transport settings
     config = get_config()
 
+    # Setup logging IMMEDIATELY after config load
+    setup_logging()
+
     # Get transport type from config, with command line override
-    transport_config = config.get("transport", {})
-    transport = transport_config.get("type", "stdio")
+    transport = config.transport.type or "stdio"
 
     # Command line arguments override config
     if "--http" in sys.argv:
@@ -2448,11 +2652,10 @@ if __name__ == "__main__":
         fastmcp = server._create_fastmcp()
 
         # Get HTTP configuration from config file
-        http_config = transport_config.get("http", {})
-        host = http_config.get("host", "127.0.0.1")
-        port = http_config.get("port", 8080)
-        path = http_config.get("path", "/mcp")
-        log_level = http_config.get("log_level", "info")
+        host = config.transport.http_host
+        port = config.transport.http_port
+        path = config.transport.http_path
+        log_level = config.transport.log_level
 
         # Pretty output similar to Jupyter
         print("\n" + "=" * 70)

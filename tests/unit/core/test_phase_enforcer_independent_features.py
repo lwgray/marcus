@@ -5,7 +5,7 @@ Tests that the enforcer correctly handles independent features without
 creating unnecessary cross-feature dependencies.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -29,7 +29,7 @@ def independent_api_tasks():
 
     These should NOT depend on each other.
     """
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
     return [
         # Feature 1: List Users
@@ -205,7 +205,7 @@ def test_feature_detection_fine_grained(enforcer, independent_api_tasks):
 
 def test_explicit_feature_labels_respected(enforcer):
     """Test that explicit feature: labels are respected and prevent grouping."""
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
     tasks = [
         Task(

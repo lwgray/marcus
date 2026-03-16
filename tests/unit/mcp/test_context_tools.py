@@ -4,7 +4,7 @@ Unit tests for context management tools.
 Tests the get_task_context and log_decision functions in the context module.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, Mock
 
@@ -122,8 +122,8 @@ def sample_task():
         status=TaskStatus.TODO,
         priority=Priority.MEDIUM,
         assigned_to=None,
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
         due_date=None,
         estimated_hours=1.0,
         dependencies=[],
@@ -218,8 +218,8 @@ class TestGetTaskContext:
             status=TaskStatus.DONE,
             priority=Priority.HIGH,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=2.0,
             dependencies=[],
@@ -263,8 +263,8 @@ class TestGetTaskContext:
             status=TaskStatus.DONE,
             priority=Priority.HIGH,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=2.0,
             dependencies=[],
@@ -410,8 +410,8 @@ class TestGetTaskContext:
             status=TaskStatus.IN_PROGRESS,
             priority=Priority.HIGH,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=4.0,
             dependencies=[],

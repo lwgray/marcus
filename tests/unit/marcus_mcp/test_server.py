@@ -224,29 +224,25 @@ class TestMarcusServerInitialization:
         monkeypatch.setenv("PLANKA_AGENT_EMAIL", "test@test.com")
         monkeypatch.setenv("PLANKA_AGENT_PASSWORD", "testpass")
 
-    def test_server_initialization_success(self, mock_config):
+    @patch("src.config.marcus_config.get_config")
+    def test_server_initialization_success(self, mock_get_config, mock_config):
         """Test successful server initialization"""
-        mock_config_loader = MockConfigLoader(mock_config)
+        from src.config.marcus_config import AISettings, KanbanSettings, MarcusConfig
 
-        # Set the singleton directly
-        import src.config.config_loader as config_module
+        # Create mock config using new dataclass-based system
+        mock_config_instance = MarcusConfig(
+            kanban=KanbanSettings(provider="planka"),
+            ai=AISettings(enabled=False),
+        )
+        mock_get_config.return_value = mock_config_instance
 
-        original_singleton = config_module._config_loader
-        config_module._config_loader = mock_config_loader
-
-        try:
-            with patch(
-                "src.learning.project_pattern_learner.ProjectPatternLearner._load_existing_patterns"
-            ):
-                with patch(
-                    "pathlib.Path.exists", selective_path_exists_for_config(False)
-                ):
-                    with patch("builtins.open", mock_open()):
-                        with patch("src.marcus_mcp.server.Path.mkdir"):
-                            server = MarcusServer()
-        finally:
-            # Restore original singleton
-            config_module._config_loader = original_singleton
+        with patch(
+            "src.learning.project_pattern_learner.ProjectPatternLearner._load_existing_patterns"
+        ):
+            with patch("pathlib.Path.exists", selective_path_exists_for_config(False)):
+                with patch("builtins.open", mock_open()):
+                    with patch("src.marcus_mcp.server.Path.mkdir"):
+                        server = MarcusServer()
 
         # Verify initialization
         assert server.provider == "planka"
@@ -275,7 +271,7 @@ class TestMarcusServerInitialization:
     )
     @patch("src.core.project_context_manager.get_config")
     @patch("src.marcus_mcp.server.get_config")
-    @patch("src.config.config_loader.get_config")
+    @patch("src.config.marcus_config.get_config")
     @patch("pathlib.Path.exists", selective_path_exists_for_config(False))
     @patch("builtins.open", new_callable=mock_open)
     @patch("src.marcus_mcp.server.Path.mkdir")
@@ -330,7 +326,7 @@ class TestMarcusServerInitialization:
     )
     @patch("src.core.project_context_manager.get_config")
     @patch("src.marcus_mcp.server.get_config")
-    @patch("src.config.config_loader.get_config")
+    @patch("src.config.marcus_config.get_config")
     @patch("pathlib.Path.exists", selective_path_exists_for_config(False))
     @patch("builtins.open", new_callable=mock_open)
     def test_server_registers_handlers(
@@ -384,7 +380,7 @@ class TestKanbanInitialization:
                 "src.marcus_mcp.server.get_config", return_value=mock_config_loader
             ):
                 with patch(
-                    "src.config.config_loader.get_config",
+                    "src.config.marcus_config.get_config",
                     return_value=mock_config_loader,
                 ):
                     with patch(
@@ -507,7 +503,7 @@ class TestMCPHandlers:
                 "src.marcus_mcp.server.get_config", return_value=mock_config_loader
             ):
                 with patch(
-                    "src.config.config_loader.get_config",
+                    "src.config.marcus_config.get_config",
                     return_value=mock_config_loader,
                 ):
                     with patch(
@@ -607,7 +603,7 @@ class TestServerLifecycle:
                 "src.marcus_mcp.server.get_config", return_value=mock_config_loader
             ):
                 with patch(
-                    "src.config.config_loader.get_config",
+                    "src.config.marcus_config.get_config",
                     return_value=mock_config_loader,
                 ):
                     with patch(
@@ -703,7 +699,7 @@ class TestAgentManagement:
                 "src.marcus_mcp.server.get_config", return_value=mock_config_loader
             ):
                 with patch(
-                    "src.config.config_loader.get_config",
+                    "src.config.marcus_config.get_config",
                     return_value=mock_config_loader,
                 ):
                     with patch(
@@ -817,7 +813,7 @@ class TestProjectManagement:
                 "src.marcus_mcp.server.get_config", return_value=mock_config_loader
             ):
                 with patch(
-                    "src.config.config_loader.get_config",
+                    "src.config.marcus_config.get_config",
                     return_value=mock_config_loader,
                 ):
                     with patch(
@@ -889,7 +885,7 @@ class TestEnvironmentConfiguration:
                 "src.marcus_mcp.server.get_config", return_value=mock_config_loader
             ):
                 with patch(
-                    "src.config.config_loader.get_config",
+                    "src.config.marcus_config.get_config",
                     return_value=mock_config_loader,
                 ):
                     with patch(
@@ -984,7 +980,7 @@ class TestEventLogging:
                 "src.marcus_mcp.server.get_config", return_value=mock_config_loader
             ):
                 with patch(
-                    "src.config.config_loader.get_config",
+                    "src.config.marcus_config.get_config",
                     return_value=mock_config_loader,
                 ):
                     with patch(
@@ -1061,7 +1057,7 @@ class TestProjectStateRefresh:
                 "src.marcus_mcp.server.get_config", return_value=mock_config_loader
             ):
                 with patch(
-                    "src.config.config_loader.get_config",
+                    "src.config.marcus_config.get_config",
                     return_value=mock_config_loader,
                 ):
                     with patch(
@@ -1167,7 +1163,7 @@ class TestMCPHandlers:
                 "src.marcus_mcp.server.get_config", return_value=mock_config_loader
             ):
                 with patch(
-                    "src.config.config_loader.get_config",
+                    "src.config.marcus_config.get_config",
                     return_value=mock_config_loader,
                 ):
                     with patch(
@@ -1237,7 +1233,7 @@ class TestServerRunMethod:
                 "src.marcus_mcp.server.get_config", return_value=mock_config_loader
             ):
                 with patch(
-                    "src.config.config_loader.get_config",
+                    "src.config.marcus_config.get_config",
                     return_value=mock_config_loader,
                 ):
                     with patch(
@@ -1297,7 +1293,7 @@ class TestEdgeCases:
                 "src.marcus_mcp.server.get_config", return_value=mock_config_loader
             ):
                 with patch(
-                    "src.config.config_loader.get_config",
+                    "src.config.marcus_config.get_config",
                     return_value=mock_config_loader,
                 ):
                     with patch(
@@ -1322,7 +1318,7 @@ class TestEdgeCases:
         # Provide valid JSON content for all file reads
         default_json = "{}"
         with patch("src.marcus_mcp.server.get_config", return_value=mock_config):
-            with patch("src.config.config_loader.get_config", return_value=mock_config):
+            with patch("src.config.marcus_config.get_config", return_value=mock_config):
                 with patch(
                     "src.core.project_context_manager.get_config",
                     return_value=mock_config,
@@ -1391,7 +1387,7 @@ class TestEdgeCases:
                 "src.marcus_mcp.server.get_config", return_value=mock_config_loader
             ):
                 with patch(
-                    "src.config.config_loader.get_config",
+                    "src.config.marcus_config.get_config",
                     return_value=mock_config_loader,
                 ):
                     with patch(
@@ -1439,7 +1435,7 @@ class TestConcurrencyAndLocking:
                 "src.marcus_mcp.server.get_config", return_value=mock_config_loader
             ):
                 with patch(
-                    "src.config.config_loader.get_config",
+                    "src.config.marcus_config.get_config",
                     return_value=mock_config_loader,
                 ):
                     with patch(
@@ -1496,7 +1492,7 @@ class TestToolIntegration:
                 "src.marcus_mcp.server.get_config", return_value=mock_config_loader
             ):
                 with patch(
-                    "src.config.config_loader.get_config",
+                    "src.config.marcus_config.get_config",
                     return_value=mock_config_loader,
                 ):
                     with patch(

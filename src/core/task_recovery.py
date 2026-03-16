@@ -11,7 +11,7 @@ status due to agent disconnections, timeouts, or other failures. It includes:
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -79,7 +79,7 @@ class TaskRecoveryManager:
 
     async def update_agent_heartbeat(self, agent_id: str) -> None:
         """Update the last heartbeat timestamp for an agent."""
-        self.agent_heartbeats[agent_id] = datetime.now()
+        self.agent_heartbeats[agent_id] = datetime.now(timezone.utc)
         logger.debug(f"Updated heartbeat for agent {agent_id}")
 
     async def check_agent_health(self, agent_id: str) -> bool:
@@ -94,7 +94,7 @@ class TaskRecoveryManager:
             return False
 
         last_heartbeat = self.agent_heartbeats[agent_id]
-        timeout_threshold = datetime.now() - timedelta(
+        timeout_threshold = datetime.now(timezone.utc) - timedelta(
             minutes=self.agent_timeout_minutes
         )
 
@@ -191,12 +191,16 @@ class TaskRecoveryManager:
         last_update = assignment.get("last_progress_update")
         if not last_update:
             # Use assignment time if no progress updates
-            last_update = assignment.get("assigned_at", datetime.now().isoformat())
+            last_update = assignment.get(
+                "assigned_at", datetime.now(timezone.utc).isoformat()
+            )
 
         if isinstance(last_update, str):
             last_update = datetime.fromisoformat(last_update)
 
-        stuck_threshold = datetime.now() - timedelta(hours=self.task_stuck_hours)
+        stuck_threshold = datetime.now(timezone.utc) - timedelta(
+            hours=self.task_stuck_hours
+        )
         return last_update < stuck_threshold
 
     async def recover_task(
@@ -239,7 +243,7 @@ class TaskRecoveryManager:
                 "task_id": task.id,
                 "agent_id": agent_id,
                 "reason": reason.value,
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "attempt": self.recovery_attempts[task.id],
                 "previous_status": task.status.value,
                 "new_status": new_status.value,
@@ -326,7 +330,7 @@ class TaskRecoveryManager:
                 [
                     aid
                     for aid, hb in self.agent_heartbeats.items()
-                    if datetime.now() - hb
+                    if datetime.now(timezone.utc) - hb
                     < timedelta(minutes=self.agent_timeout_minutes)
                 ]
             ),

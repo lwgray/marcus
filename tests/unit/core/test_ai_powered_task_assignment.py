@@ -12,7 +12,7 @@ to ensure fast, isolated unit tests.
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Set
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -37,7 +37,7 @@ def create_task(
     description: str = "",
 ) -> Task:
     """Helper function to create a task with all required fields."""
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     return Task(
         id=task_id,
         name=name,
@@ -88,7 +88,7 @@ class TestAITaskAssignmentEngine:
     @pytest.fixture
     def sample_tasks(self):
         """Create sample tasks for testing."""
-        base_time = datetime.now()
+        base_time = datetime.now(timezone.utc)
         return [
             Task(
                 id="task-1",

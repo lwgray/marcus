@@ -9,7 +9,7 @@ This test suite validates the complete task execution order functionality includ
 - Edge cases and error handling
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from unittest.mock import Mock, patch
 
@@ -56,9 +56,9 @@ class TestTaskExecutionOrderComprehensive:
             "status": TaskStatus.TODO,
             "priority": Priority.MEDIUM,
             "assigned_to": None,
-            "created_at": datetime.now(),
-            "updated_at": datetime.now(),
-            "due_date": datetime.now() + timedelta(days=7),
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc),
+            "due_date": datetime.now(timezone.utc) + timedelta(days=7),
             "estimated_hours": 4.0,
             "actual_hours": 0.0,
         }
@@ -309,10 +309,11 @@ class TestTaskExecutionOrderComprehensive:
 
         feature_groups = enforcer._group_tasks_by_feature(tasks)
 
-        assert "authentication" in feature_groups
-        assert "payment" in feature_groups
-        assert "auth" in feature_groups  # Extracted from task name
-        assert "general" in feature_groups
+        assert "authentication" in feature_groups  # From feature: label
+        assert "payment" in feature_groups  # From component label
+        assert "authentication-system" in feature_groups  # Fine-grained from task name
+        # Note: "Implement payment processing" -> "payment-processing"
+        assert "generic-task" in feature_groups  # From task name
 
     def test_feature_isolation_complex_scenario(self, enforcer):
         """Test feature isolation in a complex multi-feature project."""

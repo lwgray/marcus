@@ -25,14 +25,14 @@ class AgentMarcusServer(MarcusServer):
     def _register_handlers(self) -> None:
         """Register MCP tool handlers with agent restrictions."""
 
-        @self.server.list_tools()  # type: ignore[misc]
+        @self.server.list_tools()  # type: ignore[untyped-decorator,misc]
         async def handle_list_tools() -> List[types.Tool]:
             """Return list of available tools for agents."""
             # Force "agent" role to restrict tool access
             return get_tool_definitions(role="agent")
 
         # Use parent class tool handler
-        @self.server.call_tool()  # type: ignore[misc]
+        @self.server.call_tool()  # type: ignore[untyped-decorator,misc]
         async def handle_call_tool(
             name: str, arguments: Optional[Dict[str, Any]]
         ) -> List[types.TextContent | types.ImageContent | types.EmbeddedResource]:

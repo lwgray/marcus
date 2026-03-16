@@ -10,7 +10,7 @@ import traceback
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, Optional, Union
 
@@ -51,7 +51,7 @@ class ErrorContext:
     agent_state: Optional[Dict[str, Any]] = None
 
     # System context
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     system_state: Optional[Dict[str, Any]] = None
 
@@ -478,6 +478,79 @@ class StateConflictError(BusinessLogicError):
                 immediate_action="Resolve state conflict",
                 long_term_solution="Implement conflict resolution strategy",
                 fallback_strategy="Reset to known good state",
+            ),
+        )
+        super().__init__(message, *args, **kwargs)
+
+
+class TaskValidationError(BusinessLogicError):
+    """Task implementation validation failed."""
+
+    def __init__(
+        self,
+        task_id: str = "unknown",
+        task_name: str = "",
+        issues: list[str] | None = None,
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        """Initialize task validation error.
+
+        Parameters
+        ----------
+        task_id : str
+            Task identifier
+        task_name : str
+            Human-readable task name
+        issues : list[str] | None
+            List of validation issues found
+        """
+        message = f"Task validation failed for task {task_id}"
+        if task_name:
+            message += f" ({task_name})"
+        if issues:
+            message += f": {len(issues)} issue(s) found"
+
+        kwargs.setdefault(
+            "remediation",
+            RemediationSuggestion(
+                immediate_action="Fix validation issues and retry completion",
+                long_term_solution="Follow acceptance criteria before completion",
+                retry_strategy="Fix issues one at a time, revalidate after each fix",
+            ),
+        )
+        super().__init__(message, *args, **kwargs)
+
+
+class ProjectRootNotFoundError(ConfigurationError):
+    """Cannot determine project root directory."""
+
+    def __init__(
+        self,
+        task_id: str = "unknown",
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        """Initialize project root not found error.
+
+        Parameters
+        ----------
+        task_id : str
+            Task identifier
+        """
+        message = (
+            f"Cannot determine project_root for task {task_id} - "
+            "no workspace config and no artifacts logged"
+        )
+
+        kwargs.setdefault(
+            "remediation",
+            RemediationSuggestion(
+                immediate_action=(
+                    "Configure workspace or log artifacts with project_root"
+                ),
+                long_term_solution="Ensure project workspace is configured",
+                escalation_path="Contact Marcus administrator",
             ),
         )
         super().__init__(message, *args, **kwargs)

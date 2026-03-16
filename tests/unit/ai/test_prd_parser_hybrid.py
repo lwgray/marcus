@@ -223,7 +223,9 @@ class TestPRDParserHybridApproach:
             ) as mock_analyze:
                 mock_analyze.return_value = '{"test": "data"}'
 
-                result = await parser._analyze_prd_deeply("Test PRD")
+                result = await parser._analyze_prd_deeply(
+                    "Test PRD", ProjectConstraints()
+                )
 
                 assert result.implementation_approach == "iterative"
                 assert result.confidence == 0.9

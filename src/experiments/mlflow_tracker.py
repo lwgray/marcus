@@ -39,7 +39,7 @@ Usage Example
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import mlflow
@@ -123,7 +123,7 @@ class MarcusExperiment:
             mlflow.set_tags(tags)
 
         # Log experiment start time
-        mlflow.log_param("start_time", datetime.now().isoformat())
+        mlflow.log_param("start_time", datetime.now(timezone.utc).isoformat())
 
         # Reset tracking state
         self.task_times = []
@@ -238,7 +238,7 @@ class MarcusExperiment:
 
         # Log blocker details as artifact
         blocker_data = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "agent_id": agent_id,
             "task_id": task_id,
             "description": blocker_description,
@@ -283,7 +283,7 @@ class MarcusExperiment:
         self.artifact_count += 1
 
         artifact_data = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "task_id": task_id,
             "type": artifact_type,
             "filename": filename,
@@ -325,7 +325,7 @@ class MarcusExperiment:
         self.decision_count += 1
 
         decision_data = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "agent_id": agent_id,
             "task_id": task_id,
             "decision": decision,
@@ -468,7 +468,7 @@ class MarcusExperiment:
             mlflow.log_metrics(final_metrics)
 
         # Log end time
-        mlflow.log_param("end_time", datetime.now().isoformat())
+        mlflow.log_param("end_time", datetime.now(timezone.utc).isoformat())
 
         # Log condition counts
         mlflow.log_metric("final_blocker_count", self.blocker_count)
@@ -546,7 +546,7 @@ class MarcusExperiment:
         report = {
             "experiment_name": self.experiment_name,
             "tracking_uri": self.tracking_uri,
-            "generated_at": datetime.now().isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "runs": comparison,
         }
 

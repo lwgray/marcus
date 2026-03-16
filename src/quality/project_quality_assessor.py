@@ -8,7 +8,7 @@ import json
 import statistics
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, TypedDict
 
 from src.core.models import ProjectState, Task, TaskStatus, WorkerStatus
@@ -258,7 +258,7 @@ class ProjectQualityAssessor:
         return ProjectQualityAssessment(
             project_id=project_state.board_id,
             project_name=project_state.project_name,
-            assessment_date=datetime.now(),
+            assessment_date=datetime.now(timezone.utc),
             overall_score=overall_score,
             code_quality_score=code_score,
             process_quality_score=process_score,
@@ -404,7 +404,7 @@ class ProjectQualityAssessor:
             ),
             "risk_score": getattr(project_state, "risk_score", 0.5),
             "projected_completion_days": (
-                (projected_completion_date - datetime.now()).days
+                (projected_completion_date - datetime.now(timezone.utc)).days
                 if (
                     projected_completion_date := getattr(
                         project_state, "projected_completion_date", None

@@ -11,7 +11,7 @@ This refactored version eliminates code duplication by using base classes and ut
 import logging
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 # Add src to path
@@ -42,9 +42,13 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
     """
 
     def __init__(
-        self, kanban_client: Any, ai_engine: Any, subtask_manager: Any = None
+        self,
+        kanban_client: Any,
+        ai_engine: Any,
+        subtask_manager: Any = None,
+        complexity: str = "standard",
     ) -> None:
-        super().__init__(kanban_client, ai_engine, subtask_manager)
+        super().__init__(kanban_client, ai_engine, subtask_manager, complexity)
         self.prd_parser = AdvancedPRDParser()
         self.board_analyzer = BoardAnalyzer()
         self.context_detector = ContextDetector(self.board_analyzer)
@@ -136,63 +140,48 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             logger.debug(f"Description: {description[:200]}...")
             logger.debug(f"Options: {options}")
 
-            # Check if project/board already set up (by tracked version)
-            # If so, skip project creation to avoid duplication
-            if self.kanban_client and (
-                self.kanban_client.project_id and self.kanban_client.board_id
-            ):
-                proj_id = self.kanban_client.project_id
-                bd_id = self.kanban_client.board_id
+            # ALWAYS create a new Planka project/board for each create_project call
+            # Clear any existing project/board IDs to force new project creation
+            if self.kanban_client:
                 logger.info(
-                    f"Project already created: project_id={proj_id}, "
-                    f"board_id={bd_id}"
+                    f"Creating new project '{project_name}' "
+                    f"(clearing any existing project/board IDs)"
                 )
-            elif options and options.get("mode") == "new_project":
-                # Only create project if not already created
-                if self.kanban_client:
-                    logger.info(
-                        f"Clearing project/board IDs for new_project mode "
-                        f"(current: project_id={self.kanban_client.project_id}, "
-                        f"board_id={self.kanban_client.board_id})"
-                    )
-                    # Set on the underlying client
-                    # (Planka wrapper has read-only properties)
-                    if hasattr(self.kanban_client, "client"):
-                        self.kanban_client.client.project_id = None
-                        self.kanban_client.client.board_id = None
-                    else:
-                        # Direct client (not a wrapper)
-                        self.kanban_client.project_id = None
-                        self.kanban_client.board_id = None
-                    logger.info(
-                        "Cleared project/board IDs to force new project creation"
-                    )
+                # Set on the underlying client
+                # (Planka wrapper has read-only properties)
+                if hasattr(self.kanban_client, "client"):
+                    self.kanban_client.client.project_id = None
+                    self.kanban_client.client.board_id = None
+                else:
+                    # Direct client (not a wrapper)
+                    self.kanban_client.project_id = None
+                    self.kanban_client.board_id = None
 
-                    # Now create the new project/board
-                    from src.integrations.project_auto_setup import ProjectAutoSetup
+                # Now create the new project/board
+                from src.integrations.project_auto_setup import ProjectAutoSetup
 
-                    auto_setup = ProjectAutoSetup()
-                    try:
-                        # Pass the underlying client (not the wrapper) if available
-                        client_to_use = (
-                            self.kanban_client.client
-                            if hasattr(self.kanban_client, "client")
-                            else self.kanban_client
-                        )
-                        project_config = await auto_setup.setup_planka_project(
-                            kanban_client=client_to_use,
-                            project_name=project_name,
-                            options=options,
-                        )
-                        proj_id = project_config.provider_config.get("project_id")
-                        bd_id = project_config.provider_config.get("board_id")
-                        logger.info(
-                            f"Created new Planka project: "
-                            f"project_id={proj_id}, board_id={bd_id}"
-                        )
-                    except Exception as e:
-                        logger.error(f"Failed to create new project: {e}")
-                        raise
+                auto_setup = ProjectAutoSetup()
+                try:
+                    # Pass the underlying client (not the wrapper) if available
+                    client_to_use = (
+                        self.kanban_client.client
+                        if hasattr(self.kanban_client, "client")
+                        else self.kanban_client
+                    )
+                    project_config = await auto_setup.setup_planka_project(
+                        kanban_client=client_to_use,
+                        project_name=project_name,
+                        options=options,
+                    )
+                    proj_id = project_config.provider_config.get("project_id")
+                    bd_id = project_config.provider_config.get("board_id")
+                    logger.info(
+                        f"Created new Planka project: "
+                        f"project_id={proj_id}, board_id={bd_id}"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to create new project: {e}")
+                    raise
 
             # Parse tasks
             from src.core.error_framework import ErrorContext, error_context
@@ -349,7 +338,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 "dependencies_mapped": self._count_dependencies(safe_tasks),
                 "risk_level": self._assess_risk_by_count(len(created_tasks)),
                 "confidence": 0.85,
-                "created_at": datetime.now().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
             }
 
             logger.info(f"Successfully created project with {len(created_tasks)} tasks")
@@ -462,6 +451,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             available_skills=options.get("tech_stack", []),
             technology_constraints=options.get("tech_stack", []),
             deployment_target=mapped_deployment,
+            complexity_mode=self.complexity,  # Pass explicit complexity mode
         )
 
         # Pass complexity info via quality_requirements for parser to use
@@ -600,8 +590,8 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             status=TaskStatus.DONE,  # Mark as completed
             priority=Priority.LOW,
             assigned_to=None,  # Not assignable
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=0,  # No time estimate
             dependencies=[],
@@ -739,8 +729,8 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
                 ),
                 labels=task_info.get("labels", ["feature"]),
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 estimated_hours=task_info.get("estimated_hours", 8),
                 dependencies=[],
                 due_date=None,
@@ -1049,11 +1039,15 @@ async def create_project_from_natural_language(
         # Get subtask_manager if available (GH-62 fix)
         subtask_manager = getattr(state, "subtask_manager", None)
 
-        # Initialize project creator
+        # Extract complexity from options (default to "standard")
+        complexity = options.get("complexity", "standard") if options else "standard"
+
+        # Initialize project creator with complexity
         creator = NaturalLanguageProjectCreator(
             kanban_client=state.kanban_client,
             ai_engine=state.ai_engine,
             subtask_manager=subtask_manager,
+            complexity=complexity,
         )
 
         # Create project
@@ -1069,9 +1063,15 @@ async def create_project_from_natural_language(
         if result.get("success"):
             try:
                 await state.refresh_project_state()
+                logger.info(
+                    f"[DEBUG] After refresh_project_state: project_tasks has "
+                    f"{len(state.project_tasks) if state.project_tasks else 0} tasks"
+                )
             except Exception as e:
                 # Log but don't fail the operation
-                logger.warning(f"Failed to refresh project state: {str(e)}")
+                logger.error(
+                    f"Failed to refresh project state: {str(e)}", exc_info=True
+                )
 
         return result
 

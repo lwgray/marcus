@@ -22,7 +22,7 @@ Examples
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import anthropic
@@ -83,12 +83,10 @@ class AIAnalysisEngine:
         self.current_agent_id: Optional[str] = None
         try:
             # Get API key from config first, fall back to environment
-            from src.config.config_loader import get_config
+            from src.config.marcus_config import get_config
 
             config = get_config()
-            api_key = config.get("ai.anthropic_api_key") or os.environ.get(
-                "ANTHROPIC_API_KEY"
-            )
+            api_key = config.ai.anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY")
             if not api_key:
                 print(
                     "⚠️  Anthropic API key not found - "
@@ -118,9 +116,7 @@ class AIAnalysisEngine:
             self.client = None
 
         self.model: str = (
-            config.get("ai.model", "claude-3-5-sonnet-20241022")
-            if "config" in locals()
-            else "claude-3-5-sonnet-20241022"
+            config.ai.model or "claude-3-5-sonnet-20241022"
         )  # Using Sonnet 3.5 for speed/cost balance
 
         # Analysis prompts
@@ -162,6 +158,9 @@ For DESIGN tasks:
 
 For IMPLEMENTATION tasks:
 - Focus on actual coding and building
+- **Critical: Use Test-Driven Development (TDD)**
+  - Write tests FIRST before any implementation
+  - Follow Red-Green-Refactor cycle
 - Reference the design specifications
 - Include specific code components to build
 - Deliverables: working code with tests
@@ -566,7 +565,11 @@ Identify risks and provide JSON:
    - Break down the task into smaller subtasks
    - Start with the core functionality
    - Follow project coding standards
-   - Write tests as you go"""
+   - **MANDATORY**: Use Test-Driven Development (TDD)**
+   - Write failing tests FIRST (Red)
+   - Implement minimal code to pass tests (Green)
+   - Refactor while keeping tests green (Refactor)
+   """
 
             definition_of_done = """3. **Definition of Done**
    - All requirements from description are met
@@ -938,7 +941,7 @@ Provide a helpful clarification that guides the developer."""
                     probability=likelihood_map.get(risk_data["likelihood"], 0.5),
                     impact=risk_data.get("impact", "Unknown impact"),
                     mitigation_strategy=risk_data["mitigation"],
-                    identified_at=datetime.now(),
+                    identified_at=datetime.now(timezone.utc),
                 )
                 risks.append(risk)
 
@@ -977,7 +980,7 @@ Provide a helpful clarification that guides the developer."""
                     mitigation_strategy=(
                         "Review task priorities and resource allocation"
                     ),
-                    identified_at=datetime.now(),
+                    identified_at=datetime.now(timezone.utc),
                 )
             )
 

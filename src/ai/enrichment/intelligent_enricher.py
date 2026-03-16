@@ -7,7 +7,7 @@ semantic understanding and intelligent enhancement of task metadata.
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from src.ai.providers.base_provider import EffortEstimate, SemanticAnalysis
@@ -41,7 +41,7 @@ class EnhancementResult:
             not hasattr(self, "enhancement_timestamp")
             or self.enhancement_timestamp is None
         ):
-            self.enhancement_timestamp = datetime.now()
+            self.enhancement_timestamp = datetime.now(timezone.utc)
 
 
 @dataclass
@@ -172,7 +172,7 @@ class IntelligentTaskEnricher:
             confidence=semantic_analysis.confidence,
             reasoning=semantic_analysis.reasoning,
             changes_made=changes_made,
-            enhancement_timestamp=datetime.now(),
+            enhancement_timestamp=datetime.now(timezone.utc),
         )
 
     async def enrich_task_batch(
@@ -462,7 +462,7 @@ class IntelligentTaskEnricher:
             confidence=0.1,
             reasoning="AI enrichment failed, using original task data",
             changes_made={},
-            enhancement_timestamp=datetime.now(),
+            enhancement_timestamp=datetime.now(timezone.utc),
         )
 
     async def get_enrichment_statistics(

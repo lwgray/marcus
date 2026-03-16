@@ -74,3 +74,4 @@ data/
 mlruns/
 
 .marcus_workspace.json
+.plans

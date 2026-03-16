@@ -5,7 +5,7 @@ Tests the phase-based dependency enforcement system that ensures tasks
 follow the correct development lifecycle order.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, List
 from unittest.mock import Mock, patch
 
@@ -32,8 +32,8 @@ def create_test_task(
         "status": TaskStatus.TODO,
         "priority": Priority.MEDIUM,
         "assigned_to": None,
-        "created_at": datetime.now(),
-        "updated_at": datetime.now(),
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
         "due_date": None,
         "estimated_hours": 4.0,
         "actual_hours": 0.0,
@@ -81,8 +81,8 @@ class TestPhaseDependencyEnforcer:
                 priority=Priority.HIGH,
                 dependencies=[],
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=4.0,
             ),
@@ -95,8 +95,8 @@ class TestPhaseDependencyEnforcer:
                 priority=Priority.HIGH,
                 dependencies=[],
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=8.0,
             ),
@@ -109,8 +109,8 @@ class TestPhaseDependencyEnforcer:
                 priority=Priority.MEDIUM,
                 dependencies=[],
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=4.0,
             ),
@@ -123,8 +123,8 @@ class TestPhaseDependencyEnforcer:
                 priority=Priority.LOW,
                 dependencies=[],
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=2.0,
             ),
@@ -184,15 +184,15 @@ class TestPhaseDependencyEnforcer:
     def test_feature_identification_from_name(
         self, enforcer: PhaseDependencyEnforcer
     ) -> None:
-        """Test feature identification from task names"""
+        """Test fine-grained feature identification from task names"""
         task1 = create_test_task("1", "Design authentication flow", labels=[])
         task2 = create_test_task("2", "Build payment processing", labels=[])
         task3 = create_test_task("3", "Create user dashboard", labels=[])
 
-        assert enforcer._identify_task_feature(task1) == "auth"
-        assert enforcer._identify_task_feature(task2) == "payment"
-        # "Create user dashboard" matches "user" first in the keyword patterns
-        assert enforcer._identify_task_feature(task3) == "user"
+        # Fine-grained: uses full name after phase prefix
+        assert enforcer._identify_task_feature(task1) == "authentication-flow"
+        assert enforcer._identify_task_feature(task2) == "payment-processing"
+        assert enforcer._identify_task_feature(task3) == "user-dashboard"
 
     def test_feature_identification_from_labels(
         self, enforcer: PhaseDependencyEnforcer
@@ -351,14 +351,15 @@ class TestPhaseDependencyEnforcer:
     def test_complex_feature_extraction(
         self, enforcer: PhaseDependencyEnforcer
     ) -> None:
-        """Test complex feature name extraction patterns"""
+        """Test fine-grained feature name extraction from complex task names"""
         test_cases = [
-            ("Design user authentication system", "auth"),
-            ("Build payment processing service", "payment"),
-            ("Create dashboard analytics module", "dashboard"),
-            ("Implement notification service", "notification"),
-            ("Test user registration flow", "user"),
-            ("Document API gateway", "api"),
+            # Fine-grained: uses full name after phase prefix
+            ("Design user authentication system", "user-authentication-system"),
+            ("Build payment processing service", "payment-processing-service"),
+            ("Create dashboard analytics module", "dashboard-analytics-module"),
+            ("Implement notification service", "notification-service"),
+            ("Test user registration flow", "user-registration-flow"),
+            ("Document API gateway", "api-gateway"),
         ]
 
         for task_name, expected_feature in test_cases:

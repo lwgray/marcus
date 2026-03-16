@@ -658,7 +658,7 @@ async def select_project(server: Any, arguments: Dict[str, Any]) -> Dict[str, An
 
     else:  # not_found
         # Check if auto_sync is enabled and provide helpful guidance
-        auto_sync_enabled = server.config.get("auto_sync_projects", False)
+        auto_sync_enabled = getattr(server.config, "auto_sync_projects", False)
 
         if auto_sync_enabled:
             hint = (
@@ -716,14 +716,20 @@ async def discover_planka_projects(
 
     auto_sync = arguments.get("auto_sync", False)
 
-    # Get Planka config
-    planka_config = server.config.get("planka", {})
-    if not planka_config.get("base_url"):
+    # Get Planka config from MarcusConfig.kanban
+    kanban_config = server.config.kanban
+    if not kanban_config.planka_base_url:
         return {
             "success": False,
             "error": "Planka not configured. Check config_marcus.json",
         }
 
+    # Create Planka client config dict from MarcusConfig
+    planka_config = {
+        "base_url": kanban_config.planka_base_url,
+        "email": kanban_config.planka_email,
+        "password": kanban_config.planka_password,
+    }
     # Create temporary Planka client to fetch projects
     planka = Planka(planka_config)
 
@@ -992,7 +998,9 @@ async def sync_projects(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any
 
     # Save the currently active project to restore after sync
     active_project_before = await server.project_registry.get_active_project()
-    active_project_id_before = active_project_before.id if active_project_before else None
+    active_project_id_before = (
+        active_project_before.id if active_project_before else None
+    )
 
     # First, automatically deduplicate the registry
     dedup_result = await _deduplicate_registry(server)
@@ -1069,14 +1077,17 @@ async def sync_projects(server: Any, arguments: Dict[str, Any]) -> Dict[str, Any
     # This prevents sync from inadvertently changing the active project
     if active_project_id_before:
         # Check if the previously active project still exists
-        restored_project = await server.project_registry.get_project(active_project_id_before)
+        restored_project = await server.project_registry.get_project(
+            active_project_id_before
+        )
         if restored_project:
             # Restore it as active
             await server.project_registry.set_active_project(active_project_id_before)
             logger.info(f"Restored active project after sync: {restored_project.name}")
         else:
             logger.warning(
-                f"Previously active project {active_project_id_before} was deleted during sync"
+                f"Previously active project {active_project_id_before} "
+                f"was deleted during sync"
             )
 
     # Log the sync operation

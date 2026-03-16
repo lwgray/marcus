@@ -3,7 +3,7 @@
 Simple task enrichment without requiring board context.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from src.core.models import Priority, Task
@@ -63,7 +63,7 @@ class BasicEnricher:
             labels=self._suggest_labels(task),
             assigned_to=task.assigned_to,
             created_at=task.created_at,
-            updated_at=datetime.now(),
+            updated_at=datetime.now(timezone.utc),
             estimated_hours=self._estimate_hours(task),
             dependencies=task.dependencies,
             due_date=task.due_date,

@@ -7,7 +7,7 @@ based on configuration.
 import os
 from typing import Any, Dict, Optional
 
-from src.config.config_loader import get_config
+from src.config.marcus_config import get_config
 from src.integrations.kanban_interface import KanbanInterface, KanbanProvider
 from src.integrations.providers import GitHubKanban, LinearKanban, Planka
 
@@ -39,8 +39,8 @@ class KanbanFactory:
         ValueError
             If provider is not supported
         """
-        # Config is already loaded - just use it
-        get_config()
+        # Get centralized configuration
+        marcus_config = get_config()
 
         provider_lower = provider.lower()
 
@@ -57,8 +57,10 @@ class KanbanFactory:
         elif provider_lower == KanbanProvider.LINEAR.value:
             if not config:
                 config = {
-                    "api_key": os.getenv("LINEAR_API_KEY"),
-                    "team_id": os.getenv("LINEAR_TEAM_ID"),
+                    "api_key": marcus_config.kanban.linear_api_key
+                    or os.getenv("LINEAR_API_KEY"),
+                    "team_id": marcus_config.kanban.linear_team_id
+                    or os.getenv("LINEAR_TEAM_ID"),
                     "project_id": os.getenv("LINEAR_PROJECT_ID"),
                 }
             return LinearKanban(config)
@@ -66,9 +68,12 @@ class KanbanFactory:
         elif provider_lower == KanbanProvider.GITHUB.value:
             if not config:
                 config = {
-                    "token": os.getenv("GITHUB_TOKEN"),
-                    "owner": os.getenv("GITHUB_OWNER"),
-                    "repo": os.getenv("GITHUB_REPO"),
+                    "token": marcus_config.kanban.github_token
+                    or os.getenv("GITHUB_TOKEN"),
+                    "owner": marcus_config.kanban.github_owner
+                    or os.getenv("GITHUB_OWNER"),
+                    "repo": marcus_config.kanban.github_repo
+                    or os.getenv("GITHUB_REPO"),
                     "project_number": int(os.getenv("GITHUB_PROJECT_NUMBER", "1")),
                 }
             return GitHubKanban(config)  # type: ignore[abstract]
@@ -78,8 +83,9 @@ class KanbanFactory:
 
     @staticmethod
     def get_default_provider() -> str:
-        """Get the default provider from environment."""
-        return os.getenv("KANBAN_PROVIDER", "planka")
+        """Get the default provider from configuration."""
+        config = get_config()
+        return config.kanban.provider or os.getenv("KANBAN_PROVIDER", "planka")
 
     @staticmethod
     def create_default(config: Optional[Dict[str, Any]] = None) -> KanbanInterface:

@@ -10,7 +10,7 @@ import asyncio
 import json
 import logging
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -93,7 +93,10 @@ class FilePersistence(PersistenceBackend):
                     logger.error(f"Error loading {collection}: {e}")
 
             # Update with new data
-            existing_data[key] = {**data, "_stored_at": datetime.now().isoformat()}
+            existing_data[key] = {
+                **data,
+                "_stored_at": datetime.now(timezone.utc).isoformat(),
+            }
 
             # Write back atomically
             temp_file = file_path.with_suffix(".tmp")
@@ -192,7 +195,7 @@ class FilePersistence(PersistenceBackend):
             if not file_path.exists():
                 return 0
 
-            cutoff = datetime.now() - timedelta(days=days)
+            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
             removed_count = 0
 
             try:
@@ -277,8 +280,7 @@ class SQLitePersistence(PersistenceBackend):
     def _init_db(self) -> None:
         """Initialize database schema."""
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                """
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS persistence (
                     collection TEXT NOT NULL,
                     key TEXT NOT NULL,
@@ -286,14 +288,11 @@ class SQLitePersistence(PersistenceBackend):
                     stored_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (collection, key)
                 )
-            """
-            )
-            conn.execute(
-                """
+            """)
+            conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_stored_at
                 ON persistence(stored_at)
-            """
-            )
+            """)
             conn.commit()
 
     async def store(self, collection: str, key: str, data: Dict[str, Any]) -> None:
@@ -380,7 +379,7 @@ class SQLitePersistence(PersistenceBackend):
         """Clear old data from SQLite."""
 
         def _clear() -> int:
-            cutoff = datetime.now() - timedelta(days=days)
+            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.execute(
                     """
@@ -410,14 +409,12 @@ class SQLitePersistence(PersistenceBackend):
         def _calculate_median() -> float:
             with sqlite3.connect(self.db_path) as conn:
                 # First, get count of successful tasks
-                count_cursor = conn.execute(
-                    """
+                count_cursor = conn.execute("""
                     SELECT COUNT(*) FROM persistence
                     WHERE collection = 'task_outcomes'
                       AND json_extract(data, '$.success') = 1
                       AND CAST(json_extract(data, '$.actual_hours') AS REAL) > 0
-                    """
-                )
+                    """)
                 count = count_cursor.fetchone()[0]
 
                 if count == 0:
@@ -639,7 +636,7 @@ class MemoryPersistence(PersistenceBackend):
 
             self.data[collection][key] = {
                 **data,
-                "_stored_at": datetime.now().isoformat(),
+                "_stored_at": datetime.now(timezone.utc).isoformat(),
             }
 
     async def retrieve(self, collection: str, key: str) -> Optional[Dict[str, Any]]:
@@ -686,7 +683,7 @@ class MemoryPersistence(PersistenceBackend):
             if collection not in self.data:
                 return 0
 
-            cutoff = datetime.now() - timedelta(days=days)
+            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
             removed_count = 0
 
             # Create new dict with non-old entries

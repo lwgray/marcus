@@ -6,7 +6,7 @@ ensuring tasks are assigned in the correct development lifecycle order.
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -28,7 +28,9 @@ class TestPhaseOrderingE2E:
         client = AsyncMock()
         client.create_task = AsyncMock(
             side_effect=lambda task_data: {
-                "id": task_data.get("id", f"kb-{datetime.now().timestamp()}"),
+                "id": task_data.get(
+                    "id", f"kb-{datetime.now(timezone.utc).timestamp()}"
+                ),
                 "name": task_data["name"],
                 "status": "todo",
             }
@@ -38,7 +40,7 @@ class TestPhaseOrderingE2E:
     @pytest.fixture
     def sample_project_tasks(self) -> List[Task]:
         """Create a sample project with multiple features"""
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
 
         return [
             # Authentication feature
@@ -183,8 +185,8 @@ class TestPhaseOrderingE2E:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=4.0,
                 labels=["auth"],
@@ -197,8 +199,8 @@ class TestPhaseOrderingE2E:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=8.0,
                 labels=["auth"],
@@ -211,8 +213,8 @@ class TestPhaseOrderingE2E:
                 status=TaskStatus.TODO,
                 priority=Priority.MEDIUM,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=4.0,
                 labels=["auth"],
@@ -225,8 +227,8 @@ class TestPhaseOrderingE2E:
                 status=TaskStatus.TODO,
                 priority=Priority.LOW,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=2.0,
                 labels=["auth"],
@@ -276,8 +278,8 @@ class TestPhaseOrderingE2E:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=4.0,
                 labels=["feature-a"],
@@ -290,8 +292,8 @@ class TestPhaseOrderingE2E:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=8.0,
                 labels=["feature-a"],
@@ -305,8 +307,8 @@ class TestPhaseOrderingE2E:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=4.0,
                 labels=["feature-b"],
@@ -319,8 +321,8 @@ class TestPhaseOrderingE2E:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=8.0,
                 labels=["feature-b"],
@@ -388,8 +390,8 @@ class TestPhaseOrderingE2E:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=8.0,
                 labels=["feature"],
@@ -417,8 +419,8 @@ class TestPhaseOrderingE2E:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=4.0,
                 labels=["feature"],
@@ -431,8 +433,8 @@ class TestPhaseOrderingE2E:
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
                 assigned_to=None,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=8.0,
                 labels=["feature"],
@@ -517,8 +519,8 @@ class TestPhaseOrderingE2E:
                     status=TaskStatus.TODO,
                     priority=Priority.MEDIUM,
                     assigned_to=None,
-                    created_at=datetime.now(),
-                    updated_at=datetime.now(),
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc),
                     due_date=None,
                     estimated_hours=4.0,
                     labels=task_data["labels"],

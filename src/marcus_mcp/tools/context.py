@@ -8,6 +8,11 @@ This module contains tools for context management:
 import logging
 from typing import Any, Dict, List
 
+from src.core.project_history import Decision as HistoryDecision
+from src.core.project_history import (
+    ProjectHistoryPersistence,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -94,6 +99,9 @@ async def log_decision(
             monitor.record_decision(
                 agent_id=agent_id, task_id=task_id, decision=decision
             )
+
+        # Persist to project history for post-project analysis
+        await _persist_decision_to_history(logged_decision, state)
 
         return {
             "success": True,
@@ -395,3 +403,80 @@ async def _collect_sibling_subtask_context(
                 sibling_decisions.append(decision)
 
     return {"artifacts": sibling_artifacts, "decisions": sibling_decisions}
+
+
+async def _persist_decision_to_history(logged_decision: Any, state: Any) -> None:
+    """
+    Persist decision to project history for post-project analysis.
+
+    Converts the Context system's Decision to ProjectHistory's Decision format
+    and stores it persistently.
+
+    Parameters
+    ----------
+    logged_decision : Decision
+        The decision from the Context system
+    state : Any
+        Marcus server state
+
+    Notes
+    -----
+    Fails gracefully - errors are logged but don't interrupt the main flow.
+    """
+    try:
+        # Get project info from state
+        if not hasattr(state, "current_project_id") or not state.current_project_id:
+            logger.debug("No active project - skipping project history persistence")
+            return
+
+        project_id = state.current_project_id
+        project_name = getattr(state, "current_project_name", project_id)
+
+        # Initialize project history persistence if not already done
+        if not hasattr(state, "project_history_persistence"):
+            state.project_history_persistence = ProjectHistoryPersistence()
+
+        # Get kanban comment URL if decision was posted to kanban
+        kanban_comment_url = None
+        if hasattr(state, "last_kanban_comment_url"):
+            kanban_comment_url = state.last_kanban_comment_url
+
+        # Find affected tasks by checking task dependencies
+        affected_tasks: list[str] = []
+        if hasattr(state, "project_tasks"):
+            for task in state.project_tasks:
+                if (
+                    hasattr(task, "dependencies")
+                    and task.dependencies
+                    and logged_decision.task_id in task.dependencies
+                ):
+                    affected_tasks.append(task.id)
+
+        # Convert Context Decision to ProjectHistory Decision
+        history_decision = HistoryDecision(
+            decision_id=logged_decision.decision_id,
+            task_id=logged_decision.task_id,
+            agent_id=logged_decision.agent_id,
+            timestamp=logged_decision.timestamp,
+            what=logged_decision.what,
+            why=logged_decision.why,
+            impact=logged_decision.impact,
+            affected_tasks=affected_tasks,
+            confidence=0.8,  # Default confidence
+            kanban_comment_url=kanban_comment_url,
+            project_id=project_id,
+        )
+
+        # Persist to project history
+        await state.project_history_persistence.append_decision(
+            project_id, project_name, history_decision
+        )
+
+        logger.info(
+            f"Persisted decision {logged_decision.decision_id} "
+            f"to project history for {project_id}"
+        )
+
+    except Exception as e:
+        # Graceful degradation - log but don't fail
+        logger.warning(f"Failed to persist decision to project history: {e}")

@@ -11,7 +11,7 @@ All external dependencies are mocked, including file I/O and ML operations.
 Tests verify the learning algorithms without requiring actual project data.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -49,16 +49,16 @@ class TestPatternLearner:
             status=TaskStatus.DONE,
             priority=Priority.HIGH,
             assigned_to="agent1",
-            created_at=datetime.now() - timedelta(days=5),
-            updated_at=datetime.now() - timedelta(days=1),
-            due_date=datetime.now() + timedelta(days=2),
+            created_at=datetime.now(timezone.utc) - timedelta(days=5),
+            updated_at=datetime.now(timezone.utc) - timedelta(days=1),
+            due_date=datetime.now(timezone.utc) + timedelta(days=2),
             estimated_hours=4.0,
             actual_hours=5.0,
             dependencies=[],
             labels=["setup", "infrastructure"],
         )
         # Add completed_at as an attribute for testing
-        task.completed_at = datetime.now() - timedelta(days=1)  # type: ignore[attr-defined]
+        task.completed_at = datetime.now(timezone.utc) - timedelta(days=1)  # type: ignore[attr-defined]
         return task
 
     @pytest.fixture
@@ -71,15 +71,15 @@ class TestPatternLearner:
             status=TaskStatus.DONE,
             priority=Priority.MEDIUM,
             assigned_to="agent2",
-            created_at=datetime.now() - timedelta(days=4),
-            updated_at=datetime.now() - timedelta(hours=12),
-            due_date=datetime.now() + timedelta(days=1),
+            created_at=datetime.now(timezone.utc) - timedelta(days=4),
+            updated_at=datetime.now(timezone.utc) - timedelta(hours=12),
+            due_date=datetime.now(timezone.utc) + timedelta(days=1),
             estimated_hours=6.0,
             actual_hours=8.0,
             dependencies=["TASK-001"],
             labels=["design", "api"],
         )
-        task2.completed_at = datetime.now() - timedelta(hours=12)  # type: ignore[attr-defined]
+        task2.completed_at = datetime.now(timezone.utc) - timedelta(hours=12)  # type: ignore[attr-defined]
 
         task3 = Task(
             id="TASK-003",
@@ -88,15 +88,15 @@ class TestPatternLearner:
             status=TaskStatus.DONE,
             priority=Priority.HIGH,
             assigned_to="agent1",
-            created_at=datetime.now() - timedelta(days=3),
-            updated_at=datetime.now() - timedelta(hours=6),
-            due_date=datetime.now(),
+            created_at=datetime.now(timezone.utc) - timedelta(days=3),
+            updated_at=datetime.now(timezone.utc) - timedelta(hours=6),
+            due_date=datetime.now(timezone.utc),
             estimated_hours=12.0,
             actual_hours=10.0,
             dependencies=["TASK-002"],
             labels=["backend", "implementation"],
         )
-        task3.completed_at = datetime.now() - timedelta(hours=6)  # type: ignore[attr-defined]
+        task3.completed_at = datetime.now(timezone.utc) - timedelta(hours=6)  # type: ignore[attr-defined]
 
         tasks = [sample_task, task2, task3]
 
@@ -104,7 +104,7 @@ class TestPatternLearner:
             project_id="PROJ-001",
             name="Test Project",
             tasks=tasks,
-            completion_date=datetime.now(),
+            completion_date=datetime.now(timezone.utc),
             success_metrics={
                 "planned_duration": 5,
                 "quality_score": 0.9,
@@ -248,8 +248,8 @@ class TestPatternLearner:
                 status=TaskStatus.BLOCKED,
                 priority=Priority.HIGH,
                 assigned_to="agent1",
-                created_at=datetime.now() - timedelta(days=2),
-                updated_at=datetime.now(),
+                created_at=datetime.now(timezone.utc) - timedelta(days=2),
+                updated_at=datetime.now(timezone.utc),
                 due_date=None,
                 estimated_hours=4.0,
                 actual_hours=0.0,
@@ -315,7 +315,7 @@ class TestPatternLearner:
             recommendations={"accuracy_multiplier": 0.8},
             confidence=0.7,
             evidence_count=5,
-            last_updated=datetime.now() - timedelta(days=1),
+            last_updated=datetime.now(timezone.utc) - timedelta(days=1),
         )
 
         # Update with new data
@@ -394,7 +394,7 @@ class TestPatternLearner:
                 recommendations={},
                 confidence=0.5,
                 evidence_count=1,
-                last_updated=datetime.now() - timedelta(days=200),
+                last_updated=datetime.now(timezone.utc) - timedelta(days=200),
             ),
             "low_confidence": Pattern(
                 pattern_id="low_confidence",
@@ -404,7 +404,7 @@ class TestPatternLearner:
                 recommendations={},
                 confidence=0.2,
                 evidence_count=10,
-                last_updated=datetime.now(),
+                last_updated=datetime.now(timezone.utc),
             ),
             "good_pattern": Pattern(
                 pattern_id="good_pattern",
@@ -414,7 +414,7 @@ class TestPatternLearner:
                 recommendations={},
                 confidence=0.8,
                 evidence_count=20,
-                last_updated=datetime.now() - timedelta(days=30),
+                last_updated=datetime.now(timezone.utc) - timedelta(days=30),
             ),
         }
 
@@ -438,7 +438,7 @@ class TestPatternLearner:
             recommendations={},
             confidence=0.7,
             evidence_count=10,
-            last_updated=datetime.now() - timedelta(days=30),
+            last_updated=datetime.now(timezone.utc) - timedelta(days=30),
         )
 
         confidence = await pattern_learner.calculate_confidence(pattern)
@@ -461,8 +461,8 @@ class TestPatternLearner:
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=8.0,
         )
@@ -476,8 +476,8 @@ class TestPatternLearner:
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=2.0,
         )
@@ -496,7 +496,7 @@ class TestPatternLearner:
                 recommendations={"use_framework": "react"},
                 confidence=0.8,
                 evidence_count=15,
-                last_updated=datetime.now(),
+                last_updated=datetime.now(timezone.utc),
             ),
             "mobile_pattern": Pattern(
                 pattern_id="mobile_pattern",
@@ -506,7 +506,7 @@ class TestPatternLearner:
                 recommendations={"use_framework": "flutter"},
                 confidence=0.7,
                 evidence_count=10,
-                last_updated=datetime.now(),
+                last_updated=datetime.now(timezone.utc),
             ),
             "general_pattern": Pattern(
                 pattern_id="general_pattern",
@@ -516,7 +516,7 @@ class TestPatternLearner:
                 recommendations={"buffer": 1.2},
                 confidence=0.9,
                 evidence_count=50,
-                last_updated=datetime.now(),
+                last_updated=datetime.now(timezone.utc),
             ),
         }
 
@@ -546,7 +546,7 @@ class TestPatternLearner:
                 recommendations={"multiplier": 1.2},
                 confidence=0.8,
                 evidence_count=10,
-                last_updated=datetime.now(),
+                last_updated=datetime.now(timezone.utc),
             )
         }
 
@@ -571,10 +571,10 @@ class TestPatternLearner:
                     "recommendations": {"test": "value"},
                     "confidence": 0.75,
                     "evidence_count": 5,
-                    "last_updated": datetime.now().isoformat(),
+                    "last_updated": datetime.now(timezone.utc).isoformat(),
                 }
             },
-            "export_timestamp": datetime.now().isoformat(),
+            "export_timestamp": datetime.now(timezone.utc).isoformat(),
             "pattern_count": 1,
         }
 
@@ -627,7 +627,7 @@ class TestPatternLearner:
             project_id="EMPTY-001",
             name="Empty Project",
             tasks=[],
-            completion_date=datetime.now(),
+            completion_date=datetime.now(timezone.utc),
             success_metrics={},
             team_size=0,
             duration_days=0,
@@ -653,22 +653,22 @@ class TestPatternLearner:
                 status=TaskStatus.DONE,
                 priority=Priority.MEDIUM,
                 assigned_to=f"agent{i % 3}",
-                created_at=datetime.now() - timedelta(days=30 - i // 10),
-                updated_at=datetime.now() - timedelta(days=i // 10),
-                due_date=datetime.now() + timedelta(days=7),
+                created_at=datetime.now(timezone.utc) - timedelta(days=30 - i // 10),
+                updated_at=datetime.now(timezone.utc) - timedelta(days=i // 10),
+                due_date=datetime.now(timezone.utc) + timedelta(days=7),
                 estimated_hours=float(4 + i % 8),
                 actual_hours=float(4 + i % 8 + (i % 3 - 1)),
                 dependencies=[],
                 labels=[task_type],
             )
-            task.completed_at = datetime.now() - timedelta(days=i // 10)  # type: ignore[attr-defined]
+            task.completed_at = datetime.now(timezone.utc) - timedelta(days=i // 10)  # type: ignore[attr-defined]
             tasks.append(task)
 
         large_project = CompletedProject(
             project_id="LARGE-001",
             name="Large Project",
             tasks=tasks,
-            completion_date=datetime.now(),
+            completion_date=datetime.now(timezone.utc),
             success_metrics={"planned_duration": 30},
             team_size=3,
             duration_days=30,

@@ -11,7 +11,7 @@ All external AI provider calls are mocked to ensure fast, reliable tests that
 don't depend on external services or consume API quotas.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
@@ -44,8 +44,8 @@ class TestIntelligentTaskEnricherStatistics:
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=5.0,
             labels=[],
@@ -58,8 +58,8 @@ class TestIntelligentTaskEnricherStatistics:
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=3.0,
             labels=[],
@@ -92,7 +92,7 @@ class TestIntelligentTaskEnricherStatistics:
                         "criteria": ["Criteria 1", "Criteria 2"],
                     },
                 },
-                enhancement_timestamp=datetime.now(),
+                enhancement_timestamp=datetime.now(timezone.utc),
             ),
             EnhancementResult(
                 original_task=task2,
@@ -116,7 +116,7 @@ class TestIntelligentTaskEnricherStatistics:
                     },
                     "acceptance_criteria": {"count": 1, "criteria": ["Criteria 3"]},
                 },
-                enhancement_timestamp=datetime.now(),
+                enhancement_timestamp=datetime.now(timezone.utc),
             ),
         ]
 
@@ -160,8 +160,8 @@ class TestIntelligentTaskEnricherStatistics:
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=5.0,
             labels=[],
@@ -178,7 +178,7 @@ class TestIntelligentTaskEnricherStatistics:
             confidence=0.5,
             reasoning="No changes needed",
             changes_made={},  # No changes
-            enhancement_timestamp=datetime.now(),
+            enhancement_timestamp=datetime.now(timezone.utc),
         )
 
         stats = await enricher.get_enrichment_statistics([no_change_result])
@@ -203,8 +203,8 @@ class TestIntelligentTaskEnricherStatistics:
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=5.0,
             labels=[],
@@ -217,8 +217,8 @@ class TestIntelligentTaskEnricherStatistics:
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=3.0,
             labels=[],
@@ -243,7 +243,7 @@ class TestIntelligentTaskEnricherStatistics:
                 "effort_estimate": {"original": 5.0, "ai_estimate": 8.0},
                 "acceptance_criteria": {"count": 1, "criteria": ["Criteria 1"]},
             },
-            enhancement_timestamp=datetime.now(),
+            enhancement_timestamp=datetime.now(timezone.utc),
         )
 
         failure_result = EnhancementResult(
@@ -257,7 +257,7 @@ class TestIntelligentTaskEnricherStatistics:
             confidence=0.1,
             reasoning="AI enrichment failed",
             changes_made={},  # No changes
-            enhancement_timestamp=datetime.now(),
+            enhancement_timestamp=datetime.now(timezone.utc),
         )
 
         results = [success_result, failure_result]

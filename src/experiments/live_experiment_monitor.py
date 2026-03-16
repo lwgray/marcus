@@ -30,7 +30,7 @@ end_experiment()
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from src.experiments import MarcusExperiment
@@ -127,7 +127,7 @@ class LiveExperimentMonitor:
 
         # Generate run name if not provided
         if run_name is None:
-            run_name = f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            run_name = f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
 
         self.run_name = run_name
 
@@ -281,7 +281,7 @@ class LiveExperimentMonitor:
             "name": name,
             "role": role,
             "skills": skills,
-            "registered_at": datetime.now().isoformat(),
+            "registered_at": datetime.now(timezone.utc).isoformat(),
             "tasks_completed": 0,
         }
 
@@ -306,7 +306,7 @@ class LiveExperimentMonitor:
         duration_seconds: Optional[float] = None,
     ) -> None:
         """Record a task completion."""
-        completion_time = datetime.now().timestamp()
+        completion_time = datetime.now(timezone.utc).timestamp()
         self.task_completions[task_id] = completion_time
 
         # Update agent stats
@@ -414,16 +414,16 @@ class LiveExperimentMonitor:
 
     def _generate_summary(self) -> str:
         """Generate experiment summary."""
-        duration = (
-            (
-                datetime.now()
-                - datetime.fromisoformat(
-                    list(self.registered_agents.values())[0]["registered_at"]
-                )
-            ).total_seconds()
-            if self.registered_agents
-            else 0
-        )
+        duration = 0.0
+        if self.registered_agents:
+            registered_at_str = list(self.registered_agents.values())[0][
+                "registered_at"
+            ]
+            registered_at = datetime.fromisoformat(registered_at_str)
+            # Ensure timezone-aware
+            if registered_at.tzinfo is None:
+                registered_at = registered_at.replace(tzinfo=timezone.utc)
+            duration = (datetime.now(timezone.utc) - registered_at).total_seconds()
 
         summary = f"""
 Live Experiment Summary

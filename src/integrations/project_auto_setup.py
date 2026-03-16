@@ -7,7 +7,7 @@ separation of concerns.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from src.core.project_registry import ProjectConfig
@@ -139,11 +139,14 @@ class ProjectAutoSetup:
         # Extract Planka-specific options with defaults
         planka_project_name = options.get("planka_project_name", project_name)
         planka_board_name = options.get("planka_board_name", "Main Board")
+        project_root = options.get("project_root")
 
         logger.info(
             f"Auto-creating Planka project '{planka_project_name}' "
             f"with board '{planka_board_name}'"
         )
+        if project_root:
+            logger.info(f"Project root: {project_root}")
 
         # Check if kanban client supports auto_setup_project
         if not hasattr(kanban_client, "auto_setup_project"):
@@ -154,7 +157,9 @@ class ProjectAutoSetup:
 
         # Call Planka auto-setup
         result = await kanban_client.auto_setup_project(
-            project_name=planka_project_name, board_name=planka_board_name
+            project_name=planka_project_name,
+            board_name=planka_board_name,
+            project_root=project_root,
         )
 
         logger.info(
@@ -171,8 +176,8 @@ class ProjectAutoSetup:
                 "project_id": result["project_id"],
                 "board_id": result["board_id"],
             },
-            created_at=datetime.now(),
-            last_used=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            last_used=datetime.now(timezone.utc),
             tags=["auto-created"],
         )
 

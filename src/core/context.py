@@ -9,7 +9,7 @@ reducing time spent understanding existing code and architectural decisions.
 # import asyncio  # Removed - not needed after lazy loading fix
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.core.events import Events, EventTypes
@@ -72,6 +72,7 @@ class Decision:
     what: str  # What was decided
     why: str  # Why it was decided
     impact: str  # Impact on other components
+    project_id: Optional[str] = None  # Project this decision belongs to
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for storage."""
@@ -83,6 +84,7 @@ class Decision:
             "what": self.what,
             "why": self.why,
             "impact": self.impact,
+            "project_id": self.project_id,
         }
 
 
@@ -104,6 +106,7 @@ class Context:
         persistence: Optional[Any] = None,
         use_hybrid_inference: bool = True,
         ai_engine: Optional[Any] = None,
+        project_id: Optional[str] = None,
     ):
         """Initialize the Context system.
 
@@ -117,9 +120,12 @@ class Context:
             Whether to use hybrid dependency inference if available.
         ai_engine : Optional[Any]
             Optional AI engine for hybrid inference.
+        project_id : Optional[str]
+            Project identifier for tracking decisions and artifacts.
         """
         self.events = events
         self.persistence = persistence
+        self.project_id = project_id
         self.implementations: Dict[str, Dict[str, Any]] = (
             {}
         )  # task_id -> implementation details
@@ -181,7 +187,7 @@ class Context:
         """
         self.implementations[task_id] = {
             "task_id": task_id,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             **implementation,
         }
 
@@ -252,14 +258,16 @@ class Context:
             The logged Decision object.
         """
         self._decision_counter += 1
+        now = datetime.now(timezone.utc)
         decision = Decision(
-            decision_id=f"dec_{self._decision_counter}_{datetime.now().timestamp()}",
+            decision_id=f"dec_{self._decision_counter}_{now.timestamp()}",
             task_id=task_id,
             agent_id=agent_id,
-            timestamp=datetime.now(),
+            timestamp=now,
             what=what,
             why=why,
             impact=impact,
+            project_id=self.project_id,
         )
 
         self.decisions.append(decision)
@@ -1185,7 +1193,7 @@ class Context:
                 Number of days to retain.
         """
         await self._ensure_persisted_data_loaded()
-        cutoff = datetime.now().timestamp() - (days * 24 * 60 * 60)
+        cutoff = datetime.now(timezone.utc).timestamp() - (days * 24 * 60 * 60)
 
         # Clear old implementations
         self.implementations = {

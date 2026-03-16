@@ -11,7 +11,8 @@ This module contains tools for task operations in the Marcus system:
 import json
 import logging
 import os
-from datetime import datetime
+import threading
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from src.core.ai_powered_task_assignment import find_optimal_task_for_agent_ai_powered
@@ -21,6 +22,11 @@ from src.logging.conversation_logger import conversation_logger, log_thinking
 from src.marcus_mcp.utils import serialize_for_mcp
 
 logger = logging.getLogger(__name__)
+
+# Module-level singletons for validation system (initialized lazily)
+_work_analyzer: Optional[Any] = None
+_retry_tracker: Optional[Any] = None
+_singleton_lock = threading.Lock()  # Thread-safe initialization
 
 
 async def get_project_board_context(state: Any) -> Dict[str, Optional[str]]:
@@ -75,6 +81,102 @@ async def get_project_board_context(state: Any) -> Dict[str, Optional[str]]:
     return context
 
 
+def _get_task_type(task: Task) -> str:
+    """
+    Determine task type using the same logic as AI instruction generation.
+
+    This function mirrors the task type determination logic from
+    ai_analysis_engine.generate_task_instructions() to ensure consistency
+    between instruction generation and workflow enforcement.
+
+    Parameters
+    ----------
+    task : Task
+        Task to check
+
+    Returns
+    -------
+    str
+        Task type: "implementation", "design", or "testing"
+
+    Notes
+    -----
+    Task type priority:
+    1. _parent_task_type attribute (for subtasks)
+    2. Inference from name/labels
+    3. Defaults to "implementation"
+
+    This matches the logic in src/integrations/ai_analysis_engine.py:460-473
+    """
+    # CRITICAL: Check parent task type first for subtasks (same as ai_analysis_engine)
+    if hasattr(task, "_parent_task_type"):
+        parent_type = getattr(task, "_parent_task_type")
+        return str(parent_type)
+
+    # Fall back to inferring from name or labels (same logic as ai_analysis_engine)
+    task_type = "implementation"  # default
+    task_labels = getattr(task, "labels", []) or []
+
+    if "design" in task.name.lower() or "type:design" in task_labels:
+        task_type = "design"
+    elif "test" in task.name.lower() or "type:testing" in task_labels:
+        task_type = "testing"
+
+    return task_type
+
+
+def _build_mandatory_workflow_prompt(task: Task) -> str:
+    """
+    Build mandatory workflow prompt that agents MUST follow.
+
+    This prompt creates a forcing function by requiring agents to
+    write a todo list with enumerated workflow steps.
+
+    Parameters
+    ----------
+    task : Task
+        Task being assigned (used to insert task description)
+
+    Returns
+    -------
+    str
+        Formatted mandatory workflow prompt
+
+    Notes
+    -----
+    This addresses Issue #168: Agents not following CLAUDE.md workflow.
+    The todo list requirement makes workflow visible and trackable.
+    """
+    workflow_prompt = f"""🔴 MANDATORY WORKFLOW 🔴
+
+Before starting work, you MUST write a todo list with these steps:
+
+1. Call get_task_context to check dependencies and artifacts
+2. Read artifacts from dependency tasks
+3. [TASK WORK: {task.name}]
+   {task.description}
+4. Report progress at 25%, 50%, 75% milestones
+5. Log decisions (log_decision) and artifacts (log_artifact) as needed
+6. BEFORE reporting "completed", verify:
+   - Does your code actually run without errors?
+   - Do all the tests for this task pass?
+7. Report completion with implementation summary
+8. Be prepared for remediation work if validation fails and resubmit progress
+9. Immediately request next task
+
+⚠️ CRITICAL BEHAVIORS:
+- Check dependencies with get_task_context BEFORE starting work
+- Read artifacts from dependency tasks to understand prior work
+- Report progress at each milestone (not just at completion)
+- Log decisions as they're made (not after task completion)
+- VERIFY code runs and tests pass BEFORE reporting completed
+- Be ready to address validation feedback and resubmit
+
+This workflow ensures coordination with other agents and prevents
+incomplete implementations."""
+    return workflow_prompt
+
+
 def build_tiered_instructions(
     base_instructions: str,
     task: Task,
@@ -106,20 +208,69 @@ def build_tiered_instructions(
     Notes
     -----
     Instruction layers:
+    0. Mandatory workflow (ONLY for implementation tasks - Issue #168)
     1. Base instructions (always included)
     2. Subtask context (if this is a subtask)
     3. Implementation context (if previous work exists)
     4. Dependency awareness (if task has dependents)
     5. Decision logging (if task affects others)
     6. Predictions and warnings (if available)
+    7. Task-specific guidance (based on labels)
     """
-    instructions_parts = [base_instructions]
+    instructions_parts = []
+
+    # Layer 0: Mandatory Workflow (ONLY for implementation tasks)
+    # Use same task type logic as AI instruction generation
+    task_type = _get_task_type(task)
+    if task_type == "implementation":
+        workflow_prompt = _build_mandatory_workflow_prompt(task)
+        instructions_parts.append(workflow_prompt)
+
+    # Layer 1: Base instructions
+    instructions_parts.append(base_instructions)
 
     # Layer 1.5: Subtask Context (if this is a subtask)
     if hasattr(task, "_is_subtask") and task._is_subtask:
         parent_name = getattr(task, "_parent_task_name", "parent task")
+
+        # Calculate realistic time budget for subtask
+        # estimated_hours is already in reality-based format (minutes/60)
+        # Guard against None to prevent TypeError
+        estimated_minutes = (task.estimated_hours or 0) * 60
+
+        # Get complexity level (default to standard if not set)
+        complexity = getattr(task, "_complexity", "standard")
+
+        # Complexity-specific guidance (generic for all task types)
+        COMPLEXITY_GUIDANCE = {
+            "prototype": {
+                "scope": "Minimal - core functionality only",
+                "quality": "Works for the happy path",
+                "effort": "Quick implementation",
+            },
+            "standard": {
+                "scope": "Complete - production-ready",
+                "quality": "Handles errors, maintainable",
+                "effort": "Thorough implementation",
+            },
+            "enterprise": {
+                "scope": "Comprehensive - all edge cases",
+                "quality": "Production-grade, extensively validated",
+                "effort": "Complete with reviews",
+            },
+        }
+
+        guidance = COMPLEXITY_GUIDANCE.get(complexity, COMPLEXITY_GUIDANCE["standard"])
+
         instructions_parts.append(
-            f"\n\n📋 SUBTASK CONTEXT:\n"
+            f"\n\n⏱️ TIME BUDGET: {estimated_minutes:.0f} MINUTES\n"
+            f"Complexity Mode: {complexity.upper()}\n\n"
+            f"This is a SUBTASK - complete it in ~{estimated_minutes:.0f} minutes.\n\n"
+            f"{complexity.upper()} MODE EXPECTATIONS:\n"
+            f"- Scope: {guidance['scope']}\n"
+            f"- Quality: {guidance['quality']}\n"
+            f"- Effort: {guidance['effort']}\n\n"
+            f"📋 SUBTASK CONTEXT:\n"
             f"This is a SUBTASK of the larger task: '{parent_name}'\n\n"
             f"FOCUS ONLY on completing this specific subtask:\n"
             f"  Task: {task.name}\n"
@@ -283,10 +434,16 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
     """
     Calculate intelligent wait time before next task request.
 
+    Strategy:
+    - Prioritizes tasks that unlock parallel work for idle agents
+    - Uses 60% of ETA for early completion detection
+    - Caps at 5 minutes for regular re-polling
+
     Uses:
     - Current progress of IN_PROGRESS tasks
     - Historical median task duration
-    - Task dependencies to find soonest unblocking event
+    - Task dependencies and parallel work potential
+    - Idle agent capacity
 
     Parameters
     ----------
@@ -297,7 +454,7 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
     -------
     Dict[str, Any]
         Dictionary with:
-        - retry_after_seconds: int (wait time in seconds)
+        - retry_after_seconds: int (wait time in seconds, max 300s)
         - reason: str (explanation for the wait time)
         - blocking_task: Optional[Dict] (task that's blocking progress)
     """
@@ -313,7 +470,7 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
     # If no tasks in progress, use default wait time
     if not in_progress_tasks:
         return {
-            "retry_after_seconds": 300,  # 5 minutes
+            "retry_after_seconds": 30,  # 30 seconds
             "reason": "No tasks currently in progress - check back soon",
             "blocking_task": None,
         }
@@ -325,7 +482,7 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
 
     # Calculate ETA for each in-progress task
     completion_estimates = []
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
     for item in in_progress_tasks:
         task = item["task"]
@@ -335,7 +492,12 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
         progress = getattr(task, "progress", 0) or 0
 
         # Calculate elapsed time in seconds
-        elapsed_seconds = (now - assignment.assigned_at).total_seconds()
+        # Ensure assignment.assigned_at is timezone-aware
+        assigned_at = assignment.assigned_at
+        if assigned_at.tzinfo is None:
+            # Make naive datetime timezone-aware (assume UTC)
+            assigned_at = assigned_at.replace(tzinfo=timezone.utc)
+        elapsed_seconds = (now - assigned_at).total_seconds()
 
         # Estimate remaining time
         if progress > 0 and progress < 100:
@@ -364,34 +526,57 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
             }
         )
 
-    # Sort by ETA (soonest first)
-    completion_estimates.sort(key=lambda x: x["eta_seconds"])
+    # Count idle agents (registered but not currently working)
+    total_agents = len(state.agent_status)
+    busy_agents = len([a for a in state.agent_tasks.values() if a.task_id])
+    idle_agents = max(0, total_agents - busy_agents)
 
-    # Get the soonest completion
-    soonest = completion_estimates[0]
+    # Prioritize tasks that unlock parallel work for idle agents
+    # This prevents waking up for sequential work that current workers can handle
+    high_value_tasks = [
+        est for est in completion_estimates if est["unlocks_count"] >= idle_agents
+    ]
 
-    # Add a buffer (minimum 30 seconds, or 10% of estimate)
-    buffer_seconds = max(30, soonest["eta_seconds"] * 0.1)
-    retry_after = int(soonest["eta_seconds"] + buffer_seconds)
+    # If we have tasks that unlock enough parallel work, prioritize those
+    # Otherwise fall back to any task completion (sequential work is still work)
+    candidate_tasks = high_value_tasks if high_value_tasks else completion_estimates
 
-    # Cap maximum wait time at 1 hour
-    retry_after = min(retry_after, 3600)
+    # Sort candidates by ETA (soonest first)
+    candidate_tasks.sort(key=lambda x: x["eta_seconds"])
+
+    # Get the best task to wait for
+    target_task = candidate_tasks[0]
+
+    # Use 60% of ETA for retry to catch early completions
+    # This accounts for tasks finishing faster than estimated
+    retry_after = int(target_task["eta_seconds"] * 0.6)
+
+    # Minimum 30 seconds to avoid excessive polling
+    retry_after = max(30, retry_after)
+
+    # Cap at 30 seconds for re-polling (catch unexpected early completions)
+    retry_after = min(retry_after, 30)
 
     # Format reason
-    eta_minutes = int(soonest["eta_seconds"] / 60)
+    eta_minutes = int(target_task["eta_seconds"] / 60)
+    unlocks_info = (
+        f" (unlocks {target_task['unlocks_count']} tasks)"
+        if target_task["unlocks_count"] > 0
+        else ""
+    )
     reason = (
-        f"Waiting for '{soonest['task_name']}' to complete "
-        f"(~{eta_minutes} min, {soonest['progress']}% done)"
+        f"Waiting for '{target_task['task_name']}' to complete "
+        f"(~{eta_minutes} min, {target_task['progress']}% done){unlocks_info}"
     )
 
     return {
         "retry_after_seconds": retry_after,
         "reason": reason,
         "blocking_task": {
-            "id": soonest["task_id"],
-            "name": soonest["task_name"],
-            "progress": soonest["progress"],
-            "eta_seconds": int(soonest["eta_seconds"]),
+            "id": target_task["task_id"],
+            "name": target_task["task_name"],
+            "progress": target_task["progress"],
+            "eta_seconds": int(target_task["eta_seconds"]),
         },
     }
 
@@ -691,7 +876,7 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                     priority=optimal_task.priority,
                     dependencies=optimal_task.dependencies,
                     assigned_to=agent_id,
-                    assigned_at=datetime.now(),
+                    assigned_at=datetime.now(timezone.utc),
                     due_date=optimal_task.due_date,
                 )
 
@@ -780,6 +965,16 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                         "implementation_context": previous_implementations,
                         "project_id": active_project.id if active_project else None,
                         "project_name": active_project.name if active_project else None,
+                        "labels": (
+                            optimal_task.labels
+                            if hasattr(optimal_task, "labels")
+                            else []
+                        ),
+                        "completion_criteria": (
+                            optimal_task.completion_criteria
+                            if hasattr(optimal_task, "completion_criteria")
+                            else []
+                        ),
                     },
                 }
 
@@ -873,16 +1068,15 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                     )
 
             # Check if there are any TODO tasks remaining
-            # Only run diagnostics if tasks exist but can't be assigned
+            # Only run diagnostics for LOGGING if tasks exist but can't be assigned
+            # DO NOT send diagnostics to agents - they interpret them as reasons to stop
             todo_tasks = [t for t in state.project_tasks if t.status == TaskStatus.TODO]
 
-            diagnostic_summary = None
-
             if todo_tasks:
-                # Tasks exist but can't be assigned - run diagnostics
+                # Tasks exist but can't be assigned - run diagnostics FOR LOGGING ONLY
                 logger.warning(
                     f"No tasks assignable but {len(todo_tasks)} TODO tasks exist - "
-                    "running diagnostics"
+                    "running diagnostics for logs"
                 )
 
                 from src.core.task_diagnostics import (
@@ -896,7 +1090,7 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 }
                 assigned_task_ids = {a.task_id for a in state.agent_tasks.values()}
 
-                # Run diagnostics
+                # Run diagnostics FOR LOGGING ONLY - don't send to agents
                 try:
                     diagnostic_report = await run_automatic_diagnostics(
                         project_tasks=state.project_tasks,
@@ -904,36 +1098,16 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                         assigned_task_ids=assigned_task_ids,
                     )
 
-                    # Format report for logging
+                    # Format report for logging (operators can see this)
                     formatted_report = format_diagnostic_report(diagnostic_report)
-                    logger.info(f"Diagnostic Report:\n{formatted_report}")
-
-                    # Include diagnostic summary in response
-                    diagnostic_summary = {
-                        "total_tasks": diagnostic_report.total_tasks,
-                        "available_tasks": diagnostic_report.available_tasks,
-                        "blocked_tasks": diagnostic_report.blocked_tasks,
-                        "issues_found": len(diagnostic_report.issues),
-                        "top_issues": [
-                            {
-                                "type": issue.issue_type,
-                                "severity": issue.severity,
-                                "description": issue.description,
-                                "recommendation": issue.recommendation,
-                            }
-                            for issue in diagnostic_report.issues[:3]
-                        ],
-                        "recommendations": diagnostic_report.recommendations[:5],
-                    }
+                    logger.info(
+                        f"Diagnostic Report (for operators):\n{formatted_report}"
+                    )
 
                 except Exception as diag_error:
                     logger.error(
                         f"Diagnostic system error: {diag_error}", exc_info=True
                     )
-                    diagnostic_summary = {
-                        "error": "Diagnostics failed",
-                        "details": str(diag_error),
-                    }
             else:
                 # No TODO tasks remaining - all tasks are done or in progress
                 logger.info("No TODO tasks remaining - project may be complete")
@@ -947,29 +1121,190 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 "No suitable tasks available at this time",
                 {
                     "reason": "no_matching_tasks",
-                    "diagnostics": diagnostic_summary,
                     "retry_after_seconds": retry_info["retry_after_seconds"],
                     **project_context,
                 },
             )
 
+            # Build explicit instructions to prevent agent termination
+            retry_seconds = retry_info["retry_after_seconds"]
+            instructions = (
+                f"\n\n{'='*70}\n"
+                "NO TASKS CURRENTLY AVAILABLE\n"
+                f"{'='*70}\n\n"
+                "⚠️  CRITICAL: You MUST remain active and operational.\n\n"
+                "Instructions:\n"
+                f"1. DO NOT terminate or stop execution\n"
+                f"2. Sleep/wait for exactly {retry_seconds} seconds\n"
+                f"3. After sleeping, immediately request a new task\n"
+                f"4. Repeat this process until you receive a task OR are "
+                "notified all work is complete\n\n"
+                f"REQUIRED ACTION: Sleep {retry_seconds} seconds → "
+                "Request task → Repeat\n\n"
+                "⚠️  You must continue this retry loop. Stopping or terminating "
+                "will make you unresponsive and unable to receive future tasks. "
+                "Stay alive and keep retrying.\n"
+                f"{'='*70}\n"
+            )
+
+            # Return ONLY the essential retry information
+            # DO NOT include diagnostics or blocking_task info - agents interpret
+            # these as reasons to stop working instead of retrying
             response = {
                 "success": False,
-                "message": "No suitable tasks available at this time",
-                "retry_after_seconds": retry_info["retry_after_seconds"],
+                "message": instructions,
+                "retry_after_seconds": retry_seconds,
                 "retry_reason": retry_info["reason"],
             }
-
-            if retry_info.get("blocking_task"):
-                response["blocking_task"] = retry_info["blocking_task"]
-
-            if diagnostic_summary:
-                response["diagnostics"] = diagnostic_summary
 
             return response
 
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+async def _validate_task_completion(task: Task, agent_id: str, state: Any) -> Any:
+    """Validate task completion using WorkAnalyzer.
+
+    Parameters
+    ----------
+    task : Task
+        Task to validate
+    agent_id : str
+        Agent ID for logging
+    state : Any
+        Marcus server state
+
+    Returns
+    -------
+    ValidationResult
+        Validation result with pass/fail and issues
+    """
+    global _work_analyzer, _retry_tracker
+
+    # Lazy imports to avoid circular dependency
+    from src.ai.validation.retry_tracker import RetryTracker
+    from src.ai.validation.work_analyzer import WorkAnalyzer
+
+    # Initialize singletons with double-checked locking pattern
+    if _work_analyzer is None or _retry_tracker is None:
+        with _singleton_lock:
+            if _work_analyzer is None:
+                _work_analyzer = WorkAnalyzer()
+            if _retry_tracker is None:
+                _retry_tracker = RetryTracker()
+
+    # Run validation
+    validation_result = await _work_analyzer.validate_implementation_task(task, state)
+
+    return validation_result
+
+
+async def _handle_validation_failure(
+    task: Task, agent_id: str, validation_result: Any, state: Any
+) -> Dict[str, Any]:
+    """Handle validation failure with hybrid remediation.
+
+    First failure: Return response (task stays IN_PROGRESS, agent can retry)
+    Retry with same issues: Create blocker
+
+    Parameters
+    ----------
+    task : Task
+        Task that failed validation
+    agent_id : str
+        Agent ID
+    validation_result : ValidationResult
+        Validation result with issues
+    state : Any
+        Marcus server state
+
+    Returns
+    -------
+    Dict[str, Any]
+        Response indicating validation failure
+    """
+    # Check if this is a retry with same issues BEFORE recording
+    is_retry_with_same_issues = False
+    if _retry_tracker is not None:
+        is_retry_with_same_issues = _retry_tracker.is_retry_with_same_issues(
+            task.id, validation_result
+        )
+
+    # Format issues for response
+    issues_list = [issue.to_dict() for issue in validation_result.issues]
+
+    if is_retry_with_same_issues:
+        # Agent is stuck - create blocker
+        blocker_description = _format_blocker_description(validation_result)
+
+        # Call report_blocker with WorkAnalyzer's validation advice
+        await report_blocker(
+            agent_id=agent_id,
+            task_id=task.id,
+            blocker_description=blocker_description,
+            severity="high",
+            state=state,
+            skip_ai_analysis=True,  # Use WorkAnalyzer's advice, not Marcus's AI
+        )
+
+        return {
+            "success": False,
+            "status": "validation_failed",
+            "issues": issues_list,
+            "blocker_created": True,
+            "message": "Validation failed with same issues - blocker created. Review AI suggestions in blocker.",  # noqa: E501
+        }
+    else:
+        # First failure or different issues - record attempt and return response
+        if _retry_tracker is not None:
+            _retry_tracker.record_attempt(task.id, validation_result)
+
+        return {
+            "success": False,
+            "status": "validation_failed",
+            "issues": issues_list,
+            "message": "Task did not pass validation. Fix issues and retry completion.",
+        }
+
+
+def _format_blocker_description(validation_result: Any) -> str:
+    """Format validation issues as blocker description.
+
+    Parameters
+    ----------
+    validation_result : ValidationResult
+        Validation result with issues
+
+    Returns
+    -------
+    str
+        Formatted blocker description
+    """
+    lines = [
+        "🚫 VALIDATION BLOCKER - REPEATED FAILURES",
+        "",
+        "You've attempted to complete this task multiple times with the same issues.",
+        "This suggests you may be stuck. Please carefully review the issues below:",
+        "",
+    ]
+
+    for i, issue in enumerate(validation_result.issues, 1):
+        lines.append(f"{i}. ❌ {issue.issue}")
+        lines.append(f"   SEVERITY: {issue.severity.value.upper()}")
+        lines.append(f"   EVIDENCE: {issue.evidence}")
+        lines.append(f"   REMEDIATION: {issue.remediation}")
+        lines.append(f"   CRITERION: {issue.criterion}")
+        lines.append("")
+
+    lines.append("IMPORTANT:")
+    lines.append("- READ the remediation carefully - it tells you EXACTLY what to fix")
+    lines.append("- Don't rebuild everything - fix the SPECIFIC issues listed above")
+    lines.append("- If you're unsure, ask for help understanding the requirements")
+    lines.append("")
+    lines.append("Once you've fixed the issues, report progress to unblock the task.")
+
+    return "\n".join(lines)
 
 
 async def report_task_progress(
@@ -1038,9 +1373,58 @@ async def report_task_progress(
         # Update task in kanban
         update_data: Dict[str, Any] = {"progress": progress}
 
+        # VALIDATION GATE: Check if implementation task needs validation
+        if status == "completed":
+            # CRITICAL: Fetch fresh task from Kanban to get current labels
+            # state.project_tasks has stale data from project initialization
+            # Labels are added AFTER task creation, so we need fresh data
+            fresh_tasks = await state.kanban_client.get_all_tasks()
+            task = next((t for t in fresh_tasks if t.id == task_id), None)
+
+            logger.info(
+                f"VALIDATION GATE: Task {task_id} completed, "
+                f"found task object: {task is not None}"
+            )
+
+            # Lazy import to avoid circular dependency
+            from src.ai.validation.task_filter import should_validate_task
+
+            if task:
+                task_labels = task.labels if hasattr(task, "labels") else None
+                should_validate = should_validate_task(task)
+                logger.info(
+                    f"VALIDATION GATE: Task {task_id} ({task.name}) - "
+                    f"labels={task_labels}, should_validate={should_validate}"
+                )
+
+                if should_validate:
+                    try:
+                        logger.info(
+                            f"VALIDATION GATE: Starting validation for {task_id}"
+                        )
+                        # Run validation
+                        validation_result = await _validate_task_completion(
+                            task, agent_id, state
+                        )
+
+                        # Handle failure
+                        if not validation_result.passed:
+                            return await _handle_validation_failure(
+                                task, agent_id, validation_result, state
+                            )
+                    except Exception as e:
+                        # Validation system failed - log and allow completion
+                        logger.error(f"Validation system error: {e}")
+                        logger.exception("Validation exception details:")
+                else:
+                    logger.info(
+                        f"VALIDATION GATE: Skipping validation for {task_id} "
+                        f"(not an implementation task)"
+                    )
+
         if status == "completed":
             update_data["status"] = TaskStatus.DONE
-            update_data["completed_at"] = datetime.now().isoformat()
+            update_data["completed_at"] = datetime.now(timezone.utc).isoformat()
 
             # Handle subtask completion
             if hasattr(state, "subtask_manager") and state.subtask_manager:
@@ -1089,8 +1473,12 @@ async def report_task_progress(
             task_assignment = state.agent_tasks.get(agent_id)
             if task_assignment:
                 start_time = task_assignment.assigned_at
-                actual_hours = (datetime.now() - start_time).total_seconds() / 3600
-                duration_seconds = (datetime.now() - start_time).total_seconds()
+                # Ensure start_time is timezone-aware
+                if start_time.tzinfo is None:
+                    start_time = start_time.replace(tzinfo=timezone.utc)
+                now_utc = datetime.now(timezone.utc)
+                actual_hours = (now_utc - start_time).total_seconds() / 3600
+                duration_seconds = (now_utc - start_time).total_seconds()
             else:
                 actual_hours = 1.0  # Default if no assignment found
                 duration_seconds = 3600.0  # 1 hour default
@@ -1181,7 +1569,12 @@ async def report_task_progress(
                 task_assignment = state.agent_tasks.get(agent_id)
                 if task_assignment:
                     start_time = task_assignment.assigned_at
-                    actual_hours = (datetime.now() - start_time).total_seconds() / 3600
+                    # Ensure start_time is timezone-aware
+                    if start_time.tzinfo is None:
+                        start_time = start_time.replace(tzinfo=timezone.utc)
+                    actual_hours = (
+                        datetime.now(timezone.utc) - start_time
+                    ).total_seconds() / 3600
                 else:
                     actual_hours = 1.0
 
@@ -1226,8 +1619,12 @@ async def report_task_progress(
             {"acknowledged": True, **project_context},
         )
 
-        # Update system state
-        await state.refresh_project_state()
+        # DON'T refresh after task updates - causes race condition with Kanban
+        # Parent task completion updates Kanban asynchronously, refresh may
+        # fetch stale data and overwrite in-memory DONE status, causing tasks
+        # to revert to TODO. Let refresh happen on next request_next_task
+        # instead. NOTE: This may affect README documentation task visibility -
+        # monitor for that
 
         return {"success": True, "message": "Progress updated successfully"}
 
@@ -1236,7 +1633,12 @@ async def report_task_progress(
 
 
 async def report_blocker(
-    agent_id: str, task_id: str, blocker_description: str, severity: str, state: Any
+    agent_id: str,
+    task_id: str,
+    blocker_description: str,
+    severity: str,
+    state: Any,
+    skip_ai_analysis: bool = False,
 ) -> Dict[str, Any]:
     """
     Report a blocker on a task with AI-powered analysis.
@@ -1256,6 +1658,9 @@ async def report_blocker(
         Blocker severity (low, medium, high)
     state : Any
         Marcus server state instance
+    skip_ai_analysis : bool, default=False
+        If True, skip Marcus's AI analysis (use when blocker_description
+        already contains WorkAnalyzer's validation advice)
 
     Returns
     -------
@@ -1289,12 +1694,16 @@ async def report_blocker(
         )
 
         # Use AI to analyze the blocker and suggest solutions
-        agent = state.agent_status.get(agent_id)
-        task = await state.kanban_client.get_task_by_id(task_id)
+        # (skip if WorkAnalyzer already provided validation advice)
+        if skip_ai_analysis:
+            suggestions = blocker_description  # Use WorkAnalyzer's advice directly
+        else:
+            agent = state.agent_status.get(agent_id)
+            task = await state.kanban_client.get_task_by_id(task_id)
 
-        suggestions = await state.ai_engine.analyze_blocker(
-            task_id, blocker_description, severity, agent, task
-        )
+            suggestions = await state.ai_engine.analyze_blocker(
+                task_id, blocker_description, severity, agent, task
+            )
 
         # Update task status
         await state.kanban_client.update_task(
@@ -1442,6 +1851,42 @@ async def _find_optimal_task_original_logic(
             t.id for t in state.project_tasks if t.status == TaskStatus.DONE
         }
 
+        # Build slug-to-ID mapping for dependency resolution
+        # Bundled design tasks are created with slug IDs like
+        # "design_productivity_tools" but get replaced with numeric Planka IDs
+        # when synced to the board. Dependencies still reference the slug, so
+        # we need to map slug → numeric ID.
+        slug_to_id: dict[str, str] = {}
+        for t in state.project_tasks:
+            # Look for Design tasks - they have labels like:
+            # ['design', 'architecture', 'productivity tools']
+            if (
+                t.name
+                and "Design" in t.name
+                and hasattr(t, "labels")
+                and t.labels
+                and len(t.labels) >= 3
+            ):
+                # Extract domain from labels
+                # (last non-design/architecture label)
+                domain_labels = [
+                    label
+                    for label in t.labels
+                    if label.lower() not in ["design", "architecture"]
+                ]
+                if domain_labels:
+                    # Create slug from domain label:
+                    # "productivity tools" → "design_productivity_tools"
+                    domain = domain_labels[-1]
+                    slug = f"design_{domain.lower().replace(' ', '_')}"
+                    slug_to_id[slug] = str(t.id)
+                    logger.debug(f"Mapped slug '{slug}' → task ID {t.id} ('{t.name}')")
+
+        logger.info(
+            f"Built slug-to-ID mapping with {len(slug_to_id)} entries: "
+            f"{dict(list(slug_to_id.items())[:5])}"  # Show first 5
+        )
+
         # Filter tasks: TODO, not assigned, and all dependencies completed
         available_tasks = []
         for t in state.project_tasks:
@@ -1500,32 +1945,78 @@ async def _find_optimal_task_original_logic(
                     )
                     continue
 
-            # Check dependencies
+            # Check dependencies - resolve slugs to actual IDs first
             deps = t.dependencies or []
-            all_deps_complete = all(dep_id in completed_task_ids for dep_id in deps)
+            resolved_deps = []
+            for dep_id in deps:
+                # If it's a slug, try to resolve it; otherwise use as-is
+                if dep_id in slug_to_id:
+                    resolved_deps.append(slug_to_id[dep_id])
+                else:
+                    resolved_deps.append(dep_id)
+
+            all_deps_complete = all(
+                dep_id in completed_task_ids for dep_id in resolved_deps
+            )
 
             if not all_deps_complete:
                 filtering_stats["incomplete_dependencies"] += 1
                 # Log which dependencies are not complete
                 incomplete_deps = [
-                    dep_id for dep_id in deps if dep_id not in completed_task_ids
+                    dep_id
+                    for dep_id in resolved_deps
+                    if dep_id not in completed_task_ids
                 ]
-                logger.debug(
-                    f"Task '{t.name}' has incomplete dependencies: {incomplete_deps}"
+                logger.info(
+                    f"Task '{t.name}' has incomplete dependencies: {incomplete_deps} "
+                    f"(original: {deps}, resolved: {resolved_deps})"
                 )
                 continue
 
+            # CRITICAL: If this is a subtask, also check parent's dependencies
+            # Subtasks should not start until their parent's dependencies are met
+            if t.is_subtask and t.parent_task_id:
+                parent_task = next(
+                    (p for p in state.project_tasks if p.id == t.parent_task_id), None
+                )
+                if parent_task:
+                    parent_deps = parent_task.dependencies or []
+                    parent_resolved_deps = []
+                    for dep_id in parent_deps:
+                        if dep_id in slug_to_id:
+                            parent_resolved_deps.append(slug_to_id[dep_id])
+                        else:
+                            parent_resolved_deps.append(dep_id)
+
+                    parent_deps_complete = all(
+                        dep_id in completed_task_ids for dep_id in parent_resolved_deps
+                    )
+
+                    if not parent_deps_complete:
+                        incomplete_parent_deps = [
+                            dep_id
+                            for dep_id in parent_resolved_deps
+                            if dep_id not in completed_task_ids
+                        ]
+                        logger.info(
+                            f"Subtask '{t.name}' blocked: parent task "
+                            f"'{parent_task.name}' has incomplete dependencies: "
+                            f"{incomplete_parent_deps}"
+                        )
+                        filtering_stats["incomplete_dependencies"] += 1
+                        continue
+
             available_tasks.append(t)
 
-        # Special handling for PROJECT_SUCCESS documentation
+        # Special handling for README documentation
         # Calculate project completion percentage
-        # Exclude PROJECT_SUCCESS tasks from the calculation since they should only
+        # Exclude README documentation tasks from the calculation since they should only
         # be assigned after other tasks are complete
         total_non_doc_tasks = len(
             [
                 t
                 for t in state.project_tasks
-                if "PROJECT_SUCCESS" not in t.name
+                if "README" not in t.name
                 and not any(
                     label in (t.labels or [])
                     for label in ["documentation", "final", "verification"]
@@ -1537,7 +2028,7 @@ async def _find_optimal_task_original_logic(
                 t
                 for t in state.project_tasks
                 if t.status == TaskStatus.DONE
-                and "PROJECT_SUCCESS" not in t.name
+                and "README" not in t.name
                 and not any(
                     label in (t.labels or [])
                     for label in ["documentation", "final", "verification"]
@@ -1545,28 +2036,24 @@ async def _find_optimal_task_original_logic(
             ]
         )
 
-        # Special case: If PROJECT_SUCCESS is the only task left, make it available
-        project_success_tasks = [
-            t for t in available_tasks if "PROJECT_SUCCESS" in t.name
-        ]
-        if project_success_tasks and len(available_tasks) == len(project_success_tasks):
-            # All available tasks are PROJECT_SUCCESS tasks, don't filter them
+        # Special case: If README documentation is the only task left, make it available
+        readme_doc_tasks = [t for t in available_tasks if "README" in t.name]
+        if readme_doc_tasks and len(available_tasks) == len(readme_doc_tasks):
+            # All available tasks are README documentation tasks, don't filter them
             logger.debug(
-                "PROJECT_SUCCESS is the only available task - making it assignable"
+                "README documentation is the only available task - making it assignable"
             )
         elif total_non_doc_tasks > 0:
             completion_percentage = (
                 completed_non_doc_tasks / total_non_doc_tasks
             ) * 100
 
-            # Filter out PROJECT_SUCCESS tasks if not nearly complete
+            # Filter out README documentation tasks if not nearly complete
             # Using 90% threshold since some tasks might be blocked
             if completion_percentage < 90:
-                available_tasks = [
-                    t for t in available_tasks if "PROJECT_SUCCESS" not in t.name
-                ]
+                available_tasks = [t for t in available_tasks if "README" not in t.name]
                 logger.debug(
-                    f"Filtering out PROJECT_SUCCESS tasks - project only "
+                    f"Filtering out README documentation tasks - project only "
                     f"{completion_percentage:.1f}% complete"
                 )
 
@@ -1650,6 +2137,7 @@ async def _find_optimal_task_original_logic(
                             for t in state.project_tasks
                             if t.labels and set(t.labels) & set(task.labels)
                         )
+
                         if phase_exists:
                             phase_allowed = False
                             logger.info(

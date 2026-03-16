@@ -5,7 +5,7 @@ Tests the AI-driven task decomposition functionality.
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -15,7 +15,6 @@ from src.marcus_mcp.coordinator.decomposer import (
     _adjust_subtask_dependencies,
     _analyze_parallelism,
     _calculate_dependency_levels,
-    _create_integration_subtask,
     _validate_decomposition,
     decompose_task,
     should_decompose,
@@ -35,8 +34,8 @@ class TestShouldDecompose:
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=6.0,
             labels=["backend", "api"],
@@ -54,9 +53,11 @@ class TestShouldDecompose:
         assert result is True
 
     def test_should_not_decompose_small_task(self, base_task):
-        """Test small tasks (<3 hours) are not decomposed."""
+        """Test small tasks (< 12 minutes / 0.2 hours) are not decomposed."""
         # Arrange
-        base_task.estimated_hours = 2.0
+        base_task.estimated_hours = 0.15  # 9 minutes - below 12 min threshold
+        # Change description to avoid multi-component indicators
+        base_task.description = "Create user service"
 
         # Act
         result = should_decompose(base_task)
@@ -101,6 +102,209 @@ class TestShouldDecompose:
         # Assert
         assert result is True
 
+    # ===== Project Complexity Mode Tests =====
+
+    def test_prototype_mode_never_decomposes(self, base_task):
+        """Test prototype mode never decomposes regardless of task characteristics."""
+        # Arrange
+        base_task.estimated_hours = 10.0  # Large task
+        base_task.description = (
+            "Build API with database and frontend UI"  # Multi-component
+        )
+
+        # Act
+        result = should_decompose(base_task, project_complexity="prototype")
+
+        # Assert
+        assert result is False, "Prototype mode should never decompose"
+
+    def test_standard_mode_time_threshold_12_minutes(self, base_task):
+        """Test standard mode decomposes tasks >= 0.2 hours (12 minutes)."""
+        # Arrange - Just above threshold
+        base_task.estimated_hours = 0.2
+        base_task.description = "Simple task"
+
+        # Act
+        result = should_decompose(base_task, project_complexity="standard")
+
+        # Assert
+        assert result is True, "Standard mode should decompose at 0.2h"
+
+    def test_standard_mode_below_time_threshold(self, base_task):
+        """Test standard mode doesn't decompose tasks < 0.2 hours."""
+        # Arrange - Just below threshold
+        base_task.estimated_hours = 0.19
+        base_task.description = "Simple task"
+
+        # Act
+        result = should_decompose(base_task, project_complexity="standard")
+
+        # Assert
+        assert result is False, "Standard mode should not decompose below 0.2h"
+
+    def test_standard_mode_multi_component_threshold_3(self, base_task):
+        """Test standard mode requires >= 3 component indicators."""
+        # Arrange - Exactly 3 indicators: "api", "database", "frontend"
+        base_task.estimated_hours = 0.1  # Below time threshold
+        base_task.description = "Build api with database and frontend"
+
+        # Act
+        result = should_decompose(base_task, project_complexity="standard")
+
+        # Assert
+        assert result is True, "Standard mode should decompose with 3 indicators"
+
+    def test_standard_mode_below_multi_component_threshold(self, base_task):
+        """Test standard mode doesn't decompose with < 3 indicators."""
+        # Arrange - Only 2 indicators: "api", "database"
+        base_task.estimated_hours = 0.1  # Below time threshold
+        base_task.description = "Build api with database"
+
+        # Act
+        result = should_decompose(base_task, project_complexity="standard")
+
+        # Assert
+        assert result is False, "Standard mode should not decompose with 2 indicators"
+
+    def test_enterprise_mode_time_threshold_6_minutes(self, base_task):
+        """Test enterprise mode decomposes tasks >= 0.1 hours (6 minutes)."""
+        # Arrange - Just above enterprise threshold, below standard threshold
+        base_task.estimated_hours = 0.1
+        base_task.description = "Simple task"
+
+        # Act
+        result = should_decompose(base_task, project_complexity="enterprise")
+
+        # Assert
+        assert result is True, "Enterprise mode should decompose at 0.1h"
+
+    def test_enterprise_mode_multi_component_threshold_2(self, base_task):
+        """Test enterprise mode requires >= 2 component indicators."""
+        # Arrange - Exactly 2 indicators: "api", "database"
+        base_task.estimated_hours = 0.05  # Just above minimum
+        base_task.description = "Build api with database"
+
+        # Act
+        result = should_decompose(base_task, project_complexity="enterprise")
+
+        # Assert
+        assert result is True, "Enterprise mode should decompose with 2 indicators"
+
+    def test_enterprise_mode_forces_implement_tasks(self, base_task):
+        """Test enterprise mode force decomposes all Implement tasks."""
+        # Arrange - Below time threshold, no multi-component indicators
+        base_task.name = "Implement User Authentication"
+        base_task.estimated_hours = 0.06  # Below enterprise time threshold
+        base_task.description = "Simple implementation"  # No indicators
+
+        # Act
+        result = should_decompose(base_task, project_complexity="enterprise")
+
+        # Assert
+        assert result is True, "Enterprise mode should force decompose Implement tasks"
+
+    def test_enterprise_mode_more_aggressive_than_standard(self, base_task):
+        """Test enterprise mode decomposes more tasks than standard mode."""
+        # Arrange - Task characteristics between standard and enterprise thresholds
+        test_cases = [
+            # (hours, description, expected_standard, expected_enterprise)
+            (0.15, "Simple task", False, True),  # Time: 9 min (enterprise yes)
+            (
+                0.05,
+                "Build api endpoint",
+                False,
+                True,
+            ),  # 2 indicators (enterprise yes): api + endpoint
+            (
+                0.1,
+                "Implement feature",
+                False,
+                True,
+            ),  # Force implement (enterprise yes)
+        ]
+
+        for hours, description, expected_std, expected_ent in test_cases:
+            base_task.estimated_hours = hours
+            base_task.description = description
+            if "implement" in description.lower():
+                base_task.name = description
+
+            # Act
+            std_result = should_decompose(base_task, project_complexity="standard")
+            ent_result = should_decompose(base_task, project_complexity="enterprise")
+
+            # Assert
+            assert (
+                std_result == expected_std
+            ), f"Standard mode failed for: {description}"
+            assert (
+                ent_result == expected_ent
+            ), f"Enterprise mode failed for: {description}"
+
+    def test_enterprise_mode_still_respects_skip_conditions(self, base_task):
+        """Test enterprise mode still skips bugfix/deployment/design tasks."""
+        # Arrange - Large implement task but with skip label
+        base_task.name = "Implement hotfix"
+        base_task.estimated_hours = 5.0
+        base_task.labels = ["bugfix"]
+
+        # Act
+        result = should_decompose(base_task, project_complexity="enterprise")
+
+        # Assert
+        assert result is False, "Enterprise mode should still skip bugfix tasks"
+
+    def test_default_mode_behaves_like_standard(self, base_task):
+        """Test None (default) complexity behaves like standard mode."""
+        # Arrange
+        base_task.estimated_hours = 0.2
+        base_task.description = "Simple task"
+
+        # Act
+        result_default = should_decompose(base_task, project_complexity=None)
+        result_standard = should_decompose(base_task, project_complexity="standard")
+
+        # Assert
+        assert (
+            result_default == result_standard
+        ), "Default should behave like standard mode"
+
+    def test_should_decompose_none_estimated_hours(self, base_task):
+        """Test that None estimated_hours doesn't crash should_decompose."""
+        # Arrange
+        base_task.estimated_hours = None
+
+        # Act - should not raise TypeError
+        result = should_decompose(base_task)
+
+        # Assert - None hours should not decompose (treated as unknown/small)
+        assert result is False, "Tasks with None estimated_hours should not decompose"
+
+    def test_should_decompose_none_estimated_hours_standard_mode(self, base_task):
+        """Test None estimated_hours in standard mode."""
+        # Arrange
+        base_task.estimated_hours = None
+
+        # Act
+        result = should_decompose(base_task, project_complexity="standard")
+
+        # Assert
+        assert result is False, "None hours in standard mode should not decompose"
+
+    def test_should_decompose_none_estimated_hours_enterprise_mode(self, base_task):
+        """Test None estimated_hours in enterprise mode."""
+        # Arrange
+        base_task.estimated_hours = None
+        base_task.name = (
+            "Implement User Authentication"  # Should force decompose in enterprise
+        )
+
+        # Act
+        result = should_decompose(base_task, project_complexity="enterprise")
+
+        # Assert - Enterprise mode force decomposes "Implement" tasks even with None hours
+        assert result is True, "Enterprise mode should force decompose Implement tasks"
+
 
 class TestDecomposeTask:
     """Test suite for decompose_task AI-driven decomposition."""
@@ -115,8 +319,8 @@ class TestDecomposeTask:
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=8.0,
             labels=["backend", "security"],
@@ -176,15 +380,15 @@ class TestDecomposeTask:
         # Assert
         assert result["success"] is True
         assert "subtasks" in result
-        # Should have original 2 + 1 integration subtask
-        assert len(result["subtasks"]) == 3
+        # No longer adds integration subtask automatically
+        assert len(result["subtasks"]) == 2
         assert "shared_conventions" in result
 
     @pytest.mark.asyncio
-    async def test_decompose_task_adds_integration_subtask(
+    async def test_decompose_task_preserves_subtasks(
         self, task, mock_ai_engine, sample_decomposition
     ):
-        """Test integration subtask is automatically added."""
+        """Test decomposition preserves AI-generated subtasks."""
         # Arrange
         mock_ai_engine.generate_structured_response.return_value = sample_decomposition
 
@@ -192,9 +396,10 @@ class TestDecomposeTask:
         result = await decompose_task(task, mock_ai_engine)
 
         # Assert
-        integration_subtask = result["subtasks"][-1]
-        assert "Integrate and validate" in integration_subtask["name"]
-        assert len(integration_subtask["dependencies"]) == 2  # Depends on both previous
+        # Verify both subtasks from AI response are preserved
+        assert len(result["subtasks"]) == 2
+        assert result["subtasks"][0]["name"] == "Create User model"
+        assert result["subtasks"][1]["name"] == "Build login endpoint"
 
     @pytest.mark.asyncio
     async def test_decompose_task_adjusts_dependencies_to_ids(
@@ -249,84 +454,6 @@ class TestDecomposeTask:
         assert "soft_dependency_count" in analysis
         assert "hard_dependency_count" in analysis
         assert "parallelism_score" in analysis
-
-
-class TestCreateIntegrationSubtask:
-    """Test suite for integration subtask creation."""
-
-    def test_create_integration_subtask_includes_all_dependencies(self):
-        """Test integration subtask depends on all previous subtasks."""
-        # Arrange
-        task = Task(
-            id="task-1",
-            name="Test task",
-            description="Test",
-            status=TaskStatus.TODO,
-            priority=Priority.MEDIUM,
-            assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
-            due_date=None,
-            estimated_hours=6.0,
-        )
-        previous_subtasks = [
-            {"name": "Subtask 1", "file_artifacts": ["file1.py"]},
-            {"name": "Subtask 2", "file_artifacts": ["file2.py"]},
-        ]
-
-        # Act
-        integration = _create_integration_subtask(task, previous_subtasks)
-
-        # Assert
-        assert integration["dependencies"] == [0, 1]
-
-    def test_create_integration_subtask_has_doc_artifacts(self):
-        """Test integration subtask creates documentation."""
-        # Arrange
-        task = Task(
-            id="task-1",
-            name="Test task",
-            description="Test",
-            status=TaskStatus.TODO,
-            priority=Priority.MEDIUM,
-            assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
-            due_date=None,
-            estimated_hours=6.0,
-        )
-        previous_subtasks = [{"name": "Subtask 1"}]
-
-        # Act
-        integration = _create_integration_subtask(task, previous_subtasks)
-
-        # Assert
-        assert "docs/integration_report.md" in integration["file_artifacts"]
-        assert any("test" in artifact for artifact in integration["file_artifacts"])
-
-    def test_create_integration_subtask_estimates_time(self):
-        """Test integration subtask time estimate is reasonable."""
-        # Arrange
-        task = Task(
-            id="task-1",
-            name="Test task",
-            description="Test",
-            status=TaskStatus.TODO,
-            priority=Priority.MEDIUM,
-            assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
-            due_date=None,
-            estimated_hours=10.0,
-        )
-        previous_subtasks = [{"name": "Subtask 1"}]
-
-        # Act
-        integration = _create_integration_subtask(task, previous_subtasks)
-
-        # Assert
-        # Should be capped at 1.5 hours even though 20% of 10 = 2
-        assert integration["estimated_hours"] == 1.5
 
 
 class TestValidateDecomposition:

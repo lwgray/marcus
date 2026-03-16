@@ -2,6 +2,7 @@
 """
 Simple test to create a project and verify it appears on the board
 """
+
 import asyncio
 import sys
 from pathlib import Path
@@ -9,7 +10,7 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from src.config.config_loader import get_config
+from src.config.marcus_config import get_config
 from src.integrations.kanban_factory import KanbanFactory
 from src.integrations.nlp_tools import create_project_from_natural_language
 
@@ -21,7 +22,7 @@ async def main():
     config = get_config()
 
     # Create kanban client
-    kanban_client = KanbanFactory.create(config.get("kanban.provider", "planka"))
+    kanban_client = KanbanFactory.create(config.kanban.provider or "planka")
 
     # Create a minimal state that has the kanban_client
     class MinimalState:

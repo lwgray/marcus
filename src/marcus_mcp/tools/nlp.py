@@ -6,22 +6,12 @@ This module contains tools for natural language project/task creation:
 """
 
 import logging
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from src.integrations.nlp_tools import add_feature_natural_language
 
 logger = logging.getLogger(__name__)
-
-# Import PipelineStage with fallback for compatibility
-try:
-    from src.visualization.pipeline_flow import PipelineStage
-except ImportError:
-    # Fallback if PipelineStage is not available
-    class PipelineStage:  # type: ignore[no-redef]
-        """Fallback for PipelineStage when not available."""
-
-        MCP_REQUEST = "mcp_request"
-        TASK_COMPLETION = "task_completion"
 
 
 async def create_project(
@@ -58,6 +48,10 @@ async def create_project(
           (defaults to "Main Board")
 
         Project Settings:
+        - project_root (str): **REQUIRED** Absolute path to project directory
+          where implementation files will be created
+          Example: "/Users/username/experiments/myproject/implementation"
+          This is critical for the validation system to locate source files.
         - complexity (str): "prototype", "standard" (default), "enterprise"
         - deployment (str): "none" (default), "internal", "production"
         - team_size (int): Team size 1-20 for estimation (default: 1)
@@ -108,6 +102,7 @@ async def create_project(
         ...     description="E-commerce platform with payment integration",
         ...     project_name="ShopFlow",
         ...     options={
+        ...         "project_root": "/Users/agent/projects/shopflow/implementation",
         ...         "complexity": "enterprise",
         ...         "deployment": "production",
         ...         "team_size": 5,
@@ -116,9 +111,6 @@ async def create_project(
         ...     }
         ... )
     """
-    import uuid
-    from datetime import datetime
-
     # Validate required parameters
     if (
         not description
@@ -236,59 +228,52 @@ async def create_project(
                     "current_value": options["team_size"],
                 }
 
-    # Start tracking pipeline flow
-    flow_id = str(uuid.uuid4())
-    if hasattr(state, "pipeline_visualizer"):
-        # Make pipeline tracking non-blocking
-        def track_start() -> None:
-            state.pipeline_visualizer.start_flow(flow_id, project_name)
-            # Track the MCP request
-            state.pipeline_visualizer.add_event(
-                flow_id=flow_id,
-                stage=PipelineStage.MCP_REQUEST,
-                event_type="create_project_request",
-                data={
-                    "project_name": project_name,
-                    "description_length": len(description),
-                    "options": options or {},
-                },
-                status="completed",
-            )
-
-        # Run tracking synchronously to avoid hanging
-        # This is fast enough to not impact response time
-        track_start()
-
-        # Also log to real-time log for UI server
-        state.log_event(
-            "pipeline_flow_started",
-            {
-                "flow_id": flow_id,
-                "project_name": project_name,
-                "stage": "mcp_request",
-                "event_type": "create_project_request",
-            },
-        )
-
-    start_time = datetime.now()
-
     try:
-        # Create project using natural language processing with pipeline tracking
-        from src.integrations.pipeline_tracked_nlp import (
-            create_project_from_natural_language_tracked,
-        )
+        # Create project using natural language processing
+        from src.integrations.nlp_tools import NaturalLanguageProjectCreator
 
         # Log before calling the function
         state.log_event("create_project_calling", {"project_name": project_name})
 
+        # Get subtask_manager if available
+        subtask_manager = getattr(state, "subtask_manager", None)
+
+        # Extract complexity from options (default to "standard")
+        # Restored from deleted pipeline_tracked_nlp.py
+        complexity = "standard"
+        if options:
+            complexity = options.get("complexity", "standard")
+
+        # Clear stale project/board IDs to force new project creation
+        # Restored from deleted pipeline_tracked_nlp.py
+        # The creator checks if these are set and skips creation if they are
+        # CRITICAL: This affects task and subtask creation ordering
+        if state.kanban_client:
+            # Clear on the underlying client if wrapped
+            if hasattr(state.kanban_client, "client"):
+                state.kanban_client.client.project_id = None
+                state.kanban_client.client.board_id = None
+            else:
+                state.kanban_client.project_id = None
+                state.kanban_client.board_id = None
+            logger.info(
+                f"Creating NEW project '{project_name}' (complexity={complexity})"
+            )
+
+        # Initialize project creator
+        creator = NaturalLanguageProjectCreator(
+            kanban_client=state.kanban_client,
+            ai_engine=state.ai_engine,
+            subtask_manager=subtask_manager,
+            complexity=complexity,
+        )
+
         # Ensure we await the result properly
         try:
-            result = await create_project_from_natural_language_tracked(
+            result: Dict[str, Any] = await creator.create_project_from_description(
                 description=description,
                 project_name=project_name,
-                state=state,
-                options=options,
-                flow_id=flow_id,
+                options=options or {},
             )
         except Exception as e:
             state.log_event(
@@ -326,30 +311,80 @@ async def create_project(
             },
         )
 
-        # Track successful completion (non-blocking)
-        if hasattr(state, "pipeline_visualizer"):
-            duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+        # Register project with Marcus registry
+        # (restored from deleted pipeline_tracked_nlp.py)
+        if result.get("success") and hasattr(state, "kanban_client"):
+            try:
+                from src.core.project_registry import ProjectConfig
 
-            def track_completion() -> None:
-                state.pipeline_visualizer.add_event(
-                    flow_id=flow_id,
-                    stage=PipelineStage.TASK_COMPLETION,
-                    event_type="pipeline_completed",
-                    data={
-                        "success": result.get("success", False),
-                        "task_count": result.get(
-                            "tasks_created", result.get("task_count", 0)
-                        ),
-                        "total_duration_ms": duration_ms,
-                    },
-                    duration_ms=duration_ms,
-                    status="completed",
-                )
-                # Complete the flow
-                state.pipeline_visualizer.complete_flow(flow_id)
+                provider = options.get("provider", "planka") if options else "planka"
 
-            # Run tracking synchronously to avoid hanging
-            track_completion()
+                # Get provider-specific project name
+                # (may differ from Marcus project name)
+                provider_project_name = project_name
+                provider_board_name = "Main Board"
+
+                # For Planka, extract actual names if available
+                if provider == "planka" and result.get("board"):
+                    board_info = result["board"]
+                    provider_project_name = board_info.get("project_name", project_name)
+                    provider_board_name = board_info.get("board_name", "Main Board")
+
+                # Verify kanban_client has project/board IDs
+                if state.kanban_client.project_id and state.kanban_client.board_id:
+                    # Create ProjectConfig
+                    project_config = ProjectConfig(
+                        id="",  # Will be generated by registry
+                        name=f"{provider_project_name} - {provider_board_name}",
+                        provider=provider,
+                        provider_config={
+                            "project_id": str(state.kanban_client.project_id),
+                            "project_name": provider_project_name,
+                            "board_id": str(state.kanban_client.board_id),
+                            "board_name": provider_board_name,
+                        },
+                        created_at=datetime.now(timezone.utc),
+                        last_used=datetime.now(timezone.utc),
+                        tags=["auto-created", provider],
+                    )
+
+                    # Register with Marcus registry
+                    if hasattr(state, "project_registry"):
+                        marcus_project_id = await state.project_registry.add_project(
+                            project_config
+                        )
+                        logger.info(
+                            f"Registered new project in registry: {marcus_project_id}"
+                        )
+
+                        # Switch to new project
+                        # (this also refreshes state and wires dependencies)
+                        if hasattr(state, "project_manager"):
+                            await state.project_manager.switch_project(
+                                marcus_project_id
+                            )
+                            state.kanban_client = (
+                                await state.project_manager.get_kanban_client()
+                            )
+
+                            # Reset migration flag for new project
+                            if hasattr(state, "_subtasks_migrated"):
+                                state._subtasks_migrated = False
+
+                        # Add Marcus project_id to result for auto-select functionality
+                        result["project_id"] = marcus_project_id
+                    else:
+                        logger.warning(
+                            "ProjectRegistry not available - project not registered"
+                        )
+                else:
+                    logger.warning(
+                        "Could not extract project/board IDs from kanban_client - "
+                        "project not registered in Marcus"
+                    )
+            except Exception as e:
+                # Log but don't fail the operation
+                logger.warning(f"Failed to register project with Marcus: {str(e)}")
 
         # Normalize result to include task_count
         if isinstance(result, dict):
@@ -452,27 +487,7 @@ async def create_project(
 
         return result
 
-    except Exception as exc:
-        # Track error (non-blocking)
-        if hasattr(state, "pipeline_visualizer"):
-            duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
-            error_type = type(exc).__name__
-            error_str = str(exc)
-
-            def track_error() -> None:
-                state.pipeline_visualizer.add_event(
-                    flow_id=flow_id,
-                    stage=PipelineStage.TASK_COMPLETION,
-                    event_type="pipeline_failed",
-                    data={"error_type": error_type},
-                    duration_ms=duration_ms,
-                    status="failed",
-                    error=error_str,
-                )
-
-            # Run tracking synchronously to avoid hanging
-            track_error()
-
+    except Exception:
         raise
 
 

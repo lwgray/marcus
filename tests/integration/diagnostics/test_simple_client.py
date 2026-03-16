@@ -15,9 +15,9 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
 
+from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from mcp import ClientSession, StdioServerParameters
 from src.core.models import TaskStatus
 from src.integrations.kanban_client import KanbanClient
 

@@ -10,7 +10,7 @@ These tests verify model creation, validation, and business logic without
 requiring external dependencies.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import pytest
@@ -48,9 +48,9 @@ class TestTaskModel:
             status=TaskStatus.TODO,
             priority=Priority.HIGH,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
-            due_date=datetime.now() + timedelta(days=3),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=datetime.now(timezone.utc) + timedelta(days=3),
             estimated_hours=8.0,
         )
 
@@ -75,8 +75,8 @@ class TestTaskModel:
             status=TaskStatus.TODO,
             priority=Priority.URGENT,
             assigned_to=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=2.0,
             dependencies=["TASK-001", "TASK-003"],
@@ -101,7 +101,7 @@ class TestProjectState:
         Verifies that project state can track various metrics including task
         counts by status, progress percentage, and overdue tasks.
         """
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         overdue_task = Task(
             id="TASK-001",
             name="Overdue task",
@@ -152,7 +152,7 @@ class TestProjectState:
             overdue_tasks=[],
             team_velocity=10.0,
             risk_level=RiskLevel.LOW,
-            last_updated=datetime.now(),
+            last_updated=datetime.now(timezone.utc),
         )
 
         assert state.progress_percent == 75.0
@@ -182,8 +182,8 @@ class TestWorkerStatus:
             status=TaskStatus.IN_PROGRESS,
             priority=Priority.MEDIUM,
             assigned_to="worker1",
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=4.0,
         )
@@ -246,7 +246,7 @@ class TestTaskAssignment:
         information for a worker to complete the task, including
         instructions, dependencies, and deadlines.
         """
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         due_date = now + timedelta(days=5)
 
         assignment = TaskAssignment(

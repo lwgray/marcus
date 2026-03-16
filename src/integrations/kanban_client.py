@@ -19,13 +19,13 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, cast
 
+from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.types import TextContent
 
-from mcp import ClientSession, StdioServerParameters
 from src.core.models import Priority, Task, TaskStatus
 
 logger = logging.getLogger(__name__)
@@ -426,6 +426,42 @@ class KanbanClient:
                                         card["listName"] = lst.get("name", "")
                                         all_cards.append(card)
 
+                # Fetch detailed card information including labels
+                # NOTE: Planka's list card API doesn't include labels, use get_details
+                try:
+                    for card in all_cards:
+                        card_id = card.get("id")
+                        if not card_id:
+                            continue
+
+                        # Get full card details which includes labels
+                        details_result = await session.call_tool(
+                            "mcp_kanban_card_manager",
+                            {"action": "get_details", "cardId": card_id},
+                        )
+
+                        if (
+                            details_result
+                            and hasattr(details_result, "content")
+                            and details_result.content
+                        ):
+                            first_content = cast(TextContent, details_result.content[0])
+                            card_details = json.loads(first_content.text)
+
+                            # Update card with label data from details
+                            # kanban-mcp now returns FILTERED labels
+                            # (as of fix in feature/fix-card-label-filtering)
+                            # No need to filter again, use labels directly
+                            if "labels" in card_details:
+                                card["labels"] = card_details["labels"]
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to fetch card details for labels: {e}",
+                        exc_info=True,
+                    )
+                    # Continue without labels rather than failing entirely
+
                 # First, convert ALL cards to tasks to build complete ID mapping
                 all_tasks = []
                 for card in all_cards:
@@ -574,6 +610,42 @@ class KanbanClient:
                                         card["listName"] = lst.get("name", "")
                                         all_cards.append(card)
 
+                # Fetch detailed card information including labels
+                # NOTE: Planka's list card API doesn't include labels, use get_details
+                try:
+                    for card in all_cards:
+                        card_id = card.get("id")
+                        if not card_id:
+                            continue
+
+                        # Get full card details which includes labels
+                        details_result = await session.call_tool(
+                            "mcp_kanban_card_manager",
+                            {"action": "get_details", "cardId": card_id},
+                        )
+
+                        if (
+                            details_result
+                            and hasattr(details_result, "content")
+                            and details_result.content
+                        ):
+                            first_content = cast(TextContent, details_result.content[0])
+                            card_details = json.loads(first_content.text)
+
+                            # Update card with label data from details
+                            # kanban-mcp now returns FILTERED labels
+                            # (as of fix in feature/fix-card-label-filtering)
+                            # No need to filter again, use labels directly
+                            if "labels" in card_details:
+                                card["labels"] = card_details["labels"]
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to fetch card details for labels: {e}",
+                        exc_info=True,
+                    )
+                    # Continue without labels rather than failing entirely
+
                 tasks = []
 
                 # Convert all cards to tasks (no filtering)
@@ -664,7 +736,7 @@ class KanbanClient:
                         "cardId": task_id,
                         "text": (
                             f"📋 Task assigned to {agent_id} at "
-                            f"{datetime.now().isoformat()}"
+                            f"{datetime.now(timezone.utc).isoformat()}"
                         ),
                     },
                 )
@@ -815,8 +887,8 @@ class KanbanClient:
         task_name = card.get("name") or card.get("title", "")
 
         # Parse dates
-        created_at = datetime.now()
-        updated_at = datetime.now()
+        created_at = datetime.now(timezone.utc)
+        updated_at = datetime.now(timezone.utc)
 
         # Determine status
         list_name = card.get("listName", "").upper()
@@ -1144,7 +1216,10 @@ class KanbanClient:
                         )
 
     async def auto_setup_project(
-        self, project_name: str, board_name: str = "Main Board"
+        self,
+        project_name: str,
+        board_name: str = "Main Board",
+        project_root: str | None = None,
     ) -> Dict[str, str]:
         """
         Automatically create a Planka project and board if they don't exist.
@@ -1161,6 +1236,8 @@ class KanbanClient:
             Name of the project to create
         board_name : str
             Name of the board to create (default: "Main Board")
+        project_root : str | None, optional
+            Absolute path to project implementation directory
 
         Returns
         -------
@@ -1227,6 +1304,7 @@ class KanbanClient:
                     board_id=board_id,
                     project_name=project_name,
                     board_name=board_name,
+                    project_root=project_root,
                 )
 
                 # Update instance variables
@@ -1330,7 +1408,12 @@ class KanbanClient:
                 return []
 
     def _save_workspace_state(
-        self, project_id: str, board_id: str, project_name: str, board_name: str
+        self,
+        project_id: str,
+        board_id: str,
+        project_name: str,
+        board_name: str,
+        project_root: str | None = None,
     ) -> None:
         """
         Save project and board IDs to workspace state file.
@@ -1345,6 +1428,8 @@ class KanbanClient:
             Name of the project
         board_name : str
             Name of the board
+        project_root : str | None, optional
+            Absolute path to project implementation directory
         """
         from pathlib import Path
 
@@ -1355,9 +1440,13 @@ class KanbanClient:
             "board_id": board_id,
             "project_name": project_name,
             "board_name": board_name,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
+
+        # Add project_root if provided
+        if project_root:
+            workspace_data["project_root"] = project_root
 
         with open(workspace_file, "w") as f:
             json.dump(workspace_data, f, indent=2)
@@ -1371,7 +1460,7 @@ class KanbanClient:
         Returns
         -------
         Optional[Dict[str, str]]
-            Dictionary with project_id and board_id if file exists, None otherwise
+            Dictionary with project_id, board_id, and project_root if available
         """
         from pathlib import Path
 
@@ -1383,10 +1472,14 @@ class KanbanClient:
         try:
             with open(workspace_file, "r") as f:
                 data = json.load(f)
-                return {
+                result = {
                     "project_id": data.get("project_id"),
                     "board_id": data.get("board_id"),
                 }
+                # Include project_root if present
+                if "project_root" in data:
+                    result["project_root"] = data["project_root"]
+                return result
         except Exception as e:
             logger.warning(f"Failed to load workspace state: {e}")
             return None

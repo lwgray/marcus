@@ -2,7 +2,7 @@
 Unit tests for intelligent task retry functionality
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -16,17 +16,18 @@ class TestCalculateRetryAfterSeconds:
 
     @pytest.mark.asyncio
     async def test_no_tasks_in_progress_returns_default(self):
-        """Test returns default 5 min when no tasks in progress"""
+        """Test returns default 30 seconds when no tasks in progress"""
         # Arrange
         mock_state = Mock()
         mock_state.agent_tasks = {}  # No tasks assigned
         mock_state.project_tasks = []
+        mock_state.agent_status = {}  # No agents
 
         # Act
         result = await calculate_retry_after_seconds(mock_state)
 
         # Assert
-        assert result["retry_after_seconds"] == 300  # 5 minutes
+        assert result["retry_after_seconds"] == 30  # 30 seconds
         assert "No tasks currently in progress" in result["reason"]
         assert result["blocking_task"] is None
 
@@ -38,6 +39,7 @@ class TestCalculateRetryAfterSeconds:
 
         # Task that started 30 min ago and is 75% done
         # Expected: 30 min / 75% = 40 min total, 10 min remaining
+        # ETA = 600s, but retry uses 60% of ETA = 360s, capped at 300s max
         task = Task(
             id="task_1",
             name="Database Setup",
@@ -45,8 +47,8 @@ class TestCalculateRetryAfterSeconds:
             status=TaskStatus.IN_PROGRESS,
             priority=Priority.HIGH,
             assigned_to="agent_1",
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=1.0,
             labels=["backend"],
@@ -62,12 +64,14 @@ class TestCalculateRetryAfterSeconds:
             priority=Priority.HIGH,
             dependencies=[],
             assigned_to="agent_1",
-            assigned_at=datetime.now() - timedelta(minutes=30),  # Started 30 min ago
+            assigned_at=datetime.now(timezone.utc)
+            - timedelta(minutes=30),  # Started 30 min ago
             due_date=None,
         )
 
         mock_state.agent_tasks = {"agent_1": assignment}
         mock_state.project_tasks = [task]
+        mock_state.agent_status = {"agent_1": Mock()}  # Mock agent status
 
         # Mock memory (not needed for progress-based calculation)
         mock_memory = AsyncMock()
@@ -78,9 +82,9 @@ class TestCalculateRetryAfterSeconds:
         result = await calculate_retry_after_seconds(mock_state)
 
         # Assert
-        # Should be roughly 10 minutes (600 seconds) + 10% buffer
-        # 600 + 60 = 660 seconds = 11 minutes
-        assert 600 <= result["retry_after_seconds"] <= 720  # Allow some margin
+        # Retry is capped at 30 seconds for regular re-polling
+        # (changed to improve multi-agent parallelization)
+        assert result["retry_after_seconds"] == 30  # Capped at 30s max
         assert "Database Setup" in result["reason"]
         assert result["blocking_task"]["id"] == "task_1"
         assert result["blocking_task"]["progress"] == 75
@@ -99,8 +103,8 @@ class TestCalculateRetryAfterSeconds:
             status=TaskStatus.IN_PROGRESS,
             priority=Priority.HIGH,
             assigned_to="agent_1",
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=2.0,
             labels=["backend"],
@@ -116,12 +120,13 @@ class TestCalculateRetryAfterSeconds:
             priority=Priority.HIGH,
             dependencies=[],
             assigned_to="agent_1",
-            assigned_at=datetime.now() - timedelta(minutes=5),
+            assigned_at=datetime.now(timezone.utc) - timedelta(minutes=5),
             due_date=None,
         )
 
         mock_state.agent_tasks = {"agent_1": assignment}
         mock_state.project_tasks = [task]
+        mock_state.agent_status = {"agent_1": Mock()}  # Mock agent status
 
         # Mock memory with 2-hour historical median
         mock_memory = AsyncMock()
@@ -132,9 +137,9 @@ class TestCalculateRetryAfterSeconds:
         result = await calculate_retry_after_seconds(mock_state)
 
         # Assert
-        # Should use 2 hour median: 2 * 3600 = 7200 seconds + 10% buffer
-        # But capped at 1 hour (3600 seconds)
-        assert result["retry_after_seconds"] == 3600  # Capped at 1 hour
+        # Historical median suggests 2 hours (7200s), but retry is capped at 30s
+        # (changed to improve multi-agent parallelization)
+        assert result["retry_after_seconds"] == 30  # Capped at 30s max
         assert "API Development" in result["reason"]
 
     @pytest.mark.asyncio
@@ -151,8 +156,8 @@ class TestCalculateRetryAfterSeconds:
             status=TaskStatus.IN_PROGRESS,
             priority=Priority.HIGH,
             assigned_to="agent_1",
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=1.0,
         )
@@ -167,7 +172,7 @@ class TestCalculateRetryAfterSeconds:
             priority=Priority.HIGH,
             dependencies=[],
             assigned_to="agent_1",
-            assigned_at=datetime.now() - timedelta(minutes=30),
+            assigned_at=datetime.now(timezone.utc) - timedelta(minutes=30),
             due_date=None,
         )
 
@@ -179,8 +184,8 @@ class TestCalculateRetryAfterSeconds:
             status=TaskStatus.IN_PROGRESS,
             priority=Priority.HIGH,
             assigned_to="agent_2",
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=2.0,
         )
@@ -195,12 +200,16 @@ class TestCalculateRetryAfterSeconds:
             priority=Priority.HIGH,
             dependencies=[],
             assigned_to="agent_2",
-            assigned_at=datetime.now() - timedelta(minutes=60),
+            assigned_at=datetime.now(timezone.utc) - timedelta(minutes=60),
             due_date=None,
         )
 
         mock_state.agent_tasks = {"agent_1": assignment1, "agent_2": assignment2}
         mock_state.project_tasks = [task1, task2]
+        mock_state.agent_status = {
+            "agent_1": Mock(),
+            "agent_2": Mock(),
+        }  # Mock agent status
 
         mock_memory = AsyncMock()
         mock_memory.get_global_median_duration = AsyncMock(return_value=1.0)
@@ -215,8 +224,8 @@ class TestCalculateRetryAfterSeconds:
         assert result["blocking_task"]["name"] == "Quick Task"
 
     @pytest.mark.asyncio
-    async def test_caps_maximum_wait_at_one_hour(self):
-        """Test wait time is capped at 1 hour maximum"""
+    async def test_caps_maximum_wait_at_thirty_seconds(self):
+        """Test wait time is capped at 30 seconds maximum for regular re-polling"""
         # Arrange
         mock_state = Mock()
 
@@ -228,8 +237,8 @@ class TestCalculateRetryAfterSeconds:
             status=TaskStatus.IN_PROGRESS,
             priority=Priority.LOW,
             assigned_to="agent_1",
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             due_date=None,
             estimated_hours=10.0,
         )
@@ -244,12 +253,13 @@ class TestCalculateRetryAfterSeconds:
             priority=Priority.LOW,
             dependencies=[],
             assigned_to="agent_1",
-            assigned_at=datetime.now() - timedelta(minutes=10),
+            assigned_at=datetime.now(timezone.utc) - timedelta(minutes=10),
             due_date=None,
         )
 
         mock_state.agent_tasks = {"agent_1": assignment}
         mock_state.project_tasks = [task]
+        mock_state.agent_status = {"agent_1": Mock()}  # Mock agent status
 
         # Mock memory with very long median (10 hours)
         mock_memory = AsyncMock()
@@ -260,5 +270,6 @@ class TestCalculateRetryAfterSeconds:
         result = await calculate_retry_after_seconds(mock_state)
 
         # Assert
-        # Should be capped at 1 hour (3600 seconds)
-        assert result["retry_after_seconds"] == 3600
+        # Even with 10 hour estimate, capped at 30 seconds for re-polling
+        # (changed to improve multi-agent parallelization)
+        assert result["retry_after_seconds"] == 30

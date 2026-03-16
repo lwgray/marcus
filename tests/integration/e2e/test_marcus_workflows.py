@@ -11,7 +11,7 @@ Tests end-to-end workflows including:
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, cast
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -490,8 +490,7 @@ class TestBlockerReportingAndResolution(BaseTestCase):
 
         # Mock AI blocker analysis
         mock_ai = cast(AsyncMock, server.ai_engine)
-        mock_ai.analyze_blocker = AsyncMock(
-            return_value="""
+        mock_ai.analyze_blocker = AsyncMock(return_value="""
 ## Blocker Analysis: Missing Payment Gateway API Documentation
 
 ### Suggested Solutions:
@@ -515,8 +514,7 @@ class TestBlockerReportingAndResolution(BaseTestCase):
 - **Impact**: High - blocks critical feature
 - **Urgency**: Medium - have workaround options
 - **Recommendation**: Proceed with option 2 or 3
-"""
-        )
+""")
 
         # Report blocker
         result = await handle_tool_call(
@@ -592,8 +590,7 @@ class TestBlockerReportingAndResolution(BaseTestCase):
 
         # Mock critical blocker analysis
         mock_ai = cast(AsyncMock, server.ai_engine)
-        mock_ai.analyze_blocker = AsyncMock(
-            return_value="""
+        mock_ai.analyze_blocker = AsyncMock(return_value="""
 ## CRITICAL BLOCKER: Production Database Failure
 
 ### Immediate Actions Required:
@@ -616,8 +613,7 @@ class TestBlockerReportingAndResolution(BaseTestCase):
 ### Emergency Contacts:
 - DBA On-call: +1-555-0123
 - AWS Support: Premium support ticket opened
-"""
-        )
+""")
 
         # Report critical blocker
         result = await handle_tool_call(
@@ -1177,7 +1173,7 @@ class TestSystemHealthAndMonitoring(BaseTestCase):
                     "kanban_sync": {"status": "ok", "in_sync": True},
                     "monitor": {
                         "status": "running",
-                        "last_sync": datetime.now().isoformat(),
+                        "last_sync": datetime.now(timezone.utc).isoformat(),
                     },
                 }
             )
@@ -1205,7 +1201,7 @@ class TestSystemHealthAndMonitoring(BaseTestCase):
 
         # Register multiple agents
         for i in range(5):
-            start_time = datetime.now()
+            start_time = datetime.now(timezone.utc)
             await handle_tool_call(
                 "register_agent",
                 {
@@ -1216,7 +1212,7 @@ class TestSystemHealthAndMonitoring(BaseTestCase):
                 },
                 server,
             )
-            duration = (datetime.now() - start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             operations.append(("register_agent", duration))
 
         # Request tasks
@@ -1226,11 +1222,11 @@ class TestSystemHealthAndMonitoring(BaseTestCase):
         mock_kanban.get_available_tasks.return_value = tasks
 
         for i in range(5):
-            start_time = datetime.now()
+            start_time = datetime.now(timezone.utc)
             await handle_tool_call(
                 "request_next_task", {"agent_id": f"perf-agent-{i}"}, server
             )
-            duration = (datetime.now() - start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             operations.append(("request_task", duration))
 
         # Analyze performance

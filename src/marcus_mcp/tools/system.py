@@ -5,7 +5,7 @@ This module contains tools for system monitoring and health checks:
 - check_assignment_health: Monitor assignment system health
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
@@ -55,7 +55,7 @@ async def ping(echo: str, state: Any) -> Dict[str, Any]:
             "echo": echo,
             "source": "mcp_client",
             "client_type": client_type,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         },
     )
 
@@ -74,7 +74,7 @@ async def ping(echo: str, state: Any) -> Dict[str, Any]:
         "status": "online",
         "provider": state.provider,
         "echo": echo or "pong",
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "client_type_detected": client_type,
         "server_info": {
             "instance_id": getattr(state, "instance_id", "unknown"),

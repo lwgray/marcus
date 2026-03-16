@@ -6,7 +6,7 @@ including tasks, workers, assignments, and project state tracking.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone  # noqa: F401 - used in docstring examples
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -148,6 +148,7 @@ class Task:
     estimated_hours: float
     actual_hours: float = 0.0
     dependencies: List[str] = field(default_factory=list)
+    dependency_types: List[str] = field(default_factory=list)
     labels: List[str] = field(default_factory=list)
     project_id: Optional[str] = None
     project_name: Optional[str] = None
@@ -350,7 +351,7 @@ class BlockerReport:
     ...     reporter_id="dev-001",
     ...     description="Cannot access production database",
     ...     severity=RiskLevel.HIGH,
-    ...     reported_at=datetime.now()
+    ...     reported_at=datetime.now(timezone.utc)
     ... )
     """
 
@@ -395,7 +396,7 @@ class ProjectRisk:
     ...     probability=0.3,
     ...     impact="Would require rewriting integration layer",
     ...     mitigation_strategy="Begin migration to new API",
-    ...     identified_at=datetime.now()
+    ...     identified_at=datetime.now(timezone.utc)
     ... )
     """
 

@@ -1,0 +1,130 @@
+{
+  "_comment": "Comprehensive Marcus Configuration Example",
+  "_comment2": "Copy this to config_marcus.local.json and customize for your setup",
+  "_comment3": "Environment variables can override these values using ${VAR_NAME} syntax",
+
+  "single_project_mode": true,
+  "default_project_name": "Marcus Development",
+  "project_id": "1555318548920796226",
+  "board_id": "1555320228445946953",
+  "project_name": "Marcus Todo Demo",
+  "board_name": "Marcus Todo Demo",
+  "auto_find_board": false,
+
+  "ai": {
+    "provider": "anthropic",
+    "anthropic_api_key": "${ANTHROPIC_API_KEY}",
+    "openai_api_key": "${OPENAI_API_KEY}",
+    "local_model": "qwen2.5:7b-instruct",
+    "local_url": "http://localhost:11434/v1",
+    "local_key": "none",
+    "model": "claude-3-haiku-20240307",
+    "temperature": 0.7,
+    "max_tokens": 4096,
+    "enabled": true
+  },
+
+  "kanban": {
+    "provider": "planka",
+    "board_name": "Marcus Todo Demo",
+    "planka_base_url": "${PLANKA_BASE_URL}",
+    "planka_email": "${PLANKA_EMAIL}",
+    "planka_password": "${PLANKA_PASSWORD}",
+    "github_token": "${GITHUB_TOKEN}",
+    "github_owner": "${GITHUB_OWNER}",
+    "github_repo": "${GITHUB_REPO}",
+    "linear_api_key": "${LINEAR_API_KEY}",
+    "linear_team_id": "${LINEAR_TEAM_ID}"
+  },
+
+  "mcp": {
+    "kanban_client_path": "~/dev/kanban-mcp/dist/index.js",
+    "timeout": 30,
+    "retry_attempts": 3
+  },
+
+  "features": {
+    "events": true,
+    "context": true,
+    "memory": false,
+    "visibility": false
+  },
+
+  "memory": {
+    "learning_rate": 0.1,
+    "min_samples": 3,
+    "use_v2_predictions": false
+  },
+
+  "transport": {
+    "type": "http",
+    "http_host": "0.0.0.0",
+    "http_port": 4298,
+    "http_path": "/mcp",
+    "log_level": "info",
+    "dual_mode": false,
+    "http_enabled": true
+  },
+
+  "task_lease": {
+    "default_hours": 2.0,
+    "max_renewals": 10,
+    "warning_hours": 0.5,
+    "grace_period_minutes": 30,
+    "renewal_decay_factor": 0.9,
+    "min_lease_hours": 1.0,
+    "max_lease_hours": 24.0,
+    "stuck_threshold_renewals": 5,
+    "enable_adaptive": true,
+    "priority_multipliers": {
+      "critical": 0.5,
+      "high": 0.75,
+      "medium": 1.0,
+      "low": 1.5
+    },
+    "complexity_multipliers": {
+      "simple": 0.5,
+      "complex": 1.5,
+      "research": 2.0,
+      "epic": 3.0
+    }
+  },
+
+  "board_health": {
+    "stale_task_days": 7,
+    "max_tasks_per_agent": 3
+  },
+
+  "multi_endpoint": {
+    "human": {
+      "port": 4298,
+      "host": "0.0.0.0",
+      "path": "/mcp",
+      "enabled": true
+    },
+    "agent": {
+      "port": 4299,
+      "host": "0.0.0.0",
+      "path": "/mcp",
+      "enabled": true
+    },
+    "analytics": {
+      "port": 4300,
+      "host": "0.0.0.0",
+      "path": "/mcp",
+      "enabled": true
+    }
+  },
+
+  "hybrid_inference": {
+    "pattern_confidence_threshold": 0.8,
+    "ai_confidence_threshold": 0.7,
+    "combined_confidence_boost": 0.15,
+    "max_ai_pairs_per_batch": 20,
+    "min_shared_keywords": 2,
+    "enable_ai_inference": true,
+    "cache_ttl_hours": 24,
+    "require_component_match": true,
+    "max_dependency_chain_length": 10
+  }
+}

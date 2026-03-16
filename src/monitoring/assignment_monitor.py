@@ -7,7 +7,7 @@ to prevent workers from being stuck with reverted tasks.
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from src.core.assignment_persistence import AssignmentPersistence
@@ -234,7 +234,7 @@ class AssignmentMonitor:
             "check_interval": self.check_interval,
             "tracked_tasks": len(self._last_known_states),
             "reversion_counts": dict(self._reversion_count),
-            "last_check": datetime.now().isoformat(),
+            "last_check": datetime.now(timezone.utc).isoformat(),
         }
 
 
@@ -265,7 +265,7 @@ class AssignmentHealthChecker:
             "healthy": True,
             "issues": [],
             "metrics": {},
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         try:

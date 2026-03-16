@@ -1,0 +1,1 @@
+Build a Pomodoro timer app with React + TypeScript + Vite + Tailwind. 25/5/15min modes, 4-session long break cycle, audio on completion, keyboard shortcuts. Complete runnable project. Distinctive visual design.

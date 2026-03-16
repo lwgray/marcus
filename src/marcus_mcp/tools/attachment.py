@@ -5,9 +5,13 @@ This module provides tools to help agents store and track design
 artifacts in organized locations while allowing flexibility when needed.
 """
 
+import hashlib
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from src.core.project_history import ArtifactMetadata, ProjectHistoryPersistence
 
 logger = logging.getLogger(__name__)
 
@@ -198,6 +202,17 @@ async def log_artifact(
                 description=description or "",
             )
 
+        # Persist to project history for post-project analysis
+        await _persist_artifact_to_history(
+            task_id=task_id,
+            filename=filename,
+            artifact_type=artifact_type,
+            artifact_path=artifact_path,
+            full_path=full_path,
+            description=description,
+            state=state,
+        )
+
         return {
             "success": True,
             "data": {
@@ -258,3 +273,107 @@ async def _discover_artifacts_in_standard_locations(
                 logger.warning(f"Error scanning {base_path}: {e}")
 
     return discovered
+
+
+async def _persist_artifact_to_history(
+    task_id: str,
+    filename: str,
+    artifact_type: str,
+    artifact_path: Path,
+    full_path: Path,
+    description: Optional[str],
+    state: Any,
+) -> None:
+    """
+    Persist artifact metadata to project history for post-project analysis.
+
+    Stores metadata about the artifact (not the content) to enable tracing
+    what was produced during project execution.
+
+    Parameters
+    ----------
+    task_id : str
+        Task that produced the artifact
+    filename : str
+        Name of the artifact file
+    artifact_type : str
+        Type of artifact
+    artifact_path : Path
+        Relative path to artifact
+    full_path : Path
+        Absolute path to artifact
+    description : Optional[str]
+        Description of the artifact
+    state : Any
+        Marcus server state
+
+    Notes
+    -----
+    Fails gracefully - errors are logged but don't interrupt the main flow.
+    """
+    try:
+        # Get project info from state
+        if not hasattr(state, "current_project_id") or not state.current_project_id:
+            logger.debug("No active project - skipping project history persistence")
+            return
+
+        project_id = state.current_project_id
+        project_name = getattr(state, "current_project_name", project_id)
+
+        # Get agent ID from state if available
+        agent_id = getattr(state, "current_agent_id", "unknown")
+
+        # Initialize project history persistence if not already done
+        if not hasattr(state, "project_history_persistence"):
+            state.project_history_persistence = ProjectHistoryPersistence()
+
+        # Calculate file size and hash for integrity checking
+        file_size_bytes = 0
+        sha256_hash = None
+        if full_path.exists():
+            file_size_bytes = full_path.stat().st_size
+            # Calculate SHA256 hash
+            sha256 = hashlib.sha256()
+            with open(full_path, "rb") as f:
+                for chunk in iter(lambda: f.read(8192), b""):
+                    sha256.update(chunk)
+            sha256_hash = sha256.hexdigest()
+
+        # Get kanban comment URL if artifact was posted to kanban
+        kanban_comment_url = None
+        if hasattr(state, "last_kanban_comment_url"):
+            kanban_comment_url = state.last_kanban_comment_url
+
+        # Generate artifact ID
+        now = datetime.now(timezone.utc)
+        artifact_id = f"art_{task_id}_{now.timestamp()}"
+
+        # Create artifact metadata
+        artifact_metadata = ArtifactMetadata(
+            artifact_id=artifact_id,
+            task_id=task_id,
+            agent_id=agent_id,
+            timestamp=now,
+            filename=filename,
+            artifact_type=artifact_type,
+            relative_path=str(artifact_path),
+            absolute_path=str(full_path),
+            description=description or "",
+            file_size_bytes=file_size_bytes,
+            sha256_hash=sha256_hash,
+            kanban_comment_url=kanban_comment_url,
+            project_id=project_id,
+        )
+
+        # Persist to project history
+        await state.project_history_persistence.append_artifact(
+            project_id, project_name, artifact_metadata
+        )
+
+        logger.info(
+            f"Persisted artifact {filename} to project history for {project_id}"
+        )
+
+    except Exception as e:
+        # Graceful degradation - log but don't fail
+        logger.warning(f"Failed to persist artifact to project history: {e}")

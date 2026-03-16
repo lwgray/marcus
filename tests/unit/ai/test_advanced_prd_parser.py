@@ -64,7 +64,7 @@ class TestAdvancedPRDParserErrorHandling:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_ai_provider_connection_failure_raises_proper_error(
-        self, parser, mock_llm_client, sample_prd_content
+        self, parser, mock_llm_client, sample_prd_content, sample_constraints
     ):
         """Test AI provider connection failure raises AIProviderError with proper context"""
         # Arrange
@@ -73,7 +73,7 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Act & Assert
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(sample_prd_content)
+            await parser._analyze_prd_deeply(sample_prd_content, sample_constraints)
 
         error = exc_info.value
         assert error.service_name == "LLM"
@@ -95,7 +95,7 @@ class TestAdvancedPRDParserErrorHandling:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_ai_timeout_failure_raises_proper_error(
-        self, parser, mock_llm_client, sample_prd_content
+        self, parser, mock_llm_client, sample_prd_content, sample_constraints
     ):
         """Test AI provider timeout raises AIProviderError with timeout context"""
         # Arrange
@@ -104,7 +104,7 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Act & Assert
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(sample_prd_content)
+            await parser._analyze_prd_deeply(sample_prd_content, sample_constraints)
 
         error = exc_info.value
         assert error.service_name == "LLM"
@@ -124,7 +124,7 @@ class TestAdvancedPRDParserErrorHandling:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_json_parsing_failure_raises_proper_error(
-        self, parser, mock_llm_client, sample_prd_content
+        self, parser, mock_llm_client, sample_prd_content, sample_constraints
     ):
         """Test malformed JSON response raises AIProviderError with parsing context"""
         # Arrange
@@ -133,7 +133,7 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Act & Assert
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(sample_prd_content)
+            await parser._analyze_prd_deeply(sample_prd_content, sample_constraints)
 
         error = exc_info.value
         assert error.service_name == "LLM"
@@ -151,7 +151,7 @@ class TestAdvancedPRDParserErrorHandling:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_empty_ai_response_raises_proper_error(
-        self, parser, mock_llm_client, sample_prd_content
+        self, parser, mock_llm_client, sample_prd_content, sample_constraints
     ):
         """Test empty AI response raises AIProviderError"""
         # Arrange
@@ -159,7 +159,7 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Act & Assert
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(sample_prd_content)
+            await parser._analyze_prd_deeply(sample_prd_content, sample_constraints)
 
         error = exc_info.value
         assert error.service_name == "LLM"
@@ -176,7 +176,7 @@ class TestAdvancedPRDParserErrorHandling:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_none_ai_response_raises_proper_error(
-        self, parser, mock_llm_client, sample_prd_content
+        self, parser, mock_llm_client, sample_prd_content, sample_constraints
     ):
         """Test None AI response raises AIProviderError"""
         # Arrange
@@ -184,7 +184,7 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Act & Assert
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(sample_prd_content)
+            await parser._analyze_prd_deeply(sample_prd_content, sample_constraints)
 
         error = exc_info.value
         assert error.service_name == "LLM"
@@ -201,7 +201,7 @@ class TestAdvancedPRDParserErrorHandling:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_successful_ai_analysis_works_normally(
-        self, parser, mock_llm_client, sample_prd_content
+        self, parser, mock_llm_client, sample_prd_content, sample_constraints
     ):
         """Test successful AI analysis continues to work normally"""
         # Arrange
@@ -209,10 +209,16 @@ class TestAdvancedPRDParserErrorHandling:
             "functional_requirements": [
                 {
                     "id": "req_1",
+                    "name": "User Authentication",
                     "description": "User authentication",
                     "priority": "high",
                 },
-                {"id": "req_2", "description": "Task management", "priority": "high"},
+                {
+                    "id": "req_2",
+                    "name": "Task Management",
+                    "description": "Task management",
+                    "priority": "high",
+                },
             ],
             "non_functional_requirements": [
                 {
@@ -235,7 +241,9 @@ class TestAdvancedPRDParserErrorHandling:
         mock_llm_client.analyze.return_value = json.dumps(valid_response)
 
         # Act
-        result = await parser._analyze_prd_deeply(sample_prd_content)
+        result = await parser._analyze_prd_deeply(
+            sample_prd_content, sample_constraints
+        )
 
         # Assert
         assert len(result.functional_requirements) == 2
@@ -248,7 +256,7 @@ class TestAdvancedPRDParserErrorHandling:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_error_monitoring_integration(
-        self, parser, mock_llm_client, sample_prd_content
+        self, parser, mock_llm_client, sample_prd_content, sample_constraints
     ):
         """Test that errors are properly recorded for monitoring"""
         # Arrange
@@ -261,7 +269,7 @@ class TestAdvancedPRDParserErrorHandling:
         ) as mock_record:
             # Act & Assert
             with pytest.raises(AIProviderError):
-                await parser._analyze_prd_deeply(sample_prd_content)
+                await parser._analyze_prd_deeply(sample_prd_content, sample_constraints)
 
             # Verify error was recorded for monitoring
             mock_record.assert_called_once()
@@ -283,7 +291,7 @@ class TestAdvancedPRDParserErrorHandling:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_error_context_includes_actionable_troubleshooting(
-        self, parser, mock_llm_client, sample_prd_content
+        self, parser, mock_llm_client, sample_prd_content, sample_constraints
     ):
         """Test error context includes comprehensive troubleshooting steps"""
         # Arrange
@@ -292,7 +300,7 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Act & Assert
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(sample_prd_content)
+            await parser._analyze_prd_deeply(sample_prd_content, sample_constraints)
 
         error = exc_info.value
         context = error.context.custom_context
@@ -318,7 +326,9 @@ class TestAdvancedPRDParserErrorHandling:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_prd_content_length_tracked_in_errors(self, parser, mock_llm_client):
+    async def test_prd_content_length_tracked_in_errors(
+        self, parser, mock_llm_client, sample_constraints
+    ):
         """Test that PRD content length is tracked in error context for debugging"""
         # Arrange
         short_prd = "Build app"
@@ -330,12 +340,12 @@ class TestAdvancedPRDParserErrorHandling:
 
         # Test short PRD
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(short_prd)
+            await parser._analyze_prd_deeply(short_prd, sample_constraints)
         assert exc_info.value.context.custom_context["prd_length"] == len(short_prd)
 
         # Test long PRD
         with pytest.raises(AIProviderError) as exc_info:
-            await parser._analyze_prd_deeply(long_prd)
+            await parser._analyze_prd_deeply(long_prd, sample_constraints)
         assert exc_info.value.context.custom_context["prd_length"] == len(long_prd)
 
         # Verify preview is truncated for long content
@@ -386,7 +396,9 @@ class TestAdvancedPRDParserTaskGeneration:
             mock_parse.return_value = camelcase_data
 
             with patch.object(parser.llm_client, "analyze", new_callable=AsyncMock):
-                result = await parser._analyze_prd_deeply("Test PRD")
+                result = await parser._analyze_prd_deeply(
+                    "Test PRD", ProjectConstraints()
+                )
 
                 assert len(result.functional_requirements) == 1
                 assert result.functional_requirements[0]["feature"] == "CRUD"
@@ -640,3 +652,699 @@ class TestAdvancedPRDParserTaskGeneration:
         assert design_task.description != implement_task.description
         assert design_task.description != test_task.description
         assert implement_task.description != test_task.description
+
+
+class TestConstraintRiskAnalysis:
+    """Test suite for constraint risk analysis with deadline handling"""
+
+    @pytest.fixture
+    def mock_llm_client(self):
+        """Mock LLM client"""
+        mock_client = Mock()
+        mock_client.analyze = AsyncMock()
+        return mock_client
+
+    @pytest.fixture
+    def parser(self, mock_llm_client):
+        """Create AdvancedPRDParser with mocked dependencies"""
+        with patch(
+            "src.ai.advanced.prd.advanced_parser.LLMAbstraction"
+        ) as mock_llm_class:
+            mock_llm_class.return_value = mock_llm_client
+            parser = AdvancedPRDParser()
+            parser.llm_client = mock_llm_client
+            return parser
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_analyze_constraint_risks_with_sufficient_time(self, parser):
+        """Test that no timeline pressure risk with sufficient time"""
+        from datetime import timedelta, timezone
+
+        from src.core.models import Priority, Task, TaskStatus
+
+        # Arrange - Create deadline with sufficient time (7 days, 2 people = 84 hours capacity)
+        deadline = datetime.now(timezone.utc) + timedelta(days=7)
+        constraints = ProjectConstraints(deadline=deadline, team_size=2)
+
+        now_utc = datetime.now(timezone.utc)
+        tasks = [
+            Task(
+                id="task1",
+                name="Test Task",
+                description="Test",
+                status=TaskStatus.TODO,
+                priority=Priority.HIGH,
+                estimated_hours=40,  # 40 hours of work - well within capacity
+                assigned_to=None,
+                created_at=now_utc,
+                updated_at=now_utc,
+                due_date=None,
+            )
+        ]
+
+        # Act
+        risks = await parser._analyze_constraint_risks(tasks, constraints)
+
+        # Assert - Should not detect timeline pressure
+        assert isinstance(risks, list)
+        assert not any(risk["type"] == "timeline_pressure" for risk in risks)
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_analyze_constraint_risks_with_aware_deadline(self, parser):
+        """Test that aware deadline works correctly"""
+        from datetime import timedelta, timezone
+
+        from src.core.models import Priority, Task, TaskStatus
+
+        # Arrange - Create aware deadline (with UTC timezone)
+        aware_deadline = datetime.now(timezone.utc) + timedelta(days=7)
+        constraints = ProjectConstraints(deadline=aware_deadline, team_size=2)
+
+        now_utc = datetime.now(timezone.utc)
+        tasks = [
+            Task(
+                id="task1",
+                name="Test Task",
+                description="Test",
+                status=TaskStatus.TODO,
+                priority=Priority.HIGH,
+                estimated_hours=40,
+                assigned_to=None,
+                created_at=now_utc,
+                updated_at=now_utc,
+                due_date=None,
+            )
+        ]
+
+        # Act
+        risks = await parser._analyze_constraint_risks(tasks, constraints)
+
+        # Assert
+        assert isinstance(risks, list)
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_analyze_constraint_risks_detects_timeline_pressure(self, parser):
+        """Test that timeline pressure is detected with insufficient time"""
+        from datetime import timedelta, timezone
+
+        from src.core.models import Priority, Task, TaskStatus
+
+        # Arrange - Create tight deadline (1 day) with too much work (100 hours)
+        tight_deadline = datetime.now(timezone.utc) + timedelta(days=1)
+        constraints = ProjectConstraints(deadline=tight_deadline, team_size=2)
+
+        now_utc = datetime.now(timezone.utc)
+        tasks = [
+            Task(
+                id="task1",
+                name="Test Task",
+                description="Test",
+                status=TaskStatus.TODO,
+                priority=Priority.HIGH,
+                estimated_hours=100,  # Too much work for 1 day with 2 people
+                assigned_to=None,
+                created_at=now_utc,
+                updated_at=now_utc,
+                due_date=None,
+            )
+        ]
+
+        # Act
+        risks = await parser._analyze_constraint_risks(tasks, constraints)
+
+        # Assert - Should detect timeline pressure
+        assert len(risks) > 0
+        assert any(risk["type"] == "timeline_pressure" for risk in risks)
+
+
+class TestTaskDescriptionConstraints:
+    """Test suite for task description constraint handling (GH-143 fix)"""
+
+    @pytest.fixture
+    def mock_llm_client(self):
+        """Mock LLM client for testing"""
+        mock_client = Mock()
+        mock_client.analyze = AsyncMock()
+        return mock_client
+
+    @pytest.fixture
+    def parser(self, mock_llm_client):
+        """Create AdvancedPRDParser with mocked LLM"""
+        with patch(
+            "src.ai.advanced.prd.advanced_parser.LLMAbstraction"
+        ) as mock_llm_class:
+            mock_llm_class.return_value = mock_llm_client
+            with patch("src.ai.advanced.prd.advanced_parser.HybridDependencyInferer"):
+                parser = AdvancedPRDParser()
+                parser.llm_client = mock_llm_client
+                return parser
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_design_task_includes_technical_constraints_in_prompt(
+        self, parser, mock_llm_client
+    ):
+        """Test design task generation includes tech constraints in LLM prompt (GH-143)"""
+        # Arrange
+        mock_llm_client.analyze.return_value = "Design auth with FastAPI endpoints"
+
+        # Act
+        description = await parser._generate_task_description_for_type(
+            base_description="User authentication system",
+            task_type="design",
+            feature_name="Authentication",
+            constraints=["FastAPI", "PostgreSQL", "React"],
+            original_description="Build a blog platform",
+        )
+
+        # Assert
+        assert mock_llm_client.analyze.called
+        call_args = mock_llm_client.analyze.call_args[0]
+        prompt = call_args[0]
+
+        # Verify tech constraints are in the prompt for design tasks
+        assert "TECHNICAL CONSTRAINTS" in prompt
+        assert "FastAPI" in prompt
+        assert "PostgreSQL" in prompt
+        assert "React" in prompt
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_implement_task_excludes_technical_constraints_from_prompt(
+        self, parser, mock_llm_client
+    ):
+        """Test implementation task does NOT include tech constraints in prompt (GH-143)"""
+        # Arrange
+        mock_llm_client.analyze.return_value = "Implement auth service with endpoints"
+
+        # Act
+        description = await parser._generate_task_description_for_type(
+            base_description="User authentication system",
+            task_type="implement",
+            feature_name="Authentication",
+            constraints=["FastAPI", "PostgreSQL", "React"],
+            original_description="Build a blog platform",
+        )
+
+        # Assert
+        assert mock_llm_client.analyze.called
+        call_args = mock_llm_client.analyze.call_args[0]
+        prompt = call_args[0]
+
+        # Verify tech constraints are NOT in the prompt for implementation tasks
+        assert "TECHNICAL CONSTRAINTS" not in prompt
+        assert "FastAPI" not in prompt
+        assert "PostgreSQL" not in prompt
+        assert "React" not in prompt
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_test_task_excludes_technical_constraints_from_prompt(
+        self, parser, mock_llm_client
+    ):
+        """Test test task does NOT include tech constraints in prompt"""
+        # Arrange
+        mock_llm_client.analyze.return_value = "Write comprehensive auth tests"
+
+        # Act
+        description = await parser._generate_task_description_for_type(
+            base_description="User authentication system",
+            task_type="test",
+            feature_name="Authentication",
+            constraints=["FastAPI", "PostgreSQL"],
+            original_description="Build a blog platform",
+        )
+
+        # Assert
+        assert mock_llm_client.analyze.called
+        call_args = mock_llm_client.analyze.call_args[0]
+        prompt = call_args[0]
+
+        # Verify tech constraints are NOT in the prompt for test tasks
+        assert "TECHNICAL CONSTRAINTS" not in prompt
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_implement_task_prompt_instructs_no_tech_specification(
+        self, parser, mock_llm_client
+    ):
+        """Test implementation prompt explicitly says not to specify technologies"""
+        # Arrange
+        mock_llm_client.analyze.return_value = "Build backend API"
+
+        # Act
+        await parser._generate_task_description_for_type(
+            base_description="Backend API",
+            task_type="implement",
+            feature_name="API",
+            constraints=["Node.js"],
+        )
+
+        # Assert
+        call_args = mock_llm_client.analyze.call_args[0]
+        prompt = call_args[0]
+
+        # Verify prompt instructs not to specify technologies
+        assert "DO NOT specify technologies" in prompt
+        assert "discover the tech stack from design documentation" in prompt
+
+
+class TestSpecificityDetection:
+    """Test suite for prompt specificity detection"""
+
+    @pytest.fixture
+    def parser(self):
+        """Create AdvancedPRDParser with mocked dependencies"""
+        with patch(
+            "src.ai.advanced.prd.advanced_parser.LLMAbstraction"
+        ) as mock_llm_class:
+            mock_llm_class.return_value = Mock()
+            with patch(
+                "src.ai.advanced.prd.advanced_parser.HybridDependencyInferer"
+            ) as mock_dep_class:
+                mock_dep_class.return_value = Mock()
+                return AdvancedPRDParser()
+
+    @pytest.mark.unit
+    def test_detect_explicit_with_create_these_pattern(self, parser):
+        """Test detection of explicit requirements with 'create these' pattern"""
+        # Arrange
+        prd = """Build an MCP server that wraps the Deck of Cards API.
+
+        Create these MCP tools:
+        - create_deck
+        - draw_cards
+        - get_deck_status
+        """
+
+        # Act
+        result = parser._detect_prompt_specificity(prd)
+
+        # Assert
+        assert result == "explicit"
+
+    @pytest.mark.unit
+    def test_detect_explicit_with_bulleted_list(self, parser):
+        """Test detection of explicit requirements with bulleted list"""
+        # Arrange
+        prd = """Build a task management system with these features:
+
+        * User authentication
+        * Create tasks
+        * Edit tasks
+        * Delete tasks
+        """
+
+        # Act
+        result = parser._detect_prompt_specificity(prd)
+
+        # Assert
+        assert result == "explicit"
+
+    @pytest.mark.unit
+    def test_detect_explicit_with_numbered_list(self, parser):
+        """Test detection of explicit requirements with numbered list"""
+        # Arrange
+        prd = """Implement these features:
+
+        1. User registration
+        2. Login system
+        3. Password reset
+        4. Profile management
+        """
+
+        # Act
+        result = parser._detect_prompt_specificity(prd)
+
+        # Assert
+        assert result == "explicit"
+
+    @pytest.mark.unit
+    def test_detect_guided_with_open_ended_description(self, parser):
+        """Test detection of guided mode with open-ended description"""
+        # Arrange
+        prd = """Build a Twitter clone. It should allow users to post tweets,
+        follow other users, and see a feed of tweets from people they follow."""
+
+        # Act
+        result = parser._detect_prompt_specificity(prd)
+
+        # Assert
+        assert result == "guided"
+
+    @pytest.mark.unit
+    def test_detect_guided_with_vague_requirements(self, parser):
+        """Test detection of guided mode with vague requirements"""
+        # Arrange
+        prd = """Create a modern e-commerce platform with all the standard features.
+        Make it user-friendly and scalable."""
+
+        # Act
+        result = parser._detect_prompt_specificity(prd)
+
+        # Assert
+        assert result == "guided"
+
+    @pytest.mark.unit
+    def test_detect_explicit_with_tools_colon_pattern(self, parser):
+        """Test detection with 'tools:' pattern"""
+        # Arrange
+        prd = """Build an API server.
+
+        Tools:
+        - GET /users
+        - POST /users
+        - DELETE /users
+        """
+
+        # Act
+        result = parser._detect_prompt_specificity(prd)
+
+        # Assert
+        assert result == "explicit"
+
+
+class TestRequirementFiltering:
+    """Test suite for requirement filtering with specificity detection"""
+
+    @pytest.fixture
+    def parser(self):
+        """Create AdvancedPRDParser with mocked dependencies"""
+        with patch(
+            "src.ai.advanced.prd.advanced_parser.LLMAbstraction"
+        ) as mock_llm_class:
+            mock_llm_class.return_value = Mock()
+            with patch(
+                "src.ai.advanced.prd.advanced_parser.HybridDependencyInferer"
+            ) as mock_dep_class:
+                mock_dep_class.return_value = Mock()
+                return AdvancedPRDParser()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_explicit_requirements_all_kept_regardless_of_project_size(
+        self, parser
+    ):
+        """Test that explicit user requirements bypass filtering logic"""
+        # Arrange
+        requirements = [
+            {"id": "req1", "name": "Feature 1"},
+            {"id": "req2", "name": "Feature 2"},
+            {"id": "req3", "name": "Feature 3"},
+            {"id": "req4", "name": "Feature 4"},
+            {"id": "req5", "name": "Feature 5"},
+        ]
+        prd_content = """Create these features:
+        - Feature 1
+        - Feature 2
+        - Feature 3
+        - Feature 4
+        - Feature 5
+        """
+
+        # Act
+        result = parser._filter_requirements_by_size(
+            requirements=requirements,
+            project_size="prototype",  # prototype would limit to 2
+            team_size=3,
+            prd_content=prd_content,
+        )
+
+        # Assert - All 5 kept because explicit (bypasses filtering)
+        assert len(result) == 5
+        assert result == requirements
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_guided_requirements_filtered_by_team_size(self, parser):
+        """Test that AI-generated requirements are filtered by team capacity"""
+        # Arrange
+        requirements = [
+            {"id": "req1", "name": "Feature 1"},
+            {"id": "req2", "name": "Feature 2"},
+            {"id": "req3", "name": "Feature 3"},
+            {"id": "req4", "name": "Feature 4"},
+            {"id": "req5", "name": "Feature 5"},
+        ]
+        prd_content = "Build a Twitter clone with social features."  # Open-ended
+
+        # Mock validator - extract_intents now returns list[str]
+        mock_intents = [f"Feature {i}" for i in range(1, 6)]
+
+        # Act
+        with patch("src.ai.validation.TaskCompletenessValidator") as MockValidator:
+            mock_validator_instance = MockValidator.return_value
+            mock_validator_instance.extract_intents = AsyncMock(
+                return_value=mock_intents
+            )
+
+            result = parser._filter_requirements_by_size(
+                requirements=requirements,
+                project_size="standard",
+                team_size=3,
+                prd_content=prd_content,
+            )
+
+        # Assert - Filtered to team_size (3)
+        assert len(result) == 3
+        assert result == requirements[:3]
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_explicit_requirements_warning_when_count_too_high(
+        self, parser, caplog
+    ):
+        """Test warning logged when explicit requirements exceed project size expectations"""
+        # Arrange
+        requirements = [{"id": f"req{i}", "name": f"Feature {i}"} for i in range(20)]
+        prd_content = """Create these 20 features:
+        """ + "\n".join([f"- Feature {i}" for i in range(20)])
+
+        # Act
+        with caplog.at_level("WARNING"):
+            result = parser._filter_requirements_by_size(
+                requirements=requirements,
+                project_size="standard",  # Expects 8-15
+                team_size=3,
+                prd_content=prd_content,
+            )
+
+        # Assert - All 20 kept (explicit bypasses filtering) with warning
+        assert len(result) == 20
+        assert any(
+            "User specified 20 requirements" in record.message
+            and "which is high for standard mode" in record.message
+            for record in caplog.records
+        )
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_explicit_requirements_warning_when_count_too_low(
+        self, parser, caplog
+    ):
+        """Test that explicit requirements are kept when count is within project size limits"""
+        # Arrange
+        import logging
+
+        requirements = [
+            {"id": "req1", "name": "Feature 1"},
+            {"id": "req2", "name": "Feature 2"},
+            {"id": "req3", "name": "Feature 3"},
+        ]
+        prd_content = """Create these features:
+        - Feature 1
+        - Feature 2
+        - Feature 3
+        """
+
+        # Act
+        with caplog.at_level(
+            logging.WARNING, logger="src.ai.advanced.prd.advanced_parser"
+        ):
+            result = parser._filter_requirements_by_size(
+                requirements=requirements,
+                project_size="standard",  # Expects 8-15
+                team_size=3,
+                prd_content=prd_content,
+            )
+
+        # Assert - All 3 requirements kept (explicit bypasses filtering)
+        # Warning logged because 3 < 8 (min expected)
+        assert len(result) == 3
+        assert result == requirements
+        assert any(
+            "User specified 3 requirements" in record.message
+            and "which is low for standard mode" in record.message
+            for record in caplog.records
+        )
+
+
+class TestIntegrationRequirements:
+    """Test suite for integration requirements extraction and processing"""
+
+    @pytest.fixture
+    def mock_llm_client(self):
+        """Mock LLM client"""
+        mock_client = Mock()
+        mock_client.analyze = AsyncMock()
+        return mock_client
+
+    @pytest.fixture
+    def parser(self, mock_llm_client):
+        """Create AdvancedPRDParser with mocked dependencies"""
+        with patch(
+            "src.ai.advanced.prd.advanced_parser.LLMAbstraction"
+        ) as mock_llm_class:
+            mock_llm_class.return_value = mock_llm_client
+            with patch(
+                "src.ai.advanced.prd.advanced_parser.HybridDependencyInferer"
+            ) as mock_dep_class:
+                mock_dep_class.return_value = Mock()
+                parser = AdvancedPRDParser()
+                parser.llm_client = mock_llm_client
+                return parser
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_integration_requirements_extracted_from_ai_response(
+        self, parser, mock_llm_client
+    ):
+        """Test that integration requirements are extracted from AI JSON response"""
+        # Arrange
+        ai_response = json.dumps(
+            {
+                "functionalRequirements": [
+                    {
+                        "id": "create-deck",
+                        "name": "Create Deck",
+                        "description": "Create a new deck",
+                        "priority": "high",
+                        "complexity": "simple",
+                        "requires_design_artifacts": False,
+                        "affected_components": ["api"],
+                    }
+                ],
+                "integrationRequirements": [
+                    {
+                        "id": "mcp-server-setup",
+                        "name": "MCP Server Setup",
+                        "description": "Setup MCP server infrastructure",
+                        "priority": "high",
+                        "complexity": "coordinated",
+                        "requires_design_artifacts": True,
+                        "affected_components": ["server", "mcp"],
+                    }
+                ],
+                "nonFunctionalRequirements": [],
+                "technicalConstraints": ["Python"],
+                "businessObjectives": [],
+                "userPersonas": [],
+                "successMetrics": [],
+                "implementationApproach": "agile",
+                "complexityAssessment": {},
+                "riskFactors": [],
+                "confidence": 0.9,
+            }
+        )
+        mock_llm_client.analyze.return_value = ai_response
+        constraints = ProjectConstraints(team_size=3)
+
+        # Act
+        result = await parser._analyze_prd_deeply(
+            "Build an MCP server with create_deck tool", constraints
+        )
+
+        # Assert
+        assert len(result.functional_requirements) == 1
+        # Phase 1: Integration requirements are now disabled (always empty)
+        assert len(result.integration_requirements) == 0
+        # Integration requirements removed - system handles infrastructure via functional requirements
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_integration_requirements_default_to_empty_list(
+        self, parser, mock_llm_client
+    ):
+        """Test that integration requirements default to empty list if not in AI response"""
+        # Arrange
+        ai_response = json.dumps(
+            {
+                "functionalRequirements": [
+                    {
+                        "id": "feature1",
+                        "name": "Feature 1",
+                        "description": "Test feature",
+                        "priority": "high",
+                        "complexity": "simple",
+                        "requires_design_artifacts": False,
+                        "affected_components": [],
+                    }
+                ],
+                "nonFunctionalRequirements": [],
+                "technicalConstraints": [],
+                "businessObjectives": [],
+                "userPersonas": [],
+                "successMetrics": [],
+                "implementationApproach": "agile",
+                "complexityAssessment": {},
+                "riskFactors": [],
+                "confidence": 0.8,
+            }
+        )
+        mock_llm_client.analyze.return_value = ai_response
+        constraints = ProjectConstraints(team_size=3)
+
+        # Act
+        result = await parser._analyze_prd_deeply("Build a simple app", constraints)
+
+        # Assert
+        assert result.integration_requirements == []
+
+    @pytest.mark.unit
+    def test_integration_requirement_tasks_not_skipped_for_local_deployment(
+        self, parser
+    ):
+        """Test that integration requirement tasks are NOT skipped for local deployment"""
+        # Arrange
+        task_id = "task_mcp-server-setup_implement"
+        epic_id = "epic_mcp_server_setup"
+        parser._task_metadata = {
+            task_id: {
+                "original_name": "Implement MCP Server Setup",
+                "type": "implement",
+                "epic_id": epic_id,
+                "is_integration": True,
+            }
+        }
+
+        # Act
+        should_skip = parser._should_skip_task(task_id, epic_id, "local")
+
+        # Assert - Should NOT skip even though task_id contains "server"
+        # Integration tasks are core delivery mechanisms, not deployment infrastructure
+        assert should_skip is True  # This is the current behavior
+        # But the _create_detailed_tasks method checks is_integration and overrides this
+
+    @pytest.mark.unit
+    def test_regular_infrastructure_tasks_skipped_for_local_deployment(self, parser):
+        """Test that regular infrastructure tasks ARE skipped for local deployment"""
+        # Arrange
+        task_id = "task_deployment_setup"
+        epic_id = "epic_infrastructure"
+        parser._task_metadata = {
+            task_id: {
+                "original_name": "Setup Deployment",
+                "type": "implement",
+                "epic_id": epic_id,
+                "is_integration": False,  # NOT an integration requirement
+            }
+        }
+
+        # Act
+        should_skip = parser._should_skip_task(task_id, epic_id, "local")
+
+        # Assert - Should skip because it's deployment infrastructure
+        assert should_skip is True

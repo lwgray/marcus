@@ -274,6 +274,100 @@ def would_create_cycle(
     return has_cycle_dfs(from_task_id)
 
 
+def detect_test_task(task_name: str) -> bool:
+    """
+    Detect if a task is a test task based on name patterns.
+
+    Recognizes common test task naming patterns including:
+    - Tasks starting with "Test"
+    - Tasks containing "unit test", "integration test", "e2e test"
+    - Tasks starting with "Write tests", "Create tests", "Add tests"
+
+    Parameters
+    ----------
+    task_name : str
+        The task name to check
+
+    Returns
+    -------
+    bool
+        True if the task appears to be a test task
+    """
+    name_lower = task_name.lower()
+
+    # Pattern 1: Starts with "Test"
+    if name_lower.startswith("test"):
+        return True
+
+    # Pattern 2: Contains test type keywords
+    test_keywords = [
+        "unit test",
+        "integration test",
+        "e2e test",
+        "end-to-end test",
+    ]
+    if any(keyword in name_lower for keyword in test_keywords):
+        return True
+
+    # Pattern 3: Starts with action verbs for test creation
+    test_action_patterns = [
+        "write tests",
+        "write unit tests",
+        "write integration tests",
+        "create tests",
+        "create unit tests",
+        "create integration tests",
+        "add tests",
+        "implement tests",
+    ]
+    if any(name_lower.startswith(pattern) for pattern in test_action_patterns):
+        return True
+
+    return False
+
+
+def extract_phase(task_name: str) -> Optional[str]:
+    """
+    Extract phase from task name with improved pattern recognition.
+
+    Recognizes phases from both prefix and content:
+    - Design: "Design API", "Create design for..."
+    - Implement: "Implement X", "Build X", "Create X"
+    - Test: "Test X", "Write tests for X", etc.
+
+    Parameters
+    ----------
+    task_name : str
+        The task name to extract phase from
+
+    Returns
+    -------
+    Optional[str]
+        The detected phase ("design", "implement", "test", "integration")
+        or None if no phase could be determined
+    """
+    name_lower = task_name.lower()
+    phase_order = {"design": 0, "implement": 1, "test": 2, "integration": 3}
+
+    # First check: Is this a test task? (most specific)
+    if detect_test_task(task_name):
+        return "test"
+
+    # Second check: Prefix-based phase detection
+    for phase in phase_order.keys():
+        if name_lower.startswith(phase):
+            return phase
+
+    # Third check: Implementation action verbs
+    impl_patterns = ["build", "create", "add", "develop", "write"]
+    for pattern in impl_patterns:
+        if name_lower.startswith(pattern):
+            # Make sure it's not a test task (already checked above)
+            return "implement"
+
+    return None
+
+
 def validate_phase_order(subtask: Task, dependency_task: Task) -> bool:
     """
     Validate that dependency follows proper phase ordering.
@@ -281,6 +375,9 @@ def validate_phase_order(subtask: Task, dependency_task: Task) -> bool:
     Ensures dependencies follow Design → Implement → Test workflow.
     For example, Implementation can depend on Design, but Design
     cannot depend on Implementation.
+
+    CRITICAL RULE: Implementation and Design tasks can NEVER depend on
+    Test tasks, as tests verify implementation, not the other way around.
 
     Parameters
     ----------
@@ -296,22 +393,29 @@ def validate_phase_order(subtask: Task, dependency_task: Task) -> bool:
     """
     phase_order = {"design": 0, "implement": 1, "test": 2, "integration": 3}
 
-    def extract_phase(task_name: str) -> Optional[str]:
-        """Extract phase from task name (e.g., 'Design API' → 'design')."""
-        name_lower = task_name.lower()
-        for phase in phase_order.keys():
-            if name_lower.startswith(phase):
-                return phase
-        return None
-
     subtask_phase = extract_phase(subtask.name)
     dep_phase = extract_phase(dependency_task.name)
 
-    # If we can't determine phases, allow the dependency
-    if subtask_phase is None or dep_phase is None:
-        return True
+    # CRITICAL CHECK: Never allow non-test tasks to depend on test tasks
+    # This prevents architectural backwards dependencies
+    if dep_phase == "test" and subtask_phase in ["design", "implement"]:
+        logger.warning(
+            f"BLOCKED backwards dependency: {subtask.name} "
+            f"({subtask_phase}) cannot depend on test task "
+            f"{dependency_task.name}"
+        )
+        return False
 
-    # Check phase ordering
+    # If we can't determine both phases, be conservative and reject
+    # This prevents permissive acceptance of potentially bad dependencies
+    if subtask_phase is None or dep_phase is None:
+        logger.debug(
+            f"Cannot determine phases for {subtask.name} and "
+            f"{dependency_task.name}, conservatively rejecting"
+        )
+        return False
+
+    # Check phase ordering: later phases can depend on earlier phases
     if phase_order[subtask_phase] < phase_order[dep_phase]:
         logger.warning(
             f"Invalid phase order: {subtask.name} ({subtask_phase}) "
@@ -502,8 +606,11 @@ async def wire_cross_parent_dependencies(
         for dep_id in new_deps:
             if dep_id not in task.dependencies:
                 task.dependencies.append(dep_id)
+                task.dependency_types.append("soft")
                 stats["dependencies_created"] += 1
-                logger.info(f"Added cross-parent dependency: {task.name} → {dep_id}")
+                logger.info(
+                    f"Added cross-parent dependency: {task.name} → {dep_id} (soft)"
+                )
 
     elapsed_time = time.time() - start_time
     stats["total_time_seconds"] = round(elapsed_time, 2)

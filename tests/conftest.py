@@ -13,7 +13,7 @@ resources for all tests in the suite.
 import asyncio
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict
 
 import pytest
@@ -21,9 +21,8 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "src"))
 
-from mcp.client.stdio import stdio_client
-
 from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
 # Import domain-specific fixtures
 pytest_plugins = [
@@ -130,7 +129,7 @@ def test_board_name() -> str:
     >>> test_board_name()
     'Test Board - 2024-01-15 14:30:45'
     """
-    return f"Test Board - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    return f"Test Board - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}"
 
 
 @pytest.fixture

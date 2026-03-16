@@ -86,25 +86,26 @@ class LocalLLMProvider(BaseLLMProvider):
         model_name : str
             Model to use (e.g., 'codellama:13b')
         """
-        # Get config for local LLM settings
-        from src.config.config_loader import get_config
+        # Get configuration from centralized config
+        from src.config.marcus_config import get_config
 
         config = get_config()
-        ai_config = config.get("ai", {})
 
         # Support different local LLM servers - config first, env var as override
-        self.base_url = ai_config.get("local_url", "http://localhost:11434/v1")
-        if os.getenv("MARCUS_LOCAL_LLM_URL"):
-            self.base_url = os.getenv("MARCUS_LOCAL_LLM_URL")
+        self.base_url: str = config.ai.local_url or "http://localhost:11434/v1"
+        env_url = os.getenv("MARCUS_LOCAL_LLM_URL")
+        if env_url:
+            self.base_url = env_url
 
         self.model = model_name
-        self.max_tokens = 4096  # Most local models support longer context
+        self.max_tokens = config.ai.max_tokens
         self.timeout = 120.0  # Longer timeout for local inference
 
         # Get API key from config or env var
-        api_key = ai_config.get("local_key", "none")
-        if os.getenv("MARCUS_LOCAL_LLM_KEY"):
-            api_key = os.getenv("MARCUS_LOCAL_LLM_KEY")
+        api_key: str = config.ai.local_key or "none"
+        env_key = os.getenv("MARCUS_LOCAL_LLM_KEY")
+        if env_key:
+            api_key = env_key
 
         # HTTP client for OpenAI-compatible API
         self.client = httpx.AsyncClient(
