@@ -10,10 +10,7 @@ from datetime import datetime, timezone
 import pytest
 
 from src.core.models import Priority, Task, TaskStatus
-from src.integrations.enhanced_task_classifier import (
-    ClassificationResult,
-    EnhancedTaskClassifier,
-)
+from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
 from src.integrations.nlp_task_utils import TaskType
 
 
@@ -382,3 +379,145 @@ class TestEnhancedTaskClassifier:
         task = self.create_task("1", name)
         result = classifier.classify(task)
         assert result == expected_type
+
+    # GH-180: Strong signals should override weak signals
+    def test_strong_signals_override_description_keywords(self, classifier):
+        """
+        Test that strong signals (name + labels) override weak signals.
+
+        Issue #180: Tasks with "Implement" in name and "implement" label
+        were being misclassified as DESIGN when description contained
+        design keywords like "design", "plan", "architecture".
+
+        Strong signals (task name prefix + explicit labels) should take
+        precedence over weak signals (description keywords).
+        """
+        # Case 1: Implement task with design keywords in description
+        task1 = self.create_task(
+            "1",
+            "Implement Pomodoro Timer",
+            description="Design and implement the pomodoro timer feature",
+            labels=["implement"],
+        )
+        result1 = classifier.classify_with_confidence(task1)
+        assert result1.task_type == TaskType.IMPLEMENTATION, (
+            f"Expected IMPLEMENTATION but got {result1.task_type.name} "
+            f"(confidence: {result1.confidence:.2f})"
+        )
+
+        # Case 2: Design task should still be classified as DESIGN
+        task2 = self.create_task(
+            "2",
+            "Design Pomodoro Timer",
+            description="Plan the architecture for the pomodoro timer",
+            labels=["design", "architecture"],
+        )
+        result2 = classifier.classify_with_confidence(task2)
+        assert result2.task_type == TaskType.DESIGN
+
+        # Case 3: Test task with implementation keywords in description
+        task3 = self.create_task(
+            "3",
+            "Test Authentication Flow",
+            description="Implement tests for the authentication feature",
+            labels=["test", "qa"],
+        )
+        result3 = classifier.classify_with_confidence(task3)
+        assert (
+            result3.task_type == TaskType.TESTING
+        ), f"Expected TESTING but got {result3.task_type.name}"
+
+        # Case 4: Strong label should override conflicting description
+        task4 = self.create_task(
+            "4",
+            "Build User Dashboard",
+            description="Research and design the dashboard layout before building",
+            labels=["implement", "frontend"],
+        )
+        result4 = classifier.classify_with_confidence(task4)
+        assert (
+            result4.task_type == TaskType.IMPLEMENTATION
+        ), f"Expected IMPLEMENTATION but got {result4.task_type.name}"
+
+    def test_database_connection_as_implementation(self, classifier):
+        """
+        Test database connection tasks classify as IMPLEMENTATION.
+
+        Edge case: "Setup database connections" contains infrastructure keywords
+        ("setup", "database") but should be classified as IMPLEMENTATION because
+        setting up database connections is implementation work, not infrastructure
+        provisioning.
+        """
+        # Test case 1: Setup database connections
+        task1 = self.create_task(
+            "1",
+            "Setup database connections",
+            description="Configure database connection pool and settings",
+        )
+        result1 = classifier.classify_with_confidence(task1)
+        assert (
+            result1.task_type == TaskType.IMPLEMENTATION
+        ), f"Expected IMPLEMENTATION but got {result1.task_type.name}"
+
+        # Test case 2: Configure database connection
+        task2 = self.create_task(
+            "2",
+            "Configure API database connection",
+            description="Set up database connection for the API service",
+        )
+        result2 = classifier.classify_with_confidence(task2)
+        assert (
+            result2.task_type == TaskType.IMPLEMENTATION
+        ), f"Expected IMPLEMENTATION but got {result2.task_type.name}"
+
+        # Test case 3: Actual infrastructure should still be INFRASTRUCTURE
+        task3 = self.create_task(
+            "3",
+            "Setup database server",
+            description="Provision and configure PostgreSQL database server",
+        )
+        result3 = classifier.classify_with_confidence(task3)
+        assert (
+            result3.task_type == TaskType.INFRASTRUCTURE
+        ), f"Expected INFRASTRUCTURE but got {result3.task_type.name}"
+
+    def test_code_comments_as_documentation(self, classifier):
+        """
+        Test that adding code comments classifies as DOCUMENTATION not IMPLEMENTATION.
+
+        Edge case: "Add code comments" contains implementation keyword ("code")
+        but should be classified as DOCUMENTATION because the task is about
+        documenting code, not implementing functionality.
+        """
+        # Test case 1: Add code comments
+        task1 = self.create_task(
+            "1",
+            "Add code comments",
+            description="Document the authentication module with comments",
+        )
+        result1 = classifier.classify_with_confidence(task1)
+        assert (
+            result1.task_type == TaskType.DOCUMENTATION
+        ), f"Expected DOCUMENTATION but got {result1.task_type.name}"
+
+        # Test case 2: Document functions with comments
+        task2 = self.create_task(
+            "2",
+            "Document code with inline comments",
+            description="Add explanatory comments to complex functions",
+        )
+        result2 = classifier.classify_with_confidence(task2)
+        assert (
+            result2.task_type == TaskType.DOCUMENTATION
+        ), f"Expected DOCUMENTATION but got {result2.task_type.name}"
+
+        # Test case 3: Actual code implementation should be IMPLEMENTATION
+        task3 = self.create_task(
+            "3",
+            "Implement code review feature",
+            description="Build the code review functionality",
+        )
+        result3 = classifier.classify_with_confidence(task3)
+        assert (
+            result3.task_type == TaskType.IMPLEMENTATION
+        ), f"Expected IMPLEMENTATION but got {result3.task_type.name}"
