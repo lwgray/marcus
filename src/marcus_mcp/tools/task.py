@@ -2137,6 +2137,7 @@ async def _find_optimal_task_original_logic(
                             for t in state.project_tasks
                             if t.labels and set(t.labels) & set(task.labels)
                         )
+
                         if phase_exists:
                             phase_allowed = False
                             logger.info(

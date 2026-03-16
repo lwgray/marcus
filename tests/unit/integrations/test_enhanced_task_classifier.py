@@ -382,3 +382,61 @@ class TestEnhancedTaskClassifier:
         task = self.create_task("1", name)
         result = classifier.classify(task)
         assert result == expected_type
+
+    # GH-180: Strong signals should override weak signals
+    def test_strong_signals_override_description_keywords(self, classifier):
+        """
+        Test that strong signals (name + labels) override weak signals.
+
+        Issue #180: Tasks with "Implement" in name and "implement" label
+        were being misclassified as DESIGN when description contained
+        design keywords like "design", "plan", "architecture".
+
+        Strong signals (task name prefix + explicit labels) should take
+        precedence over weak signals (description keywords).
+        """
+        # Case 1: Implement task with design keywords in description
+        task1 = self.create_task(
+            "1",
+            "Implement Pomodoro Timer",
+            description="Design and implement the pomodoro timer feature",
+            labels=["implement"],
+        )
+        result1 = classifier.classify_with_confidence(task1)
+        assert (
+            result1.task_type == TaskType.IMPLEMENTATION
+        ), f"Expected IMPLEMENTATION but got {result1.task_type.name} (confidence: {result1.confidence:.2f})"
+
+        # Case 2: Design task should still be classified as DESIGN
+        task2 = self.create_task(
+            "2",
+            "Design Pomodoro Timer",
+            description="Plan the architecture for the pomodoro timer",
+            labels=["design", "architecture"],
+        )
+        result2 = classifier.classify_with_confidence(task2)
+        assert result2.task_type == TaskType.DESIGN
+
+        # Case 3: Test task with implementation keywords in description
+        task3 = self.create_task(
+            "3",
+            "Test Authentication Flow",
+            description="Implement tests for the authentication feature",
+            labels=["test", "qa"],
+        )
+        result3 = classifier.classify_with_confidence(task3)
+        assert (
+            result3.task_type == TaskType.TESTING
+        ), f"Expected TESTING but got {result3.task_type.name}"
+
+        # Case 4: Strong label should override conflicting description
+        task4 = self.create_task(
+            "4",
+            "Build User Dashboard",
+            description="Research and design the dashboard layout before building",
+            labels=["implement", "frontend"],
+        )
+        result4 = classifier.classify_with_confidence(task4)
+        assert (
+            result4.task_type == TaskType.IMPLEMENTATION
+        ), f"Expected IMPLEMENTATION but got {result4.task_type.name}"

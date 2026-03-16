@@ -7,7 +7,7 @@ pattern matching, and context-aware classification for 95%+ accuracy.
 
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Pattern, Tuple
+from typing import Dict, List, Pattern, Tuple
 
 from src.core.models import Task
 from src.integrations.nlp_task_utils import TaskType
@@ -400,10 +400,11 @@ class EnhancedTaskClassifier:
         ClassificationResult
             ClassificationResult with type, confidence, and reasoning
         """
-        # Combine text sources
-        text = (
-            f"{task.name} {task.description or ''} " f"{' '.join(task.labels or [])}"
-        ).lower()
+        # Separate strong signals (name, labels) from weak signals (description)
+        # This allows us to weight them appropriately
+        task_name = task.name.lower()
+        task_description = (task.description or "").lower()
+        task_labels = task.labels or []
 
         # Score each task type
         scores = {}
@@ -415,7 +416,10 @@ class EnhancedTaskClassifier:
                 continue
 
             score, keywords, patterns = self._score_task_type(
-                text, task_type, task.labels or []
+                task_name=task_name,
+                task_description=task_description,
+                task_labels=task_labels,
+                task_type=task_type,
             )
             scores[task_type] = score
             matched_keywords[task_type] = keywords
@@ -431,36 +435,13 @@ class EnhancedTaskClassifier:
                 reasoning="No matching keywords or patterns found",
             )
 
-        # Handle ambiguous cases - prefer DESIGN over IMPLEMENTATION when both
-        # have high scores
-        # and there's an explicit design keyword
-        design_score = scores.get(TaskType.DESIGN, 0)
-        impl_score = scores.get(TaskType.IMPLEMENTATION, 0)
-
-        # Track if we had an ambiguous case
+        # GH-180: Removed ambiguous case handling that artificially boosted DESIGN
+        # The new weighted scoring system (strong signals > weak signals) makes
+        # this override unnecessary and was causing misclassification.
+        # Task name and labels are now weighted more heavily than description,
+        # so a task named "Implement X" with label "implement" will correctly
+        # classify as IMPLEMENTATION even if description contains "design"
         ambiguous_case = False
-
-        if design_score > 0 and impl_score > 0:
-            # Only consider it ambiguous if the scores are reasonably close
-            if design_score / impl_score < 2.5:  # Only if scores are close
-                # Check if task contains design keywords
-                design_keywords = [
-                    "design",
-                    "architect",
-                    "plan",
-                    "planning",
-                    "mockup",
-                    "wireframe",
-                ]
-                full_text = (f"{task.name.lower()} {task.description or ''}").lower()
-                has_design_keywords = any(
-                    keyword in full_text for keyword in design_keywords
-                )
-
-                if has_design_keywords:
-                    # Boost design score to win ambiguous cases
-                    scores[TaskType.DESIGN] = max(design_score + 2.0, impl_score + 1.0)
-                    ambiguous_case = True
 
         # Defensive check: ensure scores is not empty before calling max()
         if not scores:
@@ -544,15 +525,23 @@ class EnhancedTaskClassifier:
         )
 
     def _score_task_type(
-        self, text: str, task_type: TaskType, labels: Optional[List[str]] = None
+        self,
+        task_name: str,
+        task_description: str,
+        task_labels: list[str],
+        task_type: TaskType,
     ) -> Tuple[float, List[str], List[str]]:
         """
-        Score how well text matches a task type.
+        Score how well a task matches a task type.
+
+        Uses weighted scoring where strong signals (task name, labels) have
+        higher weight than weak signals (description keywords).
 
         Args:
-            text: Combined text from task name, description, and labels
+            task_name: Task name (strong signal)
+            task_description: Task description (weak signal)
+            task_labels: Task labels (very strong signal - explicit categorization)
             task_type: TaskType to score against
-            labels: Task labels for additional context
 
         Returns
         -------
@@ -562,148 +551,190 @@ class EnhancedTaskClassifier:
         score = 0.0
         matched_keywords = []
         matched_patterns = []
-        labels = labels or []
 
         keywords_dict = self.TASK_KEYWORDS.get(task_type, {})
 
-        # Give extra weight if labels match task type directly
+        # STRONGEST SIGNAL: Explicit labels (weight: 8.0)
+        # Labels are explicit categorization by users/systems
         label_boost = 0.0
-        for label in labels:
-            if label.lower() in ["testing", "qa"] and task_type == TaskType.TESTING:
-                label_boost += 4.0  # Strong boost for testing labels
-                matched_keywords.append(label.lower())
+        for label in task_labels:
+            label_lower = label.lower()
+            # Check for direct task type matches
+            if (
+                label_lower in ["test", "testing", "qa"]
+                and task_type == TaskType.TESTING
+            ):
+                label_boost += 8.0
+                matched_keywords.append(label_lower)
             elif (
-                label.lower() in ["design", "architecture"]
+                label_lower in ["implement", "implementation"]
+                and task_type == TaskType.IMPLEMENTATION
+            ):
+                label_boost += 8.0
+                matched_keywords.append(label_lower)
+            elif (
+                label_lower in ["design", "architecture"]
                 and task_type == TaskType.DESIGN
             ):
-                label_boost += 4.0
-                matched_keywords.append(label.lower())
+                label_boost += 8.0
+                matched_keywords.append(label_lower)
             elif (
-                label.lower() in ["documentation", "docs"]
+                label_lower in ["documentation", "docs", "readme"]
                 and task_type == TaskType.DOCUMENTATION
             ):
-                label_boost += 4.0
-                matched_keywords.append(label.lower())
+                label_boost += 8.0
+                matched_keywords.append(label_lower)
+            elif (
+                label_lower in ["deploy", "deployment", "release"]
+                and task_type == TaskType.DEPLOYMENT
+            ):
+                label_boost += 8.0
+                matched_keywords.append(label_lower)
+            elif (
+                label_lower in ["infrastructure", "devops", "setup"]
+                and task_type == TaskType.INFRASTRUCTURE
+            ):
+                label_boost += 8.0
+                matched_keywords.append(label_lower)
 
         score += label_boost
 
-        # Check primary keywords (higher weight)
-        for keyword in keywords_dict.get("primary", []):
-            # Use word boundary matching for better accuracy
-            # Also check for plural forms
-            pattern = rf"\b{re.escape(keyword)}s?\b"
-            match = re.search(pattern, text)
-            if match:
-                # Give extra weight if keyword appears at the beginning
-                position_weight = 1.5 if match.start() < 10 else 1.0
+        # Combine name and description for keyword/pattern matching
+        # But track which came from name (strong) vs description (weak)
+        combined_text = f"{task_name} {task_description} {' '.join(task_labels)}"
 
-                # Give testing keywords extra weight to avoid misclassification
+        # STRONG SIGNAL: Primary keywords in task name (weight: 5.0-6.0)
+        # Medium signal: Primary keywords in description (weight: 1.5-2.0)
+        for keyword in keywords_dict.get("primary", []):
+            pattern = rf"\b{re.escape(keyword)}s?\b"
+
+            # Check task name first (strong signal)
+            name_match = re.search(pattern, task_name)
+            desc_match = re.search(pattern, task_description)
+
+            if name_match:
+                # Keyword in name is a STRONG signal
+                position_weight = 1.2 if name_match.start() < 10 else 1.0
+
+                # Special handling for certain keywords
                 if task_type == TaskType.TESTING and keyword in ["test", "testing"]:
-                    score += 3.0 * position_weight  # Higher weight
-                # Give documentation keywords high weight for specific phrases
-                elif (
-                    task_type == TaskType.DOCUMENTATION
-                    and keyword == "document"
-                    and "comment" in text
-                ):
-                    score += 3.0 * position_weight
+                    score += 6.0 * position_weight
+                elif task_type == TaskType.IMPLEMENTATION and keyword in [
+                    "implement",
+                    "build",
+                ]:
+                    score += 6.0 * position_weight
+                elif task_type == TaskType.DESIGN and keyword in ["design", "plan"]:
+                    score += 6.0 * position_weight
                 else:
-                    score += 2.0 * position_weight
+                    score += 5.0 * position_weight
+                matched_keywords.append(keyword)
+            elif desc_match:
+                # Keyword only in description is a WEAK signal
+                if task_type == TaskType.TESTING and keyword in ["test", "testing"]:
+                    score += 2.0
+                elif task_type == TaskType.DOCUMENTATION and keyword == "document":
+                    score += 2.0
+                else:
+                    score += 1.5
                 matched_keywords.append(keyword)
 
-        # Check secondary keywords
+        # Secondary keywords: moderate weight for name, low weight for description
         for keyword in keywords_dict.get("secondary", []):
-            # Use word boundary matching for better accuracy
-            # Also check for plural forms
             pattern = rf"\b{re.escape(keyword)}s?\b"
-            if re.search(pattern, text):
-                # Special handling for documentation keywords
+
+            name_match = re.search(pattern, task_name)
+            desc_match = re.search(pattern, task_description)
+
+            if name_match:
+                # Secondary keyword in name
+                score += 2.0
+                matched_keywords.append(keyword)
+            elif desc_match:
+                # Secondary keyword in description only
                 if (
                     task_type == TaskType.DOCUMENTATION
                     and keyword == "comments"
-                    and ("add" in text or "annotate" in text)
+                    and ("add" in combined_text or "annotate" in combined_text)
                 ):
-                    score += 2.5  # High score for "add comments" pattern
+                    score += 1.5
                 else:
-                    score += 1.0
-                matched_keywords.append(keyword)
-
-        # Check verb usage
-        for verb in keywords_dict.get("verbs", []):
-            if re.search(rf"\b{verb}\b", text):
-                # Special case: generic verbs need more context
-                if (
-                    verb in ["update", "create", "write", "add", "build"]
-                    and len(text.split()) <= 3
-                ):
-                    # Very short task names with generic verbs get lower scores
                     score += 0.5
-                    # Skip if the verb is the entire classification basis for testing
-                    if task_type == TaskType.TESTING and "test" in text:
-                        continue  # Don't let "write" override "test"
+                if keyword not in matched_keywords:
+                    matched_keywords.append(keyword)
+
+        # Verb usage: higher weight in name, lower in description
+        for verb in keywords_dict.get("verbs", []):
+            name_match = re.search(rf"\b{verb}\b", task_name)
+            desc_match = re.search(rf"\b{verb}\b", task_description)
+
+            if name_match:
+                # Verb in task name is a strong signal
+                # Special handling for implementation verbs
+                if task_type == TaskType.IMPLEMENTATION and verb in [
+                    "implement",
+                    "build",
+                    "create",
+                    "develop",
+                ]:
+                    score += 4.0
+                elif task_type == TaskType.TESTING and verb in [
+                    "test",
+                    "verify",
+                    "validate",
+                ]:
+                    score += 4.0
+                elif task_type == TaskType.DESIGN and verb in [
+                    "design",
+                    "plan",
+                    "architect",
+                ]:
+                    score += 4.0
                 else:
-                    # Special handling for documentation verbs
-                    if (
-                        task_type == TaskType.DOCUMENTATION
-                        and verb in ["annotate", "comment", "document"]
-                        and ("function" in text or "code" in text)
-                    ):
-                        score += 3.5  # Higher score for documentation-specific verbs
-                    # Special case for "add comments"
-                    elif (
-                        task_type == TaskType.DOCUMENTATION
-                        and verb == "add"
-                        and "comment" in text
-                    ):
-                        score += 4.0  # Very high score for adding comments
-                    # Reduce setup/configure scoring for database connections
-                    # to avoid infrastructure classification
-                    elif (
-                        task_type == TaskType.INFRASTRUCTURE
-                        and verb in ["setup", "configure"]
-                        and ("database" in text and "connection" in text)
-                    ):
-                        # Much lower score to prefer IMPLEMENTATION
-                        score += 0.3
-                    # Boost implementation scoring for database connections
-                    elif (
-                        task_type == TaskType.IMPLEMENTATION
-                        and verb in ["setup", "configure"]
-                        and ("database" in text and "connection" in text)
-                    ):
-                        # Higher score to prefer IMPLEMENTATION
-                        score += 3.0
-                    else:
-                        score += 1.5
+                    score += 3.0
+                if verb not in matched_keywords:
+                    matched_keywords.append(verb)
+            elif desc_match:
+                # Verb in description is a weak signal
+                # Generic verbs in description get very low weight
+                if verb in ["update", "create", "write", "add", "build"]:
+                    score += 0.3
+                elif task_type == TaskType.DOCUMENTATION and verb in [
+                    "annotate",
+                    "comment",
+                    "document",
+                ]:
+                    score += 1.0
+                else:
+                    score += 0.5
                 if verb not in matched_keywords:
                     matched_keywords.append(verb)
 
-        # Check patterns (highest weight)
+        # Pattern matching: higher weight in name, medium in combined
         for regex_pattern in self._compiled_patterns.get(task_type, []):
-            match = regex_pattern.search(text)
-            if match:
-                # Special case: database setup patterns get lower score
-                # for infrastructure
-                if (
-                    task_type == TaskType.INFRASTRUCTURE
-                    and "database" in text
-                    and "connection" in text
-                ):
-                    # Much lower score to prefer IMPLEMENTATION
-                    score += 1.0
-                else:
-                    score += 3.0
-                matched_patterns.append(regex_pattern.pattern)
+            name_match = regex_pattern.search(task_name)
+            combined_match = regex_pattern.search(combined_text)
 
-        # Penalty for conflicting keywords
+            if name_match:
+                # Pattern match in name is very strong
+                score += 5.0
+                matched_patterns.append(regex_pattern.pattern)
+            elif combined_match:
+                # Pattern match in description is moderate
+                score += 2.0
+                if regex_pattern.pattern not in matched_patterns:
+                    matched_patterns.append(regex_pattern.pattern)
+
+        # Reduced penalty for conflicting keywords (only in name)
+        # Description conflicts don't matter as much
         for other_type in TaskType:
             if other_type == task_type or other_type == TaskType.OTHER:
                 continue
             other_keywords = self.TASK_KEYWORDS.get(other_type, {})
-            # Only penalize if primary keywords of other types are present
+            # Only penalize if primary keywords of other types are in task NAME
             for keyword in other_keywords.get("primary", []):
-                if keyword in text and keyword not in matched_keywords:
-                    score -= 0.5
+                if keyword in task_name and keyword not in matched_keywords:
+                    score -= 0.3  # Reduced penalty
 
         return score, matched_keywords, matched_patterns
 
