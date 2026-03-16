@@ -616,8 +616,26 @@ class EnhancedTaskClassifier:
                 # Keyword in name is a STRONG signal
                 position_weight = 1.2 if name_match.start() < 10 else 1.0
 
+                # EDGE CASE: Database connections are IMPLEMENTATION
+                combined_text = f"{task_name} {task_description}".lower()
+                if (
+                    task_type == TaskType.INFRASTRUCTURE
+                    and keyword in ["setup", "configure"]
+                    and "database" in combined_text
+                    and "connection" in combined_text
+                ):
+                    # Much lower score to avoid infrastructure classification
+                    score += 0.5
+                # EDGE CASE: "code" with doc keywords is DOCUMENTATION
+                elif (
+                    task_type == TaskType.IMPLEMENTATION
+                    and keyword == "code"
+                    and ("comment" in combined_text or "document" in combined_text)
+                ):
+                    # Lower score when "code" appears with documentation keywords
+                    score += 1.0
                 # Special handling for certain keywords
-                if task_type == TaskType.TESTING and keyword in ["test", "testing"]:
+                elif task_type == TaskType.TESTING and keyword in ["test", "testing"]:
                     score += 6.0 * position_weight
                 elif task_type == TaskType.IMPLEMENTATION and keyword in [
                     "implement",
@@ -670,8 +688,43 @@ class EnhancedTaskClassifier:
 
             if name_match:
                 # Verb in task name is a strong signal
+                # EDGE CASE: Database connections are IMPLEMENTATION
+                # "Setup database connections" is implementation, not infra
+                combined_text = f"{task_name} {task_description}".lower()
+                if (
+                    task_type == TaskType.INFRASTRUCTURE
+                    and verb in ["setup", "configure"]
+                    and "database" in combined_text
+                    and "connection" in combined_text
+                ):
+                    # Much lower score to avoid infrastructure classification
+                    score += 0.3
+                elif (
+                    task_type == TaskType.IMPLEMENTATION
+                    and verb in ["setup", "configure"]
+                    and "database" in combined_text
+                    and "connection" in combined_text
+                ):
+                    # Higher score to prefer IMPLEMENTATION
+                    score += 3.0
+                # EDGE CASE: Code comments should be DOCUMENTATION not IMPLEMENTATION
+                # "Add code comments" is documentation work, not implementation
+                elif (
+                    task_type == TaskType.DOCUMENTATION
+                    and verb == "add"
+                    and "comment" in combined_text
+                ):
+                    # Very high score for adding comments
+                    score += 4.0
+                elif (
+                    task_type == TaskType.DOCUMENTATION
+                    and verb in ["document", "annotate", "comment"]
+                    and ("function" in combined_text or "code" in combined_text)
+                ):
+                    # Higher score for documentation-specific verbs with code context
+                    score += 3.5
                 # Special handling for implementation verbs
-                if task_type == TaskType.IMPLEMENTATION and verb in [
+                elif task_type == TaskType.IMPLEMENTATION and verb in [
                     "implement",
                     "build",
                     "create",
