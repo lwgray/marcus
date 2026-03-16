@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""Delete all projects from Planka.
+"""Delete projects from Planka.
+
+Supports two modes:
+1. Delete all projects (default)
+2. Select specific projects to delete (--select)
 
 WARNING: This is a destructive operation that will permanently delete
-all projects and their associated boards, cards, and data.
+projects and their associated boards, cards, and data.
 """
 
 import asyncio
@@ -61,29 +65,110 @@ async def check_board_availability() -> bool:
         return False
 
 
-def confirm_deletion(project_count: int) -> bool:
-    """Prompt user to confirm deletion of all projects.
+def select_projects_to_delete(projects: List[dict[str, Any]]) -> List[dict[str, Any]]:
+    """Allow user to select which projects to delete.
 
     Parameters
     ----------
-    project_count : int
-        Number of projects that will be deleted
+    projects : List[dict[str, Any]]
+        List of all available projects
+
+    Returns
+    -------
+    List[dict[str, Any]]
+        List of selected projects to delete
+    """
+    print("\n📋 Select projects to delete:")
+    print("=" * 50)
+    for idx, project in enumerate(projects, 1):
+        print(f"  {idx}. {project['name']} (ID: {project['id']})")
+
+    print("\n" + "=" * 50)
+    print("Selection options:")
+    print("  • Enter numbers: 1 3 5")
+    print("  • Enter ranges: 1-3")
+    print("  • Combine: 1 3-5 7")
+    print("  • Enter 'all' to delete all projects")
+    print("  • Enter 'cancel' or 'q' to quit")
+    print("=" * 50)
+
+    while True:
+        user_input = input("\nYour selection: ").strip().lower()
+
+        if user_input in ["cancel", "q", "quit", "exit"]:
+            return []
+
+        if user_input == "all":
+            return projects
+
+        try:
+            selected_indices: set[int] = set()
+            parts = user_input.split()
+
+            for part in parts:
+                if "-" in part:
+                    # Handle range (e.g., "1-3")
+                    start, end = part.split("-")
+                    start_idx = int(start)
+                    end_idx = int(end)
+                    if start_idx < 1 or end_idx > len(projects):
+                        raise ValueError(
+                            f"Range {part} is out of bounds (1-{len(projects)})"
+                        )
+                    selected_indices.update(range(start_idx, end_idx + 1))
+                else:
+                    # Handle single number
+                    idx = int(part)
+                    if idx < 1 or idx > len(projects):
+                        raise ValueError(
+                            f"Number {idx} is out of bounds (1-{len(projects)})"
+                        )
+                    selected_indices.add(idx)
+
+            # Convert to project list
+            selected_projects = [projects[idx - 1] for idx in sorted(selected_indices)]
+
+            if not selected_projects:
+                print("❌ No projects selected. Please try again.")
+                continue
+
+            # Show selection for confirmation
+            print(f"\n✅ You selected {len(selected_projects)} project(s):")
+            for project in selected_projects:
+                print(f"   • {project['name']}")
+
+            return selected_projects
+
+        except ValueError as e:
+            print(f"❌ Invalid input: {e}")
+            print("Please try again.")
+            continue
+
+
+def confirm_deletion(projects: List[dict[str, Any]]) -> bool:
+    """Prompt user to confirm deletion of selected projects.
+
+    Parameters
+    ----------
+    projects : List[dict[str, Any]]
+        List of projects that will be deleted
 
     Returns
     -------
     bool
         True if user confirms, False otherwise
     """
-    print(f"\n⚠️  WARNING: You are about to delete {project_count} projects!")
+    project_count = len(projects)
+    print(f"\n⚠️  WARNING: You are about to delete {project_count} project(s)!")
     print("This action cannot be undone and will delete:")
-    print("  • All projects")
+    print("  • Selected projects")
     print("  • All boards within projects")
     print("  • All cards/tasks")
     print("  • All associated data")
-    print("\nType 'DELETE ALL' to confirm (case-sensitive): ", end="")
+    print("\nType 'DELETE' to confirm (case-sensitive): ", end="")
 
     confirmation = input().strip()
-    return confirmation == "DELETE ALL"
+    return confirmation == "DELETE"
 
 
 async def get_all_projects(session: ClientSession) -> List[dict[str, Any]]:
@@ -149,13 +234,17 @@ async def delete_project(
         return False
 
 
-async def delete_all_projects(skip_confirmation: bool = False) -> None:
-    """Delete all projects from Planka.
+async def delete_all_projects(
+    skip_confirmation: bool = False, select_mode: bool = False
+) -> None:
+    """Delete projects from Planka.
 
     Parameters
     ----------
     skip_confirmation : bool, optional
         If True, skip confirmation prompt (for automated use), by default False
+    select_mode : bool, optional
+        If True, allow user to select specific projects to delete, by default False
 
     Raises
     ------
@@ -196,22 +285,32 @@ async def delete_all_projects(skip_confirmation: bool = False) -> None:
                     print("\n✅ No projects found. Nothing to delete!")
                     return
 
-                print(f"✅ Found {len(projects)} projects:")
-                for project in projects:
-                    print(f"   • {project['name']} (ID: {project['id']})")
+                print(f"✅ Found {len(projects)} projects")
+
+                # Select projects to delete
+                if select_mode:
+                    projects_to_delete = select_projects_to_delete(projects)
+                    if not projects_to_delete:
+                        print("\n❌ Operation cancelled by user")
+                        return
+                else:
+                    # Show all projects when deleting all
+                    for project in projects:
+                        print(f"   • {project['name']} (ID: {project['id']})")
+                    projects_to_delete = projects
 
                 # Confirm deletion
                 if not skip_confirmation:
-                    if not confirm_deletion(len(projects)):
+                    if not confirm_deletion(projects_to_delete):
                         print("\n❌ Deletion cancelled by user")
                         return
 
-                # Delete all projects
-                print(f"\n🗑️  Deleting {len(projects)} projects...")
+                # Delete selected projects
+                print(f"\n🗑️  Deleting {len(projects_to_delete)} project(s)...")
                 deleted = 0
                 failed = 0
 
-                for project in projects:
+                for project in projects_to_delete:
                     success = await delete_project(
                         session, project["id"], project["name"]
                     )
@@ -239,9 +338,32 @@ async def delete_all_projects(skip_confirmation: bool = False) -> None:
 
 if __name__ == "__main__":
     skip_confirmation = "--yes" in sys.argv or "-y" in sys.argv
+    select_mode = "--select" in sys.argv or "-s" in sys.argv
+
+    # Show usage if --help
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print("Project Deletion Tool")
+        print("\nUsage:")
+        print("  python delete_all_projects.py [OPTIONS]")
+        print("\nOptions:")
+        print("  -s, --select    Select specific projects to delete (interactive)")
+        print("  -y, --yes       Skip confirmation prompt (delete all)")
+        print("  -h, --help      Show this help message")
+        print("\nExamples:")
+        print("  # Interactive selection")
+        print("  python delete_all_projects.py --select")
+        print("\n  # Delete all without confirmation")
+        print("  python delete_all_projects.py --yes")
+        print("\n  # Default: delete all with confirmation")
+        print("  python delete_all_projects.py")
+        sys.exit(0)
 
     try:
-        asyncio.run(delete_all_projects(skip_confirmation=skip_confirmation))
+        asyncio.run(
+            delete_all_projects(
+                skip_confirmation=skip_confirmation, select_mode=select_mode
+            )
+        )
     except KeyboardInterrupt:
         print("\n\n❌ Operation cancelled by user")
         sys.exit(1)

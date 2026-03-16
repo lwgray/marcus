@@ -223,7 +223,7 @@ python -m pytest tests/unit/dev_tools/test_manage_projects_interactive.py --cov=
 
 ## Related Tools
 
-- [delete_all_projects.py](delete_all_projects.py) - Non-interactive bulk deletion (use with caution!)
+- [delete_projects.py](delete_projects.py) - Simple project deletion with selection options
 - [create_fresh_project.py](create_fresh_project.py) - Create new projects
 
 ## Notes

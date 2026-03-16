@@ -7,7 +7,7 @@ Maintenance and setup utilities for managing Marcus projects and boards.
 | Tool | Purpose | Safety |
 |------|---------|--------|
 | `clear_board.py` | Clear all tasks from Kanban board | ⚠️ Destructive |
-| `delete_all_projects.py` | Remove all Marcus projects | ⚠️ Destructive |
+| `delete_projects.py` | Remove Marcus projects (all or selected) | ⚠️ Destructive |
 | `create_fresh_project.py` | Create new test project | ✅ Safe |
 | `run_through_board.py` | Process tasks through board | ⚠️ Modifies state |
 | `setup_marcus_project.sh` | Initial Marcus project setup | ✅ Safe |
@@ -18,7 +18,7 @@ Maintenance and setup utilities for managing Marcus projects and boards.
 ### Clean Slate
 ```bash
 # Remove all projects and clear board
-python delete_all_projects.py
+python delete_projects.py
 python clear_board.py
 
 # Create fresh test project
@@ -101,70 +101,107 @@ Board is now empty
 
 ---
 
-### delete_all_projects.py ⚠️
+### delete_projects.py ⚠️
 
-Removes all projects from Marcus, including their tasks and metadata.
+Removes projects from Marcus, with options to delete all or select specific projects.
 
 **⚠️ WARNING**: This is destructive and cannot be undone!
 
 **Features**:
-- Deletes all Marcus projects
-- Removes associated tasks
-- Cleans up metadata
-- Supports dry-run and confirmation
+- Interactive project selection
+- Delete all projects or choose specific ones
+- Flexible selection syntax (numbers, ranges, combinations)
+- Safety confirmations before deletion
+- Lists all projects before selection
 
 **Usage**:
 ```bash
-# Dry run (shows what would be deleted)
-python delete_all_projects.py --dry-run
+# Show help and usage
+python delete_projects.py --help
 
-# Interactive mode with confirmation
-python delete_all_projects.py
+# Interactive selection mode (recommended)
+python delete_projects.py --select
 
-# Force delete without confirmation (dangerous!)
-python delete_all_projects.py --force
+# Delete all projects with confirmation
+python delete_projects.py
 
-# Delete projects matching pattern
-python delete_all_projects.py --pattern "test_*"
-
-# Keep specific projects
-python delete_all_projects.py --except "Production API"
+# Delete all without confirmation (dangerous!)
+python delete_projects.py --yes
 ```
 
-**Output Example**:
+**Selection Examples**:
+```bash
+# Start selection mode
+python delete_projects.py --select
+
+# Then enter selections like:
+# Single: 1 3 5
+# Range: 1-5
+# Mixed: 1 3-5 7
+# All: all
+# Cancel: cancel or q
 ```
-=== DELETE ALL PROJECTS UTILITY ===
-Found 3 projects:
-  1. Task Management API (15 tasks)
-  2. Calculator Demo (5 tasks)
-  3. Test Project (0 tasks)
 
-Total: 3 projects, 20 tasks
+**Output Example (Selection Mode)**:
+```
+🗑️  Project Deletion Tool
+==================================================
+🔍 Checking Planka availability...
+✅ Planka is available
 
-⚠️  This will DELETE ALL projects and their tasks!
-This action CANNOT be undone!
+📋 Fetching all projects...
+✅ Found 3 projects
 
-Proceed? [yes/no]: yes
+📋 Select projects to delete:
+==================================================
+  1. Task Management API (ID: abc123)
+  2. Calculator Demo (ID: def456)
+  3. Test Project (ID: ghi789)
 
-Deleting projects:
-  ✓ Deleted "Task Management API" (15 tasks)
-  ✓ Deleted "Calculator Demo" (5 tasks)
-  ✓ Deleted "Test Project" (0 tasks)
+==================================================
+Selection options:
+  • Enter numbers: 1 3 5
+  • Enter ranges: 1-3
+  • Combine: 1 3-5 7
+  • Enter 'all' to delete all projects
+  • Enter 'cancel' or 'q' to quit
+==================================================
 
-✅ Successfully deleted 3 projects (20 tasks total)
+Your selection: 1 3
+
+✅ You selected 2 project(s):
+   • Task Management API
+   • Test Project
+
+⚠️  WARNING: You are about to delete 2 project(s)!
+This action cannot be undone and will delete:
+  • Selected projects
+  • All boards within projects
+  • All cards/tasks
+  • All associated data
+
+Type 'DELETE' to confirm (case-sensitive): DELETE
+
+🗑️  Deleting 2 project(s)...
+   ✅ Deleted: Task Management API (ID: abc123)
+   ✅ Deleted: Test Project (ID: ghi789)
+
+==================================================
+✅ Successfully deleted 2 projects
+🎯 Planka cleanup complete!
 ```
 
 **When to Use**:
-- Resetting Marcus completely
-- Cleaning up after experiments
-- Starting new development cycle
-- Removing test projects
+- Cleaning up specific test projects
+- Removing old or failed experiments
+- Selectively deleting projects while keeping others
+- Complete reset (delete all mode)
 
 **Best Practices**:
-- Always use `--dry-run` first
-- Backup important projects before deleting
-- Verify project names carefully
-- Use `--pattern` for targeted deletion
+- Use `--select` mode for surgical deletion
+- Review project list carefully before selection
+- Type 'DELETE' confirmation exactly (case-sensitive)
+- Consider using `manage_projects_interactive.py` for more complex filtering
 - Coordinate with team on shared instances
 
 ---
@@ -452,8 +489,9 @@ Tests subtask handling and fixes in Marcus.
 
 ```bash
 # 1. Clean everything
-python delete_all_projects.py --dry-run  # Preview
-python delete_all_projects.py            # Confirm and delete
+python delete_projects.py --select  # Choose specific projects
+# OR
+python delete_projects.py           # Delete all with confirmation
 python clear_board.py --dry-run          # Preview
 python clear_board.py                    # Confirm and clear
 
@@ -485,7 +523,7 @@ python run_through_board.py --simulate
 
 ```bash
 # 1. Clean slate
-python delete_all_projects.py
+python delete_projects.py
 python clear_board.py
 
 # 2. Create multiple test projects
