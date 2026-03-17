@@ -704,9 +704,8 @@ class TestKanbanClientWithCreate:
         for i, call in enumerate(checklist_calls):
             assert call["name"] == f"✓ Criteria {i + 1}"
 
-    @pytest.mark.asyncio
     @patch.dict(os.environ, {}, clear=True)
-    async def test_ensure_planka_credentials_with_existing_env(self):
+    def test_ensure_planka_credentials_with_existing_env(self):
         """Test that existing environment variables are preserved during init."""
         # Set custom values before creating client
         os.environ["PLANKA_BASE_URL"] = "http://custom.planka.com"
@@ -857,9 +856,8 @@ class TestKanbanClientWithCreate:
         assert task.name == "Task without description"
         assert task.description == ""
 
-    @pytest.mark.asyncio
     @patch.dict(os.environ, {"PLANKA_BASE_URL": "existing_url"})
-    async def test_ensure_planka_credentials_partial_env(self):
+    def test_ensure_planka_credentials_partial_env(self):
         """Test credential setup when some env vars already exist."""
         # Only PLANKA_BASE_URL is set
         with patch.object(KanbanClientWithCreate, "_load_config"):
