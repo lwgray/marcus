@@ -141,14 +141,19 @@ class ProjectAutoSetup:
         planka_board_name = options.get("planka_board_name", "Main Board")
         project_root = options.get("project_root")
 
-        # Default to current working directory if not provided
+        # Require project_root - Marcus needs to know where to find code
+        # for validation
         if not project_root:
-            import os
-
-            project_root = os.getcwd()
-            logger.info(
-                f"No project_root provided, defaulting to current directory: "
-                f"{project_root}"
+            raise ValueError(
+                "project_root is required - specify where agents will "
+                "write code.\n"
+                "This tells Marcus where to find source files for validation.\n"
+                "Example: create_project(\n"
+                "    description='Build a snake game',\n"
+                "    project_name='Snake Game',\n"
+                "    options={'project_root': "
+                "'~/experiments/snake_game/implementations'}\n"
+                ")"
             )
 
         logger.info(
