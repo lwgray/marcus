@@ -26,6 +26,7 @@ flake8>=6.0.0
 pydocstyle>=6.3.0
 pre-commit>=3.5.0
 bandit>=1.7.0
+psutils
 
 # Type stubs
 types-aiofiles
