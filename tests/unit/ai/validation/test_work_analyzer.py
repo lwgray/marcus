@@ -35,6 +35,7 @@ class TestWorkAnalyzer:
         task.id = "task-123"
         task.name = "Implement user registration"
         task.description = "Create user registration with email validation"
+        task.type = "implementation"
         task.completion_criteria = [
             "Form includes email, password, confirm password fields",
             "Email validation implemented",
@@ -52,6 +53,10 @@ class TestWorkAnalyzer:
         state.workspace_manager = Mock()
         state.workspace_manager.project_config = Mock()
         state.workspace_manager.project_config.main_workspace = "/fake/project/root"
+        # Mock kanban_client._load_workspace_state() to return None
+        # so code falls through to workspace_manager (which tests can update)
+        state.kanban_client = Mock()
+        state.kanban_client._load_workspace_state.return_value = None
         return state
 
     @pytest.mark.asyncio
@@ -90,7 +95,9 @@ class TestWorkAnalyzer:
         (src_dir / "README.md").write_text("# README")  # Should be excluded
 
         # Update mock_state to use tmp_path
-        mock_state.workspace_manager.project_config.main_workspace = str(tmp_path)
+        mock_state.kanban_client._load_workspace_state.return_value = {
+            "project_root": str(tmp_path)
+        }
 
         with patch(
             "src.ai.validation.work_analyzer.get_task_context",
@@ -118,7 +125,9 @@ class TestWorkAnalyzer:
         src_dir.mkdir()
         (src_dir / "empty.py").write_text("")
 
-        mock_state.workspace_manager.project_config.main_workspace = str(tmp_path)
+        mock_state.kanban_client._load_workspace_state.return_value = {
+            "project_root": str(tmp_path)
+        }
 
         with patch(
             "src.ai.validation.work_analyzer.get_task_context",
@@ -144,7 +153,9 @@ class TestWorkAnalyzer:
             "def foo():\n    # TODO: implement this\n    pass"
         )
 
-        mock_state.workspace_manager.project_config.main_workspace = str(tmp_path)
+        mock_state.kanban_client._load_workspace_state.return_value = {
+            "project_root": str(tmp_path)
+        }
 
         with patch(
             "src.ai.validation.work_analyzer.get_task_context",

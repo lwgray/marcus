@@ -61,7 +61,9 @@ class TestProjectAutoSetup:
 
         # Verify auto_setup_project was called with correct params
         mock_kanban_client.auto_setup_project.assert_called_once_with(
-            project_name="Test Planka Project", board_name="Development Board"
+            project_name="Test Planka Project",
+            board_name="Development Board",
+            project_root=None,
         )
 
     @pytest.mark.asyncio
@@ -83,7 +85,7 @@ class TestProjectAutoSetup:
         # Assert
         # Should default to project_name and "Main Board"
         mock_kanban_client.auto_setup_project.assert_called_once_with(
-            project_name="MyAPI", board_name="Main Board"
+            project_name="MyAPI", board_name="Main Board", project_root=None
         )
 
     @pytest.mark.asyncio
