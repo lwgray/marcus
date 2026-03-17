@@ -48,6 +48,11 @@ class ExperimentConfig:
         self.logs_dir.mkdir(exist_ok=True)
         self.implementation_dir.mkdir(exist_ok=True)
 
+        # Add project_root to project_options (required by Marcus validation)
+        # This tells Marcus where agents will write code
+        if "project_root" not in self.project_options:
+            self.project_options["project_root"] = str(self.implementation_dir)
+
         # Project info file (shared between creator and workers)
         self.project_info_file = self.experiment_dir / "project_info.json"
 
