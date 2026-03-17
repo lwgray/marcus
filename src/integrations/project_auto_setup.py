@@ -141,12 +141,21 @@ class ProjectAutoSetup:
         planka_board_name = options.get("planka_board_name", "Main Board")
         project_root = options.get("project_root")
 
+        # Default to current working directory if not provided
+        if not project_root:
+            import os
+
+            project_root = os.getcwd()
+            logger.info(
+                f"No project_root provided, defaulting to current directory: "
+                f"{project_root}"
+            )
+
         logger.info(
             f"Auto-creating Planka project '{planka_project_name}' "
             f"with board '{planka_board_name}'"
         )
-        if project_root:
-            logger.info(f"Project root: {project_root}")
+        logger.info(f"Project root: {project_root}")
 
         # Check if kanban client supports auto_setup_project
         if not hasattr(kanban_client, "auto_setup_project"):

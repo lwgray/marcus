@@ -60,10 +60,14 @@ class TestProjectAutoSetup:
         assert result.provider_config["board_id"] == "board-456"
 
         # Verify auto_setup_project was called with correct params
+        # project_root defaults to current working directory when not provided
+        import os
+
+        expected_project_root = os.getcwd()
         mock_kanban_client.auto_setup_project.assert_called_once_with(
             project_name="Test Planka Project",
             board_name="Development Board",
-            project_root=None,
+            project_root=expected_project_root,
         )
 
     @pytest.mark.asyncio
@@ -83,9 +87,14 @@ class TestProjectAutoSetup:
         )
 
         # Assert
-        # Should default to project_name and "Main Board"
+        # Should default to project_name, "Main Board", and current working directory
+        import os
+
+        expected_project_root = os.getcwd()
         mock_kanban_client.auto_setup_project.assert_called_once_with(
-            project_name="MyAPI", board_name="Main Board", project_root=None
+            project_name="MyAPI",
+            board_name="Main Board",
+            project_root=expected_project_root,
         )
 
     @pytest.mark.asyncio
