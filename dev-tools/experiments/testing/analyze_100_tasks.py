@@ -12,9 +12,12 @@ from datetime import datetime
 from pathlib import Path
 
 # Add project root to path
-project_root = Path(__file__).parent.parent
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
+# Now in testing/ subdirectory, so go up more levels
+script_dir = Path(__file__).resolve().parent
+experiments_dir = script_dir.parent
+marcus_root = experiments_dir.parent.parent  # Go up to marcus root
+if str(marcus_root) not in sys.path:
+    sys.path.insert(0, str(marcus_root))
 
 from src.core.models import Priority, Task, TaskStatus  # noqa: E402
 from src.marcus_mcp.coordinator.scheduler import calculate_optimal_agents  # noqa: E402

@@ -1,0 +1,44 @@
+project_name: "Reliability Test: 5 Stages, 5 Agents"
+experiment_type: "multi_agent"
+project_spec_file: "project_description.txt"
+
+project_options:
+  provider: "planka"
+  complexity: "medium"
+  task_count: 5
+
+# One agent per stage - maximum dependency depth
+agents:
+  - id: "ingestion_agent"
+    name: "Data Ingestion Specialist"
+    role: "data_engineer"
+    skills: ["python", "data_ingestion", "csv", "pandas"]
+    subagents: 0
+
+  - id: "validation_agent"
+    name: "Data Validation Specialist"
+    role: "data_quality_engineer"
+    skills: ["python", "validation", "data_quality", "pydantic"]
+    subagents: 0
+
+  - id: "enrichment_agent"
+    name: "Data Enrichment Specialist"
+    role: "data_engineer"
+    skills: ["python", "data_transformation", "feature_engineering"]
+    subagents: 0
+
+  - id: "aggregation_agent"
+    name: "Data Aggregation Specialist"
+    role: "analytics_engineer"
+    skills: ["python", "aggregation", "statistics", "pandas"]
+    subagents: 0
+
+  - id: "reporting_agent"
+    name: "Report Generation Specialist"
+    role: "data_engineer"
+    skills: ["python", "reporting", "json", "csv"]
+    subagents: 0
+
+timeouts:
+  project_creation: 300
+  experiment_duration: 7200  # 2 hours

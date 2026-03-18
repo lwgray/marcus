@@ -19,6 +19,9 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 
 class ExperimentRunner:
     """
@@ -78,14 +81,15 @@ class ExperimentRunner:
         # Thread-safe print lock
         self._print_lock = threading.Lock()
 
-        # Paths to scripts
-        self.run_experiment_script = base_dir.parent / "run_experiment.py"
+        # Paths to scripts (now in subdirectories)
+        experiments_dir = base_dir.parent
+        self.run_experiment_script = experiments_dir / "runners" / "run_experiment.py"
         self.run_single_agent_script = (
-            base_dir.parent / "run_single_agent_experiment.py"
+            experiments_dir / "runners" / "run_single_agent_experiment.py"
         )
-        self.analysis_script = base_dir.parent / "analysis" / "compare_experiments.py"
+        self.analysis_script = experiments_dir / "analysis" / "compare_experiments.py"
         self.visualization_script = (
-            base_dir.parent / "analysis" / "visualize_results.py"
+            experiments_dir / "analysis" / "visualize_results.py"
         )
 
     def detect_experiment_type(self, config_file: Path) -> str:

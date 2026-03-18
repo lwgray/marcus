@@ -16,7 +16,8 @@ from typing import Dict, List
 
 # Add Marcus src to path
 SCRIPT_DIR = Path(__file__).resolve().parent
-MARCUS_ROOT = SCRIPT_DIR.parent
+EXPERIMENTS_DIR = SCRIPT_DIR.parent
+MARCUS_ROOT = EXPERIMENTS_DIR.parent.parent  # Go up to marcus root
 if str(MARCUS_ROOT) not in sys.path:
     sys.path.insert(0, str(MARCUS_ROOT))
 

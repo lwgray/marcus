@@ -11,7 +11,10 @@ import shutil
 import sys
 from pathlib import Path
 
-from spawn_agents import AgentSpawner, ExperimentConfig
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from runners.spawn_agents import AgentSpawner, ExperimentConfig  # noqa: E402
 
 
 def create_experiment_structure(experiment_dir: Path, templates_dir: Path) -> bool:
@@ -227,9 +230,9 @@ Examples:
 
     experiment_dir = Path(args.experiment_dir).resolve()
 
-    # Find templates directory
+    # Find templates directory (now at parent level)
     script_dir = Path(__file__).parent
-    templates_dir = script_dir / "templates"
+    templates_dir = script_dir.parent / "templates"
 
     if not templates_dir.exists():
         print(f"Error: Templates directory not found at {templates_dir}")

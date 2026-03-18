@@ -1,0 +1,21 @@
+Multi-Step Data Processing Pipeline
+
+Build a data processing system that transforms input data through multiple sequential stages.
+
+Requirements:
+1. Stage 1 (Data Ingestion): Read CSV file with customer data
+2. Stage 2 (Data Validation): Validate email formats and required fields
+3. Stage 3 (Data Enrichment): Add computed fields (age from birthdate, full name from first/last)
+4. Stage 4 (Data Aggregation): Group by region and compute statistics
+5. Stage 5 (Report Generation): Create JSON and CSV summary reports
+
+Dependencies:
+- Each stage MUST complete before the next can start
+- Stage outputs must be validated before passing to next stage
+- Create unit tests for each stage
+
+Success Criteria:
+- All 5 stages complete successfully
+- Final reports match expected schema
+- All tests pass
+- Each stage explicitly validates its inputs

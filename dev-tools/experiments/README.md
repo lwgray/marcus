@@ -1,33 +1,34 @@
 # Marcus Multi-Agent Experiments
 
-A portable framework for running multi-agent software development experiments with Marcus task orchestration.
+A comprehensive framework for running and evaluating multi-agent software development experiments with Marcus task orchestration.
 
-## Overview
+## 📂 Directory Structure
 
-This framework allows you to run Marcus multi-agent experiments anywhere on your system. Agents work collaboratively on the `main` branch, coordinated by Marcus to prevent conflicts, with full MLflow experiment tracking support.
+```
+experiments/
+├── runners/              # Experiment runners & launchers
+├── analysis/             # Analysis & visualization tools
+├── scoring/              # Project evaluation & scoring
+├── testing/              # Testing & validation tools
+├── utils/                # Utility scripts
+├── templates/            # Experiment configuration templates
+├── examples/             # Example experiment configurations
+├── docs/                 # Documentation & guides
+├── test_projects/        # Test project specifications
+├── benchmarks/           # Benchmarking tools (reserved)
+├── mlruns/               # MLflow experiment tracking data
+└── README.md             # This file
+```
 
-### Key Features
+---
 
-- **Portable**: Run experiments anywhere, not tied to the Marcus repo
-- **Configurable**: Define custom agents with specific skills and subagent counts
-- **Flexible**: Support for any project type and tech stack
-- **Tracked**: Full MLflow integration for experiment monitoring
-- **Collaborative**: All agents work on main branch with Marcus coordination
+## 🚀 Quick Start
 
-## Prerequisites
-
-- Marcus MCP server running
-- Claude Code CLI installed (`claude` command)
-- Python 3.8+ with PyYAML installed
-- macOS (uses Terminal.app for agent windows)
-
-## Quick Start
-
-### 1. Create a New Experiment
+### 1. Create a New Multi-Agent Experiment
 
 ```bash
 cd /Users/lwgray/dev/marcus/dev-tools/experiments
-python run_experiment.py --init ~/my-experiments/podcast-generator
+python runners/run_experiment.py --init ~/my-experiments/podcast-generator
 ```
 
 This creates:
@@ -42,11 +43,9 @@ This creates:
 
 ### 2. Configure Your Experiment
 
-Edit `config.yaml` to define your agents:
-
+Edit `config.yaml`:
 ```yaml
 project_name: "Podcast Generator"
-
 project_spec_file: "project_spec.md"
 
 project_options:
@@ -59,380 +58,794 @@ agents:
     role: "backend"
     skills: ["python", "fastapi", "postgresql"]
     subagents: 5
-
-  - id: "agent_frontend"
-    name: "Frontend Developer"
-    role: "frontend"
-    skills: ["react", "typescript", "tailwind"]
-    subagents: 3
 ```
 
-Edit `project_spec.md` to describe what you want built:
-
-```markdown
-# Podcast Generator
-
-## Overview
-Build a web app that generates podcast scripts using AI...
-
-## Features
-- Script generation
-- Audio synthesis
-- Episode management
-
-## Technical Stack
-- Backend: FastAPI
-- Frontend: React + TypeScript
-- Database: PostgreSQL
-```
+Edit `project_spec.md` with your project description.
 
 ### 3. Test Optimal Agent Count (Recommended)
 
-**⚠️ IMPORTANT**: Before running your experiment, test optimal agent configuration to avoid:
-- Spawning too many agents (wasted resources)
-- Spawning too few agents (missed parallelism opportunities)
-- Agents dying while waiting for dependencies
-
 ```bash
-python test_optimal_agents.py ~/my-experiments/podcast-generator
+python testing/test_optimal_agents.py ~/my-experiments/podcast-generator
 ```
 
-This will:
-1. Create the project in Marcus/Planka
-2. Analyze task dependency graph
-3. Calculate maximum parallelism
-4. Show optimal agent count and utilization timeline
-5. Offer to update `config.yaml` with optimal settings
+Analyzes your project and recommends the optimal number of agents based on task dependencies.
 
-**Example output:**
+### 4. Run the Experiment
+
+```bash
+python runners/run_experiment.py ~/my-experiments/podcast-generator
+```
+
+---
+
+## 📚 Detailed Component Documentation
+
+### 🏃 Runners (`runners/`)
+
+Main experiment execution scripts.
+
+#### `run_experiment.py`
+**Purpose**: Multi-agent Marcus experiment launcher
+**Usage**:
+```bash
+# Initialize new experiment
+python runners/run_experiment.py --init <experiment_dir>
+
+# Validate configuration
+python runners/run_experiment.py --validate <experiment_dir>
+
+# Run experiment
+python runners/run_experiment.py <experiment_dir>
+```
+
+**What it does**:
+- Creates experiment directory structure
+- Spawns project creator agent
+- Launches multiple worker agents (configurable)
+- Each agent registers with Marcus and requests tasks
+- All agents work on `main` branch in implementation/
+- Full MLflow tracking integration
+
+**Key Features**:
+- Portable (works outside Marcus repo)
+- Configurable agent roles and skills
+- Subagent support for parallel execution
+- Tmux session management
+- Automatic prompt generation
+
+---
+
+#### `run_single_agent_experiment.py`
+**Purpose**: Single-agent controlled experiment for comparison testing
+**Usage**:
+```bash
+# Initialize single-agent experiment
+python runners/run_single_agent_experiment.py --init <experiment_dir>
+
+# Run experiment
+python runners/run_single_agent_experiment.py <experiment_dir>
+
+# Log results to MLflow after completion
+python runners/run_single_agent_experiment.py --log-results <log_file> <experiment_dir>
+```
+
+**What it does**:
+- Runs same project spec with a single Claude Code instance
+- Two modes:
+  - **Structured**: Uses Marcus task breakdown with checkpoints
+  - **Unstructured**: Raw project description (pure baseline)
+- Time tracking with checkpoint markers
+- MLflow integration for comparison
+
+**Configuration** (`config_single_agent.yaml`):
+```yaml
+experiment_type: "single_agent"
+project_name: "Your Project"
+project_spec_file: "project_spec.md"
+
+single_agent:
+  model: "claude-sonnet-4-5-20250929"
+  mode: "structured"        # or "unstructured"
+  checkpoint_mode: true
+  time_tracking: true
+```
+
+---
+
+#### `run_comparison_experiment.py`
+**Purpose**: Automated batch runner for comparing single vs multi-agent
+**Usage**:
+```bash
+# Dry run to see what would execute
+python runners/run_comparison_experiment.py --dry-run
+
+# Run all test projects sequentially
+python runners/run_comparison_experiment.py
+
+# Run specific projects
+python runners/run_comparison_experiment.py --projects 01_simple_calculator 04_ecommerce
+
+# PARALLEL MODE: Run experiments in parallel (requires multiple Marcus instances)
+python runners/run_comparison_experiment.py --parallel --max-parallel 3
+
+# Parallel with custom instance configuration
+python runners/run_comparison_experiment.py --parallel --marcus-instances instances.json
+```
+
+**What it does**:
+- Automatically runs multiple experiment configurations
+- Compares single-agent vs multi-agent performance
+- Sequential or parallel execution modes
+- Generates comparison reports and visualizations
+- Full MLflow tracking
+
+**Parallel Mode Requirements**:
+- Multiple Marcus instances on different ports
+- Each connected to separate Planka boards
+- Configuration file: `marcus_instances.example.json`
+
+**Example instances config**:
+```json
+[
+  {"url": "http://localhost:4298", "board_id": "board_0"},
+  {"url": "http://localhost:4299", "board_id": "board_1"},
+  {"url": "http://localhost:4300", "board_id": "board_2"}
+]
+```
+
+---
+
+#### `spawn_agents.py`
+**Purpose**: Core agent spawning utility (used by run_experiment.py)
+**Note**: This is typically called internally by `run_experiment.py`, not run directly.
+
+**What it does**:
+- Creates project creator agent prompt
+- Creates worker agent prompts
+- Manages tmux sessions and windows
+- Handles agent registration and task loops
+- Saves project info for worker coordination
+
+---
+
+### 📊 Analysis (`analysis/`)
+
+Tools for analyzing experiment results and generating insights.
+
+#### `compare_experiments.py`
+**Purpose**: Compare results across multiple MLflow experiments
+**Location**: Called by `run_comparison_experiment.py`
+
+**What it does**:
+- Extracts metrics from MLflow runs
+- Generates comparison reports (JSON)
+- Statistical analysis of performance
+- Identifies best configurations
+
+---
+
+#### `visualize_results.py`
+**Purpose**: Create visualizations from experiment results
+**Location**: Called by `run_comparison_experiment.py`
+
+**What it does**:
+- Time comparison charts
+- Quality score distributions
+- Agent utilization plots
+- Saves to `plots/` directory
+
+**Dependencies**: See `analysis/requirements.txt`
+```bash
+pip install -r analysis/requirements.txt
+```
+
+---
+
+#### `analyze_reliability_decay.py`
+**Purpose**: Compare Marcus against multiplicative reliability decay model
+**Usage**:
+```bash
+python analysis/analyze_reliability_decay.py \
+  --experiments "Reliability Test: 5 Agents" "Reliability Test: 10 Agents" \
+  --output-dir results/reliability_analysis
+```
+
+**What it does**:
+- Tests the claim that multi-agent systems suffer from multiplicative error propagation
+- Compares actual Marcus performance vs predicted decay (p^n model)
+- Generates plots showing Marcus prevents error cascade
+- Proves board-mediated coordination advantage
+
+**Key Insight**: Marcus's board-mediated architecture prevents the reliability decay that plagues pipeline-style multi-agent systems.
+
+**Output**:
+- `reliability_comparison.png` - Visual comparison graph
+- `reliability_comparison_table.csv` - Data table
+- `RELIABILITY_ANALYSIS.md` - Comprehensive report
+
+---
+
+#### `parse_single_agent_timing.py`
+**Purpose**: Extract timing data from single-agent experiment logs
+**Usage**:
+```bash
+# Display summary
+python analysis/parse_single_agent_timing.py logs/experiment.log
+
+# Output JSON
+python analysis/parse_single_agent_timing.py logs/experiment.log --json
+
+# Save metrics
+python analysis/parse_single_agent_timing.py logs/experiment.log --output metrics.json
+```
+
+**What it does**:
+- Parses checkpoint timestamps from logs
+- Calculates total duration
+- Extracts subtask completion times
+- Formats for MLflow logging
+
+**Expected log format**:
+```
+START: 2025-10-23 10:15:32
+SUBTASK 1.1 COMPLETE: 10:18:45 (3:13 elapsed)
+SUBTASK 1.2 COMPLETE: 10:22:30 (6:58 elapsed)
+TASK 1 COMPLETE: 10:25:00
+...
+END: 2025-10-23 10:47:18
+TOTAL: 31 minutes 46 seconds
+```
+
+---
+
+### 🎯 Scoring (`scoring/`)
+
+Automated project evaluation tools.
+
+#### `score_project.py`
+**Purpose**: Rule-based automated project scoring
+**Usage**:
+```bash
+python scoring/score_project.py \
+  --project-dir ~/experiments/test1/implementation \
+  --output-file score.json
+```
+
+**What it does**:
+- Evaluates projects across 6 categories (100 points total):
+  - **Functionality** (25 pts): Does it run? Do tests pass?
+  - **Code Quality** (20 pts): Static analysis, complexity, documentation
+  - **Completeness** (20 pts): All deliverables, no stubs
+  - **Project Structure** (15 pts): Organization, file count
+  - **Documentation** (12 pts): README, API docs, setup instructions
+  - **Usability** (8 pts): Single-command startup, examples
+
+**Output** (JSON):
+```json
+{
+  "project_name": "datetime-api",
+  "total_score": 82.5,
+  "total_possible": 100,
+  "percentage": 82.5,
+  "categories": [...]
+}
+```
+
+---
+
+#### `llm_score_project.py`
+**Purpose**: LLM-based intelligent project scoring
+**Usage**:
+```bash
+python scoring/llm_score_project.py \
+  --project-dir ~/experiments/test1/implementation \
+  --output-file llm_score.json
+```
+
+**What it does**:
+- Uses LLM (via Marcus LLMAbstraction) to evaluate code
+- Same categories as `score_project.py` but with qualitative reasoning
+- Provides strengths, weaknesses, and recommendations
+- More nuanced understanding of architecture and design
+
+**Advantages over rule-based**:
+- Understands code intent and design patterns
+- Evaluates architecture quality
+- Provides actionable feedback
+- More accurate for complex projects
+
+**Output** (JSON):
+```json
+{
+  "project_name": "datetime-api",
+  "total_score": 85.0,
+  "categories": [
+    {
+      "category": "Functionality",
+      "points_earned": 22.0,
+      "reasoning": "...",
+      "strengths": ["..."],
+      "weaknesses": ["..."]
+    }
+  ],
+  "overall_assessment": "...",
+  "recommendations": ["..."]
+}
+```
+
+---
+
+#### `compare_scores.py`
+**Purpose**: Generate comprehensive comparison reports
+**Usage**:
+```bash
+python scoring/compare_scores.py \
+  --marcus marcus_score.json \
+  --single single_score.json \
+  --time-marcus 6.5 \
+  --time-single 42.0 \
+  --output comparison_report.md
+```
+
+**What it does**:
+- Compares Marcus vs Single Agent scores
+- Category-by-category breakdown
+- Identifies strengths and weaknesses
+- Quality/time ratio analysis
+- Winner determination
+
+**Output**: Markdown report with tables, analysis, and recommendations.
+
+---
+
+### 🧪 Testing (`testing/`)
+
+Tools for testing and validating Marcus functionality.
+
+#### `test_optimal_agents.py`
+**Purpose**: Calculate optimal agent count BEFORE running experiments
+**Usage**:
+```bash
+python testing/test_optimal_agents.py ~/my-experiments/podcast-generator
+```
+
+**What it does**:
+1. Reads experiment configuration
+2. Creates project in Marcus/Planka
+3. Calls `get_optimal_agent_count` MCP tool
+4. Analyzes task dependency graph
+5. Calculates maximum parallelism
+6. Shows optimal agent configuration
+7. Offers to update `config.yaml`
+
+**Output**:
 ```
 📊 Project Analysis:
    Total tasks: 87
    Critical path: 12.50 hours
    Max parallelism: 12 tasks can run simultaneously
+   Efficiency gain: 85.2% vs single agent
 
 ✅ RECOMMENDED: 12 agents
 
+⚙️  Current config.yaml: 18 total agents
+   - Backend Dev: 5 subagents + 1 main = 6 total
+   - Frontend Dev: 3 subagents + 1 main = 4 total
+   ...
+
 ⚠️  WARNING: You have 6 more agents than needed
    Extra agents will be idle, wasting resources
-
-💾 Update config.yaml with optimal settings? [y/N]: y
 ```
 
-See [OPTIMAL_AGENTS.md](OPTIMAL_AGENTS.md) for detailed explanation.
+**Why This Matters**:
+- Prevents spawning too many agents (wasted resources)
+- Prevents spawning too few agents (missed parallelism)
+- Avoids agents dying while waiting for dependencies
+- Optimizes cost and performance
 
-### 4. Run the Experiment
+---
+
+#### `create_and_analyze_project.py`
+**Purpose**: Direct API approach for project creation & analysis
+**Usage**:
+```bash
+python testing/create_and_analyze_project.py ~/my-experiments/test1
+```
+
+**What it does**:
+- Bypasses Claude Code CLI
+- Directly uses Marcus HTTP API (Inspector client)
+- Creates project and gets optimal agent count
+- Faster for testing/debugging
+- Same output as `test_optimal_agents.py`
+
+**Use when**:
+- Testing Marcus API directly
+- Debugging project creation
+- Automating batch project analysis
+- Claude Code CLI issues
+
+---
+
+#### `analyze_100_tasks.py`
+**Purpose**: Test scheduler with 100 independent tasks
+**Usage**:
+```bash
+python testing/analyze_100_tasks.py
+```
+
+**What it does**:
+- Loads `100_independent_tasks.json`
+- Runs `calculate_optimal_agents` scheduler
+- Verifies sweep-line algorithm correctness
+- Ensures truly independent tasks all run in parallel
+
+**Expected Result**:
+```
+✅ SWEEP-LINE ALGORITHM WORKS CORRECTLY!
+   All 100 tasks detected as running in parallel.
+   This proves the bug fix handles truly independent tasks.
+```
+
+**Use for**:
+- Validating scheduler fixes
+- Testing edge cases
+- Performance benchmarking
+
+---
+
+#### `100_independent_tasks.json`
+**Purpose**: Test data for `analyze_100_tasks.py`
+**Format**: JSON array of Task objects with no dependencies
+
+---
+
+### 🛠️ Utils (`utils/`)
+
+Utility scripts for experiment management.
+
+#### `clean_experiment.sh`
+**Purpose**: Clean experiment directory for re-runs
+**Usage**:
+```bash
+./utils/clean_experiment.sh ~/my-experiments/podcast-generator
+```
+
+**What it does**:
+- Deletes all contents of `prompts/`
+- Deletes `project_info.json`
+- Deletes all contents of `implementation/` (including `.git`)
+- Prompts for confirmation before deletion
+
+**Use before**:
+- Re-running an experiment
+- Testing configuration changes
+- Resetting experiment state
+
+**Warning**: Destructive! Make sure you've saved any important results.
+
+---
+
+### 📄 Templates (`templates/`)
+
+Configuration and prompt templates for experiments.
+
+#### `config.yaml.template`
+Full-featured multi-agent configuration template with:
+- Multiple agent definitions
+- Skill specifications
+- Subagent counts
+- MLflow tracking options
+- Timeouts
+
+#### `config.yaml.simple`
+Minimal configuration template for simple projects.
+
+#### `config_single_agent.yaml`
+Configuration template for single-agent experiments.
+
+#### `agent_prompt.md`
+Worker agent prompt template. Defines:
+- Agent role and capabilities
+- Task request loop
+- Marcus integration instructions
+- Commit and progress reporting
+
+#### `single_agent_prompt.template.md`
+Single-agent prompt template (deprecated, now generated dynamically).
+
+---
+
+### 📖 Examples (`examples/`)
+
+Example experiment configurations.
+
+#### `task_management_api.yaml`
+Complete example: REST API with auth, users, projects, tasks, comments.
+
+**Agents**:
+- Foundation (5 subagents): Database models, migrations
+- Auth (3 subagents): JWT, bcrypt, endpoints
+- API (3 subagents): CRUD endpoints
+- Integration (2 subagents): E2E tests, validation
+
+Copy and adapt:
+```bash
+cp examples/task_management_api.yaml ~/experiments/my-api/config.yaml
+```
+
+---
+
+### 📝 Docs (`docs/`)
+
+Additional documentation and guides.
+
+#### `TIMING-INSTRUCTIONS.md`
+Detailed instructions for time tracking in experiments.
+
+#### `experiment-tracking-sheet.md`
+Template for manually tracking experiment progress and results.
+
+---
+
+### 🧪 Test Projects (`test_projects/`)
+
+Test project specifications for experiments.
+
+Organized by complexity:
+- `01_simple_calculator/` - Simple projects (< 10 tasks)
+- `02_medium_api/` - Medium projects (10-30 tasks)
+- `03_complex_platform/` - Complex projects (> 30 tasks)
+
+Each contains:
+- `project_description.txt` - What to build
+- `config_*.yaml` - Multiple configurations to test
+  - `config_single_agent.yaml` - Baseline
+  - `config_multi_agent.yaml` - Standard multi-agent
+  - `config_multi_agent_4.yaml` - 4 agents
+  - `config_multi_agent_8.yaml` - 8 agents
+
+---
+
+## 🔬 Common Workflows
+
+### Workflow 1: Run Single Experiment
 
 ```bash
-python run_experiment.py ~/my-experiments/podcast-generator
+# 1. Create experiment
+python runners/run_experiment.py --init ~/experiments/my-project
+
+# 2. Edit config and spec
+vim ~/experiments/my-project/config.yaml
+vim ~/experiments/my-project/project_spec.md
+
+# 3. Test optimal agents
+python testing/test_optimal_agents.py ~/experiments/my-project
+
+# 4. Run experiment
+python runners/run_experiment.py ~/experiments/my-project
+
+# 5. Score results
+python scoring/score_project.py \
+  --project-dir ~/experiments/my-project/implementation \
+  --output-file ~/experiments/my-project/score.json
 ```
 
-This will:
-1. Open 1 terminal for project creation
-2. Open N terminals for your agents (one per agent in config)
-3. Each agent registers itself + subagents with Marcus
-4. Agents request tasks, complete them, and request more
-5. All work committed to `main` branch in `implementation/`
+---
 
-### 5. Monitor Progress
-
-Watch the terminal windows to see:
-- Project creation and task breakdown
-- Agents registering and requesting tasks
-- Code commits and progress reports
-- Task completion and handoffs
-
-Results appear in `~/my-experiments/podcast-generator/implementation/`
-
-## Directory Structure
-
-```
-marcus/
-└── experiments/                    # Framework (in repo)
-    ├── run_experiment.py           # Main launcher
-    ├── spawn_agents.py             # Agent spawner
-    ├── templates/
-    │   ├── config.yaml.template    # Config template
-    │   └── agent_prompt.md         # Agent behavior
-    ├── examples/
-    │   └── task_management_api.yaml  # Example config
-    └── README.md                   # This file
-
-~/my-experiments/                   # Experiments (outside repo)
-├── podcast-generator/
-│   ├── config.yaml
-│   ├── project_spec.md
-│   ├── implementation/             # Git repo on main
-│   │   ├── src/
-│   │   ├── tests/
-│   │   └── ...
-│   ├── prompts/                    # Generated
-│   └── logs/                       # Agent logs
-└── ecommerce-platform/
-    └── ...
-```
-
-## Configuration Reference
-
-### config.yaml
-
-```yaml
-# Project settings
-project_name: "Your Project Name"
-project_spec_file: "project_spec.md"  # Relative to experiment dir
-
-# Marcus project options
-project_options:
-  complexity: "standard"    # prototype | standard | enterprise
-  provider: "planka"        # planka | github | linear
-  mode: "new_project"       # new_project | auto | select_project
-
-# Agent definitions
-agents:
-  - id: "unique_agent_id"
-    name: "Human Readable Name"
-    role: "backend"         # backend | frontend | qa | devops | fullstack
-    skills:
-      - "python"
-      - "fastapi"
-      - "postgresql"
-    subagents: 5            # Number of subagents to spawn
-
-# Optional timeouts
-timeouts:
-  project_creation: 300     # Seconds (default: 300)
-  agent_startup: 60         # Seconds (default: 60)
-```
-
-### Agent Skills
-
-Common skill tags by role:
-
-**Backend:**
-- Languages: `python`, `javascript`, `typescript`, `go`, `rust`, `java`
-- Frameworks: `fastapi`, `django`, `express`, `spring`, `actix`
-- Databases: `postgresql`, `mysql`, `mongodb`, `redis`
-- ORM/DB Tools: `sqlalchemy`, `prisma`, `sequelize`, `alembic`
-
-**Frontend:**
-- Languages: `javascript`, `typescript`
-- Frameworks: `react`, `vue`, `angular`, `svelte`, `nextjs`
-- Styling: `tailwind`, `css`, `sass`, `styled-components`
-- State: `redux`, `zustand`, `react-query`
-
-**QA/Testing:**
-- Testing: `pytest`, `jest`, `cypress`, `selenium`
-- Types: `unit-testing`, `integration-testing`, `e2e-testing`
-- Tools: `coverage`, `api-testing`, `validation`
-
-**DevOps:**
-- Containers: `docker`, `kubernetes`
-- CI/CD: `github-actions`, `gitlab-ci`, `jenkins`
-- Cloud: `aws`, `gcp`, `azure`
-- IaC: `terraform`, `ansible`
-
-## How It Works
-
-### 1. Project Creation
-The launcher spawns a project creator agent that:
-- Calls `mcp__marcus__create_project` with your spec
-- Creates tasks and dependencies in Marcus/Planka
-- Saves project info for workers
-
-### 2. Agent Registration
-Each worker agent:
-- Reads project info
-- Registers itself with Marcus
-- Registers N subagents (configurable per agent)
-- Enters continuous work loop
-
-### 3. Task Assignment
-Agents continuously:
-- Request tasks from Marcus (`request_next_task`)
-- Marcus assigns based on skills and dependencies
-- Agent checks dependencies via `get_task_context`
-- Agent completes task and reports progress
-- Commits to `main` branch
-- Immediately requests next task
-
-### 4. Coordination
-- **No branches**: All agents work on `main`
-- **Marcus coordinates**: Assigns tasks to prevent conflicts
-- **Dependency tracking**: Agents see what others built
-- **Artifacts**: Agents share specs/docs via `log_artifact`
-- **Decisions**: Architectural choices logged via `log_decision`
-
-## Example Experiments
-
-### Task Management API
-
-A full REST API with auth, users, projects, tasks, and comments.
+### Workflow 2: Compare Marcus vs Single Agent
 
 ```bash
-# Copy the example config
-cp examples/task_management_api.yaml ~/experiments/task-api/config.yaml
+# 1. Setup test project with both configs
+mkdir -p test_projects/my_test/
+# Create config_single_agent.yaml and config_multi_agent.yaml
 
-# Copy the spec from the old demo
-cp ../examples/multi_agent_demo/PROJECT_SPEC.md ~/experiments/task-api/project_spec.md
+# 2. Run comparison experiment
+python runners/run_comparison_experiment.py \
+  --projects my_test
 
-# Run it
-python run_experiment.py ~/experiments/task-api
+# 3. Results automatically saved to results/ with:
+#    - comparison_report.json
+#    - plots/
 ```
 
-Agents: 4 agents, 13 subagents total
-- Foundation: Database models, migrations (5 subagents)
-- Auth: JWT, bcrypt, auth endpoints (3 subagents)
-- API: CRUD endpoints for projects/tasks (3 subagents)
-- Integration: End-to-end tests, validation (2 subagents)
+---
 
-### Custom Experiment Ideas
+### Workflow 3: Validate Reliability Decay Theory
 
-**E-commerce Platform:**
-```yaml
-agents:
-  - {id: agent_backend, role: backend, skills: [python, fastapi, stripe], subagents: 5}
-  - {id: agent_frontend, role: frontend, skills: [react, typescript, tailwind], subagents: 4}
-  - {id: agent_devops, role: devops, skills: [docker, aws, terraform], subagents: 2}
-```
-
-**Data Pipeline:**
-```yaml
-agents:
-  - {id: agent_etl, role: backend, skills: [python, pandas, airflow], subagents: 4}
-  - {id: agent_ml, role: backend, skills: [python, scikit-learn, mlflow], subagents: 3}
-  - {id: agent_api, role: backend, skills: [python, fastapi, redis], subagents: 2}
-```
-
-**Mobile App Backend:**
-```yaml
-agents:
-  - {id: agent_api, role: backend, skills: [node, express, mongodb], subagents: 4}
-  - {id: agent_realtime, role: backend, skills: [node, socket-io, redis], subagents: 2}
-  - {id: agent_push, role: backend, skills: [node, firebase, apns], subagents: 2}
-```
-
-## MLflow Integration
-
-Marcus maintains full MLflow tracking for experiments. All agent actions, task completion, and progress are automatically tracked.
-
-To view experiment metrics:
 ```bash
-# MLflow UI (if you have MLflow server running)
+# 1. Create reliability test projects (1, 5, 10 agent configs)
+# 2. Run experiments
+python runners/run_comparison_experiment.py \
+  --projects reliability_1 reliability_5 reliability_10
+
+# 3. Analyze results
+python analysis/analyze_reliability_decay.py \
+  --experiments "Reliability: 1 Agent" "Reliability: 5 Agents" "Reliability: 10 Agents" \
+  --output-dir results/reliability/
+
+# 4. View plot: results/reliability/reliability_comparison.png
+```
+
+---
+
+### Workflow 4: Batch Testing Multiple Configurations
+
+```bash
+# Run all test projects in parallel (requires 3 Marcus instances)
+python runners/run_comparison_experiment.py \
+  --parallel \
+  --max-parallel 3 \
+  --marcus-instances marcus_instances.json
+```
+
+---
+
+## 📊 MLflow Integration
+
+All experiments are automatically tracked in MLflow.
+
+### View Experiment Results
+
+```bash
+# Start MLflow UI
+cd dev-tools/experiments
 mlflow ui
 
-# Or check Marcus MCP experiment status
-# (via your Claude Code session)
-mcp__marcus__get_experiment_status()
+# Open browser to http://localhost:5000
 ```
 
-## Commands Reference
+### Tracked Metrics
 
-```bash
-# Initialize new experiment
-python run_experiment.py --init <experiment_dir>
+**Multi-Agent Experiments**:
+- `num_agents` - Total agent count
+- `duration_seconds` - Experiment duration
+- `tasks_created` - Total tasks
+- `tasks_completed` - Completed tasks
+- `blockers_reported` - Blockers encountered
+- `artifacts_logged` - Artifacts created
+- `decisions_logged` - Decisions made
 
-# Validate experiment config
-python run_experiment.py --validate <experiment_dir>
+**Single-Agent Experiments**:
+- `total_duration_seconds` - Total time
+- `checkpoints_completed` - Checkpoint count
+- `subtasks_completed` - Subtasks done
+- Individual checkpoint durations
 
-# Run experiment
-python run_experiment.py <experiment_dir>
+---
 
-# Direct spawner usage (advanced)
-python spawn_agents.py <experiment_dir>
-```
+## 🎯 Prerequisites
 
-## Troubleshooting
+### Required
+
+- **Marcus MCP Server**: Running on `http://localhost:4298`
+  ```bash
+  cd /Users/lwgray/dev/marcus
+  ./marcus start
+  ```
+
+- **Claude Code CLI**: Installed and configured
+  ```bash
+  claude --version
+  ```
+
+- **Python 3.11+**: With dependencies
+  ```bash
+  pip install pyyaml mlflow
+  ```
+
+- **Planka Board**: For Marcus task management
+  - Configure in Marcus settings
+  - Get board ID from Planka UI
+
+### Optional
+
+- **tmux**: For multi-agent sessions (usually pre-installed on macOS)
+- **Analysis Tools**: For visualizations
+  ```bash
+  pip install -r analysis/requirements.txt
+  ```
+
+---
+
+## 🚨 Troubleshooting
 
 ### "Marcus MCP server not running"
+
 ```bash
-# Start Marcus server
+# Check status
+curl http://localhost:4298/mcp
+
+# Start Marcus
 cd /Users/lwgray/dev/marcus
 ./marcus start
+
+# Configure Claude Code
+claude mcp add marcus -t http http://localhost:4298/mcp
 ```
 
 ### "No suitable tasks" loops
-- Agents waiting for dependencies to complete
-- Check terminal windows - other agents may be working
-- Marcus assigns tasks as dependencies are satisfied
+
+- Agents waiting for dependencies
+- Check other terminal windows - other agents may be working
+- Marcus assigns tasks as dependencies complete
+- Use `get_task_context` to debug
+
+### Import errors after reorganization
+
+If you see import errors like `ModuleNotFoundError: No module named 'spawn_agents'`:
+
+```bash
+# Make sure you're running scripts from the experiments directory
+cd /Users/lwgray/dev/marcus/dev-tools/experiments
+
+# Run with correct paths
+python runners/run_experiment.py <experiment_dir>
+python testing/test_optimal_agents.py <experiment_dir>
+python analysis/parse_single_agent_timing.py <log_file>
+```
 
 ### Merge conflicts on main
+
 - Rare - Marcus coordinates to prevent this
 - If it happens: manually resolve and commit
-- Agents will continue from resolved state
+- Agents continue from resolved state
 
-### Agent stuck/not progressing
-- Check the agent's terminal window for errors
-- Look in `experiment_dir/logs/` for detailed logs
-- Use `mcp__marcus__diagnose_project` to check for gridlock
+---
 
-## Best Practices
+## 📖 Additional Resources
 
-### Agent Configuration
-- **3-5 agents** optimal for most projects
-- **2-5 subagents** per agent
-- Match skills to your tech stack
-- Specialized roles reduce conflicts
+- **Marcus Documentation**: `/Users/lwgray/dev/marcus/docs/`
+- **MCP Tools**: See Marcus MCP server docs for tool reference
+- **Planka Setup**: See Marcus SETUP.md
+- **Claude Code Docs**: https://docs.anthropic.com/claude/claude-code
 
-### Project Specs
-- Be specific about technical requirements
-- List concrete deliverables
-- Include API contracts or schemas
-- Mention testing requirements (coverage, etc.)
+---
 
-### Monitoring
-- Keep terminal windows visible
-- Watch for agent errors or blockers
-- Check implementation/ directory for code
-- Review commits for progress
+## 🤝 Contributing
 
-### Cleanup
-- Each experiment is self-contained
-- Delete experiment directory when done
-- Keep successful experiments as templates
+When adding new tools to this framework:
 
-## Advanced Usage
+1. **Place in appropriate directory**:
+   - Runners: `runners/`
+   - Analysis: `analysis/`
+   - Scoring: `scoring/`
+   - Testing: `testing/`
+   - Utilities: `utils/`
 
-### Custom Templates
+2. **Update this README** with:
+   - Purpose and usage
+   - What it does
+   - Example output
+   - When to use it
 
-Create your own agent prompt template:
-```bash
-cp templates/agent_prompt.md my_custom_prompt.md
-# Edit to customize agent behavior
-```
+3. **Follow import conventions**:
+   - Use relative imports for same directory
+   - Use `from <subdir>.<module> import` for cross-directory
+   - Add project root to `sys.path` if importing from `src/`
 
-Modify `spawn_agents.py` to use your template.
+4. **Add docstrings**: Numpy-style for all functions
 
-### Multiple Experiments
+5. **Test import paths**: After moving files, verify imports still work
 
-Run multiple experiments simultaneously:
-```bash
-# Terminal 1
-python run_experiment.py ~/experiments/project-a
+---
 
-# Terminal 2
-python run_experiment.py ~/experiments/project-b
-```
+## 📜 License
 
-Each has isolated agents, tasks, and implementation directories.
+Part of the Marcus Multi-Agent System (MIT License).
 
-### Reusing Configurations
+---
 
-Save successful configs as templates:
-```bash
-cp ~/experiments/successful-api/config.yaml examples/my_api_template.yaml
-```
+## 🗂️ Legacy Files
 
-Share with team or reuse for similar projects.
+**Root Directory Files** (kept for compatibility):
+- `single-agent-datetime-api-prompt.md` - Old single-agent prompt (v1)
+- `single-agent-datetime-api-prompt-v2.md` - Old single-agent prompt (v2)
+- `marcus_instances.example.json` - Example parallel instance config
 
-## Contributing
+These files are kept at root level for backwards compatibility but may be moved to `examples/` in the future.
 
-This framework is part of the Marcus project. Improvements welcome:
+---
 
-1. Better agent coordination strategies
-2. Additional tech stack examples
-3. Progress visualization tools
-4. Experiment comparison analytics
-
-## License
-
-Part of the Marcus Multi-Agent System.
+**Last Updated**: 2026-03-17
+**Version**: 2.0 (Reorganized Structure)

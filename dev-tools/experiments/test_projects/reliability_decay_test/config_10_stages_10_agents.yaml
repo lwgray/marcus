@@ -1,0 +1,74 @@
+project_name: "Reliability Test: 10 Stages, 10 Agents"
+experiment_type: "multi_agent"
+project_spec_file: "project_description_10_stages.txt"
+
+project_options:
+  provider: "planka"
+  complexity: "high"
+  task_count: 10
+
+# 10 agents for maximum dependency depth test
+agents:
+  - id: "agent_1"
+    name: "Stage 1 Specialist"
+    role: "data_engineer"
+    skills: ["python", "data_processing"]
+    subagents: 0
+
+  - id: "agent_2"
+    name: "Stage 2 Specialist"
+    role: "data_engineer"
+    skills: ["python", "data_processing"]
+    subagents: 0
+
+  - id: "agent_3"
+    name: "Stage 3 Specialist"
+    role: "data_engineer"
+    skills: ["python", "data_processing"]
+    subagents: 0
+
+  - id: "agent_4"
+    name: "Stage 4 Specialist"
+    role: "data_engineer"
+    skills: ["python", "data_processing"]
+    subagents: 0
+
+  - id: "agent_5"
+    name: "Stage 5 Specialist"
+    role: "data_engineer"
+    skills: ["python", "data_processing"]
+    subagents: 0
+
+  - id: "agent_6"
+    name: "Stage 6 Specialist"
+    role: "data_engineer"
+    skills: ["python", "data_processing"]
+    subagents: 0
+
+  - id: "agent_7"
+    name: "Stage 7 Specialist"
+    role: "data_engineer"
+    skills: ["python", "data_processing"]
+    subagents: 0
+
+  - id: "agent_8"
+    name: "Stage 8 Specialist"
+    role: "data_engineer"
+    skills: ["python", "data_processing"]
+    subagents: 0
+
+  - id: "agent_9"
+    name: "Stage 9 Specialist"
+    role: "data_engineer"
+    skills: ["python", "data_processing"]
+    subagents: 0
+
+  - id: "agent_10"
+    name: "Stage 10 Specialist"
+    role: "data_engineer"
+    skills: ["python", "data_processing"]
+    subagents: 0
+
+timeouts:
+  project_creation: 600
+  experiment_duration: 10800  # 3 hours
