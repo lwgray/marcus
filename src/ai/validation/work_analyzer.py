@@ -943,8 +943,8 @@ Focus on FUNCTIONALITY, not understanding. Code must WORK, not just exist.
             "\nACCEPTANCE CRITERIA (ALL must be met):",
         ]
 
-        # Add criteria
-        criteria = getattr(task, "completion_criteria", [])
+        # Add criteria (handle None case)
+        criteria = task.completion_criteria or []
         for i, criterion in enumerate(criteria, 1):
             prompt_parts.append(f"{i}. {criterion}")
 
