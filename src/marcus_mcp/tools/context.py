@@ -215,6 +215,10 @@ async def get_task_context(task_id: str, state: Any) -> Dict[str, Any]:
         artifacts = await _collect_task_artifacts(task_id, task, state)
         context_dict["artifacts"] = artifacts
 
+        # Add recent comments (including recovery handoff notes)
+        comments = await _collect_task_comments(task_id, task, state)
+        context_dict["comments"] = comments
+
         return {"success": True, "context": context_dict}
 
     except Exception as e:
@@ -334,6 +338,70 @@ async def _collect_task_artifacts(
         print(f"Warning: Artifact collection encountered an error: {e}")
 
     return artifacts
+
+
+async def _collect_task_comments(
+    task_id: str, task: Any, state: Any
+) -> List[Dict[str, Any]]:
+    """
+    Collect recent comments from the Kanban board for this task.
+
+    This is critical for recovery handoff - when a task is recovered,
+    recovery notes are added as comments that the next agent needs to see.
+
+    Parameters
+    ----------
+    task_id : str
+        The task ID to get comments for
+    task : Any
+        The task object
+    state : Any
+        Marcus server state instance
+
+    Returns
+    -------
+    List[Dict[str, Any]]
+        List of comment dictionaries with text, author, timestamp
+    """
+    comments: List[Dict[str, Any]] = []
+
+    try:
+        if not state.kanban_client:
+            return comments
+
+        # Check if kanban client supports getting comments
+        # Different providers implement this differently
+        card_id = getattr(task, "kanban_card_id", None) or task.id
+
+        # Try to get comments from the Kanban board
+        # Note: Not all Kanban providers expose a get_comments API
+        # For Planka, comments might be in the card data
+        # For GitHub, they're in issue comments
+        # For Linear, they're in issue comments
+
+        # For now, we'll add a placeholder that can be implemented
+        # per-provider
+        if hasattr(state.kanban_client, "get_comments"):
+            result = await state.kanban_client.get_comments(card_id)
+            if result.get("success", False):
+                raw_comments = result.get("data", [])
+                for comment in raw_comments:
+                    comments.append(
+                        {
+                            "text": comment.get("text") or comment.get("body", ""),
+                            "author": comment.get("author")
+                            or comment.get("user", "Unknown"),
+                            "created_at": comment.get("created_at")
+                            or comment.get("createdAt", ""),
+                            "id": comment.get("id", ""),
+                        }
+                    )
+
+    except Exception as e:
+        # Don't fail context if comments unavailable
+        logger.debug(f"Could not fetch comments for task {task_id}: {e}")
+
+    return comments
 
 
 async def _collect_sibling_subtask_context(

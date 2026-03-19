@@ -335,6 +335,9 @@ class AssignmentLeaseManager:
         """
         Renew an existing lease based on progress report.
 
+        Uses progressive timeout strategy to adapt lease duration based on
+        task progress and agent reliability.
+
         Parameters
         ----------
             task_id
@@ -362,8 +365,23 @@ class AssignmentLeaseManager:
             lease.progress_percentage = progress
             lease.last_progress_message = message
 
-            # Calculate renewal duration
-            renewal_duration = lease.calculate_renewal_duration(self)
+            # Use progressive timeout if in aggressive mode (< 1 hour default)
+            if self.default_lease_hours < 1.0:
+                # Progressive timeout mode: calculate based on progress
+                lease_seconds, grace_seconds = self.calculate_adaptive_timeout(
+                    progress=progress,
+                    update_count=lease.renewal_count + 1,  # +1 for this renewal
+                    has_recent_activity=True,  # Just reported progress
+                )
+                renewal_duration = timedelta(seconds=lease_seconds)
+
+                logger.info(
+                    f"Progressive timeout for {task_id}: {lease_seconds}s "
+                    f"(progress={progress}%, updates={lease.renewal_count + 1})"
+                )
+            else:
+                # Conservative mode: use old calculation logic
+                renewal_duration = lease.calculate_renewal_duration(self)
 
             # Renew lease
             lease.last_renewed = datetime.now(timezone.utc)
@@ -436,6 +454,9 @@ class AssignmentLeaseManager:
         """
         Recover a task with an expired lease.
 
+        Adds recovery handoff notes to Kanban board to inform next agent about
+        previous work and prevent duplication of effort.
+
         Parameters
         ----------
             lease
@@ -450,6 +471,9 @@ class AssignmentLeaseManager:
                 f"Recovering task {lease.task_id} from agent {lease.agent_id} "
                 f"(expired: {lease.lease_expires.isoformat()})"
             )
+
+            # Create recovery handoff notes BEFORE recovering
+            await self._create_recovery_handoff(lease)
 
             # Remove from active leases
             async with self.lease_lock:
@@ -712,6 +736,62 @@ class AssignmentLeaseManager:
         # All checks passed - safe to recover
         return True
 
+    async def _create_recovery_handoff(self, lease: AssignmentLease) -> None:
+        """
+        Create recovery handoff notes on Kanban board.
+
+        Adds a comment to the task card with information about the previous
+        agent's work to help the next agent continue effectively.
+
+        Parameters
+        ----------
+        lease : AssignmentLease
+            The lease being recovered
+        """
+        try:
+            # Calculate time spent
+            time_spent_seconds = (
+                datetime.now(timezone.utc) - lease.assigned_at
+            ).total_seconds()
+            time_spent_minutes = time_spent_seconds / 60
+
+            # Build handoff message
+            handoff_message = (
+                f"⚠️ **TASK RECOVERED FROM AGENT {lease.agent_id}**\n\n"
+                f"**Recovery Information:**\n"
+                f"- Progress: {lease.progress_percentage}%\n"
+                f"- Time spent: {time_spent_minutes:.1f} minutes\n"
+                f"- Renewals: {lease.renewal_count}\n"
+                f"- Last update: {lease.last_progress_message or 'No message'}\n"
+                f"- Recovered at: {datetime.now(timezone.utc).isoformat()}\n\n"
+                f"**Instructions for next agent:**\n"
+                f"1. Check git history for commits by {lease.agent_id}\n"
+                f"   ```bash\n"
+                f"   git log --author={lease.agent_id} --oneline\n"
+                f"   ```\n"
+                f"2. Look for work-in-progress branches\n"
+                f"   ```bash\n"
+                f"   git branch -a | grep {lease.agent_id}\n"
+                f"   ```\n"
+                f"3. Review task progress ({lease.progress_percentage}% complete)\n"
+                f"4. Continue from where {lease.agent_id} left off\n"
+                f"5. Avoid duplicate approaches that may create dead code\n\n"
+                f"**Context:** This task was recovered after lease expiration. "
+                f"The previous agent may have made progress that wasn't fully "
+                f"committed. Please investigate their work before starting fresh."
+            )
+
+            # Add comment to Kanban board
+            await self.kanban_client.add_comment(lease.task_id, handoff_message)
+
+            logger.info(f"Added recovery handoff notes to task {lease.task_id}")
+
+        except Exception as e:
+            # Don't fail recovery if handoff notes fail
+            logger.warning(
+                f"Failed to create recovery handoff for {lease.task_id}: {e}"
+            )
+
 
 class LeaseMonitor:
     """Background monitor for lease expiration and recovery."""
@@ -765,8 +845,20 @@ class LeaseMonitor:
                 # Check for expired leases
                 expired_leases = await self.lease_manager.check_expired_leases()
 
-                # Recover expired leases
+                # Recover expired leases (with smart checks)
                 for lease in expired_leases:
+                    # Check if we should actually recover this lease
+                    should_recover = (
+                        await self.lease_manager.should_recover_expired_lease(lease)
+                    )
+
+                    if not should_recover:
+                        logger.info(
+                            f"Skipping recovery for {lease.task_id} "
+                            f"(smart checks indicate agent still working)"
+                        )
+                        continue
+
                     success = await self.lease_manager.recover_expired_lease(lease)
                     if success:
                         logger.info(

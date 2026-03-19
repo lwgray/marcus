@@ -367,11 +367,14 @@ class TestLeaseMonitor:
     async def test_monitor_recovers_expired_leases(
         self, lease_monitor, mock_lease_manager
     ):
-        """Test that monitor recovers expired leases."""
+        """Test that monitor recovers expired leases with smart checks."""
         # Set up expired leases
         expired_lease = Mock()
         expired_lease.task_id = "task-123"
         mock_lease_manager.check_expired_leases.return_value = [expired_lease]
+
+        # Mock smart recovery check to allow recovery
+        mock_lease_manager.should_recover_expired_lease = AsyncMock(return_value=True)
 
         # Start monitor
         await lease_monitor.start()
@@ -384,6 +387,9 @@ class TestLeaseMonitor:
 
         # Verify recovery was attempted
         mock_lease_manager.check_expired_leases.assert_called()
+        mock_lease_manager.should_recover_expired_lease.assert_called_with(
+            expired_lease
+        )
         mock_lease_manager.recover_expired_lease.assert_called_with(expired_lease)
 
 
