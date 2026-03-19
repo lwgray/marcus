@@ -516,21 +516,27 @@ class AssignmentLeaseManager:
                 time_spent_minutes=time_spent_minutes,
                 recovery_reason="lease_expired",
                 instructions=(
-                    f"⚠️ This task was recovered from agent "
-                    f"{lease.agent_id}\n\n"
-                    f"**What to check:**\n"
+                    f"⚠️ **RECOVERY ADDENDUM** - This task was recovered "
+                    f"from agent {lease.agent_id}\n\n"
+                    f"**IMPORTANT:** Continue the original task requirements. "
+                    f"These are additional recovery steps to avoid "
+                    f"duplicating work:\n\n"
+                    f"**Before starting, check what was already done:**\n"
                     f"1. Run `git log --author={lease.agent_id}` "
                     f"to see any commits made\n"
                     f"2. Check for any artifacts or design documents "
                     f"left by previous agent\n"
                     f"3. Review progress: previous agent reached "
                     f"{lease.progress_percentage}%\n"
-                    f"4. Continue from where they left off "
-                    f"to avoid duplicated work\n\n"
-                    f"**Context:**\n"
-                    f"- Previous agent worked for "
+                    f"4. **Continue from where they left off** - "
+                    f"don't restart from scratch\n\n"
+                    f"**Recovery Context:**\n"
+                    f"- Previous agent: {lease.agent_id}\n"
+                    f"- Time they spent: "
                     f"{time_spent_minutes:.1f} minutes\n"
                     f"- Recovery reason: lease expired (no progress updates)\n"
+                    f"- Your task: Complete the ORIGINAL task requirements, "
+                    f"building on existing work\n"
                 ),
                 recovery_expires_at=now + timedelta(hours=24),
             )

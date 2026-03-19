@@ -829,4 +829,4 @@ class TestRecoveryHandoffDualWrite:
             assert "agent-001" in instructions
             assert "git log" in instructions or "git" in instructions.lower()
             assert "30%" in instructions
-            assert "avoid duplicated work" in instructions.lower()
+            assert "avoid duplicat" in instructions.lower()  # duplicating or duplicated
