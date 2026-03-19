@@ -8,6 +8,7 @@ reliability decay model from the article.
 
 import argparse
 from pathlib import Path
+from typing import List
 
 import matplotlib.pyplot as plt
 import mlflow
@@ -271,8 +272,14 @@ def generate_report(df: pd.DataFrame, output_dir: Path) -> None:
 
     report_lines.extend(
         [
-            f"- **Average Improvement**: {avg_improvement:.1f}% above article prediction",
-            f"- **Consistency**: {'✅ ALL' if all_beat else '❌ SOME'} configurations beat the prediction",
+            (
+                f"- **Average Improvement**: {avg_improvement:.1f}% "
+                "above article prediction"
+            ),
+            (
+                f"- **Consistency**: {'✅ ALL' if all_beat else '❌ SOME'} "
+                "configurations beat the prediction"
+            ),
             "",
             "## Theoretical Model",
             "",
@@ -287,8 +294,14 @@ def generate_report(df: pd.DataFrame, output_dir: Path) -> None:
             "",
             "### Why This Doesn't Apply to Marcus:",
             "",
-            "1. **No Direct Handoffs**: Agents coordinate through Kanban board, not direct communication",
-            "2. **Explicit Validation**: Tasks have clear success/failure states at boundaries",
+            (
+                "1. **No Direct Handoffs**: Agents coordinate through Kanban "
+                "board, not direct communication"
+            ),
+            (
+                "2. **Explicit Validation**: Tasks have clear success/failure "
+                "states at boundaries"
+            ),
             "3. **Retry/Reassignment**: Failed tasks don't poison downstream work",
             "4. **Observable Failures**: Failures are explicit, not silent propagation",
             "",
@@ -306,7 +319,10 @@ def generate_report(df: pd.DataFrame, output_dir: Path) -> None:
                 f"- **Marcus Success Rate**: {row['success_rate']:.1f}%",
                 f"- **Article Prediction**: {row['article_prediction']:.1f}%",
                 f"- **Improvement**: +{row['improvement_pct']:.1f}%",
-                f"- **Beats Prediction**: {'✅ Yes' if row['beats_prediction'] else '❌ No'}",
+                (
+                    f"- **Beats Prediction**: "
+                    f"{'✅ Yes' if row['beats_prediction'] else '❌ No'}"
+                ),
                 f"- **Duration**: {row['duration_minutes']:.1f} minutes",
                 f"- **Blockers**: {int(row['blockers'])}",
                 f"- **Artifacts Created**: {int(row['artifacts'])}",
@@ -318,12 +334,24 @@ def generate_report(df: pd.DataFrame, output_dir: Path) -> None:
         [
             "## Conclusion",
             "",
-            "Marcus demonstrates that **board-mediated coordination** fundamentally changes ",
-            "the reliability math of multi-agent systems. Unlike pipeline-style architectures ",
-            "where errors propagate silently, Marcus's explicit state management and validation ",
+            (
+                "Marcus demonstrates that **board-mediated coordination** "
+                "fundamentally changes "
+            ),
+            (
+                "the reliability math of multi-agent systems. Unlike "
+                "pipeline-style architectures "
+            ),
+            (
+                "where errors propagate silently, Marcus's explicit state "
+                "management and validation "
+            ),
             "boundaries prevent the multiplicative decay effect.",
             "",
-            "This is not about having 'better agents' - it's an **architectural property** ",
+            (
+                "This is not about having 'better agents' - it's an "
+                "**architectural property** "
+            ),
             "of how work is coordinated and validated.",
             "",
             "## Visualization",
