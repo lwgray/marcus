@@ -156,15 +156,15 @@ class AssignmentLeaseManager:
         self,
         kanban_client: KanbanInterface,
         assignment_persistence: AssignmentPersistence,
-        default_lease_hours: float = 0.0833,  # 5 minutes (changed from 4.0 hours)
+        default_lease_hours: float = 0.025,  # 90 seconds (aggressive)
         max_renewals: int = 10,
         warning_threshold_hours: float = 0.0167,  # 1 min (was 1.0 hr)
         priority_multipliers: Optional[Dict[str, float]] = None,
         complexity_multipliers: Optional[Dict[str, float]] = None,
-        grace_period_minutes: int = 2,  # 2 minute grace period (changed from 30)
+        grace_period_minutes: float = 0.5,  # 30 seconds grace period
         renewal_decay_factor: float = 0.9,
-        min_lease_hours: float = 0.0333,  # Minimum 2 minutes (changed from 1.0 hour)
-        max_lease_hours: float = 0.5,  # Maximum 30 minutes (changed from 24 hours)
+        min_lease_hours: float = 0.0167,  # Minimum 60 seconds
+        max_lease_hours: float = 0.0333,  # Maximum 120 seconds
         stuck_task_threshold_renewals: int = 5,
         enable_adaptive_leases: bool = True,
     ):
@@ -188,7 +188,7 @@ class AssignmentLeaseManager:
             complexity_multipliers
                 Lease duration multipliers by label/type.
             grace_period_minutes
-                Grace period after expiry before recovery.
+                Grace period in minutes (float) after expiry before recovery.
             renewal_decay_factor
                 Factor to reduce renewal duration over time.
             min_lease_hours
@@ -263,9 +263,12 @@ class AssignmentLeaseManager:
             now = datetime.now(timezone.utc)
 
             # Calculate initial lease duration
+            # Use default (aggressive 90s) for progressive timeout mode
             base_hours = self.default_lease_hours
 
-            if task and self.enable_adaptive_leases:
+            # Only use task-based estimation if default is conservative (> 1 hour)
+            # Progressive timeout mode uses fixed aggressive default
+            if task and self.enable_adaptive_leases and self.default_lease_hours > 1.0:
                 # Use task estimation if available
                 if task.estimated_hours:
                     base_hours = task.estimated_hours
@@ -593,6 +596,121 @@ class AssignmentLeaseManager:
             stats["average_renewal_count"] = total_renewals / len(self.active_leases)
 
         return stats
+
+    def calculate_adaptive_timeout(
+        self, progress: int, update_count: int, has_recent_activity: bool
+    ) -> tuple[int, int]:
+        """
+        Calculate adaptive timeout based on task state (progressive timeout).
+
+        Parameters
+        ----------
+        progress : int
+            Current progress percentage (0-100)
+        update_count : int
+            Number of progress updates received
+        has_recent_activity : bool
+            Whether task shows recent activity
+
+        Returns
+        -------
+        tuple[int, int]
+            (lease_seconds, grace_seconds) timeout configuration
+
+        Notes
+        -----
+        Progressive timeout phases:
+        - Phase 1 (Unproven): No updates yet → 60s + 20s = 80s total
+        - Phase 2 (Working): First update → 90s + 30s = 120s total
+        - Phase 3 (Proven): 25-75% progress → 120s + 30s = 150s total
+        - Phase 4 (Finishing): >75% progress → 60s + 15s = 75s total
+        """
+        # Phase 1: No updates yet - strict timeout
+        if update_count == 0:
+            return (60, 20)
+
+        # Phase 2: First update received - moderate timeout
+        if update_count == 1:
+            return (90, 30)
+
+        # Phase 4: Near completion - fast detection
+        if progress >= 75:
+            return (60, 15)
+
+        # Phase 3: Good progress (25-75%) - conservative timeout
+        if progress >= 25:
+            return (120, 30)
+
+        # Default: working state
+        return (90, 30)
+
+    async def should_recover_expired_lease(self, lease: AssignmentLease) -> bool:
+        """
+        Determine if expired lease should be recovered (smart checks).
+
+        Uses multiple signals to reduce false positive recovery:
+        1. Task progress percentage
+        2. Number of renewal cycles
+        3. Board activity timestamps
+
+        Parameters
+        ----------
+        lease : AssignmentLease
+            The expired lease to evaluate
+
+        Returns
+        -------
+        bool
+            True if task should be recovered, False to give more time
+
+        Notes
+        -----
+        This implements smart recovery without heartbeat by checking:
+        - Progress made (>0% gets grace extension)
+        - Renewal count (>2 renewals → recover)
+        - Board activity (recent updates → extend grace)
+        """
+        # Check 1: Has task made progress?
+        if lease.progress_percentage > 0:
+            # Task has progress - be more lenient
+            if lease.renewal_count < 2:
+                # Allow one more renewal cycle
+                logger.info(
+                    f"Task {lease.task_id} has {lease.progress_percentage}% "
+                    f"progress, extending grace period"
+                )
+                return False
+
+        # Check 2: Too many renewals?
+        if lease.renewal_count >= 3:
+            # Task is stuck - recover
+            logger.info(
+                f"Task {lease.task_id} has {lease.renewal_count} renewals, "
+                f"recovering"
+            )
+            return True
+
+        # Check 3: Check board for recent updates
+        try:
+            task = await self.kanban_client.get_task_by_id(lease.task_id)
+            if task and hasattr(task, "updated_at") and task.updated_at:
+                # Ensure timezone aware
+                task_updated = _ensure_timezone_aware(task.updated_at)
+                now = datetime.now(timezone.utc)
+                seconds_since_update = (now - task_updated).total_seconds()
+
+                # If board shows recent activity (< 2 minutes), don't recover
+                if seconds_since_update < 120:
+                    logger.info(
+                        f"Task {lease.task_id} updated on board "
+                        f"{seconds_since_update:.0f}s ago, extending grace"
+                    )
+                    return False
+        except Exception as e:
+            logger.warning(f"Could not check board activity: {e}")
+
+        # All checks passed - safe to recover
+        return True
 
 
 class LeaseMonitor:
