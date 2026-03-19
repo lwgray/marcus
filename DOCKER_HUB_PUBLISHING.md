@@ -129,7 +129,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: yourusername/marcus
+          images: ${{ secrets.DOCKER_HUB_USERNAME }}/marcus
           tags: |
             type=ref,event=branch
             type=ref,event=pr

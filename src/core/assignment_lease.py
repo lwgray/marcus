@@ -22,7 +22,7 @@ from typing import Any, Deque, Dict, List, Optional
 
 from src.core.assignment_persistence import AssignmentPersistence
 from src.core.event_loop_utils import EventLoopLockManager
-from src.core.models import Task, TaskStatus
+from src.core.models import RecoveryInfo, Task, TaskStatus
 from src.integrations.kanban_interface import KanbanInterface
 
 logger = logging.getLogger(__name__)
@@ -168,6 +168,7 @@ class AssignmentLeaseManager:
         max_lease_hours: float = 0.0333,  # Maximum 120 seconds
         stuck_task_threshold_renewals: int = 5,
         enable_adaptive_leases: bool = True,
+        task_list: Optional[List[Task]] = None,
     ):
         """
         Initialize the lease manager.
@@ -200,9 +201,12 @@ class AssignmentLeaseManager:
                 Renewals before considering task stuck.
             enable_adaptive_leases
                 Enable smart lease duration adjustments.
+            task_list
+                Optional reference to project tasks for recovery info updates.
         """
         self.kanban_client = kanban_client
         self.assignment_persistence = assignment_persistence
+        self.task_list = task_list if task_list is not None else []
         self.default_lease_hours = default_lease_hours
         self.max_renewals = max_renewals
         self.warning_threshold_hours = warning_threshold_hours
@@ -240,6 +244,19 @@ class AssignmentLeaseManager:
     def lease_lock(self) -> asyncio.Lock:
         """Get lease lock for the current event loop."""
         return self._lock_manager.get_lock()
+
+    def update_task_list(self, task_list: List[Task]) -> None:
+        """
+        Update the task list reference.
+
+        Called by MarcusServer when project_tasks is refreshed.
+
+        Parameters
+        ----------
+        task_list : List[Task]
+            Updated list of project tasks
+        """
+        self.task_list = task_list
 
     async def create_lease(
         self, task_id: str, agent_id: str, task: Optional[Task] = None
@@ -458,12 +475,31 @@ class AssignmentLeaseManager:
 
         return expired_leases
 
+    def _find_task(self, task_id: str) -> Optional[Task]:
+        """
+        Find a task by ID in the task list.
+
+        Parameters
+        ----------
+            task_id
+                Task ID to find.
+
+        Returns
+        -------
+            Task object if found, None otherwise
+        """
+        for task in self.task_list:
+            if task.id == task_id:
+                return task
+        return None
+
     async def recover_expired_lease(self, lease: AssignmentLease) -> bool:
         """
         Recover a task with an expired lease.
 
-        Adds recovery handoff notes to Kanban board to inform next agent about
-        previous work and prevent duplication of effort.
+        Implements dual-write pattern:
+        1. Updates task model with structured RecoveryInfo (source of truth)
+        2. Posts to Kanban comments for audit trail (observability)
 
         Parameters
         ----------
@@ -480,8 +516,62 @@ class AssignmentLeaseManager:
                 f"(expired: {lease.lease_expires.isoformat()})"
             )
 
-            # Create recovery handoff notes BEFORE recovering
-            await self._create_recovery_handoff(lease)
+            # Calculate time spent
+            now = datetime.now(timezone.utc)
+            time_spent = now - lease.assigned_at
+            time_spent_minutes = time_spent.total_seconds() / 60
+
+            # Create structured recovery info
+            recovery_info = RecoveryInfo(
+                recovered_at=now,
+                recovered_from_agent=lease.agent_id,
+                previous_progress=lease.progress_percentage,
+                time_spent_minutes=time_spent_minutes,
+                recovery_reason="lease_expired",
+                instructions=(
+                    f"⚠️ **RECOVERY ADDENDUM** - This task was recovered "
+                    f"from agent {lease.agent_id}\n\n"
+                    f"**IMPORTANT:** Continue the original task requirements. "
+                    f"These are additional recovery steps to avoid "
+                    f"duplicating work:\n\n"
+                    f"**Before starting, check what was already done:**\n"
+                    f"1. Run `git log --author={lease.agent_id}` "
+                    f"to see any commits made\n"
+                    f"2. Check for any artifacts or design documents "
+                    f"left by previous agent\n"
+                    f"3. Review progress: previous agent reached "
+                    f"{lease.progress_percentage}%\n"
+                    f"4. **Continue from where they left off** - "
+                    f"don't restart from scratch\n\n"
+                    f"**Recovery Context:**\n"
+                    f"- Previous agent: {lease.agent_id}\n"
+                    f"- Time they spent: "
+                    f"{time_spent_minutes:.1f} minutes\n"
+                    f"- Recovery reason: lease expired (no progress updates)\n"
+                    f"- Your task: Complete the ORIGINAL task requirements, "
+                    f"building on existing work\n"
+                ),
+                recovery_expires_at=now + timedelta(hours=24),
+            )
+
+            # 1. Update task model (source of truth) if task is available
+            task = self._find_task(lease.task_id)
+            if task:
+                task.recovery_info = recovery_info
+                logger.info(f"Updated task {lease.task_id} model with recovery info")
+            else:
+                logger.warning(
+                    f"Task {lease.task_id} not found in task list for "
+                    f"recovery info update"
+                )
+
+            # 2. Dual-write to Kanban for audit trail
+            # Don't fail entire recovery if Kanban write fails
+            try:
+                await self._create_recovery_handoff_comment(lease, recovery_info)
+            except Exception as e:
+                logger.warning(f"Failed to write recovery comment to Kanban: {e}")
+                # Continue - task model update is what matters
 
             # Remove from active leases
             async with self.lease_lock:
@@ -757,61 +847,41 @@ class AssignmentLeaseManager:
         # All checks passed - safe to recover
         return True
 
-    async def _create_recovery_handoff(self, lease: AssignmentLease) -> None:
+    async def _create_recovery_handoff_comment(
+        self, lease: AssignmentLease, recovery_info: RecoveryInfo
+    ) -> None:
         """
-        Create recovery handoff notes on Kanban board.
+        Post recovery information to Kanban as a comment (audit trail).
 
-        Adds a comment to the task card with information about the previous
-        agent's work to help the next agent continue effectively.
+        This is the dual-write for observability. The task model holds
+        the authoritative recovery info that agents use.
 
         Parameters
         ----------
         lease : AssignmentLease
             The lease being recovered
+        recovery_info : RecoveryInfo
+            The structured recovery information
         """
-        try:
-            # Calculate time spent
-            time_spent_seconds = (
-                datetime.now(timezone.utc) - lease.assigned_at
-            ).total_seconds()
-            time_spent_minutes = time_spent_seconds / 60
+        # Build handoff message from recovery info
+        handoff_message = (
+            f"⚠️ **TASK RECOVERED FROM AGENT "
+            f"{recovery_info.recovered_from_agent}**\n\n"
+            f"**Recovery Details:**\n"
+            f"- Recovered at: "
+            f"{recovery_info.recovered_at.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
+            f"- Progress: {recovery_info.previous_progress}%\n"
+            f"- Time spent: {recovery_info.time_spent_minutes:.1f} minutes\n"
+            f"- Reason: {recovery_info.recovery_reason}\n\n"
+            f"{recovery_info.instructions}"
+        )
 
-            # Build handoff message
-            handoff_message = (
-                f"⚠️ **TASK RECOVERED FROM AGENT {lease.agent_id}**\n\n"
-                f"**Recovery Information:**\n"
-                f"- Progress: {lease.progress_percentage}%\n"
-                f"- Time spent: {time_spent_minutes:.1f} minutes\n"
-                f"- Renewals: {lease.renewal_count}\n"
-                f"- Last update: {lease.last_progress_message or 'No message'}\n"
-                f"- Recovered at: {datetime.now(timezone.utc).isoformat()}\n\n"
-                f"**Instructions for next agent:**\n"
-                f"1. Check git history for commits by {lease.agent_id}\n"
-                f"   ```bash\n"
-                f"   git log --author={lease.agent_id} --oneline\n"
-                f"   ```\n"
-                f"2. Look for work-in-progress branches\n"
-                f"   ```bash\n"
-                f"   git branch -a | grep {lease.agent_id}\n"
-                f"   ```\n"
-                f"3. Review task progress ({lease.progress_percentage}% complete)\n"
-                f"4. Continue from where {lease.agent_id} left off\n"
-                f"5. Avoid duplicate approaches that may create dead code\n\n"
-                f"**Context:** This task was recovered after lease expiration. "
-                f"The previous agent may have made progress that wasn't fully "
-                f"committed. Please investigate their work before starting fresh."
-            )
+        # Add comment to Kanban board
+        await self.kanban_client.add_comment(lease.task_id, handoff_message)
 
-            # Add comment to Kanban board
-            await self.kanban_client.add_comment(lease.task_id, handoff_message)
-
-            logger.info(f"Added recovery handoff notes to task {lease.task_id}")
-
-        except Exception as e:
-            # Don't fail recovery if handoff notes fail
-            logger.warning(
-                f"Failed to create recovery handoff for {lease.task_id}: {e}"
-            )
+        logger.info(
+            f"Added recovery handoff comment to Kanban for task {lease.task_id}"
+        )
 
 
 class LeaseMonitor:

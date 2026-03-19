@@ -7,3 +7,4 @@
 ## Bug Fixes
 
 - [ ] [Bug] Validation cannot access acceptance criteria stored as Planka checklists (#189)
+- [ ] [Performance] Project filtering loads all 6,970 tasks instead of project subset (#192)
