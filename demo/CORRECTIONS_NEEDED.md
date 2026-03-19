@@ -84,6 +84,54 @@ Responsive gameplay with collision detection.
 
 ---
 
+## SNAKE GAME DEMO DETAILS
+
+### Actual Task Breakdown (8-minute runtime)
+
+When you give Marcus the Snake game prompt, it creates these 4 tasks:
+
+1. **Design Game Core/Engine** (blocking task)
+2. **Implement Start Game** (depends on #1)
+3. **Implement Move Snake** (depends on #1, can parallel with #2)
+4. **Test Move Snake** (depends on #2 and #3)
+
+### Demo Flow (Slides 12-16)
+
+**Slide 12 - Setup:**
+- Type the Snake game prompt
+- Marcus breaks it into 4 tasks
+- Tasks appear on the Kanban board
+
+**Slide 13 - Dependency Graph:**
+> "See this structure? Design Game Core has to be done first. Nothing else starts without it. Then Start Game and Move Snake can run in parallel — two agents working simultaneously. Testing comes after the implementation. Marcus built this dependency graph automatically. No agent will ever receive a task it doesn't have the context to complete."
+
+**Slide 14 - Parallel Execution:**
+- Agent 1: Design Game Core (completes first)
+- Agent 2: Implement Start Game (waits for #1, then starts)
+- Agent 3: Implement Move Snake (waits for #1, runs parallel with #2)
+- Then: Test Move Snake (waits for #2 and #3)
+
+**Slide 15 - THE PAUSE MOMENT:**
+- Stop mid-execution (during Move Snake implementation)
+- Click into the task
+- Show complete context on the board
+- "This is everything any agent in this system knows. Complete context. No direct communication needed."
+
+**Slide 16 - Audit Trail:**
+- Build completes (~8 minutes total)
+- Click into any completed task
+- Show the full communication log
+- "You can definitively answer why a system failed"
+
+### Why This Demo Works
+- ✅ Fits time slot (8 min demo in 10-12 min slot)
+- ✅ Shows dependency management (task 1 blocks everything)
+- ✅ Shows parallel execution (tasks 2 and 3 run simultaneously)
+- ✅ Shows "the pause moment" (complete context visible)
+- ✅ Shows audit trail (clickable, playable record)
+
+---
+
 ## FILES TO UPDATE
 
 1. **The_AI_Shared_State.pdf** (slides)
