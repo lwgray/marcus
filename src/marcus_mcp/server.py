@@ -639,6 +639,7 @@ class MarcusServer:
                     max_lease_hours=lease_config.max_lease_hours,
                     stuck_task_threshold_renewals=lease_config.stuck_threshold_renewals,
                     enable_adaptive_leases=lease_config.enable_adaptive,
+                    task_list=self.project_tasks,
                 )
             else:
                 # It's a dict from project config
@@ -658,6 +659,7 @@ class MarcusServer:
                         "stuck_threshold_renewals", 5
                     ),
                     enable_adaptive_leases=lease_config.get("enable_adaptive", True),
+                    task_list=self.project_tasks,
                 )
             self.lease_monitor = LeaseMonitor(self.lease_manager)
             await self.lease_monitor.start()
@@ -982,6 +984,10 @@ class MarcusServer:
                     "risk_level": self.project_state.risk_level.value,  # Enum to str
                     "last_updated": self.project_state.last_updated.isoformat(),
                 }
+
+            # Update lease manager's task list reference after refresh
+            if hasattr(self, "lease_manager") and self.lease_manager:
+                self.lease_manager.update_task_list(self.project_tasks)
 
             self.log_event(
                 "project_state_refreshed",

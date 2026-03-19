@@ -206,7 +206,7 @@ class AssignmentLeaseManager:
         """
         self.kanban_client = kanban_client
         self.assignment_persistence = assignment_persistence
-        self.task_list = task_list or []
+        self.task_list = task_list if task_list is not None else []
         self.default_lease_hours = default_lease_hours
         self.max_renewals = max_renewals
         self.warning_threshold_hours = warning_threshold_hours
@@ -244,6 +244,19 @@ class AssignmentLeaseManager:
     def lease_lock(self) -> asyncio.Lock:
         """Get lease lock for the current event loop."""
         return self._lock_manager.get_lock()
+
+    def update_task_list(self, task_list: List[Task]) -> None:
+        """
+        Update the task list reference.
+
+        Called by MarcusServer when project_tasks is refreshed.
+
+        Parameters
+        ----------
+        task_list : List[Task]
+            Updated list of project tasks
+        """
+        self.task_list = task_list
 
     async def create_lease(
         self, task_id: str, agent_id: str, task: Optional[Task] = None
