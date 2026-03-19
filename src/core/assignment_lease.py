@@ -14,10 +14,11 @@ Key features:
 
 import asyncio
 import logging
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Deque, Dict, List, Optional
 
 from src.core.assignment_persistence import AssignmentPersistence
 from src.core.event_loop_utils import EventLoopLockManager
@@ -229,8 +230,8 @@ class AssignmentLeaseManager:
         # Active leases tracked in memory
         self.active_leases: Dict[str, AssignmentLease] = {}
 
-        # Track lease history for analysis
-        self.lease_history: List[Dict[str, Any]] = []
+        # Track lease history for analysis (max 1000 entries to prevent memory leak)
+        self.lease_history: Deque[Dict[str, Any]] = deque(maxlen=1000)
 
         # Lock manager for event loop safe operations
         self._lock_manager = EventLoopLockManager()
@@ -263,11 +264,18 @@ class AssignmentLeaseManager:
             now = datetime.now(timezone.utc)
 
             # Calculate initial lease duration
-            # Use default (aggressive 90s) for progressive timeout mode
-            base_hours = self.default_lease_hours
+            # Use progressive timeout phase-1 if in aggressive mode
+            if self.default_lease_hours < 1.0:
+                # Aggressive mode: Use phase-1 timeout for unproven agents
+                lease_seconds, _ = self.calculate_adaptive_timeout(
+                    progress=0, update_count=0, has_recent_activity=False
+                )
+                base_hours = lease_seconds / 3600
+            else:
+                # Conservative mode: Use default or task-based estimation
+                base_hours = self.default_lease_hours
 
             # Only use task-based estimation if default is conservative (> 1 hour)
-            # Progressive timeout mode uses fixed aggressive default
             if task and self.enable_adaptive_leases and self.default_lease_hours > 1.0:
                 # Use task estimation if available
                 if task.estimated_hours:
@@ -484,15 +492,20 @@ class AssignmentLeaseManager:
             await self.assignment_persistence.remove_assignment(lease.agent_id)
 
             # Update task status to TODO
-            if hasattr(self.kanban_client, "update_task_status"):
-                await self.kanban_client.update_task_status(
-                    lease.task_id, TaskStatus.TODO
-                )
-
-                # Note: KanbanInterface.update_task doesn't support
-                # additional parameters. Skip the update_task call to
-                # avoid interface limitations
-                pass
+            try:
+                if hasattr(self.kanban_client, "update_task_status"):
+                    await self.kanban_client.update_task_status(
+                        lease.task_id, TaskStatus.TODO
+                    )
+                else:
+                    logger.warning(
+                        f"Kanban client does not support update_task_status, "
+                        f"task {lease.task_id} status not updated"
+                    )
+            except Exception as e:
+                logger.error(f"Failed to update task status to TODO: {e}")
+                # Don't fail entire recovery if status update fails
+                # Task is already removed from active leases
 
             # Track in history
             self.lease_history.append(
@@ -694,16 +707,24 @@ class AssignmentLeaseManager:
         - Renewal count (>2 renewals → recover)
         - Board activity (recent updates → extend grace)
         """
-        # Check 1: Has task made progress?
-        if lease.progress_percentage > 0:
-            # Task has progress - be more lenient
-            if lease.renewal_count < 2:
-                # Allow one more renewal cycle
-                logger.info(
-                    f"Task {lease.task_id} has {lease.progress_percentage}% "
-                    f"progress, extending grace period"
-                )
-                return False
+        # Check 1: Has task made significant progress (>50%)?
+        if lease.progress_percentage > 50:
+            # Task has significant progress - likely still working
+            # Defer to board activity check (Check 3) for final decision
+            logger.info(
+                f"Task {lease.task_id} has {lease.progress_percentage}% "
+                f"progress, checking board activity before recovery"
+            )
+            # Don't return False here - continue to Check 3
+
+        # Check 1b: Low progress with many renewals?
+        elif lease.progress_percentage > 0 and lease.renewal_count >= 3:
+            # Task is stuck with low progress - recover
+            logger.info(
+                f"Task {lease.task_id} has only {lease.progress_percentage}% "
+                f"progress after {lease.renewal_count} renewals, recovering"
+            )
+            return True
 
         # Check 2: Too many renewals?
         if lease.renewal_count >= 3:
