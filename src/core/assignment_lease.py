@@ -559,6 +559,11 @@ class AssignmentLeaseManager:
             if task:
                 task.recovery_info = recovery_info
                 logger.info(f"Updated task {lease.task_id} model with recovery info")
+            else:
+                logger.warning(
+                    f"Task {lease.task_id} not found in task list for "
+                    f"recovery info update"
+                )
 
             # 2. Dual-write to Kanban for audit trail
             # Don't fail entire recovery if Kanban write fails
