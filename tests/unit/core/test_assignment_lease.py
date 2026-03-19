@@ -14,7 +14,7 @@ from src.core.assignment_lease import (
     LeaseMonitor,
     LeaseStatus,
 )
-from src.core.models import Priority, Task, TaskStatus
+from src.core.models import Priority, RecoveryInfo, Task, TaskStatus
 
 
 class TestAssignmentLease:
@@ -548,3 +548,285 @@ class TestNaiveDatetimeBackwardsCompatibility:
         # Both should be comparable without TypeError
         assert old_lease.time_remaining  # Computed successfully
         assert new_lease.time_remaining  # Computed successfully
+
+
+class TestRecoveryInfo:
+    """Test suite for RecoveryInfo dataclass."""
+
+    def test_recovery_info_creation(self):
+        """Test basic RecoveryInfo creation."""
+        now = datetime.now(timezone.utc)
+        recovery_info = RecoveryInfo(
+            recovered_at=now,
+            recovered_from_agent="agent-001",
+            previous_progress=50,
+            time_spent_minutes=120.5,
+            recovery_reason="lease_expired",
+            instructions="Check git history for previous work",
+        )
+
+        assert recovery_info.recovered_from_agent == "agent-001"
+        assert recovery_info.previous_progress == 50
+        assert recovery_info.time_spent_minutes == 120.5
+        assert recovery_info.recovery_reason == "lease_expired"
+        assert "git history" in recovery_info.instructions
+
+    def test_recovery_info_to_dict(self):
+        """Test RecoveryInfo serialization to dictionary."""
+        now = datetime.now(timezone.utc)
+        expires = now + timedelta(hours=24)
+
+        recovery_info = RecoveryInfo(
+            recovered_at=now,
+            recovered_from_agent="agent-001",
+            previous_progress=50,
+            time_spent_minutes=120.5,
+            recovery_reason="lease_expired",
+            instructions="Check git history",
+            recovery_expires_at=expires,
+        )
+
+        data = recovery_info.to_dict()
+
+        assert data["recovered_from_agent"] == "agent-001"
+        assert data["previous_progress"] == 50
+        assert data["time_spent_minutes"] == 120.5
+        assert data["recovery_reason"] == "lease_expired"
+        assert data["instructions"] == "Check git history"
+        assert data["recovery_expires_at"] == expires.isoformat()
+
+    def test_recovery_info_from_dict(self):
+        """Test RecoveryInfo deserialization from dictionary."""
+        now = datetime.now(timezone.utc)
+        expires = now + timedelta(hours=24)
+
+        data = {
+            "recovered_at": now.isoformat(),
+            "recovered_from_agent": "agent-001",
+            "previous_progress": 50,
+            "time_spent_minutes": 120.5,
+            "recovery_reason": "lease_expired",
+            "instructions": "Check git history",
+            "recovery_expires_at": expires.isoformat(),
+        }
+
+        recovery_info = RecoveryInfo.from_dict(data)
+
+        assert recovery_info.recovered_from_agent == "agent-001"
+        assert recovery_info.previous_progress == 50
+        assert recovery_info.time_spent_minutes == 120.5
+        assert recovery_info.recovery_reason == "lease_expired"
+        assert recovery_info.recovery_expires_at is not None
+
+    def test_recovery_info_optional_expiration(self):
+        """Test RecoveryInfo with no expiration."""
+        now = datetime.now(timezone.utc)
+        recovery_info = RecoveryInfo(
+            recovered_at=now,
+            recovered_from_agent="agent-001",
+            previous_progress=50,
+            time_spent_minutes=120.5,
+            recovery_reason="lease_expired",
+            instructions="Check git history",
+        )
+
+        assert recovery_info.recovery_expires_at is None
+
+        data = recovery_info.to_dict()
+        assert data["recovery_expires_at"] is None
+
+
+class TestRecoveryHandoffDualWrite:
+    """Test suite for recovery handoff dual-write (task model + Kanban)."""
+
+    @pytest.fixture
+    def mock_kanban_client(self):
+        """Create mock kanban client with comment support."""
+        client = Mock()
+        client.update_task_status = AsyncMock()
+        client.add_comment = AsyncMock()
+        return client
+
+    @pytest.fixture
+    def mock_persistence(self):
+        """Create mock assignment persistence."""
+        persistence = Mock()
+        persistence.get_assignment = AsyncMock(return_value=None)
+        persistence.save_assignment = AsyncMock()
+        persistence.remove_assignment = AsyncMock()
+        persistence.load_assignments = AsyncMock(return_value={})
+        return persistence
+
+    @pytest.fixture
+    def lease_manager(self, mock_kanban_client, mock_persistence):
+        """Create lease manager instance."""
+        return AssignmentLeaseManager(
+            mock_kanban_client, mock_persistence, default_lease_hours=4.0
+        )
+
+    @pytest.fixture
+    def mock_task(self):
+        """Create a mock task for testing."""
+        task = Task(
+            id="task-123",
+            name="Test Task",
+            description="Test",
+            status=TaskStatus.IN_PROGRESS,
+            priority=Priority.HIGH,
+            estimated_hours=5.0,
+            dependencies=[],
+            labels=[],
+            assigned_to="agent-001",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+        )
+        return task
+
+    @pytest.mark.asyncio
+    async def test_recover_expired_lease_creates_recovery_info(
+        self, lease_manager, mock_task
+    ):
+        """Test that recovery populates task.recovery_info."""
+        # Arrange
+        expired_lease = AssignmentLease(
+            task_id="task-123",
+            agent_id="agent-001",
+            assigned_at=datetime.now(timezone.utc) - timedelta(hours=2),
+            lease_expires=datetime.now(timezone.utc) - timedelta(hours=1),
+            last_renewed=datetime.now(timezone.utc) - timedelta(hours=2),
+            progress_percentage=30,
+            last_progress_message="Working on it",
+        )
+
+        # Mock the internal _find_task method to return our mock task
+        with patch.object(lease_manager, "_find_task", return_value=mock_task):
+            # Act
+            success = await lease_manager.recover_expired_lease(expired_lease)
+
+            # Assert
+            assert success
+            assert mock_task.recovery_info is not None
+            assert mock_task.recovery_info.recovered_from_agent == "agent-001"
+            assert mock_task.recovery_info.previous_progress == 30
+            assert mock_task.recovery_info.recovery_reason == "lease_expired"
+            assert mock_task.recovery_info.time_spent_minutes > 0
+
+    @pytest.mark.asyncio
+    async def test_recover_expired_lease_dual_writes_to_kanban(
+        self, lease_manager, mock_kanban_client, mock_task
+    ):
+        """Test that recovery writes BOTH to task model AND Kanban comment."""
+        # Arrange
+        expired_lease = AssignmentLease(
+            task_id="task-123",
+            agent_id="agent-001",
+            assigned_at=datetime.now(timezone.utc) - timedelta(hours=2),
+            lease_expires=datetime.now(timezone.utc) - timedelta(hours=1),
+            last_renewed=datetime.now(timezone.utc) - timedelta(hours=2),
+            progress_percentage=30,
+        )
+
+        # Mock the internal _find_task method
+        with patch.object(lease_manager, "_find_task", return_value=mock_task):
+            # Act
+            success = await lease_manager.recover_expired_lease(expired_lease)
+
+            # Assert dual-write
+            assert success
+
+            # 1. Task model should have recovery_info
+            assert mock_task.recovery_info is not None
+
+            # 2. Kanban comment should be posted
+            mock_kanban_client.add_comment.assert_called_once()
+            comment_call = mock_kanban_client.add_comment.call_args
+            assert comment_call[0][0] == "task-123"  # task_id
+            comment_text = comment_call[0][1]
+            assert "TASK RECOVERED FROM AGENT agent-001" in comment_text
+            assert "30%" in comment_text
+
+    @pytest.mark.asyncio
+    async def test_recovery_continues_if_kanban_comment_fails(
+        self, lease_manager, mock_kanban_client, mock_task
+    ):
+        """Test that recovery succeeds even if Kanban comment fails."""
+        # Arrange
+        expired_lease = AssignmentLease(
+            task_id="task-123",
+            agent_id="agent-001",
+            assigned_at=datetime.now(timezone.utc) - timedelta(hours=2),
+            lease_expires=datetime.now(timezone.utc) - timedelta(hours=1),
+            last_renewed=datetime.now(timezone.utc) - timedelta(hours=2),
+            progress_percentage=30,
+        )
+
+        # Make Kanban comment fail
+        mock_kanban_client.add_comment.side_effect = Exception("Kanban unavailable")
+
+        with patch.object(lease_manager, "_find_task", return_value=mock_task):
+            # Act - should not raise exception
+            success = await lease_manager.recover_expired_lease(expired_lease)
+
+            # Assert - recovery still succeeds
+            assert success
+            assert mock_task.recovery_info is not None
+
+    @pytest.mark.asyncio
+    async def test_recovery_info_includes_24hour_expiration(
+        self, lease_manager, mock_task
+    ):
+        """Test that recovery info includes 24-hour expiration."""
+        # Arrange
+        now = datetime.now(timezone.utc)
+        expired_lease = AssignmentLease(
+            task_id="task-123",
+            agent_id="agent-001",
+            assigned_at=now - timedelta(hours=2),
+            lease_expires=now - timedelta(hours=1),
+            last_renewed=now - timedelta(hours=2),
+            progress_percentage=30,
+        )
+
+        with patch.object(lease_manager, "_find_task", return_value=mock_task):
+            # Act
+            await lease_manager.recover_expired_lease(expired_lease)
+
+            # Assert
+            assert mock_task.recovery_info is not None
+            assert mock_task.recovery_info.recovery_expires_at is not None
+
+            # Should expire in approximately 24 hours
+            expiry_delta = mock_task.recovery_info.recovery_expires_at - datetime.now(
+                timezone.utc
+            )
+            assert 23 <= expiry_delta.total_seconds() / 3600 <= 25  # 23-25 hours
+
+    @pytest.mark.asyncio
+    async def test_recovery_info_includes_git_instructions(
+        self, lease_manager, mock_task
+    ):
+        """Test that recovery info includes helpful git instructions."""
+        # Arrange
+        expired_lease = AssignmentLease(
+            task_id="task-123",
+            agent_id="agent-001",
+            assigned_at=datetime.now(timezone.utc) - timedelta(hours=2),
+            lease_expires=datetime.now(timezone.utc) - timedelta(hours=1),
+            last_renewed=datetime.now(timezone.utc) - timedelta(hours=2),
+            progress_percentage=30,
+        )
+
+        with patch.object(lease_manager, "_find_task", return_value=mock_task):
+            # Act
+            await lease_manager.recover_expired_lease(expired_lease)
+
+            # Assert
+            assert mock_task.recovery_info is not None
+            instructions = mock_task.recovery_info.instructions
+
+            # Should include key guidance
+            assert "agent-001" in instructions
+            assert "git log" in instructions or "git" in instructions.lower()
+            assert "30%" in instructions
+            assert "avoid duplicated work" in instructions.lower()
