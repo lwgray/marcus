@@ -49,7 +49,8 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "get_task_context",
         "log_decision",
         "log_artifact",
-        # Project creation
+        # Project selection and creation
+        "select_project",  # Select existing project by ID or name
         "create_project",  # NLP project creation for autonomous agents
         # Scheduling
         "get_optimal_agent_count",  # Calculate optimal agent count using CPM
