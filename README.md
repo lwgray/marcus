@@ -60,6 +60,13 @@ Marcus accepts **any artifact type** (code, research, scripts, designs, marketin
 - ✅ Works offline after initial setup
 - ✅ Better performance
 
+**Option 3: Local Development** 💻 (For developers and contributors)
+- ✅ Direct access to source code
+- ✅ Fastest development iteration
+- ✅ Full debugging capabilities
+
+📖 **[Follow the Local Development Guide](LOCAL_DEVELOPMENT.md)** for complete setup instructions.
+
 ### **Prerequisites**
 - Docker
 - Claude Code or another MCP-compatible AI agent

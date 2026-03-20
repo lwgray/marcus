@@ -190,18 +190,15 @@ Project root: {self.config.implementation_dir}
 STARTUP SEQUENCE:
 1. Wait for project_info.json to exist at {self.config.project_info_file}
    (check every 5 seconds, max 60 seconds)
+   (This signals the project has been created and is ready)
 
-2. Read project_info.json to get project_id and board_id
-
-3. Use mcp__marcus__select_project with the project_id
-
-4. Use mcp__marcus__register_agent to register yourself:
+2. Use mcp__marcus__register_agent to register yourself:
    - agent_id: "{agent_id}"
    - name: "{agent_name}"
    - role: "{agent_role}"
    - skills: {json.dumps(agent_skills)}
 
-5. Register {num_subagents} subagents:
+3. Register {num_subagents} subagents:
    For i in 1 to {num_subagents}:
    - Use mcp__marcus__register_agent with:
      - agent_id: "{agent_id}_sub{{i}}"
@@ -209,19 +206,19 @@ STARTUP SEQUENCE:
      - role: "{agent_role}"
      - skills: {json.dumps(agent_skills)}
 
-6. Call mcp__marcus__request_next_task:
+4. Call mcp__marcus__request_next_task:
    - No parameters needed
    - This will find tasks suitable for your skills
    - If you get "no suitable tasks", wait 30 seconds and try again (max 3 retries)
 
-7. When you get a task:
+5. When you get a task:
    - Check dependencies with get_task_context
    - Work on it in: {self.config.implementation_dir}
    - Report progress at 25%, 50%, 75%, 100%
    - Commit to main branch (git add, commit, push)
    - When 100% complete, IMMEDIATELY call request_next_task again
 
-8. Repeat step 7 until NO_TASKS_AVAILABLE or all retries exhausted
+6. Repeat step 5 until NO_TASKS_AVAILABLE or all retries exhausted
 
 ---
 

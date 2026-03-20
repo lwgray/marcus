@@ -41,6 +41,11 @@ import psutil
 MARCUS_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(MARCUS_ROOT))
 
+# Load environment variables from .env file
+from dotenv import load_dotenv  # noqa: E402
+
+load_dotenv(MARCUS_ROOT / ".env")
+
 from src.config.config_loader import get_config  # noqa: E402
 
 
