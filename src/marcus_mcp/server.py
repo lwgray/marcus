@@ -5,21 +5,16 @@ A lean MCP server implementation that delegates all tool logic
 to specialized modules for better maintainability.
 """
 
-# Load environment variables from .env file BEFORE any config imports
-from dotenv import load_dotenv
-
-load_dotenv()
-
-import asyncio  # noqa: E402
-import atexit  # noqa: E402
-import json  # noqa: E402
-import logging  # noqa: E402
-import os  # noqa: E402
-import signal  # noqa: E402
-import sys  # noqa: E402
-from datetime import datetime, timezone  # noqa: E402
-from pathlib import Path  # noqa: E402
-from typing import Any, Dict, List, Optional, Set, Union  # noqa: E402
+import asyncio
+import atexit
+import json
+import logging
+import os
+import signal
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Set, Union
 
 logger = logging.getLogger(__name__)
 
