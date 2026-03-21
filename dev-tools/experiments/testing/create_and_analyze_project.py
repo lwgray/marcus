@@ -21,9 +21,12 @@ from typing import Any, Dict
 import yaml
 
 # Add project root to path - must be before src imports
-project_root = Path(__file__).parent.parent
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
+# Now in testing/ subdirectory, so go up more levels
+script_dir = Path(__file__).resolve().parent
+experiments_dir = script_dir.parent
+marcus_root = experiments_dir.parent.parent  # Go up to marcus root
+if str(marcus_root) not in sys.path:
+    sys.path.insert(0, str(marcus_root))
 
 from src.worker.inspector import Inspector  # noqa: E402
 

@@ -1,0 +1,27 @@
+Extended 10-Stage Data Processing Pipeline
+
+Build a complex data processing system with 10 sequential stages.
+
+Requirements:
+1. Stage 1: Read CSV input data
+2. Stage 2: Validate data formats
+3. Stage 3: Clean missing values
+4. Stage 4: Normalize numeric columns
+5. Stage 5: Encode categorical variables
+6. Stage 6: Feature engineering
+7. Stage 7: Data aggregation
+8. Stage 8: Statistical analysis
+9. Stage 9: Visualization generation
+10. Stage 10: Final report compilation
+
+Dependencies:
+- Each stage MUST complete before next stage starts
+- Each stage validates its inputs before processing
+- Each stage writes output to intermediate files
+- Create unit tests for each stage
+
+Success Criteria:
+- All 10 stages complete successfully
+- Final report includes all required sections
+- All tests pass
+- No data corruption between stages

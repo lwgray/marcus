@@ -99,6 +99,7 @@ class LocalLLMProvider(BaseLLMProvider):
 
         self.model = model_name
         self.max_tokens = config.ai.max_tokens
+        self.temperature = config.ai.temperature  # Read temperature from config
         self.timeout = 120.0  # Longer timeout for local inference
 
         # Get API key from config or env var
@@ -306,7 +307,7 @@ Solutions:"""
             return self._get_fallback_solutions()
 
     async def complete(
-        self, prompt: str, max_tokens: int = 2000, temperature: float = 0.7
+        self, prompt: str, max_tokens: int = 2000, temperature: float | None = None
     ) -> str:
         """
         Complete text using local LLM for direct access.
@@ -317,14 +318,16 @@ Solutions:"""
             The prompt to complete
         max_tokens : int
             Maximum tokens to generate
-        temperature : float
-            Sampling temperature (0.0-1.0)
+        temperature : float, optional
+            Sampling temperature (0.0-1.0). If None, uses config value.
 
         Returns
         -------
         str
             The completion text
         """
+        if temperature is None:
+            temperature = self.temperature
         return await self._call_local_llm(prompt, max_tokens, temperature)
 
     async def _call_local_llm(

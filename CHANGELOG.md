@@ -13,6 +13,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 ### Security
 
+## [0.2.1] - 2026-03-21
+### Added
+- Progressive timeout system with lease recovery and handoff (GH-191)
+- Structured RecoveryInfo field on Task model for agent handoffs (GH-190)
+- Per-lease adaptive grace periods for progressive timeouts
+- Recovery info preservation across project state refreshes
+- Docker improvements: updated compose config, devcontainer (GH-182)
+- LLM temperature now configurable via config
+- Experiment infrastructure: reorganized folder structure, project_root handling
+- False positive monitoring guide and scripts
+- Local development documentation (LOCAL_DEVELOPMENT.md)
+- Demo materials updated for April 15 conference talk
+
+### Fixed
+- Validation loop bug: LLM returning fail with zero issues now auto-passes
+- AIAnalysisEngine UnboundLocalError when config validation fails
+- get_task_by_id now searches all tasks, not just available/TODO tasks
+- Design tasks exempt from deployment keyword filter
+- Handle None completion_criteria in validation prompt builder
+- docker-compose env vars preventing Marcus from starting
+- .env file loading in marcus startup script
+- WorkAnalyzer test failures and test suite updates (GH-187)
+- All unit test fixtures updated to mock config/LLM dependencies
+
 ## [0.2.0] - 2026-03-16
 ### Added
 - Feature completeness validation system with AI-powered analysis (GH-170)

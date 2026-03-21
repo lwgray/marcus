@@ -62,9 +62,22 @@ class TestCreateProjectWithDiscovery:
         # Arrange
         mock_state.project_registry.list_projects = AsyncMock(return_value=[])
 
-        with patch(
-            "src.integrations.nlp_tools.NaturalLanguageProjectCreator"
-        ) as MockCreator:
+        with (
+            patch(
+                "src.integrations.nlp_tools.NaturalLanguageProjectCreator"
+            ) as MockCreator,
+            patch("src.integrations.nlp_tools.ProjectAutoSetup") as MockAutoSetup,
+        ):
+            mock_auto_setup = MockAutoSetup.return_value
+            mock_auto_setup.setup_new_project = AsyncMock(
+                return_value=Mock(
+                    provider="planka",
+                    provider_config={
+                        "project_id": "new-123",
+                        "board_id": "board-456",
+                    },
+                )
+            )
             mock_creator = MockCreator.return_value
             mock_creator.create_project_from_description = AsyncMock(
                 return_value={"success": True, "tasks_created": 5}
@@ -80,7 +93,6 @@ class TestCreateProjectWithDiscovery:
 
             # Assert
             assert result["success"] is True
-            # Should have called ProjectAutoSetup (not direct auto_setup_project)
             # Verify project was registered
             mock_state.project_registry.add_project.assert_called_once()
 
@@ -96,9 +108,22 @@ class TestCreateProjectWithDiscovery:
             return_value=[sample_existing_project]
         )
 
-        with patch(
-            "src.integrations.nlp_tools.NaturalLanguageProjectCreator"
-        ) as MockCreator:
+        with (
+            patch(
+                "src.integrations.nlp_tools.NaturalLanguageProjectCreator"
+            ) as MockCreator,
+            patch("src.integrations.nlp_tools.ProjectAutoSetup") as MockAutoSetup,
+        ):
+            mock_auto_setup = MockAutoSetup.return_value
+            mock_auto_setup.setup_new_project = AsyncMock(
+                return_value=Mock(
+                    provider="planka",
+                    provider_config={
+                        "project_id": "new-123",
+                        "board_id": "board-456",
+                    },
+                )
+            )
             mock_creator = MockCreator.return_value
             mock_creator.create_project_from_description = AsyncMock(
                 return_value={"success": True, "tasks_created": 5}
@@ -183,9 +208,22 @@ class TestCreateProjectWithDiscovery:
         # Arrange
         mock_state.project_registry.list_projects = AsyncMock(return_value=[])
 
-        with patch(
-            "src.integrations.nlp_tools.NaturalLanguageProjectCreator"
-        ) as MockCreator:
+        with (
+            patch(
+                "src.integrations.nlp_tools.NaturalLanguageProjectCreator"
+            ) as MockCreator,
+            patch("src.integrations.nlp_tools.ProjectAutoSetup") as MockAutoSetup,
+        ):
+            mock_auto_setup = MockAutoSetup.return_value
+            mock_auto_setup.setup_new_project = AsyncMock(
+                return_value=Mock(
+                    provider="planka",
+                    provider_config={
+                        "project_id": "new-123",
+                        "board_id": "board-456",
+                    },
+                )
+            )
             mock_creator = MockCreator.return_value
             mock_creator.create_project_from_description = AsyncMock(
                 return_value={"success": True, "tasks_created": 5}

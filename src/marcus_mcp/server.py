@@ -639,6 +639,7 @@ class MarcusServer:
                     max_lease_hours=lease_config.max_lease_hours,
                     stuck_task_threshold_renewals=lease_config.stuck_threshold_renewals,
                     enable_adaptive_leases=lease_config.enable_adaptive,
+                    task_list=self.project_tasks,
                 )
             else:
                 # It's a dict from project config
@@ -658,6 +659,7 @@ class MarcusServer:
                         "stuck_threshold_renewals", 5
                     ),
                     enable_adaptive_leases=lease_config.get("enable_adaptive", True),
+                    task_list=self.project_tasks,
                 )
             self.lease_monitor = LeaseMonitor(self.lease_manager)
             await self.lease_monitor.start()
@@ -828,6 +830,14 @@ class MarcusServer:
                     f"subtask_manager.subtasks count={subtask_count}"
                 )
 
+                # Capture recovery_info from existing tasks before refresh
+                # (recovery_info is in-memory only, not stored in Kanban)
+                recovery_info_map: dict[str, Any] = {}
+                if self.project_tasks:
+                    for task in self.project_tasks:
+                        if getattr(task, "recovery_info", None):
+                            recovery_info_map[task.id] = task.recovery_info
+
                 if not self._subtasks_migrated:
                     # First time: copy parent tasks to avoid mutating source
                     # Migration will append subtasks to this list
@@ -852,6 +862,19 @@ class MarcusServer:
                         f"Refreshed {len(parent_tasks)} parent tasks, "
                         f"preserved {len(existing_subtasks)} subtasks"
                     )
+
+                # Re-apply recovery_info to refreshed tasks
+                if recovery_info_map:
+                    restored = 0
+                    for task in self.project_tasks:
+                        if task.id in recovery_info_map:
+                            task.recovery_info = recovery_info_map[task.id]
+                            restored += 1
+                    if restored:
+                        logger.info(
+                            f"Preserved recovery_info for "
+                            f"{restored} task(s) across refresh"
+                        )
 
             # Migrate subtasks from SubtaskManager to unified project_tasks storage
             # ONLY run migration once to avoid duplicate subtasks
@@ -982,6 +1005,10 @@ class MarcusServer:
                     "risk_level": self.project_state.risk_level.value,  # Enum to str
                     "last_updated": self.project_state.last_updated.isoformat(),
                 }
+
+            # Update lease manager's task list reference after refresh
+            if hasattr(self, "lease_manager") and self.lease_manager:
+                self.lease_manager.update_task_list(self.project_tasks)
 
             self.log_event(
                 "project_state_refreshed",

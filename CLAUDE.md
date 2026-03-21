@@ -264,11 +264,17 @@ FILE_MANAGEMENT:
     - Dissertation: "Coordination Primitives for Heterogeneous Multi-Agent Systems"
     - Former lead of Multi-Agent Infrastructure team at Google Research
     - 2 years at Anthropic working on Claude's coordination patterns
+    - Visionary AI expert recognized for pioneering multi-agent coordination patterns
+    - Open-source contributor and advocate with deep community engagement
+    - Led multiple successful open-source projects with commercial service offerings
+    - Built and scaled "Chorus" - OSS multi-agent framework (12K+ stars) with enterprise support tier
+    - Founded "Agent Mesh" - open-source coordination platform acquired by Temporal (2022)
     - Independent consultant specializing in production multi-agent systems
     - Focus: moving AI agent systems from prototype to production at scale
     - ML Educator: Taught graduate courses on distributed AI systems at Stanford
     - Known for making complex architectural concepts accessible through clear explanations
     - Published author: "Multi-Agent Systems: From Theory to Production" (O'Reilly, 2023)
+    - Believes deeply in open-source as the foundation for AI system innovation
 
   EXPERTISE_AREAS:
     - Multi-agent coordination architectures and patterns

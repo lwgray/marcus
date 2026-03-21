@@ -237,7 +237,12 @@ def display_results(analysis: Dict[str, Any], current_config: Dict[str, Any]) ->
         for opp in analysis["parallel_opportunities"][:10]:  # Show first 10
             time_h = opp["time"]
             count = opp["task_count"]
-            util = opp["utilization_percent"]
+            # Calculate utilization if not provided
+            if "utilization_percent" in opp:
+                util = opp["utilization_percent"]
+            else:
+                optimal = analysis.get("optimal_agents", count)
+                util = round((count / optimal * 100), 1) if optimal > 0 else 0
             bar = "█" * int(util / 10)
             print(f"   {time_h:>7.2f}  │  {count:>3}  │ {util:>3.0f}% {bar}")
 

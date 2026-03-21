@@ -6,7 +6,7 @@ Tests the fix for the bug where NFR task IDs with phase suffixes
 their corresponding requirements.
 """
 
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -22,9 +22,10 @@ class TestNFRTaskIDParsing:
     @pytest.fixture
     def parser(self):
         """Create parser instance with mocked dependencies."""
-        mock_llm = Mock()
-        mock_dependency_inferer = Mock()
-        return AdvancedPRDParser(mock_llm, mock_dependency_inferer)
+        with patch("src.ai.advanced.prd.advanced_parser.LLMAbstraction"):
+            parser = AdvancedPRDParser()
+            parser.dependency_inferer = Mock()
+            return parser
 
     @pytest.fixture
     def mock_requirements(self):

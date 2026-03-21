@@ -41,6 +41,7 @@ class TestOpenAIProviderInitialization:
         mock_config.ai.openai_api_key = "test-api-key"
         mock_config.ai.model = "gpt-3.5-turbo"
         mock_config.ai.max_tokens = 2048
+        mock_config.ai.temperature = 0.1
 
         with patch("src.config.marcus_config.get_config", return_value=mock_config):
             provider = OpenAIProvider()
@@ -132,7 +133,15 @@ class TestOpenAIProviderInitialization:
 
     def test_http_client_configuration(self):
         """Test HTTP client is configured correctly"""
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-api-key"}):
+        mock_config = Mock()
+        mock_config.ai.openai_api_key = "test-api-key"
+        mock_config.ai.model = "gpt-3.5-turbo"
+        mock_config.ai.max_tokens = 2048
+
+        with patch(
+            "src.config.marcus_config.get_config",
+            return_value=mock_config,
+        ):
             provider = OpenAIProvider()
 
             headers = provider.client.headers
@@ -155,6 +164,7 @@ class TestOpenAIProviderTaskAnalysis:
         mock_config.ai.openai_api_key = "test-api-key"
         mock_config.ai.model = "gpt-3.5-turbo"
         mock_config.ai.max_tokens = 2048
+        mock_config.ai.temperature = 0.1
 
         with patch("src.config.marcus_config.get_config", return_value=mock_config):
             yield OpenAIProvider()
@@ -312,6 +322,7 @@ class TestOpenAIProviderDependencyInference:
         mock_config.ai.openai_api_key = "test-api-key"
         mock_config.ai.model = "gpt-3.5-turbo"
         mock_config.ai.max_tokens = 2048
+        mock_config.ai.temperature = 0.1
 
         with patch("src.config.marcus_config.get_config", return_value=mock_config):
             yield OpenAIProvider()
@@ -486,6 +497,7 @@ class TestOpenAIProviderDescriptionEnhancement:
         mock_config.ai.openai_api_key = "test-api-key"
         mock_config.ai.model = "gpt-3.5-turbo"
         mock_config.ai.max_tokens = 2048
+        mock_config.ai.temperature = 0.1
 
         with patch("src.config.marcus_config.get_config", return_value=mock_config):
             yield OpenAIProvider()
@@ -590,6 +602,7 @@ class TestOpenAIProviderEffortEstimation:
         mock_config.ai.openai_api_key = "test-api-key"
         mock_config.ai.model = "gpt-3.5-turbo"
         mock_config.ai.max_tokens = 2048
+        mock_config.ai.temperature = 0.1
 
         with patch("src.config.marcus_config.get_config", return_value=mock_config):
             yield OpenAIProvider()
@@ -693,6 +706,7 @@ class TestOpenAIProviderBlockerAnalysis:
         mock_config.ai.openai_api_key = "test-api-key"
         mock_config.ai.model = "gpt-3.5-turbo"
         mock_config.ai.max_tokens = 2048
+        mock_config.ai.temperature = 0.1
 
         with patch("src.config.marcus_config.get_config", return_value=mock_config):
             yield OpenAIProvider()
@@ -809,6 +823,7 @@ class TestOpenAIProviderAPICall:
         mock_config.ai.openai_api_key = "test-api-key"
         mock_config.ai.model = "gpt-3.5-turbo"
         mock_config.ai.max_tokens = 2048
+        mock_config.ai.temperature = 0.1
 
         with patch("src.config.marcus_config.get_config", return_value=mock_config):
             yield OpenAIProvider()
@@ -891,6 +906,7 @@ class TestOpenAIProviderResponseParsing:
         mock_config.ai.openai_api_key = "test-api-key"
         mock_config.ai.model = "gpt-3.5-turbo"
         mock_config.ai.max_tokens = 2048
+        mock_config.ai.temperature = 0.1
 
         with patch("src.config.marcus_config.get_config", return_value=mock_config):
             yield OpenAIProvider()
@@ -1058,6 +1074,7 @@ class TestOpenAIProviderComplete:
         mock_config.ai.openai_api_key = "test-api-key"
         mock_config.ai.model = "gpt-3.5-turbo"
         mock_config.ai.max_tokens = 2048
+        mock_config.ai.temperature = 0.1
 
         with patch("src.config.marcus_config.get_config", return_value=mock_config):
             yield OpenAIProvider()
@@ -1201,6 +1218,7 @@ class TestOpenAIProviderCleanup:
         mock_config.ai.openai_api_key = "test-api-key"
         mock_config.ai.model = "gpt-3.5-turbo"
         mock_config.ai.max_tokens = 2048
+        mock_config.ai.temperature = 0.1
 
         with patch("src.config.marcus_config.get_config", return_value=mock_config):
             yield OpenAIProvider()
@@ -1232,6 +1250,7 @@ class TestOpenAIProviderIntegration:
         mock_config.ai.openai_api_key = "test-api-key"
         mock_config.ai.model = "gpt-3.5-turbo"
         mock_config.ai.max_tokens = 2048
+        mock_config.ai.temperature = 0.1
 
         with patch("src.config.marcus_config.get_config", return_value=mock_config):
             yield OpenAIProvider()

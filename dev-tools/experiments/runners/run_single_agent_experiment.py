@@ -18,6 +18,9 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 # MLflow is optional
 try:
     import mlflow
@@ -652,7 +655,7 @@ echo "=========================================="
 
         try:
             # Parse timing from log file
-            from parse_single_agent_timing import TimingParser
+            from analysis.parse_single_agent_timing import TimingParser
 
             parser = TimingParser(self.current_log_file)
             if parser.parse_log():
@@ -1029,9 +1032,9 @@ Examples:
 
     experiment_dir = Path(args.experiment_dir).resolve()
 
-    # Find templates directory
+    # Find templates directory (now at parent level)
     script_dir = Path(__file__).parent
-    templates_dir = script_dir / "templates"
+    templates_dir = script_dir.parent / "templates"
 
     if not templates_dir.exists():
         print(f"Error: Templates directory not found at {templates_dir}")

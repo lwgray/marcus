@@ -3,10 +3,13 @@ Task Recovery System for handling abandoned and timed-out tasks.
 
 This module provides mechanisms to recover tasks that are stuck in "In Progress"
 status due to agent disconnections, timeouts, or other failures. It includes:
-- Heartbeat tracking for active agents
+- Detection of abandoned tasks based on assignment persistence
 - Automatic task status reset for abandoned tasks
 - Task reassignment logic
 - Recovery strategies based on task history
+
+Note: This module does NOT implement heartbeat tracking. Recovery relies on
+assignment lease expiration and progress updates tracked in assignment_lease.py.
 """
 
 import asyncio
@@ -65,9 +68,6 @@ class TaskRecoveryManager:
         self.task_stuck_hours = task_stuck_hours
         self.max_recovery_attempts = max_recovery_attempts
 
-        # Track agent heartbeats
-        self.agent_heartbeats: Dict[str, datetime] = {}
-
         # Track task recovery attempts
         self.recovery_attempts: Dict[str, int] = {}
 
@@ -76,29 +76,6 @@ class TaskRecoveryManager:
 
         # Recovery history for pattern analysis
         self.recovery_history: List[Dict[str, Any]] = []
-
-    async def update_agent_heartbeat(self, agent_id: str) -> None:
-        """Update the last heartbeat timestamp for an agent."""
-        self.agent_heartbeats[agent_id] = datetime.now(timezone.utc)
-        logger.debug(f"Updated heartbeat for agent {agent_id}")
-
-    async def check_agent_health(self, agent_id: str) -> bool:
-        """
-        Check if an agent is healthy based on heartbeat.
-
-        Returns
-        -------
-            True if agent is healthy, False if timed out
-        """
-        if agent_id not in self.agent_heartbeats:
-            return False
-
-        last_heartbeat = self.agent_heartbeats[agent_id]
-        timeout_threshold = datetime.now(timezone.utc) - timedelta(
-            minutes=self.agent_timeout_minutes
-        )
-
-        return last_heartbeat > timeout_threshold
 
     async def find_abandoned_tasks(self) -> List[Tuple[Task, str, RecoveryReason]]:
         """
@@ -134,13 +111,6 @@ class TaskRecoveryManager:
                         break
 
                 if agent_id:
-                    # Check agent health
-                    if not await self.check_agent_health(agent_id):
-                        abandoned_tasks.append(
-                            (task, agent_id, RecoveryReason.AGENT_TIMEOUT)
-                        )
-                        continue
-
                     # Check if task is stuck (no progress for too long)
                     if await self._is_task_stuck(task, assignment):
                         abandoned_tasks.append(
@@ -151,34 +121,6 @@ class TaskRecoveryManager:
                     abandoned_tasks.append(
                         (task, "unknown", RecoveryReason.TASK_ABANDONED)
                     )
-
-            # Also check for disconnected agents
-            for agent_id, assignment in assignments.items():
-                if not await self.check_agent_health(agent_id):
-                    task_id = assignment["task_id"]
-                    # Find the task
-                    task_found: Optional[Task] = None
-                    for t in all_tasks:
-                        if t.id == task_id:
-                            task_found = t
-                            break
-
-                    if (
-                        task_found is not None
-                        and task_found.id not in self.tasks_being_recovered
-                    ):
-                        if (
-                            task_found,
-                            agent_id,
-                            RecoveryReason.AGENT_DISCONNECTED,
-                        ) not in abandoned_tasks:
-                            abandoned_tasks.append(
-                                (
-                                    task_found,
-                                    agent_id,
-                                    RecoveryReason.AGENT_DISCONNECTED,
-                                )
-                            )
 
         except Exception as e:
             logger.error(f"Error finding abandoned tasks: {e}")
@@ -326,15 +268,6 @@ class TaskRecoveryManager:
     def get_recovery_stats(self) -> Dict[str, Any]:
         """Get statistics about task recovery."""
         stats = {
-            "active_agents": len(
-                [
-                    aid
-                    for aid, hb in self.agent_heartbeats.items()
-                    if datetime.now(timezone.utc) - hb
-                    < timedelta(minutes=self.agent_timeout_minutes)
-                ]
-            ),
-            "total_agents": len(self.agent_heartbeats),
             "recovery_attempts": dict(self.recovery_attempts),
             "high_recovery_tasks": [
                 tid
@@ -400,12 +333,6 @@ class TaskRecoveryManager:
         except Exception as e:
             logger.error(f"Error in manual task recovery: {e}")
             return False
-
-    def clear_agent_heartbeat(self, agent_id: str) -> None:
-        """Clear heartbeat for a disconnected agent."""
-        if agent_id in self.agent_heartbeats:
-            del self.agent_heartbeats[agent_id]
-            logger.info(f"Cleared heartbeat for disconnected agent {agent_id}")
 
 
 class TaskRecoveryMonitor:

@@ -6,7 +6,7 @@ including tasks, workers, assignments, and project state tracking.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone  # noqa: F401 - used in docstring examples
+from datetime import datetime, timedelta, timezone  # noqa: F401
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -75,6 +75,100 @@ class Priority(Enum):
     MEDIUM = "medium"
     HIGH = "high"
     URGENT = "urgent"
+
+
+@dataclass
+class RecoveryInfo:
+    """
+    Information about task recovery from a previous agent.
+
+    This is operational data that the next agent needs to avoid
+    duplicating work or taking conflicting approaches.
+
+    Parameters
+    ----------
+    recovered_at : datetime
+        When the recovery occurred
+    recovered_from_agent : str
+        Agent ID that previously worked on this task
+    previous_progress : int
+        Progress percentage (0-100) at time of recovery
+    time_spent_minutes : float
+        Total time spent by previous agent in minutes
+    recovery_reason : str
+        Why recovery happened (e.g., "lease_expired", "agent_crashed")
+    instructions : str
+        Multi-line guidance for next agent about what to check
+    recovery_expires_at : Optional[datetime]
+        When this recovery info becomes stale (default 24 hours)
+
+    Notes
+    -----
+    Recovery info expires after 24 hours by default. After expiration,
+    the info is considered stale and should be moved to audit trail only.
+    """
+
+    recovered_at: datetime
+    recovered_from_agent: str
+    previous_progress: int
+    time_spent_minutes: float
+    recovery_reason: str
+    instructions: str
+    recovery_expires_at: Optional[datetime] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert to dictionary for JSON serialization.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Dictionary representation with ISO format timestamps
+        """
+        return {
+            "recovered_at": self.recovered_at.isoformat(),
+            "recovered_from_agent": self.recovered_from_agent,
+            "previous_progress": self.previous_progress,
+            "time_spent_minutes": round(self.time_spent_minutes, 1),
+            "recovery_reason": self.recovery_reason,
+            "instructions": self.instructions,
+            "recovery_expires_at": (
+                self.recovery_expires_at.isoformat()
+                if self.recovery_expires_at
+                else None
+            ),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "RecoveryInfo":
+        """
+        Create from dictionary (for deserialization).
+
+        Parameters
+        ----------
+        data : Dict[str, Any]
+            Dictionary with recovery info fields
+
+        Returns
+        -------
+        RecoveryInfo
+            Reconstructed RecoveryInfo instance
+        """
+        from dateutil.parser import parse
+
+        return cls(
+            recovered_at=parse(data["recovered_at"]),
+            recovered_from_agent=data["recovered_from_agent"],
+            previous_progress=data["previous_progress"],
+            time_spent_minutes=data["time_spent_minutes"],
+            recovery_reason=data["recovery_reason"],
+            instructions=data["instructions"],
+            recovery_expires_at=(
+                parse(data["recovery_expires_at"])
+                if data.get("recovery_expires_at")
+                else None
+            ),
+        )
 
 
 @dataclass
@@ -167,6 +261,9 @@ class Task:
     # Fields for cross-parent dependency wiring
     provides: Optional[str] = None  # What interface/functionality this task provides
     requires: Optional[str] = None  # What this task needs from dependencies
+
+    # Recovery information (if task was recovered from another agent)
+    recovery_info: Optional["RecoveryInfo"] = None
 
 
 @dataclass

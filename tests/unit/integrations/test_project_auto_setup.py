@@ -43,6 +43,7 @@ class TestProjectAutoSetup:
         options = {
             "planka_project_name": "Test Planka Project",
             "planka_board_name": "Development Board",
+            "project_root": "/test/project/path",
         }
 
         # Act
@@ -61,30 +62,31 @@ class TestProjectAutoSetup:
 
         # Verify auto_setup_project was called with correct params
         mock_kanban_client.auto_setup_project.assert_called_once_with(
-            project_name="Test Planka Project", board_name="Development Board"
+            project_name="Test Planka Project",
+            board_name="Development Board",
+            project_root="/test/project/path",
         )
 
     @pytest.mark.asyncio
-    async def test_setup_planka_project_uses_defaults(
+    async def test_setup_planka_project_requires_project_root(
         self, auto_setup, mock_kanban_client
     ):
-        """Test Planka setup uses default names when not provided"""
+        """Test Planka setup fails when project_root is missing"""
         # Arrange
         project_name = "MyAPI"
-        options = {}  # No planka-specific options
+        options = {}  # No project_root provided
 
-        # Act
-        result = await auto_setup.setup_planka_project(
-            kanban_client=mock_kanban_client,
-            project_name=project_name,
-            options=options,
-        )
+        # Act & Assert
+        with pytest.raises(ValueError) as exc_info:
+            await auto_setup.setup_planka_project(
+                kanban_client=mock_kanban_client,
+                project_name=project_name,
+                options=options,
+            )
 
-        # Assert
-        # Should default to project_name and "Main Board"
-        mock_kanban_client.auto_setup_project.assert_called_once_with(
-            project_name="MyAPI", board_name="Main Board"
-        )
+        # Verify error message is helpful
+        assert "project_root is required" in str(exc_info.value)
+        assert "where agents will write code" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_setup_planka_project_handles_error(
@@ -101,7 +103,7 @@ class TestProjectAutoSetup:
             await auto_setup.setup_planka_project(
                 kanban_client=mock_kanban_client,
                 project_name="TestProject",
-                options={},
+                options={"project_root": "/test/path"},
             )
 
         assert "Planka API error" in str(exc_info.value)

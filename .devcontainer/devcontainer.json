@@ -1,18 +1,35 @@
 {
-  "name": "Marcus AI Platform",
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "name": "Marcus Development Environment",
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "marcus",
+  "workspaceFolder": "/app",
 
-  "features": {
-    "ghcr.io/devcontainers/features/python:1": {
-      "version": "3.11"
+  "forwardPorts": [3333, 4298, 4301, 5173],
+
+  "portsAttributes": {
+    "3333": {
+      "label": "Planka (Kanban Board)",
+      "onAutoForward": "notify",
+      "protocol": "http"
     },
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {
-      "version": "latest"
+    "4298": {
+      "label": "Marcus MCP Server",
+      "onAutoForward": "silent",
+      "protocol": "http"
     },
-    "ghcr.io/devcontainers/features/git:1": {
-      "version": "latest"
+    "4301": {
+      "label": "Cato API (Backend)",
+      "onAutoForward": "silent",
+      "protocol": "http"
+    },
+    "5173": {
+      "label": "Cato Dashboard (Frontend)",
+      "onAutoForward": "notify",
+      "protocol": "http"
     }
   },
+
+  "postCreateCommand": "echo '\n✅ Marcus environment ready!\n\nServices:\n- Planka Board: http://localhost:3333 (demo@demo.demo / demo)\n- Marcus MCP: http://localhost:4298\n- Cato Dashboard: docker-compose --profile viz up (http://localhost:5173)\n'",
 
   "customizations": {
     "vscode": {
@@ -20,32 +37,32 @@
         "ms-python.python",
         "ms-python.vscode-pylance",
         "ms-python.black-formatter",
+        "ms-python.isort",
         "charliermarsh.ruff",
-        "redhat.vscode-yaml",
         "ms-azuretools.vscode-docker"
       ],
       "settings": {
         "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.linting.enabled": true,
+        "python.linting.pylintEnabled": false,
+        "python.linting.flake8Enabled": false,
+        "python.formatting.provider": "black",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.organizeImports": true
+        },
         "[python]": {
-          "editor.defaultFormatter": "ms-python.black-formatter",
-          "editor.rulers": [88]
+          "editor.rulers": [88],
+          "editor.tabSize": 4
         }
       }
     }
   },
 
-  "forwardPorts": [3333, 4298],
-
-  "portsAttributes": {
-    "3333": {
-      "label": "Planka Board",
-      "onAutoForward": "notify"
-    },
-    "4298": {
-      "label": "Marcus MCP Server",
-      "onAutoForward": "notify"
-    }
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
   },
 
-  "remoteUser": "vscode"
+  "remoteUser": "root"
 }

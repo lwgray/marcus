@@ -215,6 +215,10 @@ async def get_task_context(task_id: str, state: Any) -> Dict[str, Any]:
         artifacts = await _collect_task_artifacts(task_id, task, state)
         context_dict["artifacts"] = artifacts
 
+        # Add recovery information if present
+        if task.recovery_info:
+            context_dict["recovery_info"] = task.recovery_info.to_dict()
+
         return {"success": True, "context": context_dict}
 
     except Exception as e:

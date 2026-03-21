@@ -25,7 +25,8 @@ class TestComplexityClassification:
     @pytest.fixture
     def parser(self):
         """Create parser instance with mocked LLM client."""
-        parser_instance = AdvancedPRDParser()
+        with patch("src.ai.advanced.prd.advanced_parser.LLMAbstraction"):
+            parser_instance = AdvancedPRDParser()
         # Mock the llm_client.analyze method
         parser_instance.llm_client.analyze = AsyncMock()
         return parser_instance
@@ -152,7 +153,8 @@ class TestConstraintExtraction:
     @pytest.fixture
     def parser(self):
         """Create parser instance with mocked LLM client."""
-        parser_instance = AdvancedPRDParser()
+        with patch("src.ai.advanced.prd.advanced_parser.LLMAbstraction"):
+            parser_instance = AdvancedPRDParser()
         parser_instance.llm_client.analyze = AsyncMock()
         return parser_instance
 
@@ -235,7 +237,8 @@ class TestSnakeGameExample:
     @pytest.fixture
     def parser(self):
         """Create parser instance with mocked LLM client."""
-        parser_instance = AdvancedPRDParser()
+        with patch("src.ai.advanced.prd.advanced_parser.LLMAbstraction"):
+            parser_instance = AdvancedPRDParser()
         parser_instance.llm_client.analyze = AsyncMock()
         return parser_instance
 
@@ -347,7 +350,8 @@ class TestAffectedComponents:
     @pytest.fixture
     def parser(self):
         """Create parser instance with mocked LLM client."""
-        parser_instance = AdvancedPRDParser()
+        with patch("src.ai.advanced.prd.advanced_parser.LLMAbstraction"):
+            parser_instance = AdvancedPRDParser()
         parser_instance.llm_client.analyze = AsyncMock()
         return parser_instance
 

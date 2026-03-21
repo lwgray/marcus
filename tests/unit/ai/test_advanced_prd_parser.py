@@ -1348,3 +1348,35 @@ class TestIntegrationRequirements:
 
         # Assert - Should skip because it's deployment infrastructure
         assert should_skip is True
+
+    @pytest.mark.unit
+    def test_design_tasks_not_skipped_when_name_contains_domain(self, parser):
+        """Test that design tasks with 'domain' in task ID are NOT skipped.
+
+        Bug: LLM names domains like 'Gameplay Domain', producing task IDs
+        like 'design_gameplay_domain'. The skip keyword 'domain' (meant
+        for DNS tasks) was falsely matching these design tasks, causing
+        all design tasks to be silently dropped for local deployment.
+
+        Fix: Design tasks (type=design) should never be subject to
+        deployment filtering - they are deployment-agnostic blueprints.
+        Same 'strong signal overrides weak signal' pattern as GH-180.
+        """
+        # Arrange
+        task_id = "design_gameplay_domain"
+        epic_id = "epic_design_architecture"
+        parser._task_metadata = {
+            task_id: {
+                "original_name": "Design Gameplay Domain",
+                "type": "design",
+                "epic_id": epic_id,
+                "domain_name": "Gameplay Domain",
+                "feature_ids": ["snake_game_create", "snake_game_read"],
+            }
+        }
+
+        # Act
+        should_skip = parser._should_skip_task(task_id, epic_id, "local")
+
+        # Assert - design tasks must NEVER be skipped
+        assert should_skip is False

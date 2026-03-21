@@ -141,12 +141,26 @@ class ProjectAutoSetup:
         planka_board_name = options.get("planka_board_name", "Main Board")
         project_root = options.get("project_root")
 
+        # Require project_root - Marcus needs to know where to find code
+        # for validation
+        if not project_root:
+            raise ValueError(
+                "project_root is required - specify where agents will "
+                "write code.\n"
+                "This tells Marcus where to find source files for validation.\n"
+                "Example: create_project(\n"
+                "    description='Build a snake game',\n"
+                "    project_name='Snake Game',\n"
+                "    options={'project_root': "
+                "'~/experiments/snake_game/implementations'}\n"
+                ")"
+            )
+
         logger.info(
             f"Auto-creating Planka project '{planka_project_name}' "
             f"with board '{planka_board_name}'"
         )
-        if project_root:
-            logger.info(f"Project root: {project_root}")
+        logger.info(f"Project root: {project_root}")
 
         # Check if kanban client supports auto_setup_project
         if not hasattr(kanban_client, "auto_setup_project"):

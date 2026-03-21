@@ -74,7 +74,7 @@ class TestMandatoryWorkflowPrompt:
     """Test suite for mandatory workflow prompt generation."""
 
     def test_workflow_prompt_includes_all_steps(self) -> None:
-        """Test workflow prompt includes all 8 required steps."""
+        """Test workflow prompt includes all 9 required steps."""
         task = create_test_task()
 
         prompt = _build_mandatory_workflow_prompt(task)
@@ -85,9 +85,10 @@ class TestMandatoryWorkflowPrompt:
         assert "3. [TASK WORK:" in prompt
         assert "4. Report progress at 25%, 50%, 75%" in prompt
         assert "5. Log decisions" in prompt
-        assert "6. Report completion" in prompt
-        assert "7. Be prepared for remediation" in prompt
-        assert "8. Immediately request next task" in prompt
+        assert '6. BEFORE reporting "completed", verify:' in prompt
+        assert "7. Report completion" in prompt
+        assert "8. Be prepared for remediation" in prompt
+        assert "9. Immediately request next task" in prompt
 
     def test_workflow_prompt_embeds_task_info(self) -> None:
         """Test workflow prompt embeds task name and description."""

@@ -95,6 +95,7 @@ class OpenAIProvider(BaseLLMProvider):
         else:
             self.model = config.ai.model
         self.max_tokens = config.ai.max_tokens
+        self.temperature = config.ai.temperature  # Read temperature from config
         self.timeout = 30.0
 
         # HTTP client
@@ -391,7 +392,7 @@ Provide JSON array of 3-5 specific solutions:
             "model": self.model,
             "messages": messages,
             "max_tokens": self.max_tokens,
-            "temperature": 0.1,  # Low temperature for consistent responses
+            "temperature": self.temperature,
         }
 
         try:

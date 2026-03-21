@@ -147,7 +147,7 @@ jobs:
           PLANKA_PASSWORD: ${{ secrets.PLANKA_PASSWORD }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          pytest tests/integration -m "external and not ai" -v --tb=short
+          pytest tests/integration -m "external and not ai" -v --tb=short || test $? -eq 5
         timeout-minutes: 15
 
       - name: Generate test summary

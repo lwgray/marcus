@@ -1,0 +1,20 @@
+project_name: "Reliability Test: 5 Stages, 1 Agent"
+experiment_type: "single_agent"
+project_spec_file: "project_description.txt"
+
+project_options:
+  provider: "planka"
+  complexity: "medium"
+  task_count: 5
+
+# Single agent doing all work
+agents:
+  - id: "data_engineer_1"
+    name: "Data Engineer"
+    role: "full_stack_engineer"
+    skills: ["python", "data_processing", "testing", "validation"]
+    subagents: 0
+
+timeouts:
+  project_creation: 300
+  experiment_duration: 7200  # 2 hours

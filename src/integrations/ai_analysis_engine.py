@@ -114,9 +114,11 @@ class AIAnalysisEngine:
             # AI features will use fallback responses
             # Don't print to stderr as it interferes with MCP stdio protocol
             self.client = None
+            config = None
 
         self.model: str = (
-            config.ai.model or "claude-3-5-sonnet-20241022"
+            getattr(getattr(config, "ai", None), "model", None)
+            or "claude-3-5-sonnet-20241022"
         )  # Using Sonnet 3.5 for speed/cost balance
 
         # Analysis prompts

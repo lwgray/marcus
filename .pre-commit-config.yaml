@@ -9,6 +9,7 @@ repos:
           - types-aiofiles
           - types-requests
           - types-PyYAML
+          - types-python-dateutil
           - pydantic
         exclude: ^(tests/|docs/)
 

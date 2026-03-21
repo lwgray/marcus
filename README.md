@@ -60,6 +60,13 @@ Marcus accepts **any artifact type** (code, research, scripts, designs, marketin
 - ✅ Works offline after initial setup
 - ✅ Better performance
 
+**Option 3: Local Development** 💻 (For developers and contributors)
+- ✅ Direct access to source code
+- ✅ Fastest development iteration
+- ✅ Full debugging capabilities
+
+📖 **[Follow the Local Development Guide](LOCAL_DEVELOPMENT.md)** for complete setup instructions.
+
 ### **Prerequisites**
 - Docker
 - Claude Code or another MCP-compatible AI agent
@@ -69,32 +76,38 @@ Marcus accepts **any artifact type** (code, research, scripts, designs, marketin
 
 ### **1. Run Marcus with Docker**
 
-```bash
-**Using Planka with Docker Compose**
-
 📖 **See the complete guide:** [DOCKER_QUICKSTART.md](DOCKER_QUICKSTART.md)
 
-**Quick overview:**
+**Quick Start (Simplest):**
 ```bash
-# 1. Clone and start Planka
+# Clone repository
 git clone https://github.com/lwgray/marcus.git
 cd marcus
-docker-compose up -d postgres planka
 
-  ^board_id
+# Set your API key
+echo "ANTHROPIC_API_KEY=your_key_here" > .env
 
-# 2. Configure and start Marcus
-# Option A: Use default config
-cp config_marcus.example.json config_marcus.json
-# Edit config with your board IDs and API key
-docker-compose up -d marcus
+# Start everything (Planka + Marcus)
+docker-compose up
 
-# Option B: Use a specific config (Anthropic, GitHub, etc.)
-MARCUS_CONFIG=config_marcus.json.anthropic docker-compose up -d marcus
+# OR start with Cato visualization dashboard
+docker-compose --profile viz up
+```
 
-# Option C: Create .env file for persistent config selection
-echo "MARCUS_CONFIG=config_marcus.json.anthropic" > .env
-docker-compose up -d marcus
+**Access the services:**
+- 🎯 **Planka Board:** http://localhost:3333 (demo@demo.demo / demo)
+- 🤖 **Marcus MCP Server:** http://localhost:4298
+- 📊 **Cato Dashboard:** http://localhost:5173 (with `--profile viz`)
+- 📖 **Cato API Docs:** http://localhost:4301/docs (with `--profile viz`)
+
+**Advanced Configuration:**
+```bash
+# Use a specific config file
+MARCUS_CONFIG=config_marcus.json.anthropic docker-compose up
+
+# Or set in .env for persistence
+echo "MARCUS_CONFIG=config_marcus.json.anthropic" >> .env
+docker-compose up
 ```
 
 For detailed setup instructions, troubleshooting, and customization options, see [DOCKER_QUICKSTART.md](DOCKER_QUICKSTART.md).

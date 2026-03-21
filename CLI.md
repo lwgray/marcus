@@ -99,11 +99,55 @@ marcus start --http
 
 ## Environment Variables
 
-Marcus respects these environment variables:
+Marcus loads environment variables from a `.env` file in the project root. See [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md) for complete setup instructions.
 
-- `MARCUS_TRANSPORT`: Default transport ("stdio" or "http")
-- `MARCUS_HTTP_PORT`: Default HTTP port
-- `MARCUS_LOG_LEVEL`: Logging level
+### Required Variables
+
+**AI Provider** (choose one):
+- `ANTHROPIC_API_KEY` - Anthropic API key for Claude models
+- `OPENAI_API_KEY` - OpenAI API key (alternative)
+
+**Kanban Backend** (if using Planka):
+- `PLANKA_BASE_URL` - Planka server URL (e.g., `http://localhost:3333`)
+- `PLANKA_EMAIL` - Planka user email
+- `PLANKA_PASSWORD` - Planka user password
+
+### Optional Variables
+
+**Server Configuration:**
+- `MARCUS_MCP_PORT` - MCP server port (default: 4298)
+- `MARCUS_CONFIG` - Config file to use (default: `config_marcus.json`)
+- `LOG_LEVEL` - Logging level (DEBUG, INFO, WARNING, ERROR)
+
+**Alternative Kanban Providers:**
+- `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO` - For GitHub Projects
+- `LINEAR_API_KEY`, `LINEAR_TEAM_ID` - For Linear
+
+**Feature Flags:**
+- `MARCUS_ENABLE_SUBTASKS` - Enable subtask functionality
+- `MARCUS_MONITORING_INTERVAL` - Monitoring interval in seconds
+- `MARCUS_SLACK_ENABLED`, `SLACK_WEBHOOK_URL` - Slack notifications
+- `MARCUS_EMAIL_ENABLED` - Email notifications
+
+### Setup
+
+1. Copy the example file:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Edit `.env` with your values:
+   ```bash
+   # Required
+   ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+   PLANKA_BASE_URL=http://localhost:3333
+   PLANKA_EMAIL=demo@demo.demo
+   PLANKA_PASSWORD=demo
+   ```
+
+3. The CLI automatically loads `.env` on startup
+
+See `.env.example` for a complete template with all available options.
 
 ## Service Discovery
 

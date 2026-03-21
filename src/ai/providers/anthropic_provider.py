@@ -46,6 +46,7 @@ class AnthropicProvider(BaseLLMProvider):
         self.base_url = "https://api.anthropic.com/v1"
         self.model = config.ai.model or "claude-3-haiku-20240307"
         self.max_tokens = config.ai.max_tokens
+        self.temperature = config.ai.temperature  # Read temperature from config
         self.timeout = 30.0
 
         # HTTP client with proper headers
@@ -421,6 +422,7 @@ Respond only with valid JSON array."""
         payload = {
             "model": self.model,
             "max_tokens": self.max_tokens,
+            "temperature": self.temperature,
             "messages": [{"role": "user", "content": prompt}],
         }
 
