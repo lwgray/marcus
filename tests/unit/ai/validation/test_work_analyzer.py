@@ -26,7 +26,8 @@ class TestWorkAnalyzer:
     @pytest.fixture
     def analyzer(self) -> WorkAnalyzer:
         """Create WorkAnalyzer instance for testing."""
-        return WorkAnalyzer()
+        with patch("src.ai.validation.work_analyzer.LLMAbstraction"):
+            return WorkAnalyzer()
 
     @pytest.fixture
     def mock_task(self) -> Mock:
@@ -385,6 +386,49 @@ VALIDATION RESULT: FAIL
                 assert result.passed is False
                 assert len(result.issues) >= 1
                 assert "empty" in result.issues[0].issue.lower()
+
+    @pytest.mark.asyncio
+    async def test_validate_treats_fail_with_zero_issues_as_pass(
+        self, analyzer: WorkAnalyzer, mock_task: Mock, mock_state: Mock
+    ) -> None:
+        """Test that LLM returning fail with no issues is treated as pass.
+
+        When the LLM says 'fail' but provides zero specific issues,
+        there's nothing actionable — so we treat it as a pass.
+        """
+        mock_evidence = WorkEvidence(
+            source_files=[
+                SourceFile(
+                    path="/fake/project/root/src/app.py",
+                    relative_path="src/app.py",
+                    size_bytes=500,
+                    content="def main(): pass",
+                    has_placeholders=False,
+                    extension=".py",
+                    modified_time=datetime.utcnow(),
+                )
+            ],
+            design_artifacts=[],
+            decisions=[],
+            project_root="/fake/project/root",
+        )
+
+        # LLM returns fail with empty issues array
+        mock_ai_response = '{"passed": false, "issues": []}'
+
+        with patch.object(analyzer, "gather_evidence", return_value=mock_evidence):
+            with patch.object(
+                analyzer,
+                "_validate_with_ai",
+                return_value=mock_ai_response,
+            ):
+                result = await analyzer.validate_implementation_task(
+                    mock_task, mock_state
+                )
+
+                assert result.passed is True
+                assert len(result.issues) == 0
+                assert "Auto-passed" in result.ai_reasoning
 
     @pytest.mark.asyncio
     async def test_validate_implementation_task_no_source_files(

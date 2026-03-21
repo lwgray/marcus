@@ -5,7 +5,7 @@ Tests the deduplication logic that prevents duplicate tasks from being created
 when the AI generates similar requirements with different names.
 """
 
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -18,9 +18,10 @@ class TestPRDDeduplication:
     @pytest.fixture
     def parser(self):
         """Create parser instance with mocked dependencies."""
-        mock_llm = Mock()
-        mock_dependency_inferer = Mock()
-        return AdvancedPRDParser(mock_llm, mock_dependency_inferer)
+        with patch("src.ai.advanced.prd.advanced_parser.LLMAbstraction"):
+            parser = AdvancedPRDParser()
+            parser.dependency_inferer = Mock()
+            return parser
 
     def test_duplicate_ids_detected_and_removed(self, parser):
         """Test that requirements with duplicate IDs are detected and removed."""

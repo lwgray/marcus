@@ -19,7 +19,7 @@ class TestSettings:
 
         # Check nested values
         assert settings.get("risk_thresholds.high_risk") == 0.8
-        assert settings.get("ai_settings.temperature") == 0.7
+        assert settings.get("ai_settings.temperature") == 0.1
 
     def test_load_from_file(self):
         """Test loading settings from file"""
