@@ -3700,6 +3700,15 @@ explanation."""
         self, task_id: str, epic_id: str, deployment_target: str
     ) -> bool:
         """Determine if a task should be skipped based on deployment target."""
+        # Design tasks are deployment-agnostic - never skip them.
+        # GH-180 pattern: strong signal (task type) overrides weak signal
+        # (keyword match). Without this, LLM-generated domain names like
+        # "Gameplay Domain" produce task IDs containing "domain", falsely
+        # matching the DNS/hosting skip keyword.
+        task_meta = self._task_metadata.get(task_id, {})
+        if task_meta.get("type") == self.TASK_TYPE_DESIGN:
+            return False
+
         task_lower = task_id.lower()
 
         # Skip deployment tasks for local development
