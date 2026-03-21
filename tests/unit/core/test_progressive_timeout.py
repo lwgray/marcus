@@ -24,6 +24,9 @@ def mock_kanban_client():
     client = AsyncMock()
     client.get_task = AsyncMock()
     client.update_task_status = AsyncMock()
+    # Default: get_task_by_id returns None (task not found on board)
+    # Tests that need board activity checking override this explicitly
+    client.get_task_by_id = AsyncMock(return_value=None)
     return client
 
 
@@ -262,14 +265,14 @@ class TestAggressiveVsConservativeTimeouts:
         # Check lease duration
         duration = (lease.lease_expires - lease.assigned_at).total_seconds()
 
-        # Should be 90 seconds (aggressive)
-        assert 85 <= duration <= 95  # Allow small variance
+        # Phase 1 (unproven agent) = 60s, clamped to min_lease_hours (60s)
+        assert 55 <= duration <= 65  # Allow small variance
 
-        # Total recovery time with grace
+        # Total recovery time with grace (60s lease + 30s grace = 90s)
         total_recovery = duration + (lease_manager_aggressive.grace_period_minutes * 60)
 
-        # Should be ~120 seconds (2 minutes) total
-        assert 115 <= total_recovery <= 125
+        # Should be ~90 seconds total for unproven agents
+        assert 85 <= total_recovery <= 95
 
     def test_progressive_timeout_phases(self, lease_manager_aggressive):
         """Test all four phases of progressive timeout."""

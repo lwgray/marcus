@@ -113,9 +113,9 @@ class Planka(KanbanInterface):
     async def get_task_by_id(self, task_id: str) -> Optional[Task]:
         """Get specific task by ID."""
         try:
-            # KanbanClient doesn't have get_task_details
-            # We need to get all tasks and find the one with matching ID
-            tasks = await self.client.get_available_tasks()
+            # Use get_all_tasks to find tasks in any status
+            # (get_available_tasks only returns TODO/unassigned)
+            tasks = await self.client.get_all_tasks()
             for task in tasks:
                 if task.id == task_id:
                     return task

@@ -50,6 +50,7 @@ class AssignmentLease:
     estimated_hours: float = 4.0  # From task estimation
     progress_percentage: int = 0
     last_progress_message: str = ""
+    grace_period_seconds: Optional[float] = None  # Per-lease adaptive grace
 
     @property
     def time_remaining(self) -> timedelta:
@@ -399,9 +400,11 @@ class AssignmentLeaseManager:
                     has_recent_activity=True,  # Just reported progress
                 )
                 renewal_duration = timedelta(seconds=lease_seconds)
+                lease.grace_period_seconds = float(grace_seconds)
 
                 logger.info(
                     f"Progressive timeout for {task_id}: {lease_seconds}s "
+                    f"+ {grace_seconds}s grace "
                     f"(progress={progress}%, updates={lease.renewal_count + 1})"
                 )
             else:
@@ -453,11 +456,16 @@ class AssignmentLeaseManager:
         """
         expired_leases = []
         now = datetime.now(timezone.utc)
-        grace_delta = timedelta(minutes=self.grace_period_minutes)
+        default_grace_delta = timedelta(minutes=self.grace_period_minutes)
 
         async with self.lease_lock:
             for task_id, lease in list(self.active_leases.items()):
                 if lease.is_expired:
+                    # Use per-lease adaptive grace if set, else global default
+                    if lease.grace_period_seconds is not None:
+                        grace_delta = timedelta(seconds=lease.grace_period_seconds)
+                    else:
+                        grace_delta = default_grace_delta
                     # Check if grace period has also expired
                     grace_deadline = lease.lease_expires + grace_delta
                     if now > grace_deadline:
@@ -797,17 +805,16 @@ class AssignmentLeaseManager:
         - Renewal count (>2 renewals → recover)
         - Board activity (recent updates → extend grace)
         """
-        # Check 1: Has task made significant progress (>50%)?
-        if lease.progress_percentage > 50:
-            # Task has significant progress - likely still working
-            # Defer to board activity check (Check 3) for final decision
+        # Check 1: Has progress but few renewals? Give grace
+        if lease.progress_percentage > 0 and lease.renewal_count < 3:
             logger.info(
                 f"Task {lease.task_id} has {lease.progress_percentage}% "
-                f"progress, checking board activity before recovery"
+                f"progress with only {lease.renewal_count} renewal(s), "
+                f"extending grace"
             )
-            # Don't return False here - continue to Check 3
+            return False
 
-        # Check 1b: Low progress with many renewals?
+        # Check 1b: Low progress with many renewals - stuck
         elif lease.progress_percentage > 0 and lease.renewal_count >= 3:
             # Task is stuck with low progress - recover
             logger.info(
