@@ -195,7 +195,7 @@ These features come from academic research documented in GitHub issues:
 
 ## How to Contribute to the Roadmap
 
-- Join the [Discord](https://discord.gg/marcus) to discuss priorities
+- Join the [Discord](https://discord.com/channels/1409498120739487859/1409498121456848907) to discuss priorities
 - Open an [issue](https://github.com/lwgray/marcus/issues) with the
   `enhancement` label
 - See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines

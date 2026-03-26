@@ -5,15 +5,15 @@
 </p>
 
 <p align="center">
-  <a href="#-get-started"><img src="https://img.shields.io/badge/Get_Started-5_min-blue?style=for-the-badge" alt="Get Started"></a>
-  <a href="#-see-it-work"><img src="https://img.shields.io/badge/See_It_Work-Demo-green?style=for-the-badge" alt="See It Work"></a>
-  <a href="#-how-it-compares"><img src="https://img.shields.io/badge/Compare-Frameworks-purple?style=for-the-badge" alt="Compare"></a>
+  <a href="#get-started"><img src="https://img.shields.io/badge/Get_Started-5_min-blue?style=for-the-badge" alt="Get Started"></a>
+  <a href="#see-it-work"><img src="https://img.shields.io/badge/See_It_Work-Demo-green?style=for-the-badge" alt="See It Work"></a>
+  <a href="#how-it-compares"><img src="https://img.shields.io/badge/Compare-Frameworks-purple?style=for-the-badge" alt="Compare"></a>
   <a href="ROADMAP.md"><img src="https://img.shields.io/badge/Roadmap-View-orange?style=for-the-badge" alt="Roadmap"></a>
 </p>
 
 <p align="center">
   <a href="https://github.com/lwgray/marcus"><img src="https://img.shields.io/github/stars/lwgray/marcus?style=social" alt="GitHub Stars"></a>
-  <a href="https://discord.gg/marcus"><img src="https://img.shields.io/discord/1409498120739487859?color=7289da&label=Discord&logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://discord.com/channels/1409498120739487859/1409498121456848907"><img src="https://img.shields.io/discord/1409498120739487859?color=7289da&label=Discord&logo=discord&logoColor=white" alt="Discord"></a>
   <img src="https://img.shields.io/badge/python-3.11+-blue?logo=python&logoColor=white" alt="Python 3.11+">
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
   <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-Compatible-green" alt="MCP Compatible"></a>
@@ -316,7 +316,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and [Local Development Setup](docs/source
 
 ### Community
 
-- [Discord](https://discord.gg/marcus) — real-time help and discussions
+- [Discord](https://discord.com/channels/1409498120739487859/1409498121456848907) — real-time help and discussions
 - [GitHub Discussions](https://github.com/lwgray/marcus/discussions) — ideas and questions
 - [GitHub Issues](https://github.com/lwgray/marcus/issues) — bugs and feature requests
 
