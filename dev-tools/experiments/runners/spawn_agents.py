@@ -84,6 +84,18 @@ def confirm_trust_if_prompted(
             time.sleep(0.5)
             return True
 
+        # Early exit: trust/permission prompts appear immediately on
+        # startup and dominate the pane. If the pane has substantial
+        # content without any trust-related keywords, Claude has
+        # started normally and no prompt is coming.
+        if (
+            len(text) > 200
+            and "trust" not in text
+            and "permission" not in text
+            and "approval" not in text
+        ):
+            return False
+
         time.sleep(poll_interval)
 
     return False
