@@ -59,14 +59,27 @@ http://localhost:3333/boards/1234567890
 
 Without these lists, task creation will fail. Marcus needs at least one list to add tasks to.
 
-### 5. Install and Start Marcus
+### 5. Install and Configure Marcus
 
 ```bash
 pip install -e .
+
+# Copy the config template and edit with your settings
+cp config_marcus.example.json config_marcus.json
+# Edit config_marcus.json with your API key and preferences
+
+# Copy environment template
+cp .env.example .env
+# Edit .env with your credentials
+```
+
+### 6. Start Marcus
+
+```bash
 ./marcus start
 ```
 
-### 6. Connect Your AI Agent
+### 7. Connect Your AI Agent
 
 ```bash
 # For Claude Code:

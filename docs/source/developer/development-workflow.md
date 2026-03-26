@@ -97,8 +97,8 @@ pre-commit run --all-files
 ### View Logs
 
 ```bash
-# Marcus logs
-tail -f logs/marcus.log
+# Marcus logs (timestamped files)
+tail -f logs/marcus_*.log
 
 # Planka/Postgres logs
 docker compose logs -f planka
