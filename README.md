@@ -194,13 +194,79 @@ configuration (e.g., as a CLAUDE.md file for Claude Code).
 
 ### Step 7: Your First Project
 
-Tell your agent:
+There are two ways to use Marcus — pick the one that fits your workflow:
+
+#### Option A: `/marcus` Skill (Recommended for multi-agent tmux experiments)
+
+Marcus ships with a reusable Claude Code skill in [`skills/marcus/`](skills/marcus/).
+
+Install the skill into `~/.claude/skills/marcus`:
+
+```bash
+cp -r skills/marcus ~/.claude/skills/marcus
+```
+
+> **Note:** Run Claude Code from the same environment where you installed Marcus
+> (`pip install -e .`), so the `/marcus` skill can discover the repo path.
+
+Then prompt:
+
+```
+/marcus Build a todo app with authentication using 3 agents
+```
+
+The skill generates the experiment config, spawns independent Claude agents in
+tmux panes, and wires up a project creator + workers + monitor — all autonomous.
+
+#### Option B: MCP Direct (Fine control)
+
+1. Open Claude with `--dangerously-skip-permissions`
+2. Tell Claude to create a project with Marcus at your chosen complexity
+3. Tell Claude to register an agent with specific skills, name, and role — then follow the Marcus agent workflow
+4. Open another Claude terminal and register another agent
+5. Repeat for as many agents as you want
 
 ```
 "Create a project for a todo app with Marcus and start working"
 ```
 
-*Walk away. Come back to working software.*
+#### Comparing the Two
+
+```
+┌─────────────────────────────┬────────────────────────────────────┐
+│     /marcus skill           │         MCP Direct                 │
+│     (automated)             │         (fine control)             │
+├─────────────────────────────┼────────────────────────────────────┤
+│                             │                                    │
+│  1. Generates config        │  1. Open Claude with               │
+│  2. Writes your spec        │     --dangerously-skip-permissions │
+│  3. Spawns agents in tmux   │  2. Tell Claude to create a       │
+│  4. Agents build your       │     project with Marcus at your   │
+│     project autonomously    │     chosen complexity              │
+│                             │  3. Tell Claude to register an    │
+│  That's it. Walk away.      │     agent with specific skills,   │
+│                             │     name, and role — then follow  │
+│                             │     the Marcus agent workflow     │
+│                             │  4. Open another Claude terminal  │
+│                             │     and register another agent    │
+│                             │  5. Repeat for as many agents     │
+│                             │     as you want                   │
+│                             │                                    │
+├─────────────────────────────┼────────────────────────────────────┤
+│ One command, fully          │ You control each agent, choosing  │
+│ autonomous agents           │ skills, roles, and when to add    │
+│ in tmux panes               │ more from any terminal            │
+├─────────────────────────────┼────────────────────────────────────┤
+│ Hands-off                   │ Full control over every step      │
+│ MLflow automatic            │ Add agents anytime                │
+│ Multi-agent parallel        │ Customize each agent individually │
+└─────────────────────────────┴────────────────────────────────────┘
+```
+
+The agent calls Marcus MCP tools directly from your conversation — simpler,
+but limited to one agent and no tmux visibility.
+
+*Either way: walk away, come back to working software.*
 
 ---
 
