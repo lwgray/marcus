@@ -16,6 +16,91 @@ from typing import Any, Dict, List
 import yaml
 
 
+def confirm_trust_if_prompted(
+    pane_target: str,
+    timeout: float = 5.0,
+    poll_interval: float = 0.2,
+) -> bool:
+    """Poll a tmux pane and auto-confirm Claude trust/permission dialogs.
+
+    Claude Code can pause on a directory trust prompt or a
+    --dangerously-skip-permissions confirmation dialog when launched in a
+    fresh directory. This detects those screens and sends the appropriate
+    keystrokes to proceed.
+
+    Parameters
+    ----------
+    pane_target : str
+        Tmux pane target (e.g. ``session:window.pane`` or a pane ID).
+    timeout : float
+        Maximum seconds to poll before giving up.
+    poll_interval : float
+        Seconds between polls.
+
+    Returns
+    -------
+    bool
+        True if a prompt was detected and confirmed.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        result = subprocess.run(
+            ["tmux", "capture-pane", "-p", "-t", pane_target],
+            capture_output=True,
+            text=True,
+        )
+        text = result.stdout.lower() if result.returncode == 0 else ""
+
+        # Trust prompt: "Do you trust this folder?"
+        if ("trust this folder" in text or "trust the contents" in text) and (
+            "enter to confirm" in text
+            or "press enter" in text
+            or "enter to continue" in text
+        ):
+            subprocess.run(
+                ["tmux", "send-keys", "-t", pane_target, "Enter"],
+                capture_output=True,
+            )
+            time.sleep(0.5)
+            return True
+
+        # --dangerously-skip-permissions confirmation dialog
+        if "yes, i accept" in text and (
+            "dangerously-skip-permissions" in text
+            or "skip permissions" in text
+            or "permission" in text
+            or "approval" in text
+        ):
+            # Move selection to "Yes, I accept" then confirm
+            subprocess.run(
+                ["tmux", "send-keys", "-t", pane_target, "-l", "\x1b[B"],
+                capture_output=True,
+            )
+            time.sleep(0.2)
+            subprocess.run(
+                ["tmux", "send-keys", "-t", pane_target, "Enter"],
+                capture_output=True,
+            )
+            time.sleep(0.5)
+            return True
+
+        # Early exit: trust/permission prompts appear immediately on
+        # startup and dominate the pane. If the pane has substantial
+        # content without any trust-related keywords, Claude has
+        # started normally and no prompt is coming.
+        if (
+            len(text) > 200
+            and "trust" not in text
+            and "permission" not in text
+            and "approval" not in text
+        ):
+            return False
+
+        time.sleep(poll_interval)
+
+    return False
+
+
 class ExperimentConfig:
     """Configuration for a Marcus experiment."""
 
@@ -455,7 +540,9 @@ CRITICAL INSTRUCTIONS:
             check=True,
         )
 
-        time.sleep(0.1)  # Brief delay before next operation
+        # Auto-confirm any trust or permission prompts from Claude
+        time.sleep(1)  # Let Claude start up before polling
+        confirm_trust_if_prompted(target)
 
     def copy_agent_workflow_to_implementation(self) -> None:
         """
@@ -509,7 +596,8 @@ echo ""
 echo "Creating Marcus project: {self.config.project_name}"
 echo ""
 # Launch Claude from the implementation directory (cwd matters!)
-claude --dangerously-skip-permissions --print < {prompt_file}
+claude --add-dir {self.config.implementation_dir} \
+  --dangerously-skip-permissions --print < {prompt_file}
 echo ""
 echo "=========================================="
 echo "Project Creator Complete"
@@ -572,7 +660,8 @@ done
 echo "✓ Project found, starting agent..."
 echo ""
 # Launch Claude from the implementation directory (cwd matters!)
-claude --dangerously-skip-permissions < {prompt_file}
+claude --add-dir {self.config.implementation_dir} \
+  --dangerously-skip-permissions < {prompt_file}
 echo ""
 echo "=========================================="
 echo "{agent_name} - Work Complete"
@@ -621,7 +710,8 @@ done
 echo "✓ Project found, starting monitor..."
 echo ""
 # Launch Claude from the implementation directory (cwd matters!)
-claude --dangerously-skip-permissions < {prompt_file}
+claude --add-dir {self.config.implementation_dir} \
+  --dangerously-skip-permissions < {prompt_file}
 echo ""
 echo "=========================================="
 echo "Experiment Monitor - Complete"
