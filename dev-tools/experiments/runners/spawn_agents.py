@@ -596,7 +596,8 @@ echo ""
 echo "Creating Marcus project: {self.config.project_name}"
 echo ""
 # Launch Claude from the implementation directory (cwd matters!)
-claude --dangerously-skip-permissions --print < {prompt_file}
+claude --add-dir {self.config.implementation_dir} \
+  --dangerously-skip-permissions --print < {prompt_file}
 echo ""
 echo "=========================================="
 echo "Project Creator Complete"
@@ -659,7 +660,8 @@ done
 echo "✓ Project found, starting agent..."
 echo ""
 # Launch Claude from the implementation directory (cwd matters!)
-claude --dangerously-skip-permissions < {prompt_file}
+claude --add-dir {self.config.implementation_dir} \
+  --dangerously-skip-permissions < {prompt_file}
 echo ""
 echo "=========================================="
 echo "{agent_name} - Work Complete"
@@ -708,7 +710,8 @@ done
 echo "✓ Project found, starting monitor..."
 echo ""
 # Launch Claude from the implementation directory (cwd matters!)
-claude --dangerously-skip-permissions < {prompt_file}
+claude --add-dir {self.config.implementation_dir} \
+  --dangerously-skip-permissions < {prompt_file}
 echo ""
 echo "=========================================="
 echo "Experiment Monitor - Complete"
