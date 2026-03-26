@@ -1,318 +1,353 @@
-# 🏛️ Marcus - AI Agent Coordination Platform
+<h1 align="center">Marcus</h1>
 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Discord](https://img.shields.io/discord/1409498120739487859?color=7289da&label=Discord&logo=discord&logoColor=white)](https://discord.gg/marcus)
-[![GitHub Stars](https://img.shields.io/github/stars/lwgray/marcus?style=social)](https://github.com/lwgray/marcus)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Docker](https://img.shields.io/badge/Docker-Ready-blue?logo=docker)](https://hub.docker.com/r/marcus/marcus)
-[![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-green)](https://modelcontextprotocol.io/)
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/lwgray/marcus?quickstart=1)
+<p align="center">
+  <strong>Agents should coordinate through shared state, not conversation.</strong>
+</p>
 
-## What is Marcus?
-Marcus is a **domain-agnostic AI agent coordination platform**. While it excels at turning your ideas into working software, Marcus can coordinate AI agents for **any multi-step project** - from software development to content creation, research, marketing, and beyond.
+<p align="center">
+  <a href="#-get-started"><img src="https://img.shields.io/badge/Get_Started-5_min-blue?style=for-the-badge" alt="Get Started"></a>
+  <a href="#-see-it-work"><img src="https://img.shields.io/badge/See_It_Work-Demo-green?style=for-the-badge" alt="See It Work"></a>
+  <a href="#-how-it-compares"><img src="https://img.shields.io/badge/Compare-Frameworks-purple?style=for-the-badge" alt="Compare"></a>
+  <a href="ROADMAP.md"><img src="https://img.shields.io/badge/Roadmap-View-orange?style=for-the-badge" alt="Roadmap"></a>
+</p>
 
-Tell Marcus what you want to create in plain English, and it breaks down the work into tasks that multiple AI agents execute autonomously with proper context and coordination.
-
-### Why I Built This
-I was stuck between micromanaging every agent decision or letting agents run wild. I wanted to step away and trust that agents had enough context to build what I wanted. Marcus solves this by being the project manager - you describe once, agents build with proper context and boundaries.
-
-### How It Works
-**Example 1: Software Development**
-1. **You say:** "Build a todo app with authentication"
-2. **Marcus:** Creates tasks on a project board with dependencies
-3. **Agents:** Pull tasks, get context from previous work, build autonomously
-4. **You:** Watch progress, intervene only when needed
-
-**Example 2: Content Creation**
-1. **You say:** "Create a 10-minute podcast about chess opening history"
-2. **Marcus:** Breaks down into research, outline, script writing, fact-checking, audio production
-3. **Agents:** Research specialist → Content strategist → Script writer → Fact checker (in sequence)
-4. **You:** Receive completed podcast script with verified sources
-
-Each task is locked to one agent until complete, preventing conflicts. Agents share context through the board, seeing what others built without direct communication.
-
-### Domain Agnostic Design
-Marcus accepts **any artifact type** (code, research, scripts, designs, marketing copy, etc.), making it suitable for:
-- 🖥️ **Software Development** - APIs, frontends, databases
-- 🎙️ **Content Creation** - Podcasts, videos, articles
-- 🔬 **Research** - Literature reviews, data analysis, reports
-- 📊 **Marketing** - Campaigns, copy, social media
-- 📚 **Education** - Course content, lesson plans, assessments
-- ...and any other domain requiring multi-agent coordination
+<p align="center">
+  <a href="https://github.com/lwgray/marcus"><img src="https://img.shields.io/github/stars/lwgray/marcus?style=social" alt="GitHub Stars"></a>
+  <a href="https://discord.gg/marcus"><img src="https://img.shields.io/discord/1409498120739487859?color=7289da&label=Discord&logo=discord&logoColor=white" alt="Discord"></a>
+  <img src="https://img.shields.io/badge/python-3.11+-blue?logo=python&logoColor=white" alt="Python 3.11+">
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-Compatible-green" alt="MCP Compatible"></a>
+</p>
 
 ---
 
-## 🚀 **Quick Start**
+## News
 
-### **Choose Your Setup**
+| Date | Update |
+|------|--------|
+| **2026-03-21** | v0.2.1 — lease recovery, progressive timeouts, structured agent handoffs |
+| **2026-03-16** | v0.2.0 — AI-powered validation, centralized config, 115 commits since v0.1.3.1 |
+| **2025-10-20** | v0.1.3.1 — sweep-line parallelism algorithm, tmux multi-agent support |
+| **2025-10-18** | v0.1.3 — subtask assignment fix, optimized project creation |
+| **2025-10-16** | v0.1.2 — CPM scheduling, dependency graphs, parallelization improvements |
+| **2025-10-13** | v0.1.1 — initial release as "PM Agent", MCP protocol, Planka integration |
+| **2025-06-15** | Project started — first commit as PM Agent |
 
-**Option 1: GitHub Codespaces** ☁️ (Recommended for trying Marcus)
-- ✅ No local installation required
-- ✅ Everything runs in the cloud
-- ✅ Ready in 5 minutes
+---
 
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/lwgray/marcus?quickstart=1)
+## The Problem Nobody Talks About
 
-📖 **[Follow the Codespaces Guide](CODESPACES_QUICKSTART.md)** for step-by-step instructions.
+Multi-agent AI is broken at scale.
 
-**Option 2: Local Docker** 🐳 (Recommended for regular use)
-- ✅ Full control over your environment
-- ✅ Works offline after initial setup
-- ✅ Better performance
+Every framework today coordinates agents through **conversation** — group chats,
+message passing, chain-of-thought relays. This works with 2-3 agents. At scale,
+it collapses:
 
-**Option 3: Local Development** 💻 (For developers and contributors)
-- ✅ Direct access to source code
-- ✅ Fastest development iteration
-- ✅ Full debugging capabilities
+- **Context degrades.** Each agent gets a growing wall of chat history. Signal drowns in noise.
+- **Work duplicates.** Without shared state, agents don't know what others have done.
+- **Failures cascade.** One agent crashes and the conversation context is gone. No recovery.
+- **Adding agents adds chaos.** More agents = more messages = slower, less reliable coordination.
 
-📖 **[Follow the Local Development Guide](LOCAL_DEVELOPMENT.md)** for complete setup instructions.
+The fundamental mistake: treating coordination as a conversation problem.
+It's a **state management** problem.
 
-### **Prerequisites**
-- Docker
-- Claude Code or another MCP-compatible AI agent
-- AI model: Choose one option:
-  - **Free:** Local model with Ollama (zero cost, recommended for contributors)
+---
+
+## A Different Approach: Board-Mediated Coordination
+
+Marcus introduces a named pattern: **board-mediated coordination**.
+
+Agents never talk to each other. They talk to the board.
+
+```
+You: "Build a todo app with authentication"
+         |
+         v
+   +-----------+
+   |   Marcus   |  Breaks work into tasks on a shared board
+   +-----------+
+         |
+   +-----+-----+-----+
+   |     |     |     |
+ Agent  Agent Agent Agent   Each pulls tasks independently
+   |     |     |     |
+   +-----+-----+-----+
+         |
+   +-----------+
+   |   Board    |  Shared state: tasks, context, artifacts, decisions
+   +-----------+
+```
+
+**The board is memory, coordinator, and audit trail.**
+
+Each task carries its own context — requirements, dependencies, artifacts from
+prior tasks. When an agent picks up a task, it gets exactly the context it needs.
+No chat history. No lost threads. No duplicate work.
+
+When an agent fails, the task stays on the board with its progress. Another agent
+picks it up and continues. The board is the system of record.
+
+> *The board is the system.*
+
+---
+
+## See It Work
+
+**You describe once. Agents build with context.**
+
+```
+You: "Create a project for a todo app with Marcus and start working"
+```
+
+What happens:
+
+1. Agent registers with Marcus
+2. Marcus breaks your description into tasks with dependencies
+3. Tasks appear on the Planka board: Backlog -> In Progress -> Done
+4. Agent pulls the first available task, gets full context
+5. Agent builds, reports progress (25%, 50%, 75%, 100%)
+6. Artifacts from completed tasks flow as context to dependent tasks
+7. Next agent picks up the next task — with context from what was already built
+8. Repeat until done
+
+**You walk away. You come back to working software.**
+
+Track everything in real-time with [Cato](https://github.com/lwgray/cato),
+the companion visualization dashboard.
+
+<!-- TODO: Add screenshot/gif of Cato showing agents working -->
+
+---
+
+## Get Started
+
+**Prerequisites:**
+- Docker (for Planka + Postgres infrastructure)
+- Python 3.11+
+- An AI agent (Claude Code, Cursor, or any MCP-compatible agent)
+- An LLM provider:
+  - **Free:** Local model with [Ollama](https://ollama.ai) (zero cost)
   - **Paid:** Anthropic or OpenAI API key
 
-### **1. Run Marcus with Docker**
+### Step 1: Clone and Install
 
-📖 **See the complete guide:** [DOCKER_QUICKSTART.md](DOCKER_QUICKSTART.md)
-
-**Quick Start (Simplest):**
 ```bash
-# Clone repository
 git clone https://github.com/lwgray/marcus.git
 cd marcus
-
-# Set your API key
-echo "ANTHROPIC_API_KEY=your_key_here" > .env
-
-# Start everything (Planka + Marcus)
-docker-compose up
-
-# OR start with Cato visualization dashboard
-docker-compose --profile viz up
+pip install -e .
 ```
 
-**Access the services:**
-- 🎯 **Planka Board:** http://localhost:3333 (demo@demo.demo / demo)
-- 🤖 **Marcus MCP Server:** http://localhost:4298
-- 📊 **Cato Dashboard:** http://localhost:5173 (with `--profile viz`)
-- 📖 **Cato API Docs:** http://localhost:4301/docs (with `--profile viz`)
+### Step 2: Start Infrastructure
 
-**Advanced Configuration:**
 ```bash
-# Use a specific config file
-MARCUS_CONFIG=config_marcus.json.anthropic docker-compose up
-
-# Or set in .env for persistence
-echo "MARCUS_CONFIG=config_marcus.json.anthropic" >> .env
-docker-compose up
+docker compose up -d
 ```
 
-For detailed setup instructions, troubleshooting, and customization options, see [DOCKER_QUICKSTART.md](DOCKER_QUICKSTART.md).
+This starts Planka (kanban board) and Postgres. Open http://localhost:3333
+to verify (login: `demo@demo.demo` / `demo`).
 
-### **2. Connect Your AI Agent**
+> **Why not Docker for Marcus?** Agents write to the local filesystem. Marcus
+> needs `project_root` to point to where agents write. Running Marcus in Docker
+> creates a path mismatch. Docker is only for infrastructure.
+
+### Step 3: Choose Your LLM Provider
+
+| Provider | Cost | Config Template | Setup |
+|----------|------|-----------------|-------|
+| Ollama | Free | `config_marcus.local.example.json` | Install Ollama + pull a model |
+| Anthropic | Paid | `config_marcus.example.json` | Add API key to `.env` |
+| OpenAI | Paid | `config_marcus.example.json` | Add API key, change provider |
+
+```bash
+# Copy the right config template
+cp config_marcus.example.json config_marcus.json
+
+# Copy environment template and add your API key
+cp .env.example .env
+# Edit .env with your credentials
+```
+
+### Step 4: Start Marcus
+
+```bash
+./marcus start
+```
+
+### Step 5: Start Cato Dashboard (Optional)
+
+```bash
+# In a sibling directory
+git clone https://github.com/lwgray/cato.git
+cd cato && pip install -e . && ./cato start
+# Open http://localhost:5173
+```
+
+### Step 6: Connect Your Agent
+
 ```bash
 # For Claude Code:
 claude mcp add --transport http marcus http://localhost:4298/mcp
-
-# Marcus provides MCP-compatible endpoints for any agent
 ```
 
-### **3. Configure Your Agent**
+Copy the [Agent System Prompt](prompts/Agent_prompt.md) to your agent's
+configuration (e.g., as a CLAUDE.md file for Claude Code).
 
-**Copy the [Agent System Prompt](https://raw.githubusercontent.com/lwgray/marcus/main/prompts/Agent_prompt.md) to your AI agent:**
+### Step 7: Your First Project
 
+Tell your agent:
 
-**For Claude Code users:**
-1. Copy the contents from [prompts/Agent_prompt.md](prompts/Agent_prompt.md)
-2. Add to your Claude Code configuration as a CLAUDE.md file
-
-**What this enables:**
-- ✅ Autonomous work loop (register → request → work → report → repeat)
-- ✅ Context sharing through artifacts and decisions
-- ✅ Smart dependency handling with `get_task_context`
-- ✅ Progress reporting at 25%, 50%, 75%, 100%
-- ✅ Architectural decision logging for other agents
-- ✅ Continuous task execution without waiting for user input
-
-**Want to understand or customize the workflow?** See the [Agent Workflow Guide](docs/source/guides/agent-workflows/agent-workflow.md) for detailed explanations of each component.
-
-### **4. Start Building**
-```bash
-# Tell your configured agent:
+```
 "Create a project for a todo app with Marcus and start working"
-
-# The agent will automatically:
-# 1. Register with Marcus
-# 2. Create Tasks onto the Planka board from your description
-# 3. Request and work on tasks continuously
-# 4. Report progress as it goes
-# 5. Keep working until all tasks are done
 ```
 
-### **✅ What You'll See**
-- Agent registers itself with Marcus ("Agent claude-1 registered")
-- Project created on GitHub with tasks
-- Agent continuously pulling tasks and working
-- Progress updates: "25% complete", "50% complete", etc.
-- Tasks moving through board columns: TODO → IN PROGRESS → DONE
-- Context flowing between tasks (API specs → implementation → tests)
+*Walk away. Come back to working software.*
 
-### **5. Add More Agents (Optional)**
-```bash
-# Want multiple agents working in parallel? Three options:
+---
 
-# Option A: Multiple windows (simplest)
-# Open a new terminal/Claude window, connect to Marcus, and start another agent
-# Both agents will pull different tasks from the same board
+## What You'll See
 
-# Option B: Claude subagents
-# If using Claude, launch subagents with the Task tool
-# Each subagent automatically registers and works independently
+- Tasks flowing through the board: **Backlog -> In Progress -> Done**
+- Agents pulling work independently, no conflicts
+- Context passing between tasks (API specs -> implementation -> tests)
+- Progress updates: 25%, 50%, 75%, 100%
+- Real-time visualization in Cato
+- Full audit trail of every decision and artifact
 
-# Option C: Git worktrees (prevents code conflicts)
-git worktree add ../project-agent2 -b agent2-branch
-# Each agent works in its own directory/branch
-# Merge when ready
+> *The moment it clicks: I didn't have to manage any of this.*
+
+---
+
+## How It Compares
+
+| | Group Chat Coordination | Board-Mediated Coordination |
+|---|---|---|
+| **Used by** | AutoGen, CrewAI, LangGraph | **Marcus** |
+| **Coordination** | Conversation between agents | Shared board state |
+| **Context at scale** | Degrades (growing chat history) | Preserved per-task |
+| **Agent failure** | Lost context, no recovery | Resume from board state |
+| **Visibility** | Chat logs | Full audit trail + Cato dashboard |
+| **Add more agents** | More chaos, more messages | More throughput |
+| **Enterprise ready** | Limited governance | Audit trails, accountability |
+
+Marcus doesn't compete on raw speed. It competes on **coordination quality,
+observability, and enterprise readiness**. When you need to know *what happened,
+who did it, and why* — the board gives you that for free.
+
+---
+
+## Architecture
+
+```
++-------------------+     +------------------+     +------------------+
+|   Your AI Agent   |     |   Your AI Agent  |     |   Your AI Agent  |
+| (Claude, Cursor)  |     |  (Claude Code)   |     |   (Any MCP)      |
++--------+----------+     +--------+---------+     +--------+---------+
+         |                         |                         |
+         +------------+------------+------------+------------+
+                      |         MCP Protocol         |
+                      v                              v
+              +-------+--------+
+              |     Marcus      |  Orchestrator: task creation,
+              |   (runs local)  |  assignment, context, validation
+              +-------+--------+
+                      |
+              +-------+--------+
+              |  Planka Board   |  Shared state: tasks, lists,
+              |  (Docker)       |  comments, attachments
+              +-------+--------+
+                      |
+              +-------+--------+
+              |   PostgreSQL    |  Persistence
+              |   (Docker)      |
+              +----------------+
 ```
 
----
+**Key design decisions:**
+- **Agents are stateless.** All state lives on the board.
+- **Tasks are the unit of coordination.** Each task has context, dependencies, and artifacts.
+- **MCP is the interface.** Any MCP-compatible agent works with Marcus.
+- **Observability is built in.** Every action is traceable through the board and Cato.
 
-## 🎯 **What Makes Marcus Different**
-
-### **Open Source & Accessible**
-Unlike proprietary AI coding tools, Marcus is completely open source. Anyone can use it, modify it, and contribute to make it better.
-
-### **Zero to Software, Fast**
-Marcus empowers anyone - even non-programmers - to build real software. Describe what you want in plain English, and watch it get built.
-
-### **True Autonomous Agents**
-- **Other tools:** You copy-paste between chats or manage each agent
-- **Marcus:** Agents work independently with shared context through the board
-- **Result:** You can actually step away while software gets built
-
-### **Community-Driven**
-Built by developers, for developers. We're focused on making software creation accessible to everyone, not maximizing profits.
+See [Architecture Docs](docs/source/architecture/) for deep dives.
 
 ---
 
-## 🚨 **Troubleshooting**
+## Milestones
 
-| Problem | Solution |
-|---------|----------|
-| **"Connection refused"** | Ensure Marcus Docker container is running on port 4298 |
-| **"No tasks available"** | Agent needs to create a project first with `create_project` |
-| **"Agent not registered"** | Agent must call `register_agent` before requesting tasks |
-| **"GitHub auth failed"** | Check GitHub token has project permissions |
-| **"Failed to create any tasks" (Planka)** | Board has no lists! Add lists: Backlog, In Progress, Blocked, Done |
-| **"find_target_list failed"** | Open Planka board and create at least one list/column |
+| Version | Date | Commits | Highlights |
+|---------|------|---------|------------|
+| **v0.2.1** | 2026-03-21 | 1 | Lease recovery with progressive timeouts, structured RecoveryInfo for agent handoffs, configurable LLM temperature |
+| **v0.2.0** | 2026-03-16 | 115 | AI-powered task validation, centralized config system, composition-aware PRD extraction, enterprise mode task decomposition, constraint propagation, soft/hard dependencies, post-project analysis (Phase 1+2), MLflow experiment tracking, intelligent task pattern selection, bundled domain design tasks |
+| **v0.1.3.1** | 2025-10-20 | 4 | Sweep-line algorithm for correct parallelism calculation, tmux multi-agent experiment support, phase enforcer cross-feature dependency fix |
+| **v0.1.3** | 2025-10-18 | 2 | Optimized project creation (eliminated duplicate dependency wiring), subtask assignment fix |
+| **v0.1.2** | 2025-10-16 | ~50 | CPM scheduling algorithm, unified dependency graphs, optimal agent count calculation, cross-parent dependency wiring, race condition fixes, MLflow trace integration |
+| **v0.1.1** | 2025-10-13 | ~80 | Initial release. Rebranded from PM Agent to Marcus. MCP protocol, Planka kanban integration, workspace isolation, hybrid intelligent coordination, NLP tools, AI-powered feature analysis, board quality validator |
+
+**Project started:** 2025-06-15 as "PM Agent" — rebranded to Marcus in October 2025.
+
+See [CHANGELOG.md](CHANGELOG.md) for full release notes and [ROADMAP.md](ROADMAP.md) for what's next.
 
 ---
 
-## 🤝 **Contributing**
+## Join the Movement
 
-> **📖 Developer guides:**
-> - [Local Development Setup](docs/source/developer/local-development.md) - First-time setup
-> - [Development Workflow](docs/source/developer/development-workflow.md) - Daily workflows
+Marcus isn't just a tool. It's a thesis: **board-mediated coordination is the
+right pattern for the agent era.**
 
-Marcus is open source and we need your help!
+We're building the coordination layer that lets agents work together at scale
+with governance, accountability, and full visibility. Open source. MIT licensed.
+Community-driven.
 
-### **Priority Areas**
-1. **Kanban Provider Integrations** - Add Jira, Trello, Linear support
-2. **Documentation** - Tutorials, use cases, examples
-3. **Use Case Definitions** - Show what Marcus can build
+### Priority Contributions
 
-### **Quick Start**
+1. **Kanban Provider Integrations** — Jira, Trello, Linear support
+2. **Documentation** — tutorials, use cases, examples
+3. **Use Case Definitions** — show what Marcus can build beyond software
+
 ```bash
 # Fork and clone
 git clone https://github.com/YOUR_USERNAME/marcus.git
 cd marcus
-
-# Install dev dependencies
 pip install -r requirements-dev.txt
-
-# Run tests
 pytest tests/
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [Local Development Setup](docs/source/developer/local-development.md) for detailed guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [Local Development Setup](docs/source/developer/local-development.md).
+
+### Community
+
+- [Discord](https://discord.gg/marcus) — real-time help and discussions
+- [GitHub Discussions](https://github.com/lwgray/marcus/discussions) — ideas and questions
+- [GitHub Issues](https://github.com/lwgray/marcus/issues) — bugs and feature requests
 
 ---
 
-## ⚙️ **Configuration**
+## For Researchers and Educators
 
-> **📖 Full reference:** [Configuration Guide](docs/CONFIGURATION.md)
+**Board-mediated coordination** is a named, citable pattern for multi-agent systems.
 
-Marcus supports multiple configuration methods:
+If you're teaching or researching multi-agent coordination:
+- The pattern is documented in [Architecture Docs](docs/source/architecture/)
+- Example projects demonstrate the pattern in action
+- Marcus is MIT licensed — use it in courses, papers, and experiments
 
-**Quick config via environment variables:**
-```bash
-MARCUS_KANBAN_PROVIDER=github \
-MARCUS_KANBAN_GITHUB_TOKEN=ghp_... \
-MARCUS_KANBAN_GITHUB_OWNER=your_username \
-MARCUS_KANBAN_GITHUB_REPO=your_repo \
-MARCUS_AI_ANTHROPIC_API_KEY=sk-ant-... \
-docker-compose up -d
-```
-
-**Or use a config file:**
-```bash
-# Use default config
-cp config_marcus.example.json config_marcus.json
-# Edit with your settings
-docker-compose up -d
-
-# Or select a specific config
-MARCUS_CONFIG=config_marcus.json.anthropic docker-compose up -d
-```
-
-See the [Configuration Reference](docs/source/developer/configuration.md) for all available options.
+Named after Marcus Aurelius. The Stoic philosophy runs deep: discipline,
+transparency, and letting the system — not any single agent — hold the truth.
 
 ---
 
-## 📚 **Documentation**
+## Going Deeper
 
-### **Getting Started**
-- **[Quick Start](docs/source/getting-started/quickstart.md)** - Get Marcus running in 5 minutes
-- **[Docker Quickstart](DOCKER_QUICKSTART.md)** - Complete Docker setup guide
-- **[Agent System Prompt](prompts/Agent_prompt.md)** - Configure your AI agent
-- **[Core Concepts](docs/source/getting-started/core-concepts.md)** - Understand Marcus fundamentals
-
-### **Development**
-- **[Local Development Setup](docs/source/developer/local-development.md)** - First-time setup and directory structure
-- **[Development Workflow](docs/source/developer/development-workflow.md)** - Daily development workflows (restart, rebuild, test)
-- **[Configuration Reference](docs/source/developer/configuration.md)** - All environment variables and config options
-
-### **Agent Workflows**
-- **[Agent Workflow Guide](docs/source/guides/agent-workflows/agent-workflow.md)** - How agents interact with Marcus
-- **[Registration](docs/source/guides/agent-workflows/registration.md)** - How agents register
-- **[Requesting Tasks](docs/source/guides/agent-workflows/requesting-tasks.md)** - Task assignment
-- **[Getting Context](docs/source/guides/agent-workflows/getting-context.md)** - Task dependencies
-- **[Reporting Progress](docs/source/guides/agent-workflows/reporting-progress.md)** - Progress tracking
-- **[Handling Blockers](docs/source/guides/agent-workflows/handling-blockers.md)** - Error recovery
-
-### **Full Documentation**
-- **[Complete Documentation](https://marcus.readthedocs.io/)** - Full Sphinx docs (when published)
-- **[Docker Hub Publishing](DOCKER_HUB_PUBLISHING.md)** - Publishing Marcus images
+- [Configuration Reference](docs/source/developer/configuration.md) — all options
+- [Agent Workflow Guide](docs/source/guides/agent-workflows/agent-workflow.md) — how agents interact
+- [Development Workflow](docs/source/developer/development-workflow.md) — daily dev workflows
+- [Local Development Setup](docs/source/developer/local-development.md) — first-time setup
+- [Roadmap](ROADMAP.md) — where we're headed
 
 ---
 
-## 🌟 **Community**
+## License
 
-- 💬 **Discord**: [Join our Discord](https://discord.gg/marcus) - Real-time help and discussions
-- 🗣️ **Discussions**: [GitHub Discussions](https://github.com/lwgray/marcus/discussions)
-- 🐛 **Issues**: [GitHub Issues](https://github.com/lwgray/marcus/issues)
-- 📖 **Docs**: [Full Documentation](docs/)
-- 🤝 **Contributing**: [Contribution Guide](CONTRIBUTING.md)
+MIT License — see [LICENSE](LICENSE) for details.
 
----
-
-## 📄 **License**
-
-MIT License - see [LICENSE](LICENSE) for details
-
----
-
-**⭐ Star us on GitHub if Marcus helps you build something awesome!**
+**Star us on GitHub if Marcus helps you build something awesome.**
