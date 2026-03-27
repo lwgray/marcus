@@ -1048,7 +1048,9 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 # Log phase timings (GH-228)
                 _mark("total")
                 task_count = len(state.project_tasks) if state.project_tasks else 0
-                # Convert cumulative marks to per-phase durations
+                # total_ms is the cumulative wall-clock time
+                total_ms = round(_perf_marks["total"], 2)
+                # Convert cumulative marks to per-phase deltas
                 _phases = list(_perf_marks.items())
                 _phase_durations: Dict[str, float] = {}
                 for i, (name, cumulative_ms) in enumerate(_phases):
@@ -1059,7 +1061,7 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                     f"agent={agent_id} "
                     f"task={optimal_task.name!r} "
                     f"task_count={task_count} "
-                    f"total_ms={_phase_durations.get('total', 0)} "
+                    f"total_ms={total_ms} "
                     f"phases={_phase_durations}"
                 )
 
