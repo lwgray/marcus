@@ -235,6 +235,7 @@ class TaskLeaseSettings:
     max_lease_hours: float = 24.0
     stuck_threshold_renewals: int = 5
     enable_adaptive: bool = True
+    silence_multiplier: float = 1.5
     priority_multipliers: dict[str, float] = field(
         default_factory=lambda: {
             "critical": 0.5,

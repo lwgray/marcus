@@ -640,6 +640,7 @@ class MarcusServer:
                     stuck_task_threshold_renewals=lease_config.stuck_threshold_renewals,
                     enable_adaptive_leases=lease_config.enable_adaptive,
                     task_list=self.project_tasks,
+                    silence_multiplier=lease_config.silence_multiplier,
                 )
             else:
                 # It's a dict from project config
@@ -660,6 +661,7 @@ class MarcusServer:
                     ),
                     enable_adaptive_leases=lease_config.get("enable_adaptive", True),
                     task_list=self.project_tasks,
+                    silence_multiplier=lease_config.get("silence_multiplier", 1.5),
                 )
             self.lease_monitor = LeaseMonitor(self.lease_manager)
             await self.lease_monitor.start()
