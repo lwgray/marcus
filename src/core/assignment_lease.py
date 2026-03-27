@@ -674,6 +674,9 @@ class AssignmentLeaseManager:
             assignment["renewal_count"] = lease.renewal_count
             assignment["progress_percentage"] = lease.progress_percentage
             assignment["last_progress_update"] = datetime.now(timezone.utc).isoformat()
+            assignment["update_timestamps"] = [
+                ts.isoformat() for ts in lease.update_timestamps
+            ]
             await self.assignment_persistence.save_assignment(
                 lease.agent_id,
                 lease.task_id,
@@ -705,6 +708,13 @@ class AssignmentLeaseManager:
                 )
             )
 
+            # Restore update timestamps for cadence-based recovery
+            raw_timestamps = assignment.get("update_timestamps", [])
+            update_timestamps = [
+                _ensure_timezone_aware(datetime.fromisoformat(ts))
+                for ts in raw_timestamps
+            ]
+
             lease = AssignmentLease(
                 task_id=task_id,
                 agent_id=agent_id,
@@ -713,6 +723,7 @@ class AssignmentLeaseManager:
                 last_renewed=last_renewed,
                 renewal_count=assignment.get("renewal_count", 0),
                 progress_percentage=assignment.get("progress_percentage", 0),
+                update_timestamps=update_timestamps,
             )
 
             self.active_leases[task_id] = lease

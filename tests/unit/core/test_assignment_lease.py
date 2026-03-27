@@ -550,6 +550,112 @@ class TestNaiveDatetimeBackwardsCompatibility:
         assert new_lease.time_remaining  # Computed successfully
 
 
+class TestUpdateTimestampPersistence:
+    """Test that update_timestamps survive persist/load cycle."""
+
+    @pytest.mark.asyncio
+    async def test_load_active_leases_restores_update_timestamps(self):
+        """Test that update_timestamps are restored from persistence."""
+        from src.core.assignment_persistence import AssignmentPersistence
+
+        now = datetime.now(timezone.utc)
+        timestamps = [
+            (now - timedelta(seconds=180)).isoformat(),
+            (now - timedelta(seconds=120)).isoformat(),
+            (now - timedelta(seconds=60)).isoformat(),
+        ]
+
+        mock_persistence = Mock(spec=AssignmentPersistence)
+        mock_persistence.load_assignments = AsyncMock(
+            return_value={
+                "agent-001": {
+                    "task_id": "task-123",
+                    "assigned_at": now.isoformat(),
+                    "lease_expires": (now + timedelta(minutes=2)).isoformat(),
+                    "lease_renewed_at": now.isoformat(),
+                    "renewal_count": 3,
+                    "progress_percentage": 50,
+                    "update_timestamps": timestamps,
+                }
+            }
+        )
+
+        lease_manager = AssignmentLeaseManager(
+            kanban_client=Mock(),
+            assignment_persistence=mock_persistence,
+        )
+        await lease_manager.load_active_leases()
+
+        lease = lease_manager.active_leases["task-123"]
+        assert len(lease.update_timestamps) == 3
+        assert all(ts.tzinfo is not None for ts in lease.update_timestamps)
+
+    @pytest.mark.asyncio
+    async def test_load_active_leases_handles_missing_timestamps(self):
+        """Test that missing update_timestamps defaults to empty list."""
+        from src.core.assignment_persistence import AssignmentPersistence
+
+        now = datetime.now(timezone.utc)
+        mock_persistence = Mock(spec=AssignmentPersistence)
+        mock_persistence.load_assignments = AsyncMock(
+            return_value={
+                "agent-001": {
+                    "task_id": "task-456",
+                    "assigned_at": now.isoformat(),
+                    "lease_expires": (now + timedelta(minutes=2)).isoformat(),
+                    "lease_renewed_at": now.isoformat(),
+                    "renewal_count": 0,
+                    "progress_percentage": 0,
+                }
+            }
+        )
+
+        lease_manager = AssignmentLeaseManager(
+            kanban_client=Mock(),
+            assignment_persistence=mock_persistence,
+        )
+        await lease_manager.load_active_leases()
+
+        lease = lease_manager.active_leases["task-456"]
+        assert lease.update_timestamps == []
+
+    @pytest.mark.asyncio
+    async def test_persist_lease_saves_update_timestamps(self):
+        """Test that _persist_lease includes update_timestamps."""
+        from src.core.assignment_persistence import AssignmentPersistence
+
+        now = datetime.now(timezone.utc)
+        mock_persistence = Mock(spec=AssignmentPersistence)
+        existing_assignment: dict[str, Any] = {
+            "task_id": "task-789",
+            "assigned_at": now.isoformat(),
+        }
+        mock_persistence.get_assignment = AsyncMock(return_value=existing_assignment)
+        mock_persistence.save_assignment = AsyncMock()
+
+        lease_manager = AssignmentLeaseManager(
+            kanban_client=Mock(),
+            assignment_persistence=mock_persistence,
+        )
+
+        lease = AssignmentLease(
+            task_id="task-789",
+            agent_id="agent-001",
+            assigned_at=now,
+            lease_expires=now + timedelta(minutes=2),
+            last_renewed=now,
+            update_timestamps=[
+                now - timedelta(seconds=60),
+                now,
+            ],
+        )
+
+        await lease_manager._persist_lease(lease)
+
+        assert "update_timestamps" in existing_assignment
+        assert len(existing_assignment["update_timestamps"]) == 2
+
+
 class TestRecoveryInfo:
     """Test suite for RecoveryInfo dataclass."""
 
