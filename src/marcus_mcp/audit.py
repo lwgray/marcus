@@ -140,14 +140,18 @@ class AuditLogger:
         client_type: Optional[str],
         tool_name: str,
         reason: str,
+        duration_ms: Optional[float] = None,
     ) -> None:
         """Log an access denied event."""
+        details: Dict[str, Any] = {"reason": reason}
+        if duration_ms is not None:
+            details["duration_ms"] = duration_ms
         await self.log_event(
             event_type="access_denied",
             client_id=client_id,
             client_type=client_type,
             tool_name=tool_name,
-            details={"reason": reason},
+            details=details,
             success=False,
         )
 

@@ -969,6 +969,7 @@ async def handle_tool_call(
     allowed_tools = get_client_tools(client_id, state)
     if name not in allowed_tools and "*" not in allowed_tools:
         # Audit access denied
+        duration_ms = (time.time() - start_time) * 1000
         await audit_logger.log_access_denied(
             client_id=client_id,
             client_type=client_type,
@@ -977,6 +978,7 @@ async def handle_tool_call(
                 f"Tool '{name}' not allowed for client type "
                 f"'{client_type or 'unregistered'}'"
             ),
+            duration_ms=duration_ms,
         )
 
         return [

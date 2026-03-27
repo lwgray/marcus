@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import threading
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -614,6 +615,13 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
     )
 
     try:
+        # Phase timing for performance monitoring (GH-228)
+        _perf_start = time.perf_counter()
+        _perf_marks: Dict[str, float] = {}
+
+        def _mark(name: str) -> None:
+            _perf_marks[name] = (time.perf_counter() - _perf_start) * 1000
+
         # Log the task request immediately
         state.log_event(
             "task_request",
@@ -631,6 +639,7 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
 
         # Get current project state
         await state.refresh_project_state()
+        _mark("state_refresh")
 
         # Log thinking about finding task
         agent = state.agent_status.get(agent_id)
@@ -678,6 +687,7 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
 
         # Find optimal task for this agent
         optimal_task = await find_optimal_task_for_agent(agent_id, state)
+        _mark("task_selection")
 
         if optimal_task:
             try:
@@ -776,6 +786,8 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                             f"{dep_count} future tasks depend on your work:\n{dep_list}"
                         )
 
+                _mark("context_building")
+
                 # Get predictions if Memory system is available
                 predictions = None
                 if hasattr(state, "memory") and state.memory:
@@ -822,6 +834,8 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                     # Record task start in memory
                     await state.memory.record_task_start(agent_id, optimal_task)
 
+                _mark("memory_predictions")
+
                 # Generate detailed instructions with AI
                 try:
                     base_instructions = (
@@ -849,6 +863,8 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 except Exception as e:
                     logger.error(f"Error generating task instructions: {e}")
                     raise
+
+                _mark("instruction_generation")
 
                 # Log decision process
                 conversation_logger.log_pm_decision(
@@ -885,6 +901,8 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                     optimal_task.id,
                     {"status": TaskStatus.IN_PROGRESS, "assigned_to": agent_id},
                 )
+
+                _mark("kanban_update")
 
                 # If kanban update succeeded, track assignment
                 state.agent_tasks[agent_id] = assignment
@@ -1026,6 +1044,24 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                             "has_dependencies": dependency_awareness is not None,
                         },
                     )
+
+                # Log phase timings (GH-228)
+                _mark("total")
+                task_count = len(state.project_tasks) if state.project_tasks else 0
+                # Convert cumulative marks to per-phase durations
+                _phases = list(_perf_marks.items())
+                _phase_durations: Dict[str, float] = {}
+                for i, (name, cumulative_ms) in enumerate(_phases):
+                    prev_ms = _phases[i - 1][1] if i > 0 else 0.0
+                    _phase_durations[name] = round(cumulative_ms - prev_ms, 2)
+                logger.info(
+                    "request_next_task timing: "
+                    f"agent={agent_id} "
+                    f"task={optimal_task.name!r} "
+                    f"task_count={task_count} "
+                    f"total_ms={_phase_durations.get('total', 0)} "
+                    f"phases={_phase_durations}"
+                )
 
                 return serialize_for_mcp(response)
 
