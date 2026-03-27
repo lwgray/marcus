@@ -116,126 +116,215 @@ class TestProgressiveTimeoutCalculation:
             assert lease_seconds + grace_seconds == 75  # Total: 1.25 min
 
 
-class TestSmartRecoveryChecks:
-    """Test smart recovery checks without heartbeat."""
+class TestCadenceBasedRecovery:
+    """Test cadence-based recovery using median update interval.
+
+    Recovery compares time since last update against the agent's own
+    median update cadence * silence_multiplier. Default multiplier is
+    1.5x — if an agent that normally updates every ~60s hasn't updated
+    in 90s, it's dead.
+
+    Real data from logs: mean=60s, median=47s, P95=137s.
+    """
 
     @pytest.mark.asyncio
-    async def test_should_recover_no_progress(self, lease_manager_aggressive):
-        """Test recovery when task has 0% progress."""
+    async def test_should_recover_no_updates(self, lease_manager_aggressive):
+        """Test recovery when agent never sent a progress update."""
         lease = AssignmentLease(
             task_id="task-1",
             agent_id="agent-1",
             assigned_at=datetime.now(timezone.utc) - timedelta(minutes=5),
-            lease_expires=datetime.now(timezone.utc) - timedelta(seconds=10),
-            last_renewed=datetime.now(timezone.utc) - timedelta(minutes=5),
-            progress_percentage=0,  # No progress
-            renewal_count=0,
-        )
-
-        should_recover = await lease_manager_aggressive.should_recover_expired_lease(
-            lease
-        )
-
-        # Should recover - no progress made
-        assert should_recover is True
-
-    @pytest.mark.asyncio
-    async def test_should_not_recover_with_progress_first_time(
-        self, lease_manager_aggressive
-    ):
-        """Test that task with progress gets grace extension on first expiry."""
-        lease = AssignmentLease(
-            task_id="task-1",
-            agent_id="agent-1",
-            assigned_at=datetime.now(timezone.utc) - timedelta(minutes=5),
-            lease_expires=datetime.now(timezone.utc) - timedelta(seconds=10),
-            last_renewed=datetime.now(timezone.utc) - timedelta(minutes=2),
-            progress_percentage=40,  # Has progress
-            renewal_count=1,
-        )
-
-        should_recover = await lease_manager_aggressive.should_recover_expired_lease(
-            lease
-        )
-
-        # Should NOT recover - has progress, first expiry
-        assert should_recover is False
-
-    @pytest.mark.asyncio
-    async def test_should_recover_with_progress_after_max_renewals(
-        self, lease_manager_aggressive
-    ):
-        """Test recovery when renewal count exceeds threshold."""
-        lease = AssignmentLease(
-            task_id="task-1",
-            agent_id="agent-1",
-            assigned_at=datetime.now(timezone.utc) - timedelta(minutes=10),
-            lease_expires=datetime.now(timezone.utc) - timedelta(seconds=10),
-            last_renewed=datetime.now(timezone.utc) - timedelta(minutes=3),
-            progress_percentage=40,
-            renewal_count=3,  # Too many renewals
-        )
-
-        should_recover = await lease_manager_aggressive.should_recover_expired_lease(
-            lease
-        )
-
-        # Should recover - too many renewals, likely stuck
-        assert should_recover is True
-
-    @pytest.mark.asyncio
-    async def test_should_not_recover_recent_board_activity(
-        self, lease_manager_aggressive, mock_kanban_client
-    ):
-        """Test that recent board activity prevents recovery."""
-        lease = AssignmentLease(
-            task_id="task-1",
-            agent_id="agent-1",
-            assigned_at=datetime.now(timezone.utc) - timedelta(minutes=5),
-            lease_expires=datetime.now(timezone.utc) - timedelta(seconds=10),
-            last_renewed=datetime.now(timezone.utc) - timedelta(minutes=2),
-            progress_percentage=0,  # No progress reported
-            renewal_count=0,
-        )
-
-        # Mock task with recent board update
-        mock_task = Mock()
-        mock_task.updated_at = datetime.now(timezone.utc) - timedelta(seconds=30)
-        mock_kanban_client.get_task_by_id.return_value = mock_task
-
-        should_recover = await lease_manager_aggressive.should_recover_expired_lease(
-            lease
-        )
-
-        # Should NOT recover - board shows recent activity
-        assert should_recover is False
-
-    @pytest.mark.asyncio
-    async def test_should_recover_old_board_activity(
-        self, lease_manager_aggressive, mock_kanban_client
-    ):
-        """Test recovery when board activity is old."""
-        lease = AssignmentLease(
-            task_id="task-1",
-            agent_id="agent-1",
-            assigned_at=datetime.now(timezone.utc) - timedelta(minutes=10),
             lease_expires=datetime.now(timezone.utc) - timedelta(seconds=10),
             last_renewed=datetime.now(timezone.utc) - timedelta(minutes=5),
             progress_percentage=0,
             renewal_count=0,
+            update_timestamps=[],
         )
-
-        # Mock task with old board update
-        mock_task = Mock()
-        mock_task.updated_at = datetime.now(timezone.utc) - timedelta(minutes=10)
-        mock_kanban_client.get_task_by_id.return_value = mock_task
 
         should_recover = await lease_manager_aggressive.should_recover_expired_lease(
             lease
         )
 
-        # Should recover - board activity is stale
+        # No updates → recover immediately
         assert should_recover is True
+
+    @pytest.mark.asyncio
+    async def test_should_recover_silent_past_cadence(self, lease_manager_aggressive):
+        """Test recovery when silence exceeds 1.5x median interval."""
+        now = datetime.now(timezone.utc)
+        # Agent updated every ~60s, last update 100s ago (>1.5*60=90s)
+        lease = AssignmentLease(
+            task_id="task-1",
+            agent_id="agent-1",
+            assigned_at=now - timedelta(minutes=10),
+            lease_expires=now - timedelta(seconds=10),
+            last_renewed=now - timedelta(seconds=100),
+            progress_percentage=40,
+            renewal_count=3,
+            update_timestamps=[
+                now - timedelta(seconds=280),
+                now - timedelta(seconds=220),
+                now - timedelta(seconds=160),
+                now - timedelta(seconds=100),
+            ],
+        )
+
+        should_recover = await lease_manager_aggressive.should_recover_expired_lease(
+            lease
+        )
+
+        # Median interval=60s, silence=100s > 1.5*60=90s → recover
+        assert should_recover is True
+
+    @pytest.mark.asyncio
+    async def test_should_not_recover_within_cadence(self, lease_manager_aggressive):
+        """Test no recovery when silence is within expected cadence."""
+        now = datetime.now(timezone.utc)
+        # Agent updates every ~60s, last update was 80s ago (<1.5*60=90s)
+        lease = AssignmentLease(
+            task_id="task-1",
+            agent_id="agent-1",
+            assigned_at=now - timedelta(minutes=5),
+            lease_expires=now - timedelta(seconds=5),
+            last_renewed=now - timedelta(seconds=80),
+            progress_percentage=50,
+            renewal_count=2,
+            update_timestamps=[
+                now - timedelta(seconds=200),
+                now - timedelta(seconds=140),
+                now - timedelta(seconds=80),
+            ],
+        )
+
+        should_recover = await lease_manager_aggressive.should_recover_expired_lease(
+            lease
+        )
+
+        # Median interval=60s, silence=80s < 1.5*60=90s → don't recover
+        assert should_recover is False
+
+    @pytest.mark.asyncio
+    async def test_should_recover_single_update_then_silence(
+        self, lease_manager_aggressive
+    ):
+        """Test recovery when agent sent one update then went silent."""
+        now = datetime.now(timezone.utc)
+        lease = AssignmentLease(
+            task_id="task-1",
+            agent_id="agent-1",
+            assigned_at=now - timedelta(minutes=5),
+            lease_expires=now - timedelta(seconds=10),
+            last_renewed=now - timedelta(seconds=200),
+            progress_percentage=25,
+            renewal_count=1,
+            update_timestamps=[
+                now - timedelta(seconds=200),
+            ],
+        )
+
+        should_recover = await lease_manager_aggressive.should_recover_expired_lease(
+            lease
+        )
+
+        # Only 1 update → can't compute median, fall back to default → recover
+        assert should_recover is True
+
+    @pytest.mark.asyncio
+    async def test_should_recover_slow_agent_gone_silent(
+        self, lease_manager_aggressive
+    ):
+        """Test recovery for slow-cadence agent that stops entirely."""
+        now = datetime.now(timezone.utc)
+        # Agent was slow (~120s between updates), last update 200s ago
+        lease = AssignmentLease(
+            task_id="task-1",
+            agent_id="agent-1",
+            assigned_at=now - timedelta(minutes=15),
+            lease_expires=now - timedelta(seconds=10),
+            last_renewed=now - timedelta(seconds=200),
+            progress_percentage=50,
+            renewal_count=3,
+            update_timestamps=[
+                now - timedelta(seconds=560),
+                now - timedelta(seconds=440),
+                now - timedelta(seconds=320),
+                now - timedelta(seconds=200),
+            ],
+        )
+
+        should_recover = await lease_manager_aggressive.should_recover_expired_lease(
+            lease
+        )
+
+        # Median interval=120s, silence=200s > 1.5*120=180s → recover
+        assert should_recover is True
+
+    @pytest.mark.asyncio
+    async def test_should_not_recover_slow_agent_within_cadence(
+        self, lease_manager_aggressive
+    ):
+        """Test that slow but consistent agents aren't falsely recovered."""
+        now = datetime.now(timezone.utc)
+        # Agent was slow (~120s between updates), last update 150s ago
+        lease = AssignmentLease(
+            task_id="task-1",
+            agent_id="agent-1",
+            assigned_at=now - timedelta(minutes=15),
+            lease_expires=now - timedelta(seconds=5),
+            last_renewed=now - timedelta(seconds=150),
+            progress_percentage=50,
+            renewal_count=3,
+            update_timestamps=[
+                now - timedelta(seconds=510),
+                now - timedelta(seconds=390),
+                now - timedelta(seconds=270),
+                now - timedelta(seconds=150),
+            ],
+        )
+
+        should_recover = await lease_manager_aggressive.should_recover_expired_lease(
+            lease
+        )
+
+        # Median interval=120s, silence=150s < 1.5*120=180s → don't recover
+        assert should_recover is False
+
+    @pytest.mark.asyncio
+    async def test_custom_silence_multiplier(
+        self, mock_kanban_client, mock_assignment_persistence
+    ):
+        """Test that silence_multiplier is configurable."""
+        manager = AssignmentLeaseManager(
+            kanban_client=mock_kanban_client,
+            assignment_persistence=mock_assignment_persistence,
+            default_lease_hours=0.025,
+            grace_period_minutes=0.5,
+            min_lease_hours=0.0167,
+            max_lease_hours=0.0333,
+            silence_multiplier=2.0,  # More lenient than default 1.5
+        )
+
+        now = datetime.now(timezone.utc)
+        # Agent updates every ~60s, last update 100s ago
+        lease = AssignmentLease(
+            task_id="task-1",
+            agent_id="agent-1",
+            assigned_at=now - timedelta(minutes=5),
+            lease_expires=now - timedelta(seconds=5),
+            last_renewed=now - timedelta(seconds=100),
+            progress_percentage=50,
+            renewal_count=2,
+            update_timestamps=[
+                now - timedelta(seconds=220),
+                now - timedelta(seconds=160),
+                now - timedelta(seconds=100),
+            ],
+        )
+
+        should_recover = await manager.should_recover_expired_lease(lease)
+
+        # Median=60s, silence=100s < 2.0*60=120s → don't recover (lenient)
+        assert should_recover is False
 
 
 class TestAggressiveVsConservativeTimeouts:
@@ -307,75 +396,94 @@ class TestAggressiveVsConservativeTimeouts:
         assert p2_lease + p2_grace < p3_lease + p3_grace
 
 
-class TestFalsePositiveReduction:
-    """Test strategies to reduce false positive recovery."""
+class TestMedianUpdateInterval:
+    """Test the median_update_interval property on AssignmentLease."""
 
-    @pytest.mark.asyncio
-    async def test_grace_extension_for_progressed_task(self, lease_manager_aggressive):
-        """Test that tasks with progress get grace extension."""
+    def test_no_timestamps_returns_none(self):
+        """Test that no timestamps yields None interval."""
         lease = AssignmentLease(
             task_id="task-1",
             agent_id="agent-1",
-            assigned_at=datetime.now(timezone.utc) - timedelta(minutes=3),
-            lease_expires=datetime.now(timezone.utc) - timedelta(seconds=5),
-            last_renewed=datetime.now(timezone.utc) - timedelta(minutes=1),
-            progress_percentage=60,  # Significant progress
-            renewal_count=1,
+            assigned_at=datetime.now(timezone.utc),
+            lease_expires=datetime.now(timezone.utc) + timedelta(minutes=2),
+            last_renewed=datetime.now(timezone.utc),
+            update_timestamps=[],
         )
 
-        should_recover = await lease_manager_aggressive.should_recover_expired_lease(
-            lease
-        )
+        assert lease.median_update_interval is None
 
-        # Should NOT recover - task has significant progress
-        assert should_recover is False
-
-    @pytest.mark.asyncio
-    async def test_no_grace_for_zero_progress(self, lease_manager_aggressive):
-        """Test that tasks with 0% progress don't get grace extension."""
+    def test_single_timestamp_returns_none(self):
+        """Test that a single timestamp yields None (need >= 2 for interval)."""
+        now = datetime.now(timezone.utc)
         lease = AssignmentLease(
             task_id="task-1",
             agent_id="agent-1",
-            assigned_at=datetime.now(timezone.utc) - timedelta(minutes=3),
-            lease_expires=datetime.now(timezone.utc) - timedelta(seconds=5),
-            last_renewed=datetime.now(timezone.utc) - timedelta(minutes=1),
-            progress_percentage=0,  # No progress
-            renewal_count=0,
+            assigned_at=now,
+            lease_expires=now + timedelta(minutes=2),
+            last_renewed=now,
+            update_timestamps=[now],
         )
 
-        should_recover = await lease_manager_aggressive.should_recover_expired_lease(
-            lease
-        )
+        assert lease.median_update_interval is None
 
-        # Should recover - no progress made
-        assert should_recover is True
-
-    @pytest.mark.asyncio
-    async def test_board_activity_check_protects_working_agent(
-        self, lease_manager_aggressive, mock_kanban_client
-    ):
-        """Test that board activity check prevents false positive."""
+    def test_two_timestamps_calculates_interval(self):
+        """Test interval calculation with two timestamps."""
+        now = datetime.now(timezone.utc)
         lease = AssignmentLease(
             task_id="task-1",
             agent_id="agent-1",
-            assigned_at=datetime.now(timezone.utc) - timedelta(minutes=3),
-            lease_expires=datetime.now(timezone.utc) - timedelta(seconds=5),
-            last_renewed=datetime.now(timezone.utc) - timedelta(minutes=2),
-            progress_percentage=30,
-            renewal_count=0,
+            assigned_at=now - timedelta(minutes=5),
+            lease_expires=now + timedelta(minutes=2),
+            last_renewed=now,
+            update_timestamps=[
+                now - timedelta(seconds=120),
+                now - timedelta(seconds=60),
+            ],
         )
 
-        # Agent updated board 45 seconds ago (recent)
-        mock_task = Mock()
-        mock_task.updated_at = datetime.now(timezone.utc) - timedelta(seconds=45)
-        mock_kanban_client.get_task_by_id.return_value = mock_task
+        assert lease.median_update_interval == 60.0
 
-        should_recover = await lease_manager_aggressive.should_recover_expired_lease(
-            lease
+    def test_odd_number_of_intervals_picks_middle(self):
+        """Test median with odd count of intervals."""
+        now = datetime.now(timezone.utc)
+        lease = AssignmentLease(
+            task_id="task-1",
+            agent_id="agent-1",
+            assigned_at=now - timedelta(minutes=10),
+            lease_expires=now + timedelta(minutes=2),
+            last_renewed=now,
+            update_timestamps=[
+                now - timedelta(seconds=240),
+                now - timedelta(seconds=200),  # 40s gap
+                now - timedelta(seconds=120),  # 80s gap
+                now - timedelta(seconds=60),  # 60s gap
+            ],
         )
 
-        # Should NOT recover - board shows agent is working
-        assert should_recover is False
+        # Intervals: [40, 80, 60] → sorted: [40, 60, 80] → median = 60
+        assert lease.median_update_interval == 60.0
+
+    def test_even_number_of_intervals_picks_lower_middle(self):
+        """Test median with even count of intervals."""
+        now = datetime.now(timezone.utc)
+        lease = AssignmentLease(
+            task_id="task-1",
+            agent_id="agent-1",
+            assigned_at=now - timedelta(minutes=10),
+            lease_expires=now + timedelta(minutes=2),
+            last_renewed=now,
+            update_timestamps=[
+                now - timedelta(seconds=300),
+                now - timedelta(seconds=260),  # 40s gap
+                now - timedelta(seconds=140),  # 120s gap
+                now - timedelta(seconds=80),  # 60s gap
+                now - timedelta(seconds=20),  # 60s gap
+            ],
+        )
+
+        # Intervals: [40, 120, 60, 60] → sorted: [40, 60, 60, 120]
+        # Even count → average of middle two: (60+60)/2 = 60
+        assert lease.median_update_interval == 60.0
 
 
 class TestDataDrivenDecisions:

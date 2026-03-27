@@ -14,8 +14,9 @@ Key features:
 
 import asyncio
 import logging
+import statistics
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Deque, Dict, List, Optional
@@ -51,6 +52,25 @@ class AssignmentLease:
     progress_percentage: int = 0
     last_progress_message: str = ""
     grace_period_seconds: Optional[float] = None  # Per-lease adaptive grace
+    update_timestamps: list[datetime] = field(default_factory=list)
+
+    @property
+    def median_update_interval(self) -> Optional[float]:
+        """Calculate median seconds between progress updates.
+
+        Returns
+        -------
+        Optional[float]
+            Median interval in seconds, or None if fewer than 2 timestamps.
+        """
+        if len(self.update_timestamps) < 2:
+            return None
+        sorted_ts = sorted(self.update_timestamps)
+        intervals = [
+            (sorted_ts[i] - sorted_ts[i - 1]).total_seconds()
+            for i in range(1, len(sorted_ts))
+        ]
+        return statistics.median(intervals)
 
     @property
     def time_remaining(self) -> timedelta:
@@ -170,6 +190,7 @@ class AssignmentLeaseManager:
         stuck_task_threshold_renewals: int = 5,
         enable_adaptive_leases: bool = True,
         task_list: Optional[List[Task]] = None,
+        silence_multiplier: float = 1.5,
     ):
         """
         Initialize the lease manager.
@@ -231,6 +252,7 @@ class AssignmentLeaseManager:
         self.max_lease_hours = max_lease_hours
         self.stuck_task_threshold_renewals = stuck_task_threshold_renewals
         self.enable_adaptive_leases = enable_adaptive_leases
+        self.silence_multiplier = silence_multiplier
 
         # Active leases tracked in memory
         self.active_leases: Dict[str, AssignmentLease] = {}
@@ -390,6 +412,9 @@ class AssignmentLeaseManager:
             # Update progress
             lease.progress_percentage = progress
             lease.last_progress_message = message
+
+            # Track update timestamp for cadence-based recovery
+            lease.update_timestamps.append(datetime.now(timezone.utc))
 
             # Use progressive timeout if in aggressive mode (< 1 hour default)
             if self.default_lease_hours < 1.0:
@@ -781,12 +806,12 @@ class AssignmentLeaseManager:
 
     async def should_recover_expired_lease(self, lease: AssignmentLease) -> bool:
         """
-        Determine if expired lease should be recovered (smart checks).
+        Determine if expired lease should be recovered using cadence detection.
 
-        Uses multiple signals to reduce false positive recovery:
-        1. Task progress percentage
-        2. Number of renewal cycles
-        3. Board activity timestamps
+        Compares time since last progress update against the agent's own
+        median update interval * silence_multiplier. If the agent has been
+        silent for longer than expected based on its established cadence,
+        it's considered dead and the task should be recovered.
 
         Parameters
         ----------
@@ -800,59 +825,48 @@ class AssignmentLeaseManager:
 
         Notes
         -----
-        This implements smart recovery without heartbeat by checking:
-        - Progress made (>0% gets grace extension)
-        - Renewal count (>2 renewals → recover)
-        - Board activity (recent updates → extend grace)
+        Real data from logs: median progress interval ~47s, mean ~60s.
+        Default silence_multiplier is 1.5x — configurable via constructor.
+
+        Fallback: if fewer than 2 progress updates exist (can't compute
+        median), always recover since the agent has no established cadence.
         """
-        # Check 1: Has progress but few renewals? Give grace
-        if lease.progress_percentage > 0 and lease.renewal_count < 3:
-            logger.info(
-                f"Task {lease.task_id} has {lease.progress_percentage}% "
-                f"progress with only {lease.renewal_count} renewal(s), "
-                f"extending grace"
-            )
-            return False
+        now = datetime.now(timezone.utc)
+        median_interval = lease.median_update_interval
 
-        # Check 1b: Low progress with many renewals - stuck
-        elif lease.progress_percentage > 0 and lease.renewal_count >= 3:
-            # Task is stuck with low progress - recover
+        # Not enough data to compute cadence — recover
+        if median_interval is None:
             logger.info(
-                f"Task {lease.task_id} has only {lease.progress_percentage}% "
-                f"progress after {lease.renewal_count} renewals, recovering"
+                f"Task {lease.task_id}: no established update cadence "
+                f"(updates={len(lease.update_timestamps)}), recovering"
             )
             return True
 
-        # Check 2: Too many renewals?
-        if lease.renewal_count >= 3:
-            # Task is stuck - recover
+        # Calculate silence duration from last update
+        if lease.update_timestamps:
+            last_update = max(lease.update_timestamps)
+            silence_seconds = (now - last_update).total_seconds()
+        else:
+            silence_seconds = (now - lease.assigned_at).total_seconds()
+
+        threshold = median_interval * self.silence_multiplier
+
+        if silence_seconds > threshold:
             logger.info(
-                f"Task {lease.task_id} has {lease.renewal_count} renewals, "
-                f"recovering"
+                f"Task {lease.task_id}: silence={silence_seconds:.0f}s > "
+                f"threshold={threshold:.0f}s "
+                f"(median={median_interval:.0f}s * "
+                f"{self.silence_multiplier}x), recovering"
             )
             return True
 
-        # Check 3: Check board for recent updates
-        try:
-            task = await self.kanban_client.get_task_by_id(lease.task_id)
-            if task and hasattr(task, "updated_at") and task.updated_at:
-                # Ensure timezone aware
-                task_updated = _ensure_timezone_aware(task.updated_at)
-                now = datetime.now(timezone.utc)
-                seconds_since_update = (now - task_updated).total_seconds()
-
-                # If board shows recent activity (< 2 minutes), don't recover
-                if seconds_since_update < 120:
-                    logger.info(
-                        f"Task {lease.task_id} updated on board "
-                        f"{seconds_since_update:.0f}s ago, extending grace"
-                    )
-                    return False
-        except Exception as e:
-            logger.warning(f"Could not check board activity: {e}")
-
-        # All checks passed - safe to recover
-        return True
+        logger.info(
+            f"Task {lease.task_id}: silence={silence_seconds:.0f}s <= "
+            f"threshold={threshold:.0f}s "
+            f"(median={median_interval:.0f}s * "
+            f"{self.silence_multiplier}x), extending grace"
+        )
+        return False
 
     async def _create_recovery_handoff_comment(
         self, lease: AssignmentLease, recovery_info: RecoveryInfo
