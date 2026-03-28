@@ -4,6 +4,7 @@
 
 - [ ] [Enhancement] Add context access logging/traceability to get_task_context (#196)
 - [ ] [Enhancement] Add detailed agent quality metrics to VALIDATION_METRICS (#186)
+- [ ] [Enhancement] Revisit git worktree isolation for multi-agent branch conflicts (#250)
 
 ## Bug Fixes
 
