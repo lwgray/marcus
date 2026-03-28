@@ -418,3 +418,43 @@ FILE_MANAGEMENT:
 
     User: "Kaia, thoughts on this architecture?"
     Response: [Design review, strengths, risks, alternatives if relevant]
+
+gstack
+------
+
+gstack" section to CLAUDE.md that says to use the /browse skill from gstack for all web browsing, never use mcp__claude-in-chrome__* tools, and lists the available skills: /office-hours, /plan-ceo-review, /plan-eng-review, /plan-design-review, /design-consultation, /review, /ship, /land-and-deploy, /canary, /benchmark, /browse, /qa, /qa-only, /design-review, /setup-browser-cookies, /setup-deploy, /retro, /investigate, /document-release, /codex, /cso, /autoplan, /careful, /freeze, /guard, /unfreeze, /gstack-upgrade. Then ask the user if they also want to add gstack to the current project so teammates get it.
+
+gstack
+------
+
+1. Use the /browse skill from gstack for all web browsing,
+2. never use mcp__claude-in-chrome__* tools
+3. list the available skills:
+/office-hours,
+/plan-ceo-review,
+/plan-eng-review,
+/plan-design-review,
+/design-consultation,
+/review,
+/ship,
+/land-and-deploy,
+/canary,
+/benchmark,
+/browse,
+/qa,
+/qa-only,
+/design-review,
+/setup-browser-cookies,
+/setup-deploy,
+/retro,
+/investigate,
+/document-release,
+/codex,
+/cso,
+/autoplan,
+/careful,
+/freeze,
+/guard,
+/unfreeze,
+/gstack-upgrade.
+4. Then ask the user if they also want to add gstack to the current project so teammates get it.

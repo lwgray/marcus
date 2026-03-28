@@ -101,6 +101,82 @@ def confirm_trust_if_prompted(
     return False
 
 
+def check_mcp_health(url: str = "http://localhost:4298") -> bool:
+    """Check if the Marcus MCP server is running and healthy.
+
+    Parameters
+    ----------
+    url : str
+        Base URL of the MCP server.
+
+    Returns
+    -------
+    bool
+        True if server responds successfully.
+    """
+    try:
+        result = subprocess.run(
+            ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", f"{url}/health"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return False
+
+
+def wait_for_project_info(
+    config: "ExperimentConfig",
+    poll_interval: float = 5.0,
+    log_interval: float = 15.0,
+) -> bool:
+    """Wait for project_info.json with countdown logging.
+
+    Parameters
+    ----------
+    config : ExperimentConfig
+        Experiment configuration containing project_info_file path
+        and timeout settings.
+    poll_interval : float
+        Seconds between file existence checks.
+    log_interval : float
+        Seconds between status log messages.
+
+    Returns
+    -------
+    bool
+        True if file was found, False if timed out.
+    """
+    timeout = config.get_timeout("project_creation", 300)
+    start_time = time.time()
+    last_log_time = start_time
+
+    print("\nWaiting for project creation...")
+    print("  (create_project will take 30-60s for AI task decomposition)")
+
+    while not config.project_info_file.exists():
+        elapsed = time.time() - start_time
+        if elapsed > timeout:
+            remaining = 0
+            print(f"\n✗ Project creation timed out after " f"{int(elapsed)}s!")
+            return False
+
+        # Log countdown at regular intervals
+        if time.time() - last_log_time >= log_interval:
+            remaining = int(timeout - elapsed)
+            print(
+                f"  ... still waiting ({int(elapsed)}s elapsed, "
+                f"{remaining}s remaining)"
+            )
+            last_log_time = time.time()
+
+        time.sleep(poll_interval)
+
+    print("✓ Project created!")
+    return True
+
+
 class ExperimentConfig:
     """Configuration for a Marcus experiment."""
 
@@ -781,19 +857,8 @@ echo "=========================================="
         # Wait for project creation
         # (create_project is synchronous - when project_info.json exists,
         #  all subtasks are already created)
-        timeout = self.config.get_timeout("project_creation", 300)
-        start_time = time.time()
-
-        print("\nWaiting for project creation...")
-        print("  (create_project will take 30-60s for AI task decomposition)")
-        while not self.config.project_info_file.exists():
-            if time.time() - start_time > timeout:
-                print("✗ Project creation timed out!")
-                return False
-
-            time.sleep(5)
-
-        print("✓ Project created!")
+        if not wait_for_project_info(self.config):
+            return False
 
         # Read project info
         with open(self.config.project_info_file, "r") as f:
