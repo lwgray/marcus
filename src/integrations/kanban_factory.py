@@ -9,7 +9,12 @@ from typing import Any, Dict, Optional
 
 from src.config.marcus_config import get_config
 from src.integrations.kanban_interface import KanbanInterface, KanbanProvider
-from src.integrations.providers import GitHubKanban, LinearKanban, Planka
+from src.integrations.providers import (
+    GitHubKanban,
+    LinearKanban,
+    Planka,
+    SQLiteKanban,
+)
 
 
 class KanbanFactory:
@@ -78,6 +83,33 @@ class KanbanFactory:
                 }
             return GitHubKanban(config)  # type: ignore[abstract]
 
+        elif provider_lower == KanbanProvider.SQLITE.value:
+            if not config:
+                config = {
+                    "db_path": (
+                        marcus_config.kanban.sqlite_db_path
+                        or os.getenv(
+                            "SQLITE_KANBAN_DB_PATH",
+                            "./data/kanban.db",
+                        )
+                    ),
+                    "project_name": (
+                        marcus_config.kanban.board_name
+                        or os.getenv(
+                            "MARCUS_PROJECT_NAME",
+                            "Marcus Project",
+                        )
+                    ),
+                    "attachments_dir": (
+                        marcus_config.kanban.sqlite_attachments_dir
+                        or os.getenv(
+                            "SQLITE_KANBAN_ATTACHMENTS_DIR",
+                            "./data/attachments",
+                        )
+                    ),
+                }
+            return SQLiteKanban(config)
+
         else:
             raise ValueError(f"Unsupported kanban provider: {provider}")
 
@@ -85,7 +117,7 @@ class KanbanFactory:
     def get_default_provider() -> str:
         """Get the default provider from configuration."""
         config = get_config()
-        return config.kanban.provider or os.getenv("KANBAN_PROVIDER", "planka")
+        return config.kanban.provider or os.getenv("KANBAN_PROVIDER", "sqlite")
 
     @staticmethod
     def create_default(config: Optional[Dict[str, Any]] = None) -> KanbanInterface:

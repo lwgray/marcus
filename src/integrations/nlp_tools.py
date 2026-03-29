@@ -140,48 +140,86 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             logger.debug(f"Description: {description[:200]}...")
             logger.debug(f"Options: {options}")
 
-            # ALWAYS create a new Planka project/board for each create_project call
+            # Create a new project/board for each create_project call
             # Clear any existing project/board IDs to force new project creation
             if self.kanban_client:
                 logger.info(
                     f"Creating new project '{project_name}' "
                     f"(clearing any existing project/board IDs)"
                 )
-                # Set on the underlying client
-                # (Planka wrapper has read-only properties)
-                if hasattr(self.kanban_client, "client"):
-                    self.kanban_client.client.project_id = None
-                    self.kanban_client.client.board_id = None
-                else:
-                    # Direct client (not a wrapper)
-                    self.kanban_client.project_id = None
-                    self.kanban_client.board_id = None
 
-                # Now create the new project/board
-                from src.integrations.project_auto_setup import ProjectAutoSetup
+                # Default from config, experiment options can override
+                from src.config.marcus_config import get_config
 
-                auto_setup = ProjectAutoSetup()
-                try:
-                    # Pass the underlying client (not the wrapper) if available
-                    client_to_use = (
-                        self.kanban_client.client
-                        if hasattr(self.kanban_client, "client")
-                        else self.kanban_client
-                    )
-                    project_config = await auto_setup.setup_planka_project(
-                        kanban_client=client_to_use,
-                        project_name=project_name,
-                        options=options,
-                    )
-                    proj_id = project_config.provider_config.get("project_id")
-                    bd_id = project_config.provider_config.get("board_id")
+                default_provider = get_config().kanban.provider or "sqlite"
+                provider = (
+                    options.get("provider", default_provider)
+                    if options
+                    else default_provider
+                )
+
+                if provider == "sqlite":
+                    # SQLite: create a project scope (unique IDs)
+                    # so this experiment's tasks are isolated
+                    if hasattr(self.kanban_client, "auto_setup_project"):
+                        await self.kanban_client.auto_setup_project(
+                            project_name=project_name,
+                            board_name="Main Board",
+                            project_root=(
+                                options.get("project_root") if options else None
+                            ),
+                        )
+                    elif hasattr(self.kanban_client, "connect"):
+                        await self.kanban_client.connect()
+                    # Set active_project_id so task_metadata in marcus.db
+                    # gets the correct project_id for Cato filtering.
+                    # Only set if not already assigned (caller may have
+                    # set it to the Marcus registry ID).
+                    if not self.active_project_id:
+                        self.active_project_id = getattr(
+                            self.kanban_client, "project_id", None
+                        )
                     logger.info(
-                        f"Created new Planka project: "
-                        f"project_id={proj_id}, board_id={bd_id}"
+                        f"Using SQLite provider for project "
+                        f"'{project_name}' — "
+                        f"project_id={self.active_project_id}"
                     )
-                except Exception as e:
-                    logger.error(f"Failed to create new project: {e}")
-                    raise
+                else:
+                    # Clear IDs on non-SQLite providers (Planka, etc.)
+                    if hasattr(self.kanban_client, "client"):
+                        self.kanban_client.client.project_id = None
+                        self.kanban_client.client.board_id = None
+                    elif hasattr(self.kanban_client, "project_id"):
+                        self.kanban_client.project_id = None
+                        self.kanban_client.board_id = None
+
+                    # Create project/board via provider-specific setup
+                    from src.integrations.project_auto_setup import (
+                        ProjectAutoSetup,
+                    )
+
+                    auto_setup = ProjectAutoSetup()
+                    try:
+                        client_to_use = (
+                            self.kanban_client.client
+                            if hasattr(self.kanban_client, "client")
+                            else self.kanban_client
+                        )
+                        project_config = await auto_setup.setup_new_project(
+                            kanban_client=client_to_use,
+                            provider=provider,
+                            project_name=project_name,
+                            options=options,
+                        )
+                        proj_id = project_config.provider_config.get("project_id")
+                        bd_id = project_config.provider_config.get("board_id")
+                        logger.info(
+                            f"Created new {provider} project: "
+                            f"project_id={proj_id}, board_id={bd_id}"
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to create new project: {e}")
+                        raise
 
             # Parse tasks
             from src.core.error_framework import ErrorContext, error_context
@@ -298,6 +336,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                         tasks_with_real_ids.append(task_with_id)
 
                 # Create About task with hierarchical subtask information
+                about_kanban_task = None
                 about_task = self._create_about_task(
                     description, project_name, tasks_with_real_ids
                 )
@@ -310,6 +349,60 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 logger.info(
                     f"Created 'About' task card with ID: {about_kanban_task.id}"
                 )
+
+                # Persist About task metadata and outcome to marcus.db
+                # so Cato can see it (same pattern as nlp_base.py)
+                try:
+                    from pathlib import Path
+
+                    from src.core.persistence import SQLitePersistence
+
+                    marcus_root = Path(__file__).parent.parent.parent
+                    db_path = marcus_root / "data" / "marcus.db"
+                    persistence = SQLitePersistence(db_path=db_path)
+
+                    about_id = about_kanban_task.id
+                    if about_id:
+                        now_iso = datetime.now(timezone.utc).isoformat()
+                        await persistence.store(
+                            "task_metadata",
+                            str(about_id),
+                            {
+                                "task_id": str(about_id),
+                                "name": about_task.name,
+                                "description": about_task.description,
+                                "priority": "low",
+                                "estimated_hours": 0.0,
+                                "labels": about_task.labels,
+                                "dependencies": [],
+                                "project_id": self.active_project_id,
+                                "created_at": now_iso,
+                            },
+                        )
+                        # About task is created as done, so add outcome
+                        await persistence.store(
+                            "task_outcomes",
+                            f"{about_id}_system_{now_iso}",
+                            {
+                                "task_id": str(about_id),
+                                "agent_id": "system",
+                                "task_name": about_task.name,
+                                "estimated_hours": 0.0,
+                                "actual_hours": 0.0,
+                                "success": True,
+                                "blockers": [],
+                                "started_at": now_iso,
+                                "completed_at": now_iso,
+                            },
+                        )
+                except Exception as about_log_err:
+                    logger.warning(
+                        f"Failed to persist About task metadata: " f"{about_log_err}"
+                    )
+
+                # Include About task in created list
+                if about_kanban_task and hasattr(about_kanban_task, "id"):
+                    created_tasks.append(about_kanban_task)
 
                 # Log creation success rate
                 success_rate = (
@@ -328,10 +421,23 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                     if tasks:
                         task_breakdown[task_type.value] = len(tasks)
 
+            # Collect task IDs for backfill
+            task_ids = []
+            for ct in created_tasks:
+                if isinstance(ct, dict):
+                    tid = ct.get("id")
+                elif hasattr(ct, "id"):
+                    tid = ct.id
+                else:
+                    tid = None
+                if tid:
+                    task_ids.append(str(tid))
+
             result = {
                 "success": True,
                 "project_name": project_name,
                 "tasks_created": len(created_tasks),
+                "task_ids": task_ids,
                 "task_breakdown": task_breakdown,
                 "phases": self._extract_phases(safe_tasks),
                 "estimated_days": self._estimate_duration(safe_tasks),
@@ -987,8 +1093,11 @@ async def create_project_from_natural_language(
             state.kanban_client.board_id = None
             logger.info(f"Creating NEW project '{project_name}'")
 
-        # Get provider from options or default to planka
-        provider = options.get("provider", "planka")
+        # Default from config, experiment options can override
+        from src.config.marcus_config import get_config
+
+        default_provider = get_config().kanban.provider or "sqlite"
+        provider = options.get("provider", default_provider)
 
         logger.info(f"Auto-creating {provider} project '{project_name}'")
 
@@ -1049,6 +1158,7 @@ async def create_project_from_natural_language(
             subtask_manager=subtask_manager,
             complexity=complexity,
         )
+        creator.active_project_id = marcus_project_id
 
         # Create project
         result = await creator.create_project_from_description(

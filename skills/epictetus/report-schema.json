@@ -1,0 +1,381 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "epictetus-audit-report-v1.1",
+  "title": "Epictetus Code Audit Report",
+  "description": "Structured output from the Epictetus auditor skill. Every audit produces one of these.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "metadata",
+    "contributors",
+    "scores",
+    "authorship_cohesiveness",
+    "issues",
+    "agent_grades",
+    "recommendations"
+  ],
+  "description_note": "process_evidence is optional — only present when --session flag was used",
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.1"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["project_name", "audit_date", "project_type", "skill_lens", "total_files", "total_loc", "total_commits"],
+      "properties": {
+        "project_name": { "type": "string" },
+        "project_path": { "type": "string" },
+        "audit_date": { "type": "string", "format": "date" },
+        "project_type": {
+          "type": "string",
+          "enum": ["web_frontend", "backend_api", "cli_tool", "library_sdk", "data_pipeline", "game", "fullstack", "other"]
+        },
+        "skill_lens": { "type": "string" },
+        "total_files": { "type": "integer" },
+        "total_loc": { "type": "integer" },
+        "total_commits": { "type": "integer" },
+        "languages": { "type": "array", "items": { "type": "string" } },
+        "has_dependencies": { "type": "boolean" },
+        "orchestration_system": { "type": "string" },
+        "executive_summary": { "type": "string" },
+        "tmux_session": { "type": "string", "description": "tmux session name if --session was provided" },
+        "process_evidence_available": { "type": "boolean" }
+      }
+    },
+    "contributors": {
+      "type": "object",
+      "required": ["inferred_count", "inference_evidence", "inference_confidence"],
+      "properties": {
+        "inferred_count": { "type": "integer" },
+        "inference_evidence": { "type": "array", "items": { "type": "string" } },
+        "inference_confidence": { "type": "string", "enum": ["high", "medium", "low"] },
+        "parallel_work_detected": { "type": "boolean" },
+        "agent_assignments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["agent_label", "task_ids", "commits", "phase"],
+            "properties": {
+              "agent_label": { "type": "string" },
+              "task_ids": { "type": "array", "items": { "type": "string" } },
+              "commits": { "type": "array", "items": { "type": "string" } },
+              "phase": { "type": "string" },
+              "files_touched": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+    "scores": {
+      "type": "object",
+      "required": [
+        "architecture_design", "code_quality", "correctness_reliability",
+        "completeness", "testing", "documentation_spec_fidelity",
+        "security", "performance_efficiency", "maintainability_extensibility",
+        "weighted_total"
+      ],
+      "properties": {
+        "architecture_design": { "$ref": "#/$defs/dimension_score" },
+        "code_quality": { "$ref": "#/$defs/dimension_score" },
+        "correctness_reliability": { "$ref": "#/$defs/dimension_score" },
+        "completeness": { "$ref": "#/$defs/dimension_score" },
+        "testing": { "$ref": "#/$defs/dimension_score" },
+        "documentation_spec_fidelity": { "$ref": "#/$defs/dimension_score" },
+        "security": { "$ref": "#/$defs/dimension_score" },
+        "performance_efficiency": { "$ref": "#/$defs/dimension_score" },
+        "maintainability_extensibility": { "$ref": "#/$defs/dimension_score" },
+        "weighted_total": {
+          "type": "object",
+          "required": ["score", "grade"],
+          "properties": {
+            "score": { "type": "number", "minimum": 1, "maximum": 5 },
+            "grade": { "$ref": "#/$defs/grade" }
+          }
+        }
+      }
+    },
+    "authorship_cohesiveness": {
+      "type": "object",
+      "required": ["verdict", "divergent_signal_count", "signals", "assessment"],
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "enum": ["distinctly_multi_author", "mildly_varied", "suspiciously_uniform", "jarringly_inconsistent"]
+        },
+        "divergent_signal_count": { "type": "integer", "minimum": 0, "maximum": 10 },
+        "signals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["signal_name", "divergent", "details"],
+            "properties": {
+              "signal_name": {
+                "type": "string",
+                "enum": [
+                  "naming_conventions", "comment_style", "error_handling",
+                  "whitespace_formatting", "abstraction_preferences",
+                  "variable_declarations", "control_flow", "import_organization",
+                  "function_structure", "defensive_coding"
+                ]
+              },
+              "divergent": { "type": "boolean" },
+              "details": { "type": "object", "additionalProperties": { "type": "string" } }
+            }
+          }
+        },
+        "examples": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "description": { "type": "string" },
+              "file_a": { "type": "string" },
+              "line_a": { "type": "integer" },
+              "file_b": { "type": "string" },
+              "line_b": { "type": "integer" }
+            }
+          }
+        },
+        "assessment": { "type": "string" }
+      }
+    },
+    "issues": {
+      "type": "object",
+      "required": ["critical", "ghost_code", "cross_agent"],
+      "properties": {
+        "critical": { "type": "array", "items": { "$ref": "#/$defs/issue" } },
+        "ghost_code": { "type": "array", "items": { "$ref": "#/$defs/issue" } },
+        "cross_agent": { "type": "array", "items": { "$ref": "#/$defs/issue" } }
+      }
+    },
+    "agent_grades": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["agent_label", "task_description", "score", "grade", "feedback"],
+        "properties": {
+          "agent_label": { "type": "string" },
+          "task_description": { "type": "string" },
+          "score": { "type": "number", "minimum": 1, "maximum": 5 },
+          "grade": { "$ref": "#/$defs/grade" },
+          "feedback": { "type": "string" },
+          "spec_adherence": { "type": "string", "enum": ["full", "partial", "ignored", "n/a"] },
+          "ghost_code_introduced": { "type": "boolean" },
+          "net_contribution": { "type": "string", "enum": ["high", "medium", "low", "negative"] },
+          "process_modifier": {
+            "type": "object",
+            "description": "Optional. Grade adjustment based on process evidence.",
+            "properties": {
+              "adjustment": { "type": "number", "minimum": -1.0, "maximum": 1.0 },
+              "reason": { "type": "string" }
+            }
+          },
+          "interview_status": { "type": "string", "enum": ["completed", "unavailable", "unresponsive", "n/a"] }
+        }
+      }
+    },
+    "process_evidence": {
+      "type": "object",
+      "description": "Optional. Only present when --session flag was used.",
+      "required": ["tmux_session", "panes_captured", "instruction_quality", "process_findings", "root_cause_attributions"],
+      "properties": {
+        "tmux_session": { "type": "string" },
+        "evidence_sources": {
+          "type": "object",
+          "description": "Which evidence sources were available and used.",
+          "properties": {
+            "marcus_api": {
+              "type": "object",
+              "properties": {
+                "available": { "type": "boolean" },
+                "unavailable_reason": { "type": "string", "description": "e.g. 'server down', 'data cleared by Cato', 'connection refused'" },
+                "tasks_retrieved": { "type": "integer" },
+                "timeline_events_total": { "type": "integer" }
+              }
+            },
+            "tmux_logs": {
+              "type": "object",
+              "properties": {
+                "available": { "type": "boolean" },
+                "panes_captured": { "type": "integer" },
+                "panes_skipped": { "type": "integer" }
+              }
+            }
+          }
+        },
+        "api_log_discrepancies": {
+          "type": "array",
+          "description": "Findings where the Marcus API timeline contradicts what tmux logs show.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "agent_label": { "type": "string" },
+              "task_id": { "type": "string" },
+              "api_says": { "type": "string" },
+              "log_shows": { "type": "string" },
+              "finding": { "type": "string" },
+              "severity": { "type": "string", "enum": ["info", "warning", "error"] }
+            }
+          }
+        },
+        "panes_captured": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["pane_id", "agent_label", "role", "captured"],
+            "properties": {
+              "pane_id": { "type": "string" },
+              "agent_label": { "type": "string" },
+              "role": { "type": "string" },
+              "captured": { "type": "boolean" },
+              "skip_reason": { "type": "string" }
+            }
+          }
+        },
+        "instruction_quality": {
+          "type": "object",
+          "required": ["task_descriptions", "success_criteria", "dependency_info", "scope_boundaries", "technical_constraints"],
+          "properties": {
+            "task_descriptions": { "$ref": "#/$defs/instruction_factor" },
+            "success_criteria": { "$ref": "#/$defs/instruction_factor" },
+            "dependency_info": { "$ref": "#/$defs/instruction_factor" },
+            "scope_boundaries": { "$ref": "#/$defs/instruction_factor" },
+            "technical_constraints": { "$ref": "#/$defs/instruction_factor" }
+          }
+        },
+        "process_findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["agent_label", "description", "signal_type"],
+            "properties": {
+              "agent_label": { "type": "string" },
+              "pane_id": { "type": "string" },
+              "approx_log_line": { "type": "integer" },
+              "timestamp": { "type": "string" },
+              "description": { "type": "string" },
+              "signal_type": {
+                "type": "string",
+                "enum": ["error_encountered", "retry_workaround", "time_sink", "instruction_reference", "spec_confusion", "ignored_instruction", "copy_paste_artifact", "tool_misuse"]
+              },
+              "severity": { "type": "string", "enum": ["info", "warning", "error"] },
+              "affected_dimension": { "type": "string" }
+            }
+          }
+        },
+        "agent_interviews": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["agent_label", "status"],
+            "properties": {
+              "agent_label": { "type": "string" },
+              "status": { "type": "string", "enum": ["completed", "unavailable", "unresponsive"] },
+              "questions_asked": { "type": "integer" },
+              "questions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "question": { "type": "string" },
+                    "response": { "type": "string" },
+                    "contradicts_log": { "type": "boolean" },
+                    "key_revelation": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "root_cause_attributions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["problem", "root_cause", "blame"],
+            "properties": {
+              "problem": { "type": "string" },
+              "code_evidence": { "type": "string" },
+              "process_evidence": { "type": "string" },
+              "root_cause": { "type": "string", "enum": ["bad_spec", "bad_execution", "bad_coordination", "ambiguous_spec", "external_blocker"] },
+              "blame": { "type": "string", "enum": ["spec", "agent", "both", "neither"] },
+              "agent_label": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "recommendations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["priority", "scope", "description"],
+        "properties": {
+          "priority": { "type": "integer", "minimum": 1 },
+          "scope": {
+            "type": "string",
+            "enum": ["project", "global", "both"],
+            "description": "project = fix this codebase only. global = improve Marcus ecosystem for all future experiments. both = fix locally AND systemically."
+          },
+          "description": { "type": "string" },
+          "marcus_improvement": {
+            "type": "string",
+            "description": "For scope=global or scope=both: what should change in Marcus (task templates, coordination, defaults, guardrails, etc.)"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["bug_fix", "testing", "dead_code_removal", "doc_fix", "refactor", "security", "performance", "process", "instruction_quality", "coordination", "task_templates", "agent_defaults", "guardrails", "observability"]
+          },
+          "effort": { "type": "string", "enum": ["trivial", "small", "medium", "large"] }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "grade": {
+      "type": "string",
+      "enum": ["A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D+", "D", "D-", "F"]
+    },
+    "dimension_score": {
+      "type": "object",
+      "required": ["score", "grade", "justification"],
+      "properties": {
+        "score": { "type": "number", "minimum": 1, "maximum": 5 },
+        "grade": { "$ref": "#/$defs/grade" },
+        "weight": { "type": "number" },
+        "justification": { "type": "string" },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "file": { "type": "string" },
+              "line": { "type": "integer" },
+              "description": { "type": "string" },
+              "severity": { "type": "string", "enum": ["info", "warning", "error"] }
+            }
+          }
+        }
+      }
+    },
+    "instruction_factor": {
+      "type": "object",
+      "required": ["rating"],
+      "properties": {
+        "rating": { "type": "string", "enum": ["clear", "ambiguous", "missing", "contradictory"] },
+        "evidence": { "type": "string" }
+      }
+    },
+    "issue": {
+      "type": "object",
+      "required": ["description", "file", "severity"],
+      "properties": {
+        "description": { "type": "string" },
+        "file": { "type": "string" },
+        "line": { "type": "integer" },
+        "severity": { "type": "string", "enum": ["critical", "major", "minor", "info"] },
+        "category": { "type": "string" }
+      }
+    }
+  }
+}

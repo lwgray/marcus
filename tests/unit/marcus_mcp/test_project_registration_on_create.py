@@ -1,5 +1,6 @@
 """Test that create_project properly registers projects with ProjectRegistry."""
 
+import os
 from datetime import datetime, timezone
 from typing import Any, Dict
 from unittest.mock import AsyncMock, Mock, patch
@@ -7,17 +8,25 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _mock_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure ANTHROPIC_API_KEY is set so config validation passes."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-for-unit-tests")
+
+
 @pytest.mark.asyncio
 async def test_create_project_registers_with_project_registry() -> None:
     """Test that create_project registers the new project in ProjectRegistry."""
+    from src.integrations.kanban_interface import KanbanProvider
     from src.marcus_mcp.tools.nlp import create_project
 
     # Mock state with all required attributes
     state = Mock()
     state.log_event = Mock()
     state.kanban_client = Mock()
-    state.kanban_client.project_id = "1670692878487127607"  # Planka project ID
-    state.kanban_client.board_id = "1670692878621345337"  # Planka board ID
+    state.kanban_client.provider = KanbanProvider.PLANKA
+    state.kanban_client.project_id = "1670692878487127607"
+    state.kanban_client.board_id = "1670692878621345337"
     state.ai_engine = Mock()
     state.subtask_manager = Mock()
     state.project_registry = Mock()
@@ -38,6 +47,7 @@ async def test_create_project_registers_with_project_registry() -> None:
         "success": True,
         "project_name": "Flight Simulator",
         "tasks_created": 29,
+        "task_ids": ["task-1", "task-2"],
         "board": {
             "project_name": "Flight Simulator",
             "board_name": "Main Board",
@@ -52,7 +62,8 @@ async def test_create_project_registers_with_project_registry() -> None:
             return_value=mock_creator_result
         )
 
-        # Call create_project
+        # Call create_project — provider matches so kanban_client
+        # is NOT replaced, keeping our mock with project_id/board_id
         result = await create_project(
             description="Build a flight simulator game",
             project_name="Flight Simulator",

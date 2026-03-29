@@ -10,7 +10,7 @@ project_spec_file: "project_spec.md"
 # Marcus project options
 project_options:
   complexity: "standard"  # prototype | standard | enterprise
-  provider: "planka"      # planka | github | linear
+  provider: "sqlite"      # sqlite | planka | github | linear
   mode: "new_project"     # new_project | auto | select_project
 
 # Agent definitions

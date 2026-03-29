@@ -17,6 +17,7 @@ class KanbanProvider(Enum):
     PLANKA = "planka"
     LINEAR = "linear"
     GITHUB = "github"
+    SQLITE = "sqlite"
 
 
 class KanbanInterface(ABC):

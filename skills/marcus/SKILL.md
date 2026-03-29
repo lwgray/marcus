@@ -81,6 +81,9 @@ spec is just the raw input from the user.
 
 ### Step 3: Generate config.yaml
 
+**CRITICAL: Always write a fresh config.yaml from the template below. Do NOT read or
+preserve values from any existing config.yaml in the directory. Overwrite it completely.**
+
 Use this exact format — field names are case-sensitive:
 
 ```yaml
@@ -89,7 +92,7 @@ project_spec_file: "project_spec.md"
 
 project_options:
   complexity: "standard"    # "prototype" for simple, "standard" for medium, "enterprise" for large
-  provider: "planka"        # Always use planka unless user specifies otherwise
+  provider: "sqlite"        # Uses local SQLite DB. Also supports: "planka", "github", "linear"
   mode: "new_project"       # Always new_project
 
 agents:

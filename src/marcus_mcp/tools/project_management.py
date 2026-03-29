@@ -37,8 +37,8 @@ async def list_projects(server: Any, arguments: Dict[str, Any]) -> List[Dict[str
     provider = arguments.get("provider")
     force_sync = arguments.get("force_sync", True)
 
-    # Always sync from Planka to ensure we have latest projects
-    if force_sync:
+    # Sync from Planka if that's the configured provider
+    if force_sync and server.provider == "planka":
         try:
             sync_result = await discover_planka_projects(server, {"auto_sync": True})
             if not sync_result.get("success"):

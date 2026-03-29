@@ -50,7 +50,7 @@ project_spec_file: "project_spec.md"
 
 project_options:
   complexity: "standard"
-  provider: "planka"
+  provider: "sqlite"        # or "planka", "github", "linear"
 
 agents:
   - id: "agent_backend"
