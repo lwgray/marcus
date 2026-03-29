@@ -776,10 +776,10 @@ Provide ONLY valid JSON, no preamble."""
             result = await self.llm_client.analyze(prompt, context)
             response_text = str(result) if result else "{}"
 
-            # Parse JSON response
-            import json
+            # Parse JSON response (handle markdown fences, preamble, etc.)
+            from src.utils.json_parser import parse_ai_json_response
 
-            domain_data = json.loads(response_text)
+            domain_data = parse_ai_json_response(response_text)
             domains_list = domain_data.get("domains", [])
 
             # Convert to simple dict mapping
