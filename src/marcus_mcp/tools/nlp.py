@@ -15,6 +15,95 @@ from src.integrations.nlp_tools import add_feature_natural_language
 logger = logging.getLogger(__name__)
 
 
+async def _store_config_snapshot(
+    state: Any,
+    project_id: str,
+    project_name: str,
+    provider: str,
+    complexity: str,
+    options: Optional[Dict[str, Any]],
+) -> None:
+    """Store an immutable configuration snapshot for a project.
+
+    Captures the AI model, provider settings, experiment complexity,
+    and system features at project creation time. Written to marcus.db
+    under the ``project_config`` collection for post-hoc analysis.
+
+    Parameters
+    ----------
+    state : Any
+        Marcus server state with config and AI engine.
+    project_id : str
+        Marcus registry project ID.
+    project_name : str
+        Human-readable project name.
+    provider : str
+        Kanban provider name (e.g. ``"sqlite"``, ``"planka"``).
+    complexity : str
+        Experiment complexity (``"prototype"``, ``"standard"``,
+        ``"enterprise"``).
+    options : Optional[Dict[str, Any]]
+        Experiment options dict from create_project call.
+    """
+    try:
+        from importlib.metadata import version as pkg_version
+
+        from src.config.marcus_config import get_config
+        from src.core.persistence import SQLitePersistence
+
+        cfg = get_config()
+        snap_db = Path(cfg.data_dir).expanduser() / "marcus.db"
+        snap_persistence = SQLitePersistence(db_path=snap_db)
+
+        # Discover available AI providers
+        available_providers: list[str] = []
+        if (
+            hasattr(state, "ai_engine")
+            and state.ai_engine
+            and hasattr(state.ai_engine, "llm")
+        ):
+            llm = state.ai_engine.llm
+            if hasattr(llm, "providers"):
+                available_providers = list(llm.providers.keys())
+
+        try:
+            marcus_ver = pkg_version("marcus-mcp")
+        except Exception:
+            marcus_ver = "unknown"
+
+        config_snapshot = {
+            "project_id": project_id,
+            "project_name": project_name,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "ai": {
+                "provider": cfg.ai.provider,
+                "model": cfg.ai.model,
+                "temperature": cfg.ai.temperature,
+                "available_providers": available_providers,
+            },
+            "kanban": {
+                "provider": provider,
+            },
+            "experiment": {
+                "complexity": complexity,
+                "num_agents": (options.get("team_size", 1) if options else 1),
+            },
+            "system": {
+                "marcus_version": marcus_ver,
+                "features": {
+                    "events": cfg.features.events,
+                    "context": cfg.features.context,
+                    "memory": cfg.features.memory,
+                },
+            },
+        }
+
+        await snap_persistence.store("project_config", project_id, config_snapshot)
+        logger.info(f"Stored config snapshot for project {project_id}")
+    except Exception as e:
+        logger.warning(f"Failed to store config snapshot: {e}")
+
+
 async def create_project(
     description: str, project_name: str, options: Optional[Dict[str, Any]], state: Any
 ) -> Dict[str, Any]:
@@ -451,17 +540,26 @@ async def create_project(
                         # Add Marcus project_id to result for auto-select functionality
                         result["project_id"] = marcus_project_id
 
+                        # Store immutable config snapshot
+                        await _store_config_snapshot(
+                            state,
+                            marcus_project_id,
+                            project_name,
+                            provider,
+                            complexity,
+                            options,
+                        )
+
                         # Backfill project_id on tasks just created
                         # (tasks are persisted before registration)
                         try:
                             from src.core.persistence import SQLitePersistence
 
-                            marcus_root = Path(__file__).parent.parent.parent
-                            db_path = marcus_root / "data" / "marcus.db"
+                            cfg = get_config()
+                            db_path = Path(cfg.data_dir).expanduser() / "marcus.db"
                             persistence = SQLitePersistence(db_path=db_path)
                             task_ids = result.get("task_ids", [])
                             if not task_ids:
-                                # Fallback: get IDs from created tasks
                                 created = result.get("created_tasks", [])
                                 task_ids = [
                                     str(
@@ -482,11 +580,12 @@ async def create_project(
                                     )
                             if task_ids:
                                 logger.info(
-                                    f"Backfilled project_id on {len(task_ids)} tasks"
+                                    f"Backfilled project_id on "
+                                    f"{len(task_ids)} tasks"
                                 )
                         except Exception as backfill_err:
                             logger.warning(
-                                f"Failed to backfill project_id: {backfill_err}"
+                                f"Failed to backfill project_id: " f"{backfill_err}"
                             )
                     else:
                         logger.warning(
