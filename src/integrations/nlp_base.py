@@ -274,19 +274,37 @@ class NaturalLanguageTaskCreator(ABC):
         created_tasks : List[Task]
             Tasks as created on the kanban board (with real UUIDs).
         """
+
         # Build mapping: original_id / slug → real UUID
         # Use name-based matching instead of positional zip, since
         # failed task creations can shift positions.
+        # Helper to access fields on Task objects or dicts
+        def _get(obj: Any, attr: str, default: Any = None) -> Any:
+            if hasattr(obj, attr):
+                return getattr(obj, attr)
+            if isinstance(obj, dict):
+                return obj.get(attr, default)
+            return default
+
+        def _set(obj: Any, attr: str, value: Any) -> None:
+            if hasattr(obj, attr):
+                setattr(obj, attr, value)
+            elif isinstance(obj, dict):
+                obj[attr] = value
+
         slug_to_uuid: Dict[str, str] = {}
-        orig_by_name = {t.name: t for t in original_tasks}
+        orig_by_name: Dict[str, Any] = {_get(t, "name", ""): t for t in original_tasks}
         for created in created_tasks:
-            orig = orig_by_name.get(created.name)
-            if orig and orig.id and created.id:
-                slug_to_uuid[orig.id] = created.id
-            # Also map by original_id if stored on the task
-            orig_id = getattr(created, "original_id", None)
-            if orig_id and created.id:
-                slug_to_uuid[orig_id] = created.id
+            c_name = _get(created, "name", "")
+            c_id = _get(created, "id", "")
+            orig = orig_by_name.get(c_name)
+            orig_id_val = _get(orig, "id", "") if orig else ""
+            if orig and orig_id_val and c_id:
+                slug_to_uuid[str(orig_id_val)] = str(c_id)
+            # Also map by original_id if stored
+            orig_id = _get(created, "original_id")
+            if orig_id and c_id:
+                slug_to_uuid[str(orig_id)] = str(c_id)
 
         if not slug_to_uuid:
             return
@@ -296,22 +314,25 @@ class NaturalLanguageTaskCreator(ABC):
         )
 
         # Remap dependencies on in-memory tasks
+        all_ids = {_get(t, "id", "") for t in created_tasks}
+
         for task in created_tasks:
-            if not task.dependencies:
+            deps = _get(task, "dependencies", [])
+            if not deps:
                 continue
             remapped: List[str] = []
-            for dep_id in task.dependencies:
+            for dep_id in deps:
                 if dep_id in slug_to_uuid:
                     remapped.append(slug_to_uuid[dep_id])
-                elif dep_id in [t.id for t in created_tasks]:
-                    # Already a real UUID
+                elif dep_id in all_ids:
                     remapped.append(dep_id)
                 else:
                     logger.warning(
                         f"Orphaned dependency '{dep_id}' "
-                        f"on task '{task.name}' — skipping"
+                        f"on task '{_get(task, 'name', '?')}'"
+                        f" — skipping"
                     )
-            task.dependencies = remapped
+            _set(task, "dependencies", remapped)
 
         # Persist remapped dependencies to kanban board
         # SQLiteKanban stores deps in task_dependencies table
@@ -321,17 +342,19 @@ class NaturalLanguageTaskCreator(ABC):
 
             def _update_deps(conn: sqlite3.Connection) -> None:
                 for task in created_tasks:
+                    tid = _get(task, "id", "")
+                    deps = _get(task, "dependencies", [])
                     conn.execute(
                         "DELETE FROM task_dependencies " "WHERE task_id = ?",
-                        (task.id,),
+                        (tid,),
                     )
-                    for dep_id in task.dependencies:
+                    for dep_id in deps:
                         conn.execute(
                             "INSERT OR IGNORE INTO "
                             "task_dependencies "
                             "(task_id, depends_on_id) "
                             "VALUES (?, ?)",
-                            (task.id, dep_id),
+                            (tid, dep_id),
                         )
                 conn.commit()
 
