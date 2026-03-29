@@ -7,11 +7,101 @@ This module contains tools for natural language project/task creation:
 
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from src.integrations.nlp_tools import add_feature_natural_language
 
 logger = logging.getLogger(__name__)
+
+
+async def _store_config_snapshot(
+    state: Any,
+    project_id: str,
+    project_name: str,
+    provider: str,
+    complexity: str,
+    options: Optional[Dict[str, Any]],
+) -> None:
+    """Store an immutable configuration snapshot for a project.
+
+    Captures the AI model, provider settings, experiment complexity,
+    and system features at project creation time. Written to marcus.db
+    under the ``project_config`` collection for post-hoc analysis.
+
+    Parameters
+    ----------
+    state : Any
+        Marcus server state with config and AI engine.
+    project_id : str
+        Marcus registry project ID.
+    project_name : str
+        Human-readable project name.
+    provider : str
+        Kanban provider name (e.g. ``"sqlite"``, ``"planka"``).
+    complexity : str
+        Experiment complexity (``"prototype"``, ``"standard"``,
+        ``"enterprise"``).
+    options : Optional[Dict[str, Any]]
+        Experiment options dict from create_project call.
+    """
+    try:
+        from importlib.metadata import version as pkg_version
+
+        from src.config.marcus_config import get_config
+        from src.core.persistence import SQLitePersistence
+
+        cfg = get_config()
+        snap_db = Path(cfg.data_dir).expanduser() / "marcus.db"
+        snap_persistence = SQLitePersistence(db_path=snap_db)
+
+        # Discover available AI providers
+        available_providers: list[str] = []
+        if (
+            hasattr(state, "ai_engine")
+            and state.ai_engine
+            and hasattr(state.ai_engine, "llm")
+        ):
+            llm = state.ai_engine.llm
+            if hasattr(llm, "providers"):
+                available_providers = list(llm.providers.keys())
+
+        try:
+            marcus_ver = pkg_version("marcus-mcp")
+        except Exception:
+            marcus_ver = "unknown"
+
+        config_snapshot = {
+            "project_id": project_id,
+            "project_name": project_name,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "ai": {
+                "provider": cfg.ai.provider,
+                "model": cfg.ai.model,
+                "temperature": cfg.ai.temperature,
+                "available_providers": available_providers,
+            },
+            "kanban": {
+                "provider": provider,
+            },
+            "experiment": {
+                "complexity": complexity,
+                "num_agents": (options.get("team_size", 1) if options else 1),
+            },
+            "system": {
+                "marcus_version": marcus_ver,
+                "features": {
+                    "events": cfg.features.events,
+                    "context": cfg.features.context,
+                    "memory": cfg.features.memory,
+                },
+            },
+        }
+
+        await snap_persistence.store("project_config", project_id, config_snapshot)
+        logger.info(f"Stored config snapshot for project {project_id}")
+    except Exception as e:
+        logger.warning(f"Failed to store config snapshot: {e}")
 
 
 async def create_project(
@@ -374,77 +464,15 @@ async def create_project(
                         # Add Marcus project_id to result for auto-select functionality
                         result["project_id"] = marcus_project_id
 
-                        # Store immutable config snapshot for this project
-                        try:
-                            from importlib.metadata import version as pkg_version
-                            from pathlib import Path
-
-                            from src.config.marcus_config import get_config
-                            from src.core.persistence import SQLitePersistence
-
-                            cfg = get_config()
-                            marcus_root = Path(__file__).parent.parent.parent
-                            snap_db = marcus_root / "data" / "marcus.db"
-                            snap_persistence = SQLitePersistence(db_path=snap_db)
-
-                            # Discover available AI providers
-                            available_providers: list[str] = []
-                            if (
-                                hasattr(state, "ai_engine")
-                                and state.ai_engine
-                                and hasattr(state.ai_engine, "llm")
-                            ):
-                                llm = state.ai_engine.llm
-                                if hasattr(llm, "providers"):
-                                    available_providers = list(llm.providers.keys())
-
-                            try:
-                                marcus_ver = pkg_version("marcus-mcp")
-                            except Exception:
-                                marcus_ver = "unknown"
-
-                            config_snapshot = {
-                                "project_id": marcus_project_id,
-                                "project_name": project_name,
-                                "created_at": (datetime.now(timezone.utc).isoformat()),
-                                "ai": {
-                                    "provider": cfg.ai.provider,
-                                    "model": cfg.ai.model,
-                                    "temperature": cfg.ai.temperature,
-                                    "available_providers": available_providers,
-                                },
-                                "kanban": {
-                                    "provider": provider,
-                                },
-                                "experiment": {
-                                    "complexity": complexity,
-                                    "num_agents": (
-                                        options.get("team_size", 1) if options else 1
-                                    ),
-                                },
-                                "system": {
-                                    "marcus_version": marcus_ver,
-                                    "features": {
-                                        "events": cfg.features.events,
-                                        "context": cfg.features.context,
-                                        "memory": cfg.features.memory,
-                                    },
-                                },
-                            }
-
-                            await snap_persistence.store(
-                                "project_config",
-                                marcus_project_id,
-                                config_snapshot,
-                            )
-                            logger.info(
-                                f"Stored config snapshot for "
-                                f"project {marcus_project_id}"
-                            )
-                        except Exception as snap_err:
-                            logger.warning(
-                                f"Failed to store config snapshot: " f"{snap_err}"
-                            )
+                        # Store immutable config snapshot
+                        await _store_config_snapshot(
+                            state,
+                            marcus_project_id,
+                            project_name,
+                            provider,
+                            complexity,
+                            options,
+                        )
                     else:
                         logger.warning(
                             "ProjectRegistry not available - project not registered"
