@@ -30,6 +30,8 @@ Create, monitor, and optimize projects.
    project-management/creating-projects
    project-management/monitoring-status
    project-management/analyzing-health
+   project-management/hierarchical-task-decomposition
+   project-management/sqlite-kanban-provider
 
 Collaboration
 -------------

@@ -4,24 +4,65 @@ Get Marcus up and running in 5 minutes.
 
 ## Prerequisites
 
-- **Docker and Docker Compose** installed and running
 - **Claude Code** or another MCP-compatible AI agent
 - **AI Model** - Choose one:
   - **FREE:** Local model with Ollama (zero cost, [setup guide](setup-local-llm.md))
   - **Paid:** Anthropic or OpenAI API key
 
-## Setup (Two-Stage Process)
+## Quick Setup (SQLite — No Docker Required)
 
-📖 **Complete guide:** [DOCKER_QUICKSTART.md](../../../DOCKER_QUICKSTART.md)
-
-### Stage 1: Start Planka and Postgres
+The fastest way to get started. Uses a local SQLite database as the kanban board.
 
 ```bash
 # Clone the repository
 git clone https://github.com/lwgray/marcus.git
 cd marcus
 
-# Start Planka first
+# Copy and edit the configuration
+cp config_marcus.example.json config_marcus.json
+```
+
+Edit `config_marcus.json` with your AI configuration and the SQLite provider:
+
+```json
+{
+  "kanban": {
+    "provider": "sqlite",
+    "sqlite_db_path": "./data/kanban.db",
+    "sqlite_attachments_dir": "./data/attachments"
+  },
+  "ai": {
+    "provider": "local",
+    "enabled": true,
+    "local_model": "qwen2.5-coder:7b",
+    "local_url": "http://localhost:11434/v1",
+    "local_key": "none"
+  },
+```
+
+That's it. No Docker, no Postgres, no external services. Marcus will create `data/kanban.db` automatically on first project creation.
+
+To inspect your board from the command line:
+
+```bash
+# See all tasks and their status
+sqlite3 data/kanban.db "SELECT name, status, assigned_to, priority FROM tasks"
+
+# See task comments (progress, blockers, etc.)
+sqlite3 data/kanban.db "SELECT t.name, c.content FROM comments c JOIN tasks t ON t.id = c.task_id ORDER BY c.created_at"
+
+# Board summary
+sqlite3 data/kanban.db "SELECT status, COUNT(*) FROM tasks GROUP BY status"
+```
+
+## Alternative Setup: Planka (Visual Board UI)
+
+If you want a visual kanban board with drag-and-drop, use Planka instead. This requires Docker.
+
+### Stage 1: Start Planka and Postgres
+
+```bash
+# Start Planka first (requires Docker)
 docker-compose up -d postgres planka
 ```
 
@@ -33,26 +74,15 @@ Login to Planka:
 - Email: `demo@demo.demo`
 - Password: `demo`  # pragma: allowlist secret
 
-### Stage 2: Configure and Start Marcus
+### Stage 3: Configure Marcus for Planka
 
-```bash
-# Copy and edit the configuration
-cp config_marcus.example.json config_marcus.json
-```
-
-Edit `config_marcus.json` with:
-- Your AI configuration:
-  - **For paid API:** Add your Anthropic or OpenAI API key
-  - **For free local:** Set `"provider": "local"` and `"local_model": "qwen2.5-coder:7b"` (see [setup guide](setup-local-llm.md))
-
-  {
+```json
+{
   "kanban": {
-    "provider": "planka"
-  },
-  "planka": {
-    "base_url": "http://localhost:3333",
-    "email": "demo@demo.demo",
-    "password": "demo"  # pragma: allowlist secret
+    "provider": "planka",
+    "planka_base_url": "http://localhost:3333",
+    "planka_email": "demo@demo.demo",
+    "planka_password": "demo"  # pragma: allowlist secret
   },
   "ai": {
     "provider": "local",

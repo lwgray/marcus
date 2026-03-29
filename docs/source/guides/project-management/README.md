@@ -134,6 +134,7 @@ Every project improves Marcus:
 - **Want project visibility?** → [Monitoring Status](monitoring-status.md)
 - **Concerned about health?** → [Analyzing Health](analyzing-health.md)
 - **Breaking down large tasks?** → [Hierarchical Task Decomposition](hierarchical-task-decomposition.md)
+- **Using SQLite for zero-infrastructure boards?** → [SQLite Kanban Provider](sqlite-kanban-provider.md)
 - **Need agent coordination?** → [Agent Workflows](../agent-workflows/)
 
 ---

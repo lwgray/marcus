@@ -78,8 +78,27 @@ Marcus searches for `config_marcus.json` in the following order (highest priorit
 
 | Option | Type | Default | Env Override | Description |
 |--------|------|---------|--------------|-------------|
-| `kanban.provider` | string | "planka" | `MARCUS_KANBAN_PROVIDER` | Provider: planka, github, or linear |
+| `kanban.provider` | string | "sqlite" | `MARCUS_KANBAN_PROVIDER` | Provider: sqlite, planka, github, or linear |
 | `kanban.board_name` | string | - | - | Default board name to use |
+
+### SQLite Provider (Zero Infrastructure)
+
+The simplest way to get started. No Docker, no external services.
+
+| Option | Type | Default | Env Override | Description |
+|--------|------|---------|--------------|-------------|
+| `kanban.sqlite_db_path` | string | "./data/kanban.db" | `SQLITE_KANBAN_DB_PATH` | Path to SQLite database file |
+| `kanban.sqlite_attachments_dir` | string | "./data/attachments" | `SQLITE_KANBAN_ATTACHMENTS_DIR` | Directory for file attachments |
+
+```json
+{
+  "kanban": {
+    "provider": "sqlite",
+    "sqlite_db_path": "./data/kanban.db",
+    "sqlite_attachments_dir": "./data/attachments"
+  }
+}
+```
 
 ### Planka Provider
 
