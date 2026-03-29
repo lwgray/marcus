@@ -327,6 +327,74 @@ For each response:
 Update your Phase 6 scores and Phase 7 agent grades with this new evidence.
 Note which findings changed and why in the final report.
 
+### Phase 7.7: Coordination Effectiveness Analysis (requires --session OR kanban.db)
+
+**Skip this phase if this is a single-developer project with no multi-agent context.**
+
+Evaluate how effectively Marcus coordinated the multi-agent experiment.
+This is scored separately from code quality — a perfect codebase can still
+have terrible coordination, and vice versa.
+
+**Step 1: Get the DAG**
+
+```bash
+# Find project ID from project_info.json in the experiment directory
+PROJECT_ID=$(cat project_info.json 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('project_id',''))")
+
+# Query dependency graph from kanban.db
+MARCUS_ROOT=$(python3 -c "from pathlib import Path; import marcus_mcp; print(Path(marcus_mcp.__file__).parent.parent.parent)")
+sqlite3 ${MARCUS_ROOT}/data/kanban.db "
+  SELECT t1.name, t1.status, t1.assigned_to, t2.name as depends_on
+  FROM tasks t1
+  LEFT JOIN task_dependencies d ON t1.id = d.task_id
+  LEFT JOIN tasks t2 ON t2.id = d.depends_on_id
+  WHERE t1.project_id IN (
+    SELECT project_id FROM tasks
+    WHERE name LIKE '%${PROJECT_NAME}%'
+    LIMIT 1
+  )
+"
+```
+
+If kanban.db is unavailable, infer the DAG from tmux logs (task names,
+start/end times, dependency mentions in agent output).
+
+**Step 2: Calculate parallelization metrics**
+
+From the DAG, determine:
+- **Critical path length**: longest sequential chain of dependent tasks
+- **Max parallel width**: most tasks that could run simultaneously
+- **Theoretical speedup**: total task time / critical path time
+- **Actual speedup**: total task time / wall clock time
+
+Compare agents available vs agents that produced work.
+
+**Step 3: Analyze agent utilization**
+
+From tmux logs and task timelines, for each agent determine:
+- Tasks completed (count and names)
+- Active working time
+- Idle time and reason (dependency blocked, retry loop, trust prompt,
+  no tasks available, lease expired)
+
+**Step 4: Identify coordination failures**
+
+Each failure should have:
+- What happened (specific, with evidence)
+- Duration of impact
+- Root cause (linear deps, lease bug, trust prompt, task stuck, retry loop)
+- Whether it's fixable in Marcus
+
+**Step 5: Score coordination**
+
+| Score | Criteria |
+|-------|---------|
+| 5 | All agents productive, parallelism maximized, no stuck tasks |
+| 4 | Minor idle time, parallelism mostly achieved |
+| 3 | Some agents underutilized, avoidable sequential work |
+| 2 | Significant idle agents, linear chain where parallel was possible |
+| 1 | Agent(s) produced nothing, tasks permanently stuck, zero parallelism |
+
 ### Phase 8: Produce Structured Output
 
 **Every audit produces exactly 3 artifacts. No exceptions. No freeform reports.**
