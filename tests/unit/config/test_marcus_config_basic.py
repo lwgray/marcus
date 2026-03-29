@@ -27,7 +27,7 @@ class TestMarcusConfigBasic:
         config = MarcusConfig()
 
         assert config.ai.provider == "anthropic"
-        assert config.kanban.provider == "planka"
+        assert config.kanban.provider == "sqlite"
         assert config.features.events is True
         assert config.log_level == "INFO"
 
@@ -120,7 +120,7 @@ class TestMarcusConfigBasic:
 
         # Should return default config
         assert config.ai.provider == "anthropic"
-        assert config.kanban.provider == "planka"
+        assert config.kanban.provider == "sqlite"
 
     def test_nested_transport_config(self, tmp_path: Path) -> None:
         """Test that nested transport config loads correctly."""

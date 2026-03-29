@@ -7,6 +7,7 @@ This module contains tools for natural language project/task creation:
 
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from src.integrations.nlp_tools import add_feature_natural_language
@@ -244,16 +245,60 @@ async def create_project(
         if options:
             complexity = options.get("complexity", "standard")
 
+        # Initialize or replace kanban client to match requested provider
+        from src.config.marcus_config import get_config
+        from src.integrations.kanban_factory import KanbanFactory
+        from src.integrations.kanban_interface import KanbanProvider
+
+        cfg_provider = get_config().kanban.provider or "sqlite"
+        requested_provider = (
+            options.get("provider", cfg_provider) if options else cfg_provider
+        )
+
+        # Check if current client matches requested provider
+        current_provider = None
+        if state.kanban_client and hasattr(state.kanban_client, "provider"):
+            current_provider = (
+                state.kanban_client.provider.value
+                if isinstance(state.kanban_client.provider, KanbanProvider)
+                else str(state.kanban_client.provider)
+            )
+
+        need_new_client = (
+            not state.kanban_client or current_provider != requested_provider
+        )
+
+        if need_new_client:
+            try:
+                state.kanban_client = KanbanFactory.create(requested_provider)
+                if hasattr(state.kanban_client, "connect"):
+                    await state.kanban_client.connect()
+                logger.info(
+                    f"Initialized kanban client "
+                    f"(provider={requested_provider}, "
+                    f"was={current_provider}) "
+                    f"for new project '{project_name}'"
+                )
+            except Exception as e:
+                logger.error(f"Failed to initialize kanban client: {e}")
+                return {
+                    "success": False,
+                    "error": (
+                        f"Failed to initialize kanban provider "
+                        f"'{requested_provider}': {e}"
+                    ),
+                }
+
         # Clear stale project/board IDs to force new project creation
         # Restored from deleted pipeline_tracked_nlp.py
         # The creator checks if these are set and skips creation if they are
         # CRITICAL: This affects task and subtask creation ordering
+        # NOTE: SQLite provider doesn't have project_id/board_id attributes
         if state.kanban_client:
-            # Clear on the underlying client if wrapped
             if hasattr(state.kanban_client, "client"):
                 state.kanban_client.client.project_id = None
                 state.kanban_client.client.board_id = None
-            else:
+            elif hasattr(state.kanban_client, "project_id"):
                 state.kanban_client.project_id = None
                 state.kanban_client.board_id = None
             logger.info(
@@ -315,9 +360,14 @@ async def create_project(
         # (restored from deleted pipeline_tracked_nlp.py)
         if result.get("success") and hasattr(state, "kanban_client"):
             try:
+                from src.config.marcus_config import get_config
                 from src.core.project_registry import ProjectConfig
 
-                provider = options.get("provider", "planka") if options else "planka"
+                # Default from config, experiment options can override
+                default_prov = get_config().kanban.provider or "sqlite"
+                provider = (
+                    options.get("provider", default_prov) if options else default_prov
+                )
 
                 # Get provider-specific project name
                 # (may differ from Marcus project name)
@@ -330,19 +380,46 @@ async def create_project(
                     provider_project_name = board_info.get("project_name", project_name)
                     provider_board_name = board_info.get("board_name", "Main Board")
 
-                # Verify kanban_client has project/board IDs
-                if state.kanban_client.project_id and state.kanban_client.board_id:
+                # Build provider_config based on provider type
+                if provider == "sqlite":
+                    kanban_config = get_config().kanban
+                    prov_config: Dict[str, Any] = {
+                        "db_path": (kanban_config.sqlite_db_path or "./data/kanban.db"),
+                        "project_name": provider_project_name,
+                        "attachments_dir": (
+                            kanban_config.sqlite_attachments_dir or "./data/attachments"
+                        ),
+                    }
+                    # Include project/board IDs from the client
+                    # so project scoping works on switch
+                    if hasattr(state.kanban_client, "project_id"):
+                        prov_config["project_id"] = state.kanban_client.project_id
+                    if hasattr(state.kanban_client, "board_id"):
+                        prov_config["board_id"] = state.kanban_client.board_id
+                    can_register = True
+                elif (
+                    hasattr(state.kanban_client, "project_id")
+                    and state.kanban_client.project_id
+                    and hasattr(state.kanban_client, "board_id")
+                    and state.kanban_client.board_id
+                ):
+                    prov_config = {
+                        "project_id": str(state.kanban_client.project_id),
+                        "project_name": provider_project_name,
+                        "board_id": str(state.kanban_client.board_id),
+                        "board_name": provider_board_name,
+                    }
+                    can_register = True
+                else:
+                    can_register = False
+
+                if can_register:
                     # Create ProjectConfig
                     project_config = ProjectConfig(
                         id="",  # Will be generated by registry
                         name=f"{provider_project_name} - {provider_board_name}",
                         provider=provider,
-                        provider_config={
-                            "project_id": str(state.kanban_client.project_id),
-                            "project_name": provider_project_name,
-                            "board_id": str(state.kanban_client.board_id),
-                            "board_name": provider_board_name,
-                        },
+                        provider_config=prov_config,
                         created_at=datetime.now(timezone.utc),
                         last_used=datetime.now(timezone.utc),
                         tags=["auto-created", provider],
@@ -373,6 +450,44 @@ async def create_project(
 
                         # Add Marcus project_id to result for auto-select functionality
                         result["project_id"] = marcus_project_id
+
+                        # Backfill project_id on tasks just created
+                        # (tasks are persisted before registration)
+                        try:
+                            from src.core.persistence import SQLitePersistence
+
+                            marcus_root = Path(__file__).parent.parent.parent
+                            db_path = marcus_root / "data" / "marcus.db"
+                            persistence = SQLitePersistence(db_path=db_path)
+                            task_ids = result.get("task_ids", [])
+                            if not task_ids:
+                                # Fallback: get IDs from created tasks
+                                created = result.get("created_tasks", [])
+                                task_ids = [
+                                    str(
+                                        t.get("id", t)
+                                        if isinstance(t, dict)
+                                        else getattr(t, "id", t)
+                                    )
+                                    for t in created
+                                ]
+                            for tid in task_ids:
+                                existing = await persistence.retrieve(
+                                    "task_metadata", str(tid)
+                                )
+                                if existing:
+                                    existing["project_id"] = marcus_project_id
+                                    await persistence.store(
+                                        "task_metadata", str(tid), existing
+                                    )
+                            if task_ids:
+                                logger.info(
+                                    f"Backfilled project_id on {len(task_ids)} tasks"
+                                )
+                        except Exception as backfill_err:
+                            logger.warning(
+                                f"Failed to backfill project_id: {backfill_err}"
+                            )
                     else:
                         logger.warning(
                             "ProjectRegistry not available - project not registered"
