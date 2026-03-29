@@ -82,7 +82,7 @@ class MarcusServer:
         self.project_manager = ProjectContextManager(self.project_registry)
 
         # Get default provider from config
-        self.provider = self.config.kanban.provider or "planka"
+        self.provider = self.config.kanban.provider or "sqlite"
 
         # Check if in multi-project mode
         self.is_multi_project_mode = self.config.single_project_mode is False
@@ -461,34 +461,41 @@ class MarcusServer:
         # Initialize project management (skip auto-switch, we do it after sync)
         await self.project_manager.initialize(auto_switch=False)
 
-        # Auto-sync projects from provider (ALWAYS runs - keeps registry in sync)
-        logger.info("Auto-syncing projects from Kanban provider...")
-        try:
-            from src.marcus_mcp.tools.project_management import (
-                discover_planka_projects,
+        # Auto-sync projects from provider
+        if self.provider == "planka":
+            logger.info("Auto-syncing projects from Planka...")
+            try:
+                from src.marcus_mcp.tools.project_management import (
+                    discover_planka_projects,
+                )
+
+                result = await discover_planka_projects(self, {"auto_sync": True})
+                if result.get("success"):
+                    sync_result = result.get("sync_result", {})
+                    summary = sync_result.get("summary", {})
+                    logger.info(
+                        f"Auto-synced Planka projects: "
+                        f"{summary.get('added', 0)} added, "
+                        f"{summary.get('updated', 0)} updated, "
+                        f"{summary.get('skipped', 0)} skipped"
+                    )
+                else:
+                    logger.warning(f"Planka auto-sync failed: {result.get('error')}")
+            except Exception as e:
+                logger.warning(f"Failed to auto-sync Planka projects: {e}")
+        else:
+            logger.info(
+                f"Using {self.provider} provider — " f"skipping Planka auto-sync"
             )
 
-            result = await discover_planka_projects(self, {"auto_sync": True})
-            if result.get("success"):
-                sync_result = result.get("sync_result", {})
-                summary = sync_result.get("summary", {})
-                logger.info(
-                    f"Auto-synced projects: {summary.get('added', 0)} added, "
-                    f"{summary.get('updated', 0)} updated, "
-                    f"{summary.get('skipped', 0)} skipped"
-                )
-
-                # Now switch to active project AFTER auto-sync
-                active_project = (
-                    await self.project_manager.registry.get_active_project()
-                )
-                if active_project:
-                    logger.info(f"Switching to active project: {active_project.name}")
-                    await self.project_manager.switch_project(active_project.id)
-            else:
-                logger.warning(f"Auto-sync failed: {result.get('error')}")
+        # Switch to active project
+        try:
+            active_project = await self.project_manager.registry.get_active_project()
+            if active_project:
+                logger.info(f"Switching to active project: {active_project.name}")
+                await self.project_manager.switch_project(active_project.id)
         except Exception as e:
-            logger.warning(f"Failed to auto-sync projects: {e}")
+            logger.warning(f"Failed to switch to active project: {e}")
 
         # Auto-select default project if configured
         default_project_name = get_config().default_project_name
@@ -503,10 +510,9 @@ class MarcusServer:
                         f"Successfully selected default project: {default_project_name}"
                     )
                 else:
-                    logger.warning(
-                        f"Could not select default project "
-                        f"'{default_project_name}': "
-                        f"{result.get('error', result.get('message'))}"
+                    logger.info(
+                        f"Default project '{default_project_name}' "
+                        f"not found — will be created on first use"
                     )
             except Exception as e:
                 logger.warning(

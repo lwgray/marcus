@@ -245,18 +245,27 @@ All components are loosely coupled via interfaces:
 ```python
 # Can inject any KanbanInterface implementation
 creator = NaturalLanguageProjectCreator(
-    kanban_client=kanban_interface,  # Planka, Linear, or GitHub
+    kanban_client=kanban_interface,  # SQLite, Planka, Linear, or GitHub
     ai_engine=ai_analysis_engine
 )
 ```
 
 ## Provider Implementations
 
+### SQLite Provider (Recommended for Getting Started)
+- **Technology**: Local SQLite database via Python stdlib
+- **Strengths**: Zero external dependencies, sub-millisecond operations, no Docker required
+- **Architecture**: Direct `sqlite3` calls with WAL mode for concurrent agent access
+- **Special Features**: Full attachment support (filesystem-backed), blocker tracking table, composite indexes for fast task queries
+- **When to use**: Local development, getting started, single-user experiments, CI/CD pipelines
+- **Location**: `src/integrations/providers/sqlite_kanban.py`
+
 ### Planka Provider
 - **Technology**: MCP via kanban-mcp server
-- **Strengths**: Full MCP compliance, self-hosted control
+- **Strengths**: Full MCP compliance, self-hosted control, web UI for visual board management
 - **Architecture**: Node.js MCP server → Planka REST API
 - **Special Features**: Rich comment system, custom fields support
+- **When to use**: Team environments where a visual board UI is needed
 
 ### Linear Provider
 - **Technology**: Direct GraphQL API

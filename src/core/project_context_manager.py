@@ -402,6 +402,19 @@ class ProjectContextManager:
             config.update({"token": self.config.kanban.github_token})
         elif project.provider == "linear":
             config.update({"api_key": self.config.kanban.linear_api_key})
+        elif project.provider == "sqlite":
+            config.update(
+                {
+                    "db_path": (
+                        self.config.kanban.sqlite_db_path or "./data/kanban.db"
+                    ),
+                    "project_name": project.name,
+                    "attachments_dir": (
+                        self.config.kanban.sqlite_attachments_dir
+                        or "./data/attachments"
+                    ),
+                }
+            )
 
         # Merge with project-specific config
         config.update(project.provider_config)

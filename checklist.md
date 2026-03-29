@@ -5,6 +5,8 @@
 - [ ] [Enhancement] Add context access logging/traceability to get_task_context (#196)
 - [ ] [Enhancement] Add detailed agent quality metrics to VALIDATION_METRICS (#186)
 - [ ] [Enhancement] Revisit git worktree isolation for multi-agent branch conflicts (#250)
+- [ ] [Enhancement] Project deletion UI — unified delete across Cato, ProjectRegistry, and kanban providers (#256) 🔴
+- [ ] [Refactor] Extract KanbanWorkflowMixin to eliminate workflow duplication across providers (#251) 🟡
 
 ## Bug Fixes
 

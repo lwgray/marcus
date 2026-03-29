@@ -138,6 +138,8 @@ Here's how an agent works with Marcus:
    guides/project-management/creating-projects
    guides/project-management/monitoring-status
    guides/project-management/analyzing-health
+   guides/project-management/hierarchical-task-decomposition
+   guides/project-management/sqlite-kanban-provider
    guides/collaboration/communication-hub
    guides/collaboration/logging-decisions
    guides/collaboration/tracking-artifacts

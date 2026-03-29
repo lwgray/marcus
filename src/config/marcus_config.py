@@ -91,7 +91,7 @@ class KanbanSettings:
     Parameters
     ----------
     provider : str
-        Kanban provider: "planka", "github", or "linear"
+        Kanban provider: "planka", "github", "linear", or "sqlite"
     board_name : Optional[str]
         Default board name to use
     planka_base_url : Optional[str]
@@ -110,9 +110,13 @@ class KanbanSettings:
         Linear API key (required if provider="linear")
     linear_team_id : Optional[str]
         Linear team ID
+    sqlite_db_path : Optional[str]
+        Path to SQLite database file (required if provider="sqlite")
+    sqlite_attachments_dir : Optional[str]
+        Directory for attachment file storage (provider="sqlite")
     """
 
-    provider: str = "planka"
+    provider: str = "sqlite"
     board_name: Optional[str] = None
     planka_base_url: Optional[str] = None
     planka_email: Optional[str] = None
@@ -122,6 +126,8 @@ class KanbanSettings:
     github_repo: Optional[str] = None
     linear_api_key: Optional[str] = None
     linear_team_id: Optional[str] = None
+    sqlite_db_path: Optional[str] = None
+    sqlite_attachments_dir: Optional[str] = None
 
 
 @dataclass

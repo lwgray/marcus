@@ -46,7 +46,7 @@ from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(MARCUS_ROOT / ".env")
 
-from src.config.config_loader import get_config  # noqa: E402
+from src.config.config_loader import get_config, get_kanban_provider  # noqa: E402
 
 
 class MarcusCLI:
@@ -367,6 +367,7 @@ class MarcusCLI:
             pid = self._get_pid()
             print("✅ Marcus is running")
             print(f"   PID: {pid}")
+            print(f"   Provider: {get_kanban_provider()}")
 
             # Get process info
             try:
@@ -498,6 +499,132 @@ class MarcusCLI:
                 return False
         return False
 
+    def board(self, args: argparse.Namespace) -> int:
+        """Display the kanban board or list projects."""
+        import asyncio
+        import logging
+
+        from rich.console import Console
+        from rich.table import Table
+
+        from src.integrations.providers.sqlite_kanban import SQLiteKanban
+        from src.visualization.board_renderer import BoardRenderer
+
+        # Suppress library logs for clean board output
+        logging.getLogger("src.integrations").setLevel(logging.WARNING)
+
+        db_path = args.db or str(MARCUS_ROOT / "data" / "kanban.db")
+
+        if not Path(db_path).exists():
+            print(f"❌ No database found at {db_path}")
+            print("   Run an experiment with --provider sqlite first,")
+            print("   or specify a path with: marcus board --db <path>")
+            return 1
+
+        kanban = SQLiteKanban({"db_path": db_path, "project_name": ""})
+
+        if args.list:
+            # List all projects
+            async def _list_projects() -> None:
+                await kanban.connect()
+                try:
+                    projects = await kanban.list_projects()
+                    if not projects:
+                        print("No projects found.")
+                        return
+                    console = Console()
+                    table = Table(title="Projects")
+                    table.add_column("ID", style="dim", max_width=10)
+                    table.add_column("Name", style="bold")
+                    table.add_column("Tasks", justify="right")
+                    table.add_column("Created", style="dim")
+                    for p in projects:
+                        created = p["created_at"][:10]
+                        table.add_row(
+                            p["id"][:8],
+                            p["name"],
+                            str(p.get("task_count", 0)),
+                            created,
+                        )
+                    console.print(table)
+                finally:
+                    await kanban.disconnect()
+
+            asyncio.run(_list_projects())
+            return 0
+
+        # Show board — default to active project from projects.json
+        project_filter = args.project
+        if not project_filter:
+            # Read active project from registry — use the kanban
+            # provider's project_id (not the registry UUID)
+            import json as _json
+
+            projects_file = MARCUS_ROOT / "data" / "marcus_state" / "projects.json"
+            if projects_file.exists():
+                try:
+                    pdata = _json.loads(projects_file.read_text())
+                    active = pdata.get("active_project", {})
+                    active_id = active.get("project_id")
+                    if active_id and active_id in pdata:
+                        proj_rec = pdata[active_id]
+                        prov_cfg = proj_rec.get("provider_config", {})
+                        # Use kanban provider's project_id if available
+                        kanban_pid = prov_cfg.get("project_id")
+                        if kanban_pid:
+                            project_filter = kanban_pid
+                        else:
+                            project_filter = active_id
+                        project_name = proj_rec.get("name", active_id)
+                    else:
+                        project_name = "Marcus Board"
+                except (ValueError, KeyError):
+                    project_name = "Marcus Board"
+            else:
+                project_name = "Marcus Board"
+        else:
+            project_name = project_filter
+
+        display_name = project_name
+
+        async def _load_and_render() -> None:
+            nonlocal display_name
+            await kanban.connect()
+            try:
+                tasks = await kanban.get_all_tasks()
+
+                # Filter by project — prefer ID match, fall back to name
+                if project_filter:
+                    # Try exact project_id match first
+                    filtered = [
+                        t
+                        for t in tasks
+                        if t.project_id and t.project_id.startswith(project_filter)
+                    ]
+
+                    # Only fall back to name if no ID matches
+                    if not filtered:
+                        base_name = display_name.split(" - ")[0].strip()
+                        filtered = [
+                            t
+                            for t in tasks
+                            if t.project_name
+                            and t.project_name.lower() == base_name.lower()
+                        ]
+                    if filtered:
+                        pname = filtered[0].project_name
+                        if pname:
+                            display_name = pname
+                        tasks = filtered
+
+                renderer = BoardRenderer(project_name=display_name)
+                renderer.render(tasks)
+            finally:
+                await kanban.disconnect()
+
+        asyncio.run(_load_and_render())
+        return 0
+
     def _get_pid(self) -> Optional[int]:
         """Get Marcus PID from file"""
         if self.pid_file.exists():
@@ -608,6 +735,26 @@ Examples:
         "--edit", "-e", action="store_true", help="Edit config file"
     )
 
+    # Board command
+    board_parser = subparsers.add_parser("board", help="View kanban board")
+    board_parser.add_argument(
+        "--db",
+        type=str,
+        default=None,
+        help="Path to kanban.db (default: ./data/kanban.db)",
+    )
+    board_parser.add_argument(
+        "--project",
+        type=str,
+        default=None,
+        help="Project ID or name to filter tasks",
+    )
+    board_parser.add_argument(
+        "--list",
+        action="store_true",
+        help="List all projects",
+    )
+
     args = parser.parse_args()
 
     # Execute command
@@ -623,6 +770,8 @@ Examples:
         return cli.logs(args)
     elif args.command == "config":
         return cli.config(args)
+    elif args.command == "board":
+        return cli.board(args)
     else:
         parser.print_help()
         return 1
