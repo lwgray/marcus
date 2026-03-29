@@ -328,78 +328,83 @@ class SQLiteKanban(KanbanInterface):
         dependencies: List[str] = task_data.get("dependencies", [])
 
         def _insert(conn: sqlite3.Connection) -> None:
-            conn.execute(
-                """
-                INSERT INTO tasks (
-                    id, name, description, status, priority,
-                    assigned_to, created_at, updated_at,
-                    due_date, estimated_hours, actual_hours,
-                    project_id, project_name, is_subtask,
-                    parent_task_id, subtask_index, source_type,
-                    source_context, completion_criteria,
-                    validation_spec, provides, requires,
-                    original_id
-                ) VALUES (
-                    ?, ?, ?, ?, ?,
-                    ?, ?, ?,
-                    ?, ?, ?,
-                    ?, ?, ?,
-                    ?, ?, ?,
-                    ?, ?,
-                    ?, ?, ?,
-                    ?
-                )
-                """,
-                (
-                    task_id,
-                    task_data.get("name", ""),
-                    task_data.get("description", ""),
-                    status.value,
-                    priority.value,
-                    task_data.get("assigned_to"),
-                    now_iso,
-                    now_iso,
-                    task_data.get("due_date"),
-                    task_data.get("estimated_hours", 0.0),
-                    task_data.get("actual_hours", 0.0),
-                    task_data.get("project_id", self.project_id),
-                    task_data.get("project_name", self.project_name),
-                    1 if task_data.get("is_subtask") else 0,
-                    task_data.get("parent_task_id"),
-                    task_data.get("subtask_index"),
-                    task_data.get("source_type"),
-                    (
-                        json.dumps(task_data["source_context"])
-                        if task_data.get("source_context")
-                        else None
-                    ),
-                    (
-                        json.dumps(task_data["completion_criteria"])
-                        if task_data.get("completion_criteria")
-                        else None
-                    ),
-                    task_data.get("validation_spec"),
-                    task_data.get("provides"),
-                    task_data.get("requires"),
-                    task_data.get("original_id"),
-                ),
-            )
-
-            for label in labels:
+            conn.execute("BEGIN")
+            try:
                 conn.execute(
-                    "INSERT OR IGNORE INTO task_labels "
-                    "(task_id, label) VALUES (?, ?)",
-                    (task_id, label),
+                    """
+                    INSERT INTO tasks (
+                        id, name, description, status, priority,
+                        assigned_to, created_at, updated_at,
+                        due_date, estimated_hours, actual_hours,
+                        project_id, project_name, is_subtask,
+                        parent_task_id, subtask_index, source_type,
+                        source_context, completion_criteria,
+                        validation_spec, provides, requires,
+                        original_id
+                    ) VALUES (
+                        ?, ?, ?, ?, ?,
+                        ?, ?, ?,
+                        ?, ?, ?,
+                        ?, ?, ?,
+                        ?, ?, ?,
+                        ?, ?,
+                        ?, ?, ?,
+                        ?
+                    )
+                    """,
+                    (
+                        task_id,
+                        task_data.get("name", ""),
+                        task_data.get("description", ""),
+                        status.value,
+                        priority.value,
+                        task_data.get("assigned_to"),
+                        now_iso,
+                        now_iso,
+                        task_data.get("due_date"),
+                        task_data.get("estimated_hours", 0.0),
+                        task_data.get("actual_hours", 0.0),
+                        task_data.get("project_id", self.project_id),
+                        task_data.get("project_name", self.project_name),
+                        1 if task_data.get("is_subtask") else 0,
+                        task_data.get("parent_task_id"),
+                        task_data.get("subtask_index"),
+                        task_data.get("source_type"),
+                        (
+                            json.dumps(task_data["source_context"])
+                            if task_data.get("source_context")
+                            else None
+                        ),
+                        (
+                            json.dumps(task_data["completion_criteria"])
+                            if task_data.get("completion_criteria")
+                            else None
+                        ),
+                        task_data.get("validation_spec"),
+                        task_data.get("provides"),
+                        task_data.get("requires"),
+                        task_data.get("original_id"),
+                    ),
                 )
 
-            for dep_id in dependencies:
-                conn.execute(
-                    "INSERT OR IGNORE INTO task_dependencies "
-                    "(task_id, depends_on_id) VALUES (?, ?)",
-                    (task_id, dep_id),
-                )
+                for label in labels:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO task_labels "
+                        "(task_id, label) VALUES (?, ?)",
+                        (task_id, label),
+                    )
 
-            conn.commit()
+                for dep_id in dependencies:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO task_dependencies "
+                        "(task_id, depends_on_id) VALUES (?, ?)",
+                        (task_id, dep_id),
+                    )
+
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
 
         await self._run_in_executor(lambda: self._with_connection(_insert))
 
@@ -580,6 +585,8 @@ class SQLiteKanban(KanbanInterface):
                     )
 
             params.append(task_id)
+            # Safe: set_clauses only contains hardcoded column names
+            # from the elif chain above — never user input.
             sql = f"UPDATE tasks SET {', '.join(set_clauses)} " f"WHERE id = ?"
             conn.execute(sql, params)
             conn.commit()

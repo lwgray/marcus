@@ -172,10 +172,13 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                     elif hasattr(self.kanban_client, "connect"):
                         await self.kanban_client.connect()
                     # Set active_project_id so task_metadata in marcus.db
-                    # gets the correct project_id for Cato filtering
-                    self.active_project_id = getattr(
-                        self.kanban_client, "project_id", None
-                    )
+                    # gets the correct project_id for Cato filtering.
+                    # Only set if not already assigned (caller may have
+                    # set it to the Marcus registry ID).
+                    if not self.active_project_id:
+                        self.active_project_id = getattr(
+                            self.kanban_client, "project_id", None
+                        )
                     logger.info(
                         f"Using SQLite provider for project "
                         f"'{project_name}' — "

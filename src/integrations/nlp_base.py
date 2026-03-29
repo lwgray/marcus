@@ -275,13 +275,17 @@ class NaturalLanguageTaskCreator(ABC):
             Tasks as created on the kanban board (with real UUIDs).
         """
         # Build mapping: original_id / slug → real UUID
+        # Use name-based matching instead of positional zip, since
+        # failed task creations can shift positions.
         slug_to_uuid: Dict[str, str] = {}
-        for orig, created in zip(original_tasks, created_tasks):
-            if orig.id and created.id:
+        orig_by_name = {t.name: t for t in original_tasks}
+        for created in created_tasks:
+            orig = orig_by_name.get(created.name)
+            if orig and orig.id and created.id:
                 slug_to_uuid[orig.id] = created.id
             # Also map by original_id if stored on the task
             orig_id = getattr(created, "original_id", None)
-            if orig_id:
+            if orig_id and created.id:
                 slug_to_uuid[orig_id] = created.id
 
         if not slug_to_uuid:

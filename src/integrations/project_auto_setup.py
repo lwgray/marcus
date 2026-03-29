@@ -92,7 +92,9 @@ class ProjectAutoSetup:
             )
         elif provider == "sqlite":
             return await self.setup_sqlite_project(
-                project_name=project_name, options=options
+                project_name=project_name,
+                options=options,
+                kanban_client=kanban_client,
             )
         else:
             raise ValueError(
