@@ -149,6 +149,8 @@ instructions for a developer.
 Task: {task}
 Assigned to: {agent}
 
+The agent is a skilled developer. Give them the WHAT, not the HOW.
+
 IMPORTANT: Look at the task data to determine the task type \
 (check the 'type' field). Generate instructions appropriate for the task type:
 
@@ -164,7 +166,6 @@ For IMPLEMENTATION tasks:
   - Write tests FIRST before any implementation
   - Follow Red-Green-Refactor cycle
 - Reference the design specifications
-- Include specific code components to build
 - Deliverables: working code with tests
 
 For TESTING tasks:
@@ -177,9 +178,18 @@ Generate clear, actionable instructions that:
 2. List specific steps appropriate for the task type
 3. Include acceptance criteria
 4. Note any dependencies or prerequisites
-5. Keep complexity appropriate to the task scope (simple tasks get simple instructions)
+5. Keep complexity appropriate to the task scope \
+(simple tasks get simple instructions)
 
-Format as structured text the developer can follow.""",
+Keep instructions BRIEF (under 15 lines). Do NOT write:
+- Step-by-step implementation plans
+- Specific test case names or test code
+- File names, class names, or code structure
+- Numbered phases or sub-phases
+
+Format as structured text the developer can follow.
+
+The agent decides the approach. You define the goal and constraints.""",
             "blocker_analysis": """Analyze this blocker and suggest resolution:
 
 Task ID: {task_id}
