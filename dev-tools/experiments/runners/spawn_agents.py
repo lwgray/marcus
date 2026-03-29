@@ -304,7 +304,7 @@ PROJECT SPECIFICATION:
      - board_id: (the board_id from step 2)
      - tags: {{"project_type": \
 "{self.config.project_options.get('complexity', 'standard')}", \
-"provider": "{self.config.project_options.get('provider', 'planka')}"}}
+"provider": "{self.config.project_options.get('provider', 'sqlite')}"}}
      - params: {{"num_agents": {len(self.config.agents)}}}
    - Print: "EXPERIMENT STARTED: <experiment_name>"
    - Exit
