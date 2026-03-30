@@ -115,6 +115,39 @@
 ## Cross-Agent Issues
 [Contradictions, duplicated work, integration gaps, spec drift cascades]
 
+## Coordination Effectiveness
+
+**Score**: [/5] ([grade])
+
+### Parallelization Analysis
+
+| Metric | Value | Assessment |
+|--------|-------|------------|
+| Agents available | | |
+| Agents that produced work | | 🔴/🟡/🟢 |
+| Max theoretical parallelism (from DAG) | | |
+| Actual parallel tasks observed | | 🔴/🟡/🟢 |
+| Time wasted (retries, idle, trust prompts) | | |
+
+### Dependency Chain Analysis
+
+- Critical path length: [N tasks]
+- Max parallel width: [N tasks could run simultaneously]
+- Could parallelism improve? [YES/NO — explain]
+- DAG shape: [linear chain / diamond / wide fan-out / balanced tree]
+
+### Agent Utilization
+
+| Agent | Tasks Completed | Active Time | Idle Time | Idle Reason |
+|-------|----------------|-------------|-----------|-------------|
+| | | | | [dependency blocked / retry loop / trust prompt / no tasks / lease bug] |
+
+### Coordination Failures
+
+| Failure | Duration | Root Cause | Fixable? |
+|---------|----------|------------|----------|
+| | | [linear deps / lease bug / trust prompt / task stuck / retry loop] | Yes/No — [how] |
+
 ## Recommendations
 
 ### Project-Specific Fixes

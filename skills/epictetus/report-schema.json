@@ -305,6 +305,50 @@
         }
       }
     },
+    "coordination_effectiveness": {
+      "type": "object",
+      "description": "Multi-agent coordination analysis. Scored separately from code quality.",
+      "properties": {
+        "score": { "type": "number", "minimum": 0, "maximum": 5 },
+        "grade": { "type": "string" },
+        "agents_available": { "type": "integer" },
+        "agents_productive": { "type": "integer" },
+        "max_theoretical_parallelism": { "type": "integer" },
+        "actual_parallel_tasks": { "type": "integer" },
+        "time_wasted_minutes": { "type": "number" },
+        "dag_shape": {
+          "type": "string",
+          "enum": ["linear_chain", "diamond", "wide_fan_out", "balanced_tree", "unknown"]
+        },
+        "critical_path_length": { "type": "integer" },
+        "max_parallel_width": { "type": "integer" },
+        "agent_utilization": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "agent_id": { "type": "string" },
+              "tasks_completed": { "type": "integer" },
+              "active_minutes": { "type": "number" },
+              "idle_minutes": { "type": "number" },
+              "idle_reason": { "type": "string" }
+            }
+          }
+        },
+        "coordination_failures": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "failure": { "type": "string" },
+              "duration_minutes": { "type": "number" },
+              "root_cause": { "type": "string" },
+              "fixable": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
     "recommendations": {
       "type": "array",
       "items": {

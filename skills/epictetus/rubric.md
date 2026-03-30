@@ -227,6 +227,71 @@ Extra: Checkpoint resume? Partial output cleanup? Row-count validation? Known in
 | Completeness | +5% — win/lose, pause, save state, all screens |
 | UX/Polish | NEW +5% — input responsiveness, visual feedback |
 
+---
+
+## Coordination Effectiveness (separate section, not weighted into total)
+
+This section evaluates how well Marcus coordinated multi-agent work. It is
+scored independently from code quality because coordination failures are
+infrastructure/spec issues, not agent code issues.
+
+### Scoring
+
+| Score | Grade | Meaning |
+|-------|-------|---------|
+| 5 | A | All agents productive, parallelism maximized, no stuck tasks |
+| 4 | B | Minor idle time, parallelism mostly achieved |
+| 3 | C | Some agents underutilized, avoidable sequential work |
+| 2 | D | Significant idle agents, linear chain where parallel was possible |
+| 1 | F | Agent(s) produced nothing, tasks permanently stuck, zero parallelism |
+
+### What to Measure
+
+**Parallelization Metrics:**
+- Agents available vs agents that produced work
+- Max theoretical parallelism from the DAG (longest path vs graph width)
+- Actual parallel tasks observed (overlapping work in timeline)
+- Time wasted on retries, idle waits, trust prompts
+
+**Agent Utilization:**
+For each agent: tasks completed, active time, idle time, idle reason.
+Idle reasons: dependency blocked, retry loop, trust prompt, no tasks available,
+lease expired, permanently stuck.
+
+**Dependency Chain Analysis:**
+Query the DAG to determine:
+- Critical path length (longest sequential chain)
+- Maximum parallel width (most tasks available at once)
+- Could the task planner have created more parallel work?
+- Were dependencies necessary or artificial?
+
+**Coordination Failures:**
+Each failure with: duration, root cause, and whether it's fixable.
+Root causes: linear dependency chain, lease/state bug, trust prompt delay,
+task permanently stuck, agent retry loop with no backoff.
+
+### How to Get DAG Data
+
+```bash
+# From kanban.db (if SQLite provider)
+MARCUS_ROOT=$(python3 -c "from pathlib import Path; import marcus_mcp; print(Path(marcus_mcp.__file__).parent.parent.parent)")
+PROJECT_ID="<from project_info.json or marcus_state/projects.json>"
+
+sqlite3 ${MARCUS_ROOT}/data/kanban.db "
+  SELECT t1.name as task, t1.status, t2.name as depends_on
+  FROM task_dependencies d
+  JOIN tasks t1 ON t1.id = d.task_id
+  JOIN tasks t2 ON t2.id = d.depends_on_id
+  WHERE t1.project_id = '${PROJECT_ID}'
+"
+
+# Task timeline from Cato API (if available)
+curl -s http://localhost:4301/api/tasks/${TASK_ID}/conversation
+```
+
+If neither source is available, infer from tmux logs: task start/end times,
+agent activity patterns, retry messages.
+
 Extra: Game loop decoupled from render? All states reachable/escapable? Win condition? Pause/resume? Collision accuracy at all speeds?
 
 ---
