@@ -31,6 +31,7 @@ end_experiment()
 import asyncio
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.experiments import MarcusExperiment
@@ -80,6 +81,9 @@ class LiveExperimentMonitor:
         self.is_running = False
         self.monitor_task: Optional[asyncio.Task[None]] = None
         self.run_name: Optional[str] = None
+
+        # Run directory for experiment_complete.json signal
+        self.run_dir: Optional[Path] = None
 
         # Tracked metrics
         self.registered_agents: Dict[str, Dict[str, Any]] = {}
