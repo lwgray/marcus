@@ -92,12 +92,26 @@ async def get_project_status(state: Any) -> Any:
                         f"falling back to in-memory: {e}"
                     )
 
-            if kanban_metrics:
-                total_tasks = kanban_metrics.get("total_tasks", 0)
-                completed = kanban_metrics.get("completed_tasks", 0)
-                in_progress = kanban_metrics.get("in_progress_tasks", 0)
-                blocked = kanban_metrics.get("blocked_tasks", 0)
+            # Validate all required fields before trusting metrics.
+            # Some providers (e.g. Linear) return incomplete data.
+            _required = {
+                "total_tasks",
+                "completed_tasks",
+                "in_progress_tasks",
+                "blocked_tasks",
+            }
+            if kanban_metrics and _required.issubset(kanban_metrics):
+                total_tasks = kanban_metrics["total_tasks"]
+                completed = kanban_metrics["completed_tasks"]
+                in_progress = kanban_metrics["in_progress_tasks"]
+                blocked = kanban_metrics["blocked_tasks"]
             else:
+                if kanban_metrics:
+                    logger.warning(
+                        "Kanban metrics incomplete "
+                        f"(missing {_required - set(kanban_metrics)}), "
+                        "falling back to in-memory"
+                    )
                 # Fallback to in-memory state
                 total_tasks = len(state.project_tasks)
                 completed = len(
