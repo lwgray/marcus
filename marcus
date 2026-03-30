@@ -365,9 +365,13 @@ class MarcusCLI:
         """Check Marcus status"""
         if self._is_running():
             pid = self._get_pid()
+            config = get_config()
             print("✅ Marcus is running")
             print(f"   PID: {pid}")
             print(f"   Provider: {get_kanban_provider()}")
+            print(f"   AI Model: {config.get('ai.model', 'unknown')}")
+            print(f"   AI Provider: {config.get('ai.provider', 'unknown')}")
+            print(f"   Temperature: {config.get('ai.temperature', 'unknown')}")
 
             # Get process info
             try:
@@ -383,7 +387,6 @@ class MarcusCLI:
                 pass
 
             # Show transport info
-            config = get_config()
             transport = config.get("transport", {}).get("type", "stdio")
 
             # Check if running in multi mode by looking for config
