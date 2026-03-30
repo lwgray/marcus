@@ -5,7 +5,10 @@ These tools allow starting, stopping, and monitoring real Marcus experiments
 with automatic MLflow tracking of all metrics.
 """
 
+import json
 import logging
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from src.experiments.live_experiment_monitor import (
@@ -212,11 +215,67 @@ async def end_experiment() -> Dict[str, Any]:
 
         logger.info(f"Stopped experiment: {result['run_name']}")
 
+        # Write experiment_complete.json so Posidonius auto-advance
+        # can detect that this run is finished.
+        _write_completion_signal(result)
+
         return result
 
     except Exception as e:
         logger.error(f"Failed to stop experiment: {e}")
         return {"success": False, "error": str(e)}
+
+
+def _write_completion_signal(result: Dict[str, Any]) -> None:
+    """Write experiment_complete.json to the run directory.
+
+    Posidonius polls for this file to detect when a run is done
+    and can advance to the next run.
+
+    Parameters
+    ----------
+    result : Dict[str, Any]
+        The result from monitor.stop() with final metrics.
+    """
+    try:
+        # Find the run directory by locating the most recent
+        # project_info.json in the experiments directory
+        run_dir = None
+        for exp_base in [
+            Path.home() / "experiments",
+            Path.cwd(),
+        ]:
+            if exp_base.exists():
+                candidates = sorted(
+                    exp_base.rglob("project_info.json"),
+                    key=lambda p: p.stat().st_mtime,
+                    reverse=True,
+                )
+                if candidates:
+                    run_dir = candidates[0].parent
+                    break
+
+        if run_dir is None:
+            logger.warning(
+                "Could not determine run directory for " "experiment_complete.json"
+            )
+            return
+
+        completion_file = run_dir / "experiment_complete.json"
+        completion_data = {
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "run_name": result.get("run_name"),
+            "final_metrics": result.get("final_metrics", {}),
+            "success": result.get("success", True),
+        }
+
+        with open(completion_file, "w") as f:
+            json.dump(completion_data, f, indent=2)
+
+        logger.info(f"Wrote experiment_complete.json to {completion_file}")
+
+    except Exception as e:
+        logger.warning(f"Failed to write experiment_complete.json: {e}")
 
 
 async def get_experiment_status() -> Dict[str, Any]:
