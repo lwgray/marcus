@@ -296,6 +296,99 @@ Extra: Game loop decoupled from render? All states reachable/escapable? Win cond
 
 ---
 
+## Contribution Distribution (separate section, not weighted into total)
+
+This section answers: **"If you removed this agent's code, would the product still work?"**
+
+Raw line counts and `git blame` are misleading. An agent can write 40% of the
+lines in the repo but contribute 0% to the working product if none of their
+code is reachable from the application's entry points. This analysis measures
+**effective contribution** — code that is actually on the execution path of
+the final working product.
+
+### Methodology
+
+**Step 1: Identify Product Entry Points**
+
+Find all entry points that make the product work:
+- `main()`, `app.run()`, CLI entry points, route handlers, exported APIs
+- Test entry points are tracked separately (test contribution ≠ product contribution)
+- Config files, build scripts, and static assets are tracked separately
+
+**Step 2: Reachability Analysis**
+
+From each entry point, trace the call graph through imports, function calls,
+and class instantiation to build the set of **reachable code** — every file,
+class, function, and line that is on the execution path of the working product.
+
+Code that is NOT reachable from any entry point is **orphaned** — it exists in
+the repo but does not contribute to the product. This includes:
+- Modules that nothing imports
+- Functions/classes that nothing calls or instantiates
+- Dead branches behind impossible conditions
+- Utility code written but never wired up
+
+**Step 3: Attribute Reachable Code to Agents**
+
+Using `git blame` mapped to agent identities (from Phase 1 contributor inference),
+calculate for each agent:
+- **Reachable lines**: lines they wrote that are on the execution path
+- **Orphaned lines**: lines they wrote that nothing reaches
+- **Rewritten lines**: lines they originally wrote that another agent replaced
+
+**Step 4: Calculate Effective Contribution**
+
+For each agent:
+```
+effective_contribution_pct = (agent_reachable_lines / total_reachable_lines) * 100
+```
+
+Also track:
+- **Activity share**: % of total commits by this agent (effort expended)
+- **Blame share**: % of total lines attributed by git blame (raw output)
+- **Effective share**: % of reachable product lines (actual contribution)
+
+The gap between these three numbers tells the story:
+- Activity ≈ Blame ≈ Effective → agent's work landed and mattered
+- Activity >> Effective → agent was busy but work didn't ship or was replaced
+- Blame >> Effective → agent wrote code that's in the repo but orphaned
+- Effective >> Activity → agent wrote small but critical glue/wiring code
+
+**Step 5: Contribution Categories**
+
+Not all contribution is product code. Track separately:
+- **Product code**: reachable from application entry points
+- **Test code**: test files and test utilities
+- **Infrastructure**: build scripts, config, CI, Dockerfiles
+- **Documentation**: READMEs, docs, comments
+
+An agent whose only contribution is tests or docs is NOT contributing to the
+working product — that's a valid but different kind of contribution that should
+be called out explicitly.
+
+### Verdicts
+
+| Verdict | Criteria |
+|---------|----------|
+| **Balanced** | No agent has >70% effective share; all agents have >10% effective share |
+| **Lopsided** | One agent has >70% effective share; others contributed but marginally |
+| **Single-Author Product** | One agent has >90% effective share; multi-agency did not produce multi-authored output |
+| **Complementary** | Agents contributed to different categories (e.g., one did product code, one did tests) — note this explicitly as it may or may not be intentional |
+
+### What This Means for Multi-Agency
+
+A **Single-Author Product** verdict with multiple active agents is the strongest
+signal that multi-agency coordination failed. The agents may have been busy, but
+only one produced the working product. This should be flagged prominently in the
+report and should always generate a `global` recommendation for Marcus to improve
+task decomposition and dependency design.
+
+A **Lopsided** verdict may be acceptable if the task naturally had a primary
+implementer and a supporting role — but only if that was the intended design.
+If agents were supposed to be equal contributors, lopsided is a coordination failure.
+
+---
+
 ## Instruction Quality Assessment (if --session)
 
 This is NOT a scored dimension. It is a findings section that explains root causes.

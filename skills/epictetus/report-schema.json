@@ -349,6 +349,81 @@
         }
       }
     },
+    "contribution_distribution": {
+      "type": "object",
+      "description": "Measures what percentage of the final working product each agent actually produced. Uses reachability analysis from entry points, not raw line counts.",
+      "required": ["verdict", "entry_points", "reachable_lines_total", "orphaned_lines_total", "agent_contributions"],
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "enum": ["balanced", "lopsided", "single_author_product", "complementary"],
+          "description": "balanced: no agent >70%, all >10%. lopsided: one agent >70%. single_author_product: one agent >90%. complementary: agents contributed to different categories."
+        },
+        "verdict_detail": {
+          "type": "string",
+          "description": "Human-readable explanation of what the verdict means for this specific experiment."
+        },
+        "entry_points": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Application entry points used for reachability analysis (e.g., main.py:main, app.py:create_app)."
+        },
+        "reachable_lines_total": {
+          "type": "integer",
+          "description": "Total lines of code reachable from product entry points."
+        },
+        "orphaned_lines_total": {
+          "type": "integer",
+          "description": "Total lines in the repo not reachable from any entry point (excluding tests, config, docs)."
+        },
+        "agent_contributions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["agent_label", "effective_pct", "blame_pct", "activity_pct"],
+            "properties": {
+              "agent_label": { "type": "string" },
+              "effective_pct": {
+                "type": "number", "minimum": 0, "maximum": 100,
+                "description": "Percentage of reachable product lines written by this agent."
+              },
+              "blame_pct": {
+                "type": "number", "minimum": 0, "maximum": 100,
+                "description": "Percentage of all lines attributed by git blame (raw, includes orphaned)."
+              },
+              "activity_pct": {
+                "type": "number", "minimum": 0, "maximum": 100,
+                "description": "Percentage of total commits made by this agent."
+              },
+              "reachable_lines": { "type": "integer" },
+              "orphaned_lines": { "type": "integer" },
+              "rewritten_by_others": {
+                "type": "integer",
+                "description": "Lines this agent originally wrote that were later replaced by another agent."
+              },
+              "contribution_categories": {
+                "type": "object",
+                "description": "Breakdown of what kind of code this agent contributed.",
+                "properties": {
+                  "product_code_pct": { "type": "number", "description": "Reachable application code." },
+                  "test_code_pct": { "type": "number", "description": "Test files and test utilities." },
+                  "infrastructure_pct": { "type": "number", "description": "Build scripts, config, CI, Dockerfiles." },
+                  "documentation_pct": { "type": "number", "description": "READMEs, docs, comments-only files." }
+                }
+              },
+              "assessment": {
+                "type": "string",
+                "description": "One-line summary: e.g., 'Primary product author', 'Wrote tests only — no product code', 'Busy but orphaned — none of this agent\u2019s code is reachable'."
+              }
+            }
+          }
+        },
+        "multi_agency_effective": {
+          "type": "boolean",
+          "description": "True if multiple agents have >10% effective contribution. False if one agent produced >90% of the working product."
+        }
+      }
+    },
     "recommendations": {
       "type": "array",
       "items": {
