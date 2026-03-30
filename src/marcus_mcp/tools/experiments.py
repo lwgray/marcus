@@ -5,7 +5,10 @@ These tools allow starting, stopping, and monitoring real Marcus experiments
 with automatic MLflow tracking of all metrics.
 """
 
+import json
 import logging
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from src.experiments.live_experiment_monitor import (
@@ -151,6 +154,16 @@ async def start_experiment(
             tracking_interval=tracking_interval,
         )
 
+        # Store run directory on monitor so end_experiment can
+        # write experiment_complete.json to the right place
+        if state and hasattr(state, "kanban_client") and state.kanban_client:
+            ws = None
+            if hasattr(state.kanban_client, "_load_workspace_state"):
+                ws = state.kanban_client._load_workspace_state()
+            if ws and ws.get("project_root"):
+                monitor.run_dir = Path(ws["project_root"]).parent
+                logger.info(f"Monitor run_dir set to {monitor.run_dir}")
+
         # Start monitoring
         result = await monitor.start(run_name=run_name, params=params, tags=tags)
 
@@ -205,6 +218,9 @@ async def end_experiment() -> Dict[str, Any]:
         return {"success": False, "error": "No experiment is currently running"}
 
     try:
+        # Grab run_dir before clearing the monitor
+        run_dir = getattr(monitor, "run_dir", None)
+
         result = await monitor.stop()
 
         # Clear active monitor
@@ -212,11 +228,49 @@ async def end_experiment() -> Dict[str, Any]:
 
         logger.info(f"Stopped experiment: {result['run_name']}")
 
+        # Write experiment_complete.json so Posidonius auto-advance
+        # can detect that this run is finished.
+        if run_dir:
+            _write_completion_signal(result, run_dir)
+
         return result
 
     except Exception as e:
         logger.error(f"Failed to stop experiment: {e}")
         return {"success": False, "error": str(e)}
+
+
+def _write_completion_signal(result: Dict[str, Any], run_dir: Path) -> None:
+    """Write experiment_complete.json to the run directory.
+
+    Posidonius polls for this file to detect when a run is done
+    and can advance to the next run. The run_dir is stored on the
+    monitor object at start_experiment time from the kanban client's
+    workspace state.
+
+    Parameters
+    ----------
+    result : Dict[str, Any]
+        The result from monitor.stop() with final metrics.
+    run_dir : Path
+        The experiment run directory containing project_info.json.
+    """
+    try:
+        completion_file = run_dir / "experiment_complete.json"
+        completion_data = {
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "run_name": result.get("run_name"),
+            "final_metrics": result.get("final_metrics", {}),
+            "success": result.get("success", True),
+        }
+
+        with open(completion_file, "w") as f:
+            json.dump(completion_data, f, indent=2)
+
+        logger.info(f"Wrote experiment_complete.json to {completion_file}")
+
+    except Exception as e:
+        logger.warning(f"Failed to write experiment_complete.json: {e}")
 
 
 async def get_experiment_status() -> Dict[str, Any]:
