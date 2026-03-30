@@ -238,22 +238,24 @@ def _write_completion_signal(result: Dict[str, Any]) -> None:
         The result from monitor.stop() with final metrics.
     """
     try:
-        # Find the run directory by locating the most recent
-        # project_info.json in the experiments directory
+        # Find the run directory by looking for project_info.json.
+        # Search strategy:
+        # 1. cwd (if launched from the run directory)
+        # 2. Walk up from cwd looking for project_info.json
+        # 3. Check implementation dir's parent (common layout)
         run_dir = None
-        for exp_base in [
-            Path.home() / "experiments",
-            Path.cwd(),
-        ]:
-            if exp_base.exists():
-                candidates = sorted(
-                    exp_base.rglob("project_info.json"),
-                    key=lambda p: p.stat().st_mtime,
-                    reverse=True,
-                )
-                if candidates:
-                    run_dir = candidates[0].parent
-                    break
+
+        # Check cwd and parents
+        check_dir = Path.cwd()
+        for _ in range(5):  # walk up max 5 levels
+            if (check_dir / "project_info.json").exists():
+                run_dir = check_dir
+                break
+            # Also check if this is the implementation dir
+            if (check_dir.parent / "project_info.json").exists():
+                run_dir = check_dir.parent
+                break
+            check_dir = check_dir.parent
 
         if run_dir is None:
             logger.warning(
