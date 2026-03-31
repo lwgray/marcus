@@ -1426,9 +1426,15 @@ Create design artifacts such as:
         # Generate labels (methodology preserved here)
         labels = self._generate_task_labels(task_type, feature_name, analysis)
 
-        # Generate acceptance criteria for validation
+        # Generate acceptance criteria for validation.
+        # Normalize task_type: the generator expects "implementation"
+        # and "testing" but callers may pass "implement" and "test".
+        criteria_type = {
+            "implement": "implementation",
+            "test": "testing",
+        }.get(task_type, task_type)
         acceptance_criteria = self._generate_acceptance_criteria(
-            task_type, {}, task_name
+            criteria_type, {}, task_name
         )
 
         # Create task with clean AI description
