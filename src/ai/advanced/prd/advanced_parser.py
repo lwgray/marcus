@@ -1426,6 +1426,11 @@ Create design artifacts such as:
         # Generate labels (methodology preserved here)
         labels = self._generate_task_labels(task_type, feature_name, analysis)
 
+        # Generate acceptance criteria for validation
+        acceptance_criteria = self._generate_acceptance_criteria(
+            task_type, {}, task_name
+        )
+
         # Create task with clean AI description
         task = Task(
             id=task_id,
@@ -1440,6 +1445,7 @@ Create design artifacts such as:
             estimated_hours=estimated_hours,
             dependencies=[],  # Will be filled by dependency inference
             labels=labels,
+            acceptance_criteria=acceptance_criteria,
             # Store context for reference
             source_type="nlp_project",
             source_context={
