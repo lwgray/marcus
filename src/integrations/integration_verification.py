@@ -104,7 +104,7 @@ class IntegrationTaskGenerator:
             "Project builds without errors",
             "Application actually starts (startup output captured)",
             "Key endpoints hit with curl, full response captured",
-            "No missing components (APIs, modules, __init__.py)",
+            "No missing components detected",
             "All results include raw command output as evidence",
             "integration_verification.json artifact logged",
         ]
@@ -207,7 +207,6 @@ Fabricating output is worse than reporting a failure.
    - Find configuration files (package.json, pyproject.toml,
      Makefile, Dockerfile, Cargo.toml, go.mod, index.html, etc.)
    - Determine the appropriate build, install, and start commands
-   - Check that all __init__.py files exist for Python packages
    - Verify the project's module/package structure is complete
 
 3. **Run Tests**:
@@ -246,7 +245,6 @@ Fabricating output is worse than reporting a failure.
 8. **Check for Missing Components**:
    - Are there API calls to endpoints that don't exist?
    - Are there imports of modules that were never created?
-   - Are there missing __init__.py files in Python packages?
    - Are there references to services that weren't built?
    - Does the design spec describe components that have no code?
 
