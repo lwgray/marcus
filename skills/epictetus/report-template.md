@@ -148,6 +148,38 @@
 |---------|----------|------------|----------|
 | | | [linear deps / lease bug / trust prompt / task stuck / retry loop] | Yes/No — [how] |
 
+## Contribution Distribution
+
+**Verdict**: [Balanced | Lopsided | Single-Author Product | Complementary]
+**Multi-Agency Effective**: [Yes / No]
+
+[1-2 sentence explanation of what this means for this experiment]
+
+### Entry Points Traced
+- [entry_point_1 (e.g., `src/main.py:main`)]
+- [entry_point_2]
+
+### Reachability Summary
+- **Reachable lines (product code)**: [N]
+- **Orphaned lines (in repo but unreachable)**: [N]
+
+### Per-Agent Contribution
+
+| Agent | Effective % | Blame % | Activity % | Reachable Lines | Orphaned Lines | Rewritten by Others | Assessment |
+|-------|------------|---------|------------|-----------------|----------------|---------------------|------------|
+| | % | % | % | | | | [Primary product author / Wrote tests only / Busy but orphaned / etc.] |
+
+### Contribution by Category
+
+| Agent | Product Code | Tests | Infrastructure | Documentation |
+|-------|-------------|-------|----------------|---------------|
+| | % | % | % | % |
+
+### Key Gaps
+[Highlight cases where Activity >> Effective (agent was busy but work didn't ship)
+or where Blame >> Effective (code is in repo but orphaned). These are the strongest
+signals that multi-agency coordination needs improvement.]
+
 ## Recommendations
 
 ### Project-Specific Fixes

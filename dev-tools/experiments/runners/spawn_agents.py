@@ -433,35 +433,28 @@ EXECUTE NOW - DO NOT ASK FOR CONFIRMATION:
 3. Enter monitoring loop:
    REPEAT every 2 minutes (120 seconds):
 
-   a. Call mcp__marcus__get_project_status
+   a. Call mcp__marcus__get_experiment_status
 
-   b. Display current status:
+   b. If is_running is true:
+      - Call mcp__marcus__get_project_status
       - Print: "Project Status: {{completed}}/{{total_tasks}} tasks complete \
 ({{completion_percentage}}%)"
       - Print: "  In Progress: {{in_progress}}, Blocked: {{blocked}}"
       - Print: "  Workers: {{active}}/{{total}} active"
+      - Wait 120 seconds and repeat
 
-   c. Check if project is complete:
-      - Complete when: in_progress == 0 AND (completed + blocked) == total_tasks
-      - If NOT complete: wait 120 seconds and repeat
-      - If COMPLETE: proceed to step 4
-
-4. End the experiment:
-   - Call mcp__marcus__end_experiment
-   - Print: "EXPERIMENT COMPLETE!"
-   - Display final statistics from end_experiment response:
-     - total_registered_agents
-     - total_task_completions
-     - total_blockers
-     - total_artifacts
-     - total_decisions
-     - summary text
-   - Exit
+   c. If is_running is false:
+      - The experiment has ended automatically
+      - Print: "EXPERIMENT COMPLETE!"
+      - Display final statistics from get_experiment_status
+      - Exit
 
 CRITICAL INSTRUCTIONS:
 - Work in: {self.config.implementation_dir}
 - Poll interval: EXACTLY 120 seconds (2 minutes)
-- DO NOT end experiment early - verify ALL conditions
+- DO NOT call end_experiment — it is called automatically by Marcus
+  when all tasks complete. Your job is to DISPLAY progress, not control it.
+- When get_experiment_status shows is_running: false, print summary and exit
 - This is an automated process - no human interaction needed
 """
         return prompt

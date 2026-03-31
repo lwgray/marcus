@@ -4,11 +4,14 @@ This module contains tools for monitoring project progress and metrics:
 - get_project_status: Get comprehensive project metrics and status
 """
 
+import logging
 from typing import Any
 
 from src.core.models import TaskStatus
 from src.logging.conversation_logger import conversation_logger
 from src.marcus_mcp.utils import serialize_for_mcp
+
+logger = logging.getLogger(__name__)
 
 
 async def get_project_status(state: Any) -> Any:
@@ -72,17 +75,58 @@ async def get_project_status(state: Any) -> Any:
             }
 
         if state.project_state:
-            # Calculate metrics
-            total_tasks = len(state.project_tasks)
-            completed = len(
-                [t for t in state.project_tasks if t.status == TaskStatus.DONE]
-            )
-            in_progress = len(
-                [t for t in state.project_tasks if t.status == TaskStatus.IN_PROGRESS]
-            )
-            blocked = len(
-                [t for t in state.project_tasks if t.status == TaskStatus.BLOCKED]
-            )
+            # Get task counts from kanban DB (source of truth).
+            # This is scoped by project_id and reflects the actual
+            # board state, including tasks created as done (About).
+            kanban_metrics = None
+            if (
+                hasattr(state, "kanban_client")
+                and state.kanban_client
+                and hasattr(state.kanban_client, "get_project_metrics")
+            ):
+                try:
+                    kanban_metrics = await state.kanban_client.get_project_metrics()
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to get kanban metrics, "
+                        f"falling back to in-memory: {e}"
+                    )
+
+            # Validate all required fields before trusting metrics.
+            # Some providers (e.g. Linear) return incomplete data.
+            _required = {
+                "total_tasks",
+                "completed_tasks",
+                "in_progress_tasks",
+                "blocked_tasks",
+            }
+            if kanban_metrics and _required.issubset(kanban_metrics):
+                total_tasks = kanban_metrics["total_tasks"]
+                completed = kanban_metrics["completed_tasks"]
+                in_progress = kanban_metrics["in_progress_tasks"]
+                blocked = kanban_metrics["blocked_tasks"]
+            else:
+                if kanban_metrics:
+                    logger.warning(
+                        "Kanban metrics incomplete "
+                        f"(missing {_required - set(kanban_metrics)}), "
+                        "falling back to in-memory"
+                    )
+                # Fallback to in-memory state
+                total_tasks = len(state.project_tasks)
+                completed = len(
+                    [t for t in state.project_tasks if t.status == TaskStatus.DONE]
+                )
+                in_progress = len(
+                    [
+                        t
+                        for t in state.project_tasks
+                        if t.status == TaskStatus.IN_PROGRESS
+                    ]
+                )
+                blocked = len(
+                    [t for t in state.project_tasks if t.status == TaskStatus.BLOCKED]
+                )
 
             # Worker metrics - create snapshot to avoid dictionary
             # mutation during iteration

@@ -395,6 +395,93 @@ Each failure should have:
 | 2 | Significant idle agents, linear chain where parallel was possible |
 | 1 | Agent(s) produced nothing, tasks permanently stuck, zero parallelism |
 
+### Phase 7.8: Contribution Distribution Analysis
+
+**Skip this phase if this is a single-developer project with no multi-agent context.**
+
+This phase answers the critical question: **"What percentage of the final working
+product did each agent actually produce?"** Activity and commits are misleading —
+an agent can be busy all experiment and contribute nothing to the shipped product.
+
+**Step 1: Identify product entry points**
+
+Find all entry points that make the product run:
+```bash
+# Look for common entry points
+grep -rn "if __name__" *.py **/*.py          # Python
+grep -rn "app\.\(run\|listen\|start\)" .     # Web servers
+grep -rn "^export default\|^module.exports" . # JS/TS exports
+# Also check: main(), CLI entry points, route registrations, exported APIs
+```
+
+Document every entry point found. These are the roots for reachability analysis.
+
+**Step 2: Trace the reachability graph**
+
+From each entry point, follow the import/call chain:
+```bash
+# For Python: trace imports from each entry point
+grep -n "^from\|^import" <entry_point_file>
+# Then recursively for each imported module that's in the project
+```
+
+Build the set of **reachable files and functions** — everything on the execution
+path from an entry point to a leaf. Code NOT in this set is **orphaned**.
+
+For practical purposes in a code audit (not a runtime profiler):
+- Follow static imports and explicit function/class references
+- Include files registered dynamically if the registration is visible in code
+  (e.g., plugin loading from a manifest, route decorators)
+- Exclude test files from the product reachability set (track separately)
+- Exclude config files, docs, build scripts (track separately)
+
+**Step 3: Attribute reachable code via git blame**
+
+```bash
+# Blame each reachable file
+git blame --line-porcelain <file> | grep "^author "
+```
+
+Map blame authors to agents using the contributor inference from Phase 1.
+For each agent, count:
+- **Reachable lines**: lines they wrote that are in the reachability set
+- **Orphaned lines**: lines they wrote that are NOT reachable
+- **Rewritten lines**: use `git log --follow --diff-filter=M` to detect lines
+  an agent originally wrote that another agent later replaced
+
+**Step 4: Calculate effective contribution percentages**
+
+For each agent:
+```
+effective_pct = (agent_reachable_lines / total_reachable_lines) * 100
+blame_pct     = (agent_total_lines / total_lines) * 100
+activity_pct  = (agent_commits / total_commits) * 100
+```
+
+Also categorize each agent's contribution:
+- **Product code**: reachable from application entry points
+- **Test code**: in test files/directories
+- **Infrastructure**: build, config, CI, Docker
+- **Documentation**: READMEs, docs, docstrings-only files
+
+**Step 5: Determine verdict**
+
+| Verdict | Criteria |
+|---------|----------|
+| **Balanced** | No agent >70% effective share AND all agents >10% effective share |
+| **Lopsided** | One agent >70% effective share; others contributed but marginally |
+| **Single-Author Product** | One agent >90% effective share; multi-agency failed to produce multi-authored output |
+| **Complementary** | Agents contributed to different categories (one did product code, another did tests) |
+
+**Step 6: Assess multi-agency effectiveness**
+
+Set `multi_agency_effective = true` only if multiple agents have >10% effective
+contribution to the product code category. If one agent wrote >90% of the
+working product, multi-agency was not effective regardless of how busy agents were.
+
+A **Single-Author Product** verdict MUST generate a `global` recommendation for
+Marcus to improve task decomposition, dependency design, or agent coordination.
+
 ### Phase 8: Produce Structured Output
 
 **Every audit produces exactly 3 artifacts. No exceptions. No freeform reports.**

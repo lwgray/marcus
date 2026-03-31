@@ -479,12 +479,15 @@ async def create_project(
                             kanban_config.sqlite_attachments_dir or "./data/attachments"
                         ),
                     }
-                    # Include project/board IDs from the client
-                    # so project scoping works on switch
+                    # Include project/board IDs and project_root from
+                    # the client so project scoping and workspace state
+                    # work after project switch creates a new client
                     if hasattr(state.kanban_client, "project_id"):
                         prov_config["project_id"] = state.kanban_client.project_id
                     if hasattr(state.kanban_client, "board_id"):
                         prov_config["board_id"] = state.kanban_client.board_id
+                    if hasattr(state.kanban_client, "_project_root"):
+                        prov_config["project_root"] = state.kanban_client._project_root
                     can_register = True
                 elif (
                     hasattr(state.kanban_client, "project_id")

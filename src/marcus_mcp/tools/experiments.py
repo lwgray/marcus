@@ -146,12 +146,17 @@ async def start_experiment(
             }
 
     try:
-        # Create new monitor
+        # Create new monitor with kanban client for
+        # deterministic completion detection
+        kanban = (
+            state.kanban_client if state and hasattr(state, "kanban_client") else None
+        )
         monitor = LiveExperimentMonitor(
             experiment_name=experiment_name,
             board_id=board_id,
             project_id=project_id,
             tracking_interval=tracking_interval,
+            kanban_client=kanban,
         )
 
         # Store run directory on monitor so end_experiment can

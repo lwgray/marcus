@@ -65,12 +65,14 @@ class LiveExperimentMonitor:
         board_id: str,
         project_id: str,
         tracking_interval: int = 30,
+        kanban_client: Any = None,
     ):
         """Initialize live experiment monitor."""
         self.experiment_name = experiment_name
         self.board_id = board_id
         self.project_id = project_id
         self.tracking_interval = tracking_interval
+        self.kanban_client = kanban_client
 
         # MLflow experiment
         self.mlflow_experiment = MarcusExperiment(
@@ -254,11 +256,89 @@ class LiveExperimentMonitor:
                         f"agents={len(self.registered_agents)}"
                     )
 
+                    # Deterministic completion check from kanban DB
+                    if await self._check_completion():
+                        logger.info(
+                            "Auto-ending experiment: all tasks "
+                            "complete (detected by kanban metrics)"
+                        )
+                        break
+
                 except Exception as e:
                     logger.error(f"Error in monitoring loop: {e}")
 
+            # If we broke out of the loop due to completion,
+            # auto-stop and write the completion signal
+            if self.is_running:
+                result = await self.stop()
+                self._write_completion_file(result)
+
         except Exception as e:
             logger.error(f"Failed to initialize monitoring: {e}")
+
+    async def _check_completion(self) -> bool:
+        """Check if all tasks are done using kanban DB metrics.
+
+        Returns
+        -------
+        bool
+            True if experiment is complete.
+        """
+        if not self.kanban_client:
+            return False
+
+        try:
+            metrics = await self.kanban_client.get_project_metrics()
+            total = metrics.get("total_tasks", 0)
+            completed = metrics.get("completed_tasks", 0)
+            blocked = metrics.get("blocked_tasks", 0)
+            in_progress = metrics.get("in_progress_tasks", 0)
+
+            if total == 0:
+                return False
+
+            is_done = in_progress == 0 and (completed + blocked) == total
+
+            if is_done:
+                logger.info(
+                    f"Completion check: {completed}/{total} done, "
+                    f"{blocked} blocked, {in_progress} in_progress "
+                    f"→ COMPLETE"
+                )
+            return bool(is_done)
+
+        except Exception as e:
+            logger.warning(f"Completion check failed: {e}")
+            return False
+
+    def _write_completion_file(self, result: Dict[str, Any]) -> None:
+        """Write experiment_complete.json to the run directory.
+
+        Parameters
+        ----------
+        result : Dict[str, Any]
+            Result from self.stop() with final metrics.
+        """
+        if not self.run_dir:
+            logger.warning("Cannot write experiment_complete.json: " "run_dir not set")
+            return
+
+        import json
+
+        try:
+            completion_file = self.run_dir / "experiment_complete.json"
+            completion_data = {
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "run_name": result.get("run_name"),
+                "final_metrics": result.get("final_metrics", {}),
+                "success": result.get("success", True),
+            }
+            with open(completion_file, "w") as f:
+                json.dump(completion_data, f, indent=2)
+
+            logger.info(f"Wrote experiment_complete.json to " f"{completion_file}")
+        except Exception as e:
+            logger.warning(f"Failed to write experiment_complete.json: {e}")
 
     def record_agent_registration(
         self,
