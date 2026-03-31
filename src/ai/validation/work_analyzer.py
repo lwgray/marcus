@@ -979,9 +979,9 @@ Focus on FUNCTIONALITY, not understanding. Code must WORK, not just exist.
 
             prompt_parts.append(file_info)
             prompt_parts.append(
-                f"  Content:\n{source_file.content[:2000]}"
-            )  # First 2KB
-            if len(source_file.content) > 2000:
+                f"  Content:\n{source_file.content[:8000]}"
+            )  # First 8KB
+            if len(source_file.content) > 8000:
                 prompt_parts.append("  [... content truncated for display ...]")
 
         # Add design artifacts (for context)
