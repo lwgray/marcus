@@ -26,8 +26,9 @@ class TaskPhase(Enum):
     INFRASTRUCTURE = 2
     IMPLEMENTATION = 3
     TESTING = 4
-    DOCUMENTATION = 5
-    DEPLOYMENT = 6
+    INTEGRATION = 5
+    DOCUMENTATION = 6
+    DEPLOYMENT = 7
 
     @classmethod
     def get_dependencies(cls, phase: "TaskPhase") -> List["TaskPhase"]:
@@ -83,6 +84,7 @@ class PhaseDependencyEnforcer:
         TaskPhase.INFRASTRUCTURE,
         TaskPhase.IMPLEMENTATION,
         TaskPhase.TESTING,
+        TaskPhase.INTEGRATION,
         TaskPhase.DOCUMENTATION,
         TaskPhase.DEPLOYMENT,
     ]
@@ -93,6 +95,7 @@ class PhaseDependencyEnforcer:
         TaskType.INFRASTRUCTURE: TaskPhase.INFRASTRUCTURE,
         TaskType.IMPLEMENTATION: TaskPhase.IMPLEMENTATION,
         TaskType.TESTING: TaskPhase.TESTING,
+        TaskType.INTEGRATION: TaskPhase.INTEGRATION,
         TaskType.DOCUMENTATION: TaskPhase.DOCUMENTATION,
         TaskType.DEPLOYMENT: TaskPhase.DEPLOYMENT,
         TaskType.OTHER: TaskPhase.IMPLEMENTATION,  # Default to implementation

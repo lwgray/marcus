@@ -287,6 +287,20 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 safe_tasks = await self.apply_safety_checks(tasks)
                 logger.info(f"Safety checks passed, {len(safe_tasks)} tasks ready")
 
+                # Add integration verification task if appropriate
+                # Must be added BEFORE documentation so doc task
+                # depends on integration task
+                from src.integrations.integration_verification import (
+                    enhance_project_with_integration,
+                )
+
+                safe_tasks = enhance_project_with_integration(
+                    safe_tasks, description, project_name
+                )
+                logger.info(
+                    "After integration enhancement: " f"{len(safe_tasks)} tasks"
+                )
+
                 # Add documentation task if appropriate
                 from src.integrations.documentation_tasks import (
                     enhance_project_with_documentation,
@@ -295,7 +309,9 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 safe_tasks = enhance_project_with_documentation(
                     safe_tasks, description, project_name
                 )
-                logger.info(f"After documentation enhancement: {len(safe_tasks)} tasks")
+                logger.info(
+                    "After documentation enhancement: " f"{len(safe_tasks)} tasks"
+                )
 
                 # Log safety check impact
                 added_tasks = len(safe_tasks) - len(tasks)

@@ -347,7 +347,13 @@ def extract_phase(task_name: str) -> Optional[str]:
         or None if no phase could be determined
     """
     name_lower = task_name.lower()
-    phase_order = {"design": 0, "implement": 1, "test": 2, "integration": 3}
+    phase_order = {
+        "design": 0,
+        "implement": 1,
+        "test": 2,
+        "integration": 3,
+        "documentation": 4,
+    }
 
     # First check: Is this a test task? (most specific)
     if detect_test_task(task_name):
@@ -391,7 +397,13 @@ def validate_phase_order(subtask: Task, dependency_task: Task) -> bool:
     bool
         True if phase ordering is valid
     """
-    phase_order = {"design": 0, "implement": 1, "test": 2, "integration": 3}
+    phase_order = {
+        "design": 0,
+        "implement": 1,
+        "test": 2,
+        "integration": 3,
+        "documentation": 4,
+    }
 
     subtask_phase = extract_phase(subtask.name)
     dep_phase = extract_phase(dependency_task.name)

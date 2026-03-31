@@ -275,7 +275,8 @@ class AdaptiveDocumentationGenerator:
         """Find appropriate dependencies for documentation task."""
         dependencies = []
 
-        # For README documentation, depend on all major implementation and test tasks
+        # For README documentation, depend on all major implementation,
+        # test, and integration verification tasks
         if doc_type == DocumentationType.README_DOCUMENTATION:
             for task in context.existing_tasks:
                 if any(
@@ -284,11 +285,15 @@ class AdaptiveDocumentationGenerator:
                         "type:feature",
                         "type:testing",
                         "type:deployment",
+                        "type:integration",
                         "component:backend",
                         "component:frontend",
                         "component:api",
                     ]
-                ) and task.priority in [Priority.HIGH, Priority.URGENT]:
+                ) and task.priority in [
+                    Priority.HIGH,
+                    Priority.URGENT,
+                ]:
                     dependencies.append(task.id)
 
         # For bug fixes, depend on fix implementation and testing
