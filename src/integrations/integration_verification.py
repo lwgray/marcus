@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from src.core.models import Priority, Task, TaskStatus
+from src.integrations.nlp_task_utils import TaskType
 
 logger = logging.getLogger(__name__)
 
@@ -64,23 +65,16 @@ class IntegrationTaskGenerator:
             Integration verification task, or None if no
             implementation tasks exist.
         """
-        # Check for implementation tasks
-        implementation_tasks = [
-            t
-            for t in existing_tasks
-            if any(
-                label in t.labels
-                for label in [
-                    "type:feature",
-                    "component:backend",
-                    "component:frontend",
-                    "component:api",
-                    "component:database",
-                    "component:authentication",
-                    "component:ecommerce",
-                ]
-            )
-        ]
+        # Check for implementation tasks using the classifier
+        # (not hardcoded labels, which AI-generated tasks may not have)
+        from src.integrations.enhanced_task_classifier import (
+            EnhancedTaskClassifier,
+        )
+
+        classifier = EnhancedTaskClassifier()
+        implementation_tasks = classifier.filter_by_type(
+            existing_tasks, TaskType.IMPLEMENTATION
+        )
 
         if not implementation_tasks:
             logger.info(

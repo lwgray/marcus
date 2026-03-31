@@ -42,17 +42,21 @@ def create_test_task(
 
 @pytest.fixture
 def sample_implementation_tasks() -> list[Task]:
-    """Create sample implementation tasks for testing."""
+    """Create sample implementation tasks for testing.
+
+    Uses realistic AI-generated labels (not hardcoded type:feature).
+    The classifier detects implementation from the task name.
+    """
     return [
         create_test_task(
             "impl-001",
             "Build weather widget",
-            labels=["type:feature", "component:frontend"],
+            labels=["implement", "frontend"],
         ),
         create_test_task(
             "impl-002",
             "Build clock widget",
-            labels=["type:feature", "component:frontend"],
+            labels=["implement", "frontend"],
         ),
     ]
 
@@ -64,7 +68,7 @@ def sample_testing_tasks() -> list[Task]:
         create_test_task(
             "test-001",
             "Write widget tests",
-            labels=["type:testing"],
+            labels=["testing"],
         ),
     ]
 
@@ -76,7 +80,7 @@ def sample_design_tasks() -> list[Task]:
         create_test_task(
             "design-001",
             "Design dashboard architecture",
-            labels=["type:design"],
+            labels=["design"],
         ),
     ]
 
@@ -234,6 +238,42 @@ class TestIntegrationTaskGenerator:
         assert task is not None
         assert "My Dashboard" in task.name
 
+    def test_works_with_generic_ai_labels(self) -> None:
+        """Test integration task created with generic labels.
+
+        AI-generated tasks often have simple labels like 'implement'
+        instead of 'type:feature'. The classifier should still detect
+        them as implementation tasks.
+        """
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        tasks = [
+            create_test_task(
+                "t1",
+                "Design the system",
+                labels=["design"],
+            ),
+            create_test_task(
+                "t2",
+                "Build the backend API",
+                labels=["implement", "backend"],
+            ),
+            create_test_task(
+                "t3",
+                "Build the frontend UI",
+                labels=["frontend"],
+            ),
+        ]
+
+        task = IntegrationTaskGenerator.create_integration_task(tasks, "Dashboard")
+
+        assert task is not None, (
+            "Integration task should be created even with generic "
+            "AI-generated labels (not type:feature)"
+        )
+
 
 class TestEnhanceProjectWithIntegration:
     """Test suite for enhance_project_with_integration function."""
@@ -278,9 +318,7 @@ class TestEnhanceProjectWithIntegration:
 
         assert len(result) == len(all_sample_tasks)
 
-    def test_documentation_depends_on_integration(
-        self, all_sample_tasks: list[Task]
-    ) -> None:
+    def test_documentation_depends_on_integration(self) -> None:
         """Test doc task includes integration task in dependencies."""
         from src.integrations.documentation_tasks import (
             DocumentationTaskGenerator,
@@ -289,9 +327,29 @@ class TestEnhanceProjectWithIntegration:
             enhance_project_with_integration,
         )
 
+        # Use type:feature labels so DocumentationTaskGenerator
+        # also recognizes them (it still uses hardcoded labels)
+        tasks_with_typed_labels = [
+            create_test_task(
+                "design-001",
+                "Design dashboard architecture",
+                labels=["type:design"],
+            ),
+            create_test_task(
+                "impl-001",
+                "Build weather widget",
+                labels=["type:feature", "component:frontend"],
+            ),
+            create_test_task(
+                "test-001",
+                "Write widget tests",
+                labels=["type:testing"],
+            ),
+        ]
+
         # First add integration task
         tasks_with_integration = enhance_project_with_integration(
-            all_sample_tasks,
+            tasks_with_typed_labels,
             "Build a dashboard app",
             "Dashboard",
         )
