@@ -99,12 +99,14 @@ class IntegrationTaskGenerator:
         )
 
         acceptance_criteria = [
+            "Tests run with full terminal output captured",
             "Project dependencies installed successfully",
             "Project builds without errors",
-            "Application starts and responds to requests",
-            "Key endpoints/pages return expected content " "(not error HTML or 404)",
-            "No missing components detected " "(all referenced APIs/modules exist)",
-            "Results logged as integration_verification.json artifact",
+            "Application actually starts (startup output captured)",
+            "Key endpoints hit with curl, full response captured",
+            "No missing components (APIs, modules, __init__.py)",
+            "All results include raw command output as evidence",
+            "integration_verification.json artifact logged",
         ]
 
         task = Task(
@@ -187,6 +189,12 @@ Your job is to check whether the product works as built. Always mark \
 this task as DONE when finished — report failures in the artifact, \
 do NOT block the experiment.
 
+**CRITICAL RULE — EVIDENCE REQUIRED**: Every step below MUST include \
+the actual command you ran AND its real stdout/stderr output. Do NOT \
+summarize, paraphrase, or claim a command succeeded without showing \
+the output. If you cannot run a command, say so explicitly. \
+Fabricating output is worse than reporting a failure.
+
 1. **Read Context**:
    - Review design documents and architecture decisions
    - Check README.md for documented build/start commands
@@ -199,37 +207,53 @@ do NOT block the experiment.
    - Find configuration files (package.json, pyproject.toml,
      Makefile, Dockerfile, Cargo.toml, go.mod, index.html, etc.)
    - Determine the appropriate build, install, and start commands
+   - Check that all __init__.py files exist for Python packages
+   - Verify the project's module/package structure is complete
 
-3. **Install Dependencies**:
+3. **Run Tests**:
+   - Run the project's test suite (pytest, npm test, etc.)
+   - Capture the FULL terminal output (not a summary)
+   - Record: command, exit code, pass/fail counts, raw output
+   - If tests fail, record the actual error messages
+
+4. **Install Dependencies**:
    - Run the appropriate install command for the project
-   - Log the exit code and any errors
+   - Capture the FULL terminal output
+   - Record: command, exit code, raw output
 
-4. **Build the Project**:
+5. **Build the Project**:
    - Run the appropriate build command
    - If no build step is needed (e.g., static HTML), skip this
-   - Log the exit code and any errors
+   - Capture the FULL terminal output
+   - Record: command, exit code, raw output
 
-5. **Start the Application**:
+6. **Start the Application**:
    - Run the appropriate start command
-   - Wait for the application to be ready
+   - Wait for the application to be ready (5-10 seconds)
+   - Capture any startup output or errors
+   - If the app fails to start, record the exact error
    - If the app is a static site, serve it with a simple server
 
-6. **Verify the Application Works**:
-   - Hit the main page/endpoint and check for a real response
-   - Check that key features described in the design actually work
+7. **Verify the Application Responds**:
+   - Run `curl` against the main page/endpoint
+   - Capture the FULL curl output including HTTP status
+   - Check that key features described in the design work
    - Look for error states (API calls returning HTML instead of
      JSON, missing backends, broken imports)
    - Verify that components built by different agents connect
-     properly
+   - Record each curl command and its full response
 
-7. **Check for Missing Components**:
+8. **Check for Missing Components**:
    - Are there API calls to endpoints that don't exist?
    - Are there imports of modules that were never created?
+   - Are there missing __init__.py files in Python packages?
    - Are there references to services that weren't built?
    - Does the design spec describe components that have no code?
 
-8. **Log Results**:
-   CRITICAL: Log verification results as an artifact:
+9. **Log Results**:
+   CRITICAL: Log verification results as an artifact. Every field \
+in the JSON below MUST contain real command output, not summaries.
+
    ```
    log_artifact(
        task_id="<current_task_id>",
@@ -245,40 +269,54 @@ do NOT block the experiment.
    ```json
    {{
      "project_name": "{project_name}",
+     "tests": {{
+       "command": "pytest tests/ -v",
+       "exit_code": 0,
+       "passed": 45,
+       "failed": 0,
+       "success": true,
+       "raw_output": "<PASTE FULL TERMINAL OUTPUT HERE>"
+     }},
      "install": {{
-       "command": "...",
+       "command": "pip install -r requirements.txt",
        "exit_code": 0,
        "success": true,
-       "output": "..."
+       "raw_output": "<PASTE FULL TERMINAL OUTPUT HERE>"
      }},
      "build": {{
-       "command": "...",
+       "command": "npm run build",
        "exit_code": 0,
        "success": true,
-       "output": "..."
+       "raw_output": "<PASTE FULL TERMINAL OUTPUT HERE>"
      }},
      "start": {{
-       "command": "...",
+       "command": "uvicorn src.backend.main:app",
        "success": true,
-       "output": "..."
+       "raw_output": "<PASTE STARTUP OUTPUT HERE>"
      }},
-     "health_check": {{
-       "url": "...",
-       "status_code": 200,
-       "success": true,
-       "response_type": "html/json/etc"
-     }},
+     "health_checks": [
+       {{
+         "url": "http://localhost:8000/api/health",
+         "curl_command": "curl -s http://localhost:8000/api/health",
+         "status_code": 200,
+         "success": true,
+         "raw_response": "<PASTE FULL CURL RESPONSE HERE>"
+       }}
+     ],
      "missing_components": [],
      "overall_pass": true,
      "remediation_notes": null
    }}
    ```
 
-9. **Always Complete the Task**:
-   - Mark this task as DONE regardless of pass/fail
-   - Set `overall_pass` to false if verification failed
-   - Include detailed `remediation_notes` describing what
-     failed and why
+   If a command fails, set success=false and paste the error output.
+   Do NOT set success=true unless you have real output proving it.
+
+10. **Always Complete the Task**:
+    - Mark this task as DONE regardless of pass/fail
+    - Set `overall_pass` to false if verification failed
+    - Include detailed `remediation_notes` describing what
+      failed and why
 """
 
 
