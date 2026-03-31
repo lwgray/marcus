@@ -85,15 +85,9 @@ class DocumentationTaskGenerator:
 
         # README documentation depends on ALL non-documentation tasks
         # This ensures it's only available when the entire project is
-        # complete
-        dependencies = [
-            t.id
-            for t in existing_tasks
-            if not any(
-                label in t.labels
-                for label in ["documentation", "final", "verification"]
-            )
-        ]
+        # complete. Integration verification tasks ARE dependencies —
+        # docs should wait for integration to finish.
+        dependencies = [t.id for t in existing_tasks if "documentation" not in t.labels]
 
         # CRITICAL VALIDATION: README documentation must depend on implementation tasks
         # If dependencies is empty but implementation tasks exist, this is a BUG

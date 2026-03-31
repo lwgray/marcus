@@ -20,6 +20,7 @@ class TaskType(Enum):
     DEPLOYMENT = "deployment"
     IMPLEMENTATION = "implementation"
     TESTING = "testing"
+    INTEGRATION = "integration"
     DOCUMENTATION = "documentation"
     INFRASTRUCTURE = "infrastructure"
     OTHER = "other"
@@ -83,9 +84,17 @@ class TaskClassifier:
             "check",
             "assert",
             "unittest",
-            "integration",
             "e2e",
             "coverage",
+        ],
+        TaskType.INTEGRATION: [
+            "integration verification",
+            "build verification",
+            "smoke test",
+            "startup verification",
+            "system verification",
+            "health check",
+            "endpoint verification",
         ],
         TaskType.DOCUMENTATION: [
             "document",
@@ -134,6 +143,7 @@ class TaskClassifier:
         # Testing should be checked before Implementation to catch "Write tests" tasks
         priority_order = [
             TaskType.DEPLOYMENT,  # Most specific - deployment keywords are unique
+            TaskType.INTEGRATION,  # Check before testing (multi-word keywords)
             TaskType.TESTING,  # Check before implementation to catch "write tests"
             TaskType.DOCUMENTATION,  # Check before implementation to catch "write docs"
             TaskType.DESIGN,  # Check before implementation to catch "design API"

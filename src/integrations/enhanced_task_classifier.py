@@ -261,6 +261,28 @@ class EnhancedTaskClassifier:
                 "migrate",
             ],
         },
+        TaskType.INTEGRATION: {
+            "primary": [
+                "integration verification",
+                "build verification",
+                "smoke test",
+                "startup verification",
+                "system verification",
+            ],
+            "secondary": [
+                "health check",
+                "port check",
+                "endpoint verification",
+                "runtime verification",
+                "startup check",
+            ],
+            "verbs": [
+                "verify integration",
+                "verify build",
+                "verify startup",
+                "smoke test",
+            ],
+        },
         TaskType.INFRASTRUCTURE: {
             "primary": [
                 "infrastructure",
@@ -351,6 +373,13 @@ class EnhancedTaskClassifier:
             r"(?:rollout|launch)\s+(?:the\s+)?(?:feature|update|version)",
             r"(?:migrate|upgrade)\s+(?:the\s+)?(?:production|live)\s+"
             r"(?:environment|system)",
+        ],
+        TaskType.INTEGRATION: [
+            r"(?:integration|build|startup)\s+verification",
+            r"(?:verify|check)\s+(?:the\s+)?(?:build|startup|integration)",
+            r"smoke\s+test\s+(?:the\s+)?(?:application|app|project)",
+            r"(?:verify|check)\s+(?:the\s+)?(?:app|application)\s+"
+            r"(?:works|runs|starts|responds)",
         ],
         TaskType.INFRASTRUCTURE: [
             r"(?:setup|configure)\s+(?:the\s+)?(?:ci/cd|pipeline|automation)",
@@ -593,6 +622,12 @@ class EnhancedTaskClassifier:
             elif (
                 label_lower in ["infrastructure", "devops", "setup"]
                 and task_type == TaskType.INFRASTRUCTURE
+            ):
+                label_boost += 8.0
+                matched_keywords.append(label_lower)
+            elif (
+                label_lower in ["integration", "integration verification"]
+                and task_type == TaskType.INTEGRATION
             ):
                 label_boost += 8.0
                 matched_keywords.append(label_lower)
