@@ -251,6 +251,7 @@ class Task:
     source_type: Optional[str] = None  # "nlp_project", "predefined", "github_issue"
     source_context: Optional[Dict[str, Any]] = None  # Original context data
     completion_criteria: Optional[Dict[str, Any]] = None  # Success conditions
+    acceptance_criteria: List[str] = field(default_factory=list)  # Checklist items
     validation_spec: Optional[str] = None  # How to validate completion
 
     # Fields for unified dependency graph
