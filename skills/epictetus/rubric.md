@@ -58,6 +58,8 @@ Half-grades (A-, B+, etc.) map to: A=5, A-=4.5, B+=4, B=3.5-4, B-=3.5, C+=3, C=2
 
 **Check:** Spec satisfaction, off-by-one, boundary conditions, race conditions, infinite loops, null access, error propagation, state machine completeness.
 
+**Runtime Smoke Test Impact:** If the app starts but features crash or produce wrong results at runtime, penalize here even if unit tests pass. Tests that mock all external dependencies can hide real correctness failures. Graceful error states for missing external dependencies are correct behavior and should be credited, not penalized.
+
 **Process Evidence (if --session):** Did agent see the error and ship anyway? Did agent misunderstand the spec? Did agent hit a bug, attempt a fix, and introduce a new bug? Was the root cause a bad instruction or bad execution?
 
 ---
@@ -74,6 +76,8 @@ Half-grades (A-, B+, etc.) map to: A=5, A-=4.5, B+=4, B=3.5-4, B-=3.5, C+=3, C=2
 
 **Check:** Spec vs implementation cross-reference, TODO/FIXME comments, complete user flows, error states, README feature claims.
 
+**Runtime Smoke Test Impact:** If a feature depends on an external service that was in scope but never built, penalize here. If the dependency was out of scope AND properly documented, no penalty. If the README claims the feature works without mentioning the missing dependency, penalize Documentation instead.
+
 **Process Evidence (if --session):** Did agent run out of time? Did agent get stuck on a prerequisite and never reach later requirements? Was scope unclear in instructions?
 
 ---
@@ -88,7 +92,9 @@ Half-grades (A-, B+, etc.) map to: A=5, A-=4.5, B+=4, B=3.5-4, B-=3.5, C+=3, C=2
 | 2 | Minimal tests, only smoke/syntax checks disguised as tests |
 | 1 | No tests, or "tests" that don't validate behavior |
 
-**Check:** Tests exist? Verify behavior or just syntax? Edge cases tested? Independent and repeatable? Test infrastructure? Trustworthy (fail when broken)?
+**Check:** Tests exist? Verify behavior or just syntax? Edge cases tested? Independent and repeatable? Test infrastructure? Trustworthy (fail when broken)? Do tests mock so aggressively that they pass while the real app is broken?
+
+**Runtime Smoke Test Impact:** If all tests pass but the smoke test reveals broken features, flag the test suite as over-mocked. Tests that verify mocked behavior but never test real integration create false confidence. Note this as a testing gap — not necessarily a low score, but a finding that tests are weaker than they appear.
 
 **Process Evidence (if --session):** Did instructions mention testing requirements? Did agent write tests then delete them? Did agent run tests and ignore failures?
 

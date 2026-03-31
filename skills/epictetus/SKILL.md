@@ -227,6 +227,82 @@ For every claim in design docs, architecture docs, or README:
 - Run tests if possible. What's missing?
 - Are "tests" actually tests or smoke-checks in disguise?
 
+### Phase 4.5: Runtime Smoke Test
+
+**Purpose:** Tests that mock dependencies can all pass while the actual product
+is broken. This phase boots the application and verifies it works end-to-end,
+catching gaps that unit tests hide.
+
+**Step 1: Attempt to start the application**
+
+Use the project type to determine how:
+
+| Project Type | How to Start | What to Check |
+|---|---|---|
+| web_frontend | `npm run dev` / `npx vite` / `npm start` | Dev server responds on expected port |
+| backend_api | `python -m app` / `npm start` / `go run .` | Server responds to health check |
+| cli_tool | `./cli --help` or `python cli.py --help` | Help text prints, exit code 0 |
+| fullstack | Start both frontend and backend | Both respond |
+| library_sdk | Import the library in a scratch script | No import errors |
+| game | Start the game process | Window/process launches without crash |
+
+If the start command isn't obvious, check `package.json` scripts, `Makefile`,
+`docker-compose.yml`, or the README's "how to run" section.
+
+Record: does it start? Startup errors? Warnings?
+
+**Step 2: Verify core features against spec**
+
+For each feature claimed in the spec/design docs or README:
+- Can you trigger it from the running application?
+- Does it produce the expected result?
+- Does it fail silently, show an error, or crash?
+
+For web frontends specifically:
+- Load the page — does it render components or show a blank screen?
+- Check for failed network requests (curl API endpoints the frontend calls)
+- Check for missing backends the app depends on
+- Are error states graceful or do they break the UI?
+
+For backend APIs:
+- Hit each documented endpoint with a basic request
+- Does it return the expected shape, or 404/500?
+- Are required services (database, external APIs) available?
+
+**Step 3: Identify missing runtime dependencies**
+
+Flag any external service, API, database, or backend that the code calls
+but that doesn't exist in the project:
+- Frontend fetches from `/api/...` but no backend is built or proxied
+- Code imports a database driver but no database is configured
+- Code calls an external API but no API key or mock is provided
+
+These are **integration gaps** — the code is correct in isolation but the
+product doesn't work because a dependency was never built or configured.
+
+**Step 4: Record results**
+
+For each feature tested, record:
+- Feature name (from spec)
+- Status: `works`, `error_state` (graceful failure), `broken` (crash/blank), `missing_dependency`
+- Detail: what specifically happened
+- Blocking dependency (if applicable): what's missing
+
+**How this affects scoring:**
+- Features that work → no impact (confirms correctness score)
+- Features in graceful error state due to missing external dependency →
+  flag in Completeness (was the dependency in scope?), credit Correctness
+  for graceful degradation
+- Features that crash or blank-screen → penalize Correctness
+- All tests pass but app doesn't work → flag in Testing dimension as
+  "tests mock too aggressively — do not verify real integration"
+
+**Important:** Do NOT penalize for missing features that were explicitly
+out of scope. If the spec says "backend proxy needed separately" and the
+frontend gracefully shows an error, that's correct behavior. But if the
+README claims "weather widget displays live data" without mentioning the
+missing backend, that's a Documentation spec fidelity issue.
+
 ### Phase 5: Authorship Cohesiveness Analysis
 
 For multi-contributor projects, build per-contributor style profiles across 10 signals:
@@ -555,3 +631,5 @@ Full lens details with extra checks per type are in `${CLAUDE_SKILL_DIR}/rubric.
 13. Instruction quality issues are root causes, not excuses — note them but still grade the output
 14. Every recommendation must be scoped: `project` (fix this codebase), `global` (improve Marcus for all future experiments), or `both`
 15. If a problem could happen again in a different experiment, it MUST have a `global` or `both` recommendation
+16. ALWAYS attempt to start the application and verify features work at runtime (Phase 4.5) — never trust tests alone
+17. If all tests pass but the smoke test reveals broken features, flag `tests_hide_real_failures: true` in the report

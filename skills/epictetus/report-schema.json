@@ -18,7 +18,7 @@
   "properties": {
     "schema_version": {
       "type": "string",
-      "const": "1.1"
+      "const": "1.2"
     },
     "metadata": {
       "type": "object",
@@ -421,6 +421,65 @@
         "multi_agency_effective": {
           "type": "boolean",
           "description": "True if multiple agents have >10% effective contribution. False if one agent produced >90% of the working product."
+        }
+      }
+    },
+    "runtime_smoke_test": {
+      "type": "object",
+      "description": "Results from actually starting the app and verifying features work end-to-end. Catches issues that mocked tests hide.",
+      "required": ["app_starts", "features_verified"],
+      "properties": {
+        "app_starts": {
+          "type": "boolean",
+          "description": "Whether the application successfully starts (dev server, CLI, etc.)"
+        },
+        "start_command": {
+          "type": "string",
+          "description": "The command used to start the application"
+        },
+        "start_errors": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Errors or warnings during startup"
+        },
+        "features_verified": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["feature", "status"],
+            "properties": {
+              "feature": { "type": "string", "description": "Feature name from spec/design docs" },
+              "status": {
+                "type": "string",
+                "enum": ["works", "error_state", "broken", "missing_dependency"],
+                "description": "works = functions correctly. error_state = graceful degradation. broken = crash/blank. missing_dependency = needs unbuilt external service."
+              },
+              "detail": { "type": "string", "description": "What specifically happened when testing this feature" },
+              "blocking_dependency": { "type": "string", "description": "What external service/backend/API is missing, if applicable" },
+              "spec_claims_working": { "type": "boolean", "description": "Whether the README/docs claim this feature works without caveats" }
+            }
+          }
+        },
+        "missing_dependencies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "dependency": { "type": "string", "description": "What's missing (e.g., 'FastAPI backend at /api/weather')" },
+              "required_by": { "type": "array", "items": { "type": "string" }, "description": "Which features need this dependency" },
+              "in_scope": { "type": "boolean", "description": "Was building this dependency part of the project scope?" },
+              "documented": { "type": "boolean", "description": "Does the README mention this dependency is needed?" }
+            }
+          }
+        },
+        "verdict": {
+          "type": "string",
+          "enum": ["fully_functional", "partially_functional", "non_functional"],
+          "description": "fully_functional = all features work. partially_functional = some work, some don't. non_functional = app doesn't start or nothing works."
+        },
+        "tests_hide_real_failures": {
+          "type": "boolean",
+          "description": "True if all tests pass but the app has broken features — indicates over-mocking in test suite"
         }
       }
     },

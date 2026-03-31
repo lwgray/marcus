@@ -48,6 +48,32 @@
 **Examples**: [cite specific file:line comparisons]
 **Assessment**: [What this means for multi-agent value on this project]
 
+## Runtime Smoke Test
+
+**Verdict**: [Fully Functional | Partially Functional | Non-Functional]
+**Tests hide real failures**: [Yes / No]
+
+### Startup
+- **Command**: `[command used]`
+- **Result**: [Starts successfully / Fails to start]
+- **Errors**: [any startup errors or warnings]
+
+### Features Verified
+
+| Feature | Status | Detail | Blocking Dependency |
+|---------|--------|--------|---------------------|
+| [from spec] | works / error_state / broken / missing_dependency | [what happened] | [what's missing, if any] |
+
+### Missing Dependencies
+
+| Dependency | Required By | In Scope? | Documented? |
+|------------|-------------|-----------|-------------|
+| [e.g., FastAPI backend at /api/weather] | [Weather Widget] | [Yes/No] | [Yes/No] |
+
+### Impact on Scores
+[How smoke test findings affected Correctness, Completeness, Testing, and Documentation scores.
+Flag if tests are over-mocked — all pass but the app doesn't work.]
+
 ## Critical Issues
 
 | # | Severity | File | Line | Description |

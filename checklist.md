@@ -7,6 +7,8 @@
 - [ ] [Enhancement] Revisit git worktree isolation for multi-agent branch conflicts (#250)
 - [ ] [Enhancement] Project deletion UI — unified delete across Cato, ProjectRegistry, and kanban providers (#256) 🔴
 - [ ] [Refactor] Extract KanbanWorkflowMixin to eliminate workflow duplication across providers (#251) 🟡
+- [ ] [Refactor] Validator should evaluate evidence, not truncated source code (#270) 🟡
+- [ ] [Enhancement] Add Integration Verification phase after implementation tasks complete (#271) 🔴
 
 ## Bug Fixes
 
