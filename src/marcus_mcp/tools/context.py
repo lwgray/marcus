@@ -138,7 +138,14 @@ async def get_task_context(task_id: str, state: Any) -> Dict[str, Any]:
         and dependency_artifacts.
     """
     # Log to agent events — proof the agent called get_task_context
-    agent_id = getattr(state, "_current_client_id", None) or "unknown"
+    # Resolve agent_id: try authenticated client first, then task assignment
+    agent_id = getattr(state, "_current_client_id", None)
+    if not agent_id and hasattr(state, "project_tasks"):
+        for t in state.project_tasks:
+            if t.id == task_id and t.assigned_to:
+                agent_id = t.assigned_to
+                break
+    agent_id = agent_id or "unknown"
     project_name = getattr(state, "current_project_name", None) or "unknown"
     log_agent_event(
         "context_requested",
