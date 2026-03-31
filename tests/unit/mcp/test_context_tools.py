@@ -6,7 +6,7 @@ Tests the get_task_context and log_decision functions in the context module.
 
 from datetime import datetime, timezone
 from typing import Any, Dict, List
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -431,6 +431,24 @@ class TestGetTaskContext:
         assert context["parent_task"]["id"] == "parent-task-1"
         assert "shared_conventions" in context
         assert "sibling_subtasks" in context
+
+    @pytest.mark.asyncio
+    async def test_get_task_context_logs_agent_event(self, mock_state, sample_task):
+        """Test that get_task_context writes a context_requested agent event."""
+        # Arrange
+        mock_state.project_tasks = [sample_task]
+        mock_state._current_client_id = "agent-2"
+
+        with patch("src.marcus_mcp.tools.context.log_agent_event") as mock_log:
+            # Act
+            result = await get_task_context("test-task-1", mock_state)
+
+        # Assert
+        assert result["success"] is True
+        mock_log.assert_called_once_with(
+            "context_requested",
+            {"agent_id": "agent-2", "task_id": "test-task-1", "project": "unknown"},
+        )
 
 
 class TestLogDecision:

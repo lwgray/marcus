@@ -12,6 +12,7 @@ from src.core.project_history import Decision as HistoryDecision
 from src.core.project_history import (
     ProjectHistoryPersistence,
 )
+from src.logging.agent_events import log_agent_event
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +137,18 @@ async def get_task_context(task_id: str, state: Any) -> Dict[str, Any]:
         decisions. For subtasks, includes parent_task, shared_conventions,
         and dependency_artifacts.
     """
+    # Log to agent events — proof the agent called get_task_context
+    agent_id = getattr(state, "_current_client_id", None) or "unknown"
+    project_name = getattr(state, "current_project_name", None) or "unknown"
+    log_agent_event(
+        "context_requested",
+        {
+            "agent_id": agent_id,
+            "task_id": task_id,
+            "project": project_name,
+        },
+    )
+
     try:
         # Check if this is a subtask
         if hasattr(state, "subtask_manager") and state.subtask_manager:
