@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     source_type TEXT,
     source_context TEXT,
     completion_criteria TEXT,
+    acceptance_criteria TEXT,
     validation_spec TEXT,
     provides TEXT,
     requires TEXT,
@@ -339,6 +340,7 @@ class SQLiteKanban(KanbanInterface):
                         project_id, project_name, is_subtask,
                         parent_task_id, subtask_index, source_type,
                         source_context, completion_criteria,
+                        acceptance_criteria,
                         validation_spec, provides, requires,
                         original_id
                     ) VALUES (
@@ -346,6 +348,7 @@ class SQLiteKanban(KanbanInterface):
                         ?, ?, ?,
                         ?, ?, ?,
                         ?, ?, ?,
+                        ?,
                         ?, ?, ?,
                         ?, ?,
                         ?, ?, ?,
@@ -378,6 +381,11 @@ class SQLiteKanban(KanbanInterface):
                         (
                             json.dumps(task_data["completion_criteria"])
                             if task_data.get("completion_criteria")
+                            else None
+                        ),
+                        (
+                            json.dumps(task_data["acceptance_criteria"])
+                            if task_data.get("acceptance_criteria")
                             else None
                         ),
                         task_data.get("validation_spec"),
@@ -1353,15 +1361,32 @@ class SQLiteKanban(KanbanInterface):
     # ----------------------------------------------------------
 
     def _init_db(self) -> None:
-        """Create schema and enable WAL mode."""
+        """Create schema, run migrations, and enable WAL mode."""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = self._get_raw_connection()
         try:
             conn.executescript(_SCHEMA_SQL)
+            # Migrate existing DBs: add columns that may not exist
+            self._migrate_schema(conn)
             conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
             conn.commit()
         finally:
             conn.close()
+
+    def _migrate_schema(self, conn: sqlite3.Connection) -> None:
+        """Add columns to existing tables if missing.
+
+        Safe to call on new or old databases — ALTER TABLE ADD COLUMN
+        is a no-op if the column already exists (caught by except).
+        """
+        migrations = [
+            "ALTER TABLE tasks ADD COLUMN acceptance_criteria TEXT",
+        ]
+        for sql in migrations:
+            try:
+                conn.execute(sql)
+            except sqlite3.OperationalError:
+                pass  # Column already exists
 
     def _get_raw_connection(self) -> sqlite3.Connection:
         """Create a short-lived SQLite connection.
@@ -1502,6 +1527,14 @@ class SQLiteKanban(KanbanInterface):
             except (json.JSONDecodeError, TypeError):
                 pass
 
+        acceptance_criteria: list[str] = []
+        try:
+            ac_raw = row["acceptance_criteria"]
+            if ac_raw:
+                acceptance_criteria = json.loads(ac_raw)
+        except (json.JSONDecodeError, TypeError, IndexError, KeyError):
+            pass
+
         return Task(
             id=row["id"],
             name=row["name"],
@@ -1523,6 +1556,7 @@ class SQLiteKanban(KanbanInterface):
             source_type=row["source_type"],
             source_context=source_context,
             completion_criteria=completion_criteria,
+            acceptance_criteria=acceptance_criteria,
             validation_spec=row["validation_spec"],
             is_subtask=bool(row["is_subtask"]),
             parent_task_id=row["parent_task_id"],
