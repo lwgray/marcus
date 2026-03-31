@@ -1361,15 +1361,32 @@ class SQLiteKanban(KanbanInterface):
     # ----------------------------------------------------------
 
     def _init_db(self) -> None:
-        """Create schema and enable WAL mode."""
+        """Create schema, run migrations, and enable WAL mode."""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = self._get_raw_connection()
         try:
             conn.executescript(_SCHEMA_SQL)
+            # Migrate existing DBs: add columns that may not exist
+            self._migrate_schema(conn)
             conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
             conn.commit()
         finally:
             conn.close()
+
+    def _migrate_schema(self, conn: sqlite3.Connection) -> None:
+        """Add columns to existing tables if missing.
+
+        Safe to call on new or old databases — ALTER TABLE ADD COLUMN
+        is a no-op if the column already exists (caught by except).
+        """
+        migrations = [
+            "ALTER TABLE tasks ADD COLUMN acceptance_criteria TEXT",
+        ]
+        for sql in migrations:
+            try:
+                conn.execute(sql)
+            except sqlite3.OperationalError:
+                pass  # Column already exists
 
     def _get_raw_connection(self) -> sqlite3.Connection:
         """Create a short-lived SQLite connection.
