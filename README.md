@@ -208,6 +208,7 @@ cd cato && pip install -e . && ./cato start
 ### Step 6: Your First Project
 
 There are three ways to use Marcus — pick the one that fits your agent:
+**NOTE** Always build projects within folders outside of marcus root directory
 
 #### Option A: `/marcus` Skill (Claude Code only)
 
@@ -262,6 +263,7 @@ cd posidonius && pip install -e .
 ```
 
 See the [Posidonius README](https://github.com/lwgray/posidonius) for setup.
+**NOTE** By default Posidonius writes projects to ~/experiments directory
 
 #### Comparing the Three
 

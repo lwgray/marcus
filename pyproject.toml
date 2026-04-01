@@ -81,7 +81,7 @@ dev = [
 ]
 
 [project.scripts]
-marcus = "marcus:main"
+marcus = "src.marcus_mcp.server:main"
 
 [project.urls]
 Homepage = "https://github.com/lwgray/marcus"
@@ -91,8 +91,8 @@ Issues = "https://github.com/lwgray/marcus/issues"
 Changelog = "https://github.com/lwgray/marcus/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["src", "src.*"]
+where = [".", "src"]
+include = ["src", "src.*", "marcus_mcp", "marcus_mcp.*"]
 
 [tool.mypy]
 python_version = "3.11"
