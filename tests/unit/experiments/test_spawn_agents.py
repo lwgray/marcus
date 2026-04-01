@@ -10,6 +10,7 @@ import json
 import sys
 import time
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -100,6 +101,125 @@ class TestProjectInfoWaitCountdown:
         result = wait_for_project_info(mock_config)
 
         assert result is True
+
+
+class TestWaitForPaneReady:
+    """Test suite for tmux pane readiness polling."""
+
+    def test_returns_true_when_shell_prompt_detected(self) -> None:
+        """Test pane is ready when shell prompt indicator appears."""
+        wait_for_pane_ready = spawn_agents.wait_for_pane_ready
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="user@host ~ $")
+            result = wait_for_pane_ready("test:0.0", timeout=2.0)
+
+        assert result is True
+
+    def test_returns_true_when_zsh_prompt_detected(self) -> None:
+        """Test pane is ready when zsh prompt indicator appears."""
+        wait_for_pane_ready = spawn_agents.wait_for_pane_ready
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="lwgray@mac ~ %")
+            result = wait_for_pane_ready("test:0.0", timeout=2.0)
+
+        assert result is True
+
+    def test_returns_true_on_content_stabilization(self) -> None:
+        """Test pane is ready when content stops changing."""
+        wait_for_pane_ready = spawn_agents.wait_for_pane_ready
+
+        call_count = 0
+
+        def mock_capture(*args: Any, **kwargs: Any) -> MagicMock:
+            nonlocal call_count
+            call_count += 1
+            # First call: empty, then stable content without prompt
+            if call_count <= 1:
+                return MagicMock(returncode=0, stdout="")
+            return MagicMock(returncode=0, stdout="Loading shell...")
+
+        with patch("subprocess.run", side_effect=mock_capture):
+            with patch("time.sleep"):
+                result = wait_for_pane_ready(
+                    "test:0.0", timeout=5.0, poll_interval=0.01
+                )
+
+        assert result is True
+
+    def test_returns_false_on_timeout(self) -> None:
+        """Test pane readiness returns False when timeout expires."""
+        wait_for_pane_ready = spawn_agents.wait_for_pane_ready
+
+        call_count = 0
+
+        def mock_capture(*args: Any, **kwargs: Any) -> MagicMock:
+            nonlocal call_count
+            call_count += 1
+            # Content keeps changing — never stabilizes
+            return MagicMock(returncode=0, stdout=f"changing content {call_count}")
+
+        with patch("subprocess.run", side_effect=mock_capture):
+            with patch("time.sleep"):
+                result = wait_for_pane_ready(
+                    "test:0.0", timeout=0.01, poll_interval=0.001
+                )
+
+        assert result is False
+
+    def test_handles_tmux_capture_failure(self) -> None:
+        """Test graceful handling when tmux capture-pane fails."""
+        wait_for_pane_ready = spawn_agents.wait_for_pane_ready
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stdout="")
+            with patch("time.sleep"):
+                result = wait_for_pane_ready(
+                    "test:0.0", timeout=0.01, poll_interval=0.001
+                )
+
+        assert result is False
+
+
+class TestTermNormalization:
+    """Test suite for TERM environment variable normalization in scripts."""
+
+    def test_term_normalization_in_project_creator_script(self, tmp_path: Path) -> None:
+        """Test project creator bash script includes TERM normalization."""
+        config = MagicMock()
+        config.experiment_dir = tmp_path
+        config.implementation_dir = tmp_path / "implementation"
+        config.implementation_dir.mkdir()
+        config.prompts_dir = tmp_path / "prompts"
+        config.prompts_dir.mkdir()
+        config.project_info_file = tmp_path / "project_info.json"
+        config.project_name = "test"
+        config.project_options = {
+            "complexity": "standard",
+            "provider": "sqlite",
+            "mode": "new_project",
+        }
+        config.agents = []
+        config.get_timeout.return_value = 300
+
+        spawner = spawn_agents.AgentSpawner.__new__(spawn_agents.AgentSpawner)
+        spawner.config = config
+        spawner.tmux_session = "test_session"
+        spawner.current_pane = 0
+        spawner.current_window = 0
+        spawner.panes_per_window = 4
+
+        # Mock tmux calls and generate the script
+        with patch("subprocess.run"):
+            with patch.object(spawner, "copy_agent_workflow_to_implementation"):
+                with patch.object(spawner, "run_in_tmux_pane"):
+                    spawner.spawn_project_creator()
+
+        script_file = config.prompts_dir / "project_creator.sh"
+        script_content = script_file.read_text()
+        assert "TERM=xterm-256color" in script_content
+        assert 'if [ "$TERM" = "dumb" ]' in script_content
 
 
 class TestKanbanConnectionResilience:
