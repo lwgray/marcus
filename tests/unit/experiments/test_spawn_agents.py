@@ -168,3 +168,106 @@ class TestMCPHealthCheck:
             result = check_mcp_health("http://localhost:4298")
 
         assert result is False
+
+
+class TestPretrustDirectory:
+    """Test suite for pre-trusting directories in ~/.claude.json."""
+
+    def test_creates_new_config_when_missing(self, tmp_path: Path) -> None:
+        """Test pre-trust creates ~/.claude.json if it doesn't exist."""
+        claude_json = tmp_path / ".claude.json"
+        impl_dir = tmp_path / "implementation"
+        impl_dir.mkdir()
+
+        with patch.object(Path, "home", return_value=tmp_path):
+            spawn_agents.AgentSpawner._pretrust_directory(impl_dir)
+
+        assert claude_json.exists()
+        config = json.loads(claude_json.read_text())
+        dir_key = str(impl_dir)
+        assert dir_key in config["projects"]
+        assert config["projects"][dir_key]["hasTrustDialogAccepted"] is True
+
+    def test_updates_existing_config(self, tmp_path: Path) -> None:
+        """Test pre-trust adds to existing ~/.claude.json without clobbering."""
+        claude_json = tmp_path / ".claude.json"
+        existing = {
+            "numStartups": 42,
+            "projects": {
+                "/some/other/project": {
+                    "hasTrustDialogAccepted": True,
+                }
+            },
+        }
+        claude_json.write_text(json.dumps(existing))
+
+        impl_dir = tmp_path / "implementation"
+        impl_dir.mkdir()
+
+        with patch.object(Path, "home", return_value=tmp_path):
+            spawn_agents.AgentSpawner._pretrust_directory(impl_dir)
+
+        config = json.loads(claude_json.read_text())
+        # Existing data preserved
+        assert config["numStartups"] == 42
+        assert "/some/other/project" in config["projects"]
+        # New directory added
+        assert config["projects"][str(impl_dir)]["hasTrustDialogAccepted"] is True
+
+    def test_retrusts_directory_with_false_flag(self, tmp_path: Path) -> None:
+        """Test pre-trust flips hasTrustDialogAccepted from False to True."""
+        claude_json = tmp_path / ".claude.json"
+        impl_dir = tmp_path / "implementation"
+        impl_dir.mkdir()
+        dir_key = str(impl_dir)
+
+        existing = {
+            "projects": {
+                dir_key: {
+                    "hasTrustDialogAccepted": False,
+                    "allowedTools": ["Bash"],
+                }
+            }
+        }
+        claude_json.write_text(json.dumps(existing))
+
+        with patch.object(Path, "home", return_value=tmp_path):
+            spawn_agents.AgentSpawner._pretrust_directory(impl_dir)
+
+        config = json.loads(claude_json.read_text())
+        assert config["projects"][dir_key]["hasTrustDialogAccepted"] is True
+        # Existing fields preserved
+        assert config["projects"][dir_key]["allowedTools"] == ["Bash"]
+
+    def test_skips_already_trusted_directory(self, tmp_path: Path) -> None:
+        """Test pre-trust is a no-op when directory is already trusted."""
+        claude_json = tmp_path / ".claude.json"
+        impl_dir = tmp_path / "implementation"
+        impl_dir.mkdir()
+        dir_key = str(impl_dir)
+
+        existing = {"projects": {dir_key: {"hasTrustDialogAccepted": True}}}
+        claude_json.write_text(json.dumps(existing))
+        original_mtime = claude_json.stat().st_mtime
+
+        with patch.object(Path, "home", return_value=tmp_path):
+            spawn_agents.AgentSpawner._pretrust_directory(impl_dir)
+
+        # File should not be rewritten
+        assert claude_json.stat().st_mtime == original_mtime
+
+    def test_handles_malformed_json(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Test graceful handling of corrupted ~/.claude.json."""
+        claude_json = tmp_path / ".claude.json"
+        claude_json.write_text("{bad json")
+
+        impl_dir = tmp_path / "implementation"
+        impl_dir.mkdir()
+
+        with patch.object(Path, "home", return_value=tmp_path):
+            spawn_agents.AgentSpawner._pretrust_directory(impl_dir)
+
+        output = capsys.readouterr().out
+        assert "Could not pre-trust" in output
