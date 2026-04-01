@@ -15,6 +15,12 @@ interface LiveClockProps {
  * Pure presentational component. The parent (TimeDisplayWidget) manages
  * the setInterval and passes currentTime as a prop every second.
  * Uses Intl.DateTimeFormat for timezone-aware formatting.
+ *
+ * When the timezone prop changes (user selects a new timezone):
+ * - Component re-renders with the new timezone value
+ * - Intl.DateTimeFormat is re-created with the new timeZone option
+ * - The displayed time immediately updates to the new timezone
+ * - No API call is needed - browser handles the conversion client-side
  */
 const LiveClock: React.FC<LiveClockProps> = ({
   timezone,

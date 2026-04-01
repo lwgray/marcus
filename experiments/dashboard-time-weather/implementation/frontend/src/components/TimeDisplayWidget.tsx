@@ -11,6 +11,13 @@ const API_BASE = '/api/time';
  * Manages state for timezone selection and real-time clock updates.
  * Fetches timezone list from backend on mount, then ticks every 1 second
  * using client-side Date for zero-latency updates.
+ *
+ * Timezone change flow:
+ * 1. User selects new timezone in TimezoneSelector
+ * 2. handleTimezoneChange updates selectedTimezone state
+ * 3. React re-renders LiveClock with new timezone prop
+ * 4. LiveClock uses Intl.DateTimeFormat(timezone) to format the display
+ * 5. Clock continues ticking every 1s with the new timezone applied
  */
 const TimeDisplayWidget: React.FC = () => {
   const [selectedTimezone, setSelectedTimezone] = useState<string>('UTC');
@@ -19,37 +26,39 @@ const TimeDisplayWidget: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch timezone list on mount
-  useEffect(() => {
-    let cancelled = false;
-
-    const fetchTimezones = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/zones`);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch timezones: ${response.status}`);
-        }
-        const data = await response.json();
-        if (!cancelled) {
-          setTimezones(data.timezones);
-          setIsLoading(false);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load timezones');
-          setIsLoading(false);
-        }
+  // Fetch timezone list from backend API with error handling
+  const fetchTimezones = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE}/zones`);
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch timezones: HTTP ${response.status} ${response.statusText}`
+        );
       }
-    };
-
-    fetchTimezones();
-
-    return () => {
-      cancelled = true;
-    };
+      const data = await response.json();
+      if (!data.timezones || !Array.isArray(data.timezones)) {
+        throw new Error('Invalid response format from timezone API');
+      }
+      setTimezones(data.timezones);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Failed to load timezones'
+      );
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  // Tick the clock every second
+  // Fetch timezone list on mount
+  useEffect(() => {
+    fetchTimezones();
+  }, [fetchTimezones]);
+
+  // Tick the clock every second - this drives real-time updates
+  // When selectedTimezone changes, LiveClock immediately shows the
+  // new timezone on the next tick (no API call needed)
   useEffect(() => {
     const intervalId = setInterval(() => {
       setCurrentTime(new Date());
@@ -58,14 +67,27 @@ const TimeDisplayWidget: React.FC = () => {
     return () => clearInterval(intervalId);
   }, []);
 
+  // When user selects a new timezone, update state immediately.
+  // LiveClock re-renders with the new timezone prop and uses
+  // Intl.DateTimeFormat to display the correct time.
   const handleTimezoneChange = useCallback((timezone: string) => {
     setSelectedTimezone(timezone);
   }, []);
 
   if (error) {
     return (
-      <div className="time-display-widget time-display-widget--error" data-testid="time-widget-error">
+      <div
+        className="time-display-widget time-display-widget--error"
+        data-testid="time-widget-error"
+      >
         <p>Error: {error}</p>
+        <button
+          onClick={fetchTimezones}
+          className="time-display-widget__retry"
+          data-testid="retry-button"
+        >
+          Retry
+        </button>
       </div>
     );
   }
