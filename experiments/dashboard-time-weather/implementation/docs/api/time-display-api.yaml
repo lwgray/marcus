@@ -1,0 +1,147 @@
+openapi: "3.0.3"
+info:
+  title: Time Display API
+  version: "1.0.0"
+  description: API for the Time Display System - provides timezone data and current time
+
+paths:
+  /api/time/zones:
+    get:
+      summary: List available timezones
+      description: |
+        Returns all available IANA timezones grouped by region.
+        Response is cacheable (timezone list rarely changes).
+      operationId: getTimezones
+      responses:
+        "200":
+          description: List of available timezones
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimezoneListResponse"
+
+  /api/time/now:
+    get:
+      summary: Get current time in a timezone
+      description: |
+        Returns the current server time converted to the specified timezone.
+        Used for initial time sync and periodic drift correction.
+      operationId: getCurrentTime
+      parameters:
+        - name: timezone
+          in: query
+          required: false
+          description: IANA timezone identifier (e.g., "America/New_York"). Defaults to "UTC".
+          schema:
+            type: string
+            default: "UTC"
+            example: "America/New_York"
+      responses:
+        "200":
+          description: Current time in the requested timezone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentTimeResponse"
+        "400":
+          description: Invalid timezone identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    TimezoneInfo:
+      type: object
+      required:
+        - name
+        - utc_offset
+        - region
+      properties:
+        name:
+          type: string
+          description: IANA timezone identifier
+          example: "America/New_York"
+        utc_offset:
+          type: string
+          description: Current UTC offset in +/-HH:MM format
+          example: "-05:00"
+        region:
+          type: string
+          description: Geographic region grouping
+          example: "Americas"
+        display_name:
+          type: string
+          description: Human-readable display name
+          example: "Eastern Time (US & Canada)"
+
+    TimezoneListResponse:
+      type: object
+      required:
+        - timezones
+        - count
+      properties:
+        timezones:
+          type: array
+          items:
+            $ref: "#/components/schemas/TimezoneInfo"
+        count:
+          type: integer
+          description: Total number of timezones
+          example: 50
+
+    CurrentTimeResponse:
+      type: object
+      required:
+        - datetime
+        - timezone
+        - utc_offset
+        - unix_timestamp
+      properties:
+        datetime:
+          type: string
+          format: date-time
+          description: ISO 8601 formatted datetime in the requested timezone
+          example: "2026-03-31T15:30:45-05:00"
+        timezone:
+          type: string
+          description: IANA timezone identifier used
+          example: "America/New_York"
+        utc_offset:
+          type: string
+          description: Current UTC offset
+          example: "-05:00"
+        unix_timestamp:
+          type: number
+          format: double
+          description: Unix timestamp (seconds since epoch) for sync
+          example: 1775010000.123
+        formatted:
+          type: object
+          properties:
+            time_24h:
+              type: string
+              example: "15:30:45"
+            time_12h:
+              type: string
+              example: "3:30:45 PM"
+            date:
+              type: string
+              example: "March 31, 2026"
+            day_of_week:
+              type: string
+              example: "Tuesday"
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          example: "invalid_timezone"
+        message:
+          type: string
+          example: "Unknown timezone: 'Invalid/Zone'. Use GET /api/time/zones for valid options."
