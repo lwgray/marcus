@@ -1,19 +1,14 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import {
-  ApiResponse,
-  WeatherData,
-  WeatherWidgetProps,
-} from '../types/weather';
-
-const API_BASE = '/api/weather';
-const POLL_INTERVAL = 300_000; // 5 minutes
+import React from 'react';
+import { useWeather } from '../hooks/useWeather';
+import { WeatherWidgetProps } from '../types/weather';
 
 /**
  * WeatherWidget - Displays current weather data for a configured city.
  *
- * Fetches weather data from the backend API and displays temperature,
- * weather condition, icon, humidity, and wind speed. Polls every 5 minutes
- * for updates. Handles loading, error, and stale data states.
+ * Fetches weather data from the backend API using the useWeather hook and
+ * displays temperature, weather condition, icon, humidity, and wind speed.
+ * Polls every 5 minutes for updates.
+ * Handles loading, error, and stale data states.
  *
  * Props:
  *   city - City name to fetch weather for.
@@ -25,40 +20,7 @@ const WeatherWidget: React.FC<WeatherWidgetProps> = ({
   onCityChange,
   units = 'imperial',
 }) => {
-  const [data, setData] = useState<WeatherData | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [stale, setStale] = useState<boolean>(false);
-
-  const fetchWeather = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ city, units });
-      const response = await fetch(`${API_BASE}?${params.toString()}`);
-      const json: ApiResponse = await response.json();
-
-      if (json.success) {
-        setData(json.data);
-        setStale(json.stale);
-        setError(null);
-      } else {
-        setError(json.error.message);
-      }
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'Unable to connect to weather service'
-      );
-      setStale(data !== null);
-    } finally {
-      setLoading(false);
-    }
-  }, [city, units]);
-
-  useEffect(() => {
-    fetchWeather();
-    const interval = setInterval(fetchWeather, POLL_INTERVAL);
-    return () => clearInterval(interval);
-  }, [fetchWeather]);
+  const { data, loading, error, stale } = useWeather(city, units);
 
   // Loading state (only on initial load, not on refresh)
   if (loading && !data) {
