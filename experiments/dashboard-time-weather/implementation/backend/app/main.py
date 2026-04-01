@@ -42,6 +42,22 @@ def list_timezones() -> TimezoneListResponse:
     -------
     TimezoneListResponse
         List of IANA timezones grouped by region.
+
+    Examples
+    --------
+    Response::
+
+        {
+            "timezones": [
+                {
+                    "name": "America/New_York",
+                    "utc_offset": "-05:00",
+                    "region": "Americas",
+                    "display_name": "New York"
+                }
+            ],
+            "count": 1
+        }
     """
     return get_timezone_list()
 
@@ -66,6 +82,30 @@ def current_time(
     -------
     CurrentTimeResponse | JSONResponse
         Current time data or 400 error for invalid timezone.
+
+    Examples
+    --------
+    Success response::
+
+        {
+            "datetime_str": "2026-03-31T15:30:45-05:00",
+            "timezone": "America/New_York",
+            "utc_offset": "-05:00",
+            "unix_timestamp": 1775010645.123,
+            "formatted": {
+                "time_24h": "15:30:45",
+                "time_12h": "03:30:45 PM",
+                "date": "March 31, 2026",
+                "day_of_week": "Tuesday"
+            }
+        }
+
+    Error response (400)::
+
+        {
+            "error": "invalid_timezone",
+            "message": "Unknown timezone: 'Bad/Zone'."
+        }
     """
     try:
         return get_current_time(timezone)
