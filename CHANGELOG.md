@@ -5,13 +5,41 @@ All notable changes to Marcus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-04-03
 ### Added
+- **SQLite Kanban provider** — local-first, zero-config; no Docker needed for basic use (GH-258)
+- **Epictetus evaluation skill** — standardized rubric grading for experiments (GH-258)
+- **Coordination Effectiveness analysis** in Epictetus reports (GH-263)
+- **Integration verification phase** — validates task outputs fit together (GH-271, GH-286)
+- **Dr. Kaia Chen AI architect skill** for architectural advice via `/kaia` (GH-287)
+- **`/marcus` Claude Code skill** — one-command experiment launcher (GH-227)
+- Cadence-based agent recovery using median progress intervals (GH-247)
+- Phase-level timing in `request_next_task` for scheduling insights (GH-248)
+- Acceptance criteria stored in SQLite DB and wired through pipeline (GH-268, GH-269)
+- Agent event logging on `get_task_context` calls (GH-285, GH-288)
+- TERM normalization for tmux panes in non-interactive shells (GH-291)
+- Pane readiness polling before injecting commands via `send-keys` (GH-291)
+- Auto-confirm Claude trust/permission prompts in tmux panes (GH-218)
+- AI model info displayed in `marcus status` output (GH-262)
+- Project config snapshots saved at creation time (GH-260)
+- Project status metrics sourced from kanban DB (GH-266)
+- Brief task instruction generation to reduce context bloat (GH-259)
+- PyPI publishing as `marcus-ai` (`pip install marcus-ai`)
+
 ### Changed
-### Deprecated
-### Removed
+- **Default provider for experiments is now SQLite** — Planka remains fully supported for existing users
+- Docker is now optional infrastructure (Planka + Postgres only)
+- README redesigned with News, Architecture, and Comparison sections (GH-202, GH-216)
+
 ### Fixed
-### Security
+- Display estimated time in minutes instead of hours on board
+- Agent startup reliability in detached tmux sessions (GH-289)
+- `experiment_complete.json` now written in `end_experiment` (GH-265)
+- Task instruction generation constrained to be brief (GH-259)
+
+### Notes
+- `/marcus`, `/kaia`, and `/epictetus` skills require Claude Code CLI — they are not part of the Python API
+- Epictetus is the foundation for a larger backpropagation-style self-learning system (see GH-255, GH-257)
 
 ## [0.2.1] - 2026-03-21
 ### Added
@@ -120,7 +148,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Progress reporting system
 - Blocker handling workflow
 
-[Unreleased]: https://github.com/lwgray/marcus/compare/v0.2.0...HEAD
+[0.3.0]: https://github.com/lwgray/marcus/compare/v0.2.1...v0.3.0
+[0.2.1]: https://github.com/lwgray/marcus/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/lwgray/marcus/compare/v0.1.3.1...v0.2.0
 [0.1.3.1]: https://github.com/lwgray/marcus/compare/v0.1.3...v0.1.3.1
 [0.1.3]: https://github.com/lwgray/marcus/compare/v0.1.2...v0.1.3
