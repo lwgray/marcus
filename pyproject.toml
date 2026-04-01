@@ -74,6 +74,17 @@ Changelog = "https://github.com/lwgray/marcus/blob/main/CHANGELOG.md"
 where = [".", "src"]
 include = ["src", "src.*", "marcus_mcp", "marcus_mcp.*"]
 
+[project.urls]
+Homepage = "https://github.com/lwgray/marcus"
+Documentation = "https://marcus-ai.dev"
+Repository = "https://github.com/lwgray/marcus"
+Issues = "https://github.com/lwgray/marcus/issues"
+Changelog = "https://github.com/lwgray/marcus/blob/main/CHANGELOG.md"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
 [tool.mypy]
 python_version = "3.11"
 warn_return_any = true
