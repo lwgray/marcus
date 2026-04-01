@@ -169,7 +169,8 @@ class BoardRenderer:
             context_parts.append(f"[cyan]{task.assigned_to}[/cyan]")
 
         if task.estimated_hours and task.estimated_hours > 0:
-            context_parts.append(f"[dim]{task.estimated_hours}h[/dim]")
+            minutes = int(task.estimated_hours * 60)
+            context_parts.append(f"[dim]{minutes}m[/dim]")
 
         if context_parts:
             lines.append(" " + " · ".join(context_parts))

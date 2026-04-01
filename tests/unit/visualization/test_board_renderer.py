@@ -143,11 +143,17 @@ class TestBoardRendererCards:
         # Should have some priority indicator
         assert "URGENT" in output or "urgent" in output or "!" in output
 
-    def test_card_shows_estimated_hours(self) -> None:
-        """Test that estimated hours appear when set."""
-        tasks = [_make_task(name="Big Task", estimated_hours=8.0)]
+    def test_card_shows_estimated_minutes(self) -> None:
+        """Test that estimated time appears in minutes when set."""
+        tasks = [_make_task(name="Big Task", estimated_hours=2.0)]
         output = _capture_output(BoardRenderer(), tasks)
-        assert "8" in output
+        assert "120m" in output
+
+    def test_card_shows_fractional_hours_as_minutes(self) -> None:
+        """Test that fractional hours convert to whole minutes."""
+        tasks = [_make_task(name="Quick Task", estimated_hours=0.5)]
+        output = _capture_output(BoardRenderer(), tasks)
+        assert "30m" in output
 
     def test_card_shows_labels(self) -> None:
         """Test that labels are displayed."""
