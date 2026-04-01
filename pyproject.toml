@@ -72,7 +72,7 @@ Changelog = "https://github.com/lwgray/marcus/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["src*"]
+include = ["src", "src.*"]
 
 [tool.mypy]
 python_version = "3.11"

@@ -974,6 +974,12 @@ echo "=========================================="
         # Verify MLflow is available
         print("\n[Setup] Verifying MLflow installation...")
         try:
+            import warnings
+
+            warnings.filterwarnings(
+                "ignore",
+                message='Field "model_name" has conflict with protected namespace',
+            )
             import mlflow  # noqa: F401
 
             print("✓ MLflow is installed and ready")
