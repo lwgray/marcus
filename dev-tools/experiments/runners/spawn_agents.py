@@ -16,6 +16,70 @@ from typing import Any, Dict, List
 import yaml
 
 
+def wait_for_pane_ready(
+    pane_target: str,
+    timeout: float = 10.0,
+    poll_interval: float = 0.3,
+) -> bool:
+    """Wait for a tmux pane's shell to be ready before sending commands.
+
+    Polls the pane content until a shell prompt indicator appears or the
+    content stabilizes (stops changing for 2+ consecutive polls). This
+    prevents send-keys from firing before the shell is initialized.
+
+    Parameters
+    ----------
+    pane_target : str
+        Tmux pane target (e.g. ``session:window.pane`` or a pane ID).
+    timeout : float
+        Maximum seconds to wait before giving up.
+    poll_interval : float
+        Seconds between polls.
+
+    Returns
+    -------
+    bool
+        True if the pane is ready, False if timed out.
+    """
+    prompt_indicators = {"$", "%", "#", "❯", ">", "›"}
+    deadline = time.monotonic() + timeout
+    prev_content = ""
+    stable_count = 0
+
+    while time.monotonic() < deadline:
+        result = subprocess.run(
+            ["tmux", "capture-pane", "-p", "-t", pane_target],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            time.sleep(poll_interval)
+            continue
+
+        content = result.stdout.rstrip()
+
+        # Check for shell prompt indicators on the last non-empty line
+        lines = [ln for ln in content.split("\n") if ln.strip()]
+        if lines:
+            last_line = lines[-1].strip()
+            if any(last_line.endswith(ind) for ind in prompt_indicators):
+                return True
+
+        # Content stabilization: if content hasn't changed for 2 polls
+        # and there IS content, the shell is ready
+        if content and content == prev_content:
+            stable_count += 1
+            if stable_count >= 2:
+                return True
+        else:
+            stable_count = 0
+
+        prev_content = content
+        time.sleep(poll_interval)
+
+    return False
+
+
 def confirm_trust_if_prompted(
     pane_target: str,
     timeout: float = 5.0,
@@ -655,15 +719,19 @@ CRITICAL INSTRUCTIONS:
             target = result.stdout.strip()
             time.sleep(0.2)  # Give tmux time to stabilize
 
-        # Send commands to the pane using its actual ID
-        subprocess.run(
-            ["tmux", "send-keys", "-t", target, f"bash {script_file}", "Enter"],
-            check=True,
-        )
-
         # Set pane title
         subprocess.run(
             ["tmux", "select-pane", "-t", target, "-T", title],
+            check=True,
+        )
+
+        # Wait for the pane shell to be ready before sending commands
+        if not wait_for_pane_ready(target):
+            print(f"  ⚠ Pane {target} did not stabilize, sending anyway")
+
+        # Send commands to the pane using its actual ID
+        subprocess.run(
+            ["tmux", "send-keys", "-t", target, f"bash {script_file}", "Enter"],
             check=True,
         )
 
@@ -713,6 +781,11 @@ CRITICAL INSTRUCTIONS:
 
 # Prevent Claude from detecting nesting and refusing to start
 unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION
+
+# Normalize TERM for non-interactive shells (IDE terminals, CI, cron)
+if [ "$TERM" = "dumb" ] || [ -z "$TERM" ]; then
+    export TERM=xterm-256color
+fi
 
 cd {self.config.implementation_dir} || exit 1
 echo "=========================================="
@@ -777,6 +850,11 @@ echo "=========================================="
 # Prevent Claude from detecting nesting and refusing to start
 unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION
 
+# Normalize TERM for non-interactive shells (IDE terminals, CI, cron)
+if [ "$TERM" = "dumb" ] || [ -z "$TERM" ]; then
+    export TERM=xterm-256color
+fi
+
 cd {self.config.implementation_dir} || exit 1
 echo "=========================================="
 echo "{agent_name.upper()}"
@@ -832,6 +910,11 @@ echo "=========================================="
 
 # Prevent Claude from detecting nesting and refusing to start
 unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION
+
+# Normalize TERM for non-interactive shells (IDE terminals, CI, cron)
+if [ "$TERM" = "dumb" ] || [ -z "$TERM" ]; then
+    export TERM=xterm-256color
+fi
 
 cd {self.config.implementation_dir} || exit 1
 echo "=========================================="
