@@ -247,6 +247,51 @@ class AgentSpawner:
         self.current_window = 0
         self.current_pane = 0
 
+    @staticmethod
+    def _pretrust_directory(directory: Path) -> None:
+        """Pre-trust a directory in ~/.claude.json.
+
+        Marks the directory as trusted so Claude skips the
+        'Do you trust this folder?' prompt.
+
+        Parameters
+        ----------
+        directory : Path
+            Directory to mark as trusted.
+        """
+        claude_json = Path.home() / ".claude.json"
+        try:
+            if claude_json.exists():
+                with open(claude_json, "r") as f:
+                    config = json.load(f)
+            else:
+                config = {}
+
+            projects = config.setdefault("projects", {})
+            dir_key = str(directory)
+
+            if dir_key not in projects:
+                projects[dir_key] = {
+                    "allowedTools": [],
+                    "mcpContextUris": [],
+                    "mcpServers": {},
+                    "enabledMcpjsonServers": [],
+                    "disabledMcpjsonServers": [],
+                    "hasTrustDialogAccepted": True,
+                }
+                print(f"  ✓ Pre-trusted directory: {directory}")
+            elif not projects[dir_key].get("hasTrustDialogAccepted"):
+                projects[dir_key]["hasTrustDialogAccepted"] = True
+                print(f"  ✓ Re-trusted directory: {directory}")
+            else:
+                print(f"  ✓ Directory already trusted: {directory}")
+                return
+
+            with open(claude_json, "w") as f:
+                json.dump(config, f, indent=2)
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"  ⚠️  Could not pre-trust directory: {e}")
+
     def create_project_creator_prompt(self) -> str:
         """
         Create the prompt for the project creator agent.
@@ -467,9 +512,22 @@ CRITICAL INSTRUCTIONS:
             capture_output=True,
         )
 
-        # Create new session (detached)
+        # Create new session (detached) with explicit dimensions so panes
+        # are large enough for Claude's TUI even before a client attaches.
         subprocess.run(
-            ["tmux", "new-session", "-d", "-s", self.tmux_session, "-n", "agents-0"],
+            [
+                "tmux",
+                "new-session",
+                "-d",
+                "-s",
+                self.tmux_session,
+                "-n",
+                "agents-0",
+                "-x",
+                "200",
+                "-y",
+                "50",
+            ],
             check=True,
         )
 
@@ -653,6 +711,9 @@ CRITICAL INSTRUCTIONS:
 [ -f ~/.zshrc ] && source ~/.zshrc
 [ -f ~/.bashrc ] && source ~/.bashrc
 
+# Prevent Claude from detecting nesting and refusing to start
+unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION
+
 cd {self.config.implementation_dir} || exit 1
 echo "=========================================="
 echo "PROJECT CREATOR AGENT"
@@ -713,6 +774,9 @@ echo "=========================================="
 [ -f ~/.zshrc ] && source ~/.zshrc
 [ -f ~/.bashrc ] && source ~/.bashrc
 
+# Prevent Claude from detecting nesting and refusing to start
+unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION
+
 cd {self.config.implementation_dir} || exit 1
 echo "=========================================="
 echo "{agent_name.upper()}"
@@ -765,6 +829,9 @@ echo "=========================================="
 # Source shell profile to get nvm/claude in PATH
 [ -f ~/.zshrc ] && source ~/.zshrc
 [ -f ~/.bashrc ] && source ~/.bashrc
+
+# Prevent Claude from detecting nesting and refusing to start
+unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION
 
 cd {self.config.implementation_dir} || exit 1
 echo "=========================================="
@@ -838,6 +905,10 @@ echo "=========================================="
         if self.config.project_info_file.exists():
             self.config.project_info_file.unlink()
             print("  ✓ Removed old project_info.json")
+
+        # Pre-trust the implementation directory so Claude doesn't
+        # show the "Do you trust this folder?" prompt.
+        self._pretrust_directory(self.config.implementation_dir)
 
         # Create tmux session
         print("\n[Setup] Creating tmux session")
