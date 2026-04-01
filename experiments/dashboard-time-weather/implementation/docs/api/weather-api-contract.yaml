@@ -1,0 +1,284 @@
+openapi: "3.0.3"
+info:
+  title: Weather Information Service API
+  version: "1.0.0"
+  description: |
+    Backend API for the Weather Widget. Proxies requests to OpenWeatherMap
+    and provides cached weather data for configured cities.
+
+servers:
+  - url: http://localhost:8000
+    description: Local development
+
+paths:
+  /api/weather:
+    get:
+      summary: Get current weather for a city
+      description: |
+        Returns current weather conditions. Results are cached for 5 minutes
+        to reduce external API calls. If the external API is down, stale
+        cached data may be returned with a `stale` flag.
+      parameters:
+        - name: city
+          in: query
+          required: true
+          description: City name (e.g., "New York", "London", "Tokyo")
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+            example: "New York"
+        - name: units
+          in: query
+          required: false
+          description: Temperature units
+          schema:
+            type: string
+            enum: [metric, imperial]
+            default: imperial
+      responses:
+        "200":
+          description: Current weather data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeatherResponse"
+              example:
+                success: true
+                data:
+                  city: "New York"
+                  country: "US"
+                  temperature: 72.5
+                  feels_like: 70.1
+                  temp_min: 68.0
+                  temp_max: 75.0
+                  humidity: 55
+                  pressure: 1013
+                  wind_speed: 8.5
+                  wind_direction: 220
+                  condition: "clear sky"
+                  condition_code: 800
+                  icon: "01d"
+                  icon_url: "https://openweathermap.org/img/wn/01d@2x.png"
+                  visibility: 10000
+                  timestamp: "2026-03-31T20:30:00Z"
+                  sunrise: "2026-03-31T10:45:00Z"
+                  sunset: "2026-03-31T23:15:00Z"
+                stale: false
+                cached_at: "2026-03-31T20:30:00Z"
+        "400":
+          description: Invalid request (missing or invalid city)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error:
+                  code: "INVALID_CITY"
+                  message: "City parameter is required and must be a non-empty string"
+        "404":
+          description: City not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error:
+                  code: "CITY_NOT_FOUND"
+                  message: "Could not find weather data for 'Faketown'"
+        "429":
+          description: Rate limited
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before retrying
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error:
+                  code: "RATE_LIMITED"
+                  message: "Too many requests. Please try again later."
+        "503":
+          description: External weather service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error:
+                  code: "SERVICE_UNAVAILABLE"
+                  message: "Weather service is temporarily unavailable"
+
+  /api/weather/cities:
+    get:
+      summary: Search for cities
+      description: Returns a list of matching cities for autocomplete/search
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search query (partial city name)
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 100
+            example: "New"
+      responses:
+        "200":
+          description: List of matching cities
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CitySearchResponse"
+              example:
+                success: true
+                cities:
+                  - name: "New York"
+                    country: "US"
+                    state: "New York"
+                  - name: "New Orleans"
+                    country: "US"
+                    state: "Louisiana"
+                  - name: "New Delhi"
+                    country: "IN"
+                    state: "Delhi"
+
+components:
+  schemas:
+    WeatherData:
+      type: object
+      required:
+        - city
+        - country
+        - temperature
+        - humidity
+        - condition
+        - condition_code
+        - icon
+        - icon_url
+        - timestamp
+      properties:
+        city:
+          type: string
+          description: City name
+        country:
+          type: string
+          description: ISO 3166 country code
+        temperature:
+          type: number
+          format: float
+          description: Current temperature in requested units
+        feels_like:
+          type: number
+          format: float
+          description: Perceived temperature (feels like)
+        temp_min:
+          type: number
+          format: float
+          description: Minimum temperature currently observed
+        temp_max:
+          type: number
+          format: float
+          description: Maximum temperature currently observed
+        humidity:
+          type: integer
+          description: Humidity percentage (0-100)
+        pressure:
+          type: integer
+          description: Atmospheric pressure in hPa
+        wind_speed:
+          type: number
+          format: float
+          description: Wind speed in mph (imperial) or m/s (metric)
+        wind_direction:
+          type: integer
+          description: Wind direction in degrees (0-360)
+        condition:
+          type: string
+          description: Human-readable weather condition
+        condition_code:
+          type: integer
+          description: OpenWeatherMap condition code for icon mapping
+        icon:
+          type: string
+          description: Icon code (e.g., "01d", "10n")
+        icon_url:
+          type: string
+          format: uri
+          description: Full URL to weather icon image
+        visibility:
+          type: integer
+          description: Visibility in meters
+        timestamp:
+          type: string
+          format: date-time
+          description: When the weather data was observed
+        sunrise:
+          type: string
+          format: date-time
+          description: Sunrise time
+        sunset:
+          type: string
+          format: date-time
+          description: Sunset time
+
+    WeatherResponse:
+      type: object
+      required: [success, data, stale, cached_at]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/WeatherData"
+        stale:
+          type: boolean
+          description: True if data is from an expired cache (API was unavailable)
+        cached_at:
+          type: string
+          format: date-time
+          description: When this data was cached
+
+    CitySearchResponse:
+      type: object
+      required: [success, cities]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        cities:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              country:
+                type: string
+              state:
+                type: string
+
+    ErrorResponse:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Machine-readable error code
+            message:
+              type: string
+              description: Human-readable error message
