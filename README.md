@@ -25,6 +25,7 @@
 
 | Date | Update |
 |------|--------|
+| **2026-04-03** | v0.3.0 — SQLite default provider, Epictetus evaluation, `/marcus` skill, PyPI publish (`pip install marcus-ai`) |
 | **2026-03-21** | v0.2.1 — lease recovery, progressive timeouts, structured agent handoffs |
 | **2026-03-16** | v0.2.0 — AI-powered validation, centralized config, 115 commits since v0.1.3.1 |
 | **2025-10-20** | v0.1.3.1 — sweep-line parallelism algorithm, tmux multi-agent support |
@@ -122,14 +123,19 @@ the companion visualization dashboard.
 ## Get Started
 
 **Prerequisites:**
-- Docker (for Planka + Postgres infrastructure)
 - Python 3.11+
-- An AI agent (Claude Code, Cursor, or any MCP-compatible agent)
+- [Claude Code](https://claude.ai/code) (or any MCP-compatible agent)
 - An LLM provider:
   - **Free:** Local model with [Ollama](https://ollama.ai) (zero cost)
   - **Paid:** Anthropic or OpenAI API key
 
-### Step 1: Clone and Install
+### Step 1: Install
+
+```bash
+pip install marcus-ai
+```
+
+Or install from source:
 
 ```bash
 git clone https://github.com/lwgray/marcus.git
@@ -137,41 +143,38 @@ cd marcus
 pip install -e .
 ```
 
-### Step 2: Start Infrastructure
+### Step 2: Configure Your LLM Provider
 
 ```bash
-docker compose up -d
-```
-
-This starts Planka (kanban board) and Postgres. Open http://localhost:3333
-to verify (login: `demo@demo.demo` / `demo`).
-
-> **Why not Docker for Marcus?** Agents write to the local filesystem. Marcus
-> needs `project_root` to point to where agents write. Running Marcus in Docker
-> creates a path mismatch. Docker is only for infrastructure.
-
-### Step 3: Choose Your LLM Provider
-
-| Provider | Cost | Config Template | Setup |
-|----------|------|-----------------|-------|
-| Ollama | Free | `config_marcus.local.example.json` | Install Ollama + pull a model |
-| Anthropic | Paid | `config_marcus.example.json` | Add API key to `.env` |
-| OpenAI | Paid | `config_marcus.example.json` | Add API key, change provider |
-
-```bash
-# Copy the right config template
-cp config_marcus.example.json config_marcus.json
-
 # Copy environment template and add your API key
 cp .env.example .env
-# Edit .env with your credentials
+# Edit .env with your ANTHROPIC_API_KEY or OPENAI_API_KEY
 ```
 
-### Step 4: Start Marcus
+| Provider | Cost | Setup |
+|----------|------|-------|
+| Anthropic | Paid | Set `ANTHROPIC_API_KEY` in `.env` |
+| OpenAI | Paid | Set `OPENAI_API_KEY` in `.env`, change provider in config |
+| Ollama | Free | Install [Ollama](https://ollama.ai), pull a model, set provider to `"local"` |
+
+### Step 3: Start Marcus
 
 ```bash
 ./marcus start
 ```
+
+> **No Docker required.** Marcus uses SQLite by default — everything runs locally.
+> For a visual kanban board UI, see [Advanced Setup with Planka](#advanced-setup-planka-board-ui) below.
+
+### Step 4: Connect Your Agent
+
+```bash
+# For Claude Code:
+claude mcp add --transport http marcus http://localhost:4298/mcp
+```
+
+Copy the [Agent System Prompt](prompts/Agent_prompt.md) to your agent's
+configuration (e.g., as a CLAUDE.md file for Claude Code).
 
 ### Step 5: Start Cato Dashboard (Optional)
 
@@ -182,17 +185,7 @@ cd cato && pip install -e . && ./cato start
 # Open http://localhost:5173
 ```
 
-### Step 6: Connect Your Agent
-
-```bash
-# For Claude Code:
-claude mcp add --transport http marcus http://localhost:4298/mcp
-```
-
-Copy the [Agent System Prompt](prompts/Agent_prompt.md) to your agent's
-configuration (e.g., as a CLAUDE.md file for Claude Code).
-
-### Step 7: Your First Project
+### Step 6: Your First Project
 
 There are two ways to use Marcus — pick the one that fits your workflow:
 
@@ -207,7 +200,7 @@ cp -r skills/marcus ~/.claude/skills/marcus
 ```
 
 > **Note:** Run Claude Code from the same environment where you installed Marcus
-> (`pip install -e .`), so the `/marcus` skill can discover the repo path.
+> (`pip install marcus-ai` or `pip install -e .`), so the `/marcus` skill can discover the repo path.
 
 Then prompt:
 
@@ -270,6 +263,26 @@ but limited to one agent and no tmux visibility.
 
 ---
 
+### Advanced Setup: Planka Board UI
+
+For a visual kanban board with drag-and-drop, Marcus supports
+[Planka](https://planka.app/) as a backend. Requires Docker.
+
+```bash
+docker compose up -d          # Starts Planka + Postgres
+cp config_marcus.example.json config_marcus.json
+# Edit config_marcus.json: set kanban.provider to "planka"
+./marcus start
+```
+
+Open http://localhost:3333 to see the board (login: `demo@demo.demo` / `demo`).
+
+> **Why not Docker for Marcus itself?** Agents write to the local filesystem.
+> Marcus needs `project_root` to point to where agents write. Running Marcus
+> in Docker creates a path mismatch. Docker is only for infrastructure (Planka + Postgres).
+
+---
+
 ## What You'll See
 
 - Tasks flowing through the board: **Backlog -> In Progress -> Done**
@@ -318,13 +331,8 @@ who did it, and why* — the board gives you that for free.
               +-------+--------+
                       |
               +-------+--------+
-              |  Planka Board   |  Shared state: tasks, lists,
-              |  (Docker)       |  comments, attachments
-              +-------+--------+
-                      |
-              +-------+--------+
-              |   PostgreSQL    |  Persistence
-              |   (Docker)      |
+              |  Shared Board   |  Shared state: tasks, context,
+              | (SQLite/Planka) |  artifacts, decisions
               +----------------+
 ```
 
@@ -342,6 +350,7 @@ See [Architecture Docs](docs/source/architecture/) for deep dives.
 
 | Version | Date | Commits | Highlights |
 |---------|------|---------|------------|
+| **v0.3.0** | 2026-04-03 | 59 | SQLite default provider (`pip install marcus-ai`), Epictetus evaluation, `/marcus` one-command experiments, agent resilience overhaul, tmux reliability |
 | **v0.2.1** | 2026-03-21 | 1 | Lease recovery with progressive timeouts, structured RecoveryInfo for agent handoffs, configurable LLM temperature |
 | **v0.2.0** | 2026-03-16 | 115 | AI-powered task validation, centralized config system, composition-aware PRD extraction, enterprise mode task decomposition, constraint propagation, soft/hard dependencies, post-project analysis (Phase 1+2), MLflow experiment tracking, intelligent task pattern selection, bundled domain design tasks |
 | **v0.1.3.1** | 2025-10-20 | 4 | Sweep-line algorithm for correct parallelism calculation, tmux multi-agent experiment support, phase enforcer cross-feature dependency fix |

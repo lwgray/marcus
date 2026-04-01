@@ -3,14 +3,23 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "marcus"
-version = "0.2.1"
+name = "marcus-ai"
+version = "0.3.0"
 description = "Multi-Agent Resource Coordination and Understanding System"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
     {name = "Marcus Team", email = "team@marcus.ai"},
+]
+keywords = [
+    "multi-agent",
+    "ai",
+    "coordination",
+    "kanban",
+    "mcp",
+    "llm",
+    "autonomous-agents",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -19,6 +28,8 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
 ]
 
 dependencies = [
@@ -51,6 +62,17 @@ dev = [
 
 [project.scripts]
 marcus = "marcus:main"
+
+[project.urls]
+Homepage = "https://github.com/lwgray/marcus"
+Documentation = "https://marcus-ai.dev"
+Repository = "https://github.com/lwgray/marcus"
+Issues = "https://github.com/lwgray/marcus/issues"
+Changelog = "https://github.com/lwgray/marcus/blob/main/CHANGELOG.md"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
 
 [tool.mypy]
 python_version = "3.11"
