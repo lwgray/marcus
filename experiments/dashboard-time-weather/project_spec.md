@@ -1,0 +1,1 @@
+Build a dashboard web app with two widgets: a live clock showing current time with timezone selector, and a weather widget showing current conditions for a configurable city. Each widget should be independently functional.

@@ -1,0 +1,49 @@
+project_name: "dashboard-time-weather"
+project_spec_file: "project_spec.md"
+
+project_options:
+  complexity: "standard"
+  provider: "sqlite"
+  mode: "new_project"
+
+agents:
+  - id: "agent_unicorn_1"
+    name: "Unicorn Developer 1"
+    role: "full-stack"
+    skills:
+      - "python"
+      - "javascript"
+      - "typescript"
+      - "react"
+      - "fastapi"
+      - "sqlalchemy"
+      - "postgresql"
+      - "database-design"
+      - "rest-api"
+      - "jwt"
+      - "security"
+      - "pytest"
+      - "integration-testing"
+    subagents: 0
+  - id: "agent_unicorn_2"
+    name: "Unicorn Developer 2"
+    role: "full-stack"
+    skills:
+      - "python"
+      - "javascript"
+      - "typescript"
+      - "react"
+      - "fastapi"
+      - "sqlalchemy"
+      - "postgresql"
+      - "database-design"
+      - "rest-api"
+      - "jwt"
+      - "security"
+      - "pytest"
+      - "integration-testing"
+    subagents: 0
+
+timeouts:
+  project_creation: 300
+  agent_startup: 60
