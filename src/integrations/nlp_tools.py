@@ -1130,28 +1130,6 @@ Respond with ONLY a JSON array (no wrapping object, no markdown fences):
 [{{"what":"Chose X over Y","why":"Because of Z","impact":"Affects A and B"}}]
 """
 
-_SCOPED_ARTIFACT_PROMPT = """\
-You are a senior software architect working on: {project_name}
-
-## Full Domain Design
-{domain_design_description}
-
-## Implementation Task Being Scoped For
-Task: {impl_task_name}
-Description: {impl_task_description}
-
-## Your Current Assignment
-Generate the {artifact_label} document scoped ONLY to what the \
-implementation task above needs. Do NOT include design for other \
-components in the domain — only what this specific task requires.
-
-Write a clear, actionable document. Include specific details — \
-component names, field definitions, endpoint paths, data types.
-
-Respond with ONLY the document content in markdown format. \
-No JSON wrapping, no code fences. Just markdown starting with #.
-"""
-
 # Standard artifacts a design task produces, matching what the task
 # description requests in advanced_parser.py:912-927
 _DESIGN_ARTIFACT_SPECS = [
@@ -1192,20 +1170,6 @@ def _domain_slug(task_name: str) -> str:
     name = task_name.lower()
     if name.startswith("design "):
         name = name[7:]
-    return name.strip().replace(" ", "-")
-
-
-def _component_slug(task_name: str) -> str:
-    """Extract a slug from any task name.
-
-    'Implement Time Widget' -> 'time-widget'
-    'Design Authentication' -> 'authentication'
-    """
-    name = task_name.lower()
-    for prefix in ("implement ", "design ", "test "):
-        if name.startswith(prefix):
-            name = name[len(prefix) :]
-            break
     return name.strip().replace(" ", "-")
 
 
@@ -1392,94 +1356,6 @@ async def _generate_design_content(
             logger.warning(
                 f"[design_autocomplete] Phase A: failed "
                 f"for '{task.name}': {e} — stays TODO"
-            )
-            continue
-
-    # Generate scoped artifacts per implementation task (GH-300)
-    # Each impl task that depends on a design task gets its own
-    # scoped design docs — only what that task needs to implement.
-    impl_tasks = [
-        t
-        for t in tasks
-        if not _is_design_task(t)
-        and getattr(t, "name", "").lower().startswith("implement")
-    ]
-
-    for impl_task in impl_tasks:
-        impl_deps = getattr(impl_task, "dependencies", []) or []
-        # Find which design task this impl task depends on
-        parent_design = None
-        for dt in design_tasks:
-            if dt.id in impl_deps:
-                parent_design = dt
-                break
-
-        if not parent_design or parent_design.name not in design_content:
-            continue
-
-        impl_slug = _component_slug(impl_task.name)
-        scoped_artifacts: List[Dict[str, Any]] = []
-
-        try:
-            for spec in _DESIGN_ARTIFACT_SPECS:
-                fname = spec["filename_template"].format(domain_slug=impl_slug)
-                desc = spec["description_template"].format(
-                    domain=impl_task.name.replace("Implement ", "")
-                )
-
-                prompt = _SCOPED_ARTIFACT_PROMPT.format(
-                    project_name=project_name,
-                    domain_design_description=(parent_design.description),
-                    impl_task_name=impl_task.name,
-                    impl_task_description=(impl_task.description or impl_task.name),
-                    artifact_label=spec["label"],
-                )
-
-                response = await llm.analyze(prompt=prompt, context=_Ctx())
-
-                if not response or len(response.strip()) < 20:
-                    continue
-
-                atype = spec["artifact_type"]
-                base = ARTIFACT_PATHS.get(atype, "docs/artifacts")
-                rel_path = Path(base) / fname
-                full_path = project_root_path / rel_path
-                full_path.parent.mkdir(parents=True, exist_ok=True)
-                full_path.write_text(response.strip(), encoding="utf-8")
-
-                scoped_artifacts.append(
-                    {
-                        "filename": fname,
-                        "artifact_type": atype,
-                        "content": response.strip(),
-                        "description": desc,
-                        "relative_path": str(rel_path),
-                    }
-                )
-
-                logger.info(
-                    f"[design_autocomplete] Phase A: "
-                    f"scoped {rel_path} for "
-                    f"'{impl_task.name}'"
-                )
-
-            if scoped_artifacts:
-                design_content[impl_task.name] = {
-                    "artifacts": scoped_artifacts,
-                    "decisions": [],
-                }
-                logger.info(
-                    f"[design_autocomplete] Phase A: "
-                    f"'{impl_task.name}' → "
-                    f"{len(scoped_artifacts)} scoped "
-                    f"artifact(s)"
-                )
-
-        except Exception as e:
-            logger.warning(
-                f"[design_autocomplete] Phase A: "
-                f"scoped artifacts failed for "
-                f"'{impl_task.name}': {e}"
             )
             continue
 
