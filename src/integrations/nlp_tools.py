@@ -1052,6 +1052,254 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
         return {"required_tasks": tasks}
 
 
+# --- Design Task Auto-Completion (GH-297) ---
+# Prevents context contamination by auto-completing design tasks through
+# MCP tools during project creation, before workers start.
+
+DESIGN_ARTIFACT_PROMPT = """You are a senior software architect. Generate design \
+artifacts and architectural decisions for the following design task.
+
+## Project
+{project_name}: {project_description}
+
+## Design Task
+{task_description}
+
+## Instructions
+Generate the design artifacts requested in the task description above. Each artifact
+should be a complete, standalone document that a developer can implement from.
+
+Also list the key architectural decisions you are making and why.
+
+Respond with ONLY valid JSON in this exact format:
+{{
+  "artifacts": [
+    {{
+      "filename": "descriptive-name.md",
+      "artifact_type": "architecture",
+      "content": "# Full markdown content here...",
+      "description": "One-line description of what this artifact contains"
+    }}
+  ],
+  "decisions": [
+    {{
+      "what": "Chose X over Y",
+      "why": "Because of Z constraint",
+      "impact": "This affects components A and B"
+    }}
+  ]
+}}
+
+artifact_type must be one of: architecture, api, specification, design
+
+Keep artifacts focused and actionable. Include component boundaries, data models
+with field definitions, API contracts with request/response schemas, and
+integration points between components.
+"""
+
+
+async def _autocomplete_design_tasks(
+    state: Any,
+    project_description: str,
+    project_name: str,
+    project_root: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Auto-complete design tasks using MCP tools for proper logging.
+
+    Finds design tasks in state.project_tasks, generates artifacts and
+    decisions via LLM, then logs them through the MCP tool codepaths
+    (log_artifact, log_decision, report_task_progress) so they appear
+    in state, project history, experiment tracking, and Cato.
+
+    Called AFTER state.refresh_project_state() in create_project, BEFORE
+    returning — workers haven't started yet (waiting for project_info.json).
+
+    Parameters
+    ----------
+    state : Any
+        MCP server state (has context, kanban_client, project_tasks, etc.)
+    project_description : str
+        Full project description for LLM context
+    project_name : str
+        Project name
+    project_root : Optional[str]
+        Absolute path to project implementation directory
+
+    Returns
+    -------
+    Dict[str, Any]
+        Summary: tasks_completed, artifacts_generated, decisions_logged
+
+    See: https://github.com/lwgray/marcus/issues/297
+    """
+    from src.marcus_mcp.tools.attachment import log_artifact
+    from src.marcus_mcp.tools.context import log_decision
+    from src.marcus_mcp.tools.task import report_task_progress
+
+    result = {"tasks_completed": 0, "artifacts_generated": 0, "decisions_logged": 0}
+
+    if not state.project_tasks:
+        return result
+
+    # Find design tasks that are still TODO
+    design_tasks = [
+        t
+        for t in state.project_tasks
+        if getattr(t, "status", None) in (TaskStatus.TODO, "todo")
+        and "design" in (getattr(t, "labels", []) or [])
+        and getattr(t, "name", "").lower().startswith("design")
+    ]
+
+    if not design_tasks:
+        logger.info("[design_autocomplete] No TODO design tasks found")
+        return result
+
+    logger.info(
+        f"[design_autocomplete] Found {len(design_tasks)} design task(s) "
+        f"to auto-complete"
+    )
+
+    # Initialize LLM (same as PRD parser uses)
+    from src.ai.providers.llm_abstraction import LLMAbstraction
+
+    llm = LLMAbstraction()
+
+    for task in design_tasks:
+        try:
+            # Generate artifacts + decisions via LLM
+            prompt = DESIGN_ARTIFACT_PROMPT.format(
+                project_name=project_name,
+                project_description=project_description,
+                task_description=task.description,
+            )
+
+            class _Ctx:
+                max_tokens = 4000
+
+            response = await llm.analyze(prompt=prompt, context=_Ctx())
+
+            if not response:
+                logger.warning(
+                    f"[design_autocomplete] Empty LLM response for "
+                    f"'{task.name}' — skipping (will remain TODO)"
+                )
+                continue
+
+            # Parse structured response
+            import json
+
+            from src.utils.json_parser import parse_ai_json_response
+
+            try:
+                data = parse_ai_json_response(response)
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(
+                    f"[design_autocomplete] Failed to parse LLM response for "
+                    f"'{task.name}': {e} — skipping"
+                )
+                continue
+
+            artifacts = data.get("artifacts", [])
+            decisions = data.get("decisions", [])
+
+            # Log each artifact through the MCP tool
+            if project_root:
+                for art in artifacts:
+                    if not all(
+                        k in art for k in ("filename", "artifact_type", "content")
+                    ):
+                        continue
+                    art_result = await log_artifact(
+                        task_id=task.id,
+                        filename=art["filename"],
+                        content=art["content"],
+                        artifact_type=art["artifact_type"],
+                        project_root=project_root,
+                        description=art.get("description", ""),
+                        state=state,
+                    )
+                    if art_result.get("success"):
+                        result["artifacts_generated"] += 1
+                        loc = art_result["data"]["location"]
+                        sz = len(art["content"])
+                        logger.info(f"[design_autocomplete]" f"   → {loc} ({sz} chars)")
+                    else:
+                        logger.warning(
+                            f"[design_autocomplete]   ✗ Failed to log artifact "
+                            f"'{art['filename']}': {art_result.get('error')}"
+                        )
+            else:
+                logger.warning(
+                    f"[design_autocomplete] No project_root — skipping "
+                    f"artifact file writes for '{task.name}'"
+                )
+
+            # Log each decision through the MCP tool
+            for dec in decisions:
+                if not all(k in dec for k in ("what", "why", "impact")):
+                    continue
+                decision_text = (
+                    f"{dec['what']} because {dec['why']}. "
+                    f"This affects {dec['impact']}"
+                )
+                dec_result = await log_decision(
+                    agent_id="marcus_planner",
+                    task_id=task.id,
+                    decision=decision_text,
+                    state=state,
+                )
+                if dec_result.get("success"):
+                    result["decisions_logged"] += 1
+                    logger.info(
+                        f"[design_autocomplete]   → Decision: \"{dec['what']}\" "
+                        f"(affects: {dec['impact']})"
+                    )
+
+            # Add auto_completed label to kanban
+            try:
+                current_labels = getattr(task, "labels", []) or []
+                if "auto_completed" not in current_labels:
+                    updated_labels = current_labels + ["auto_completed"]
+                    await state.kanban_client.update_task(
+                        task.id, {"labels": updated_labels}
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"[design_autocomplete] Failed to add auto_completed " f"label: {e}"
+                )
+
+            # Complete the task through MCP tool
+            completion_msg = (
+                f"Auto-completed by Marcus planner: generated "
+                f"{len(artifacts)} artifact(s), logged "
+                f"{len(decisions)} decision(s)"
+            )
+            await report_task_progress(
+                agent_id="marcus_planner",
+                task_id=task.id,
+                status="completed",
+                progress=100,
+                message=completion_msg,
+                state=state,
+            )
+
+            result["tasks_completed"] += 1
+            logger.info(
+                f"[design_autocomplete] ✓ Auto-completed '{task.name}': "
+                f"{len(artifacts)} artifact(s), {len(decisions)} decision(s)"
+            )
+
+        except Exception as e:
+            logger.warning(
+                f"[design_autocomplete] Failed to auto-complete '{task.name}': "
+                f"{e} — task will remain TODO for worker execution"
+            )
+            continue
+
+    return result
+
+
 # MCP Tool Functions remain the same
 # Simplified version - just the create_project function
 async def create_project_from_natural_language(
@@ -1197,6 +1445,34 @@ async def create_project_from_natural_language(
                 # Log but don't fail the operation
                 logger.error(
                     f"Failed to refresh project state: {str(e)}", exc_info=True
+                )
+
+            # Auto-complete design tasks with AI-generated artifacts + decisions.
+            # Uses MCP tools (log_artifact, log_decision, report_task_progress)
+            # for proper state updates, persistence, and observability.
+            # Workers haven't started — they wait for project_info.json.
+            # See: https://github.com/lwgray/marcus/issues/297
+            try:
+                project_root = options.get("project_root") if options else None
+                autocomplete_result = await _autocomplete_design_tasks(
+                    state=state,
+                    project_description=description,
+                    project_name=project_name,
+                    project_root=project_root,
+                )
+                if autocomplete_result.get("tasks_completed", 0) > 0:
+                    logger.info(
+                        f"[design_autocomplete] Completed "
+                        f"{autocomplete_result['tasks_completed']} design task(s) "
+                        f"with {autocomplete_result['artifacts_generated']} "
+                        f"artifact(s) and "
+                        f"{autocomplete_result['decisions_logged']} decision(s)"
+                    )
+                    result["design_autocomplete"] = autocomplete_result
+            except Exception as e:
+                # Non-fatal — design tasks stay TODO, workers handle them
+                logger.warning(
+                    f"[design_autocomplete] Auto-completion failed " f"(non-fatal): {e}"
                 )
 
         return result
