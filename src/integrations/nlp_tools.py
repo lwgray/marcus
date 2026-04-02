@@ -318,6 +318,25 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 if added_tasks > 0:
                     logger.info(f"Safety checks added {added_tasks} dependency tasks")
 
+            # Phase A (GH-297): Generate design artifacts + decisions
+            # and set design tasks to DONE BEFORE they hit the board.
+            # This prevents the race condition where agents grab
+            # design tasks before Marcus can complete them.
+            design_content: Dict[str, Any] = {}
+            project_root = options.get("project_root") if options else None
+            if project_root:
+                try:
+                    design_content = await _generate_design_content(
+                        tasks=safe_tasks,
+                        project_description=description,
+                        project_name=project_name,
+                        project_root=project_root,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"[design_autocomplete] Phase A failed " f"(non-fatal): {e}"
+                    )
+
             # Create tasks on board using base class (this also triggers decomposition)
             with error_context(
                 "kanban_task_creation",
@@ -464,6 +483,10 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             }
 
             logger.info(f"Successfully created project with {len(created_tasks)} tasks")
+
+            # Pass design content for Phase B (MCP registration)
+            if design_content:
+                result["design_content"] = design_content
 
             # Run cleanup synchronously with a short timeout
             # This ensures resources are cleaned up without hanging
@@ -1053,11 +1076,21 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
 
 
 # --- Design Task Auto-Completion (GH-297) ---
-# Prevents context contamination by auto-completing design tasks through
-# MCP tools during project creation, before workers start.
+#
+# Two-phase approach to prevent context contamination:
+#
+# Phase A (_generate_design_content): Runs BEFORE create_tasks_on_board.
+#   Calls LLM, writes artifact files to disk, sets task status=DONE.
+#   Design tasks hit the board already DONE — no agent can grab them.
+#
+# Phase B (_register_design_via_mcp): Runs AFTER refresh_project_state.
+#   Registers artifacts + decisions through MCP tools (log_artifact,
+#   log_decision) so state.task_artifacts and state.context.decisions
+#   are populated for get_task_context. Workers discover everything.
 
-DESIGN_ARTIFACT_PROMPT = """You are a senior software architect. Generate design \
-artifacts and architectural decisions for the following design task.
+_DESIGN_PROMPT = """\
+You are a senior software architect. Generate design artifacts and \
+architectural decisions for the following design task.
 
 ## Project
 {project_name}: {project_description}
@@ -1066,109 +1099,89 @@ artifacts and architectural decisions for the following design task.
 {task_description}
 
 ## Instructions
-Generate the design artifacts requested in the task description above. Each artifact
-should be a complete, standalone document that a developer can implement from.
+Generate the design artifacts requested in the task description. \
+Each artifact should be a complete, standalone document that a \
+developer can implement from without needing additional context.
 
 Also list the key architectural decisions you are making and why.
 
-Respond with ONLY valid JSON in this exact format:
-{{
-  "artifacts": [
-    {{
-      "filename": "descriptive-name.md",
-      "artifact_type": "architecture",
-      "content": "# Full markdown content here...",
-      "description": "One-line description of what this artifact contains"
-    }}
-  ],
-  "decisions": [
-    {{
-      "what": "Chose X over Y",
-      "why": "Because of Z constraint",
-      "impact": "This affects components A and B"
-    }}
-  ]
-}}
+You MUST respond with ONLY a valid JSON object. No markdown fencing, \
+no explanation text before or after. Just the JSON object:
+
+{{"artifacts":[{{"filename":"name.md","artifact_type":"architecture",\
+"content":"# Full content...","description":"One-line summary"}}],\
+"decisions":[{{"what":"Chose X","why":"Because Y","impact":"Affects Z"}}]}}
 
 artifact_type must be one of: architecture, api, specification, design
-
-Keep artifacts focused and actionable. Include component boundaries, data models
-with field definitions, API contracts with request/response schemas, and
-integration points between components.
 """
 
 
-async def _autocomplete_design_tasks(
-    state: Any,
+def _is_design_task(task: Any) -> bool:
+    """Check if a task is a bundled design task."""
+    labels = getattr(task, "labels", []) or []
+    name = getattr(task, "name", "")
+    return "design" in labels and name.lower().startswith("design")
+
+
+async def _generate_design_content(
+    tasks: List[Any],
     project_description: str,
     project_name: str,
-    project_root: Optional[str] = None,
-) -> Dict[str, Any]:
+    project_root: str,
+) -> Dict[str, Dict[str, Any]]:
     """
-    Auto-complete design tasks using MCP tools for proper logging.
+    Phase A: Generate design artifacts + decisions and set status to DONE.
 
-    Finds design tasks in state.project_tasks, generates artifacts and
-    decisions via LLM, then logs them through the MCP tool codepaths
-    (log_artifact, log_decision, report_task_progress) so they appear
-    in state, project history, experiment tracking, and Cato.
-
-    Called AFTER state.refresh_project_state() in create_project, BEFORE
-    returning — workers haven't started yet (waiting for project_info.json).
+    Writes files to disk and marks design tasks as DONE. Runs BEFORE
+    create_tasks_on_board so design tasks are born DONE on the kanban
+    board. No agent can ever grab them.
 
     Parameters
     ----------
-    state : Any
-        MCP server state (has context, kanban_client, project_tasks, etc.)
+    tasks : List[Any]
+        All tasks (design + implementation). Design tasks are
+        modified in-place: status set to DONE, auto_completed label
+        added.
     project_description : str
-        Full project description for LLM context
+        Full project description for LLM context.
     project_name : str
-        Project name
-    project_root : Optional[str]
-        Absolute path to project implementation directory
+        Project name.
+    project_root : str
+        Absolute path to project implementation directory.
 
     Returns
     -------
-    Dict[str, Any]
-        Summary: tasks_completed, artifacts_generated, decisions_logged
+    Dict[str, Dict[str, Any]]
+        Mapping of task name → {"artifacts": [...], "decisions": [...]}
+        for Phase B to register via MCP tools.
 
     See: https://github.com/lwgray/marcus/issues/297
     """
-    from src.marcus_mcp.tools.attachment import log_artifact
-    from src.marcus_mcp.tools.context import log_decision
-    from src.marcus_mcp.tools.task import report_task_progress
+    import json
+    from pathlib import Path
 
-    result = {"tasks_completed": 0, "artifacts_generated": 0, "decisions_logged": 0}
+    from src.ai.providers.llm_abstraction import LLMAbstraction
+    from src.marcus_mcp.tools.attachment import ARTIFACT_PATHS
+    from src.utils.json_parser import parse_ai_json_response
 
-    if not state.project_tasks:
-        return result
+    design_content: Dict[str, Dict[str, Any]] = {}
+    project_root_path = Path(project_root)
 
-    # Find design tasks that are still TODO
-    design_tasks = [
-        t
-        for t in state.project_tasks
-        if getattr(t, "status", None) in (TaskStatus.TODO, "todo")
-        and "design" in (getattr(t, "labels", []) or [])
-        and getattr(t, "name", "").lower().startswith("design")
-    ]
-
+    design_tasks = [t for t in tasks if _is_design_task(t)]
     if not design_tasks:
-        logger.info("[design_autocomplete] No TODO design tasks found")
-        return result
+        return design_content
 
     logger.info(
-        f"[design_autocomplete] Found {len(design_tasks)} design task(s) "
-        f"to auto-complete"
+        f"[design_autocomplete] Phase A: generating content "
+        f"for {len(design_tasks)} design task(s)"
     )
-
-    # Initialize LLM (same as PRD parser uses)
-    from src.ai.providers.llm_abstraction import LLMAbstraction
 
     llm = LLMAbstraction()
 
     for task in design_tasks:
         try:
-            # Generate artifacts + decisions via LLM
-            prompt = DESIGN_ARTIFACT_PROMPT.format(
+            # Build prompt from task description
+            prompt = _DESIGN_PROMPT.format(
                 project_name=project_name,
                 project_description=project_description,
                 task_description=task.description,
@@ -1181,121 +1194,166 @@ async def _autocomplete_design_tasks(
 
             if not response:
                 logger.warning(
-                    f"[design_autocomplete] Empty LLM response for "
-                    f"'{task.name}' — skipping (will remain TODO)"
+                    f"[design_autocomplete] Phase A: empty LLM "
+                    f"response for '{task.name}' — stays TODO"
                 )
                 continue
 
-            # Parse structured response
-            import json
-
-            from src.utils.json_parser import parse_ai_json_response
-
+            # Parse JSON response
             try:
                 data = parse_ai_json_response(response)
             except (json.JSONDecodeError, ValueError) as e:
                 logger.warning(
-                    f"[design_autocomplete] Failed to parse LLM response for "
-                    f"'{task.name}': {e} — skipping"
+                    f"[design_autocomplete] Phase A: bad JSON "
+                    f"for '{task.name}': {e} — stays TODO"
                 )
                 continue
 
             artifacts = data.get("artifacts", [])
             decisions = data.get("decisions", [])
 
-            # Log each artifact through the MCP tool
-            if project_root:
-                for art in artifacts:
-                    if not all(
-                        k in art for k in ("filename", "artifact_type", "content")
-                    ):
-                        continue
-                    art_result = await log_artifact(
-                        task_id=task.id,
-                        filename=art["filename"],
-                        content=art["content"],
-                        artifact_type=art["artifact_type"],
-                        project_root=project_root,
-                        description=art.get("description", ""),
-                        state=state,
-                    )
-                    if art_result.get("success"):
-                        result["artifacts_generated"] += 1
-                        loc = art_result["data"]["location"]
-                        sz = len(art["content"])
-                        logger.info(f"[design_autocomplete]" f"   → {loc} ({sz} chars)")
-                    else:
-                        logger.warning(
-                            f"[design_autocomplete]   ✗ Failed to log artifact "
-                            f"'{art['filename']}': {art_result.get('error')}"
-                        )
-            else:
+            if not artifacts and not decisions:
                 logger.warning(
-                    f"[design_autocomplete] No project_root — skipping "
-                    f"artifact file writes for '{task.name}'"
+                    f"[design_autocomplete] Phase A: no artifacts "
+                    f"or decisions for '{task.name}' — stays TODO"
                 )
+                continue
 
-            # Log each decision through the MCP tool
-            for dec in decisions:
-                if not all(k in dec for k in ("what", "why", "impact")):
+            # Write artifact files to disk
+            written_artifacts = []
+            for art in artifacts:
+                required = ("filename", "artifact_type", "content")
+                if not all(k in art for k in required):
                     continue
-                decision_text = (
-                    f"{dec['what']} because {dec['why']}. "
-                    f"This affects {dec['impact']}"
-                )
-                dec_result = await log_decision(
-                    agent_id="marcus_planner",
-                    task_id=task.id,
-                    decision=decision_text,
-                    state=state,
-                )
-                if dec_result.get("success"):
-                    result["decisions_logged"] += 1
-                    logger.info(
-                        f"[design_autocomplete]   → Decision: \"{dec['what']}\" "
-                        f"(affects: {dec['impact']})"
-                    )
+                atype = art["artifact_type"]
+                fname = art["filename"]
+                base = ARTIFACT_PATHS.get(atype, "docs/artifacts")
+                rel_path = Path(base) / fname
+                full_path = project_root_path / rel_path
+                full_path.parent.mkdir(parents=True, exist_ok=True)
+                full_path.write_text(art["content"], encoding="utf-8")
+                written_artifacts.append({**art, "relative_path": str(rel_path)})
+                logger.info(f"[design_autocomplete] Phase A: wrote " f"{rel_path}")
 
-            # Add auto_completed label to kanban
-            try:
-                current_labels = getattr(task, "labels", []) or []
-                if "auto_completed" not in current_labels:
-                    updated_labels = current_labels + ["auto_completed"]
-                    await state.kanban_client.update_task(
-                        task.id, {"labels": updated_labels}
-                    )
-            except Exception as e:
-                logger.warning(
-                    f"[design_autocomplete] Failed to add auto_completed " f"label: {e}"
-                )
+            # Store content for Phase B
+            design_content[task.name] = {
+                "artifacts": written_artifacts,
+                "decisions": decisions,
+            }
 
-            # Complete the task through MCP tool
-            completion_msg = (
-                f"Auto-completed by Marcus planner: generated "
-                f"{len(artifacts)} artifact(s), logged "
-                f"{len(decisions)} decision(s)"
-            )
-            await report_task_progress(
-                agent_id="marcus_planner",
-                task_id=task.id,
-                status="completed",
-                progress=100,
-                message=completion_msg,
-                state=state,
-            )
+            # Mark task as DONE — this is the critical part.
+            # When create_tasks_on_board processes this task,
+            # it will be created on the board as DONE.
+            task.status = TaskStatus.DONE
+            if not hasattr(task, "labels") or task.labels is None:
+                task.labels = []
+            if "auto_completed" not in task.labels:
+                task.labels.append("auto_completed")
 
-            result["tasks_completed"] += 1
+            n_art = len(written_artifacts)
+            n_dec = len(decisions)
             logger.info(
-                f"[design_autocomplete] ✓ Auto-completed '{task.name}': "
-                f"{len(artifacts)} artifact(s), {len(decisions)} decision(s)"
+                f"[design_autocomplete] Phase A: '{task.name}' "
+                f"→ {n_art} artifact(s), {n_dec} decision(s), "
+                f"status=DONE"
             )
 
         except Exception as e:
             logger.warning(
-                f"[design_autocomplete] Failed to auto-complete '{task.name}': "
-                f"{e} — task will remain TODO for worker execution"
+                f"[design_autocomplete] Phase A: failed for "
+                f"'{task.name}': {e} — stays TODO for worker"
             )
             continue
+
+    return design_content
+
+
+async def _register_design_via_mcp(
+    state: Any,
+    design_content: Dict[str, Dict[str, Any]],
+    project_root: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Phase B: Register pre-generated artifacts + decisions via MCP tools.
+
+    Runs AFTER state.refresh_project_state() so we have real kanban
+    UUIDs and the MCP state object. Calls log_artifact and log_decision
+    through the proper codepaths so state.task_artifacts and
+    state.context.decisions are populated for get_task_context.
+
+    Parameters
+    ----------
+    state : Any
+        MCP server state (fully initialized after refresh).
+    design_content : Dict[str, Dict]
+        From Phase A: task name → {artifacts, decisions}.
+    project_root : Optional[str]
+        Project root for log_artifact.
+
+    Returns
+    -------
+    Dict[str, Any]
+        Summary counts.
+    """
+    from src.marcus_mcp.tools.attachment import log_artifact
+    from src.marcus_mcp.tools.context import log_decision
+
+    result = {
+        "tasks_completed": 0,
+        "artifacts_registered": 0,
+        "decisions_logged": 0,
+    }
+
+    if not design_content or not state.project_tasks:
+        return result
+
+    # Match state tasks to Phase A content by name
+    for task in state.project_tasks:
+        name = getattr(task, "name", "")
+        if name not in design_content:
+            continue
+
+        content = design_content[name]
+        task_id = task.id  # Real kanban UUID
+
+        # Register artifacts via MCP tool
+        if project_root:
+            for art in content.get("artifacts", []):
+                art_result = await log_artifact(
+                    task_id=task_id,
+                    filename=art["filename"],
+                    content=art["content"],
+                    artifact_type=art["artifact_type"],
+                    project_root=project_root,
+                    description=art.get("description", ""),
+                    state=state,
+                )
+                if art_result.get("success"):
+                    result["artifacts_registered"] += 1
+                    loc = art_result["data"]["location"]
+                    logger.info(f"[design_autocomplete] Phase B: " f"registered {loc}")
+
+        # Register decisions via MCP tool
+        for dec in content.get("decisions", []):
+            required = ("what", "why", "impact")
+            if not all(k in dec for k in required):
+                continue
+            dec_text = (
+                f"{dec['what']} because {dec['why']}. " f"This affects {dec['impact']}"
+            )
+            dec_result = await log_decision(
+                agent_id="marcus_planner",
+                task_id=task_id,
+                decision=dec_text,
+                state=state,
+            )
+            if dec_result.get("success"):
+                result["decisions_logged"] += 1
+                logger.info(
+                    f"[design_autocomplete] Phase B: " f"decision \"{dec['what']}\""
+                )
+
+        result["tasks_completed"] += 1
 
     return result
 
@@ -1447,33 +1505,34 @@ async def create_project_from_natural_language(
                     f"Failed to refresh project state: {str(e)}", exc_info=True
                 )
 
-            # Auto-complete design tasks with AI-generated artifacts + decisions.
-            # Uses MCP tools (log_artifact, log_decision, report_task_progress)
-            # for proper state updates, persistence, and observability.
-            # Workers haven't started — they wait for project_info.json.
-            # See: https://github.com/lwgray/marcus/issues/297
-            try:
-                project_root = options.get("project_root") if options else None
-                autocomplete_result = await _autocomplete_design_tasks(
-                    state=state,
-                    project_description=description,
-                    project_name=project_name,
-                    project_root=project_root,
-                )
-                if autocomplete_result.get("tasks_completed", 0) > 0:
-                    logger.info(
-                        f"[design_autocomplete] Completed "
-                        f"{autocomplete_result['tasks_completed']} design task(s) "
-                        f"with {autocomplete_result['artifacts_generated']} "
-                        f"artifact(s) and "
-                        f"{autocomplete_result['decisions_logged']} decision(s)"
+            # Phase B (GH-297): Register design artifacts + decisions
+            # via MCP tools so state.task_artifacts and
+            # state.context.decisions are populated for get_task_context.
+            # Design tasks are already DONE on the board (Phase A ran
+            # before create_tasks_on_board in create_project_from_description).
+            design_content = result.get("design_content", {})
+            if design_content:
+                try:
+                    project_root = options.get("project_root") if options else None
+                    phase_b = await _register_design_via_mcp(
+                        state=state,
+                        design_content=design_content,
+                        project_root=project_root,
                     )
-                    result["design_autocomplete"] = autocomplete_result
-            except Exception as e:
-                # Non-fatal — design tasks stay TODO, workers handle them
-                logger.warning(
-                    f"[design_autocomplete] Auto-completion failed " f"(non-fatal): {e}"
-                )
+                    if phase_b.get("tasks_completed", 0) > 0:
+                        logger.info(
+                            f"[design_autocomplete] Phase B: "
+                            f"registered "
+                            f"{phase_b['artifacts_registered']}"
+                            f" artifact(s), "
+                            f"{phase_b['decisions_logged']}"
+                            f" decision(s) via MCP tools"
+                        )
+                    result["design_autocomplete"] = phase_b
+                except Exception as e:
+                    logger.warning(
+                        f"[design_autocomplete] Phase B " f"failed (non-fatal): {e}"
+                    )
 
         return result
 
