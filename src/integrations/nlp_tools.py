@@ -1100,16 +1100,19 @@ architectural decisions for the following design task.
 
 ## Instructions
 Generate the design artifacts requested in the task description. \
-Each artifact should be a complete, standalone document that a \
-developer can implement from without needing additional context.
+Keep each artifact CONCISE — focus on structure, interfaces, and \
+contracts that developers need to implement. No lengthy prose.
 
 Also list the key architectural decisions you are making and why.
 
-You MUST respond with ONLY a valid JSON object. No markdown fencing, \
-no explanation text before or after. Just the JSON object:
+CRITICAL FORMATTING RULES:
+- Respond with ONLY a valid JSON object
+- No markdown fencing (no ```), no text before or after
+- Keep total response under 3000 tokens
+- artifact content should be 50-150 lines max per artifact
 
 {{"artifacts":[{{"filename":"name.md","artifact_type":"architecture",\
-"content":"# Full content...","description":"One-line summary"}}],\
+"content":"# Heading\\n\\n## Section\\n...","description":"One-line summary"}}],\
 "decisions":[{{"what":"Chose X","why":"Because Y","impact":"Affects Z"}}]}}
 
 artifact_type must be one of: architecture, api, specification, design
@@ -1188,7 +1191,7 @@ async def _generate_design_content(
             )
 
             class _Ctx:
-                max_tokens = 4000
+                max_tokens = 8000
 
             response = await llm.analyze(prompt=prompt, context=_Ctx())
 
