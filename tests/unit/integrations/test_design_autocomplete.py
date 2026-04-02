@@ -393,7 +393,7 @@ class TestRegisterDesignViaMcp:
 
         mock_dec.assert_called_once()
         assert mock_dec.call_args.kwargs["task_id"] == "real_uuid_001"
-        assert mock_dec.call_args.kwargs["agent_id"] == "marcus_planner"
+        assert mock_dec.call_args.kwargs["agent_id"] == "Marcus"
         assert "JWT" in mock_dec.call_args.kwargs["decision"]
         assert result["decisions_logged"] == 1
 

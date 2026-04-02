@@ -1338,6 +1338,7 @@ async def _generate_design_content(
 
             # Mark task as DONE before it hits the board
             task.status = TaskStatus.DONE
+            task.assigned_to = "Marcus"
             if not hasattr(task, "labels") or task.labels is None:
                 task.labels = []
             if "auto_completed" not in task.labels:
@@ -1435,7 +1436,7 @@ async def _register_design_via_mcp(
                 f"{dec['what']} because {dec['why']}. " f"This affects {dec['impact']}"
             )
             dec_result = await log_decision(
-                agent_id="marcus_planner",
+                agent_id="Marcus",
                 task_id=task_id,
                 decision=dec_text,
                 state=state,
