@@ -11,7 +11,7 @@ import subprocess  # nosec B404
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import yaml
 
@@ -426,7 +426,12 @@ CRITICAL INSTRUCTIONS:
 """
         return prompt
 
-    def create_worker_prompt(self, agent: Dict[str, Any]) -> str:
+    def create_worker_prompt(
+        self,
+        agent: Dict[str, Any],
+        workspace: Optional[Path] = None,
+        branch: str = "main",
+    ) -> str:
         """
         Create the prompt for a worker agent.
 
@@ -434,6 +439,10 @@ CRITICAL INSTRUCTIONS:
         ----------
         agent : Dict
             Agent configuration from config.yaml
+        workspace : Path, optional
+            Agent's worktree path. Defaults to implementation_dir.
+        branch : str
+            Agent's git branch. Defaults to "main".
 
         Returns
         -------
@@ -450,12 +459,14 @@ CRITICAL INSTRUCTIONS:
         agent_skills = agent["skills"]
         num_subagents = agent.get("subagents", 0)
 
+        work_dir = workspace or self.config.implementation_dir
+
         worker_prompt = f"""You are {agent_name} (ID: {agent_id})
 in a Marcus multi-agent experiment.
 
 Your role: {agent_role}
 Your skills: {", ".join(agent_skills)}
-Project root: {self.config.implementation_dir}
+Project root: {work_dir}
 
 STARTUP SEQUENCE:
 1. Wait for project_info.json to exist at {self.config.project_info_file}
@@ -483,9 +494,9 @@ STARTUP SEQUENCE:
 
 5. When you get a task:
    - Check dependencies with get_task_context
-   - Work on it in: {self.config.implementation_dir}
+   - Work on it in: {work_dir}
    - Report progress at 25%, 50%, 75%, 100%
-   - Commit to main branch (git add, commit, push)
+   - Commit to your branch: {branch} (git add, commit)
    - When 100% complete, IMMEDIATELY call request_next_task again
 
 6. Repeat step 5 until NO_TASKS_AVAILABLE or all retries exhausted
@@ -497,12 +508,12 @@ STARTUP SEQUENCE:
 ---
 
 CRITICAL REMINDERS:
-- Work directory: {self.config.implementation_dir}
-- Git branch: main (all agents work together on main)
+- Work directory: {work_dir}
+- Git branch: {branch} (your isolated workspace)
 - After EVERY task completion, IMMEDIATELY request_next_task
 - Use get_task_context for tasks with dependencies
 - Use log_decision for architectural choices
-- Use log_artifact with project_root: {self.config.implementation_dir}
+- Use log_artifact with project_root: {work_dir}
 - If "no suitable tasks", wait 30s and try again (max 3 retries)
 
 START NOW!
@@ -818,9 +829,95 @@ echo "=========================================="
         print(f"✓ Project creator in tmux window {window}, pane {pane}")
         print(f"  Prompt: {prompt_file}")
 
+    def _create_agent_worktree(
+        self,
+        agent_id: str,
+        agent_name: str,
+        branch: str,
+        workspace: Path,
+    ) -> None:
+        """
+        Create an isolated git worktree for a worker agent.
+
+        Each agent gets its own worktree branched from main HEAD.
+        Git identity is set per worktree for commit attribution.
+        See: https://github.com/lwgray/marcus/issues/250
+
+        Parameters
+        ----------
+        agent_id : str
+            Agent identifier
+        agent_name : str
+            Human-readable agent name (for git user.name)
+        branch : str
+            Branch name (e.g., marcus/agent_unicorn_1)
+        workspace : Path
+            Path for the worktree directory
+        """
+        repo = self.config.implementation_dir
+
+        # Clean up stale worktree/branch if re-running
+        if workspace.exists():
+            subprocess.run(
+                [
+                    "git",
+                    "worktree",
+                    "remove",
+                    "--force",
+                    str(workspace),
+                ],
+                cwd=repo,
+                capture_output=True,
+            )
+        subprocess.run(
+            ["git", "branch", "-D", branch],
+            cwd=repo,
+            capture_output=True,
+        )
+
+        # Create worktree (branches from current main HEAD)
+        subprocess.run(
+            [
+                "git",
+                "worktree",
+                "add",
+                str(workspace),
+                "-b",
+                branch,
+            ],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+        )
+
+        # Set git identity for commit attribution
+        subprocess.run(
+            ["git", "config", "user.name", agent_name],
+            cwd=workspace,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            [
+                "git",
+                "config",
+                "user.email",
+                f"{agent_id}@marcus.ai",
+            ],
+            cwd=workspace,
+            check=True,
+            capture_output=True,
+        )
+
+        print(f"  ✓ Worktree: {workspace} (branch: {branch})")
+
     def spawn_worker(self, agent: Dict[str, Any]) -> None:
         """
-        Spawn a worker agent in a tmux pane.
+        Spawn a worker agent in a tmux pane with git worktree isolation.
+
+        Each worker gets its own git worktree on branch marcus/{agent_id}.
+        Git identity is set per worktree for commit attribution.
+        See: https://github.com/lwgray/marcus/issues/250
 
         Parameters
         ----------
@@ -835,7 +932,12 @@ echo "=========================================="
         print(f"\nSpawning {agent_name} ({agent_id})")
         print("-" * 60)
 
-        prompt = self.create_worker_prompt(agent)
+        # Create git worktree for this agent (GH-250)
+        agent_branch = f"marcus/{agent_id}"
+        agent_workspace = self.config.experiment_dir / f"implementation-{agent_id}"
+        self._create_agent_worktree(agent_id, agent_name, agent_branch, agent_workspace)
+
+        prompt = self.create_worker_prompt(agent, agent_workspace, agent_branch)
         prompt_file = self.config.prompts_dir / f"{agent_id}.txt"
 
         with open(prompt_file, "w") as f:
@@ -855,12 +957,12 @@ if [ "$TERM" = "dumb" ] || [ -z "$TERM" ]; then
     export TERM=xterm-256color
 fi
 
-cd {self.config.implementation_dir} || exit 1
+cd {agent_workspace} || exit 1
 echo "=========================================="
 echo "{agent_name.upper()}"
 echo "ID: {agent_id}"
 echo "Role: {agent_role}"
-echo "Branch: main (shared)"
+echo "Branch: {agent_branch} (isolated worktree)"
 echo "Working Directory: $(pwd)"
 echo "=========================================="
 echo ""
@@ -870,8 +972,8 @@ while [ ! -f {self.config.project_info_file} ]; do
 done
 echo "✓ Project found, starting agent..."
 echo ""
-# Launch Claude from the implementation directory (cwd matters!)
-claude --add-dir {self.config.implementation_dir} \
+# Launch Claude from the agent's isolated worktree (cwd matters!)
+claude --add-dir {agent_workspace} \
   --dangerously-skip-permissions < {prompt_file}
 echo ""
 echo "=========================================="
