@@ -293,7 +293,22 @@ async def _collect_task_artifacts(
                     f"Warning: Failed to get kanban attachments for task {task_id}: {e}"
                 )
 
-        # 3. Get artifacts from dependency tasks
+        # 3. Get pre-loaded artifacts for this task (GH-300)
+        # Marcus may have generated scoped design artifacts
+        # specifically for this implementation task during
+        # create_project. These are registered against the
+        # task's own ID, not a dependency's ID.
+        if hasattr(state, "task_artifacts") and task_id in state.task_artifacts:
+            own_artifacts = state.task_artifacts[task_id].copy()
+            for artifact in own_artifacts:
+                artifact["source"] = "pre_loaded"
+                artifact["description"] = (
+                    f"{artifact.get('description', '')} "
+                    f"(scoped design for this task)"
+                )
+            artifacts.extend(own_artifacts)
+
+        # 4. Get artifacts from dependency tasks
         if task.dependencies:
             for dep_id in task.dependencies:
                 dep_task = next(
