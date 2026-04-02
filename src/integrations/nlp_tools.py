@@ -1104,9 +1104,18 @@ You are a senior software architect working on: {project_name}
 ## Your Current Assignment
 Generate the {artifact_label} document for this design.
 
-Write a clear, actionable {artifact_label} document that a developer \
-can implement from. Include specific details — component names, field \
-definitions, endpoint paths, data types — not vague descriptions.
+Describe WHAT each component does and HOW components connect to each \
+other. Focus on behavior, responsibilities, data flow, and integration \
+boundaries.
+
+Do NOT specify file names, function signatures, prop interfaces, class \
+names, or internal implementation details. The implementing developer \
+decides those. Your job is to define the WHAT and WHY, not the HOW.
+
+Good: "The time display updates every second using the browser's \
+Date API and supports timezone conversion."
+Bad: "TimeWidget (src/components/TimeWidget.tsx) takes props \
+timeFormat: '24h' | '12h' and uses setInterval(1000)."
 
 Respond with ONLY the document content in markdown format. \
 No JSON wrapping, no code fences around the whole response. \
@@ -1123,8 +1132,12 @@ You are a senior software architect working on: {project_name}
 {task_description}
 
 ## Your Current Assignment
-List the key architectural decisions you made for this design. \
-For each decision, state what you chose, why, and what it affects.
+List the key architectural decisions for this design. Focus on \
+technology choices, patterns, and boundaries — not implementation \
+details like file names or function signatures.
+
+Good: "Use browser Date API for time, not a library — reduces bundle size."
+Bad: "Use setInterval(1000) in useCurrentTime.ts hook."
 
 Respond with ONLY a JSON array (no wrapping object, no markdown fences):
 [{{"what":"Chose X over Y","why":"Because of Z","impact":"Affects A and B"}}]
