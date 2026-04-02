@@ -223,6 +223,14 @@ class TaskBuilder:
             "metadata": {"ai_generated": True, "source": "natural_language"},
         }
 
+        # Pass through source_type and source_context if present (GH-297)
+        source_type = getattr(task, "source_type", None)
+        if source_type:
+            result["source_type"] = source_type
+        source_context = getattr(task, "source_context", None)
+        if source_context:
+            result["source_context"] = source_context
+
         # DEBUG: Verify status is in result for About tasks
         if "About" in task.name:
             logger.info(

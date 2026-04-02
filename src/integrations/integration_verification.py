@@ -1,13 +1,17 @@
 """
-Integration Verification Task Generation for Marcus.
+Integration Verification & Remediation Task Generation for Marcus.
 
-Adds a verification task to projects that runs after implementation
+Adds an integration task to projects that runs after implementation
 completes. The integration agent inspects the project, figures out
-how to build and start it, and reports whether the product actually
-works end-to-end.
+how to build and start it, verifies it works end-to-end, and — critically —
+FIXES any issues it finds before re-verifying.
 
-Phase 1: Visibility only — the task always completes (DONE) and
-reports pass/fail as an artifact. It does not block the experiment.
+This is not a report-only task. The integration agent is the last line of
+defense: it glues components together, fills gaps left by task decomposition,
+and ensures the product actually works as a whole.
+
+See: https://github.com/lwgray/marcus/issues/296
+Related: #271, #267, #257
 """
 
 import logging
@@ -27,7 +31,7 @@ class IntegrationTaskGenerator:
     Creates a task that runs after all implementation and testing tasks
     complete. The assigned agent inspects the project structure, figures
     out how to build/start it (regardless of language or framework),
-    and reports whether the product actually works.
+    verifies whether the product works, and fixes any issues found.
 
     Parameters
     ----------
@@ -104,9 +108,12 @@ class IntegrationTaskGenerator:
             "Project builds without errors",
             "Application actually starts (startup output captured)",
             "Key endpoints hit with curl, full response captured",
-            "No missing components detected",
+            "Missing components detected AND fixed",
+            "App entry point renders/wires all specified components",
             "All results include raw command output as evidence",
             "integration_verification.json artifact logged",
+            "integration_remediation.json artifact logged if fixes applied",
+            "Re-verification passes after fixes",
         ]
 
         task = Task(
@@ -182,18 +189,21 @@ class IntegrationTaskGenerator:
             Detailed task description with verification steps.
         """
         return f"""Verify that {project_name} actually builds, starts, \
-and works end-to-end.
+and works end-to-end — and FIX any issues you find.
 
-**IMPORTANT**: This is a verification task, not an implementation task. \
-Your job is to check whether the product works as built. Always mark \
-this task as DONE when finished — report failures in the artifact, \
-do NOT block the experiment.
+**IMPORTANT**: This is an integration AND remediation task. You verify \
+the product works, and if it doesn't, YOU FIX IT. You are the last line \
+of defense — you glue components together, fill gaps left by task \
+decomposition, and ensure the product actually works as a whole. \
+Do NOT just report problems. Fix them.
 
 **CRITICAL RULE — EVIDENCE REQUIRED**: Every step below MUST include \
 the actual command you ran AND its real stdout/stderr output. Do NOT \
 summarize, paraphrase, or claim a command succeeded without showing \
 the output. If you cannot run a command, say so explicitly. \
 Fabricating output is worse than reporting a failure.
+
+## PHASE 1: VERIFY
 
 1. **Read Context**:
    - Review design documents and architecture decisions
@@ -209,16 +219,16 @@ Fabricating output is worse than reporting a failure.
    - Determine the appropriate build, install, and start commands
    - Verify the project's module/package structure is complete
 
-3. **Run Tests**:
+3. **Install Dependencies**:
+   - Run the appropriate install command for the project
+   - Capture the FULL terminal output
+   - Record: command, exit code, raw output
+
+4. **Run Tests**:
    - Run the project's test suite (pytest, npm test, etc.)
    - Capture the FULL terminal output (not a summary)
    - Record: command, exit code, pass/fail counts, raw output
    - If tests fail, record the actual error messages
-
-4. **Install Dependencies**:
-   - Run the appropriate install command for the project
-   - Capture the FULL terminal output
-   - Record: command, exit code, raw output
 
 5. **Build the Project**:
    - Run the appropriate build command
@@ -243,78 +253,168 @@ Fabricating output is worse than reporting a failure.
    - Record each curl command and its full response
 
 8. **Check for Missing Components**:
+   - Is the app entry point wired up? (e.g., does App.jsx import
+     and render all the components that were built?)
    - Are there API calls to endpoints that don't exist?
    - Are there imports of modules that were never created?
    - Are there references to services that weren't built?
    - Does the design spec describe components that have no code?
+   - Are there duplicate/conflicting implementations that need
+     consolidation?
 
-9. **Log Results**:
-   CRITICAL: Log verification results as an artifact. Every field \
+## PHASE 2: FIX
+
+If ANY issues were found in Phase 1, fix them NOW:
+
+9. **Fix Issues**:
+   - **Missing wiring**: If the app entry point doesn't import/render
+     built components, wire them in. This is the most common gap —
+     agents build components in isolation but nobody assembles them.
+   - **Missing endpoints**: If the frontend calls APIs that don't exist
+     in the backend, create the backend routes.
+   - **Missing dependencies**: If imports reference modules that weren't
+     created, create them or fix the imports.
+   - **Build failures**: Fix compilation errors, missing configs, etc.
+   - **Duplicate structures**: If multiple agents created conflicting
+     implementations, consolidate to the best one.
+   - Commit each fix with a descriptive message.
+   - You are a full-capability agent — write code, create files,
+     modify configurations. Do whatever it takes.
+
+## PHASE 3: RE-VERIFY
+
+10. **Re-verify After Fixes**:
+    - Re-run the full verification (build, start, curl, tests)
+    - Confirm your fixes resolved the issues
+    - If new issues appear, fix those too (max 3 iterations)
+    - Record the final verification state
+
+## PHASE 4: LOG RESULTS
+
+11. **Log Verification Results**:
+    CRITICAL: Log verification results as an artifact. Every field \
 in the JSON below MUST contain real command output, not summaries.
 
-   ```
-   log_artifact(
-       task_id="<current_task_id>",
-       filename="integration_verification.json",
-       content="<json results>",
-       artifact_type="integration-verification",
-       project_root="<project_root>",
-       description="Integration verification results"
-   )
-   ```
+    ```
+    log_artifact(
+        task_id="<current_task_id>",
+        filename="integration_verification.json",
+        content="<json results>",
+        artifact_type="integration-verification",
+        project_root="<project_root>",
+        description="Integration verification results"
+    )
+    ```
 
-   JSON format:
-   ```json
-   {{
-     "project_name": "{project_name}",
-     "tests": {{
-       "command": "pytest tests/ -v",
-       "exit_code": 0,
-       "passed": 45,
-       "failed": 0,
-       "success": true,
-       "raw_output": "<PASTE FULL TERMINAL OUTPUT HERE>"
-     }},
-     "install": {{
-       "command": "pip install -r requirements.txt",
-       "exit_code": 0,
-       "success": true,
-       "raw_output": "<PASTE FULL TERMINAL OUTPUT HERE>"
-     }},
-     "build": {{
-       "command": "npm run build",
-       "exit_code": 0,
-       "success": true,
-       "raw_output": "<PASTE FULL TERMINAL OUTPUT HERE>"
-     }},
-     "start": {{
-       "command": "uvicorn src.backend.main:app",
-       "success": true,
-       "raw_output": "<PASTE STARTUP OUTPUT HERE>"
-     }},
-     "health_checks": [
-       {{
-         "url": "http://localhost:8000/api/health",
-         "curl_command": "curl -s http://localhost:8000/api/health",
-         "status_code": 200,
-         "success": true,
-         "raw_response": "<PASTE FULL CURL RESPONSE HERE>"
-       }}
-     ],
-     "missing_components": [],
-     "overall_pass": true,
-     "remediation_notes": null
-   }}
-   ```
+    JSON format:
+    ```json
+    {{
+      "project_name": "{project_name}",
+      "tests": {{
+        "command": "pytest tests/ -v",
+        "exit_code": 0,
+        "passed": 45,
+        "failed": 0,
+        "success": true,
+        "raw_output": "<PASTE FULL TERMINAL OUTPUT HERE>"
+      }},
+      "install": {{
+        "command": "pip install -r requirements.txt",
+        "exit_code": 0,
+        "success": true,
+        "raw_output": "<PASTE FULL TERMINAL OUTPUT HERE>"
+      }},
+      "build": {{
+        "command": "npm run build",
+        "exit_code": 0,
+        "success": true,
+        "raw_output": "<PASTE FULL TERMINAL OUTPUT HERE>"
+      }},
+      "start": {{
+        "command": "uvicorn src.backend.main:app",
+        "success": true,
+        "raw_output": "<PASTE STARTUP OUTPUT HERE>"
+      }},
+      "health_checks": [
+        {{
+          "url": "http://localhost:8000/api/health",
+          "curl_command": "curl -s http://localhost:8000/api/health",
+          "status_code": 200,
+          "success": true,
+          "raw_response": "<PASTE FULL CURL RESPONSE HERE>"
+        }}
+      ],
+      "missing_components": [],
+      "overall_pass": true,
+      "remediation_notes": null
+    }}
+    ```
 
-   If a command fails, set success=false and paste the error output.
-   Do NOT set success=true unless you have real output proving it.
+    If a command fails, set success=false and paste the error output.
+    Do NOT set success=true unless you have real output proving it.
 
-10. **Always Complete the Task**:
-    - Mark this task as DONE regardless of pass/fail
-    - Set `overall_pass` to false if verification failed
-    - Include detailed `remediation_notes` describing what
-      failed and why
+12. **Log Remediation Record** (if you fixed anything):
+    If you applied fixes in Phase 2, log a separate remediation \
+artifact for tracking purposes:
+
+    ```
+    log_artifact(
+        task_id="<current_task_id>",
+        filename="integration_remediation.json",
+        content="<json results>",
+        artifact_type="integration-remediation",
+        project_root="<project_root>",
+        description="Integration remediation record"
+    )
+    ```
+
+    JSON format:
+    ```json
+    {{
+      "project_name": "{project_name}",
+      "remediation_applied": true,
+      "issues_found": [
+        {{
+          "description": "What was wrong",
+          "severity": "critical | major | minor",
+          "category": "composition_gap | missing_endpoint "
+          "| missing_module | build_failure "
+          "| duplicate_code | config_error",
+          "root_cause": "planning_gap | agent_oversight | dependency_error"
+        }}
+      ],
+      "fixes_applied": [
+        {{
+          "description": "What you fixed",
+          "files_modified": ["path/to/file.js"],
+          "commit_hash": "abc1234"
+        }}
+      ],
+      "verification_before_fix": {{
+        "overall_pass": false,
+        "failing_checks": ["app entry point not wired", "missing API endpoint"]
+      }},
+      "verification_after_fix": {{
+        "overall_pass": true,
+        "tests_pass": true,
+        "app_starts": true,
+        "endpoints_respond": true
+      }},
+      "planning_gap_detected": true
+    }}
+    ```
+
+    The `planning_gap_detected` field is important: set it to true \
+if the fix was needed because no task was created for this work \
+(e.g., no task to wire components into the entry point, no task \
+to create a backend route that the design spec called for). This \
+helps Marcus improve task planning over time.
+
+13. **Complete the Task**:
+    - Mark this task as DONE only after verification passes
+    - If you could not fix all issues after 3 attempts, mark DONE
+      anyway but set `overall_pass` to false with details on what
+      remains broken and why you couldn't fix it
 """
 
 
