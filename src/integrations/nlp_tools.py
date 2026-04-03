@@ -337,6 +337,23 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                         f"[design_autocomplete] Phase A failed " f"(non-fatal): {e}"
                     )
 
+                # Phase A.5: Generate project scaffold from architecture doc
+                # Shared infrastructure committed to main so worktrees inherit it.
+                # See: GH-300
+                if design_content:
+                    try:
+                        await _generate_project_scaffold(
+                            tasks=safe_tasks,
+                            project_description=description,
+                            project_name=project_name,
+                            project_root=project_root,
+                            design_content=design_content,
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"[scaffold] Generation failed " f"(non-fatal): {e}"
+                        )
+
             # Create tasks on board using base class (this also triggers decomposition)
             with error_context(
                 "kanban_task_creation",
@@ -1373,6 +1390,250 @@ async def _generate_design_content(
             continue
 
     return design_content
+
+
+_SCAFFOLD_PROMPT = """\
+You are a senior software architect. Generate the project scaffold \
+for the following project.
+
+## Project
+{project_name}: {project_description}
+
+## Architecture Document
+{architecture_content}
+
+## Implementation Tasks
+{impl_task_list}
+
+## Instructions
+Generate ONLY the shared build/tooling infrastructure. The implementing \
+agents decide everything about the application code.
+
+ALLOWED files (generate these):
+- Package manifest (package.json, pyproject.toml, Cargo.toml, etc.)
+- Build configuration (tsconfig, vite.config, eslint config, etc.)
+- Entry point (main.tsx, main.py, main.rs — minimal, just mounts app)
+- App shell (App.tsx or equivalent — imports components, no styling logic)
+- Tooling config (.gitignore, .env.example)
+- ONE placeholder file per implementation task (see below)
+
+FORBIDDEN — do NOT generate these:
+- TypeScript interfaces, types, or data model definitions
+- Utility functions, helpers, or service implementations
+- CSS files, stylesheets, or design tokens
+- Test files or test configuration
+- Any file with more than 3 lines of actual code (configs excepted)
+
+Placeholder files must contain EXACTLY one comment line:
+// TimeWidget — implementation task for agent
+
+The .gitignore MUST include: node_modules/, dist/, *.js (in src/), \
+.env, and build artifacts appropriate for the project type.
+
+Respond with ONLY a JSON array of files. No markdown fencing:
+[{{"path": "package.json", "content": "..."}}, \
+{{"path": "src/main.tsx", "content": "..."}}]
+"""
+
+
+async def _generate_project_scaffold(
+    tasks: List[Any],
+    project_description: str,
+    project_name: str,
+    project_root: str,
+    design_content: Dict[str, Dict[str, Any]],
+) -> bool:
+    """
+    Generate project scaffold and write to disk on main.
+
+    Reads the architecture doc from design_content, generates
+    shared infrastructure files (package manifest, config, entry
+    point) and empty placeholder files per implementation task.
+    Written to project_root so worktrees inherit them.
+
+    Parameters
+    ----------
+    tasks : List[Any]
+        All tasks including implementation tasks.
+    project_description : str
+        Project description.
+    project_name : str
+        Project name.
+    project_root : str
+        Path to implementation/ directory on main.
+    design_content : Dict[str, Dict]
+        From _generate_design_content, contains architecture doc.
+
+    Returns
+    -------
+    bool
+        True if scaffold was generated successfully.
+
+    See: https://github.com/lwgray/marcus/issues/300
+    """
+    import json
+    from pathlib import Path
+
+    from src.ai.providers.llm_abstraction import LLMAbstraction
+
+    project_root_path = Path(project_root)
+
+    # Get the architecture doc content from design_content
+    arch_content = ""
+    for task_name, content in design_content.items():
+        for art in content.get("artifacts", []):
+            if art.get("artifact_type") == "architecture":
+                arch_content = art.get("content", "")
+                break
+        if arch_content:
+            break
+
+    if not arch_content:
+        logger.warning(
+            "[scaffold] No architecture doc found — " "skipping scaffold generation"
+        )
+        return False
+
+    # Build implementation task list
+    impl_tasks = [
+        t
+        for t in tasks
+        if not _is_design_task(t)
+        and getattr(t, "name", "").lower().startswith("implement")
+    ]
+    impl_task_list = "\n".join(
+        f"- {t.name}: {(t.description or '')[:100]}" for t in impl_tasks
+    )
+
+    if not impl_task_list:
+        logger.warning(
+            "[scaffold] No implementation tasks found — " "skipping scaffold generation"
+        )
+        return False
+
+    llm = LLMAbstraction()
+
+    class _Ctx:
+        max_tokens = 4000
+
+    prompt = _SCAFFOLD_PROMPT.format(
+        project_name=project_name,
+        project_description=project_description,
+        architecture_content=arch_content,
+        impl_task_list=impl_task_list,
+    )
+
+    try:
+        response = await llm.analyze(prompt=prompt, context=_Ctx())
+
+        if not response:
+            logger.warning("[scaffold] Empty LLM response")
+            return False
+
+        # Parse JSON array of files
+        from src.utils.json_parser import clean_json_response
+
+        cleaned = clean_json_response(response)
+        files = json.loads(cleaned)
+
+        if not isinstance(files, list):
+            logger.warning("[scaffold] Expected JSON array")
+            return False
+
+        # Filter out over-generated files (GH-307)
+        # Config files can be any length. Non-config files must be
+        # ≤3 lines (placeholder comment only). This prevents the LLM
+        # from generating types, utils, CSS, or implementation code.
+        config_extensions = {
+            ".json",
+            ".toml",
+            ".yaml",
+            ".yml",
+            ".cjs",
+            ".mjs",
+            ".config.ts",
+            ".config.js",
+        }
+        config_names = {
+            ".gitignore",
+            ".env.example",
+            ".eslintrc",
+            "tsconfig.json",
+            "tsconfig.node.json",
+            "vite.config.ts",
+            "vite.config.js",
+        }
+
+        # Write each file to disk
+        written = 0
+        rejected = 0
+        for f in files:
+            fpath = f.get("path")
+            fcontent = f.get("content")
+            if not fpath or fcontent is None:
+                continue
+
+            # Check if this is a config/tooling file
+            fname = Path(fpath).name
+            is_config = (
+                any(fname.endswith(ext) for ext in config_extensions)
+                or fname in config_names
+                or fname == "index.html"
+                or "main." in fname
+                or "App." in fname
+            )
+
+            # Non-config files must be ≤3 lines
+            if not is_config:
+                line_count = len(fcontent.strip().splitlines())
+                if line_count > 3:
+                    logger.info(
+                        f"[scaffold] Rejected {fpath} "
+                        f"({line_count} lines — over limit)"
+                    )
+                    rejected += 1
+                    continue
+
+            full_path = project_root_path / fpath
+            full_path.parent.mkdir(parents=True, exist_ok=True)
+            full_path.write_text(fcontent, encoding="utf-8")
+            written += 1
+
+        if rejected > 0:
+            logger.info(f"[scaffold] Rejected {rejected} over-generated " f"file(s)")
+
+        logger.info(
+            f"[scaffold] Wrote {written} scaffold file(s) " f"to {project_root}"
+        )
+
+        # Commit scaffold to main so worktrees inherit it
+        import subprocess
+
+        subprocess.run(
+            ["git", "add", "-A"],
+            cwd=project_root,
+            capture_output=True,
+        )
+        result = subprocess.run(
+            [
+                "git",
+                "commit",
+                "-m",
+                "scaffold: project infrastructure (Marcus)",
+            ],
+            cwd=project_root,
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            logger.info("[scaffold] Committed scaffold to main")
+        else:
+            logger.warning(f"[scaffold] Commit failed: " f"{result.stderr.decode()}")
+
+        return written > 0
+
+    except Exception as e:
+        logger.warning(f"[scaffold] Failed: {e}")
+        return False
 
 
 async def _register_design_via_mcp(
