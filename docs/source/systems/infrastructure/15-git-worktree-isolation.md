@@ -112,13 +112,26 @@ The `main` branch accumulates completed work. Each agent branch diverges from `m
 │     └──> Dependent tasks can now start                          │
 │                                                                 │
 │  7. Agent gets next task                                        │
-│     └──> New worktree from updated main                         │
+│     └──> Runs `git merge main --no-edit` in worktree            │
 │     └──> Sees all previously completed work                     │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-Step 7 is critical: the new worktree branches from the current `main`, which contains all merged work from completed tasks. This is how dependent tasks see the code they depend on.
+### Per-Task Visibility (GH-302)
+
+Worktrees are created once at spawn time, not per-task. When an agent
+picks up a new task, it runs `git merge main --no-edit` to incorporate
+all previously merged code. This is enforced in two places:
+
+1. **Shell script** (belt): before Claude starts, the worker script
+   merges main into the worktree
+2. **Worker prompt** (suspenders): step 5 of the task workflow says
+   "FIRST: run `git merge main --no-edit` to get latest completed work"
+
+This ensures that when Agent 2 picks up a task that depends on Agent 1's
+completed work, it sees that code — because Agent 1's branch was merged
+to main on completion, and Agent 2 merges main before starting.
 
 ## Interface Comparison
 

@@ -493,6 +493,7 @@ STARTUP SEQUENCE:
    - If you get "no suitable tasks", wait 30 seconds and try again (max 3 retries)
 
 5. When you get a task:
+   - FIRST: run `git merge main --no-edit` to get latest completed work
    - Check dependencies with get_task_context
    - Work on it in: {work_dir}
    - Report progress at 25%, 50%, 75%, 100%
@@ -971,6 +972,12 @@ while [ ! -f {self.config.project_info_file} ]; do
     sleep 2
 done
 echo "✓ Project found, starting agent..."
+echo ""
+# Sync worktree with main to get design artifacts and any
+# previously merged code (GH-302: per-task visibility)
+echo "Syncing worktree with main..."
+git merge main --no-edit 2>/dev/null || true
+echo "✓ Worktree synced"
 echo ""
 # Launch Claude from the agent's isolated worktree (cwd matters!)
 claude --add-dir {agent_workspace} \
