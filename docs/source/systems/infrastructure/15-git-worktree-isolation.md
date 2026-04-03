@@ -156,7 +156,16 @@ For the `/marcus` skill and Posidonius interfaces, worktree creation is fully au
 - `dev-tools/experiments/runners/spawn_agents.py` — `_create_agent_worktree()`, `spawn_worker()`, `create_worker_prompt()`
 - `src/marcus_mcp/tools/task.py` — `_merge_agent_branch_to_main()` in `report_task_progress()`
 
+## Prerequisite: Project Scaffolding
+
+Worktree isolation requires project scaffolding (Phase A.5) to be effective.
+Without scaffolding on main before worktrees branch, each agent independently
+scaffolds the same project — duplicating work and creating merge conflicts on
+every shared file. See [16-project-scaffolding.md](16-project-scaffolding.md).
+
 ## See Also
 
-- [Workspace Isolation and Feature Context](workspace-isolation-and-feature-context.md) — earlier design notes on isolation
-- GitHub Issues: [#250](https://github.com/marcus/marcus/issues/250), [#249](https://github.com/marcus/marcus/issues/249), [#206](https://github.com/marcus/marcus/issues/206)
+- [Project Scaffolding](16-project-scaffolding.md) — shared infrastructure prerequisite for worktrees
+- [Design Autocomplete](../coordination/52-design-autocomplete.md) — Phase A, produces architecture doc that scaffolding reads
+- [Workspace Isolation and Feature Context](../../design/workspace-isolation-and-feature-context.md) — earlier design notes on isolation
+- GitHub Issues: [#250](https://github.com/lwgray/marcus/issues/250), [#249](https://github.com/lwgray/marcus/issues/249), [#300](https://github.com/lwgray/marcus/issues/300)

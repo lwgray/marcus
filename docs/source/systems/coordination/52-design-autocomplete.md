@@ -155,9 +155,27 @@ This keeps the board focused on work that agents are actually doing, while prese
 - `src/integrations/nlp_tools.py` — Wiring in `create_project_from_description()` (Phase A) and `create_project_from_natural_language()` (Phase B)
 - `cato_src/core/aggregator.py` — `_filter_tasks_by_view()` filters `auto_completed` label
 
+## Pipeline Context
+
+Design autocomplete is Phase A of the project creation pipeline:
+
+```
+Phase A:     Design artifacts + decisions (this system)
+Phase A.5:   Project scaffold (infrastructure/16-project-scaffolding.md)
+Board:       Tasks created on kanban
+Phase B:     Register artifacts + decisions via MCP tools (nlp.py)
+Worktrees:   Branch from main HEAD (inherits design + scaffold)
+Workers:     Start with design context + working project structure
+```
+
+Phase A.5 (project scaffolding) reads the architecture document produced
+by Phase A and generates the shared project infrastructure. This prevents
+agents from duplicating scaffolding work in parallel worktrees.
+
 ## See Also
 
-- [Git Worktree Isolation](git-worktree-isolation.md) — how agents are isolated during experiments
+- [Project Scaffolding](../infrastructure/16-project-scaffolding.md) — Phase A.5, shared project infrastructure
+- [Git Worktree Isolation](../infrastructure/15-git-worktree-isolation.md) — how agents are isolated during experiments
 - GitHub Issues:
   - [#301](https://github.com/marcus/marcus/issues/301) — Four findings from dashboard-v16, including Finding 2 (context contamination)
   - [#297](https://github.com/marcus/marcus/issues/297) — Original design autocomplete implementation
