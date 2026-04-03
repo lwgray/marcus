@@ -302,12 +302,28 @@ class WorkAnalyzer:
         ValueError
             If project_root cannot be determined
         """
-        # Try workspace state file first (.marcus_workspace.json)
+        # Check for agent worktree first (GH-250, GH-305)
+        # If the agent has an isolated worktree, validate there
+        # instead of the main implementation/ directory.
         if hasattr(state, "kanban_client") and state.kanban_client:
             workspace_state = state.kanban_client._load_workspace_state()
             if workspace_state and "project_root" in workspace_state:
                 project_root = workspace_state["project_root"]
-                logger.info(f"Found project_root from workspace state: {project_root}")
+
+                # Check if agent has a worktree
+                agent_id = getattr(task, "assigned_to", None)
+                if agent_id:
+                    from pathlib import Path
+
+                    main_repo = Path(project_root)
+                    worktree = main_repo.parent / f"implementation-{agent_id}"
+                    if worktree.exists():
+                        logger.info(f"Found agent worktree: {worktree}")
+                        return str(worktree)
+
+                logger.info(
+                    f"Found project_root from workspace state: " f"{project_root}"
+                )
                 return str(project_root)
 
         # Try workspace manager
