@@ -941,7 +941,7 @@ echo "=========================================="
 
         # Create git worktree for this agent (GH-250)
         agent_branch = f"marcus/{agent_id}"
-        agent_workspace = self.config.experiment_dir / f"implementation-{agent_id}"
+        agent_workspace = self.config.experiment_dir / "worktrees" / agent_id
         self._create_agent_worktree(agent_id, agent_name, agent_branch, agent_workspace)
 
         prompt = self.create_worker_prompt(agent, agent_workspace, agent_branch)

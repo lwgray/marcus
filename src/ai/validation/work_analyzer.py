@@ -310,13 +310,15 @@ class WorkAnalyzer:
             if workspace_state and "project_root" in workspace_state:
                 project_root = workspace_state["project_root"]
 
-                # Check if agent has a worktree
+                # Check if agent has a worktree (GH-250)
+                # Worktrees live at experiment_dir/worktrees/{agent_id}/
                 agent_id = getattr(task, "assigned_to", None)
                 if agent_id:
                     from pathlib import Path
 
                     main_repo = Path(project_root)
-                    worktree = main_repo.parent / f"implementation-{agent_id}"
+                    # worktrees/ is sibling of implementation/
+                    worktree = main_repo.parent / "worktrees" / agent_id
                     if worktree.exists():
                         logger.info(f"Found agent worktree: {worktree}")
                         return str(worktree)

@@ -1368,7 +1368,9 @@ async def _merge_agent_branch_to_main(
     from pathlib import Path
 
     # Find the main repo (implementation/ directory)
-    # Use workspace state file — same approach as validator (GH-305)
+    # Use workspace state file to get project_root, then use
+    # git rev-parse to find the actual repo root regardless
+    # of whether we're in a worktree or the main repo.
     project_root = None
     if hasattr(state, "kanban_client") and state.kanban_client:
         ws_state = state.kanban_client._load_workspace_state()
@@ -1378,12 +1380,23 @@ async def _merge_agent_branch_to_main(
     if not project_root:
         return None
 
+    # project_root points to implementation/ (main repo).
+    # Use it directly — git commands run here.
     repo = Path(project_root)
-    # If project_root points to a worktree, find the main repo
-    # Worktrees are at implementation-{agent_id}/, main is implementation/
-    if repo.name.startswith("implementation-"):
-        repo = repo.parent / "implementation"
-    if not (repo / ".git").exists():
+    if not repo.exists():
+        return None
+
+    # Verify it's a git repo (or inside one)
+    try:
+        check = _sp.run(
+            ["git", "rev-parse", "--git-dir"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+        )
+        if check.returncode != 0:
+            return None
+    except Exception:
         return None
 
     branch = f"marcus/{agent_id}"
