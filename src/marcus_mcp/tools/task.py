@@ -1368,7 +1368,13 @@ async def _merge_agent_branch_to_main(
     from pathlib import Path
 
     # Find the main repo (implementation/ directory)
-    project_root = getattr(state, "project_root", None)
+    # Use workspace state file — same approach as validator (GH-305)
+    project_root = None
+    if hasattr(state, "kanban_client") and state.kanban_client:
+        ws_state = state.kanban_client._load_workspace_state()
+        if ws_state and "project_root" in ws_state:
+            project_root = ws_state["project_root"]
+
     if not project_root:
         return None
 
