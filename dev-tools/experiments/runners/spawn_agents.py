@@ -897,24 +897,10 @@ echo "=========================================="
             capture_output=True,
         )
 
-        # Set git identity for commit attribution
-        subprocess.run(
-            ["git", "config", "user.name", agent_name],
-            cwd=workspace,
-            check=True,
-            capture_output=True,
-        )
-        subprocess.run(
-            [
-                "git",
-                "config",
-                "user.email",
-                f"{agent_id}@marcus.ai",
-            ],
-            cwd=workspace,
-            check=True,
-            capture_output=True,
-        )
+        # Git identity is set via GIT_AUTHOR_NAME/GIT_COMMITTER_NAME
+        # environment variables in the agent's shell script, NOT via
+        # git config — because worktrees share .git/config and the
+        # second agent overwrites the first. (GH-308)
 
         print(f"  ✓ Worktree: {workspace} (branch: {branch})")
 
@@ -963,6 +949,13 @@ unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION
 if [ "$TERM" = "dumb" ] || [ -z "$TERM" ]; then
     export TERM=xterm-256color
 fi
+
+# Set git identity via env vars — per-process, not shared config (GH-308)
+# Worktrees share .git/config so git config user.name gets overwritten.
+export GIT_AUTHOR_NAME="{agent_name}"
+export GIT_AUTHOR_EMAIL="{agent_id}@marcus.ai"
+export GIT_COMMITTER_NAME="{agent_name}"
+export GIT_COMMITTER_EMAIL="{agent_id}@marcus.ai"
 
 cd {agent_workspace} || exit 1
 echo "=========================================="
