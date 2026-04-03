@@ -1406,23 +1406,29 @@ for the following project.
 {impl_task_list}
 
 ## Instructions
-Generate the project scaffold — the shared infrastructure files that \
-ALL developers need before they can start working on their components. \
-This includes:
+Generate ONLY the shared build/tooling infrastructure. The implementing \
+agents decide everything about the application code.
 
+ALLOWED files (generate these):
 - Package manifest (package.json, pyproject.toml, Cargo.toml, etc.)
-- Build configuration (tsconfig, vite.config, eslint, etc.)
-- Entry point file (main.tsx, main.py, main.rs, etc.)
-- Base app shell that imports/renders components
-- Any shared configuration (.gitignore, .env.example, etc.)
+- Build configuration (tsconfig, vite.config, eslint config, etc.)
+- Entry point (main.tsx, main.py, main.rs — minimal, just mounts app)
+- App shell (App.tsx or equivalent — imports components, no styling logic)
+- Tooling config (.gitignore, .env.example)
+- ONE placeholder file per implementation task (see below)
 
-Also create ONE empty placeholder file per implementation task. Each \
-placeholder should contain ONLY a comment with the component name — \
-no function stubs, no exports, no implementation code. Example:
+FORBIDDEN — do NOT generate these:
+- TypeScript interfaces, types, or data model definitions
+- Utility functions, helpers, or service implementations
+- CSS files, stylesheets, or design tokens
+- Test files or test configuration
+- Any file with more than 3 lines of actual code (configs excepted)
+
+Placeholder files must contain EXACTLY one comment line:
 // TimeWidget — implementation task for agent
 
-The placeholder file paths should match the architecture document's \
-conventions.
+The .gitignore MUST include: node_modules/, dist/, *.js (in src/), \
+.env, and build artifacts appropriate for the project type.
 
 Respond with ONLY a JSON array of files. No markdown fencing:
 [{{"path": "package.json", "content": "..."}}, \
@@ -1534,17 +1540,67 @@ async def _generate_project_scaffold(
             logger.warning("[scaffold] Expected JSON array")
             return False
 
+        # Filter out over-generated files (GH-307)
+        # Config files can be any length. Non-config files must be
+        # ≤3 lines (placeholder comment only). This prevents the LLM
+        # from generating types, utils, CSS, or implementation code.
+        config_extensions = {
+            ".json",
+            ".toml",
+            ".yaml",
+            ".yml",
+            ".cjs",
+            ".mjs",
+            ".config.ts",
+            ".config.js",
+        }
+        config_names = {
+            ".gitignore",
+            ".env.example",
+            ".eslintrc",
+            "tsconfig.json",
+            "tsconfig.node.json",
+            "vite.config.ts",
+            "vite.config.js",
+        }
+
         # Write each file to disk
         written = 0
+        rejected = 0
         for f in files:
             fpath = f.get("path")
             fcontent = f.get("content")
             if not fpath or fcontent is None:
                 continue
+
+            # Check if this is a config/tooling file
+            fname = Path(fpath).name
+            is_config = (
+                any(fname.endswith(ext) for ext in config_extensions)
+                or fname in config_names
+                or fname == "index.html"
+                or "main." in fname
+                or "App." in fname
+            )
+
+            # Non-config files must be ≤3 lines
+            if not is_config:
+                line_count = len(fcontent.strip().splitlines())
+                if line_count > 3:
+                    logger.info(
+                        f"[scaffold] Rejected {fpath} "
+                        f"({line_count} lines — over limit)"
+                    )
+                    rejected += 1
+                    continue
+
             full_path = project_root_path / fpath
             full_path.parent.mkdir(parents=True, exist_ok=True)
             full_path.write_text(fcontent, encoding="utf-8")
             written += 1
+
+        if rejected > 0:
+            logger.info(f"[scaffold] Rejected {rejected} over-generated " f"file(s)")
 
         logger.info(
             f"[scaffold] Wrote {written} scaffold file(s) " f"to {project_root}"
