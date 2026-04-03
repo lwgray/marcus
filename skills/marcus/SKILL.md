@@ -120,7 +120,7 @@ agents:
   # Repeat for each agent...
 
 timeouts:
-  project_creation: 300
+  project_creation: 600
   agent_startup: 60
 ```
 
@@ -139,7 +139,11 @@ First, discover the Marcus repo root:
 MARCUS_ROOT=$(python3 -c "from pathlib import Path; import marcus_mcp; print(Path(marcus_mcp.__file__).parent.parent.parent)")
 ```
 
-Then run it directly (using the current working directory as the experiment directory):
+Then run it directly (using the current working directory as the experiment directory).
+**IMPORTANT:** Use a 600000ms (10 minute) timeout on the Bash command. Project creation
+includes AI design task generation which takes 4-6 minutes. The default 2-minute
+Bash timeout will kill the process prematurely.
+
 ```bash
 cd "${MARCUS_ROOT}/dev-tools/experiments" && python runners/run_experiment.py <cwd>
 ```

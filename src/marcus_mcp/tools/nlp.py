@@ -702,6 +702,38 @@ async def create_project(
                 },
             )
 
+        # Phase B (GH-297): Register design artifacts + decisions
+        # via MCP tools so state.task_artifacts and
+        # state.context.decisions are populated for get_task_context.
+        # Phase A ran inside create_project_from_description() and
+        # stored design_content in the result dict.
+        design_content = result.get("design_content", {})
+        if design_content and result.get("success"):
+            try:
+                from src.integrations.nlp_tools import (
+                    _register_design_via_mcp,
+                )
+
+                project_root = options.get("project_root") if options else None
+                phase_b = await _register_design_via_mcp(
+                    state=state,
+                    design_content=design_content,
+                    project_root=project_root,
+                )
+                if phase_b.get("tasks_completed", 0) > 0:
+                    logger.info(
+                        f"[design_autocomplete] Phase B: "
+                        f"registered "
+                        f"{phase_b['artifacts_registered']}"
+                        f" artifact(s), "
+                        f"{phase_b['decisions_logged']}"
+                        f" decision(s) via MCP tools"
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"[design_autocomplete] Phase B " f"failed (non-fatal): {e}"
+                )
+
         return result
 
     except Exception:

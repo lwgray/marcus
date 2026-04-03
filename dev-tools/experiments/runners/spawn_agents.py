@@ -212,7 +212,7 @@ def wait_for_project_info(
     bool
         True if file was found, False if timed out.
     """
-    timeout = config.get_timeout("project_creation", 300)
+    timeout = config.get_timeout("project_creation", 600)
     start_time = time.time()
     last_log_time = start_time
 
@@ -870,6 +870,12 @@ echo "=========================================="
                 cwd=repo,
                 capture_output=True,
             )
+        # Prune stale worktree references (e.g., from rm -rf cleanup)
+        subprocess.run(
+            ["git", "worktree", "prune"],
+            cwd=repo,
+            capture_output=True,
+        )
         subprocess.run(
             ["git", "branch", "-D", branch],
             cwd=repo,
