@@ -145,17 +145,30 @@ pip install -e .
 
 ### Step 2: Configure Your LLM Provider
 
+Marcus uses an LLM to decompose projects into tasks and validate work.
+
 ```bash
-# Copy environment template and add your API key
 cp .env.example .env
-# Edit .env with your ANTHROPIC_API_KEY or OPENAI_API_KEY
+```
+
+Edit `.env` and set your API key:
+
+```bash
+# For Anthropic (recommended):
+ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+
+# For OpenAI (alternative — uncomment and fill in):
+# OPENAI_API_KEY=sk-your-key-here
 ```
 
 | Provider | Cost | Setup |
 |----------|------|-------|
 | Anthropic | Paid | Set `ANTHROPIC_API_KEY` in `.env` |
 | OpenAI | Paid | Set `OPENAI_API_KEY` in `.env`, change provider in config |
-| Ollama | Free | Install [Ollama](https://ollama.ai), pull a model, set provider to `"local"` |
+| Ollama | Free | Install [Ollama](https://ollama.ai), pull a model, set provider to `"local"` in config |
+
+> **Note:** This is the LLM that Marcus itself uses for task decomposition.
+> Your AI coding agents (Claude Code, Codex, etc.) use their own API keys separately.
 
 ### Step 3: Start Marcus
 
@@ -168,13 +181,20 @@ cp .env.example .env
 
 ### Step 4: Connect Your Agent
 
+Marcus exposes an MCP server at `http://localhost:4298/mcp`. Connect your
+AI coding agent to it:
+
 ```bash
-# For Claude Code:
+# Claude Code:
 claude mcp add --transport http marcus http://localhost:4298/mcp
+
+# Other MCP-compatible agents (Codex, Gemini CLI, Kimi, etc.):
+# Add http://localhost:4298/mcp as an MCP server in your agent's config
 ```
 
 Copy the [Agent System Prompt](prompts/Agent_prompt.md) to your agent's
-configuration (e.g., as a CLAUDE.md file for Claude Code).
+configuration (e.g., as a CLAUDE.md file for Claude Code, or the equivalent
+system prompt for your agent).
 
 ### Step 5: Start Cato Dashboard (Optional)
 
@@ -187,11 +207,15 @@ cd cato && pip install -e . && ./cato start
 
 ### Step 6: Your First Project
 
-There are two ways to use Marcus — pick the one that fits your workflow:
+There are three ways to use Marcus — pick the one that fits your agent:
+**NOTE** Always build projects within folders outside of marcus root directory
 
-#### Option A: `/marcus` Skill (Recommended for multi-agent tmux experiments)
+#### Option A: `/marcus` Skill (Claude Code only)
 
-Marcus ships with a reusable Claude Code skill in [`skills/marcus/`](skills/marcus/).
+> **This option requires [Claude Code](https://claude.ai/code).** For other
+> agents (Codex, Gemini CLI, Kimi, etc.), use Option B or C below.
+
+Marcus ships with a Claude Code skill in [`skills/marcus/`](skills/marcus/).
 
 Install the skill into `~/.claude/skills/marcus`:
 
@@ -211,53 +235,45 @@ Then prompt:
 The skill generates the experiment config, spawns independent Claude agents in
 tmux panes, and wires up a project creator + workers + monitor — all autonomous.
 
-#### Option B: MCP Direct (Fine control)
+#### Option B: MCP Direct (Any MCP-compatible agent)
 
-1. Open Claude with `--dangerously-skip-permissions`
-2. Tell Claude to create a project with Marcus at your chosen complexity
-3. Tell Claude to register an agent with specific skills, name, and role — then follow the Marcus agent workflow
-4. Open another Claude terminal and register another agent
+This works with **any** agent that supports MCP — Claude Code, Codex, Gemini CLI,
+Kimi, or any other MCP client. Each agent connects to Marcus at
+`http://localhost:4298/mcp` and uses MCP tools directly.
+
+1. Open your agent with the Marcus MCP server connected
+2. Tell it to create a project with Marcus at your chosen complexity
+3. Tell it to register as an agent and follow the Marcus agent workflow
+4. Open another terminal with a second agent, register it too
 5. Repeat for as many agents as you want
 
 ```
 "Create a project for a todo app with Marcus and start working"
 ```
 
-#### Comparing the Two
+#### Option C: Posidonius (Experiment Dashboard)
 
-```
-┌─────────────────────────────┬────────────────────────────────────┐
-│     /marcus skill           │         MCP Direct                 │
-│     (automated)             │         (fine control)             │
-├─────────────────────────────┼────────────────────────────────────┤
-│                             │                                    │
-│  1. Generates config        │  1. Open Claude with               │
-│  2. Writes your spec        │     --dangerously-skip-permissions │
-│  3. Spawns agents in tmux   │  2. Tell Claude to create a       │
-│  4. Agents build your       │     project with Marcus at your   │
-│     project autonomously    │     chosen complexity              │
-│                             │  3. Tell Claude to register an    │
-│  That's it. Walk away.      │     agent with specific skills,   │
-│                             │     name, and role — then follow  │
-│                             │     the Marcus agent workflow     │
-│                             │  4. Open another Claude terminal  │
-│                             │     and register another agent    │
-│                             │  5. Repeat for as many agents     │
-│                             │     as you want                   │
-│                             │                                    │
-├─────────────────────────────┼────────────────────────────────────┤
-│ One command, fully          │ You control each agent, choosing  │
-│ autonomous agents           │ skills, roles, and when to add    │
-│ in tmux panes               │ more from any terminal            │
-├─────────────────────────────┼────────────────────────────────────┤
-│ Hands-off                   │ Full control over every step      │
-│ MLflow automatic            │ Add agents anytime                │
-│ Multi-agent parallel        │ Customize each agent individually │
-└─────────────────────────────┴────────────────────────────────────┘
+[Posidonius](https://github.com/lwgray/posidonius) is the experiment dashboard
+for launching and managing multi-agent runs across any CLI agent. It handles
+agent spawning, experiment tracking, and provides a web UI for monitoring.
+
+```bash
+git clone https://github.com/lwgray/posidonius.git
+cd posidonius && pip install -e .
 ```
 
-The agent calls Marcus MCP tools directly from your conversation — simpler,
-but limited to one agent and no tmux visibility.
+See the [Posidonius README](https://github.com/lwgray/posidonius) for setup.
+**NOTE** By default Posidonius writes projects to ~/experiments directory
+
+#### Comparing the Three
+
+| | `/marcus` Skill | MCP Direct | Posidonius |
+|---|---|---|---|
+| **Agent** | Claude Code only | Any MCP agent | Any CLI agent |
+| **Setup** | One command | Manual per-agent | Web dashboard |
+| **Multi-agent** | Auto tmux panes | Manual terminals | Auto-managed |
+| **Tracking** | MLflow automatic | Manual | Built-in |
+| **Control** | Hands-off | Full control | Configurable |
 
 *Either way: walk away, come back to working software.*
 

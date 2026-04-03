@@ -142,12 +142,13 @@ WORKER_SYSTEM_PROMPT: |
   - Example: get_task_context returns artifact → Read("docs/api/users.yaml")
 
   GIT_WORKFLOW:
-  - You work exclusively on your dedicated branch: {BRANCH_NAME}
+  - You work in an isolated git worktree on your dedicated branch
+  - Before starting EACH task: run `git merge main --no-edit` to get latest completed work
   - Commit messages MUST describe implementations: "feat(task-123): implement POST /api/users returning {id, email, token}"
   - Include technical details: "feat(task-123): add User model with email validation"
   - Document API contracts in code comments and docstrings
-  - Push commits regularly so Marcus can analyze your work
-  - NEVER merge or switch branches - stay on your assigned branch
+  - Do NOT push (no remote configured) — Marcus merges your branch automatically
+  - Do NOT switch branches — stay on your assigned branch
   - Include task ID in all commit messages for traceability
 
   COMMIT_TRIGGERS:

@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.3.0] - 2026-04-03
+
+**The Multi-Agency Foundation release.** First release where two independent agents
+produce a working, multi-authored product and deliver it to main. Epictetus audit
+of dashboard-v48: Multi-Agency Effective: Yes, Delivery: Delivered, Coordination: B.
+
+### Multi-Agency Infrastructure (NEW)
+- **Design autocomplete** — Marcus owns all design tasks. Generates architecture docs, API contracts, data models, and architectural decisions via LLM during `create_project`. Design tasks are born DONE — no agent ever carries design authorship context into implementation. Artifacts and decisions registered via MCP tools (`log_artifact`, `log_decision`) for full observability. (GH-297)
+- **Git worktree isolation** — each worker agent gets an isolated git worktree on branch `marcus/{agent_id}`. Agents work in parallel without file conflicts. Merge-on-completion after validation passes. If merge conflicts, agent is sent back to resolve — code is never lost. (GH-250)
+- **Project scaffolding** — Marcus generates shared project infrastructure (package manifest, build config, entry point, placeholder files) from the architecture document. Committed to main before worktrees branch. Prevents agents from duplicating scaffolding work. Post-processing filter rejects over-generated files. (GH-300)
+- **Per-task visibility** — agents run `git merge main` before each task to see all previously completed work. DAG fan-in dependencies work correctly. (GH-302)
+- **Commit attribution** — `GIT_AUTHOR_NAME` and `GIT_COMMITTER_NAME` env vars per agent tmux pane. Enables `git blame` attribution and Epictetus contribution analysis. (GH-308)
+- **Design principle**: "No implementation agent should ever be able to reconstruct the full system from what Marcus gave it."
+- **Five research findings** on why multi-agent parallelism fails documented in GH-301: decomposition mismatch, context contamination, knowledge leakage, precision-autonomy tradeoff, scaffolding duplication.
+
 ### Added
 - **SQLite Kanban provider** — local-first, zero-config; no Docker needed for basic use (GH-258)
 - **Epictetus evaluation skill** — standardized rubric grading for experiments (GH-258)
@@ -32,14 +46,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README redesigned with News, Architecture, and Comparison sections (GH-202, GH-216)
 
 ### Fixed
+- **Dual project ID mismatch** — kanban and registry generated separate UUIDs, making decisions/artifacts invisible in Cato. Now uses kanban project ID as single source of truth. (GH-306)
+- **Validator worktree awareness** — WorkAnalyzer now validates in the agent's worktree, not the main repo. Prevents false validation failures. (GH-305)
+- **Phase B routing** — design artifact/decision registration moved to actual MCP tool entry point (`nlp.py`), not dead code path. (GH-303)
+- **Stale .git cleanup** — `run_experiment.py` removes leftover `.git` at experiment root to prevent worktrees branching from wrong repo.
+- **Agent prompt updates** — removed "push commits" (no remote), removed "NEVER merge" (agents need `git merge main`), added worktree workflow instructions.
 - Display estimated time in minutes instead of hours on board
 - Agent startup reliability in detached tmux sessions (GH-289)
 - `experiment_complete.json` now written in `end_experiment` (GH-265)
 - Task instruction generation constrained to be brief (GH-259)
 
+### Documentation
+- System docs: `15-git-worktree-isolation.md`, `16-project-scaffolding.md`, `52-design-autocomplete.md`
+- Research findings: GH-301 — five empirical findings on multi-agent parallelism failure
+- Vision document: `~/Desktop/new_vision_plan_design_implement_flow.md`
+
 ### Notes
 - `/marcus`, `/kaia`, and `/epictetus` skills require Claude Code CLI — they are not part of the Python API
 - Epictetus is the foundation for a larger backpropagation-style self-learning system (see GH-255, GH-257)
+- **Known limitations**: lopsided contributions (73/27 split), scaffold may over-generate types/utils (filter mitigates), CSS conflicts between agents (no shared convention yet). See v0.3.1 milestone for planned fixes.
 
 ## [0.2.1] - 2026-03-21
 ### Added

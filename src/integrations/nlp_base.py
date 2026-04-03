@@ -175,6 +175,7 @@ class NaturalLanguageTaskCreator(ABC):
                                 "labels": task.labels,
                                 "dependencies": task.dependencies,
                                 "project_id": self.active_project_id,
+                                "source_type": getattr(task, "source_type", None),
                                 "created_at": datetime.now(timezone.utc).isoformat(),
                             },
                         )

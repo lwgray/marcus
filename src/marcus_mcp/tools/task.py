@@ -1345,6 +1345,137 @@ def _format_blocker_description(validation_result: Any) -> str:
     return "\n".join(lines)
 
 
+async def _merge_agent_branch_to_main(
+    agent_id: str,
+    task_id: str,
+    state: Any,
+) -> Optional[Dict[str, Any]]:
+    """
+    Merge agent's worktree branch to main after task completion.
+
+    Convention: if branch marcus/{agent_id} exists, the agent used
+    a worktree. Merge it to main so dependent tasks can see the code.
+
+    If merge conflicts, abort and return failure — the agent must
+    resolve conflicts and report completion again.
+
+    Returns None if no merge needed, success dict if merged,
+    or failure dict if conflicts.
+
+    See: https://github.com/lwgray/marcus/issues/250
+    """
+    import subprocess as _sp
+    from pathlib import Path
+
+    # Find the main repo (implementation/ directory)
+    # Use workspace state file to get project_root, then use
+    # git rev-parse to find the actual repo root regardless
+    # of whether we're in a worktree or the main repo.
+    project_root = None
+    if hasattr(state, "kanban_client") and state.kanban_client:
+        ws_state = state.kanban_client._load_workspace_state()
+        if ws_state and "project_root" in ws_state:
+            project_root = ws_state["project_root"]
+
+    if not project_root:
+        return None
+
+    # project_root points to implementation/ (main repo).
+    # Use it directly — git commands run here.
+    repo = Path(project_root)
+    if not repo.exists():
+        return None
+
+    # Verify it's a git repo (or inside one)
+    try:
+        check = _sp.run(
+            ["git", "rev-parse", "--git-dir"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+        )
+        if check.returncode != 0:
+            return None
+    except Exception:
+        return None
+
+    branch = f"marcus/{agent_id}"
+
+    # Check if this agent's branch exists
+    try:
+        result = _sp.run(
+            ["git", "branch", "--list", branch],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+        )
+        if not result.stdout.strip():
+            # No worktree branch — agent worked on main directly
+            return None
+    except Exception:
+        return None
+
+    logger.info(
+        f"[worktree] Merging {branch} to main " f"after task {task_id} completion"
+    )
+
+    try:
+        # Checkout main
+        _sp.run(
+            ["git", "checkout", "main"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+        )
+
+        # Attempt merge
+        merge = _sp.run(
+            [
+                "git",
+                "merge",
+                branch,
+                "--no-ff",
+                "-m",
+                f"Merge {branch} (task {task_id} by {agent_id})",
+            ],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+        )
+
+        if merge.returncode == 0:
+            logger.info(f"[worktree] Successfully merged {branch} to main")
+            return {"success": True}
+        else:
+            # Merge conflict — abort and send agent back
+            _sp.run(
+                ["git", "merge", "--abort"],
+                cwd=repo,
+                capture_output=True,
+            )
+            logger.warning(
+                f"[worktree] Merge conflict for {branch}: " f"{merge.stderr}"
+            )
+            return {
+                "success": False,
+                "error": "merge_conflict",
+                "message": (
+                    f"Your task passed validation but merging "
+                    f"your branch ({branch}) to main has "
+                    f"conflicts. Please resolve them:\n"
+                    f"  git merge main\n"
+                    f"  (resolve conflicts in your editor)\n"
+                    f"  git add . && git commit\n"
+                    f"Then report completion again."
+                ),
+            }
+
+    except Exception as e:
+        logger.warning(f"[worktree] Merge failed: {e}")
+        # Don't block completion if git is unavailable
+        return None
+
+
 async def report_task_progress(
     agent_id: str, task_id: str, status: str, progress: int, message: str, state: Any
 ) -> Dict[str, Any]:
@@ -1541,6 +1672,15 @@ async def report_task_progress(
                     actual_hours=actual_hours,
                     blockers=[],
                 )
+
+            # Merge agent's worktree branch to main (GH-250)
+            # Convention: if branch marcus/{agent_id} exists,
+            # the agent used a worktree and needs merging.
+            # If merge conflicts, send agent back to resolve
+            # (same pattern as validation failure).
+            merge_result = await _merge_agent_branch_to_main(agent_id, task_id, state)
+            if merge_result and not merge_result.get("success"):
+                return merge_result
 
             # Clear agent's current task
             if agent_id in state.agent_status:

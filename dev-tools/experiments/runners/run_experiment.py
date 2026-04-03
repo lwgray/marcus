@@ -82,6 +82,17 @@ They will accept and complete tasks regardless of their listed skill preferences
     (experiment_dir / "logs").mkdir(exist_ok=True)
     implementation_dir = experiment_dir / "implementation"
     implementation_dir.mkdir(exist_ok=True)
+    (experiment_dir / "worktrees").mkdir(exist_ok=True)
+
+    # Remove stale .git at experiment root if it exists (GH-250)
+    # Only implementation/ should have .git. A stale root .git
+    # causes worktrees to branch from the wrong repo.
+    stale_git = experiment_dir / ".git"
+    if stale_git.exists() and stale_git.is_dir():
+        import shutil
+
+        shutil.rmtree(stale_git)
+        print("✓ Removed stale .git at experiment root")
 
     # Initialize git repository in implementation directory
     git_dir = implementation_dir / ".git"  # pragma: allowlist secret

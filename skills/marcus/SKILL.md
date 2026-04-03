@@ -12,7 +12,7 @@ description: >
   The /marcus skill launches experiments that USE the Marcus MCP server — they are
   complementary, not competing. The MCP server must be running before invoking this skill.
 user-invocable: true
-argument-hint: "<project description> [--agents N] [--complexity prototype|standard|enterprise]"
+argument-hint: "<project description> [--name \"Project Name\"] [--agents N] [--complexity prototype|standard|enterprise]"
 ---
 
 # Marcus Multi-Agent Experiment Launcher
@@ -50,14 +50,15 @@ Marcus is not installed. Follow the setup instructions:
 
 The user's input comes in as `$ARGUMENTS`. Extract:
 - **Project description**: Everything that describes what to build
+- **Project name**: Look for `--name "Some Name"` or `--name some_name`. If not provided, derive a short name from the description.
 - **Agent count**: Look for patterns like "N agents", "--agents N", "with N workers". Default: 2
 - **Complexity**: Look for "--complexity prototype|standard|enterprise". Default: "prototype"
 
 Examples:
-- `/marcus Build a snake game with 3 agents` -> description="Build a snake game", agents=3, complexity="prototype"
-- `/marcus Build a REST API for task management` -> description="Build a REST API for task management", agents=2, complexity="prototype"
-- `/marcus Build a chat app with Marcus. Use 4 agents.` -> description="Build a chat app", agents=4, complexity="prototype"
-- `/marcus Use 2 agents to build a pomodoro timer --complexity standard` -> description="build a pomodoro timer", agents=2, complexity="standard"
+- `/marcus Build a snake game with 3 agents` -> description="Build a snake game", name="snake_game", agents=3, complexity="prototype"
+- `/marcus Build a REST API for task management` -> description="Build a REST API for task management", name="task_management_api", agents=2, complexity="prototype"
+- `/marcus Build a chat app --name "ChatBuddy" with 4 agents` -> description="Build a chat app", name="ChatBuddy", agents=4, complexity="prototype"
+- `/marcus Use 2 agents to build a pomodoro timer --complexity standard --name "FocusTimer"` -> description="build a pomodoro timer", name="FocusTimer", agents=2, complexity="standard"
 
 ## Step-by-Step Execution
 
@@ -89,7 +90,7 @@ preserve values from any existing config.yaml in the directory. Overwrite it com
 Use this exact format — field names are case-sensitive:
 
 ```yaml
-project_name: "<Derived from description>"
+project_name: "<--name value if provided, otherwise derived from description>"
 project_spec_file: "project_spec.md"
 
 project_options:
@@ -119,7 +120,7 @@ agents:
   # Repeat for each agent...
 
 timeouts:
-  project_creation: 300
+  project_creation: 600
   agent_startup: 60
 ```
 
@@ -138,7 +139,11 @@ First, discover the Marcus repo root:
 MARCUS_ROOT=$(python3 -c "from pathlib import Path; import marcus_mcp; print(Path(marcus_mcp.__file__).parent.parent.parent)")
 ```
 
-Then run it directly (using the current working directory as the experiment directory):
+Then run it directly (using the current working directory as the experiment directory).
+**IMPORTANT:** Use a 600000ms (10 minute) timeout on the Bash command. Project creation
+includes AI design task generation which takes 4-6 minutes. The default 2-minute
+Bash timeout will kill the process prematurely.
+
 ```bash
 cd "${MARCUS_ROOT}/dev-tools/experiments" && python runners/run_experiment.py <cwd>
 ```
