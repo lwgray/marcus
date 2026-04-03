@@ -51,20 +51,34 @@ When a task passes validation and is marked DONE, Marcus merges the agent's bran
 
 ```
 experiment_dir/
-├── implementation/                          <- main branch (project creator, integration, monitor)
+├── config.yaml                              <- NOT in git
+├── project_info.json                        <- NOT in git
+├── prompts/                                 <- NOT in git
+├── logs/                                    <- NOT in git
+├── implementation/                          <- .git HERE, main branch
 │   ├── .git/
 │   ├── CLAUDE.md
-│   ├── docs/architecture/...               <- design artifacts from create_project
-│   └── (merged code accumulates here)
-├── implementation-agent_unicorn_1/          <- worktree, branch marcus/agent_unicorn_1
-│   ├── .git -> ../implementation/.git
-│   └── (agent 1's isolated work)
-└── implementation-agent_unicorn_2/          <- worktree, branch marcus/agent_unicorn_2
-    ├── .git -> ../implementation/.git
-    └── (agent 2's isolated work)
+│   ├── docs/architecture/...               <- design artifacts
+│   ├── package.json                        <- scaffold
+│   └── src/                                <- scaffold + merged code
+└── worktrees/                               <- dedicated worktree directory
+    ├── agent_unicorn_1/                     <- worktree, branch marcus/agent_unicorn_1
+    │   ├── .git -> ../../implementation/.git
+    │   └── (agent 1's isolated work)
+    └── agent_unicorn_2/                     <- worktree, branch marcus/agent_unicorn_2
+        ├── .git -> ../../implementation/.git
+        └── (agent 2's isolated work)
 ```
 
-Each `implementation-{agent_id}/` directory is a full working copy. The `.git` symlink back to the main repository means all branches share the same object store — merges are local operations with no network overhead.
+The `worktrees/` directory is outside `implementation/` to avoid nested
+tracking issues, and separate from experiment infrastructure so agents
+only see code files. Each worktree's `.git` is a symlink to the shared
+object store — merges are local operations with no network overhead.
+
+**Stale .git protection:** `run_experiment.py` removes any `.git` at the
+experiment root on startup. Only `implementation/.git` should exist. A
+stale root `.git` (from `rm -rf *` not removing hidden files) would cause
+worktrees to branch from the wrong repo.
 
 ## Branch Structure
 
