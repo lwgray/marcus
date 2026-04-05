@@ -452,6 +452,61 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                         f"Failed to persist About task metadata: " f"{about_log_err}"
                     )
 
+                # Persist design task metadata and outcomes to marcus.db
+                # so Cato can show them in Swim Lane (same pattern as About task)
+                try:
+                    for task_with_id in tasks_with_real_ids:
+                        if not _is_design_task(task_with_id):
+                            continue
+                        if task_with_id.status != TaskStatus.DONE:
+                            continue
+                        design_id = str(task_with_id.id)
+                        now_iso = datetime.now(timezone.utc).isoformat()
+                        await persistence.store(
+                            "task_metadata",
+                            design_id,
+                            {
+                                "task_id": design_id,
+                                "name": task_with_id.name,
+                                "description": task_with_id.description,
+                                "priority": getattr(task_with_id, "priority", "medium"),
+                                "estimated_hours": getattr(
+                                    task_with_id, "estimated_hours", 0.0
+                                ),
+                                "labels": getattr(task_with_id, "labels", []),
+                                "dependencies": getattr(
+                                    task_with_id, "dependencies", []
+                                ),
+                                "project_id": self.active_project_id,
+                                "created_at": now_iso,
+                            },
+                        )
+                        await persistence.store(
+                            "task_outcomes",
+                            f"{design_id}_Marcus_{now_iso}",
+                            {
+                                "task_id": design_id,
+                                "agent_id": "Marcus",
+                                "task_name": task_with_id.name,
+                                "estimated_hours": getattr(
+                                    task_with_id, "estimated_hours", 0.0
+                                ),
+                                "actual_hours": 0.0,
+                                "success": True,
+                                "blockers": [],
+                                "started_at": now_iso,
+                                "completed_at": now_iso,
+                            },
+                        )
+                        logger.info(
+                            f"Persisted design task outcome: "
+                            f"{task_with_id.name} (id={design_id})"
+                        )
+                except Exception as design_log_err:
+                    logger.warning(
+                        f"Failed to persist design task metadata: " f"{design_log_err}"
+                    )
+
                 # Include About task in created list
                 if about_kanban_task and hasattr(about_kanban_task, "id"):
                     created_tasks.append(about_kanban_task)
@@ -1129,10 +1184,28 @@ Do NOT specify file names, function signatures, prop interfaces, class \
 names, or internal implementation details. The implementing developer \
 decides those. Your job is to define the WHAT and WHY, not the HOW.
 
+However, you MUST be concrete and specific about any identifier, name, \
+or value that will be shared across module boundaries — field names in \
+data models, storage keys, event names, environment variable names, \
+port numbers, API response shapes, and status/enum values. When \
+multiple modules must agree on a name or value to interoperate, that \
+name or value is an interface contract, not an implementation detail. \
+State it explicitly.
+
 Good: "The time display updates every second using the browser's \
 Date API and supports timezone conversion."
 Bad: "TimeWidget (src/components/TimeWidget.tsx) takes props \
 timeFormat: '24h' | '12h' and uses setInterval(1000)."
+
+Good: "The todo entity fields are: id (string), title (string), \
+description (string|null), completed (boolean), created_at \
+(ISO 8601 timestamp). All modules that produce or consume todo \
+data must use these exact field names."
+Good: "Auth tokens are stored under the key `auth_token`. Both \
+the auth module and any module making authenticated requests must \
+use this key."
+Good: "The API server listens on port 3001 (configurable via \
+PORT environment variable)."
 
 Respond with ONLY the document content in markdown format. \
 No JSON wrapping, no code fences around the whole response. \
@@ -1185,7 +1258,79 @@ _DESIGN_ARTIFACT_SPECS = [
             "Database schemas and entity relationships for {domain}"
         ),
     },
+    {
+        "artifact_type": "specification",
+        "label": "interface contracts",
+        "filename_template": "{domain_slug}-interface-contracts.md",
+        "description_template": (
+            "Shared identifiers and values that must be consistent "
+            "across all modules in {domain}"
+        ),
+    },
 ]
+
+_INTERFACE_CONTRACTS_PROMPT = """\
+You are a senior software architect working on: {project_name}
+
+## Project Description
+{project_description}
+
+## Your Design Task
+{task_description}
+
+## Your Current Assignment
+Generate the interface contracts document for this design.
+
+Interface contracts define the EXACT identifiers, names, values, and \
+shapes that multiple modules must agree on to interoperate. These are \
+NOT implementation details — they are coordination constraints. Each \
+implementing agent independently decides HOW to build their module, \
+but they MUST use these exact names and shapes at module boundaries.
+
+List every shared boundary explicitly. For each one, specify:
+- The exact identifier/key/name that must be used
+- The data type or shape
+- Which modules produce it and which consume it
+
+Categories to cover:
+
+### Data Entity Fields
+For every shared data entity (user, todo, session, etc.), list the \
+exact field names and types that all modules must use when producing \
+or consuming that entity. Example:
+- `todo.id` (string) — unique identifier
+- `todo.title` (string) — display title
+- `todo.completed` (boolean) — completion status
+
+### Storage Keys
+For any value stored in a shared medium (localStorage, cookies, \
+environment variables, database, cache, message queue), specify \
+the exact key. Example:
+- Auth token stored under key: `auth_token`
+- User session stored under key: `session_id`
+
+### Configuration Values
+For any value referenced by multiple modules (ports, hostnames, \
+base URLs, timeouts), specify the canonical value and how to \
+override it. Example:
+- API server port: `3001` (override via `PORT` env var)
+- API base URL: `/api`
+
+### API Response Shapes
+For every endpoint that returns data consumed by another module, \
+specify the exact response structure. Example:
+- `GET /api/todos` returns: `{{ "status": "success", "data": {{ \
+"todos": [...], "total": number, "limit": number, "offset": number }} }}`
+
+### Status/Enum Values
+For any status field, category, or enum used across modules, \
+specify the exact valid values. Example:
+- Todo status filter values: `all`, `active`, `completed`
+
+Respond with ONLY the document content in markdown format. \
+No JSON wrapping, no code fences around the whole response. \
+Just the markdown document starting with a # heading.
+"""
 
 
 def _is_design_task(task: Any) -> bool:
@@ -1273,12 +1418,19 @@ async def _generate_design_content(
                     domain=task.name.replace("Design ", "")
                 )
 
-                prompt = _ARTIFACT_PROMPT.format(
-                    project_name=project_name,
-                    project_description=project_description,
-                    task_description=task.description,
-                    artifact_label=spec["label"],
-                )
+                if spec["label"] == "interface contracts":
+                    prompt = _INTERFACE_CONTRACTS_PROMPT.format(
+                        project_name=project_name,
+                        project_description=project_description,
+                        task_description=task.description,
+                    )
+                else:
+                    prompt = _ARTIFACT_PROMPT.format(
+                        project_name=project_name,
+                        project_description=project_description,
+                        task_description=task.description,
+                        artifact_label=spec["label"],
+                    )
 
                 response = await llm.analyze(prompt=prompt, context=_Ctx())
 
