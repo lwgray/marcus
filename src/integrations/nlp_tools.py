@@ -458,6 +458,8 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                     for task_with_id in tasks_with_real_ids:
                         if not _is_design_task(task_with_id):
                             continue
+                        if task_with_id.status != TaskStatus.DONE:
+                            continue
                         design_id = str(task_with_id.id)
                         now_iso = datetime.now(timezone.utc).isoformat()
                         await persistence.store(
