@@ -452,6 +452,59 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                         f"Failed to persist About task metadata: " f"{about_log_err}"
                     )
 
+                # Persist design task metadata and outcomes to marcus.db
+                # so Cato can show them in Swim Lane (same pattern as About task)
+                try:
+                    for task_with_id in tasks_with_real_ids:
+                        if not _is_design_task(task_with_id):
+                            continue
+                        design_id = str(task_with_id.id)
+                        now_iso = datetime.now(timezone.utc).isoformat()
+                        await persistence.store(
+                            "task_metadata",
+                            design_id,
+                            {
+                                "task_id": design_id,
+                                "name": task_with_id.name,
+                                "description": task_with_id.description,
+                                "priority": getattr(task_with_id, "priority", "medium"),
+                                "estimated_hours": getattr(
+                                    task_with_id, "estimated_hours", 0.0
+                                ),
+                                "labels": getattr(task_with_id, "labels", []),
+                                "dependencies": getattr(
+                                    task_with_id, "dependencies", []
+                                ),
+                                "project_id": self.active_project_id,
+                                "created_at": now_iso,
+                            },
+                        )
+                        await persistence.store(
+                            "task_outcomes",
+                            f"{design_id}_Marcus_{now_iso}",
+                            {
+                                "task_id": design_id,
+                                "agent_id": "Marcus",
+                                "task_name": task_with_id.name,
+                                "estimated_hours": getattr(
+                                    task_with_id, "estimated_hours", 0.0
+                                ),
+                                "actual_hours": 0.0,
+                                "success": True,
+                                "blockers": [],
+                                "started_at": now_iso,
+                                "completed_at": now_iso,
+                            },
+                        )
+                        logger.info(
+                            f"Persisted design task outcome: "
+                            f"{task_with_id.name} (id={design_id})"
+                        )
+                except Exception as design_log_err:
+                    logger.warning(
+                        f"Failed to persist design task metadata: " f"{design_log_err}"
+                    )
+
                 # Include About task in created list
                 if about_kanban_task and hasattr(about_kanban_task, "id"):
                     created_tasks.append(about_kanban_task)
@@ -1208,8 +1261,8 @@ _DESIGN_ARTIFACT_SPECS = [
         "label": "interface contracts",
         "filename_template": "{domain_slug}-interface-contracts.md",
         "description_template": (
-            "Shared identifiers and values that must be "
-            "consistent across all modules in {domain}"
+            "Shared identifiers and values that must be consistent "
+            "across all modules in {domain}"
         ),
     },
 ]
@@ -1226,12 +1279,11 @@ You are a senior software architect working on: {project_name}
 ## Your Current Assignment
 Generate the interface contracts document for this design.
 
-Interface contracts define the EXACT identifiers, names, values, \
-and shapes that multiple modules must agree on to interoperate. \
-These are NOT implementation details — they are coordination \
-constraints. Each implementing agent independently decides HOW to \
-build their module, but they MUST use these exact names and shapes \
-at module boundaries.
+Interface contracts define the EXACT identifiers, names, values, and \
+shapes that multiple modules must agree on to interoperate. These are \
+NOT implementation details — they are coordination constraints. Each \
+implementing agent independently decides HOW to build their module, \
+but they MUST use these exact names and shapes at module boundaries.
 
 List every shared boundary explicitly. For each one, specify:
 - The exact identifier/key/name that must be used
@@ -1241,9 +1293,9 @@ List every shared boundary explicitly. For each one, specify:
 Categories to cover:
 
 ### Data Entity Fields
-For every shared data entity (user, todo, session, etc.), list \
-the exact field names and types that all modules must use when \
-producing or consuming that entity. Example:
+For every shared data entity (user, todo, session, etc.), list the \
+exact field names and types that all modules must use when producing \
+or consuming that entity. Example:
 - `todo.id` (string) — unique identifier
 - `todo.title` (string) — display title
 - `todo.completed` (boolean) — completion status
@@ -1265,9 +1317,8 @@ override it. Example:
 ### API Response Shapes
 For every endpoint that returns data consumed by another module, \
 specify the exact response structure. Example:
-- `GET /api/todos` returns: \
-`{{"status": "success", "data": {{"todos": [...], "total": \
-number, "limit": number, "offset": number}}}}`
+- `GET /api/todos` returns: `{{ "status": "success", "data": {{ \
+"todos": [...], "total": number, "limit": number, "offset": number }} }}`
 
 ### Status/Enum Values
 For any status field, category, or enum used across modules, \
