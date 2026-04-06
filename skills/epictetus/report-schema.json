@@ -25,6 +25,7 @@
       "required": ["project_name", "audit_date", "project_type", "skill_lens", "total_files", "total_loc", "total_commits"],
       "properties": {
         "project_name": { "type": "string" },
+        "project_id": { "type": "string", "description": "Marcus project ID from project_info.json. Injected by Phase 8.5 persistence." },
         "project_path": { "type": "string" },
         "audit_date": { "type": "string", "format": "date" },
         "project_type": {
