@@ -104,6 +104,10 @@ async def _store_config_snapshot(
         logger.warning(f"Failed to store config snapshot: {e}")
 
 
+# Track recent create_project calls for dedup detection
+_recent_create_project_calls: Dict[str, float] = {}
+
+
 async def create_project(
     description: str, project_name: str, options: Optional[Dict[str, Any]], state: Any
 ) -> Dict[str, Any]:
@@ -201,6 +205,35 @@ async def create_project(
         ...     }
         ... )
     """
+    import time
+    import traceback
+
+    call_stack = "".join(traceback.format_stack())
+    logger.warning(
+        f"[CREATE_PROJECT INVOKED] project_name={project_name!r} "
+        f"caller_stack:\n{call_stack}"
+    )
+
+    # Dedup guard: reject duplicate calls for the same project within 10 minutes
+    dedup_key = f"{project_name}:{description[:50]}"
+    now = time.time()
+    if dedup_key in _recent_create_project_calls:
+        elapsed = now - _recent_create_project_calls[dedup_key]
+        if elapsed < 600:  # 10 minute window
+            logger.warning(
+                f"[CREATE_PROJECT DEDUP] Rejecting duplicate call for "
+                f"{project_name!r} — last call was {elapsed:.0f}s ago"
+            )
+            return {
+                "success": False,
+                "error": (
+                    f"Duplicate create_project call for '{project_name}' "
+                    f"detected ({elapsed:.0f}s since last call). "
+                    f"Use select_project to work with the existing project."
+                ),
+            }
+    _recent_create_project_calls[dedup_key] = now
+
     # Validate required parameters
     if (
         not description

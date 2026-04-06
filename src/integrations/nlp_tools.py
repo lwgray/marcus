@@ -318,41 +318,14 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 if added_tasks > 0:
                     logger.info(f"Safety checks added {added_tasks} dependency tasks")
 
-            # Phase A (GH-297): Generate design artifacts + decisions
-            # and set design tasks to DONE BEFORE they hit the board.
-            # This prevents the race condition where agents grab
-            # design tasks before Marcus can complete them.
-            design_content: Dict[str, Any] = {}
+            # Design tasks go on the board as TODO. Phase A (design
+            # artifact generation) runs in the background AFTER the
+            # response is returned. Workers can't grab implementation
+            # tasks because _are_dependencies_satisfied() checks that
+            # design (hard) dependencies are DONE. Once the background
+            # task completes, it marks design tasks DONE on the board
+            # and workers' next request_next_task call will succeed.
             project_root = options.get("project_root") if options else None
-            if project_root:
-                try:
-                    design_content = await _generate_design_content(
-                        tasks=safe_tasks,
-                        project_description=description,
-                        project_name=project_name,
-                        project_root=project_root,
-                    )
-                except Exception as e:
-                    logger.warning(
-                        f"[design_autocomplete] Phase A failed " f"(non-fatal): {e}"
-                    )
-
-                # Phase A.5: Generate project scaffold from architecture doc
-                # Shared infrastructure committed to main so worktrees inherit it.
-                # See: GH-300
-                if design_content:
-                    try:
-                        await _generate_project_scaffold(
-                            tasks=safe_tasks,
-                            project_description=description,
-                            project_name=project_name,
-                            project_root=project_root,
-                            design_content=design_content,
-                        )
-                    except Exception as e:
-                        logger.warning(
-                            f"[scaffold] Generation failed " f"(non-fatal): {e}"
-                        )
 
             # Create tasks on board using base class (this also triggers decomposition)
             with error_context(
@@ -556,9 +529,78 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
 
             logger.info(f"Successfully created project with {len(created_tasks)} tasks")
 
-            # Pass design content for Phase B (MCP registration)
-            if design_content:
-                result["design_content"] = design_content
+            # Phase A (background): Generate design artifacts + scaffold
+            # Runs AFTER response is returned so Claude doesn't timeout.
+            # _generate_design_content marks design tasks DONE and writes
+            # artifacts to disk. Workers are blocked by hard dependencies
+            # until design tasks reach DONE status on the kanban board.
+            has_design_tasks = any(_is_design_task(t) for t in safe_tasks)
+            if project_root and has_design_tasks:
+                import asyncio as _aio
+
+                kanban = self.kanban_client
+
+                async def _run_design_phase() -> None:
+                    try:
+                        design_content = await _generate_design_content(
+                            tasks=safe_tasks,
+                            project_description=description,
+                            project_name=project_name,
+                            project_root=project_root,
+                        )
+                        logger.info(
+                            "[design_autocomplete] Background Phase A " "complete"
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"[design_autocomplete] Background Phase A "
+                            f"failed (non-fatal): {e}"
+                        )
+
+                    # Update design tasks to DONE on the kanban board
+                    # so workers' dependency checks pass
+                    for ct in created_tasks:
+                        orig_idx = created_tasks.index(ct)
+                        if orig_idx < len(safe_tasks):
+                            orig = safe_tasks[orig_idx]
+                            if _is_design_task(orig):
+                                try:
+                                    await kanban.update_task(
+                                        ct.id,
+                                        {"status": "done"},
+                                    )
+                                    logger.info(
+                                        f"[design_autocomplete] "
+                                        f"Marked '{orig.name}' DONE "
+                                        f"on board"
+                                    )
+                                except Exception as e:
+                                    logger.warning(
+                                        f"[design_autocomplete] "
+                                        f"Failed to update board "
+                                        f"for '{orig.name}': {e}"
+                                    )
+
+                    if design_content:
+                        try:
+                            await _generate_project_scaffold(
+                                tasks=safe_tasks,
+                                project_description=description,
+                                project_name=project_name,
+                                project_root=project_root,
+                                design_content=design_content,
+                            )
+                            logger.info("[scaffold] Background generation complete")
+                        except Exception as e:
+                            logger.warning(
+                                f"[scaffold] Background generation "
+                                f"failed (non-fatal): {e}"
+                            )
+
+                _aio.ensure_future(_run_design_phase())
+                logger.info(
+                    "[design_autocomplete] Phase A scheduled as " "background task"
+                )
 
             # Run cleanup synchronously with a short timeout
             # This ensures resources are cleaned up without hanging

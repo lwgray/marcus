@@ -1103,6 +1103,36 @@ echo "=========================================="
             self.config.project_info_file.unlink()
             print("  ✓ Removed old project_info.json")
 
+        # Initialize git repository if not already present
+        git_dir = self.config.implementation_dir / ".git"
+        if not git_dir.exists():
+            print("\n[Setup] Initializing git repository...")
+            try:
+                subprocess.run(
+                    ["git", "init"],
+                    cwd=self.config.implementation_dir,
+                    check=True,
+                    capture_output=True,
+                )
+                subprocess.run(
+                    ["git", "checkout", "-b", "main"],
+                    cwd=self.config.implementation_dir,
+                    check=True,
+                    capture_output=True,
+                )
+                # Create initial commit so worktrees and merges work
+                subprocess.run(
+                    ["git", "commit", "--allow-empty", "-m", "Initial commit"],
+                    cwd=self.config.implementation_dir,
+                    check=True,
+                    capture_output=True,
+                )
+                print("  ✓ Git repository initialized on main branch")
+            except subprocess.CalledProcessError as e:
+                print(f"  ⚠️  Git initialization failed: {e}")
+        else:
+            print("\n[Setup] Git repository already initialized")
+
         # Pre-trust the implementation directory so Claude doesn't
         # show the "Do you trust this folder?" prompt.
         self._pretrust_directory(self.config.implementation_dir)
