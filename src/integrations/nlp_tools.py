@@ -541,6 +541,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 kanban = self.kanban_client
 
                 async def _run_design_phase() -> None:
+                    design_content: Dict[str, Any] = {}
                     try:
                         design_content = await _generate_design_content(
                             tasks=safe_tasks,
@@ -557,13 +558,15 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                             f"failed (non-fatal): {e}"
                         )
 
-                    # Update design tasks to DONE on the kanban board
-                    # so workers' dependency checks pass
+                    # Only mark design tasks DONE if they produced
+                    # artifacts. Tasks that failed stay TODO so workers
+                    # remain blocked (correct behavior — no design
+                    # outputs means implementation can't proceed).
                     for ct in created_tasks:
                         orig_idx = created_tasks.index(ct)
                         if orig_idx < len(safe_tasks):
                             orig = safe_tasks[orig_idx]
-                            if _is_design_task(orig):
+                            if _is_design_task(orig) and orig.name in design_content:
                                 try:
                                     await kanban.update_task(
                                         ct.id,

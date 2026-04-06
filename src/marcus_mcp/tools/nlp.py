@@ -232,7 +232,8 @@ async def create_project(
                     f"Use select_project to work with the existing project."
                 ),
             }
-    _recent_create_project_calls[dedup_key] = now
+    # NOTE: dedup timestamp recorded after successful creation, not here.
+    # See end of function. (TODO: add TTL eviction to this cache)
 
     # Validate required parameters
     if (
@@ -773,6 +774,11 @@ async def create_project(
                 logger.warning(
                     f"[design_autocomplete] Phase B " f"failed (non-fatal): {e}"
                 )
+
+        # Record dedup timestamp AFTER successful creation so failed
+        # attempts don't poison the cache and block legitimate retries.
+        if result.get("success"):
+            _recent_create_project_calls[dedup_key] = time.time()
 
         return result
 
