@@ -110,6 +110,9 @@ class IntegrationTaskGenerator:
             "Key endpoints hit with curl, full response captured",
             "Missing components detected AND fixed",
             "App entry point renders/wires all specified components",
+            "Cross-agent interface contracts verified "
+            "(identifiers, data shapes, config values "
+            "match across boundaries)",
             "All results include raw command output as evidence",
             "integration_verification.json artifact logged",
             "integration_remediation.json artifact logged if fixes applied",
@@ -262,11 +265,60 @@ Fabricating output is worse than reporting a failure.
    - Are there duplicate/conflicting implementations that need
      consolidation?
 
+9. **Verify Cross-Agent Interface Contracts**:
+   This is the most critical step. When different agents build \
+different parts of a system, they make independent assumptions \
+about shared interfaces. Each part works in isolation, but breaks \
+when connected. You MUST trace data across every boundary where \
+one agent's output becomes another agent's input.
+
+   **How to find the boundaries**: Use `git log --format="%an %s"` \
+to see which agent authored which files. Any place where code \
+written by one agent calls, imports, reads from, or sends data to \
+code written by a different agent is a boundary. Focus on these.
+
+   **At each boundary, verify**:
+
+   a. **Identifiers match**: If one module stores, emits, or sends \
+data under a key/name/field, the consuming module must use the \
+exact same key/name/field to retrieve it. Search for string \
+literals, dictionary keys, storage keys, event names, column \
+names, and environment variable names that appear on both sides \
+of a boundary. If they differ, the integration is broken even \
+though both modules work alone.
+
+   b. **Data shapes match**: If one module produces a data \
+structure (object, response, message, file format), the consuming \
+module must expect that exact shape. Check return types against \
+the caller's expectations. Check serialized output against the \
+parser's assumptions. Check that array vs object, nested vs flat, \
+and optional vs required fields agree.
+
+   c. **Configuration is consistent**: Ports, hostnames, file \
+paths, base URLs, timeout values, and protocol choices that are \
+referenced by multiple modules must agree. Check config files, \
+environment defaults, and hardcoded values across module \
+boundaries.
+
+   d. **Duplicate implementations are consolidated**: If multiple \
+agents implemented the same concept (e.g., validation, hashing, \
+formatting), identify which one is actually used at runtime and \
+whether callers reference the correct one. Flag any where \
+different callers use different implementations with different \
+behavior.
+
+   **How to verify**: For each boundary you find, write a short \
+trace — follow a single piece of data from where it is produced \
+to where it is consumed. If you can't prove the identifiers, \
+shapes, and config values match at every step, that boundary is \
+broken. Do not rely on tests passing — tests often exercise \
+modules in isolation and will miss cross-boundary mismatches.
+
 ## PHASE 2: FIX
 
 If ANY issues were found in Phase 1, fix them NOW:
 
-9. **Fix Issues**:
+10. **Fix Issues**:
    - **Missing wiring**: If the app entry point doesn't import/render
      built components, wire them in. This is the most common gap —
      agents build components in isolation but nobody assembles them.
@@ -283,7 +335,7 @@ If ANY issues were found in Phase 1, fix them NOW:
 
 ## PHASE 3: RE-VERIFY
 
-10. **Re-verify After Fixes**:
+11. **Re-verify After Fixes**:
     - Re-run the full verification (build, start, curl, tests)
     - Confirm your fixes resolved the issues
     - If new issues appear, fix those too (max 3 iterations)
@@ -291,7 +343,7 @@ If ANY issues were found in Phase 1, fix them NOW:
 
 ## PHASE 4: LOG RESULTS
 
-11. **Log Verification Results**:
+12. **Log Verification Results**:
     CRITICAL: Log verification results as an artifact. Every field \
 in the JSON below MUST contain real command output, not summaries.
 
@@ -345,6 +397,16 @@ in the JSON below MUST contain real command output, not summaries.
         }}
       ],
       "missing_components": [],
+      "interface_contracts": [
+        {{
+          "boundary": "producer_file -> consumer_file",
+          "what_was_checked": "identifier/shape/config",
+          "producer_value": "what the producing module uses",
+          "consumer_value": "what the consuming module expects",
+          "match": true,
+          "fix_applied": null
+        }}
+      ],
       "overall_pass": true,
       "remediation_notes": null
     }}
@@ -353,7 +415,7 @@ in the JSON below MUST contain real command output, not summaries.
     If a command fails, set success=false and paste the error output.
     Do NOT set success=true unless you have real output proving it.
 
-12. **Log Remediation Record** (if you fixed anything):
+13. **Log Remediation Record** (if you fixed anything):
     If you applied fixes in Phase 2, log a separate remediation \
 artifact for tracking purposes:
 
@@ -379,7 +441,8 @@ artifact for tracking purposes:
           "severity": "critical | major | minor",
           "category": "composition_gap | missing_endpoint "
           "| missing_module | build_failure "
-          "| duplicate_code | config_error",
+          "| duplicate_code | config_error "
+          "| interface_contract_mismatch",
           "root_cause": "planning_gap | agent_oversight | dependency_error"
         }}
       ],
@@ -410,7 +473,7 @@ if the fix was needed because no task was created for this work \
 to create a backend route that the design spec called for). This \
 helps Marcus improve task planning over time.
 
-13. **Complete the Task**:
+14. **Complete the Task**:
     - Mark this task as DONE only after verification passes
     - If you could not fix all issues after 3 attempts, mark DONE
       anyway but set `overall_pass` to false with details on what

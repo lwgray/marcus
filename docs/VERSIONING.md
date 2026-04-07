@@ -180,22 +180,22 @@ v0.2.1
 
 ## 🔗 Marcus + Cato Coordination
 
-**Rule:** Cato MAJOR.MINOR matches Marcus it supports
+**Rule:** Independent versioning with compatibility notes.
 
-```
-Marcus 0.1.x ←→ Cato 0.1.x
-Marcus 0.2.x ←→ Cato 0.2.x
-Marcus 1.0.x ←→ Cato 1.0.x
-```
+Marcus and Cato version independently based on their own changes.
+Changes in one don't always require changes in the other — forcing
+coupled versions creates phantom releases and release friction.
 
-**When Marcus releases:**
-1. Release Marcus first
-2. Update Cato to matching MAJOR.MINOR
-3. Release Cato
+**Compatibility:**
+- Each repo's README notes minimum compatible version of the other
+- Example: "Cato 0.3.0 requires Marcus >= 0.3.0" (for quality_assessments)
+- MAJOR version stays in sync for the "production-ready" signal (1.0)
 
-**Independent patches allowed:**
-- Marcus 0.2.0 + Cato 0.2.1 ✅ (dashboard-only fix)
-- Marcus 0.2.1 + Cato 0.2.0 ✅ (backend-only fix)
+**Examples:**
+- Marcus 0.3.1 + Cato 0.3.0 ✅ (Marcus patch, Cato new features)
+- Marcus 0.3.1 + Cato 0.2.1 ✅ (Cato works without Quality tab)
+- Marcus 0.4.0 + Cato 0.3.0 ✅ (Cato still compatible)
+- Marcus 1.0.0 + Cato 1.0.0 ✅ (coordinate MAJOR for stability signal)
 
 ---
 

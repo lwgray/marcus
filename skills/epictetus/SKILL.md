@@ -600,6 +600,75 @@ Append summary entry to `docs/audit-reports/audit-index.json`:
 
 Create `docs/audit-reports/` and `audit-index.json` if they don't exist.
 
+### Phase 8.5: Persist to marcus.db (best-effort)
+
+After writing the 3 disk artifacts, attempt to persist the JSON report to
+marcus.db so Cato can display it in the Quality dashboard. This step is
+**best-effort** — if marcus.db isn't found, skip silently. The disk
+artifacts are always the primary output.
+
+**Step 1: Resolve project_id**
+
+Look for `project_info.json` in the experiment directory (parent of
+the project path, or the project path itself):
+
+```bash
+# Try experiment dir (parent of implementation/)
+PROJECT_ID=$(cat ../project_info.json 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('project_id',''))" 2>/dev/null)
+
+# Fallback: try current dir
+if [ -z "$PROJECT_ID" ]; then
+  PROJECT_ID=$(cat project_info.json 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('project_id',''))" 2>/dev/null)
+fi
+```
+
+If no project_id found, skip persistence and note: "No project_id found —
+skipping marcus.db persistence."
+
+**Step 2: Find marcus.db**
+
+```bash
+MARCUS_DB=$(python3 -c "from pathlib import Path; import marcus_mcp; print(Path(marcus_mcp.__file__).parent.parent.parent / 'data' / 'marcus.db')" 2>/dev/null)
+```
+
+If marcus_mcp isn't installed or the db doesn't exist, skip silently.
+
+**Step 3: Write to marcus.db**
+
+```bash
+python3 -c "
+import sqlite3, json
+db = sqlite3.connect('${MARCUS_DB}')
+db.execute('''CREATE TABLE IF NOT EXISTS persistence
+              (collection TEXT, key TEXT, data TEXT, stored_at TEXT,
+               PRIMARY KEY (collection, key))''')
+report = json.load(open('docs/audit-reports/${REPORT_JSON}'))
+report.setdefault('metadata', {})['project_id'] = '${PROJECT_ID}'
+db.execute('''INSERT OR REPLACE INTO persistence (collection, key, data, stored_at)
+              VALUES (?, ?, ?, datetime(\"now\"))''',
+           ('quality_assessments', '${PROJECT_ID}', json.dumps(report)))
+db.commit()
+print('Persisted quality assessment to marcus.db')
+"
+```
+
+Key by `project_id` alone — re-running Epictetus on the same project
+overwrites the previous report (latest assessment wins).
+
+**Step 4: Add project_id to the JSON report metadata**
+
+Before writing, inject `project_id` into `metadata.project_id` in the
+JSON report on disk as well, so it's available for future reference:
+
+```bash
+python3 -c "
+import json
+report = json.load(open('docs/audit-reports/${REPORT_JSON}'))
+report.setdefault('metadata', {})['project_id'] = '${PROJECT_ID}'
+json.dump(report, open('docs/audit-reports/${REPORT_JSON}', 'w'), indent=2)
+"
+```
+
 ## Skill Lenses (weight adjustments by project type)
 
 | Project Type | Key Adjustments |

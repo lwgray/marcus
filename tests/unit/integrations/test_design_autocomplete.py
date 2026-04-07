@@ -75,8 +75,8 @@ class TestGenerateDesignContent:
     def _mock_llm_responses(self, mock_llm):
         """Set up LLM to return different content per call.
 
-        Calls 1-3 are artifact documents (markdown).
-        Call 4 is decisions (JSON array).
+        Calls 1-4 are artifact documents (markdown).
+        Call 5 is decisions (JSON array).
         """
         mock_llm.analyze.side_effect = [
             # Architecture doc
@@ -86,6 +86,9 @@ class TestGenerateDesignContent:
             "# Auth API Contracts\n\n" "## POST /login\nRequest: {email, password}\n",
             # Data models doc
             "# Auth Data Models\n\n" "## User\n- id: uuid\n- email: string\n",
+            # Interface contracts doc
+            "# Auth Interface Contracts\n\n"
+            "## Storage Keys\n- Auth token: `auth_token`\n",
             # Decisions (JSON array)
             json.dumps(
                 [
@@ -156,11 +159,12 @@ class TestGenerateDesignContent:
         assert (arch / "authentication-architecture.md").exists()
         assert (api / "authentication-api-contracts.md").exists()
         assert (spec / "authentication-data-models.md").exists()
+        assert (spec / "authentication-interface-contracts.md").exists()
 
     @pytest.mark.asyncio
     @patch("src.ai.providers.llm_abstraction.LLMAbstraction")
     async def test_makes_separate_llm_calls(self, mock_llm_cls, tmp_path):
-        """One LLM call per artifact + one for decisions = 4 total."""
+        """One LLM call per artifact + one for decisions = 5 total."""
         mock_llm = AsyncMock()
         self._mock_llm_responses(mock_llm)
         mock_llm_cls.return_value = mock_llm
@@ -180,8 +184,8 @@ class TestGenerateDesignContent:
             project_root=str(tmp_path),
         )
 
-        # 3 artifacts + 1 decisions = 4 calls
-        assert mock_llm.analyze.call_count == 4
+        # 4 artifacts + 1 decisions = 5 calls
+        assert mock_llm.analyze.call_count == 5
 
     @pytest.mark.asyncio
     @patch("src.ai.providers.llm_abstraction.LLMAbstraction")
@@ -207,7 +211,7 @@ class TestGenerateDesignContent:
         )
 
         assert "Design Authentication" in content
-        assert len(content["Design Authentication"]["artifacts"]) == 3
+        assert len(content["Design Authentication"]["artifacts"]) == 4
         assert len(content["Design Authentication"]["decisions"]) == 1
 
     @pytest.mark.asyncio
@@ -263,6 +267,8 @@ class TestGenerateDesignContent:
             "",
             # Data models succeeds
             "# Auth Data Models\n\n## User\n...",
+            # Interface contracts fails (empty)
+            "",
             # Decisions
             json.dumps([]),
         ]
