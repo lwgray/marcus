@@ -167,20 +167,16 @@ git push origin YOUR_BRANCH
 
 ## 📦 Coordinating Marcus + Cato
 
-**Rule:** Cato MAJOR.MINOR should match Marcus
+**Rule:** Independent versioning. Each repo versions on its own cadence.
+
+- Changes in one don't always require changes in the other
+- Cato README notes minimum compatible Marcus version
+- MAJOR version stays in sync (both go to 1.0 together)
 
 ```bash
-# Marcus going to 0.2.0?
-cd /Users/lwgray/dev/marcus
-./scripts/bump-version.sh 0.2.0
-
-# Update Cato to match
-cd /Users/lwgray/dev/cato
-# Update pyproject.toml: version = "0.2.0"
-# Update CHANGELOG.md
-git commit -am "chore: bump version to 0.2.0 (match Marcus)"
-git tag v0.2.0
-git push origin main --tags
+# Marcus and Cato version independently
+# No need to bump Cato when Marcus patches
+# No need to bump Marcus when Cato adds UI features
 ```
 
 ---

@@ -5,6 +5,20 @@ All notable changes to Marcus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-04-07
+
+### Fixed
+- **Duplicate project creation** — Claude's `--print` mode retried `create_project` after timeout during design phase, creating duplicate projects. Fixed with dedup guard on the MCP tool and background design phase that returns immediately. (GH-314)
+- **Missing git init in spawn_agents.py** — multi-agent experiment runner now initializes git repo in `implementation/` directory, preventing first-run failures that triggered Claude Code retries. (GH-314)
+- **Design task agent assignment** — design tasks now assigned to Marcus before hitting the kanban board, preventing workers from grabbing them during the background design phase.
+
+### Added
+- **Background design phase** — `create_project` returns after tasks are on the board (seconds) instead of waiting for design artifact generation (3-5 min). Workers are blocked by hard dependencies until design tasks reach DONE status. Prevents Claude timeout retries.
+- **Design task persistence** — design task outcomes persisted to marcus.db with `agent_id: "Marcus"`, enabling Cato to display them in the Swim Lane planning lane.
+- **Epictetus Phase 8.5** — audit reports now persist to marcus.db `quality_assessments` collection for Cato Quality dashboard integration. Best-effort; skips silently if marcus.db not found.
+- **`project_id` field** in Epictetus report schema for reliable project-to-report linking.
+- **Caller stack logging** on `create_project` MCP tool for debugging duplicate invocations.
+
 ## [0.3.0] - 2026-04-03
 
 **The Multi-Agency Foundation release.** First release where two independent agents
