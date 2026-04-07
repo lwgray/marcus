@@ -650,24 +650,45 @@ class MarcusServer:
                 )
             else:
                 # It's a dict from project config
+                # Fallbacks match TaskLeaseSettings aggressive defaults
+                defaults = TaskLeaseSettings()
                 self.lease_manager = AssignmentLeaseManager(
                     self.kanban_client,
                     self.assignment_persistence,
-                    default_lease_hours=lease_config.get("default_hours", 2.0),
-                    max_renewals=lease_config.get("max_renewals", 10),
-                    warning_threshold_hours=lease_config.get("warning_hours", 0.5),
+                    default_lease_hours=lease_config.get(
+                        "default_hours", defaults.default_hours
+                    ),
+                    max_renewals=lease_config.get(
+                        "max_renewals", defaults.max_renewals
+                    ),
+                    warning_threshold_hours=lease_config.get(
+                        "warning_hours", defaults.warning_hours
+                    ),
                     priority_multipliers=lease_config.get("priority_multipliers"),
                     complexity_multipliers=lease_config.get("complexity_multipliers"),
-                    grace_period_minutes=lease_config.get("grace_period_minutes", 30),
-                    renewal_decay_factor=lease_config.get("renewal_decay_factor", 0.9),
-                    min_lease_hours=lease_config.get("min_lease_hours", 1.0),
-                    max_lease_hours=lease_config.get("max_lease_hours", 24.0),
-                    stuck_task_threshold_renewals=lease_config.get(
-                        "stuck_threshold_renewals", 5
+                    grace_period_minutes=lease_config.get(
+                        "grace_period_minutes", defaults.grace_period_minutes
                     ),
-                    enable_adaptive_leases=lease_config.get("enable_adaptive", True),
+                    renewal_decay_factor=lease_config.get(
+                        "renewal_decay_factor", defaults.renewal_decay_factor
+                    ),
+                    min_lease_hours=lease_config.get(
+                        "min_lease_hours", defaults.min_lease_hours
+                    ),
+                    max_lease_hours=lease_config.get(
+                        "max_lease_hours", defaults.max_lease_hours
+                    ),
+                    stuck_task_threshold_renewals=lease_config.get(
+                        "stuck_threshold_renewals",
+                        defaults.stuck_threshold_renewals,
+                    ),
+                    enable_adaptive_leases=lease_config.get(
+                        "enable_adaptive", defaults.enable_adaptive
+                    ),
                     task_list=self.project_tasks,
-                    silence_multiplier=lease_config.get("silence_multiplier", 1.5),
+                    silence_multiplier=lease_config.get(
+                        "silence_multiplier", defaults.silence_multiplier
+                    ),
                 )
             self.lease_monitor = LeaseMonitor(self.lease_manager)
             await self.lease_monitor.start()
