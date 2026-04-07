@@ -206,22 +206,27 @@ class TransportSettings:
 class TaskLeaseSettings:
     """Task lease configuration for agent task management.
 
+    Defaults are aggressive (90s lease, 30s grace) for experiment use.
+    Marcus agents run in tmux panes and poll every ~30s, so fast
+    recovery from dead agents is critical. Override via project config
+    for long-running production agents that need conservative timeouts.
+
     Parameters
     ----------
     default_hours : float
-        Default lease duration in hours
+        Default lease duration in hours (0.025 = 90 seconds)
     max_renewals : int
         Maximum number of lease renewals
     warning_hours : float
         Hours before expiry to warn
-    grace_period_minutes : int
-        Grace period after expiry
+    grace_period_minutes : float
+        Grace period after expiry in minutes (0.5 = 30 seconds)
     renewal_decay_factor : float
         Decay factor for renewal duration
     min_lease_hours : float
-        Minimum lease duration
+        Minimum lease duration (0.0167 = 60 seconds)
     max_lease_hours : float
-        Maximum lease duration
+        Maximum lease duration (0.0833 = 5 minutes)
     stuck_threshold_renewals : int
         Renewals before considering task stuck
     enable_adaptive : bool
@@ -232,13 +237,13 @@ class TaskLeaseSettings:
         Complexity-based duration multipliers
     """
 
-    default_hours: float = 2.0
+    default_hours: float = 0.025  # 90 seconds — fast failure detection
     max_renewals: int = 10
-    warning_hours: float = 0.5
-    grace_period_minutes: int = 30
+    warning_hours: float = 0.01  # ~36 seconds before expiry
+    grace_period_minutes: float = 0.5  # 30 seconds grace
     renewal_decay_factor: float = 0.9
-    min_lease_hours: float = 1.0
-    max_lease_hours: float = 24.0
+    min_lease_hours: float = 0.0167  # 60 seconds minimum
+    max_lease_hours: float = 0.0833  # 5 minutes maximum
     stuck_threshold_renewals: int = 5
     enable_adaptive: bool = True
     silence_multiplier: float = 1.5

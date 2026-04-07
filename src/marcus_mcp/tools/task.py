@@ -211,6 +211,7 @@ def build_tiered_instructions(
     Instruction layers:
     0. Mandatory workflow (ONLY for implementation tasks - Issue #168)
     1. Base instructions (always included)
+    1.1. Recovery handoff (if task was recovered from another agent)
     2. Subtask context (if this is a subtask)
     3. Implementation context (if previous work exists)
     4. Dependency awareness (if task has dependents)
@@ -229,6 +230,24 @@ def build_tiered_instructions(
 
     # Layer 1: Base instructions
     instructions_parts.append(base_instructions)
+
+    # Layer 1.1: Recovery Handoff (if task was recovered from another agent)
+    recovery = getattr(task, "recovery_info", None)
+    if recovery is not None:
+        # Check if recovery info has expired (stale after 24h)
+        is_expired = (
+            recovery.recovery_expires_at is not None
+            and datetime.now(timezone.utc) > recovery.recovery_expires_at
+        )
+        if not is_expired:
+            instructions_parts.append(
+                f"\n\n🔄 RECOVERY HANDOFF:\n"
+                f"{recovery.instructions}\n"
+                f"- Time spent by previous agent: "
+                f"{recovery.time_spent_minutes:.0f} minutes\n"
+                f"- Previous progress: {recovery.previous_progress}%\n"
+                f"- Recovery reason: {recovery.recovery_reason}"
+            )
 
     # Layer 1.5: Subtask Context (if this is a subtask)
     if hasattr(task, "_is_subtask") and task._is_subtask:

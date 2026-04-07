@@ -6,6 +6,17 @@ Advanced error handling patterns for autonomous agent environments:
 - Circuit breaker pattern for external services
 - Fallback mechanisms for graceful degradation
 - Error aggregation for batch operations
+
+Status
+------
+AVAILABLE BUT NOT INTEGRATED into the MCP tool layer. These components
+are tested in isolation but have zero imports from ``src/marcus_mcp/``.
+The simpler ``src/core/resilience.py`` decorators (``@with_retry``,
+``@with_fallback``) are what production code currently uses.
+
+This module is the recommended target for future integration when
+adding resilience to Kanban API calls, AI provider calls, or other
+external service boundaries in the MCP layer.
 """
 
 import asyncio

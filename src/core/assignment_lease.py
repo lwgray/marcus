@@ -555,34 +555,43 @@ class AssignmentLeaseManager:
             time_spent_minutes = time_spent.total_seconds() / 60
 
             # Create structured recovery info
+            # In worktree mode, each agent works on branch marcus/<agent_id>
+            previous_branch = f"marcus/{lease.agent_id}"
+
             recovery_info = RecoveryInfo(
                 recovered_at=now,
                 recovered_from_agent=lease.agent_id,
                 previous_progress=lease.progress_percentage,
                 time_spent_minutes=time_spent_minutes,
                 recovery_reason="lease_expired",
+                previous_agent_branch=previous_branch,
                 instructions=(
                     f"⚠️ **RECOVERY ADDENDUM** - This task was recovered "
                     f"from agent {lease.agent_id}\n\n"
-                    f"**IMPORTANT:** Continue the original task requirements. "
-                    f"These are additional recovery steps to avoid "
-                    f"duplicating work:\n\n"
-                    f"**Before starting, check what was already done:**\n"
-                    f"1. Run `git log --author={lease.agent_id}` "
-                    f"to see any commits made\n"
-                    f"2. Check for any artifacts or design documents "
-                    f"left by previous agent\n"
-                    f"3. Review progress: previous agent reached "
+                    f"**FIRST: Pick up committed work from the previous "
+                    f"agent:**\n"
+                    f"```\n"
+                    f"git merge {previous_branch} --no-edit\n"
+                    f"```\n"
+                    f"This merges any commits the previous agent made "
+                    f"before they disconnected.\n\n"
+                    f"**Then check what was done:**\n"
+                    f"1. Run `git log {previous_branch}` to see their "
+                    f"commits\n"
+                    f"2. Check for artifacts or design documents\n"
+                    f"3. Previous agent reached "
                     f"{lease.progress_percentage}%\n"
                     f"4. **Continue from where they left off** - "
                     f"don't restart from scratch\n\n"
                     f"**Recovery Context:**\n"
                     f"- Previous agent: {lease.agent_id}\n"
+                    f"- Previous branch: {previous_branch}\n"
                     f"- Time they spent: "
                     f"{time_spent_minutes:.1f} minutes\n"
-                    f"- Recovery reason: lease expired (no progress updates)\n"
-                    f"- Your task: Complete the ORIGINAL task requirements, "
-                    f"building on existing work\n"
+                    f"- Recovery reason: lease expired (no progress "
+                    f"updates)\n"
+                    f"- Your task: Complete the ORIGINAL task "
+                    f"requirements, building on existing work\n"
                 ),
                 recovery_expires_at=now + timedelta(hours=24),
             )

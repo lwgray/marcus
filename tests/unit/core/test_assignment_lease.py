@@ -931,8 +931,8 @@ class TestRecoveryHandoffDualWrite:
             assert mock_task.recovery_info is not None
             instructions = mock_task.recovery_info.instructions
 
-            # Should include key guidance
+            # Should include key guidance for worktree recovery
             assert "agent-001" in instructions
-            assert "git log" in instructions or "git" in instructions.lower()
+            assert "marcus/agent-001" in instructions  # Branch name
+            assert "git merge" in instructions  # Merge dead agent's branch
             assert "30%" in instructions
-            assert "avoid duplicat" in instructions.lower()  # duplicating or duplicated
