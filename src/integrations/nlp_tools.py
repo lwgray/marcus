@@ -318,7 +318,8 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 if added_tasks > 0:
                     logger.info(f"Safety checks added {added_tasks} dependency tasks")
 
-            # Design tasks go on the board as TODO. Phase A (design
+            # Design tasks go on the board as TODO but assigned to
+            # Marcus so workers can't grab them. Phase A (design
             # artifact generation) runs in the background AFTER the
             # response is returned. Workers can't grab implementation
             # tasks because _are_dependencies_satisfied() checks that
@@ -326,6 +327,9 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             # task completes, it marks design tasks DONE on the board
             # and workers' next request_next_task call will succeed.
             project_root = options.get("project_root") if options else None
+            for task in safe_tasks:
+                if _is_design_task(task):
+                    task.assigned_to = "Marcus"
 
             # Create tasks on board using base class (this also triggers decomposition)
             with error_context(
