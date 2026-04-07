@@ -600,7 +600,12 @@ class AssignmentLeaseManager:
             task = self._find_task(lease.task_id)
             if task:
                 task.recovery_info = recovery_info
-                logger.info(f"Updated task {lease.task_id} model with recovery info")
+                # Clear ownership so task re-enters the assignment pool
+                task.assigned_to = None
+                logger.info(
+                    f"Updated task {lease.task_id} model with recovery "
+                    f"info, cleared assigned_to"
+                )
             else:
                 logger.warning(
                     f"Task {lease.task_id} not found in task list for "
@@ -623,21 +628,32 @@ class AssignmentLeaseManager:
             # Remove assignment from persistence
             await self.assignment_persistence.remove_assignment(lease.agent_id)
 
-            # Update task status to TODO
+            # Reset task on board: status → TODO, clear assigned_to
             try:
-                if hasattr(self.kanban_client, "update_task_status"):
+                if hasattr(self.kanban_client, "update_task"):
+                    await self.kanban_client.update_task(
+                        lease.task_id,
+                        {"status": TaskStatus.TODO, "assigned_to": None},
+                    )
+                elif hasattr(self.kanban_client, "update_task_status"):
+                    # Fallback: at least reset status
                     await self.kanban_client.update_task_status(
                         lease.task_id, TaskStatus.TODO
                     )
+                    logger.warning(
+                        f"Kanban client lacks update_task — "
+                        f"assigned_to not cleared on board for "
+                        f"{lease.task_id}"
+                    )
                 else:
                     logger.warning(
-                        f"Kanban client does not support update_task_status, "
-                        f"task {lease.task_id} status not updated"
+                        f"Kanban client does not support task updates, "
+                        f"task {lease.task_id} not updated on board"
                     )
             except Exception as e:
-                logger.error(f"Failed to update task status to TODO: {e}")
-                # Don't fail entire recovery if status update fails
-                # Task is already removed from active leases
+                logger.error(f"Failed to reset task {lease.task_id} on board: {e}")
+                # Don't fail entire recovery if board update fails
+                # In-memory state is already updated
 
             # Track in history
             self.lease_history.append(

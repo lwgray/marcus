@@ -2018,6 +2018,7 @@ async def _find_optimal_task_original_logic(
             "total_tasks": len(state.project_tasks) if state.project_tasks else 0,
             "todo_status": 0,
             "already_assigned": 0,
+            "board_assigned": 0,
             "incomplete_dependencies": 0,
             "project_success_filtered": 0,
             "phase_restrictions": 0,
@@ -2092,6 +2093,18 @@ async def _find_optimal_task_original_logic(
                 continue
             if t.id in all_assigned_ids:
                 filtering_stats["already_assigned"] += 1
+                continue
+
+            # Skip tasks owned on the board (assigned_to is set).
+            # Design tasks are assigned to "Marcus" and handled
+            # internally. Agent tasks get assigned_to set on
+            # assignment. Recovery clears assigned_to to release
+            # tasks back to the pool.
+            if t.assigned_to:
+                filtering_stats["board_assigned"] += 1
+                logger.debug(
+                    f"Skipping '{t.name}' — assigned to " f"'{t.assigned_to}' on board"
+                )
                 continue
 
             # GH-XX: Skip parent tasks that have subtasks

@@ -252,8 +252,9 @@ class TestAssignmentLeaseManager:
         assert success
         assert "task-123" not in lease_manager.active_leases
         mock_persistence.remove_assignment.assert_called_once_with("agent-001")
-        mock_kanban_client.update_task_status.assert_called_once_with(
-            "task-123", TaskStatus.TODO
+        # Recovery uses update_task to atomically clear status + assigned_to
+        mock_kanban_client.update_task.assert_called_once_with(
+            "task-123", {"status": TaskStatus.TODO, "assigned_to": None}
         )
 
     @pytest.mark.asyncio
