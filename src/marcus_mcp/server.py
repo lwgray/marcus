@@ -691,8 +691,35 @@ class MarcusServer:
                     ),
                 )
             self.lease_monitor = LeaseMonitor(self.lease_manager)
+
+            # Wire up recovery callback so in-memory tracking is cleaned
+            # when a lease is recovered. Without this, agent_tasks keeps
+            # the recovered task and the assignment filter blocks other
+            # agents from grabbing it.
+            def _on_recovery(agent_id: str, task_id: str) -> None:
+                if agent_id in self.agent_tasks:
+                    del self.agent_tasks[agent_id]
+                    logger.info(f"Recovery cleanup: removed agent_tasks[{agent_id}]")
+                self.tasks_being_assigned.discard(task_id)
+
+            self.lease_manager.on_recovery_callback = _on_recovery
+
+            # NOTE: Don't start the monitor here. In HTTP mode,
+            # this runs on a temporary event loop that's abandoned
+            # when uvicorn starts. The monitor must start on
+            # uvicorn's loop via ensure_lease_monitor_running().
+            logger.info("Assignment lease system initialized (monitor pending)")
+
+    async def ensure_lease_monitor_running(self) -> None:
+        """Start the lease monitor if it exists but isn't running.
+
+        In HTTP mode, the monitor must start on uvicorn's event loop,
+        not on the temporary setup loop. This method is called from
+        MCP tool handlers which run on the correct loop.
+        """
+        if self.lease_monitor and not self.lease_monitor._running:
+            logger.info("Starting lease monitor on active event loop")
             await self.lease_monitor.start()
-            logger.info("Assignment lease system initialized")
 
     async def initialize_kanban(self) -> None:
         """Initialize kanban client if not already done."""

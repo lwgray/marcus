@@ -1,368 +1,283 @@
 # 35. Assignment Lease System
 
+> **Primary spec:** This document focuses on the lease data model, adaptive
+> duration math, and renewal mechanics. For the end-to-end liveness
+> detection, cadence-based recovery, touch-on-any-tool behavior, and the
+> recovery handoff flow, see
+> [Resilience and Task Recovery System](34-agent-recovery-system.md).
+
 ## Executive Summary
 
-The Assignment Lease System is a time-based task assignment management framework that ensures tasks are completed within reasonable timeframes and provides automatic recovery for abandoned or stuck tasks. It implements adaptive lease durations based on task complexity, priority, and agent performance history, with automatic renewal capabilities and configurable grace periods for handling transient issues.
+The Assignment Lease System tracks a short-lived **lease** for every
+in-progress task assignment. A lease is Marcus's proof-of-life record for an
+agent: while the lease is fresh, Marcus trusts that the agent is working;
+once the lease expires past its grace period, the lease is evaluated for
+recovery.
 
-## System Architecture
+Marcus runs in an **aggressive** lease mode — lease durations are measured
+in **seconds to minutes**, not hours. The defaults are tuned to detect dead
+tmux panes, killed processes, and dropped network connections within one
+to two monitor cycles. Adaptive duration math, priority and complexity
+multipliers, and renewal decay still exist, but they operate within a
+much tighter timing envelope than older versions of the system.
 
-### Core Components
+## Source Files
 
-The Assignment Lease System consists of two primary modules:
+| Component | Path |
+|-----------|------|
+| Lease data model + manager + monitor | `src/core/assignment_lease.py` |
+| Default configuration | `src/config/marcus_config.py` — `TaskLeaseSettings` |
+| Server wiring + recovery callback | `src/marcus_mcp/server.py` |
+| Lease creation + progress renewal + recreation | `src/marcus_mcp/tools/task.py` |
+| Touch-on-any-tool-call | `src/marcus_mcp/handlers.py` |
 
-```
-Assignment Lease System Architecture
-├── assignment_lease.py (Core Lease Management)
-│   ├── AssignmentLease (Lease data model)
-│   ├── AssignmentLeaseManager (Lease lifecycle management)
-│   ├── LeaseMonitor (Expiration monitoring)
-│   └── Adaptive Duration Calculation
-└── Integration Points
-    ├── Task Assignment (request_next_task)
-    ├── Progress Reporting (report_progress)
-    ├── Kanban Synchronization (update_task)
-    └── Persistence Layer (lease storage)
-```
-
-### Lease Lifecycle
-
-```
-Task Available
-     │
-     ▼
-Agent Requests Task
-     │
-     ▼
-Lease Created ──────► Adaptive Duration (1-24 hrs)
-     │                         │
-     ▼                         ▼
-Agent Works              Auto-Renewal on Progress
-     │                         │
-     ├─────────────────────────┤
-     │                         │
-     ▼                         ▼
-Task Complete           Warning Threshold (30 min before expiry)
-     │                         │
-     ▼                         ▼
-Lease Released          Grace Period (30 min)
-                               │
-                               ▼
-                        Task Recovery
-```
-
-## Core Components
-
-### 1. Lease Manager
-
-The central coordinator with adaptive duration calculation:
-
-```python
-class AssignmentLeaseManager:
-    def __init__(
-        self,
-        kanban_client: KanbanInterface,
-        persistence: AssignmentPersistence,
-        default_lease_hours: float = 2.0,
-        max_renewals: int = 10,
-        warning_threshold_hours: float = 0.5,
-        priority_multipliers: Optional[Dict[str, float]] = None,
-        complexity_multipliers: Optional[Dict[str, float]] = None,
-        grace_period_minutes: int = 30,
-        renewal_decay_factor: float = 0.9
-    ):
-        self.active_leases: Dict[str, AssignmentLease] = {}
-        self._lock = asyncio.Lock()
-
-    def calculate_adaptive_duration(self, task: Task) -> float:
-        """Calculate lease duration based on task characteristics"""
-        base_hours = self.default_lease_hours
-
-        # Apply priority multiplier
-        if hasattr(task, 'priority'):
-            priority_mult = self.priority_multipliers.get(
-                task.priority.value.lower(), 1.0
-            )
-            base_hours *= priority_mult
-
-        # Apply complexity multiplier
-        if hasattr(task, 'labels'):
-            for label in task.labels:
-                if label in self.complexity_multipliers:
-                    base_hours *= self.complexity_multipliers[label]
-                    break
-
-        # Ensure within bounds
-        return max(self.min_lease_hours,
-                  min(base_hours, self.max_lease_hours))
-```
-
-### 2. Lease Data Structure
+## Lease Data Model
 
 ```python
 @dataclass
 class AssignmentLease:
-    """Represents a time-bound assignment of a task to an agent"""
     task_id: str
     agent_id: str
-    created_at: datetime
-    expires_at: datetime
-    duration_hours: float
+    assigned_at: datetime
+    lease_expires: datetime
+    last_renewed: datetime
     renewal_count: int = 0
-    last_renewed_at: Optional[datetime] = None
-    is_stuck: bool = False
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-    def is_expired(self) -> bool:
-        """Check if lease has expired"""
-        return datetime.now() > self.expires_at
-
-    def is_expiring_soon(self, threshold_hours: float = 0.5) -> bool:
-        """Check if lease is close to expiration"""
-        time_until_expiry = self.expires_at - datetime.now()
-        return time_until_expiry.total_seconds() < threshold_hours * 3600
-
-    def time_remaining(self) -> timedelta:
-        """Get time remaining on lease"""
-        return max(self.expires_at - datetime.now(), timedelta(0))
+    estimated_hours: float = 4.0
+    progress_percentage: int = 0
+    last_progress_message: str = ""
+    grace_period_seconds: Optional[float] = None
+    update_timestamps: list[datetime] = field(default_factory=list)
 ```
 
-### 3. Lease Monitoring
+Key properties:
 
-Background monitoring with grace period support:
+- `update_timestamps` — every progress update appends a timestamp. The
+  lease exposes `median_update_interval`, the median seconds between
+  updates, which powers cadence-based recovery (see
+  [Resilience and Task Recovery System](34-agent-recovery-system.md)).
+- `grace_period_seconds` — per-lease adaptive grace, set by the current
+  progressive timeout phase.
+- `renewal_count` — used by renewal decay and by the stuck-task detector.
+
+## Aggressive Defaults
+
+All tuning lives in `TaskLeaseSettings` in `src/config/marcus_config.py`.
+The current defaults are:
+
+| Setting | Default | Meaning |
+|---------|---------|---------|
+| `default_hours` | `0.025` | ~90 seconds base lease. |
+| `grace_period_minutes` | `0.5` | 30 seconds of grace after expiry. |
+| `min_lease_hours` | `0.0167` | 60 seconds — the floor. |
+| `max_lease_hours` | `0.0833` | 5 minutes — the ceiling. |
+| `warning_hours` | `0.01` | ~36 seconds before expiry, emit a warning. |
+| `max_renewals` | `10` | Safety cap on renewal count. |
+| `stuck_threshold_renewals` | `5` | Flag for stuck-task detection. |
+| `silence_multiplier` | `1.5` | Cadence threshold multiplier. |
+| `enable_adaptive` | `true` | Enable progressive phases. |
+| `renewal_decay_factor` | `0.9` | Decay applied on each renewal. |
+
+The dict-path fallback in `server.py` mirrors these values so config-less
+startup still matches the dataclass defaults.
+
+## Progressive Timeout Phases
+
+When `default_hours < 1.0` (the aggressive mode path), `create_lease` and
+`renew_lease` call `calculate_adaptive_timeout` to pick a phase-specific
+lease + grace based on where the task is in its lifecycle:
+
+| Phase | Trigger | Lease | Grace | Total | Rationale |
+|-------|---------|-------|-------|-------|-----------|
+| 1. Unproven | 0 updates | 60s | 20s | 80s | Detect startup failures fast. |
+| 2. Working | 1 update | 90s | 30s | 120s | Agent is alive, be moderate. |
+| 3. Proven | 25–75% progress | 120s | 30s | 150s | Protect in-flight work. |
+| 4. Finishing | >75% progress | 60s | 15s | 75s | Detect final stalls quickly. |
+
+A new task starts in Phase 1. As soon as the first
+`report_task_progress` arrives, the lease transitions to Phase 2 and
+subsequent phases follow the progress percentage.
+
+## Lease Lifecycle
+
+```
+Task Assigned
+     │
+     ▼
+create_lease() ──────────► Phase 1 lease (60s + 20s grace)
+     │
+     │ ◄─── touch_lease(agent_id)    (any MCP tool call extends lease)
+     │
+     ▼
+Agent reports progress
+     │
+     ▼
+renew_lease(task_id, progress) ──► Phase 2–4 based on progress
+     │
+     ├──── on each renewal: update_timestamps append
+     │     renewal_count += 1
+     │     renewal_decay applied
+     │
+     ▼
+Task completes → lease removed from active_leases
+```
+
+### `touch_lease(agent_id)`
+
+A cheap extension triggered by the MCP dispatch loop in
+`handlers.py`. **Any** tool call from an agent (including
+`log_decision`, `log_artifact`, `report_blocker`, `get_task_context`, etc.)
+counts as a touch — the agent proves it is alive by working. No explicit
+heartbeat is ever required.
+
+```python
+# src/marcus_mcp/handlers.py
+agent_id = arguments.get("agent_id") if arguments else None
+if agent_id and hasattr(state, "lease_manager") and state.lease_manager:
+    await state.lease_manager.touch_lease(agent_id)
+```
+
+### `renew_lease(task_id, progress, message)`
+
+The full renewal path used by `report_task_progress`. It appends a new
+`update_timestamps` entry, recomputes the phase, applies decay, and pushes
+out `lease_expires`.
+
+### Lease Recreation on Progress Report
+
+If `report_task_progress` runs and the lease is **missing** (because the
+monitor already recovered the task due to a cadence false-positive), the
+progress handler recreates the lease instead of failing:
+
+```python
+# src/marcus_mcp/tools/task.py
+renewed_lease = await state.lease_manager.renew_lease(task_id, progress, message)
+if renewed_lease is None:
+    # Lease was recovered — recreate so monitoring resumes.
+    task_obj = next((t for t in state.project_tasks if t.id == task_id), None)
+    new_lease = await state.lease_manager.create_lease(task_id, agent_id, task_obj)
+```
+
+This makes false positives **self-healing**: the next progress update
+re-attaches a lease and the monitor resumes watching.
+
+### `recover_expired_lease(lease)`
+
+Resets the task to `TODO`, clears `assigned_to`, builds a `RecoveryInfo`,
+dual-writes to the board (field + comment), removes the lease from
+`active_leases`, and finally invokes `on_recovery_callback(agent_id,
+task_id)`.
+
+See [Resilience and Task Recovery System](34-agent-recovery-system.md) for
+the full recovery flow, including `RecoveryInfo`, worktree-aware handoff
+instructions, and the cadence check that gates recovery.
+
+## LeaseMonitor
 
 ```python
 class LeaseMonitor:
-    """Monitors active leases and handles expirations"""
+    """Background asyncio task that polls every 60 seconds."""
 
-    def __init__(self, lease_manager: AssignmentLeaseManager):
-        self.lease_manager = lease_manager
-        self._running = False
-        self._monitor_task: Optional[asyncio.Task] = None
-        self.check_interval = 60  # seconds
-
-    async def _monitor_loop(self):
-        """Main monitoring loop"""
-        while self._running:
-            try:
-                await self._check_expiring_leases()
-                await self._check_expired_leases()
-                await self._detect_stuck_leases()
-                await asyncio.sleep(self.check_interval)
-            except Exception as e:
-                logger.error(f"Lease monitor error: {e}")
-
-    async def _check_expiring_leases(self):
-        """Warn about leases approaching expiration"""
-        async with self.lease_manager._lock:
-            for task_id, lease in list(self.lease_manager.active_leases.items()):
-                if lease.is_expiring_soon(self.lease_manager.warning_threshold_hours):
-                    logger.warning(
-                        f"Lease for task {task_id} expiring in "
-                        f"{lease.time_remaining()}, assigned to {lease.agent_id}"
-                    )
+    check_interval = 60  # seconds
 ```
 
-## Integration with Marcus Ecosystem
+On each poll it walks `active_leases`, identifies expired leases (past
+grace), calls `should_recover_expired_lease` for the cadence-aware check,
+and invokes `recover_expired_lease` when the check says to recover.
 
-### Workflow Integration Points
+### Lazy start on the correct event loop
 
-The Assignment Lease System integrates at critical workflow stages:
-
-1. **request_next_task**: Creates lease with adaptive duration on task assignment
-2. **report_progress**: Automatically renews lease with decay factor
-3. **task completion**: Releases lease when task status changes to DONE
-4. **lease expiration**: Triggers task recovery after grace period
-5. **ping health command**: Reports lease statistics and orphaned assignments
-
-### Persistence Integration
-
-Leases are stored in the persistence layer for recovery:
+The monitor **must not** be started during server setup. The HTTP
+transport spins up its own event loop per request context, and a monitor
+task created during setup is bound to a loop that no longer exists by the
+time a request arrives. Instead the server exposes
+`ensure_lease_monitor_running()` and the first `request_next_task` call
+lazily starts the monitor on the live request loop:
 
 ```python
-# Lease persistence structure
-{
-    "task_id": "task-123",
-    "agent_id": "agent-001",
-    "lease": {
-        "created_at": "2024-01-20T10:00:00",
-        "expires_at": "2024-01-20T12:00:00",
-        "duration_hours": 2.0,
-        "renewal_count": 1,
-        "last_renewed_at": "2024-01-20T11:30:00"
-    }
+# src/marcus_mcp/tools/task.py
+if hasattr(state, "ensure_lease_monitor_running"):
+    await state.ensure_lease_monitor_running()
+```
+
+## Recovery Callback
+
+`AssignmentLeaseManager` does not import server state. The server sets a
+callback at initialization so in-memory assignment tracking
+(`agent_tasks`, `tasks_being_assigned`) is cleaned whenever a lease is
+recovered:
+
+```python
+# src/marcus_mcp/server.py
+def _on_recovery(agent_id: str, task_id: str) -> None:
+    if agent_id in self.agent_tasks:
+        del self.agent_tasks[agent_id]
+    self.tasks_being_assigned.discard(task_id)
+
+self.lease_manager.on_recovery_callback = _on_recovery
+```
+
+Without this, the assignment filter would keep the recovered task marked
+as taken and no agent could pick it up.
+
+## Adaptive Duration (Conservative Mode Only)
+
+When `default_hours >= 1.0`, the manager falls back to classic adaptive
+duration math using the task's `estimated_hours`, `priority_multipliers`,
+and `complexity_multipliers`, bounded by `min_lease_hours` and
+`max_lease_hours`. The Marcus production default is aggressive mode, so
+this path is primarily a configuration escape hatch for long-running
+non-agent workflows.
+
+### Priority Multipliers
+
+```python
+"priority_multipliers": {
+    "critical": 0.5,
+    "high": 0.75,
+    "medium": 1.0,
+    "low": 1.5,
 }
 ```
 
-### Kanban Board Recovery
-
-Expired leases trigger task status updates:
+### Complexity Multipliers
 
 ```python
-async def recover_task(self, task_id: str, lease: AssignmentLease):
-    """Recover task when lease expires"""
-    try:
-        # Update task status back to TODO
-        await self.kanban_client.update_task(
-            task_id,
-            {"status": "TODO", "assigned_to": None}
-        )
-
-        # Clean up persistence
-        assignments = await self.persistence.load_assignments()
-        for agent_id, assignment in assignments.items():
-            if assignment["task_id"] == task_id:
-                await self.persistence.remove_assignment(agent_id)
-                break
-
-        logger.info(f"Recovered task {task_id} from expired lease")
-
-    except Exception as e:
-        logger.error(f"Failed to recover task {task_id}: {e}")
+"complexity_multipliers": {
+    "complex": 2.0,
+    "large": 1.5,
+    "simple": 0.75,
+    "tiny": 0.5,
+}
 ```
 
-## Key Features
-
-### 1. Automatic Lease Renewal
-
-Leases are automatically renewed on progress reports with decay:
+### Renewal Decay
 
 ```python
-async def renew_lease(self, task_id: str, agent_id: str) -> bool:
-    """Renew lease with decay factor"""
-    lease = self.active_leases.get(task_id)
-    if not lease or lease.agent_id != agent_id:
-        return False
-
-    if lease.renewal_count >= self.max_renewals:
-        lease.is_stuck = True
-        logger.warning(
-            f"Task {task_id} reached max renewals ({self.max_renewals}), "
-            f"marking as stuck"
-        )
-        return False
-
-    # Calculate new duration with decay
-    decay_factor = self.renewal_decay_factor ** lease.renewal_count
-    new_duration_hours = lease.duration_hours * decay_factor
-    new_duration_hours = max(self.min_lease_hours, new_duration_hours)
-
-    # Extend expiration
-    lease.expires_at = datetime.now() + timedelta(hours=new_duration_hours)
-    lease.renewal_count += 1
-    lease.last_renewed_at = datetime.now()
-
-    # Persist renewal
-    await self._persist_lease(task_id, lease)
-
-    logger.info(
-        f"Renewed lease for task {task_id}, agent {agent_id}: "
-        f"{new_duration_hours:.1f} hours (renewal #{lease.renewal_count})"
-    )
-    return True
+# With decay factor 0.9:
+# Renewal 0: 1.00 * base
+# Renewal 1: 0.90 * base
+# Renewal 2: 0.81 * base
+# ...
+# bounded by min_lease_hours
 ```
 
-### 2. Grace Period Handling
+Decay discourages tasks from being held indefinitely by agents that keep
+renewing without finishing.
 
-Tasks get a grace period before recovery:
-
-```python
-async def handle_expired_lease(self, task_id: str, lease: AssignmentLease):
-    """Handle expired lease with grace period"""
-    grace_period_end = lease.expires_at + timedelta(
-        minutes=self.grace_period_minutes
-    )
-
-    if datetime.now() < grace_period_end:
-        # Still in grace period
-        logger.info(
-            f"Task {task_id} in grace period, expires at {grace_period_end}"
-        )
-        return
-
-    # Grace period exceeded - recover task
-    logger.warning(
-        f"Task {task_id} lease expired and grace period exceeded, "
-        f"recovering task from agent {lease.agent_id}"
-    )
-
-    await self.recover_task(task_id, lease)
-
-    # Remove lease
-    async with self._lock:
-        del self.active_leases[task_id]
-        await self._remove_persisted_lease(task_id)
-```
-
-### 3. Stuck Task Detection
-
-Identify tasks that aren't progressing:
-
-```python
-async def _detect_stuck_leases(self):
-    """Detect leases with too many renewals"""
-    async with self.lease_manager._lock:
-        stuck_count = 0
-        for task_id, lease in self.lease_manager.active_leases.items():
-            if lease.renewal_count >= self.lease_manager.stuck_task_threshold_renewals:
-                if not lease.is_stuck:
-                    lease.is_stuck = True
-                    stuck_count += 1
-                    logger.warning(
-                        f"Task {task_id} marked as stuck after "
-                        f"{lease.renewal_count} renewals"
-                    )
-
-        if stuck_count > 0:
-            logger.info(f"Detected {stuck_count} new stuck tasks")
-```
-
-### 4. Lease Statistics
-
-Track lease system health:
-
-```python
-def get_statistics(self) -> Dict[str, Any]:
-    """Get current lease statistics"""
-    active_leases = list(self.active_leases.values())
-
-    stats = {
-        "total_active_leases": len(active_leases),
-        "expiring_soon": sum(
-            1 for lease in active_leases
-            if lease.is_expiring_soon(self.warning_threshold_hours)
-        ),
-        "expired": sum(1 for lease in active_leases if lease.is_expired()),
-        "stuck_tasks": sum(1 for lease in active_leases if lease.is_stuck),
-        "average_renewal_count": (
-            sum(lease.renewal_count for lease in active_leases) /
-            len(active_leases) if active_leases else 0
-        ),
-        "max_renewal_count": (
-            max(lease.renewal_count for lease in active_leases)
-            if active_leases else 0
-        )
-    }
-
-    return stats
-```
-
-## Configuration Options
-
-### Project-Specific Configuration
-
-Leases can be configured per project in `config_marcus.json`:
+## Configuration
 
 ```json
 {
   "task_lease": {
-    "default_hours": 2.0,
+    "default_hours": 0.025,
     "max_renewals": 10,
-    "warning_hours": 0.5,
-    "grace_period_minutes": 30,
+    "warning_hours": 0.01,
+    "grace_period_minutes": 0.5,
     "renewal_decay_factor": 0.9,
-    "min_lease_hours": 1.0,
-    "max_lease_hours": 24.0,
+    "min_lease_hours": 0.0167,
+    "max_lease_hours": 0.0833,
     "stuck_threshold_renewals": 5,
+    "silence_multiplier": 1.5,
     "enable_adaptive": true,
     "priority_multipliers": {
       "critical": 0.5,
@@ -380,161 +295,26 @@ Leases can be configured per project in `config_marcus.json`:
 }
 ```
 
-## Pros and Cons
+Project-specific overrides live under each project in the project
+registry; the global fallback lives in `src/config/marcus_config.py`.
 
-### Advantages
+## Statistics and Health
 
-1. **Adaptive Duration**: Lease time adjusts to task complexity and priority
-2. **Automatic Recovery**: Tasks recovered after lease expiration + grace period
-3. **Progress-Based Renewal**: Automatic extension when agents report progress
-4. **Stuck Detection**: Identifies tasks not progressing after many renewals
-5. **Configurable**: Per-project configuration for different workflows
-6. **Graceful Degradation**: Grace periods handle temporary network issues
-7. **Integration**: Works seamlessly with existing Marcus components
+`AssignmentLeaseManager.get_statistics()` returns counts for active,
+expiring-soon, expired, and stuck leases plus average and max renewal
+counts. These are exposed through the `ping` health tool for operational
+visibility.
 
-### Disadvantages
+## Related Documentation
 
-1. **Time Pressure**: Agents must work within lease windows
-2. **Monitoring Overhead**: Continuous lease checking every 60 seconds
-3. **Recovery Delay**: Grace period delays task reassignment
-4. **Configuration Complexity**: Many parameters to tune correctly
-5. **False Positives**: May mark active tasks as stuck
-6. **Memory Usage**: All active leases kept in memory
-
-## Why This Approach
-
-The adaptive lease system was chosen to address key challenges:
-
-1. **Agent Timeouts**: When agents disconnect, tasks get stuck in progress
-2. **Variable Task Complexity**: Different tasks need different time allocations
-3. **Network Reliability**: Grace periods handle transient connection issues
-4. **Progress Tracking**: Renewal on progress shows active work
-5. **Resource Optimization**: Prevents tasks from being held indefinitely
-6. **Operational Visibility**: Clear metrics on task assignment health
-
-## Task-Specific Adaptations
-
-### Priority-Based Leasing
-
-Critical tasks get shorter leases for faster turnover:
-
-```python
-# Priority multipliers
-"priority_multipliers": {
-    "critical": 0.5,   # 1 hour for 2-hour default
-    "high": 0.75,      # 1.5 hours
-    "medium": 1.0,     # 2 hours (default)
-    "low": 1.5         # 3 hours
-}
-```
-
-### Complexity-Based Leasing
-
-Complex tasks get extended time:
-
-```python
-# Complexity multipliers based on labels
-"complexity_multipliers": {
-    "complex": 2.0,    # 4 hours for 2-hour default
-    "large": 1.5,      # 3 hours
-    "simple": 0.75,    # 1.5 hours
-    "tiny": 0.5        # 1 hour
-}
-```
-
-### Renewal Decay
-
-Each renewal gets progressively shorter time:
-
-```python
-# With decay factor 0.9:
-# Initial: 2 hours
-# Renewal 1: 1.8 hours
-# Renewal 2: 1.62 hours
-# Renewal 3: 1.46 hours
-# ...
-# Renewal 10: 0.78 hours (minimum 1 hour enforced)
-```
-
-## Real-World Usage
-
-### Example: Task Assignment with Lease
-
-```python
-# In request_next_task tool
-if optimal_task and agent_id:
-    # Create lease for this assignment
-    if hasattr(state, 'lease_manager') and state.lease_manager:
-        lease = await state.lease_manager.create_lease(
-            optimal_task.id,
-            agent_id,
-            optimal_task
-        )
-
-        if lease:
-            logger.info(
-                f"Created lease for task {optimal_task.id}: "
-                f"{lease.duration_hours:.1f} hours"
-            )
-```
-
-### Example: Progress Report with Renewal
-
-```python
-# In report_progress tool
-if hasattr(state, 'lease_manager') and state.lease_manager:
-    renewed = await state.lease_manager.renew_lease(task_id, agent_id)
-    if renewed:
-        lease = state.lease_manager.get_active_lease(task_id)
-        logger.info(
-            f"Renewed lease for task {task_id}, "
-            f"expires at {lease.expires_at}"
-        )
-```
-
-## Monitoring via Ping Tool
-
-### Health Check Output
-
-```bash
-$ ping marcus health
-
-🏥 Marcus Health Status
-=======================
-
-📊 Lease Statistics:
-• Active leases: 5
-• Expiring soon: 1
-• Expired: 0
-• Stuck tasks: 0
-• Average renewals: 2.4
-• Max renewals: 4
-
-⚠️  Warnings:
-• Task task-123 expiring in 25 minutes
-• 1 orphaned assignment detected
-```
-
-### Cleanup Command
-
-```bash
-$ ping marcus cleanup
-
-🧹 Cleanup Results:
-• Cleared 2 stuck assignments
-• Removed 1 orphaned lease
-• Reset 3 tasks to TODO status
-```
-
-## Related Systems
-
-- **Gridlock Detection System**: Detects when projects are stalled due to all tasks being blocked
-- **Task Graph Auto-Fix System**: Prevents and resolves circular dependencies
-- **Orphan Task Recovery System**: Handles tasks without proper ownership
-- **Task Dependency System**: Core dependency tracking and validation
-
-## Conclusion
-
-The Assignment Lease System provides Marcus with adaptive time-based task management that prevents tasks from being stuck indefinitely when agents disconnect or fail. By implementing intelligent lease durations based on task characteristics, automatic renewal with decay, and graceful recovery with configurable grace periods, the system ensures reliable task completion while accommodating varying task complexities and network conditions.
-
-The integration with Marcus's task assignment workflow, progress reporting, and monitoring systems creates a self-managing task ownership solution that requires minimal manual intervention. The system's configurability allows different projects to tune lease parameters to their specific needs, making it suitable for both rapid development cycles and long-running complex tasks.
+- [Resilience and Task Recovery System](34-agent-recovery-system.md) — the
+  primary spec describing cadence-based recovery, touch-on-any-tool-call,
+  lease recreation, the recovery callback, the lazy monitor start,
+  worktree-aware handoff, and the full kill → recover → reassign flow.
+- [Orphan Task Recovery](33-orphan-task-recovery.md) — the startup
+  reconciler and assignment monitor that act as a safety net for
+  assignments left behind by non-lease code paths.
+- [Agent Coordination](21-agent-coordination.md) — how task assignment,
+  progress reporting, and the assignment filter fit together.
+- [Smart Retry Strategy](46-smart-retry-strategy.md) — retry and backoff
+  policies used alongside recovery.

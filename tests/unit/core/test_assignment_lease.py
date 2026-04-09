@@ -340,6 +340,7 @@ class TestLeaseMonitor:
     def mock_lease_manager(self):
         """Create mock lease manager."""
         manager = Mock()
+        manager.active_leases = {}
         manager.load_active_leases = AsyncMock()
         manager.check_expired_leases = AsyncMock(return_value=[])
         manager.recover_expired_lease = AsyncMock(return_value=True)

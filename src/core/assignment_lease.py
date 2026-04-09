@@ -19,7 +19,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Any, Deque, Dict, List, Optional
+from typing import Any, Callable, Deque, Dict, List, Optional
 
 from src.core.assignment_persistence import AssignmentPersistence
 from src.core.event_loop_utils import EventLoopLockManager
@@ -257,6 +257,12 @@ class AssignmentLeaseManager:
         # Active leases tracked in memory
         self.active_leases: Dict[str, AssignmentLease] = {}
 
+        # Optional callback invoked after a successful recovery
+        # Server sets this to clean up in-memory tracking structures
+        # (agent_tasks, tasks_being_assigned) that lease manager
+        # can't access directly.
+        self.on_recovery_callback: Optional[Callable[[str, str], None]] = None
+
         # Track lease history for analysis (max 1000 entries to prevent memory leak)
         self.lease_history: Deque[Dict[str, Any]] = deque(maxlen=1000)
 
@@ -471,6 +477,55 @@ class AssignmentLeaseManager:
 
             return lease
 
+    async def touch_lease(self, agent_id: str) -> bool:
+        """
+        Extend an agent's lease without changing progress.
+
+        Called on any MCP tool activity to prove the agent is alive.
+        This is a lightweight alternative to renew_lease that doesn't
+        require progress data or update cadence tracking.
+
+        Parameters
+        ----------
+        agent_id : str
+            ID of the agent whose lease to extend.
+
+        Returns
+        -------
+        bool
+            True if a lease was touched, False if no active lease found.
+        """
+        async with self.lease_lock:
+            # Find lease by agent_id
+            lease = None
+            for active_lease in self.active_leases.values():
+                if active_lease.agent_id == agent_id:
+                    lease = active_lease
+                    break
+
+            if not lease or lease.is_expired:
+                return False
+
+            # Extend by the current phase timeout
+            lease_seconds, _ = self.calculate_adaptive_timeout(
+                progress=lease.progress_percentage,
+                update_count=max(lease.renewal_count, 1),
+                has_recent_activity=True,
+            )
+            now = datetime.now(timezone.utc)
+            lease.last_renewed = now
+            lease.lease_expires = now + timedelta(seconds=lease_seconds)
+
+            # Update timestamp for cadence tracking
+            lease.update_timestamps.append(now)
+
+            logger.debug(
+                f"Touched lease for agent {agent_id} "
+                f"(task {lease.task_id}, "
+                f"expires: {lease.lease_expires.isoformat()})"
+            )
+            return True
+
     async def check_expired_leases(self) -> List[AssignmentLease]:
         """
         Check for expired leases that need recovery.
@@ -627,6 +682,15 @@ class AssignmentLeaseManager:
 
             # Remove assignment from persistence
             await self.assignment_persistence.remove_assignment(lease.agent_id)
+
+            # Invoke recovery callback so server can clean in-memory state
+            if self.on_recovery_callback is not None:
+                try:
+                    self.on_recovery_callback(lease.agent_id, lease.task_id)
+                except Exception as e:
+                    logger.warning(
+                        f"Recovery callback failed for task " f"{lease.task_id}: {e}"
+                    )
 
             # Reset task on board: status → TODO, clear assigned_to
             try:
@@ -987,7 +1051,7 @@ class LeaseMonitor:
         logger.info("Lease monitor stopped")
 
     async def _monitor_loop(self) -> None:
-        """Monitor lease."""
+        """Monitor lease expiration and recover dead agents."""
         while self._running:
             try:
                 # Check for expired leases
@@ -995,7 +1059,6 @@ class LeaseMonitor:
 
                 # Recover expired leases (with smart checks)
                 for lease in expired_leases:
-                    # Check if we should actually recover this lease
                     should_recover = (
                         await self.lease_manager.should_recover_expired_lease(lease)
                     )
@@ -1037,6 +1100,14 @@ class LeaseMonitor:
 
                 await asyncio.sleep(self.check_interval)
 
+            except asyncio.CancelledError:
+                logger.warning("Lease monitor cancelled")
+                raise
             except Exception as e:
-                logger.error(f"Error in lease monitor: {e}")
+                logger.error(
+                    f"Error in lease monitor: {e}",
+                    exc_info=True,
+                )
                 await asyncio.sleep(self.check_interval)
+
+        logger.warning("Lease monitor loop exited")

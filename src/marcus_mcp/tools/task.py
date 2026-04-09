@@ -622,6 +622,11 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
     Any
         Dict with task details and instructions if successful
     """
+    # Ensure lease monitor is running on the active event loop
+    # (In HTTP mode, setup runs on a temporary loop that's abandoned)
+    if hasattr(state, "ensure_lease_monitor_running"):
+        await state.ensure_lease_monitor_running()
+
     # Get project/board context
     project_context = await get_project_board_context(state)
 
@@ -1806,7 +1811,20 @@ async def report_task_progress(
                     f"(expires: {renewed_lease.lease_expires.isoformat()})"
                 )
             else:
-                logger.warning(f"Failed to renew lease for task {task_id}")
+                # No active lease (likely recovered via false positive).
+                # Recreate it so the monitor can continue watching for
+                # real agent death.
+                task_obj = next(
+                    (t for t in state.project_tasks if t.id == task_id), None
+                )
+                new_lease = await state.lease_manager.create_lease(
+                    task_id, agent_id, task_obj
+                )
+                logger.info(
+                    f"Recreated lease for task {task_id} "
+                    f"after recovery (expires: "
+                    f"{new_lease.lease_expires.isoformat()})"
+                )
 
         # Log response
         conversation_logger.log_worker_message(
