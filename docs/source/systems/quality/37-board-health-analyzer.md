@@ -14,16 +14,18 @@ The Board Health Analyzer consists of:
 Board Health Analyzer Architecture
 ├── board_health_analyzer.py (Core Analysis)
 │   ├── BoardHealthAnalyzer (Main analyzer class)
-│   ├── BoardHealthIssue (Issue data structure)
+│   ├── HealthIssue (Issue data structure)
+│   ├── HealthIssueType (Enum of issue types)
 │   ├── IssueSeverity (LOW, MEDIUM, HIGH, CRITICAL)
+│   ├── BoardHealth (Result container)
 │   └── Six Analysis Methods:
-│       ├── _analyze_skill_mismatches()
-│       ├── _analyze_circular_dependencies()
-│       ├── _analyze_bottlenecks()
-│       ├── _analyze_chain_blocks()
-│       ├── _analyze_stale_tasks()
-│       └── _analyze_workload_balance()
-└── board_health.py (MCP Tool Integration)
+│       ├── _detect_skill_mismatches()
+│       ├── _detect_circular_dependencies()
+│       ├── _detect_bottlenecks()
+│       ├── _detect_chain_blocks()
+│       ├── _detect_stale_tasks()
+│       └── _analyze_agent_workload()
+└── tools/board_health.py (MCP Tool Integration)
     ├── check_board_health (Full health analysis)
     └── check_task_dependencies (Dependency graph)
 ```
@@ -65,35 +67,33 @@ Board State (Tasks + Agents)
 Detects when required skills aren't available:
 
 ```python
-def _analyze_skill_mismatches(
+async def _detect_skill_mismatches(
     self,
     tasks: List[Task],
-    agents: List[WorkerAgent]
-) -> List[BoardHealthIssue]:
-    """Analyze tasks that require skills not available in team"""
+    agents: Dict[str, WorkerStatus]
+) -> List[HealthIssue]:
+    """Detect tasks that cannot be handled by available agents."""
     issues = []
 
-    # Collect all available skills
+    # Collect all available skills from active agents
     available_skills = set()
-    for agent in agents:
-        if agent.status == WorkerStatus.ACTIVE:
-            available_skills.update(skill.lower() for skill in agent.skills)
+    for agent in agents.values():
+        available_skills.update(skill.lower() for skill in agent.skills)
 
     # Check each TODO/BLOCKED task
     for task in tasks:
         if task.status in [TaskStatus.TODO, TaskStatus.BLOCKED]:
-            if hasattr(task, 'required_skills') and task.required_skills:
-                missing = set(s.lower() for s in task.required_skills) - available_skills
+            if hasattr(task, 'labels') and task.labels:
+                missing = set(s.lower() for s in task.labels) - available_skills
                 if missing:
-                    issues.append(BoardHealthIssue(
-                        type="skill_mismatch",
+                    issues.append(HealthIssue(
+                        type=HealthIssueType.SKILL_MISMATCH,
                         severity=IssueSeverity.HIGH,
                         title="Missing Required Skills",
-                        description=f"Task '{task.title}' requires {missing} but no active agents have these skills",
+                        description=f"Task '{task.name}' requires {missing} but no active agents have these skills",
                         affected_tasks=[task.id],
                         recommendations=[
-                            f"Find agents with skills: {', '.join(missing)}",
-                            "Consider training existing agents",
+                            f"Register agents with skills: {', '.join(missing)}",
                             "Break down task to use available skills"
                         ]
                     ))
@@ -106,10 +106,10 @@ def _analyze_skill_mismatches(
 Detects dependency cycles using DFS:
 
 ```python
-def _analyze_circular_dependencies(
+async def _detect_circular_dependencies(
     self,
     tasks: List[Task]
-) -> List[BoardHealthIssue]:
+) -> List[HealthIssue]:
     """Detect circular dependencies in task graph"""
     # Build dependency graph
     graph: Dict[str, List[str]] = {}
@@ -149,8 +149,8 @@ def _analyze_circular_dependencies(
 
     # Create issues for cycles
     if cycles:
-        return [BoardHealthIssue(
-            type="circular_dependency",
+        return [HealthIssue(
+            type=HealthIssueType.CIRCULAR_DEPENDENCY,
             severity=IssueSeverity.CRITICAL,
             title=f"Circular Dependency Detected",
             description=f"Tasks form a dependency cycle: {' → '.join(cycle + [cycle[0]])}",
@@ -170,7 +170,7 @@ def _analyze_circular_dependencies(
 Identifies columns with too many tasks:
 
 ```python
-def _analyze_bottlenecks(self, tasks: List[Task]) -> List[BoardHealthIssue]:
+async def _detect_bottlenecks(self, tasks: List[Task]) -> List[HealthIssue]:
     """Identify bottlenecks in the workflow"""
     issues = []
 
@@ -193,8 +193,8 @@ def _analyze_bottlenecks(self, tasks: List[Task]) -> List[BoardHealthIssue]:
         if count > threshold:
             severity = IssueSeverity.HIGH if count > threshold * 1.5 else IssueSeverity.MEDIUM
 
-            issues.append(BoardHealthIssue(
-                type="bottleneck",
+            issues.append(HealthIssue(
+                type=HealthIssueType.BOTTLENECK,
                 severity=severity,
                 title=f"Bottleneck in {status}",
                 description=f"{count} tasks in {status} (threshold: {threshold})",
@@ -217,7 +217,11 @@ def _analyze_bottlenecks(self, tasks: List[Task]) -> List[BoardHealthIssue]:
 Finds chains of blocked dependencies:
 
 ```python
-def _analyze_chain_blocks(self, tasks: List[Task]) -> List[BoardHealthIssue]:
+async def _detect_chain_blocks(
+    self,
+    tasks: List[Task],
+    active_assignments: Dict[str, str]
+) -> List[HealthIssue]:
     """Find chains where blocked tasks block other tasks"""
     issues = []
     task_map = {task.id: task for task in tasks}
@@ -237,8 +241,8 @@ def _analyze_chain_blocks(self, tasks: List[Task]) -> List[BoardHealthIssue]:
             chain_length = 1 + len(dependent_tasks)
             severity = IssueSeverity.HIGH if chain_length > 3 else IssueSeverity.MEDIUM
 
-            issues.append(BoardHealthIssue(
-                type="chain_block",
+            issues.append(HealthIssue(
+                type=HealthIssueType.CHAIN_BLOCK,
                 severity=severity,
                 title=f"Blocked Task Creating Chain",
                 description=(
@@ -261,7 +265,7 @@ def _analyze_chain_blocks(self, tasks: List[Task]) -> List[BoardHealthIssue]:
 Identifies tasks that haven't been updated:
 
 ```python
-def _analyze_stale_tasks(self, tasks: List[Task]) -> List[BoardHealthIssue]:
+async def _detect_stale_tasks(self, tasks: List[Task]) -> List[HealthIssue]:
     """Find tasks that haven't been updated recently"""
     issues = []
     now = datetime.now()
@@ -293,8 +297,8 @@ def _analyze_stale_tasks(self, tasks: List[Task]) -> List[BoardHealthIssue]:
             age_days = age.days
             description_parts.append(f"• '{task.title}' ({age_days} days old)")
 
-        issues.append(BoardHealthIssue(
-            type="stale_tasks",
+        issues.append(HealthIssue(
+            type=HealthIssueType.STALE_TASK,
             severity=IssueSeverity.MEDIUM,
             title=f"{len(stale_tasks)} Stale Tasks Detected",
             description="\n".join(description_parts),
@@ -315,11 +319,11 @@ def _analyze_stale_tasks(self, tasks: List[Task]) -> List[BoardHealthIssue]:
 Checks for uneven task distribution:
 
 ```python
-def _analyze_workload_balance(
+async def _analyze_agent_workload(
     self,
-    tasks: List[Task],
-    agents: List[WorkerAgent]
-) -> List[BoardHealthIssue]:
+    agents: Dict[str, WorkerStatus],
+    active_assignments: Dict[str, str]
+) -> List[HealthIssue]:
     """Analyze if workload is balanced across agents"""
     issues = []
 
@@ -349,8 +353,8 @@ def _analyze_workload_balance(
         overloaded = [aid for aid, count in agent_task_count.items() if count == max_tasks]
         underutilized = [aid for aid, count in agent_task_count.items() if count <= 1]
 
-        issues.append(BoardHealthIssue(
-            type="workload_imbalance",
+        issues.append(HealthIssue(
+            type=HealthIssueType.WORKLOAD_IMBALANCE,
             severity=IssueSeverity.MEDIUM,
             title="Uneven Workload Distribution",
             description=(
@@ -373,9 +377,9 @@ def _analyze_workload_balance(
 
 ```python
 @dataclass
-class BoardHealthIssue:
-    """Represents a health issue found during board analysis"""
-    type: str  # skill_mismatch, circular_dependency, etc.
+class HealthIssue:
+    """Represents a board health issue."""
+    type: HealthIssueType
     severity: IssueSeverity
     title: str
     description: str
@@ -383,6 +387,14 @@ class BoardHealthIssue:
     affected_agents: List[str] = field(default_factory=list)
     recommendations: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+class HealthIssueType(Enum):
+    SKILL_MISMATCH = "skill_mismatch"
+    CIRCULAR_DEPENDENCY = "circular_dependency"
+    BOTTLENECK = "bottleneck"
+    CHAIN_BLOCK = "chain_block"
+    STALE_TASK = "stale_task"
+    WORKLOAD_IMBALANCE = "workload_imbalance"
 
 class IssueSeverity(Enum):
     LOW = "low"
@@ -398,37 +410,38 @@ class IssueSeverity(Enum):
 Provides comprehensive board analysis:
 
 ```python
-async def check_board_health(
-    kanban_client: KanbanInterface,
-    agent_manager: AgentManager
-) -> Dict[str, Any]:
-    """Analyze board health and return issues with recommendations"""
+async def check_board_health(state: Any) -> Dict[str, Any]:
+    """Analyze board health and return issues with recommendations."""
+    analyzer = BoardHealthAnalyzer(kanban_client=state.kanban_client)
 
-    # Get current board state
-    tasks = await kanban_client.get_all_tasks()
-    agents = agent_manager.get_all_agents()
+    # agents: Dict[str, WorkerStatus], active_assignments: Dict[str, str]
+    active_assignments = {
+        agent_id: assignment.task_id
+        for agent_id, assignment in state.agent_tasks.items()
+    }
+    board_health = await analyzer.analyze_board_health(
+        agents=state.agent_status,
+        active_assignments=active_assignments,
+    )
 
-    # Run analysis
-    analyzer = BoardHealthAnalyzer()
-    issues = analyzer.analyze_board_health(tasks, agents)
-
-    # Format response
     return {
-        "healthy": len(issues) == 0,
-        "issue_count": len(issues),
-        "critical_issues": sum(1 for i in issues if i.severity == IssueSeverity.CRITICAL),
+        "health_score": board_health.health_score,
+        "issue_count": len(board_health.issues),
+        "critical_issues": sum(
+            1 for i in board_health.issues if i.severity == IssueSeverity.CRITICAL
+        ),
         "issues": [
             {
-                "type": issue.type,
+                "type": issue.type.value,
                 "severity": issue.severity.value,
                 "title": issue.title,
                 "description": issue.description,
                 "affected_tasks": issue.affected_tasks,
-                "recommendations": issue.recommendations
+                "recommendations": issue.recommendations,
             }
-            for issue in issues
+            for issue in board_health.issues
         ],
-        "summary": _generate_health_summary(issues)
+        "recommendations": board_health.recommendations,
     }
 ```
 
@@ -520,35 +533,46 @@ Recommendations:
 
 ```python
 class BoardHealthAnalyzer:
-    """Analyzes Kanban board health and identifies issues"""
+    """Analyzes board-level health and detects various types of deadlocks."""
 
-    def analyze_board_health(
+    def __init__(
         self,
-        tasks: List[Task],
-        agents: List[WorkerAgent]
-    ) -> List[BoardHealthIssue]:
-        """Run all health checks and return issues"""
-        all_issues = []
+        kanban_client: KanbanInterface,
+        stale_task_days: int = 7,
+        max_tasks_per_agent: int = 3,
+    ):
+        self.kanban_client = kanban_client
+        self.stale_task_days = stale_task_days
+        self.max_tasks_per_agent = max_tasks_per_agent
 
-        # Run all analysis methods
-        all_issues.extend(self._analyze_skill_mismatches(tasks, agents))
-        all_issues.extend(self._analyze_circular_dependencies(tasks))
-        all_issues.extend(self._analyze_bottlenecks(tasks))
-        all_issues.extend(self._analyze_chain_blocks(tasks))
-        all_issues.extend(self._analyze_stale_tasks(tasks))
-        all_issues.extend(self._analyze_workload_balance(tasks, agents))
+    async def analyze_board_health(
+        self,
+        agents: Dict[str, WorkerStatus],
+        active_assignments: Dict[str, str],  # agent_id -> task_id
+    ) -> BoardHealth:
+        """Run all health checks and return a BoardHealth result."""
+        # Fetches tasks from kanban internally
+        all_tasks = await self.kanban_client.get_all_tasks()
+        issues = []
 
-        # Sort by severity
-        severity_order = {
-            IssueSeverity.CRITICAL: 0,
-            IssueSeverity.HIGH: 1,
-            IssueSeverity.MEDIUM: 2,
-            IssueSeverity.LOW: 3
-        }
+        issues.extend(await self._detect_skill_mismatches(all_tasks, agents))
+        issues.extend(await self._detect_circular_dependencies(all_tasks))
+        issues.extend(await self._detect_bottlenecks(all_tasks))
+        issues.extend(await self._detect_chain_blocks(all_tasks, active_assignments))
+        issues.extend(await self._detect_stale_tasks(all_tasks))
+        issues.extend(await self._analyze_agent_workload(agents, active_assignments))
 
-        all_issues.sort(key=lambda x: severity_order[x.severity])
+        metrics = self._calculate_health_metrics(all_tasks, agents, issues)
+        recommendations = self._generate_overall_recommendations(issues, metrics)
+        health_score = self._calculate_health_score(issues, metrics)
 
-        return all_issues
+        return BoardHealth(
+            health_score=health_score,
+            issues=issues,
+            metrics=metrics,
+            recommendations=recommendations,
+            timestamp=datetime.now(timezone.utc),
+        )
 ```
 
 ### Summary Generation
@@ -708,8 +732,8 @@ Health analyzer can detect stuck tasks from lease data:
 if hasattr(state, 'lease_manager'):
     lease_stats = state.lease_manager.get_statistics()
     if lease_stats['stuck_tasks'] > 0:
-        issues.append(BoardHealthIssue(
-            type="stuck_tasks_from_leases",
+        issues.append(HealthIssue(
+            type=HealthIssueType.STALE_TASK,
             severity=IssueSeverity.HIGH,
             title=f"{lease_stats['stuck_tasks']} Stuck Tasks (Lease System)",
             description="Tasks have been renewed too many times",
