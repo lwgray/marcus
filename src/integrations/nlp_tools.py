@@ -1634,8 +1634,16 @@ async def _generate_single_decisions(
         else:
             dec_list = []
 
+        # Guard against malformed list elements (mixed types from the LLM:
+        # strings, numbers, None) BEFORE checking for required keys.
+        # Without the isinstance check, ``"what" in d`` raises TypeError on
+        # non-iterables (or matches a substring on a string), which under
+        # the GH-304 fail-fast gather would abort the entire design phase
+        # for a recoverable formatting issue. See PR #319 Codex review.
         logged_decisions: List[Dict[str, Any]] = [
-            d for d in dec_list if all(k in d for k in ("what", "why", "impact"))
+            d
+            for d in dec_list
+            if isinstance(d, dict) and all(k in d for k in ("what", "why", "impact"))
         ]
 
         logger.info(
@@ -1870,8 +1878,21 @@ async def _generate_design_content(
 
     # Level 1 parallelism. return_exceptions=False so the first
     # unrecoverable failure propagates immediately (fail-fast semantics
-    # per GH-304).
-    task_results = await asyncio.gather(*task_coros)
+    # per GH-304). The thin try/except adds the batch size and task names
+    # to the error log so failures are diagnosable from logs alone — the
+    # @with_retry layer only knows about a single failing call, not the
+    # surrounding batch.
+    try:
+        task_results = await asyncio.gather(*task_coros)
+    except Exception as exc:
+        task_names = ", ".join(repr(t.name) for t in design_tasks)
+        logger.error(
+            f"[design_autocomplete] Phase A: aborted batch of "
+            f"{len(design_tasks)} design task(s) due to "
+            f"{type(exc).__name__}: {exc}. "
+            f"tasks in batch: {task_names}"
+        )
+        raise
 
     # All tasks finished without raising. Atomically update task state
     # on the board-bound Task objects and assemble the design_content

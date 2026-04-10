@@ -220,6 +220,64 @@ class TestDesignAutocompleteParallelism:
         assert tasks[0].status == TaskStatus.DONE
 
     @pytest.mark.asyncio
+    async def test_malformed_decisions_list_does_not_abort_design_phase(
+        self, tmp_path: Any
+    ) -> None:
+        """Non-dict elements in the LLM decisions list must not crash.
+
+        Regression test for PR #319 Codex P1 review: an LLM that returns
+        a decisions JSON list with mixed types (e.g. a trailing string,
+        number, or null) used to raise ``TypeError`` from
+        ``"what" in d`` for non-iterable elements. Under the GH-304
+        fail-fast ``asyncio.gather`` flow, that exception would abort
+        the entire design phase for what is really a recoverable
+        formatting issue. The parser must filter to ``isinstance(dict)``
+        before checking for required keys.
+        """
+        # Decisions response: 1 valid dict, 1 string, 1 int, 1 dict
+        # missing required keys, 1 None. Only the first should survive.
+        malformed_decisions = (
+            "["
+            '{"what": "Use REST", "why": "Simpler", "impact": "OK"},'
+            '"a stray string",'
+            "42,"
+            '{"what": "Missing keys"},'
+            "null"
+            "]"
+        )
+
+        async def malformed_analyze(prompt: str, context: Any) -> str:
+            if "decision" in prompt.lower() and "json" in prompt.lower():
+                return malformed_decisions
+            return _VALID_ARTIFACT_RESPONSE
+
+        mock_llm = Mock()
+        mock_llm.analyze = AsyncMock(side_effect=malformed_analyze)
+
+        tasks = [_make_design_task("Design Mixed")]
+
+        with patch(
+            "src.ai.providers.llm_abstraction.LLMAbstraction",
+            return_value=mock_llm,
+        ):
+            # This used to raise TypeError before the isinstance guard.
+            result = await _generate_design_content(
+                tasks=tasks,
+                project_description="P",
+                project_name="P",
+                project_root=str(tmp_path),
+            )
+
+        # The design phase must complete normally
+        entry = result["Design Mixed"]
+        assert len(entry["artifacts"]) == 4
+        # Only the one well-formed dict should pass the filter
+        assert len(entry["decisions"]) == 1
+        assert entry["decisions"][0]["what"] == "Use REST"
+        # And the task should still be marked DONE
+        assert tasks[0].status == TaskStatus.DONE
+
+    @pytest.mark.asyncio
     async def test_llm_failure_exhausts_retries_then_propagates(
         self, tmp_path: Any
     ) -> None:
