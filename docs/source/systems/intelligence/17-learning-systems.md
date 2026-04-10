@@ -211,6 +211,7 @@ class Pattern:
 @dataclass
 class ProjectPattern:
     project_id: str
+    project_name: str
     outcome: ProjectOutcome
     quality_metrics: Dict[str, float]
     team_composition: Dict[str, Any]
@@ -229,7 +230,8 @@ class ProjectPattern:
 Pattern confidence is calculated using multiple factors:
 
 ```python
-def calculate_confidence(pattern: Pattern) -> float:
+# calculate_confidence is an instance method on PatternLearner, not a free function
+async def calculate_confidence(self, pattern: Pattern) -> float:
     base_confidence = pattern.confidence
     evidence_bonus = min(0.2, pattern.evidence_count * 0.02)
     age_penalty = min(0.3, days_old * 0.001)

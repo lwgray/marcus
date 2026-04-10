@@ -1,5 +1,30 @@
 # Task Execution Order Fix Architecture
 
+> **ARCHITECTURE PROPOSAL — NOT IMPLEMENTED CODE**
+>
+> This document describes a *proposed* design, not the current implementation.
+> Several classes, APIs, and data models referenced here do not exist in the
+> codebase. Key discrepancies:
+>
+> - **`TaskTypeIdentifier`** does not exist. The implemented equivalent is
+>   `EnhancedTaskClassifier` in `src/integrations/enhanced_task_classifier.py`,
+>   with method `classify_task()`.
+> - **`GlobalDependencyManager`** does not exist.
+> - **`DependencyValidator`** does not exist as a class. Validate-dependencies
+>   logic lives in `TaskSafetyChecker` and `dependency_inferer.py`.
+> - **REST API endpoints** (`/api/identify-task-type`,
+>   `/api/validate-dependencies`) do not exist. Marcus uses MCP tools, not a
+>   REST API.
+> - **`EnhancedTask`** is not a subclass of `Task`. It is an alias
+>   (`EnhancedTask = Task`) defined in `phase_dependency_enforcer.py`.
+> - **`DependencyValidationResult`** does not exist. The implemented type is
+>   `DependencyValidationError` (field `message`, not `error_message`;
+>   `severity` is a `ValidationSeverity` enum, not a plain `str`).
+> - **`PHASE_ORDER`** should contain 7 phases (including
+>   `TaskPhase.INTEGRATION` between TESTING and DOCUMENTATION), not 6.
+> - **`_group_by_feature`** → the actual method name is
+>   `_group_tasks_by_feature`.
+
 ## Executive Summary
 
 This document presents the architectural design for fixing task execution order issues in Marcus, where tasks are being assigned out of their logical development sequence (e.g., Test tasks before Implementation tasks). The solution introduces a robust four-layer approach: enhanced task type identification, strict phase dependency enforcement, global documentation dependencies, and comprehensive dependency validation.
@@ -111,12 +136,13 @@ class TaskTypeIdentifier:
 class PhaseDependencyEnforcer:
     """Enforce development lifecycle phase dependencies"""
 
-    # Define phase ordering
+    # Define phase ordering (7 phases; INTEGRATION sits between TESTING and DOCUMENTATION)
     PHASE_ORDER = [
         TaskType.DESIGN,
         TaskType.INFRASTRUCTURE,
         TaskType.IMPLEMENTATION,
         TaskType.TESTING,
+        TaskType.INTEGRATION,
         TaskType.DOCUMENTATION,
         TaskType.DEPLOYMENT
     ]
@@ -126,7 +152,7 @@ class PhaseDependencyEnforcer:
         Ensure tasks follow proper phase ordering within features
         """
         # Group tasks by feature/component
-        feature_groups = self._group_by_feature(tasks)
+        feature_groups = self._group_tasks_by_feature(tasks)
 
         for feature, feature_tasks in feature_groups.items():
             # Classify tasks by phase
@@ -240,24 +266,29 @@ graph TD
 ### Data Models
 
 ```python
+# NOTE: EnhancedTask is NOT a subclass of Task in the implementation.
+# In phase_dependency_enforcer.py it is simply an alias: EnhancedTask = Task
 @dataclass
 class EnhancedTask(Task):
-    """Extended task model with phase information"""
+    """Extended task model with phase information (proposal only)"""
     phase: TaskType
     phase_confidence: float
     feature_group: Optional[str]
     cross_feature_dependencies: List[str]
     validation_status: ValidationStatus
 
+# NOTE: The implemented type is DependencyValidationError, not
+# DependencyValidationResult. Fields differ: use `message` (not
+# `error_message`) and `severity` is a ValidationSeverity enum (not str).
 @dataclass
-class DependencyValidationResult:
-    """Result of dependency validation"""
+class DependencyValidationError:
+    """Result of dependency validation (actual implementation)"""
     task_id: str
     task_name: str
     error_type: str  # 'missing_dependency', 'circular', 'invalid_phase'
-    error_message: str
+    message: str
     suggested_fix: Optional[DependencyFix]
-    severity: str  # 'error', 'warning', 'info'
+    severity: ValidationSeverity  # ValidationSeverity enum, not plain str
 ```
 
 ### API Contracts

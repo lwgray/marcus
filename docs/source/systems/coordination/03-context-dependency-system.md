@@ -83,8 +83,8 @@ The Context system publishes events for:
 
 ### MCP Tools Integration
 - Exposes context functionality through MCP tools
-- Provides `get_task_context` for detailed task information
-- Supports dependency analysis through `analyze_dependencies`
+- The only registered MCP context tool is `get_task_context` for detailed task information
+- `analyze_dependencies` is an internal method on the `Context` class, not an MCP tool
 
 ## Workflow Integration
 
@@ -182,7 +182,7 @@ Return JSON with dependency direction and reasoning."""
 ```python
 # Learning from user corrections
 def record_feedback(self, task_a_id, task_b_id, is_dependency,
-                   user_confirmed, reason=None):
+                   original_confidence, user_confirmed, reason=None):
     # Adjust feature weights based on feedback
     # Learn new patterns from confirmed dependencies
     # Update confidence thresholds

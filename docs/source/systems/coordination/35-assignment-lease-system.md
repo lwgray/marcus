@@ -243,12 +243,20 @@ non-agent workflows.
 
 ```python
 "complexity_multipliers": {
-    "complex": 2.0,
-    "large": 1.5,
-    "simple": 0.75,
-    "tiny": 0.5,
+    "simple": 0.5,
+    "complex": 1.5,
+    "research": 2.0,
+    "epic": 3.0,
 }
 ```
+
+> **Note on default inconsistency**: `AssignmentLeaseManager.__init__` has
+> its own inline default of `max_lease_hours = 0.0333` (120 seconds), which
+> differs from the `TaskLeaseSettings` dataclass default of `0.0833`
+> (5 minutes). When the server initializes the manager using
+> `TaskLeaseSettings`, the `TaskLeaseSettings` values take effect. The
+> manager's inline default only applies if the manager is constructed
+> without configuration arguments.
 
 ### Renewal Decay
 
@@ -286,10 +294,10 @@ renewing without finishing.
       "low": 1.5
     },
     "complexity_multipliers": {
-      "complex": 2.0,
-      "large": 1.5,
-      "simple": 0.75,
-      "tiny": 0.5
+      "simple": 0.5,
+      "complex": 1.5,
+      "research": 2.0,
+      "epic": 3.0
     }
   }
 }

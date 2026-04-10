@@ -149,10 +149,16 @@ def discover_services(cls) -> List[Dict[str, Any]]:
             if cls._is_process_running(service_info.get("pid")):
                 services.append(service_info)
             else:
-                service_file.unlink()  # Cleanup stale entries
+                try:
+                    service_file.unlink()  # Cleanup stale entries
+                except (OSError, PermissionError):
+                    pass
 
         except (json.JSONDecodeError, FileNotFoundError):
-            service_file.unlink()  # Cleanup corrupted files
+            try:
+                service_file.unlink()  # Cleanup corrupted files
+            except (OSError, PermissionError):
+                pass
 
     return sorted(services, key=lambda x: x.get("started_at", ""))
 ```
@@ -253,7 +259,12 @@ The Service Registry operates **independently of task complexity**:
 
 ### Provider Integration
 ```python
-# Service registration includes provider information
+# Service registration includes provider information.
+# Note: register_marcus_service() is a module-level convenience wrapper with
+# signature register_marcus_service(**kwargs: Any) -> Dict[str, Any].
+# The named parameters (mcp_command, log_dir, project_name, provider) are
+# forwarded to MarcusServiceRegistry.register_service(), not accepted by
+# the wrapper's own signature.
 register_marcus_service(
     mcp_command=command,
     log_dir=log_directory,
@@ -313,7 +324,7 @@ def _is_process_running(pid: int) -> bool:
 
     try:
         return psutil.pid_exists(pid)
-    except:
+    except Exception:
         return False
 ```
 
@@ -344,7 +355,7 @@ except (json.JSONDecodeError, FileNotFoundError):
     # Clean up invalid service files
     try:
         service_file.unlink()
-    except:
+    except (OSError, PermissionError):
         pass  # Fail silently for cleanup operations
 ```
 

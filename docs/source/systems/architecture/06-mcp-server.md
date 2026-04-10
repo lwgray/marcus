@@ -52,7 +52,6 @@ Tools are organized into specialized modules:
 - **`nlp.py`**: Natural language project creation
 - **`system.py`**: Health checks and diagnostics
 - **`project_management.py`**: Multi-project operations
-- **`pipeline.py`**: Pipeline enhancement tools
 
 ## Position in Marcus Workflow
 
@@ -93,7 +92,7 @@ create_project → register_agent → request_next_task → report_progress → 
 ## What Makes This System Special
 
 ### 1. **Tiered Instruction System**
-The task assignment builds context-aware instructions in layers:
+The task assignment builds context-aware instructions in layers (implemented in `src/marcus_mcp/tools/task.py`):
 
 ```python
 def build_tiered_instructions(
@@ -152,9 +151,15 @@ The server implements the full MCP specification:
 ```python
 @self.server.list_tools()
 async def handle_list_tools() -> List[types.Tool]:
-    """Return list of available tools"""
-    role = "agent"  # Role-based tool filtering
-    return get_tool_definitions(role)
+    """Return list of available tools for the connecting client.
+
+    Uses client-ID-based auth: calls get_tool_definitions_for_client(client_id, self)
+    from src/marcus_mcp/tools/auth.py. Client type is detected by the ping() handler
+    in src/marcus_mcp/tools/system.py and stored on the server state.
+
+    Supported client types: observer, developer, agent, admin.
+    """
+    return get_tool_definitions_for_client(client_id, self)
 
 @self.server.call_tool()
 async def handle_call_tool(name: str, arguments: Optional[Dict[str, Any]]) -> List[types.TextContent]:
@@ -179,7 +184,7 @@ except Exception as e:
 ```
 
 ### Serialization and Data Safety
-Custom serialization for MCP responses:
+Custom serialization for MCP responses (implemented in `src/marcus_mcp/utils.py`):
 
 ```python
 def serialize_for_mcp(data: Any) -> Any:
@@ -188,7 +193,7 @@ def serialize_for_mcp(data: Any) -> Any:
 ```
 
 ### Assignment Concurrency Control
-Thread-safe task assignment with locking:
+Thread-safe task assignment with locking (implemented in `src/marcus_mcp/tools/task.py`):
 
 ```python
 async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Task]:
@@ -249,8 +254,10 @@ service_info = register_marcus_service(
 ```
 
 ### Client Type Detection
+Client detection happens inside the `ping()` function in `src/marcus_mcp/tools/system.py`:
+
 ```python
-# Automatic client identification
+# Automatic client identification (inside ping())
 if "seneca" in echo_lower:
     client_type = "seneca"
 elif "claude" in echo_lower or "desktop" in echo_lower:
@@ -405,8 +412,5 @@ Built-in diagnostics for system health:
 # Check assignment system health
 health = await client.call_tool("check_assignment_health", {})
 ```
-
-### Pipeline Visualization
-Real-time flow tracking through the UI at `http://localhost:8080`
 
 The Marcus MCP Server represents a sophisticated yet practical approach to AI-human collaboration in software development, providing the tools and intelligence needed for autonomous development teams while maintaining human oversight and control.

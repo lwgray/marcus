@@ -26,7 +26,9 @@ The Worker Support system is Marcus's sophisticated infrastructure for enabling 
 ### Key Classes
 
 #### Inspector
-The primary client class that provides a high-level interface for worker agents to communicate with Marcus:
+**Note**: The `Inspector` class in `src/worker/inspector.py` is designed FOR TESTING Marcus, not for use by production AI agents. Production worker infrastructure lives in `src/enhancements/worker_agent_support.py` in the `WorkerAgentManager` class.
+
+The `Inspector` class provides a high-level interface for testing and validating Marcus workflows:
 
 - **Connection Management**: Handles MCP connection lifecycle through stdio pipes
 - **Tool Operations**: Provides methods for all Marcus operations (register, request tasks, report progress)
@@ -37,8 +39,10 @@ The primary client class that provides a high-level interface for worker agents 
 ```python
 # Marcus server command discovery
 server_cmd = [
-    "python",
-    os.path.join(os.path.dirname(__file__), "..", "..", "marcus_mcp_server.py"),
+    sys.executable,
+    "-m",
+    "src.marcus_mcp.server",
+    "--stdio",
 ]
 
 # MCP stdio transport
@@ -144,7 +148,7 @@ def build_tiered_instructions(base_instructions, task, context_data, dependency_
 ### Connection Management
 ```python
 @asynccontextmanager
-async def connect_to_marcus(self) -> AsyncIterator[ClientSession]:
+async def connect(self) -> AsyncIterator[ClientSession]:
     # Dynamic server command construction
     # Stdio pipe establishment
     # Session initialization and verification

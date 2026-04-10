@@ -8,10 +8,11 @@ The Persistence Layer is Marcus's unified storage abstraction system that provid
 
 ### Core Components
 
-1. **`PersistenceBackend` (Abstract Base Class)**
+1. **`PersistenceBackend` (Base Class)**
    - Defines the storage interface contract
    - Standardizes operations: store, retrieve, query, delete, clear_old
    - Enables pluggable backend implementations
+   - Methods raise `NotImplementedError` manually (not an ABC / no `abstractmethod` decorators)
    - Ensures consistent API across different storage engines
 
 2. **`FilePersistence` (Primary Backend)**
@@ -42,7 +43,7 @@ The Persistence Layer is Marcus's unified storage abstraction system that provid
 
 ```python
 # Backend Abstraction Layer
-PersistenceBackend (ABC)
+PersistenceBackend  # Plain base class (raises NotImplementedError, not an ABC)
 ├── FilePersistence      # JSON files with atomic writes
 ├── SQLitePersistence    # SQLite database with indexing
 └── MemoryPersistence    # In-memory for testing
@@ -216,16 +217,28 @@ except Exception as e:
 json.dumps(data, indent=2, default=str)  # Fallback to string representation
 ```
 
-### Backend Selection Logic
+### Backend Selection
+
+> **Note (aspirational)**: An auto-selection strategy between SQLite and FilePersistence
+> based on feature requirements does **not** exist in code. The `Persistence.__init__`
+> method simply defaults to `FilePersistence()` when no backend is provided:
+> `self.backend = backend or FilePersistence()`. SQLite is only used if the caller
+> explicitly passes a `SQLitePersistence` instance. The block below is aspirational, not
+> current behavior.
+
 ```python
-# Automatic backend selection based on feature requirements
-if any(enhanced_features_enabled):
-    # Use SQLite for better performance with complex queries
-    backend = SQLitePersistence(Path(persistence_path))
-else:
-    # Use simple file backend for basic operations
-    backend = FilePersistence()
+# How the default is actually chosen:
+self.backend = backend or FilePersistence()
+
+# SQLite is only used when explicitly passed by the caller, e.g.:
+persistence = Persistence(backend=SQLitePersistence(Path(persistence_path)))
 ```
+
+### `calculate_median_task_duration()` Method
+
+Both `FilePersistence` and `SQLitePersistence` expose a `calculate_median_task_duration()`
+method for computing the median completion time of recorded tasks. This method is not
+documented elsewhere but is available on both backends.
 
 ## Performance Characteristics
 

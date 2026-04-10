@@ -14,6 +14,8 @@ The system consists of three primary architectural layers:
 2. **Project Context Manager** (`src/core/project_context_manager.py`) - Runtime state and resource management
 3. **Project Workflow Manager** (`src/workflow/project_workflow.py`) - Execution orchestration layer
 
+> **NOTE: NOT IMPLEMENTED** — `ProjectWorkflowManager` (`src/workflow/project_workflow.py`) has been removed. The `src/workflow/` directory exists but is empty (only `__init__.py`). References to this class in the architecture diagram and workflow descriptions below reflect the original design intent, not the current codebase.
+
 ```mermaid
 graph TB
     A[MCP Tools Layer] --> B[Project Registry]
@@ -96,6 +98,7 @@ The Project Management system is invoked at these key points in the Marcus workf
 
 ### 1. **Provider Abstraction**
 The system provides a unified interface across heterogeneous kanban providers:
+- **SQLite**: Local database, zero dependencies, recommended for getting started
 - **Planka**: Self-hosted, full control
 - **Linear**: Issue tracking with automation
 - **GitHub Projects**: Git-integrated project management
@@ -130,7 +133,7 @@ Maintains state across sessions:
 class ProjectConfig:
     id: str
     name: str
-    provider: str  # 'planka', 'linear', 'github'
+    provider: str  # 'sqlite', 'planka', 'linear', 'github'
     provider_config: Dict[str, Any]
     created_at: datetime
     last_used: datetime
@@ -171,6 +174,13 @@ class ProjectContext:
 - **Resource Constraints**: Configurable agent limits and resource controls
 
 ## Provider Configuration Patterns
+
+### SQLite Configuration
+```python
+provider_config = {
+    "db_path": "path/to/database.db"  # optional, defaults to local data dir
+}
+```
 
 ### Planka Configuration
 ```python
@@ -281,26 +291,16 @@ provider_config = {
 - **Limitations**: Limited customization, basic automation
 - **Use Case**: Open source projects, code-centric workflows
 
-## Integration with Seneca
+## AI Integration
 
-The Project Management system integrates with Seneca (AI Intelligence Engine) through:
+> **NOTE: NOT IMPLEMENTED** — "Seneca" is not a class in the codebase. Methods such as `seneca.analyze_project_description()`, `seneca.generate_project_structure()`, `seneca.analyze_task_complexity()`, and `seneca.suggest_agent_allocation()` do not exist. NLP project creation and AI analysis are performed directly by `NaturalLanguageProjectCreator` and `AIAnalysisEngine`.
 
-1. **NLP Project Creation**: Seneca processes natural language project descriptions
-2. **Task Complexity Analysis**: Seneca determines appropriate project sizing
-3. **Resource Planning**: Seneca suggests optimal agent allocation
-4. **Progress Analysis**: Seneca analyzes project metrics for insights
+The Project Management system integrates with AI components through:
 
-### Seneca Integration Points
-
-```python
-# NLP-driven project creation
-result = await seneca.analyze_project_description(description)
-project_config = await seneca.generate_project_structure(result)
-
-# Dynamic task sizing
-complexity = await seneca.analyze_task_complexity(task_description)
-agent_requirements = await seneca.suggest_agent_allocation(complexity)
-```
+1. **NLP Project Creation**: `NaturalLanguageProjectCreator` processes natural language project descriptions
+2. **Task Complexity Analysis**: `AdvancedPRDParser` determines appropriate project sizing
+3. **Resource Planning**: `AIAnalysisEngine` suggests optimal agent allocation
+4. **Progress Analysis**: `AIAnalysisEngine` analyzes project metrics for insights
 
 ## Complete Workflow Context
 
@@ -308,7 +308,7 @@ Within the standard Marcus scenario flow:
 
 ```
 ┌─ create_project (NLP) ──────────────────────────────────┐
-│ • Seneca analyzes requirements                          │
+│ • NaturalLanguageProjectCreator analyzes requirements   │
 │ • Project Registry creates configuration                │
 │ • Context Manager initializes services                  │
 │ • Workflow Manager prepares execution environment       │

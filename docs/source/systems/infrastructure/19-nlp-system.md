@@ -63,12 +63,22 @@ result = await create_project(
 )
 ```
 
-### 2. NLP Processing Layer (`src/integrations/nlp_tools.py`)
+### 2. NLP Processing Layer
 
-**Core Classes**:
+**Base Class** (`src/integrations/nlp_base.py`):
+
+#### NaturalLanguageTaskCreator
+- **Location**: `src/integrations/nlp_base.py` (NOT `nlp_tools.py`)
+- **Primary Role**: Abstract base providing shared NLP task creation infrastructure
+- **Used by**: `NaturalLanguageProjectCreator` and `NaturalLanguageFeatureAdder`
+- **Key detail**: Uses `EnhancedTaskClassifier` (from
+  `src/integrations/enhanced_task_classifier.py`) for task type detection, NOT the
+  simpler `TaskClassifier` from `nlp_task_utils.py`
+
+**Subclasses** (`src/integrations/nlp_tools.py`):
 
 #### NaturalLanguageProjectCreator
-- **Inheritance**: Extends `NaturalLanguageTaskCreator`
+- **Inheritance**: Extends `NaturalLanguageTaskCreator` (defined in `nlp_base.py`)
 - **Primary Role**: Convert project descriptions into complete task structures
 - **Key Capabilities**:
   - Context detection using `ContextDetector`
@@ -76,7 +86,7 @@ result = await create_project(
   - Risk assessment and timeline estimation
 
 #### NaturalLanguageFeatureAdder
-- **Inheritance**: Extends `NaturalLanguageTaskCreator`
+- **Inheritance**: Extends `NaturalLanguageTaskCreator` (defined in `nlp_base.py`)
 - **Primary Role**: Intelligently integrate new features into existing projects
 - **Key Capabilities**:
   - Integration point detection
@@ -148,9 +158,19 @@ class ProjectConstraints:
 
 ### 4. Utility Layer
 
-#### TaskClassifier (`src/integrations/nlp_task_utils.py`)
+#### TaskClassifier and EnhancedTaskClassifier
 
-**Task Types**:
+There are two distinct classifiers in the codebase with different roles:
+
+**`TaskClassifier`** (`src/integrations/nlp_task_utils.py`):
+- Simpler, standalone classifier used in utility contexts
+- **Not** the one used by `NaturalLanguageTaskCreator`
+
+**`EnhancedTaskClassifier`** (`src/integrations/enhanced_task_classifier.py`):
+- The classifier actually used by `NaturalLanguageTaskCreator` (via `nlp_base.py`)
+- Provides richer classification with confidence scoring
+
+**Task Types** (from `TaskClassifier` in `nlp_task_utils.py`):
 ```python
 class TaskType(Enum):
     DEPLOYMENT = "deployment"

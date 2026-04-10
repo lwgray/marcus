@@ -1,5 +1,14 @@
 # Recommendation Engine System
 
+> **STATUS: NOT IMPLEMENTED**
+> The recommendation engine described in this document has been removed from the codebase.
+> `src/recommendations/recommendation_engine.py` and `src/analysis/pipeline_comparison.py` were deleted.
+> Only a stale `.pyc` bytecode file remains for `recommendation_engine`. Classes
+> `PipelineRecommendationEngine`, `PatternDatabase`, and `SuccessAnalyzer` are unreachable.
+> `PipelineComparator` (from `pipeline_comparison.py`) is also gone.
+> `data/pattern_db.json` does not exist.
+> This document is retained as a historical record and design reference.
+
 ## System Overview
 
 The Recommendation Engine is Marcus's intelligent advisory system that learns from historical project executions to provide actionable recommendations for future projects. This system analyzes patterns from completed projects, identifies success factors, and suggests optimizations to improve project outcomes.

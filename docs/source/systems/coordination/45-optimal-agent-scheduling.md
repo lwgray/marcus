@@ -60,18 +60,18 @@ The system consists of several interconnected components working together:
 **Purpose**: Core CPM implementation for critical path and optimal agent calculation
 
 **Key Classes**:
-- **Schedule**: Result dataclass containing optimal agents, critical path, efficiency metrics
+- **ProjectSchedule**: Result dataclass containing optimal agents, critical path, efficiency metrics
 - **calculate_optimal_agents**: Main entry point for CPM analysis
 
 **CPM Algorithm**:
 ```python
-def calculate_optimal_agents(tasks: List[Task]) -> Schedule:
+def calculate_optimal_agents(tasks: List[Task]) -> ProjectSchedule:
     """
     Calculate optimal agent count using Critical Path Method.
 
     Returns
     -------
-    Schedule
+    ProjectSchedule
         Contains optimal_agents, critical_path_hours, max_parallelism,
         efficiency_gain, and parallel_opportunities
     """
@@ -98,7 +98,7 @@ def calculate_optimal_agents(tasks: List[Task]) -> Schedule:
     single_agent_hours = sum(task.estimated_hours for task in tasks)
     efficiency_gain = (single_agent_hours - critical_path_hours) / single_agent_hours
 
-    return Schedule(
+    return ProjectSchedule(
         optimal_agents=optimal_agents,
         critical_path_hours=critical_path_hours,
         max_parallelism=max_parallelism,
@@ -628,10 +628,10 @@ Shows exactly when and where parallel work is possible.
 
 ### Core Data Models
 
-#### Schedule Result
+#### ProjectSchedule Result
 ```python
 @dataclass
-class Schedule:
+class ProjectSchedule:
     """Result of CPM scheduling analysis."""
     optimal_agents: int                      # Recommended agent count
     critical_path_hours: float               # Longest dependency chain
@@ -1068,7 +1068,7 @@ The CPM-based scheduling approach was chosen to balance several competing requir
 #### 1. Skill-Based Scheduling
 ```python
 # Consider agent skills in parallelism calculation
-async def calculate_skill_aware_agents(tasks: List[Task], agents: List[Agent]) -> Schedule:
+async def calculate_skill_aware_agents(tasks: List[Task], agents: List[Agent]) -> ProjectSchedule:
     """Calculate optimal agents considering skill requirements."""
 
     # Group tasks by required skills
@@ -1088,7 +1088,7 @@ async def calculate_skill_aware_agents(tasks: List[Task], agents: List[Agent]) -
 ```python
 # Add cost modeling
 @dataclass
-class CostAwareSchedule(Schedule):
+class CostAwareSchedule(ProjectSchedule):
     total_cost: float                  # Cost of recommended agent count
     cost_per_hour_saved: float         # ROI metric
     break_even_point: int              # Hours until cost pays off
@@ -1227,7 +1227,7 @@ async def scenario_analysis():
 ```python
 # Learn optimal agent patterns from historical data
 class SenecaEnhancedScheduler:
-    async def calculate_optimal_agents(self, tasks: List[Task]) -> Schedule:
+    async def calculate_optimal_agents(self, tasks: List[Task]) -> ProjectSchedule:
         # Get base CPM calculation
         base_schedule = calculate_optimal_agents(tasks)
 

@@ -179,9 +179,16 @@ monitor = AssignmentMonitor(
 await monitor.start()
 ```
 
-Reconciliation is triggered automatically at server startup in
-`MarcusServer._initialize_persistence` and can be re-run manually via the
-reconciler's `force_reconciliation()` method.
+The `force_reconciliation()` method is on `AssignmentMonitor` (in
+`src/monitoring/assignment_monitor.py`), not on `AssignmentReconciler`.
+`AssignmentReconciler` only exposes `reconcile_assignments()`;
+`AssignmentMonitor.force_reconciliation()` calls that internally.
+
+Startup reconciliation is **not** automatic — it only runs when
+`force_reconciliation()` is explicitly called. The server initialization
+method is `_initialize_monitoring_systems` (not `_initialize_persistence`)
+and it sets up the monitor but does not trigger an immediate reconciliation
+pass.
 
 ## Limitations
 

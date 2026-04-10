@@ -161,14 +161,18 @@ The system automatically detects function types using `asyncio.iscoroutinefuncti
 
 ### Jitter Implementation
 
-Random jitter is applied using:
+Random jitter is applied using `secrets.SystemRandom()` (cryptographically secure,
+not the standard `random` module):
 
 ```python
+secure_random = secrets.SystemRandom()
+
 if config.jitter:
-    delay *= (0.5 + random.random())  # 50%-150% of calculated delay
+    delay *= (0.5 + secure_random.random())  # 50%-150% of calculated delay
 ```
 
-This prevents synchronized retry storms when multiple components fail simultaneously.
+This prevents synchronized retry storms when multiple components fail simultaneously,
+using a cryptographically secure random source.
 
 ### Error Propagation
 
@@ -193,9 +197,10 @@ For sophisticated operations involving AI or multiple services:
 
 ### Provider Abstraction
 The resilience system works transparently across different Kanban providers:
-- Trello: Protects against API rate limits
+- Planka: Protects against connection failures and API errors
 - Linear: Handles authentication token refresh
-- File-based: Ensures filesystem operations complete
+- GitHub: Ensures API operations complete with retry
+- SQLite: Ensures filesystem/database operations complete
 - Memory: Provides consistent interface even without persistence
 
 ### State Synchronization

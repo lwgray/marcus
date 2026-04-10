@@ -30,14 +30,19 @@ WorkspaceManager
 ### Data Models
 
 **WorkspaceConfig**: Individual agent workspace configuration
+
+Actual fields (from `src/core/workspace.py`):
+
 ```python
 @dataclass
 class WorkspaceConfig:
-    workspace_id: str      # Unique workspace identifier
-    path: str             # Absolute filesystem path
-    agent_id: Optional[str] # Assigned agent ID
-    is_readonly: bool     # Read-only workspace flag
+    workspace_id: str           # Unique workspace identifier
+    path: str                   # Absolute filesystem path
+    agent_id: Optional[str]     # Assigned agent ID
+    is_readonly: bool = False   # Read-only workspace flag
 ```
+
+> **Note**: There is no `security_level` field on `WorkspaceConfig`.
 
 **ProjectWorkspaces**: Project-level workspace organization
 ```python
@@ -476,16 +481,16 @@ context_data = {
     "workspace_security": {
         "agent_workspace": workspace.path,
         "forbidden_paths": manager.get_forbidden_paths(),
-        "security_level": workspace.security_level,
         "audit_enabled": True
     }
 }
 ```
 
+> **Note**: `workspace.security_level` is not a real field on `WorkspaceConfig`.
+
 **Cross-Task Security Continuity**:
 When Seneca propagates context between related tasks, workspace security boundaries are maintained:
 - Previous task workspace paths included in context
-- Security violations from previous tasks influence current assignment
 - Workspace recommendations based on task relationships
 - Security policy inheritance through task dependency chains
 
@@ -500,18 +505,23 @@ Seneca's memory system respects workspace boundaries:
 ### Enhanced Context Integration
 
 **Security-Aware Task Assignment**:
+
+The actual `get_task_assignment_data()` method in `src/core/workspace.py` returns only
+the following fields (the `security_context` sub-dict with `previous_violations`,
+`trust_level`, and `workspace_history` does **not** exist):
+
 ```python
 def get_task_assignment_data(self, agent_id: str) -> Dict[str, Any]:
     return {
         "workspace_path": workspace.path,
+        "workspace_id": workspace.workspace_id,
         "forbidden_paths": self.get_forbidden_paths(),
-        "security_context": {
-            "previous_violations": self.get_agent_violations(agent_id),
-            "trust_level": self.calculate_agent_trust(agent_id),
-            "workspace_history": self.get_workspace_history(agent_id)
-        }
+        "is_readonly": workspace.is_readonly,
     }
 ```
+
+> **Not implemented**: `get_agent_violations()`, `calculate_agent_trust()`, and
+> `get_workspace_history()` do not exist in `src/core/workspace.py`.
 
 ## Typical Scenario Workflow
 

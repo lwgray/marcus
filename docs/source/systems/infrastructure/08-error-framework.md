@@ -55,6 +55,8 @@ The framework implements a sophisticated six-tier error classification system:
 - `WorkflowViolationError`: Workflow state machine violations
 - `ValidationError`: Data validation failures
 - `StateConflictError`: System state inconsistencies
+- `TaskValidationError`: Task-specific validation failures (e.g., invalid task fields)
+- `ProjectRootNotFoundError`: Unable to locate the project root directory
 
 **Tier 4: Integration Errors** (External service issues)
 - `KanbanIntegrationError`: Kanban board connectivity/operation failures
@@ -146,43 +148,50 @@ with error_context("kanban_sync", agent_id="agent_123", task_id="task_456"):
 
 ### Retry Logic with Exponential Backoff
 
-The retry system implements sophisticated backoff strategies:
+The retry system implements sophisticated backoff strategies.
+
+**Production implementation** is in `src/core/resilience.py`:
 
 ```python
+@dataclass
 class RetryConfig:
-    max_attempts: int = 3               # Maximum retry attempts
-    base_delay: float = 1.0            # Initial delay in seconds
-    max_delay: float = 60.0            # Maximum delay cap
-    multiplier: float = 2.0            # Exponential multiplier
-    jitter: bool = True                # Add randomization
-    retry_on: tuple = (TransientError,) # Which error types to retry
-    stop_on: tuple = ()                # Error types that stop retries
+    max_attempts: int = 3           # Maximum retry attempts
+    base_delay: float = 1.0         # Initial delay in seconds
+    max_delay: float = 60.0         # Maximum delay cap
+    exponential_base: float = 2.0   # Backoff multiplier
+    jitter: bool = True             # Add randomization
 ```
 
-**Jitter Algorithm**: `delay = base_delay * (multiplier ^ attempt) + random(0, delay * 0.1)`
+> **Note**: `src/core/error_strategies.py` contains a more fully-featured `RetryConfig`
+> with additional fields (`retry_on`, `stop_on`, `multiplier`), but this module is
+> **NOT integrated** into the production codebase. The `resilience.py` version above
+> is what is actually used.
+
+**Jitter Algorithm** (actual implementation using `secrets.SystemRandom()`):
+`delay *= 0.5 + secure_random.random()` — gives 50%–150% of the calculated delay,
+where `secure_random = secrets.SystemRandom()` (cryptographically secure).
 
 **Benefits**:
 - Prevents thundering herd problems
-- Adapts to different error types
 - Configurable per operation type
-- Automatic classification of retryable errors
+- Cryptographically secure jitter
 
 ### Circuit Breaker Pattern
 
-Prevents cascading failures through intelligent service protection:
+Prevents cascading failures through intelligent service protection.
 
-```python
-class CircuitBreakerStates:
-    CLOSED: Normal operation, errors tracked
-    OPEN: Service blocked, failing fast
-    HALF_OPEN: Testing if service recovered
-```
+**Production implementation** is the `CircuitBreaker` class in `src/core/resilience.py`.
+State is tracked as a plain string attribute (`"closed"`, `"open"`, `"half-open"`).
+
+> **Note**: `src/core/error_strategies.py` has a `CircuitBreakerState` enum (singular),
+> but that module is **NOT integrated** into production. There is no class called
+> `CircuitBreakerStates` (plural) anywhere in the codebase.
 
 **State Transitions**:
-- CLOSED → OPEN: After `failure_threshold` consecutive failures
-- OPEN → HALF_OPEN: After `timeout` duration expires
-- HALF_OPEN → CLOSED: After `success_threshold` consecutive successes
-- HALF_OPEN → OPEN: On any failure during testing
+- `"closed"` → `"open"`: After `failure_threshold` consecutive failures
+- `"open"` → `"half-open"`: After `recovery_timeout` duration expires
+- `"half-open"` → `"closed"`: On successful test call
+- `"half-open"` → `"open"`: On any failure during testing
 
 **Autonomous Benefits**:
 - Prevents agents from hammering failing services
@@ -468,23 +477,22 @@ The Error Framework integrates with Marcus's Kanban provider abstraction layer:
 
 ### Error Context Propagation
 
-The framework uses thread-local storage and async context variables for automatic context propagation:
+The `error_context` context manager is implemented in `src/core/error_framework.py` as a plain
+`@contextmanager`. It modifies a `MarcusBaseError` in-place if one is raised within the block.
+There is no `ContextVar`, no `current_error_context` variable, and no token-based reset.
 
 ```python
-from contextvars import ContextVar
-
-current_error_context: ContextVar[Optional[ErrorContext]] = ContextVar(
-    'current_error_context', default=None
-)
-
 @contextmanager
 def error_context(operation: str, **context_kwargs):
-    context = ErrorContext(operation=operation, **context_kwargs)
-    token = current_error_context.set(context)
     try:
-        yield context
-    finally:
-        current_error_context.reset(token)
+        yield
+    except MarcusBaseError as e:
+        # Inject context fields into the error in-place
+        if not e.context.operation:
+            e.context.operation = operation
+        for key, value in context_kwargs.items():
+            setattr(e.context, key, value)
+        raise
 ```
 
 ### Memory Management

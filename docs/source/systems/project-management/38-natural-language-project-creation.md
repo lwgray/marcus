@@ -64,10 +64,17 @@ Orchestrates the conversion pipeline:
 
 ```python
 class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
-    def __init__(self, kanban_client, ai_engine):
+    def __init__(
+        self,
+        kanban_client: Any,
+        ai_engine: Any,
+        subtask_manager: Any = None,
+        complexity: str = "standard",
+    ) -> None:
+        super().__init__(kanban_client, ai_engine, subtask_manager, complexity)
         self.prd_parser = AdvancedPRDParser()
         self.board_analyzer = BoardAnalyzer()
-        self.context_detector = ContextDetector()
+        self.context_detector = ContextDetector(self.board_analyzer)
 ```
 
 ### 3. Advanced PRD Parser (`/src/ai/advanced/prd/advanced_parser.py`)
@@ -390,10 +397,9 @@ tasks.append({
 - Priority-based assignment queue
 - Load balancing considerations
 
-### Seneca Visualization
-- Pipeline events tracked for debugging
-- Task creation flow visible
-- Dependency graphs rendered
+### Pipeline Tracking
+- Pipeline events tracked for debugging via conversation logger
+- Task creation flow recorded in structured logs
 
 ## Configuration Examples
 

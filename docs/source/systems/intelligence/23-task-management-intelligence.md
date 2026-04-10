@@ -320,6 +320,10 @@ Focus on logical dependencies based on:
 
 ### Hybrid Inference Configuration
 
+> **Note**: `HybridInferenceConfig` is defined in `src/config/hybrid_inference_config.py`
+> and imported by `dependency_inferer_hybrid.py`. It is **not** defined inside
+> `dependency_inferer_hybrid.py`.
+
 ```python
 @dataclass
 class HybridInferenceConfig:
@@ -606,10 +610,10 @@ project_plan = await generator.generate_with_context(
 ```
 
 **Adapter Support:**
-- **GitHub Issues:** Proper labeling and milestone integration
-- **Trello:** Card structure and list organization
-- **JIRA:** Epic/story hierarchy and sprint planning
-- **Linear:** Project structure and team assignment
+- **Linear:** Project structure and team assignment (`src/integrations/providers/linear_kanban.py`) — **IMPLEMENTED**
+- **GitHub Issues:** Proper labeling and milestone integration — **NOT YET IMPLEMENTED**
+- **Trello:** Card structure and list organization — **NOT YET IMPLEMENTED**
+- **JIRA:** Epic/story hierarchy and sprint planning — **NOT YET IMPLEMENTED**
 
 ### Quality Assurance Integration
 
@@ -727,8 +731,9 @@ class SenecaEnhancedInferer(HybridDependencyInferer):
 ```python
 from src.core.error_framework import (
     BusinessLogicError,
-    AIInferenceError,
-    DependencyValidationError,
+    # Note: AIInferenceError and DependencyValidationError do NOT exist in
+    # src/core/error_framework.py — use BusinessLogicError or other existing
+    # error classes for AI inference and dependency validation failures.
     error_context
 )
 
@@ -738,7 +743,7 @@ async def generate_tasks_from_prd(self, prd: ParsedPRD) -> ProjectStructure:
             tasks = await self._generate_feature_tasks(prd.features)
             dependencies = await self._infer_dependencies(tasks)
             return self._build_project_structure(tasks, dependencies)
-        except AIInferenceError as e:
+        except BusinessLogicError as e:
             # Fall back to pattern-only inference
             logger.warning(f"AI inference failed, using patterns: {e}")
             return await self._generate_with_patterns_only(prd)

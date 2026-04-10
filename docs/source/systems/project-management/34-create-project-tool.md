@@ -50,8 +50,8 @@ The `create_project` function serves as the MCP-accessible endpoint with sophist
 async def create_project(
     description: str,
     project_name: str,
+    options: Optional[Dict[str, Any]],
     state: Any,
-    options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
 ```
 
@@ -78,12 +78,17 @@ This layer handles the core project creation logic:
 
 ```python
 class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
-    def __init__(self, state, flow_id: Optional[str] = None):
-        self.state = state
-        self.flow_id = flow_id
+    def __init__(
+        self,
+        kanban_client: Any,
+        ai_engine: Any,
+        subtask_manager: Any = None,
+        complexity: str = "standard",
+    ) -> None:
+        super().__init__(kanban_client, ai_engine, subtask_manager, complexity)
+        self.prd_parser = AdvancedPRDParser()
         self.board_analyzer = BoardAnalyzer()
-        self.context_detector = ContextDetector(state.events)
-        self.prd_parser = AdvancedPRDParser(state.ai_engine)
+        self.context_detector = ContextDetector(self.board_analyzer)
 ```
 
 **Processing Pipeline**:
@@ -214,11 +219,20 @@ The safety checker enforces logical task ordering:
 
 ```python
 class SafetyChecker:
-    def apply_safety_checks(self, tasks: List[Task]) -> List[Task]:
-        # Rule 1: Testing depends on implementation
-        # Rule 2: Deployment depends on testing
-        # Rule 3: Documentation can run in parallel
-        # Rule 4: Infrastructure must precede dependent services
+    def apply_deployment_dependencies(self, tasks: List[Task]) -> List[Task]:
+        # Rule: Deployment tasks depend on testing tasks
+        ...
+
+    def apply_testing_dependencies(self, tasks: List[Task]) -> List[Task]:
+        # Rule: Testing tasks depend on implementation tasks
+        ...
+
+    def apply_implementation_dependencies(self, tasks: List[Task]) -> List[Task]:
+        # Rule: Infrastructure must precede dependent implementation tasks
+        ...
+
+# Note: apply_safety_checks() is a method on NaturalLanguageTaskCreator (nlp_base.py)
+# that calls all three SafetyChecker methods in sequence.
 ```
 
 ## Options and Complexity Handling

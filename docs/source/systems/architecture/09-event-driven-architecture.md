@@ -109,6 +109,9 @@ finish_task → TASK_COMPLETED event
 - `SYSTEM_STARTUP`/`SYSTEM_SHUTDOWN`: System lifecycle
 - `KANBAN_CONNECTED`/`KANBAN_ERROR`: External integration status
 - `PROJECT_CREATED`/`PROJECT_UPDATED`: Project management
+- `PROJECT_COMPLETED = "project_completed"`: Entire project finished
+- `ERROR = "error"`: System-level error notification
+- `WARNING = "warning"`: System-level warning notification
 
 ## What Makes This System Special
 
@@ -167,7 +170,7 @@ Supports synchronization patterns where components need to wait for specific con
 
 ### Event ID Generation
 ```python
-event_id = f"evt_{self._event_counter}_{datetime.now().timestamp()}"
+event_id = f"evt_{self._event_counter}_{datetime.now(timezone.utc).timestamp()}"
 ```
 - Sequential counter prevents collisions
 - Timestamp provides ordering and uniqueness
@@ -196,6 +199,12 @@ The system integrates with any persistence layer that implements:
 ```python
 async def store_event(self, event: Event)
 async def get_events(self, event_type=None, source=None, limit=100)
+```
+
+The in-memory `get_history` method also accepts a `source` filter parameter:
+```python
+def get_history(self, event_type=None, source=None, limit=100) -> List[Event]:
+    """Retrieve event history, optionally filtered by event_type and/or source."""
 ```
 
 ## Pros and Cons
@@ -310,9 +319,11 @@ The event system scales naturally from simple to complex scenarios without archi
 ```python
 # Board state synchronization
 KANBAN_CONNECTED → PROJECT_CREATED → TASK_ASSIGNED
-TASK_PROGRESS → KANBAN_UPDATED
-KANBAN_ERROR → FALLBACK_MODE
+KANBAN_ERROR  # emitted on integration failures
 ```
+
+Note: `KANBAN_UPDATED` and `FALLBACK_MODE` are **not** defined event types in
+`src/core/events.py`. Only `KANBAN_CONNECTED` and `KANBAN_ERROR` are defined.
 
 ### Board-Specific Event Data
 Events can carry board-specific metadata:

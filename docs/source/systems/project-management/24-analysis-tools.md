@@ -1,5 +1,9 @@
 # Analysis Tools System
 
+> **STATUS: NOT IMPLEMENTED**
+> The analysis tools described in this document (`pipeline_comparison.py`, `what_if_engine.py`)
+> have been removed from the codebase. This document is retained as a historical design reference.
+
 ## Overview
 
 The Analysis Tools system is Marcus's retrospective intelligence layer, providing comprehensive capabilities for pipeline analysis, what-if experimentation, and optimization discovery. This system enables Marcus to learn from execution patterns, simulate alternative approaches, and generate data-driven optimization recommendations.

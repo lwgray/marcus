@@ -371,14 +371,9 @@ class DependencyPattern:
     dependency_pattern: str      # Regex to match dependency task
     confidence: float           # Pattern confidence (0.0-1.0)
     mandatory: bool             # Cannot be overridden
-
-    def matches(self, dependent: Task, dependency: Task) -> bool:
-        """Check if pattern applies to task pair"""
-        return (
-            re.search(self.condition_pattern, dependent.name, re.IGNORECASE) and
-            re.search(self.dependency_pattern, dependency.name, re.IGNORECASE)
-        )
 ```
+
+> **Note**: `DependencyPattern` is a plain `@dataclass` with no methods.
 
 #### Inferred Dependency with Metadata
 ```python
@@ -386,10 +381,10 @@ class DependencyPattern:
 class InferredDependency:
     dependent_task_id: str       # Task that has the dependency
     dependency_task_id: str      # Task that must complete first
+    dependency_type: str         # 'hard', 'soft', 'logical'
     confidence: float            # Inference confidence
     reasoning: str               # Why this dependency was inferred
-    pattern_name: Optional[str]  # Which pattern matched (if any)
-    mandatory: bool              # Cannot be removed/overridden
+    source: str                  # 'pattern_matching', 'prd_bundled_design', 'manual', etc.
 
 @dataclass
 class HybridDependency(InferredDependency):
