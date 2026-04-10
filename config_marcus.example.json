@@ -25,7 +25,9 @@
   },
 
   "kanban": {
-    "provider": "planka",
+    "provider": "sqlite",
+    "sqlite_db_path": "./data/kanban.db",
+    "sqlite_attachments_dir": "./data/attachments",
     "board_name": "Marcus Todo Demo",
     "planka_base_url": "${PLANKA_BASE_URL}",
     "planka_email": "${PLANKA_EMAIL}",

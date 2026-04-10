@@ -219,6 +219,7 @@ class TaskBuilder:
             "subtasks": getattr(task, "subtasks", []),
             # Additional fields that might be needed
             "status": status_value,
+            "assigned_to": task.assigned_to,
             "created_at": task.created_at.isoformat() if task.created_at else None,
             "metadata": {"ai_generated": True, "source": "natural_language"},
         }

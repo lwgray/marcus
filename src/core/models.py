@@ -99,6 +99,10 @@ class RecoveryInfo:
         Why recovery happened (e.g., "lease_expired", "agent_crashed")
     instructions : str
         Multi-line guidance for next agent about what to check
+    previous_agent_branch : Optional[str]
+        Git branch the previous agent was working on (e.g., "marcus/agent-3").
+        In worktree mode, each agent works on an isolated branch. The new
+        agent should merge this branch to pick up committed work.
     recovery_expires_at : Optional[datetime]
         When this recovery info becomes stale (default 24 hours)
 
@@ -114,6 +118,7 @@ class RecoveryInfo:
     time_spent_minutes: float
     recovery_reason: str
     instructions: str
+    previous_agent_branch: Optional[str] = None
     recovery_expires_at: Optional[datetime] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -132,6 +137,7 @@ class RecoveryInfo:
             "time_spent_minutes": round(self.time_spent_minutes, 1),
             "recovery_reason": self.recovery_reason,
             "instructions": self.instructions,
+            "previous_agent_branch": self.previous_agent_branch,
             "recovery_expires_at": (
                 self.recovery_expires_at.isoformat()
                 if self.recovery_expires_at
@@ -163,6 +169,7 @@ class RecoveryInfo:
             time_spent_minutes=data["time_spent_minutes"],
             recovery_reason=data["recovery_reason"],
             instructions=data["instructions"],
+            previous_agent_branch=data.get("previous_agent_branch"),
             recovery_expires_at=(
                 parse(data["recovery_expires_at"])
                 if data.get("recovery_expires_at")

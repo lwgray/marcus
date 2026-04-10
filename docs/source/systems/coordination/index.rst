@@ -10,6 +10,7 @@ Systems managing agent coordination and task assignment.
    26-worker-support
    03-context-dependency-system
    33-orphan-task-recovery
+   34-agent-recovery-system
    35-assignment-lease-system
    36-task-dependency-system
    37-optimal-agent-scheduling

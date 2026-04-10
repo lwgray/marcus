@@ -240,6 +240,7 @@ Potential improvements to the retry strategy:
 
 ## References
 
+- **Resilience and Recovery**: See [Resilience and Task Recovery System](34-agent-recovery-system.md)
 - **Task Assignment**: See [Assignment Lease System](35-assignment-lease-system.md)
 - **Dependency Management**: See [Task Dependency System](36-task-dependency-system.md)
 - **Agent Coordination**: See [Agent Coordination](21-agent-coordination.md)
