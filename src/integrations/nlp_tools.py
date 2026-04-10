@@ -8,6 +8,7 @@ These tools expose Marcus's AI capabilities for:
 This refactored version eliminates code duplication by using base classes and utilities.
 """
 
+import asyncio
 import logging
 import os
 import sys
@@ -22,6 +23,7 @@ from src.ai.advanced.prd.advanced_parser import (  # noqa: E402
     ProjectConstraints,
 )
 from src.core.models import Priority, Task, TaskStatus  # noqa: E402
+from src.core.resilience import RetryConfig, with_retry  # noqa: E402
 from src.detection.board_analyzer import BoardAnalyzer  # noqa: E402
 from src.detection.context_detector import ContextDetector, MarcusMode  # noqa: E402
 
@@ -31,6 +33,69 @@ from src.integrations.nlp_task_utils import TaskType  # noqa: E402
 from src.modes.adaptive.basic_adaptive import BasicAdaptiveMode  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Design autocomplete parallelism helpers (GH-304)
+#
+# Concurrency cap: ``_DESIGN_LLM_CONCURRENCY`` limits in-flight ``llm.analyze``
+# calls across all design tasks in a single ``_generate_design_content()``
+# invocation. For a 10-task enterprise project with 5 LLM calls per task (4
+# artifacts + 1 decisions), uncapped parallelism would burst up to 50 calls
+# simultaneously and risk tripping Anthropic's per-minute rate limit. 10 is a
+# safe ceiling for Claude Sonnet at paid-tier rate limits while preserving
+# most of the wall-clock speedup.
+# ---------------------------------------------------------------------------
+_DESIGN_LLM_CONCURRENCY = 10
+
+
+@with_retry(RetryConfig(max_attempts=3, base_delay=2.0, jitter=True))
+async def _bounded_llm_analyze(
+    llm: Any,
+    prompt: str,
+    context: Any,
+    semaphore: asyncio.Semaphore,
+) -> str:
+    """Call ``llm.analyze`` under a concurrency cap with retry + backoff.
+
+    Wraps a single LLM call so that:
+
+    - at most ``semaphore._value`` calls run concurrently (rate-limit guard),
+    - transient failures retry up to 3 times with jittered exponential
+      backoff (``RetryConfig(max_attempts=3, base_delay=2.0, jitter=True)``).
+
+    If all retries fail the last exception propagates to the caller, which
+    aborts the surrounding ``asyncio.gather`` and fails the whole design
+    autocomplete phase (hard-fail semantics — see GH-304).
+
+    Parameters
+    ----------
+    llm : Any
+        An LLM client exposing an async ``analyze(prompt, context)`` method.
+    prompt : str
+        Prompt text passed through unchanged.
+    context : Any
+        Context object passed through unchanged (typically provides
+        ``max_tokens`` and similar knobs).
+    semaphore : asyncio.Semaphore
+        Concurrency guard. Must be created inside a running event loop so
+        it binds to the correct loop (created per-call in
+        :func:`_generate_design_content`).
+
+    Returns
+    -------
+    str
+        Raw LLM response text.
+
+    Raises
+    ------
+    Exception
+        Re-raises the last exception from ``llm.analyze`` after retries are
+        exhausted.
+    """
+    async with semaphore:
+        response: str = await llm.analyze(prompt=prompt, context=context)
+        return response
 
 
 class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
@@ -1396,6 +1461,300 @@ def _domain_slug(task_name: str) -> str:
     return name.strip().replace(" ", "-")
 
 
+async def _generate_single_artifact(
+    llm: Any,
+    spec: Dict[str, Any],
+    task: Any,
+    project_name: str,
+    project_description: str,
+    project_root_path: Any,
+    context: Any,
+    semaphore: asyncio.Semaphore,
+) -> Optional[Dict[str, Any]]:
+    """Generate one design artifact document via a single bounded LLM call.
+
+    Builds the artifact prompt from the task description, calls the LLM
+    under the concurrency cap (see :func:`_bounded_llm_analyze`), writes
+    the response to disk under ``project_root_path``, and returns the
+    artifact metadata dict for later registration in Phase B.
+
+    Returns ``None`` (and logs a warning) when the LLM response is empty
+    or shorter than 20 characters — the caller treats that as "no
+    artifact produced for this spec" without aborting the task.
+
+    Parameters
+    ----------
+    llm : Any
+        LLM client instance.
+    spec : Dict[str, Any]
+        One entry from ``_DESIGN_ARTIFACT_SPECS`` describing the
+        filename template, artifact type, and prompt label.
+    task : Any
+        The design Task object (used for ``name``/``description``).
+    project_name : str
+        Project name for prompt templating.
+    project_description : str
+        Full project description for prompt templating.
+    project_root_path : pathlib.Path
+        Absolute path to the project implementation directory.
+    context : Any
+        Context object passed to ``llm.analyze``.
+    semaphore : asyncio.Semaphore
+        Concurrency guard shared across all design task coroutines in
+        the current invocation.
+
+    Returns
+    -------
+    Optional[Dict[str, Any]]
+        Artifact metadata dict with keys ``filename``, ``artifact_type``,
+        ``content``, ``description``, ``relative_path`` — or ``None`` if
+        the LLM returned an empty/short response.
+
+    Raises
+    ------
+    Exception
+        Propagates any unrecoverable LLM error after ``_bounded_llm_analyze``
+        exhausts its retries. Also propagates disk I/O failures.
+    """
+    from pathlib import Path
+
+    from src.marcus_mcp.tools.attachment import ARTIFACT_PATHS
+
+    domain = _domain_slug(task.name)
+    fname = spec["filename_template"].format(domain_slug=domain)
+    desc = spec["description_template"].format(domain=task.name.replace("Design ", ""))
+
+    if spec["label"] == "interface contracts":
+        prompt = _INTERFACE_CONTRACTS_PROMPT.format(
+            project_name=project_name,
+            project_description=project_description,
+            task_description=task.description,
+        )
+    else:
+        prompt = _ARTIFACT_PROMPT.format(
+            project_name=project_name,
+            project_description=project_description,
+            task_description=task.description,
+            artifact_label=spec["label"],
+        )
+
+    response = await _bounded_llm_analyze(llm, prompt, context, semaphore)
+
+    if not response or len(response.strip()) < 20:
+        logger.warning(
+            f"[design_autocomplete] Phase A: "
+            f"empty/short response for "
+            f"'{task.name}' {spec['label']}"
+        )
+        return None
+
+    # Write document to disk
+    atype = spec["artifact_type"]
+    base = ARTIFACT_PATHS.get(atype, "docs/artifacts")
+    rel_path = Path(base) / fname
+    full_path = project_root_path / rel_path
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    full_path.write_text(response.strip(), encoding="utf-8")
+
+    logger.info(f"[design_autocomplete] Phase A: wrote {rel_path}")
+
+    return {
+        "filename": fname,
+        "artifact_type": atype,
+        "content": response.strip(),
+        "description": desc,
+        "relative_path": str(rel_path),
+    }
+
+
+async def _generate_single_decisions(
+    llm: Any,
+    task: Any,
+    project_name: str,
+    project_description: str,
+    context: Any,
+    semaphore: asyncio.Semaphore,
+) -> List[Dict[str, Any]]:
+    """Generate the decisions list for one design task via one LLM call.
+
+    The decisions prompt is self-contained: it depends only on the task
+    description and project metadata, not on the artifact outputs, which
+    is why it can run in parallel with the artifact calls (see GH-304).
+
+    Parameters
+    ----------
+    llm : Any
+        LLM client instance.
+    task : Any
+        The design Task object.
+    project_name : str
+        Project name for prompt templating.
+    project_description : str
+        Full project description for prompt templating.
+    context : Any
+        Context object passed to ``llm.analyze``.
+    semaphore : asyncio.Semaphore
+        Shared concurrency guard for the current invocation.
+
+    Returns
+    -------
+    List[Dict[str, Any]]
+        List of decision dicts, each with at least ``what``, ``why``,
+        and ``impact`` keys. Empty list if the response could not be
+        parsed as JSON (a warning is logged in that case).
+
+    Raises
+    ------
+    Exception
+        Propagates any unrecoverable LLM error after retries exhaust.
+    """
+    import json
+
+    dec_prompt = _DECISIONS_PROMPT.format(
+        project_name=project_name,
+        project_description=project_description,
+        task_description=task.description,
+    )
+
+    dec_response = await _bounded_llm_analyze(llm, dec_prompt, context, semaphore)
+
+    if not dec_response:
+        return []
+
+    try:
+        from src.utils.json_parser import clean_json_response
+
+        cleaned = clean_json_response(dec_response)
+        parsed = json.loads(cleaned)
+        # Response could be a list or {"decisions": [...]}
+        if isinstance(parsed, list):
+            dec_list = parsed
+        elif isinstance(parsed, dict):
+            dec_list = parsed.get("decisions", [])
+        else:
+            dec_list = []
+
+        logged_decisions: List[Dict[str, Any]] = [
+            d for d in dec_list if all(k in d for k in ("what", "why", "impact"))
+        ]
+
+        logger.info(
+            f"[design_autocomplete] Phase A: "
+            f"{len(logged_decisions)} decision(s) "
+            f"for '{task.name}'"
+        )
+        return logged_decisions
+
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.warning(
+            f"[design_autocomplete] Phase A: "
+            f"could not parse decisions for "
+            f"'{task.name}': {e}"
+        )
+        return []
+
+
+async def _process_design_task(
+    llm: Any,
+    task: Any,
+    project_name: str,
+    project_description: str,
+    project_root_path: Any,
+    context: Any,
+    semaphore: asyncio.Semaphore,
+) -> Optional[Dict[str, Any]]:
+    """Run all LLM calls for one design task concurrently (Level 2).
+
+    Kicks off 4 artifact coroutines plus 1 decisions coroutine under a
+    single ``asyncio.gather``, so all 5 LLM calls for a task run in
+    parallel, capped by the shared semaphore. Returns ``None`` when no
+    artifacts were produced (the task should stay TODO in that case).
+
+    Parameters
+    ----------
+    llm : Any
+        LLM client instance.
+    task : Any
+        The design Task object.
+    project_name : str
+        Project name for prompt templating.
+    project_description : str
+        Full project description for prompt templating.
+    project_root_path : pathlib.Path
+        Absolute path to the project implementation directory.
+    context : Any
+        Context object passed through to each LLM call.
+    semaphore : asyncio.Semaphore
+        Shared concurrency guard across all design tasks.
+
+    Returns
+    -------
+    Optional[Dict[str, Any]]
+        ``{"artifacts": [...], "decisions": [...]}`` on success, or
+        ``None`` if no artifacts survived the empty/short filter.
+
+    Raises
+    ------
+    Exception
+        Propagates the first unrecoverable LLM error (after retries)
+        from any of the 5 parallel calls. Fail-fast: the caller aborts
+        the whole design phase. See GH-304 decision rationale.
+    """
+    artifact_coros = [
+        _generate_single_artifact(
+            llm=llm,
+            spec=spec,
+            task=task,
+            project_name=project_name,
+            project_description=project_description,
+            project_root_path=project_root_path,
+            context=context,
+            semaphore=semaphore,
+        )
+        for spec in _DESIGN_ARTIFACT_SPECS
+    ]
+    decisions_coro = _generate_single_decisions(
+        llm=llm,
+        task=task,
+        project_name=project_name,
+        project_description=project_description,
+        context=context,
+        semaphore=semaphore,
+    )
+
+    # Level 2 parallelism: 4 artifact calls + 1 decisions call all in flight
+    # at once for this task. The nested ``asyncio.gather`` shape lets mypy
+    # infer the two result slots (list of artifacts, list of decisions)
+    # without a ``cast``. gather() propagates the first exception (after
+    # retries exhaust) and cancels the remaining coroutines.
+    artifact_results, decisions = await asyncio.gather(
+        asyncio.gather(*artifact_coros),
+        decisions_coro,
+    )
+
+    written_artifacts: List[Dict[str, Any]] = [
+        a for a in artifact_results if a is not None
+    ]
+
+    if not written_artifacts:
+        logger.warning(
+            f"[design_autocomplete] Phase A: no "
+            f"artifacts for '{task.name}' — "
+            f"stays TODO"
+        )
+        return None
+
+    n_a = len(written_artifacts)
+    n_d = len(decisions)
+    logger.info(
+        f"[design_autocomplete] Phase A: "
+        f"'{task.name}' → {n_a} artifact(s), "
+        f"{n_d} decision(s)"
+    )
+
+    return {"artifacts": written_artifacts, "decisions": decisions}
+
+
 async def _generate_design_content(
     tasks: List[Any],
     project_description: str,
@@ -1406,16 +1765,43 @@ async def _generate_design_content(
     Phase A: Generate design artifacts + decisions and set status to DONE.
 
     Makes separate LLM calls per artifact document, just like an agent
-    would make separate log_artifact calls. Writes files to disk and
-    marks design tasks as DONE. Runs BEFORE create_tasks_on_board so
+    would make separate ``log_artifact`` calls. Writes files to disk and
+    marks design tasks as DONE. Runs BEFORE ``create_tasks_on_board`` so
     design tasks are born DONE on the kanban board.
+
+    Parallelism (GH-304)
+    --------------------
+    Level 1 — across design tasks: all design tasks run concurrently via
+    ``asyncio.gather``.
+    Level 2 — within each task: the 4 artifact LLM calls and the 1
+    decisions LLM call run concurrently for that task.
+
+    Combined with the per-invocation ``asyncio.Semaphore`` cap of
+    ``_DESIGN_LLM_CONCURRENCY`` (10), this brings a 10-task enterprise
+    project from ~25–33 min (sequential) down to ~1–3 min wall-clock
+    without exceeding rate limits.
+
+    Failure semantics
+    -----------------
+    Fail-fast. Each LLM call is wrapped with
+    ``@with_retry(RetryConfig(max_attempts=3, base_delay=2.0, jitter=True))``
+    via :func:`_bounded_llm_analyze`. If retries exhaust for any single
+    call, the exception propagates out of the inner ``gather``, aborts
+    the outer ``gather``, and this function raises — no task state
+    mutations happen, and the caller must retry project creation.
+
+    This is a behavior change from pre-GH-304 code, which warned and
+    continued on a per-task basis. Rationale: partial design results
+    (some tasks designed, some not) silently corrupt downstream agent
+    work. Hard-fail surfaces the problem immediately.
 
     Parameters
     ----------
     tasks : List[Any]
-        All tasks (design + implementation). Design tasks are
-        modified in-place: status set to DONE, auto_completed
-        label added.
+        All tasks (design + implementation). Design tasks are modified
+        in-place on success: status set to DONE, ``assigned_to="Marcus"``,
+        and ``"auto_completed"`` label added. No mutations happen on
+        failure — state updates are atomic across all design tasks.
     project_description : str
         Full project description for LLM context.
     project_name : str
@@ -1426,26 +1812,36 @@ async def _generate_design_content(
     Returns
     -------
     Dict[str, Dict[str, Any]]
-        Mapping of task name -> {artifacts, decisions} for Phase B.
+        Mapping of task name -> ``{"artifacts": [...], "decisions": [...]}``
+        for Phase B.
 
-    See: https://github.com/lwgray/marcus/issues/297
+    Raises
+    ------
+    Exception
+        Any unrecoverable LLM or I/O error from the parallel design calls
+        (fail-fast). Disk side effects (partial artifact files under
+        ``project_root_path``) may still be present on failure — this
+        matches pre-GH-304 behavior.
+
+    See Also
+    --------
+    GH-297 : Phase A / Phase B design autocomplete design.
+    GH-304 : Parallelization decision and Kaia architectural review.
     """
-    import json
     from pathlib import Path
 
     from src.ai.providers.llm_abstraction import LLMAbstraction
-    from src.marcus_mcp.tools.attachment import ARTIFACT_PATHS
 
-    design_content: Dict[str, Dict[str, Any]] = {}
     project_root_path = Path(project_root)
 
     design_tasks = [t for t in tasks if _is_design_task(t)]
     if not design_tasks:
-        return design_content
+        return {}
 
     logger.info(
         f"[design_autocomplete] Phase A: generating content "
-        f"for {len(design_tasks)} design task(s)"
+        f"for {len(design_tasks)} design task(s) "
+        f"(concurrency cap={_DESIGN_LLM_CONCURRENCY})"
     )
 
     llm = LLMAbstraction()
@@ -1453,141 +1849,51 @@ async def _generate_design_content(
     class _Ctx:
         max_tokens = 4000
 
-    for task in design_tasks:
-        try:
-            domain = _domain_slug(task.name)
-            written_artifacts: List[Dict[str, Any]] = []
-            logged_decisions: List[Dict[str, Any]] = []
+    # Create the semaphore inside the function so it binds to the
+    # currently running event loop. A module-level semaphore leaks across
+    # pytest-asyncio function-scoped loops and causes confusing test
+    # failures; binding per-call is cheap and guarantees correctness.
+    semaphore = asyncio.Semaphore(_DESIGN_LLM_CONCURRENCY)
 
-            # Generate each artifact document separately
-            for spec in _DESIGN_ARTIFACT_SPECS:
-                fname = spec["filename_template"].format(domain_slug=domain)
-                desc = spec["description_template"].format(
-                    domain=task.name.replace("Design ", "")
-                )
+    task_coros = [
+        _process_design_task(
+            llm=llm,
+            task=task,
+            project_name=project_name,
+            project_description=project_description,
+            project_root_path=project_root_path,
+            context=_Ctx(),
+            semaphore=semaphore,
+        )
+        for task in design_tasks
+    ]
 
-                if spec["label"] == "interface contracts":
-                    prompt = _INTERFACE_CONTRACTS_PROMPT.format(
-                        project_name=project_name,
-                        project_description=project_description,
-                        task_description=task.description,
-                    )
-                else:
-                    prompt = _ARTIFACT_PROMPT.format(
-                        project_name=project_name,
-                        project_description=project_description,
-                        task_description=task.description,
-                        artifact_label=spec["label"],
-                    )
+    # Level 1 parallelism. return_exceptions=False so the first
+    # unrecoverable failure propagates immediately (fail-fast semantics
+    # per GH-304).
+    task_results = await asyncio.gather(*task_coros)
 
-                response = await llm.analyze(prompt=prompt, context=_Ctx())
-
-                if not response or len(response.strip()) < 20:
-                    logger.warning(
-                        f"[design_autocomplete] Phase A: "
-                        f"empty/short response for "
-                        f"'{task.name}' {spec['label']}"
-                    )
-                    continue
-
-                # Write document to disk
-                atype = spec["artifact_type"]
-                base = ARTIFACT_PATHS.get(atype, "docs/artifacts")
-                rel_path = Path(base) / fname
-                full_path = project_root_path / rel_path
-                full_path.parent.mkdir(parents=True, exist_ok=True)
-                full_path.write_text(response.strip(), encoding="utf-8")
-
-                written_artifacts.append(
-                    {
-                        "filename": fname,
-                        "artifact_type": atype,
-                        "content": response.strip(),
-                        "description": desc,
-                        "relative_path": str(rel_path),
-                    }
-                )
-
-                logger.info(f"[design_autocomplete] Phase A: " f"wrote {rel_path}")
-
-            # Generate decisions separately
-            dec_prompt = _DECISIONS_PROMPT.format(
-                project_name=project_name,
-                project_description=project_description,
-                task_description=task.description,
-            )
-
-            dec_response = await llm.analyze(prompt=dec_prompt, context=_Ctx())
-
-            if dec_response:
-                try:
-                    from src.utils.json_parser import (
-                        clean_json_response,
-                    )
-
-                    cleaned = clean_json_response(dec_response)
-                    parsed = json.loads(cleaned)
-                    # Response could be a list or {"decisions": [...]}
-                    if isinstance(parsed, list):
-                        dec_list = parsed
-                    elif isinstance(parsed, dict):
-                        dec_list = parsed.get("decisions", [])
-                    else:
-                        dec_list = []
-
-                    for d in dec_list:
-                        if all(k in d for k in ("what", "why", "impact")):
-                            logged_decisions.append(d)
-
-                    logger.info(
-                        f"[design_autocomplete] Phase A: "
-                        f"{len(logged_decisions)} decision(s) "
-                        f"for '{task.name}'"
-                    )
-                except (json.JSONDecodeError, ValueError) as e:
-                    logger.warning(
-                        f"[design_autocomplete] Phase A: "
-                        f"could not parse decisions for "
-                        f"'{task.name}': {e}"
-                    )
-
-            # Only mark DONE if we produced at least one artifact
-            if not written_artifacts:
-                logger.warning(
-                    f"[design_autocomplete] Phase A: no "
-                    f"artifacts for '{task.name}' — "
-                    f"stays TODO"
-                )
-                continue
-
-            # Store for Phase B
-            design_content[task.name] = {
-                "artifacts": written_artifacts,
-                "decisions": logged_decisions,
-            }
-
-            # Mark task as DONE before it hits the board
-            task.status = TaskStatus.DONE
-            task.assigned_to = "Marcus"
-            if not hasattr(task, "labels") or task.labels is None:
-                task.labels = []
-            if "auto_completed" not in task.labels:
-                task.labels.append("auto_completed")
-
-            n_a = len(written_artifacts)
-            n_d = len(logged_decisions)
-            logger.info(
-                f"[design_autocomplete] Phase A: "
-                f"'{task.name}' → {n_a} artifact(s), "
-                f"{n_d} decision(s), status=DONE"
-            )
-
-        except Exception as e:
-            logger.warning(
-                f"[design_autocomplete] Phase A: failed "
-                f"for '{task.name}': {e} — stays TODO"
-            )
+    # All tasks finished without raising. Atomically update task state
+    # on the board-bound Task objects and assemble the design_content
+    # mapping for Phase B.
+    design_content: Dict[str, Dict[str, Any]] = {}
+    for task, result in zip(design_tasks, task_results):
+        if result is None:
+            # No artifacts produced — task stays TODO, warning already logged
+            # inside _process_design_task. Skip state mutation.
             continue
+
+        design_content[task.name] = result
+
+        # Mark task as DONE before it hits the board
+        task.status = TaskStatus.DONE
+        task.assigned_to = "Marcus"
+        if not hasattr(task, "labels") or task.labels is None:
+            task.labels = []
+        if "auto_completed" not in task.labels:
+            task.labels.append("auto_completed")
+
+        logger.info(f"[design_autocomplete] Phase A: " f"'{task.name}' status=DONE")
 
     return design_content
 
