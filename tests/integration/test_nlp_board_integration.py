@@ -19,10 +19,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from dotenv import load_dotenv
 
 from src.integrations.kanban_factory import KanbanFactory
-from src.integrations.nlp_tools import (
-    add_feature_natural_language,
-    create_project_from_natural_language,
-)
+from src.integrations.nlp_tools import add_feature_natural_language
+from src.marcus_mcp.tools.nlp import create_project
 
 # Load environment variables
 load_dotenv()
@@ -52,10 +50,14 @@ class TestNLPBoardIntegration:
         project_name = f"Test NLP Project {self.test_timestamp}"
 
         # Create project using NLP
-        result = await create_project_from_natural_language(
-            description="I need a chat application with real-time messaging and user profiles",
+        result = await create_project(
+            description=(
+                "I need a chat application with real-time "
+                "messaging and user profiles"
+            ),
             project_name=project_name,
             options={"team_size": 2},
+            state=None,
         )
 
         # Verify creation succeeded
@@ -95,10 +97,11 @@ class TestNLPBoardIntegration:
         # First create a base project
         project_name = f"Test Feature Project {self.test_timestamp}"
 
-        await create_project_from_natural_language(
+        await create_project(
             description="Basic web app with user authentication",
             project_name=project_name,
             options={"team_size": 1},
+            state=None,
         )
 
         # Wait for project creation
@@ -140,11 +143,14 @@ class TestNLPBoardIntegration:
         project_name = f"Test Properties Project {self.test_timestamp}"
 
         # Create project with specific requirements
-        result = await create_project_from_natural_language(
-            description="""Create an urgent API endpoint for user management
-                          with high priority authentication features""",
+        result = await create_project(
+            description=(
+                "Create an urgent API endpoint for user management "
+                "with high priority authentication features"
+            ),
             project_name=project_name,
             options={"team_size": 1},
+            state=None,
         )
 
         assert result["success"] == True
