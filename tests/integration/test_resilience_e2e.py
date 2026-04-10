@@ -902,6 +902,89 @@ class TestKillAndPickup:
         assert not new_lease.is_expired
 
     @pytest.mark.asyncio
+    async def test_report_task_progress_recreates_lease_after_recovery(
+        self,
+    ) -> None:
+        """Test the real report_task_progress flow recreates leases.
+
+        This invokes the actual `report_task_progress` function (not a
+        copy of its logic) so a regression that removes the recreation
+        branch would be caught. Uses sed-level verification: the test
+        fails if the `else` branch at task.py:1813 is removed.
+        """
+        from src.marcus_mcp.tools.task import report_task_progress
+
+        mock_kanban = AsyncMock()
+        mock_kanban.update_task = AsyncMock()
+        mock_kanban.update_task_progress = AsyncMock()
+        mock_kanban.add_comment = AsyncMock()
+        mock_kanban.get_task_by_id = AsyncMock(return_value=None)
+
+        task = _make_task("task-1", "Implement feature")
+
+        lease_manager = AssignmentLeaseManager(
+            kanban_client=mock_kanban,
+            assignment_persistence=AssignmentPersistence(),
+            default_lease_hours=0.025,
+            grace_period_minutes=0.5,
+            min_lease_hours=0.0167,
+            max_lease_hours=0.0333,
+            task_list=[task],
+        )
+
+        # Pre-recover state: agent had a lease that got recovered
+        # (so active_leases is empty for this task)
+        assert "task-1" not in lease_manager.active_leases
+
+        # Build a minimal state that report_task_progress needs.
+        # Explicitly set attributes to None where Mock would auto-create
+        # truthy values that the function would try to iterate over.
+        state = Mock()
+        state.lease_manager = lease_manager
+        state.kanban_client = mock_kanban
+        state.project_tasks = [task]
+        state.agent_tasks = {}
+        state.agent_status = {}
+        state.assignment_persistence = AsyncMock()
+        state.initialize_kanban = AsyncMock()
+        state.memory = None
+        state.project_registry = None
+        state.subtask_manager = None
+        state.code_analyzer = None
+        state.provider = "sqlite"
+        state.refresh_project_state = AsyncMock()
+        state.log_event = Mock()
+
+        with (
+            patch(
+                "src.marcus_mcp.tools.task.get_project_board_context",
+                new=AsyncMock(return_value={"project_id": "p1", "project_name": "p"}),
+            ),
+            patch("src.marcus_mcp.tools.task.log_agent_event"),
+            patch("src.marcus_mcp.tools.task.log_thinking"),
+            patch("src.marcus_mcp.tools.task.conversation_logger"),
+        ):
+            result = await report_task_progress(
+                agent_id="agent-1",
+                task_id="task-1",
+                status="in_progress",
+                progress=50,
+                message="Halfway done",
+                state=state,
+            )
+
+        # If report_task_progress errored internally, surface it
+        assert (
+            result.get("success") is True
+        ), f"report_task_progress failed: {result.get('error')}"
+
+        # After the call, the lease must exist again
+        assert "task-1" in lease_manager.active_leases
+        recreated_lease = lease_manager.active_leases["task-1"]
+        assert recreated_lease.agent_id == "agent-1"
+        assert not recreated_lease.is_expired
+
+    @pytest.mark.asyncio
     async def test_touch_lease_prevents_false_positive_recovery(self) -> None:
         """Test that an active agent making tool calls isn't recovered.
 
