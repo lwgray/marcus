@@ -58,9 +58,11 @@ Agents have access to these Marcus tools:
   - Technical specs → `docs/specifications/`
   - Documentation → `docs/`
 
-### Dependency Tools
-- `check_task_dependencies` - Verify dependency status before starting
+### Project Creation
 - `create_project` - Create new projects using natural language (NLP)
+
+> **Note**: `check_task_dependencies` is a human operator tool, not available to agents.
+> Dependency information is delivered automatically inside the `request_next_task` response.
 
 ## 3. Context Flow & Decision Making
 

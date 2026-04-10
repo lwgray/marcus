@@ -50,7 +50,7 @@ Separate calls per document mirror how agents actually work. Each document is a 
 
 ## Phase B: Register Metadata (After State Refresh)
 
-Runs inside `create_project_from_natural_language()`, after `state.refresh_project_state()` has populated the MCP state object.
+Runs inside `src.marcus_mcp.tools.nlp.create_project()`, after `state.refresh_project_state()` has populated the MCP state object.
 
 Phase B registers the artifacts and decisions through MCP tools:
 
@@ -152,7 +152,8 @@ This keeps the board focused on work that agents are actually doing, while prese
 ## Implementation Files
 
 - `src/integrations/nlp_tools.py` — `_generate_design_content()` (Phase A), `_register_design_via_mcp()` (Phase B), `_ARTIFACT_PROMPT`, `_DECISIONS_PROMPT`
-- `src/integrations/nlp_tools.py` — Wiring in `create_project_from_description()` (Phase A) and `create_project_from_natural_language()` (Phase B)
+- `src/integrations/nlp_tools.py` — Phase A wiring inside `NaturalLanguageProjectCreator.create_project_from_description()`
+- `src/marcus_mcp/tools/nlp.py` — Phase B wiring inside `create_project()` (the MCP tool entry point)
 - `cato_src/core/aggregator.py` — `_filter_tasks_by_view()` filters `auto_completed` label
 
 ## Pipeline Context

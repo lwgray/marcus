@@ -43,7 +43,7 @@ def analyze_test_file(file_path: Path) -> Set[str]:
 
     # Check for AI usage (expensive, slow)
     ai_patterns = [
-        r"create_project_from_natural_language",
+        r"from src\.marcus_mcp\.tools\.nlp import create_project",
         r"add_feature_natural_language",
         r"ai_client",
         r"OpenAIProvider",

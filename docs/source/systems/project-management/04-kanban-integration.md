@@ -118,7 +118,7 @@ create_project → register_agent → request_next_task → report_progress → 
 ### Invocation Points
 
 #### 1. Project Creation (create_project)
-- **Tool**: `create_project_from_natural_language`
+- **Tool**: `src.marcus_mcp.tools.nlp.create_project`
 - **Kanban Action**: Batch task creation via `KanbanClientWithCreate`
 - **AI Integration**: PRD parsing, task decomposition, dependency mapping
 

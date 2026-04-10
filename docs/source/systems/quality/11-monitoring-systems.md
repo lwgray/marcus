@@ -8,7 +8,7 @@ The Marcus Monitoring Systems provide comprehensive real-time visibility, predic
 
 ### Core Components
 
-The monitoring system consists of four specialized monitors working in concert:
+The monitoring system consists of two specialized monitors:
 
 #### 1. Project Monitor (`src/monitoring/project_monitor.py`)
 The central project health tracking system that provides continuous oversight of project metrics, risk assessment, and completion prediction.
@@ -16,11 +16,9 @@ The central project health tracking system that provides continuous oversight of
 #### 2. Assignment Monitor (`src/monitoring/assignment_monitor.py`)
 A specialized monitor focused on task assignment consistency, detecting state reversions and handling assignment conflicts.
 
-#### 3. Live Pipeline Monitor (`src/monitoring/live_pipeline_monitor.py`)
-Real-time monitoring of active pipeline executions with predictive ETA calculations and health status tracking.
-
-#### 4. Error Predictor (`src/monitoring/error_predictor.py`)
-AI-powered predictive system that analyzes patterns to forecast potential pipeline failures before they occur.
+> **Planned (not yet implemented):**
+> - **Live Pipeline Monitor** (`src/monitoring/live_pipeline_monitor.py`) — Real-time pipeline ETA tracking. File does not exist.
+> - **Error Predictor** (`src/monitoring/error_predictor.py`) — AI-powered failure forecasting. File does not exist.
 
 ## Integration with Marcus Ecosystem
 
@@ -33,10 +31,10 @@ The monitoring systems operate as a horizontal layer across the entire Marcus st
 │                 MCP Server Layer                    │
 ├─────────────────────────────────────────────────────┤
 │              Monitoring Systems                     │
-│  ┌───────────────┬───────────────┬─────────────────┐│
-│  │ Project       │ Assignment    │ Pipeline & Error││
-│  │ Monitor       │ Monitor       │ Prediction      ││
-│  └───────────────┴───────────────┴─────────────────┘│
+│  ┌───────────────────────┬─────────────────────────┐│
+│  │ Project Monitor       │ Assignment Monitor      ││
+│  │ (project_monitor.py)  │ (assignment_monitor.py) ││
+│  └───────────────────────┴─────────────────────────┘│
 ├─────────────────────────────────────────────────────┤
 │    Core Services (Kanban, AI, Context, Memory)     │
 ├─────────────────────────────────────────────────────┤
@@ -51,9 +49,8 @@ The monitoring systems activate at every stage of the standard Marcus workflow:
 ```
 create_project → register_agent → request_next_task → report_progress → report_blocker → finish_task
        ↓              ↓                ↓                   ↓              ↓            ↓
-  Pipeline Mon.   Project Mon.     Assignment Mon.    Project Mon.   Error Pred.  Project Mon.
-  Error Pred.     Assignment Mon.  Project Mon.       Error Pred.    Project Mon.  Assignment Mon.
-                                   Error Pred.        Assignment Mon.               Pipeline Mon.
+  Project Mon.   Project Mon.     Assignment Mon.    Project Mon.   Project Mon.  Project Mon.
+                 Assignment Mon.  Project Mon.       Assignment Mon. Assignment Mon. Assignment Mon.
 ```
 
 ## What Makes This System Special

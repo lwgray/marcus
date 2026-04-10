@@ -121,7 +121,7 @@ START: create_project(description, project_name, options, state)
 ├─[3]─► Create Project Structure
 │       File: nlp.py:272-310
 │       │
-│       └─► create_project_from_natural_language_tracked()
+│       └─► create_project() (marcus_mcp.tools.nlp)
 │           ├─► NLP parsing (AI breaks down tasks)
 │           ├─► Create Planka project/board
 │           ├─► Add to registry

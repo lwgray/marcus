@@ -22,30 +22,69 @@ from src.integrations.nlp_tools import (
     NaturalLanguageFeatureAdder,
     NaturalLanguageProjectCreator,
     add_feature_natural_language,
-    create_project_from_natural_language,
 )
+from src.marcus_mcp.tools.nlp import create_project
+
+
+@pytest.fixture(autouse=True)
+def _mock_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure ANTHROPIC_API_KEY is set so config validation passes."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-for-unit-tests")
+
+
+@pytest.fixture(autouse=True)
+def _clear_dedup_cache():
+    """Clear create_project's dedup cache between tests."""
+    from src.marcus_mcp.tools import nlp as nlp_module
+
+    nlp_module._recent_create_project_calls.clear()
+    yield
+    nlp_module._recent_create_project_calls.clear()
 
 
 class TestCreateProjectFromNaturalLanguage:
-    """Test create_project_from_natural_language tool"""
+    """Test create_project MCP tool in src.marcus_mcp.tools.nlp."""
 
     @pytest.fixture
     def mock_state(self):
-        """Setup mock state"""
-        # Create a mock state object
-        mock_state = Mock()
-        mock_state.kanban_client = AsyncMock()
-        mock_state.kanban_client.create_task = AsyncMock()
-        mock_state.ai_engine = AsyncMock()
-        mock_state.project_tasks = []
-        mock_state.project_state = {}
-        mock_state.initialize_kanban = AsyncMock()
-        mock_state.refresh_project_state = AsyncMock()
+        """Setup mock state for create_project.
 
-        # Make kanban client support create_task
+        Returns
+        -------
+        Mock
+            Mock server state pre-wired with a kanban client, ai engine,
+            project registry, and project manager.
+        """
+        mock_state = Mock()
+        mock_state.log_event = Mock()
+
+        mock_state.kanban_client = Mock()
+        mock_state.kanban_client.provider = "planka"
+        mock_state.kanban_client.project_id = "planka-test-project"
+        mock_state.kanban_client.board_id = "planka-test-board"
+        mock_state.kanban_client.connect = AsyncMock()
         mock_state.kanban_client.create_task = AsyncMock(
             side_effect=self._mock_create_task
         )
+
+        mock_state.ai_engine = AsyncMock()
+        mock_state.subtask_manager = Mock()
+        mock_state._subtasks_migrated = False
+
+        mock_state.project_registry = Mock()
+        mock_state.project_registry.add_project = AsyncMock(
+            return_value="marcus-proj-test"
+        )
+        mock_state.project_registry.get_active_project = AsyncMock(return_value=None)
+        mock_state.project_manager = Mock()
+        mock_state.project_manager.switch_project = AsyncMock(return_value=True)
+        mock_state.project_manager.get_kanban_client = AsyncMock(
+            return_value=mock_state.kanban_client
+        )
+
+        mock_state.project_tasks = []
+        mock_state.project_state = {}
+        mock_state.refresh_project_state = AsyncMock()
 
         return mock_state
 
@@ -66,161 +105,136 @@ class TestCreateProjectFromNaturalLanguage:
 
     @pytest.mark.asyncio
     async def test_create_simple_project(self, mock_state):
-        """Test creating a simple project from natural language"""
+        """Test creating a simple project from natural language."""
         self.created_tasks = []
 
-        # Given: Natural language project description
         description = "I need a todo app with user accounts and task sharing"
         project_name = "Todo App MVP"
 
-        # Mock PRD parser response
-        mock_tasks = [
-            Task(
-                id="1",
-                name="Design database schema",
-                description="Design and document the database schema",
-                status=TaskStatus.TODO,
-                priority=Priority.HIGH,
-                assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
-                due_date=None,
-                estimated_hours=4.0,
-                labels=["database", "design"],
-            ),
-            Task(
-                id="2",
-                name="Implement user authentication",
-                description="Implement user authentication system",
-                status=TaskStatus.TODO,
-                priority=Priority.HIGH,
-                assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
-                due_date=None,
-                estimated_hours=6.0,
-                labels=["backend", "auth"],
-            ),
-            Task(
-                id="3",
-                name="Create task CRUD operations",
-                description="Create CRUD operations for tasks",
-                status=TaskStatus.TODO,
-                priority=Priority.MEDIUM,
-                assigned_to=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
-                due_date=None,
-                estimated_hours=5.0,
-                dependencies=["2"],
-                labels=["backend", "api"],
-            ),
-        ]
-
-        mock_prd_result = TaskGenerationResult(
-            tasks=mock_tasks,
-            metadata={
-                "phases": ["phase1", "phase2"],
-                "timeline_days": 30,
-                "team_requirements": ["backend", "frontend"],
-                "key_features": ["user_auth", "task_management", "sharing"],
+        creator_result = {
+            "success": True,
+            "project_name": project_name,
+            "tasks_created": 3,
+            "board": {
+                "project_name": project_name,
+                "board_name": "Main Board",
             },
-            resource_requirements={"estimated_team_size": 2},
-            success_criteria=["User can create account", "Tasks can be shared"],
-            generation_confidence=0.85,
-        )
+        }
 
-        # Mock the PRD parser in the creator
-        with patch("src.integrations.nlp_tools.AdvancedPRDParser") as MockParser:
-            mock_parser_instance = MockParser.return_value
-            mock_parser_instance.parse_prd_to_tasks = AsyncMock(
-                return_value=mock_prd_result
+        with (
+            patch(
+                "src.integrations.nlp_tools.NaturalLanguageProjectCreator"
+            ) as MockCreator,
+            patch(
+                "src.integrations.kanban_factory.KanbanFactory.create"
+            ) as mock_factory,
+        ):
+            mock_factory.return_value = mock_state.kanban_client
+            mock_creator = MockCreator.return_value
+            mock_creator.create_project_from_description = AsyncMock(
+                return_value=creator_result
             )
 
-            # When: Create project from natural language
-            result = await create_project_from_natural_language(
-                description=description, project_name=project_name, state=mock_state
+            result = await create_project(
+                description=description,
+                project_name=project_name,
+                options={"provider": "planka"},
+                state=mock_state,
             )
 
-        # Then: Project should be created successfully
-        assert result["success"] == True
+        assert result["success"] is True
         assert result["project_name"] == project_name
-        assert result["tasks_created"] >= 0  # Tasks were created
-
-        # And: Kanban client was initialized
-        mock_state.initialize_kanban.assert_called_once()
+        assert result["tasks_created"] >= 0
 
     @pytest.mark.asyncio
     async def test_create_project_with_options(self, mock_state):
-        """Test creating project with deadline and team size options"""
+        """Test creating project with deadline and team size options."""
         description = "E-commerce platform with payment integration"
         project_name = "E-commerce MVP"
         options = {
+            "provider": "planka",
             "deadline": "2024-12-31",
             "team_size": 5,
             "tech_stack": ["python", "react", "postgresql"],
         }
 
-        # Mock empty task response for simplicity
-        with patch("src.integrations.nlp_tools.AdvancedPRDParser") as MockParser:
-            mock_parser_instance = MockParser.return_value
-            mock_parser_instance.parse_prd_to_tasks = AsyncMock(
-                return_value=TaskGenerationResult(
-                    tasks=[],
-                    metadata={},
-                    resource_requirements={},
-                    success_criteria=[],
-                    generation_confidence=0.9,
-                )
+        creator_result = {
+            "success": True,
+            "project_name": project_name,
+            "tasks_created": 0,
+            "board": {
+                "project_name": project_name,
+                "board_name": "Main Board",
+            },
+        }
+
+        with (
+            patch(
+                "src.integrations.nlp_tools.NaturalLanguageProjectCreator"
+            ) as MockCreator,
+            patch(
+                "src.integrations.kanban_factory.KanbanFactory.create"
+            ) as mock_factory,
+        ):
+            mock_factory.return_value = mock_state.kanban_client
+            mock_creator = MockCreator.return_value
+            mock_creator.create_project_from_description = AsyncMock(
+                return_value=creator_result
             )
 
-            result = await create_project_from_natural_language(
+            result = await create_project(
                 description=description,
                 project_name=project_name,
-                state=mock_state,
                 options=options,
+                state=mock_state,
             )
 
-        assert result["success"] == True
+        assert result["success"] is True
         assert result["project_name"] == project_name
 
     @pytest.mark.asyncio
     async def test_create_project_validation(self, mock_state):
-        """Test input validation for create_project"""
-        # Test empty description
-        result = await create_project_from_natural_language(
-            description="", project_name="Test", state=mock_state
+        """Test input validation rejects empty description and name."""
+        # Empty description
+        result = await create_project(
+            description="",
+            project_name="Test",
+            options=None,
+            state=mock_state,
         )
-        assert result["success"] == False
-        assert "required" in result["error"]
+        assert result["success"] is False
+        assert "description" in result["error"].lower()
 
-        # Test empty project name
-        result = await create_project_from_natural_language(
-            description="Valid description", project_name="", state=mock_state
+        # Empty project name
+        result = await create_project(
+            description="Valid description",
+            project_name="",
+            options=None,
+            state=mock_state,
         )
-        assert result["success"] == False
-        assert "required" in result["error"]
-
-    @pytest.mark.asyncio
-    async def test_create_project_no_state(self):
-        """Test create_project with no state parameter"""
-        result = await create_project_from_natural_language(
-            description="Test project", project_name="Test", state=None
-        )
-        assert result["success"] == False
-        assert "State parameter is required" in result["error"]
+        assert result["success"] is False
+        assert "project_name" in result["error"]
 
     @pytest.mark.asyncio
     async def test_create_project_kanban_error(self, mock_state):
-        """Test handling kanban initialization errors"""
-        mock_state.initialize_kanban.side_effect = Exception("Connection failed")
+        """Test handling kanban provider initialization errors."""
+        # Force a provider mismatch so create_project tries to rebuild
+        # the kanban client via KanbanFactory — then make the factory fail.
+        mock_state.kanban_client.provider = "different-provider"
 
-        result = await create_project_from_natural_language(
-            description="Test project", project_name="Test", state=mock_state
-        )
+        with patch(
+            "src.integrations.kanban_factory.KanbanFactory.create",
+            side_effect=Exception("Connection failed"),
+        ):
+            result = await create_project(
+                description="Test project description",
+                project_name="Test",
+                options={"provider": "planka"},
+                state=mock_state,
+            )
 
-        assert result["success"] == False
-        assert "Failed to initialize kanban client" in result["error"]
+        assert result["success"] is False
+        assert "Failed to initialize kanban provider" in result["error"]
 
 
 class TestAddFeatureNaturalLanguage:
