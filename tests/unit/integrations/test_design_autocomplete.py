@@ -797,3 +797,117 @@ class TestRunDesignPhaseHandoff:
 
         mock_log_artifact.assert_not_called()
         kanban.update_task.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_run_design_phase_with_state_none_skips_phase_b(
+        self, mock_design_content, tasks
+    ):
+        """
+        Legacy backward-compat path: state=None skips Phase B cleanly.
+
+        Callers that don't pass state (e.g. add_task's add_feature path
+        that doesn't have a state reference in scope) must still get
+        Phase A, kanban DONE updates, and scaffold. Only Phase B
+        registration is skipped, and a warning is logged.
+
+        This pins the backward-compat guarantee made in
+        NaturalLanguageProjectCreator.__init__'s state parameter
+        docstring.
+        """
+        kanban = AsyncMock()
+
+        with (
+            patch(
+                "src.integrations.nlp_tools._generate_design_content",
+                new_callable=AsyncMock,
+            ) as mock_gen,
+            patch(
+                "src.marcus_mcp.tools.attachment.log_artifact",
+                new_callable=AsyncMock,
+            ) as mock_log_artifact,
+            patch(
+                "src.integrations.nlp_tools._generate_project_scaffold",
+                new_callable=AsyncMock,
+            ) as mock_scaffold,
+        ):
+            mock_gen.return_value = mock_design_content
+
+            await _run_design_phase(
+                state=None,  # legacy caller with no state reference
+                kanban_client=kanban,
+                safe_tasks=tasks["safe"],
+                created_tasks=tasks["created"],
+                description="Test",
+                project_name="Test",
+                project_root="/var/folders/test",  # nosec B108
+            )
+
+        # Phase B skipped — no log_artifact calls
+        mock_log_artifact.assert_not_called()
+
+        # But kanban DONE update and scaffold still fire (Phase A
+        # succeeded, so design tasks should still land as DONE on the
+        # board even though registration is skipped)
+        kanban.update_task.assert_called()
+        mock_scaffold.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_design_phase_handles_mismatched_task_arrays(
+        self, state, mock_design_content
+    ):
+        """
+        Defensive: if safe_tasks and created_tasks get out of sync,
+        the kanban update loop still terminates cleanly (zip handles
+        unequal lengths by stopping at the shorter array).
+
+        This is a defense-in-depth test — the two arrays are
+        index-aligned by construction, but if a future refactor ever
+        desynchronizes them we want a clean short-circuit rather than
+        an IndexError or silent off-by-one.
+        """
+        state.project_tasks = []
+        kanban = state.kanban_client
+
+        # created_tasks shorter than safe_tasks (pathological case)
+        short_created = [
+            _make_task("Design Authentication", labels=["design"], task_id="real_1"),
+        ]
+        long_safe = [
+            _make_task("Design Authentication", labels=["design"]),
+            _make_task("Design Extra", labels=["design"]),
+        ]
+
+        with (
+            patch(
+                "src.integrations.nlp_tools._generate_design_content",
+                new_callable=AsyncMock,
+            ) as mock_gen,
+            patch(
+                "src.marcus_mcp.tools.attachment.log_artifact",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.marcus_mcp.tools.context.log_decision",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.integrations.nlp_tools._generate_project_scaffold",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_gen.return_value = mock_design_content
+
+            # Must not raise IndexError or any exception
+            await _run_design_phase(
+                state=state,
+                kanban_client=kanban,
+                safe_tasks=long_safe,
+                created_tasks=short_created,
+                description="Test",
+                project_name="Test",
+                project_root="/var/folders/test",  # nosec B108
+            )
+
+        # Only the one created task got a kanban update (zip stopped
+        # at the shorter list)
+        assert kanban.update_task.call_count == 1

@@ -2430,8 +2430,8 @@ async def _register_design_via_mcp(
 async def _run_design_phase(
     state: Any,
     kanban_client: Any,
-    safe_tasks: List[Any],
-    created_tasks: List[Any],
+    safe_tasks: List[Task],
+    created_tasks: List[Task],
     description: str,
     project_name: str,
     project_root: str,
@@ -2588,24 +2588,27 @@ async def _run_design_phase(
     # Kanban DONE update — unblocks implementation tasks. Runs
     # AFTER Phase B so that state.task_artifacts is already
     # populated when dependents walk the dependency graph.
-    for ct in created_tasks:
-        orig_idx = created_tasks.index(ct)
-        if orig_idx < len(safe_tasks):
-            orig = safe_tasks[orig_idx]
-            if _is_design_task(orig) and orig.name in design_content:
-                try:
-                    await kanban_client.update_task(
-                        ct.id,
-                        {"status": "done"},
-                    )
-                    logger.info(
-                        f"[design_autocomplete] Marked '{orig.name}' " f"DONE on board"
-                    )
-                except Exception as e:
-                    logger.warning(
-                        f"[design_autocomplete] Failed to update board "
-                        f"for '{orig.name}': {e}"
-                    )
+    #
+    # ``created_tasks`` and ``safe_tasks`` are index-aligned by
+    # construction in ``create_project_from_description``: each
+    # ``created_tasks[i]`` is the kanban-created counterpart of
+    # ``safe_tasks[i]``. ``zip`` is O(n) and handles the shorter-list
+    # case gracefully if the two arrays ever get out of sync.
+    for ct, orig in zip(created_tasks, safe_tasks):
+        if _is_design_task(orig) and orig.name in design_content:
+            try:
+                await kanban_client.update_task(
+                    ct.id,
+                    {"status": "done"},
+                )
+                logger.info(
+                    f"[design_autocomplete] Marked '{orig.name}' " f"DONE on board"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"[design_autocomplete] Failed to update board "
+                    f"for '{orig.name}': {e}"
+                )
 
     # Scaffold generation — best effort, non-fatal on failure
     try:
