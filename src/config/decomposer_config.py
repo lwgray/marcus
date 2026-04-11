@@ -36,19 +36,30 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 logger = logging.getLogger(__name__)
 
-DECOMPOSER_FEATURE_BASED = "feature_based"
-DECOMPOSER_CONTRACT_FIRST = "contract_first"
+# Literal type for the decomposer strategy. Downstream callers that
+# need exhaustiveness checking (match statements, type guards) can
+# import this and get compile-time verification that they're handling
+# every valid strategy.
+DecomposerStrategy = Literal["feature_based", "contract_first"]
 
-VALID_DECOMPOSERS = {DECOMPOSER_FEATURE_BASED, DECOMPOSER_CONTRACT_FIRST}
+DECOMPOSER_FEATURE_BASED: DecomposerStrategy = "feature_based"
+DECOMPOSER_CONTRACT_FIRST: DecomposerStrategy = "contract_first"
+
+VALID_DECOMPOSERS: set[DecomposerStrategy] = {
+    DECOMPOSER_FEATURE_BASED,
+    DECOMPOSER_CONTRACT_FIRST,
+}
 
 ENV_VAR = "MARCUS_DECOMPOSER"
 
 
-def resolve_decomposer(options: Optional[Dict[str, Any]] = None) -> str:
+def resolve_decomposer(
+    options: Optional[Dict[str, Any]] = None,
+) -> DecomposerStrategy:
     """
     Resolve the active decomposer strategy from options and environment.
 
@@ -60,8 +71,10 @@ def resolve_decomposer(options: Optional[Dict[str, Any]] = None) -> str:
 
     Returns
     -------
-    str
-        Either ``"feature_based"`` or ``"contract_first"``.
+    DecomposerStrategy
+        Either ``"feature_based"`` or ``"contract_first"``. The
+        ``DecomposerStrategy`` literal type lets callers use
+        exhaustive match/if-else without defensive fallthroughs.
 
     Notes
     -----
@@ -86,7 +99,9 @@ def resolve_decomposer(options: Optional[Dict[str, Any]] = None) -> str:
         if explicit is not None:
             if explicit in VALID_DECOMPOSERS:
                 logger.info(f"[decomposer] Using '{explicit}' from options dict")
-                return str(explicit)
+                # cast via local variable so mypy narrows the type
+                validated: DecomposerStrategy = explicit
+                return validated
             logger.warning(
                 f"[decomposer] Unknown strategy '{explicit}' in options; "
                 f"falling back to '{DECOMPOSER_FEATURE_BASED}'. "
@@ -98,7 +113,8 @@ def resolve_decomposer(options: Optional[Dict[str, Any]] = None) -> str:
     if env_value is not None:
         if env_value in VALID_DECOMPOSERS:
             logger.info(f"[decomposer] Using '{env_value}' from {ENV_VAR}")
-            return env_value
+            validated_env: DecomposerStrategy = env_value  # type: ignore[assignment]
+            return validated_env
         logger.warning(
             f"[decomposer] Unknown strategy '{env_value}' in {ENV_VAR}; "
             f"falling back to '{DECOMPOSER_FEATURE_BASED}'. "
