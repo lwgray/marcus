@@ -403,6 +403,241 @@ def check_agent_prompt_contract_layer(
     }
 
 
+def check_contract_cross_file_consistency(
+    project_root_path: Path,
+) -> Dict[str, Any]:
+    """
+    Check no field has contradictory types across contract files.
+
+    Per-domain contracts are supposed to scope to their own domain
+    and reference other domains by name only. If an LLM prompt fails
+    to enforce that scope, multiple contract files end up describing
+    the same shared field (e.g. ``time.lastUpdated``) with different
+    types in each file. Agents assigned one file each will then
+    produce incompatible code — the exact silent-drift failure mode
+    contract-first decomposition is supposed to prevent.
+
+    This check parses each interface-contracts.md, extracts
+    ``field_name (type)`` patterns, and cross-references them across
+    files. Any field name appearing in ≥2 files with ≠ types is a
+    contradiction.
+
+    The regex catches two common markdown conventions:
+    - bullet form: ``- fieldName (type) — description``
+    - tree form:   ``├── fieldName (type) — description``
+
+    Heuristic, not perfect. It will miss contradictions in prose form
+    and it will flag benign duplicates where the two files use slightly
+    different type vocabulary for the same concept (e.g. ``string`` vs
+    ``ISO 8601 string``). The goal is to catch the obvious scope bugs
+    before Experiment 4 burns agent credits, not to be an exhaustive
+    type checker.
+
+    Parameters
+    ----------
+    project_root_path : Path
+        Project root where Phase A wrote its artifacts.
+
+    Returns
+    -------
+    Dict[str, Any]
+        ``{"pass": bool, "contradictions": List[Dict], "total_fields": int,
+           "unique_fields": int, "files_scanned": int}``
+    """
+    spec_dir = project_root_path / "docs" / "specifications"
+    if not spec_dir.exists():
+        return {
+            "pass": False,
+            "contradictions": [],
+            "total_fields": 0,
+            "unique_fields": 0,
+            "files_scanned": 0,
+            "error": f"specifications/ not found at {spec_dir}",
+        }
+
+    contract_files = list(spec_dir.glob("*-interface-contracts.md"))
+    if len(contract_files) < 2:
+        # Can't have contradictions across fewer than 2 files
+        return {
+            "pass": True,
+            "contradictions": [],
+            "total_fields": 0,
+            "unique_fields": 0,
+            "files_scanned": len(contract_files),
+            "note": "fewer than 2 contract files; nothing to cross-check",
+        }
+
+    # Strict pattern: only match real type annotations. Requires
+    # either a primitive type keyword (string/number/boolean/object/
+    # array) or a recognizable shape like "ISO 8601" inside the
+    # parentheses, OR a type-like first token that isn't an English
+    # word. This eliminates false positives where prose in
+    # parentheses (e.g. "(on initialization)", "(for rendering)")
+    # was being captured as a "type".
+    type_like_pattern = re.compile(
+        r"[-*]\s+`?(\w[\w.]*)`?\s*\(\s*("
+        r"(?:string|number|boolean|integer|float|object|array|"
+        r"date|datetime|json|null|void|bigint)"
+        r"(?:\s*\|\s*(?:string|number|boolean|null))*"
+        r"(?:[^)]*)"
+        r")\s*\)",
+        re.IGNORECASE,
+    )
+
+    # field_name -> {file_path: type_str}
+    field_types: Dict[str, Dict[str, str]] = {}
+    total_fields = 0
+
+    # Skip identifiers that are CamelCase type names (interface/class
+    # references, not fields) and obviously-not-a-field tokens.
+    skip_canonicals = {
+        "id",
+        "string",
+        "number",
+        "boolean",
+        "yes",
+        "no",
+        "true",
+        "false",
+        "null",
+        "none",
+    }
+
+    for contract_file in contract_files:
+        content = contract_file.read_text()
+        relative_name = contract_file.name
+
+        for match in type_like_pattern.finditer(content):
+            field_name = match.group(1).strip()
+            type_str = match.group(2).strip()
+            total_fields += 1
+
+            # Normalize compound field names: `weather.temperature`
+            # and `temperature` collide when they refer to the same
+            # concept. Use the last dotted segment as the canonical
+            # key, but keep the full path in the report.
+            canonical = field_name.split(".")[-1].lower()
+            if (
+                len(canonical) < 3
+                or canonical in skip_canonicals
+                # Skip CamelCase type/interface names like WeatherWidget
+                or (
+                    field_name[0].isupper() and any(c.isupper() for c in field_name[1:])
+                )
+            ):
+                continue
+
+            field_types.setdefault(canonical, {})
+            field_types[canonical][relative_name] = type_str
+
+    contradictions: List[Dict[str, Any]] = []
+    for field_name, file_type_map in field_types.items():
+        if len(file_type_map) < 2:
+            continue
+        # Normalize types for comparison (strip whitespace,
+        # collapse synonyms loosely)
+        type_set = {_normalize_type(t) for t in file_type_map.values()}
+        if len(type_set) > 1:
+            contradictions.append(
+                {
+                    "field": field_name,
+                    "types_by_file": file_type_map,
+                }
+            )
+
+    return {
+        "pass": len(contradictions) == 0,
+        "contradictions": contradictions,
+        "total_fields": total_fields,
+        "unique_fields": len(field_types),
+        "files_scanned": len(contract_files),
+    }
+
+
+def _normalize_type(type_str: str) -> str:
+    """
+    Normalize a type string for cross-file comparison.
+
+    Collapses whitespace, strips markdown formatting, strips common
+    qualifiers (required, optional, nullable), and maps common
+    synonyms to canonical types. Deliberately lenient: the goal is
+    to catch ``ISO 8601 string`` vs ``Date object`` (a real
+    contradiction), not ``string`` vs ``string, required``
+    (stylistic variation on the same type).
+    """
+    t = type_str.lower().strip().strip("`")
+    t = re.sub(r"\s+", " ", t)
+
+    # Normalize union syntax: "X or Y" → "X | Y"
+    t = re.sub(r"\bor\b", "|", t)
+    # Collapse spaces around union pipes
+    t = re.sub(r"\s*\|\s*", "|", t)
+
+    # Strip common qualifiers that describe optionality, not type
+    qualifiers = [
+        ", required",
+        ", optional",
+        ", nullable",
+        " required",
+        " optional",
+        " nullable",
+    ]
+    for qual in qualifiers:
+        t = t.replace(qual, "")
+    t = t.strip().rstrip(",").strip()
+
+    # Strip descriptive tails after a comma: "string, IANA timezone
+    # identifier" → "string". Keep only the primary type token.
+    # Apply cautiously — only strip if the head is a recognized type.
+    head_types = {
+        "string",
+        "number",
+        "boolean",
+        "integer",
+        "float",
+        "object",
+        "array",
+        "date",
+        "datetime",
+        "null",
+    }
+    if "," in t:
+        head = t.split(",", 1)[0].strip()
+        if head in head_types:
+            t = head
+
+    # Collapse common string subtypes to "string"
+    string_synonyms = [
+        "iso 8601 string",
+        "iso8601 string",
+        "iso string",
+        "iso 8601",
+        "text",
+    ]
+    for syn in string_synonyms:
+        if syn in t:
+            return "string"
+
+    # Collapse number subtypes
+    if any(
+        x in t
+        for x in [
+            "unix timestamp",
+            "milliseconds",
+            "millisecond",
+            "seconds",
+            " ms",
+        ]
+    ):
+        return "number"
+
+    # Collapse common date-like types
+    if t in {"date", "datetime", "date object"}:
+        return "date"
+
+    return t
+
+
 def check_integration_preamble(tasks: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Check that integration verification task has CONTRACT-FIRST preamble.
@@ -686,6 +921,38 @@ async def main() -> int:
                 for line in prompt_check["excerpt"].split("\n")[:20]:
                     print(f"    {line}")
 
+            # ---- Invariant 5: no cross-file type contradictions ----
+            #
+            # Per-domain contract files must not redefine fields
+            # owned by other domains. When the LLM prompt fails to
+            # scope per-domain, the same shared field (e.g.
+            # ``time.lastUpdated``) appears in multiple files with
+            # contradictory types. Agents assigned one file each
+            # then produce mutually-incompatible code. Kaia flagged
+            # this on 2026-04-11 as the last unverified pre-flight
+            # check — prompt scope clamp shipped in the same PR.
+            print("\n" + "-" * 70)
+            print("🧪 Invariant 5: no cross-file type contradictions")
+            print("-" * 70)
+            consistency_check = check_contract_cross_file_consistency(
+                Path(PROJECT_ROOT)
+            )
+            print(f"  Pass: {consistency_check['pass']}")
+            print(f"  Files scanned: {consistency_check['files_scanned']}")
+            print(f"  Total fields parsed: {consistency_check['total_fields']}")
+            print(f"  Unique field names: {consistency_check['unique_fields']}")
+            print(f"  Contradictions: {len(consistency_check['contradictions'])}")
+            if "error" in consistency_check:
+                print(f"  Error: {consistency_check['error']}")
+            if "note" in consistency_check:
+                print(f"  Note: {consistency_check['note']}")
+            if consistency_check["contradictions"]:
+                print("  Contradictory fields (first 5):")
+                for c in consistency_check["contradictions"][:5]:
+                    print(f"    - {c['field']}:")
+                    for fname, type_str in c["types_by_file"].items():
+                        print(f"        {fname}: {type_str}")
+
             # ---- Summary ----
             print("\n" + "=" * 70)
             print("📋 Summary")
@@ -695,6 +962,7 @@ async def main() -> int:
                 "Impl tasks have responsibility": resp_check["pass"],
                 "Integration task has preamble": int_check["pass"],
                 "Agent prompt contains CONTRACT RESPONSIBILITY": prompt_check["pass"],
+                "No cross-file type contradictions": consistency_check["pass"],
             }
             for name, passed in invariants.items():
                 icon = "✅" if passed else "❌"
