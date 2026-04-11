@@ -17,7 +17,10 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from src.core.models import Priority, TaskStatus
-from src.integrations.nlp_tools import _generate_design_content
+from src.integrations.nlp_tools import (
+    _generate_contracts_by_domain,
+    _generate_design_content,
+)
 
 
 def _make_design_task(name: str, description: str = "Do the design") -> Mock:
@@ -405,3 +408,245 @@ class TestDesignAutocompleteParallelism:
         )
         # All 15 calls should have completed
         assert mock_llm.analyze.call_count == 15
+
+    @pytest.mark.asyncio
+    async def test_duplicate_design_task_names_both_get_llm_calls_and_done(
+        self, tmp_path: Any
+    ) -> None:
+        """Two design tasks with the same name must both run and both DONE.
+
+        Regression test for the Codex P2 review on PR #322. The first
+        version of the #320 PR 1 refactor built a
+        ``{domain_name: task}`` dict, which silently dropped duplicate
+        tasks — only one LLM call would fire and only one task would
+        be marked DONE.
+
+        Under normal operation the PRD parser's
+        ``_create_bundled_design_tasks`` emits one design task per
+        unique domain, so collisions are not reachable from that
+        code path. But nothing enforces that invariant downstream,
+        and the pre-#320 code was correct under the weaker
+        assumption. Per-task iteration must be preserved so future
+        code paths that produce duplicates (or bugs that accidentally
+        do) don't silently drop work.
+        """
+        mock_llm = Mock()
+        mock_llm.analyze = AsyncMock(side_effect=_mock_llm_response)
+
+        # Two tasks with the EXACT same name but different descriptions
+        tasks = [
+            _make_design_task("Design Auth", description="JWT-based auth"),
+            _make_design_task("Design Auth", description="OAuth-based auth"),
+        ]
+
+        with patch(
+            "src.ai.providers.llm_abstraction.LLMAbstraction",
+            return_value=mock_llm,
+        ):
+            result = await _generate_design_content(
+                tasks=tasks,
+                project_description="P",
+                project_name="P",
+                project_root=str(tmp_path),
+            )
+
+        # 2 tasks × 5 calls each = 10 total LLM calls — both tasks
+        # must get their own LLM calls, not share a single set.
+        assert mock_llm.analyze.call_count == 10
+
+        # BOTH tasks must be marked DONE — not just one
+        assert tasks[0].status == TaskStatus.DONE
+        assert tasks[1].status == TaskStatus.DONE
+        assert tasks[0].assigned_to == "Marcus"
+        assert tasks[1].assigned_to == "Marcus"
+        assert "auto_completed" in tasks[0].labels
+        assert "auto_completed" in tasks[1].labels
+
+        # design_content is keyed by task.name; with two identical
+        # names, there's only one entry (write-order semantics,
+        # preserved from pre-#320 code). The important invariant is
+        # that both tasks' WORK was done, not that both appear as
+        # distinct keys in the returned dict.
+        assert "Design Auth" in result
+
+
+@pytest.mark.unit
+class TestGenerateContractsByDomain:
+    """Tests for the domain-keyed contract generation entry point (GH-320 PR 1).
+
+    ``_generate_contracts_by_domain`` is the task-free sibling of
+    ``_generate_design_content``. It takes a ``{domain_name:
+    domain_description}`` dict and returns results keyed by domain
+    name, without touching any Task objects. This is the entry point
+    the contract-first decomposition path in PR 2 will call from the
+    planner before any tasks exist.
+
+    These tests verify the new function's behavior directly; the
+    existing ``TestDesignAutocompleteParallelism`` class exercises
+    the same code paths indirectly via ``_generate_design_content``.
+    """
+
+    @pytest.mark.asyncio
+    async def test_generates_contracts_keyed_by_domain(self, tmp_path: Any) -> None:
+        """Happy path: domains dict in, domain-keyed results out.
+
+        Verifies that each domain in the input produces a
+        ``{"artifacts": [...], "decisions": [...]}`` entry in the
+        output, keyed by the domain name (not mangled or re-keyed),
+        and that artifact files are written to disk under the
+        project root.
+        """
+        mock_llm = Mock()
+        mock_llm.analyze = AsyncMock(side_effect=_mock_llm_response)
+
+        domains = {
+            "Authentication": "Design the auth domain with JWT-based login.",
+            "Payments": "Design the payment domain with Stripe integration.",
+        }
+
+        with patch(
+            "src.ai.providers.llm_abstraction.LLMAbstraction",
+            return_value=mock_llm,
+        ):
+            result = await _generate_contracts_by_domain(
+                domains=domains,
+                project_description="A SaaS platform.",
+                project_name="TestProject",
+                project_root=str(tmp_path),
+            )
+
+        # Both domains should appear in the result, keyed by name
+        assert set(result.keys()) == {"Authentication", "Payments"}
+
+        # 2 domains × 5 LLM calls each (4 artifacts + 1 decisions) = 10
+        assert mock_llm.analyze.call_count == 10
+
+        # Each domain should have 4 artifacts and 1 parsed decision
+        for domain_name in ("Authentication", "Payments"):
+            entry = result[domain_name]
+            assert entry is not None
+            assert len(entry["artifacts"]) == 4
+            assert len(entry["decisions"]) == 1
+            # All artifact files should exist on disk
+            for artifact in entry["artifacts"]:
+                file_path = tmp_path / artifact["relative_path"]
+                assert (
+                    file_path.exists()
+                ), f"Missing artifact file for {domain_name}: {file_path}"
+
+    @pytest.mark.asyncio
+    async def test_empty_domains_returns_empty_dict(self, tmp_path: Any) -> None:
+        """Early-return path: empty domains dict produces empty result.
+
+        Should not instantiate the LLM client or make any LLM calls.
+        """
+        with patch(
+            "src.ai.providers.llm_abstraction.LLMAbstraction",
+        ) as mock_llm_cls:
+            result = await _generate_contracts_by_domain(
+                domains={},
+                project_description="P",
+                project_name="P",
+                project_root=str(tmp_path),
+            )
+
+        assert result == {}
+        mock_llm_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_domain_with_empty_response_returns_none_for_that_domain(
+        self, tmp_path: Any
+    ) -> None:
+        """A domain where every artifact produced an empty response is None.
+
+        The domain key is still present in the result dict, but the
+        value is ``None`` (not a partial entry). This lets the caller
+        distinguish "domain processed but no artifacts" from "domain
+        not processed at all."
+        """
+
+        async def empty_analyze(prompt: str, context: Any) -> str:
+            return "nope"  # shorter than 20 chars, gets filtered
+
+        mock_llm = Mock()
+        mock_llm.analyze = AsyncMock(side_effect=empty_analyze)
+
+        domains = {"Auth": "Design the auth domain."}
+
+        with patch(
+            "src.ai.providers.llm_abstraction.LLMAbstraction",
+            return_value=mock_llm,
+        ):
+            result = await _generate_contracts_by_domain(
+                domains=domains,
+                project_description="P",
+                project_name="P",
+                project_root=str(tmp_path),
+            )
+
+        assert "Auth" in result
+        assert result["Auth"] is None
+
+    @pytest.mark.asyncio
+    async def test_generate_design_content_still_produces_same_output_shape(
+        self, tmp_path: Any
+    ) -> None:
+        """Regression: ``_generate_design_content`` behavior unchanged.
+
+        The task-based entry point is now a thin adapter over
+        ``_generate_contracts_by_domain``, but callers should see
+        the same output shape: mapping of task name ->
+        ``{"artifacts": [...], "decisions": [...]}`` and design
+        tasks mutated in-place to ``status=DONE``,
+        ``assigned_to="Marcus"``, and the ``auto_completed`` label.
+
+        This test is a belt-and-suspenders regression guard. The
+        broader ``TestDesignAutocompleteParallelism`` class already
+        covers these properties individually; this one asserts the
+        full shape end-to-end after the refactor.
+        """
+        mock_llm = Mock()
+        mock_llm.analyze = AsyncMock(side_effect=_mock_llm_response)
+
+        tasks = [
+            _make_design_task("Design Authentication"),
+            _make_design_task("Design Payments"),
+        ]
+
+        with patch(
+            "src.ai.providers.llm_abstraction.LLMAbstraction",
+            return_value=mock_llm,
+        ):
+            result = await _generate_design_content(
+                tasks=tasks,
+                project_description="A SaaS platform.",
+                project_name="TestProject",
+                project_root=str(tmp_path),
+            )
+
+        # Output is keyed by TASK name (with "Design " prefix), not
+        # domain name. That's the whole point of the adapter layer —
+        # the caller's contract hasn't changed.
+        assert set(result.keys()) == {
+            "Design Authentication",
+            "Design Payments",
+        }
+        for task in tasks:
+            assert task.status == TaskStatus.DONE
+            assert task.assigned_to == "Marcus"
+            assert "auto_completed" in task.labels
+
+        # Both tasks should have 4 artifacts + 1 decision, and the
+        # filenames should use the domain slug (without the "design-"
+        # prefix).
+        for task_name in ("Design Authentication", "Design Payments"):
+            entry = result[task_name]
+            assert len(entry["artifacts"]) == 4
+            assert len(entry["decisions"]) == 1
+            # Verify the filename reflects the domain, not the full
+            # task name
+            for artifact in entry["artifacts"]:
+                assert "authentication" in artifact["relative_path"] or (
+                    "payments" in artifact["relative_path"]
+                )
+                assert "design-" not in artifact["filename"]
