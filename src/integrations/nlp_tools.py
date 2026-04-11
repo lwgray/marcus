@@ -1543,13 +1543,13 @@ reference that data BY NAME ONLY and point to the other domain's contract \
 file. Never redefine another domain's fields, never guess at their types, \
 never include their interface definitions in this file.
 
-**Good cross-domain reference**:
-> "When a user selects a timezone, the {domain_name} domain receives a \
-> TimezoneIdentifier from the TimeWidget domain (see time-widget-system \
+**Good cross-domain reference** (blockquote — each line starts with `>`):
+> "When a user selects a timezone, the {domain_name} domain receives a
+> TimezoneIdentifier from the TimeWidget domain (see time-widget-system
 > contracts for its shape)."
 
 **Bad cross-domain leak**:
-> "TimezoneIdentifier (string, IANA format, e.g., 'America/New_York') — \
+> "TimezoneIdentifier (string, IANA format, e.g., 'America/New_York') —
 > defined by TimeWidget domain."
 > (Do NOT redefine another domain's types. Refer to them by name only.)
 
@@ -1699,35 +1699,37 @@ contract file.
 Each of these is a scope leak. If you write any of them, stop and \
 delete. They are what caused the GH-320 scope bug.
 
-1. **Tables that include fields owned by other domains.** Do not \
-   write a "summary of shared boundaries" table, a "module boundary \
-   matrix", or any other tabular structure that lists fields from \
-   multiple domains. Your table rows describe ONLY {domain_name}- \
-   owned fields. Other domains' fields belong in their own files.
+1. **Tables that include fields owned by other domains.** Do not
+   write a "summary of shared boundaries" table, a "module boundary
+   matrix", or any other tabular structure that lists fields from
+   multiple domains. Your table rows describe ONLY {domain_name}-owned
+   fields. Other domains' fields belong in their own files.
 
-2. **Re-declaring another domain's field with type information.** \
-   If the {domain_name} domain reads a field called `foo` owned by \
-   the Bar domain, DO NOT write `foo (string)` or `foo: number` \
-   anywhere in this document. The correct pattern is: "reads a \
-   `foo` value from the Bar domain (see bar-system-interface- \
-   contracts.md for its authoritative type definition)."
+2. **Re-declaring another domain's field with type information.**
+   If the {domain_name} domain reads a field called `foo` owned by
+   the Bar domain, DO NOT write `foo (string)` or `foo: number`
+   anywhere in this document. The correct pattern is:
+   "reads a `foo` value from the Bar domain (see
+   bar-system-interface-contracts.md for its authoritative type
+   definition)."
 
-3. **Describing another domain's props interface.** If Dashboard \
-   passes props to {domain_name}, describe the props Dashboard \
-   hands TO you (those ARE your interface). Do NOT describe the \
+3. **Describing another domain's props interface.** If Dashboard
+   passes props to {domain_name}, describe the props Dashboard
+   hands TO you (those ARE your interface). Do NOT describe the
    props Dashboard passes to OTHER domains.
 
-4. **"For reference" or "for clarity" type definitions of external \
-   fields.** Do not write things like "for reference, here are the \
-   time fields this widget consumes: currentTime (string), \
-   timezone (string)...". That is a redefinition. Link to the \
+4. **"For reference" or "for clarity" type definitions of external
+   fields.** Do not write things like "for reference, here are the
+   time fields this widget consumes: currentTime (string),
+   timezone (string)...". That is a redefinition. Link to the
    other domain's file instead.
 
 ## EXAMPLES
 
-**Good cross-domain reference**:
-> "The {domain_name} domain receives a `TimeEntity` as input from \
-> the TimeWidget domain. See `time-widget-system-interface-contracts.md` \
+**Good cross-domain reference** (three-line blockquote, each line
+starts with `>`):
+> "The {domain_name} domain receives a `TimeEntity` as input from
+> the TimeWidget domain. See `time-widget-system-interface-contracts.md`
 > for the authoritative definition of TimeEntity fields and types."
 
 **Bad (forbidden) cross-domain leak**:
@@ -1892,6 +1894,25 @@ async def _generate_single_artifact(
 
     from src.marcus_mcp.tools.attachment import ARTIFACT_PATHS
 
+    # Defensive validation of domain_name before it goes into a
+    # ``str.format()`` template (PR #330 review P1). The domain
+    # name comes from Marcus's domain discovery (LLM-generated or
+    # PRD parser output) and flows into a templated prompt. If it
+    # ever contains ``{`` or ``}`` characters, ``.format()`` would
+    # either raise ``KeyError`` mid-request or silently consume the
+    # curly braces and produce a malformed prompt. Block both
+    # cases at the call site with a clear error message.
+    if not domain_name or not domain_name.strip():
+        raise ValueError(
+            "_generate_single_artifact: domain_name must be a " "non-empty string"
+        )
+    if "{" in domain_name or "}" in domain_name:
+        raise ValueError(
+            f"_generate_single_artifact: domain_name must not contain "
+            f"'{{' or '}}' characters (would corrupt format template); "
+            f"got: {domain_name!r}"
+        )
+
     domain = _domain_slug(domain_name)
     fname = spec["filename_template"].format(domain_slug=domain)
     desc = spec["description_template"].format(domain=domain_name)
@@ -1992,6 +2013,21 @@ async def _generate_single_decisions(
         Propagates any unrecoverable LLM error after retries exhaust.
     """
     import json
+
+    # Same defensive validation as _generate_single_artifact
+    # (PR #330 review P1). domain_name must be a non-empty string
+    # with no ``{`` or ``}`` characters or the format template
+    # silently corrupts.
+    if not domain_name or not domain_name.strip():
+        raise ValueError(
+            "_generate_single_decisions: domain_name must be a " "non-empty string"
+        )
+    if "{" in domain_name or "}" in domain_name:
+        raise ValueError(
+            f"_generate_single_decisions: domain_name must not contain "
+            f"'{{' or '}}' characters (would corrupt format template); "
+            f"got: {domain_name!r}"
+        )
 
     dec_prompt = _DECISIONS_PROMPT.format(
         project_name=project_name,
