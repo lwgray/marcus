@@ -2561,16 +2561,39 @@ async def _run_design_phase(
 
     # Phase B — MUST run before kanban DONE update. See docstring
     # "Ordering is load-bearing" section for why.
+    #
+    # Race avoidance: Phase B matches ``state.project_tasks`` to
+    # ``design_content`` by task name. Because this closure runs as a
+    # background task, ``state.project_tasks`` may still be stale at
+    # the moment Phase B fires — the MCP tool caller's
+    # ``refresh_project_state()`` might not have completed yet. To
+    # close that race, refresh state ourselves before Phase B so the
+    # name match sees current kanban UUIDs. Codex review on PR #326
+    # caught the original hole: without this refresh, Phase B could
+    # silently register zero artifacts against an empty task list
+    # and the closure would still mark design tasks DONE, leaving
+    # impl tasks to unblock without contracts — the exact silent
+    # failure mode this function is supposed to eliminate.
+    phase_b_registered = 0
     if state is not None:
+        if hasattr(state, "refresh_project_state"):
+            try:
+                await state.refresh_project_state()
+            except Exception as e:
+                logger.warning(
+                    f"[design_autocomplete] Pre-Phase-B state refresh "
+                    f"failed: {e}. Phase B may see stale project_tasks."
+                )
         try:
             phase_b_result = await _register_design_via_mcp(
                 state=state,
                 design_content=design_content,
                 project_root=project_root,
             )
+            phase_b_registered = int(phase_b_result.get("artifacts_registered", 0))
             logger.info(
                 f"[design_autocomplete] Phase B: registered "
-                f"{phase_b_result.get('artifacts_registered', 0)} "
+                f"{phase_b_registered} "
                 f"artifact(s), "
                 f"{phase_b_result.get('decisions_logged', 0)} "
                 f"decision(s) via MCP tools"
@@ -2584,6 +2607,40 @@ async def _run_design_phase(
             "state.task_artifacts; downstream tasks will not discover "
             "them via get_task_context)"
         )
+
+    # Zero-registration guard (Codex review on PR #326).
+    #
+    # When ``state`` is provided and Phase A produced design content,
+    # Phase B MUST have registered at least one artifact for the
+    # kanban DONE update to be safe. If it registered zero, something
+    # is badly wrong — most likely ``state.project_tasks`` was still
+    # empty or none of the names matched. Marking design tasks DONE
+    # now would unblock impl tasks and they would walk dependencies
+    # into empty ``state.task_artifacts`` entries, reintroducing the
+    # silent-failure mode PR #326 was designed to eliminate.
+    #
+    # Skipping the DONE updates means impl tasks stay blocked on
+    # their design deps. That's the correct degenerate state: the
+    # user sees "design tasks never completed" in the kanban and can
+    # investigate, rather than seeing "implementation agents
+    # produced code that doesn't integrate and nobody knows why."
+    # Loud failure > silent corruption.
+    #
+    # The ``state is None`` path is exempt from this guard because
+    # legacy callers explicitly opt out of Phase B entirely — for
+    # them, the DONE updates are the only thing moving design tasks
+    # to the next state and skipping them would hang the project.
+    if state is not None and design_content and phase_b_registered == 0:
+        logger.error(
+            "[design_autocomplete] Phase B registered 0 artifacts "
+            "despite Phase A producing design_content. Refusing to "
+            "mark design tasks DONE — impl tasks would unblock "
+            "without contracts (exact silent failure mode from "
+            "#314). Design tasks will stay TODO; investigate why "
+            "state.project_tasks did not match design_content names. "
+            f"design_content keys: {list(design_content.keys())}"
+        )
+        return
 
     # Kanban DONE update — unblocks implementation tasks. Runs
     # AFTER Phase B so that state.task_artifacts is already
