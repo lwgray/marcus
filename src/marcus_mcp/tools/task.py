@@ -178,6 +178,97 @@ incomplete implementations."""
     return workflow_prompt
 
 
+def _parse_contract_metadata(task: Task) -> Dict[str, str]:
+    """
+    Resolve contract-first metadata from a task across storage layers.
+
+    GH-320 PR 2 introduces the ``Task.responsibility`` field and
+    stores ``contract_file`` in ``Task.source_context``. Some kanban
+    providers don't persist these fields through their round-trip:
+
+    - SQLite (``src/integrations/providers/sqlite_kanban.py``) persists
+      ``source_context`` but not ``responsibility`` as a top-level
+      column.
+    - Planka (``src/integrations/kanban_client.py``) persists neither
+      — the provider's ``_card_to_task`` mapping constructs ``Task``
+      with a minimal field set.
+
+    To make the CONTRACT RESPONSIBILITY layer work for tasks reloaded
+    from any kanban provider, ``decompose_by_contract`` also embeds
+    the metadata as a structured HTML comment marker in the task
+    description (which every provider round-trips as the core field).
+
+    This helper looks in three places, in priority order:
+
+    1. ``task.responsibility`` + ``task.source_context["contract_file"]``
+       (set by fresh decomposer output, best signal)
+    2. ``task.source_context["responsibility"]`` + ``["contract_file"]``
+       (set by decomposer as belt-and-suspenders, survives providers
+       that persist source_context like SQLite)
+    3. Parsed from the ``MARCUS_CONTRACT_FIRST`` marker in
+       ``task.description`` (last-resort fallback for providers that
+       only persist description, like Planka)
+
+    Parameters
+    ----------
+    task : Task
+        The task to inspect.
+
+    Returns
+    -------
+    Dict[str, str]
+        Dict with keys ``"responsibility"`` and ``"contract_file"``.
+        Values are empty strings when not found. Callers can treat
+        an empty ``responsibility`` as "this task is not contract-
+        first" without needing a separate boolean flag.
+
+    Notes
+    -----
+    Codex caught the persistence gap on PR #327 review. Without this
+    helper, the CONTRACT RESPONSIBILITY layer would silently never
+    fire for tasks reloaded from the board even though the task was
+    born contract-first, defeating the whole point of PR 2.
+    """
+    # Priority 1: direct Task.responsibility field
+    responsibility = getattr(task, "responsibility", None)
+    source_context = getattr(task, "source_context", None) or {}
+
+    if responsibility:
+        return {
+            "responsibility": str(responsibility),
+            "contract_file": str(source_context.get("contract_file", "") or ""),
+        }
+
+    # Priority 2: responsibility stored in source_context
+    sc_responsibility = source_context.get("responsibility")
+    if sc_responsibility:
+        return {
+            "responsibility": str(sc_responsibility),
+            "contract_file": str(source_context.get("contract_file", "") or ""),
+        }
+
+    # Priority 3: parse HTML comment marker from description
+    description = getattr(task, "description", "") or ""
+    marker_start = description.find("<!-- MARCUS_CONTRACT_FIRST")
+    if marker_start == -1:
+        return {"responsibility": "", "contract_file": ""}
+    marker_end = description.find("-->", marker_start)
+    if marker_end == -1:
+        return {"responsibility": "", "contract_file": ""}
+
+    marker_body = description[marker_start:marker_end]
+    parsed_resp = ""
+    parsed_file = ""
+    for line in marker_body.splitlines():
+        line = line.strip()
+        if line.startswith("responsibility:"):
+            parsed_resp = line[len("responsibility:") :].strip()
+        elif line.startswith("contract_file:"):
+            parsed_file = line[len("contract_file:") :].strip()
+
+    return {"responsibility": parsed_resp, "contract_file": parsed_file}
+
+
 def build_tiered_instructions(
     base_instructions: str,
     task: Task,
@@ -248,6 +339,48 @@ def build_tiered_instructions(
                 f"- Previous progress: {recovery.previous_progress}%\n"
                 f"- Recovery reason: {recovery.recovery_reason}"
             )
+
+    # Layer 1.3: Contract Responsibility (GH-320 PR 2)
+    # When a task owns a contract interface (contract-first
+    # decomposition), surface that ownership with high signal. This
+    # layer fires BEFORE subtask context because contract ownership
+    # is structural — the agent must understand the contract before
+    # considering the task's subtask-vs-standalone status.
+    #
+    # Metadata is resolved via ``_parse_contract_metadata`` which
+    # checks Task.responsibility, Task.source_context, and the
+    # MARCUS_CONTRACT_FIRST description marker in priority order.
+    # This makes the layer robust to kanban providers that don't
+    # round-trip Task.responsibility or source_context — Codex P1
+    # from PR #327 review.
+    contract_meta = _parse_contract_metadata(task)
+    responsibility = contract_meta["responsibility"]
+    if responsibility:
+        contract_file = contract_meta["contract_file"]
+        contract_notice = (
+            f"\n\n📜 CONTRACT RESPONSIBILITY (contract-first decomposition):\n"
+            f"You OWN: {responsibility}\n"
+        )
+        if contract_file:
+            contract_notice += (
+                f"Contract file: {contract_file}\n\n"
+                f"BEFORE writing any code, Read() the contract file at "
+                f"{contract_file}. The contract defines the interface "
+                f"boundary your implementation must satisfy. Other agents "
+                f"are implementing other sides of this same contract in "
+                f"parallel — if you diverge from it, the integration "
+                f"fails.\n\n"
+                f"Your implementation MUST conform to the contract. If "
+                f"the contract is missing something you need, report a "
+                f"blocker — do NOT silently modify the contract file."
+            )
+        else:
+            contract_notice += (
+                "\nRead the shared contract artifacts in docs/ before "
+                "writing code. Your implementation must conform to the "
+                "contract boundary."
+            )
+        instructions_parts.append(contract_notice)
 
     # Layer 1.5: Subtask Context (if this is a subtask)
     if hasattr(task, "_is_subtask") and task._is_subtask:

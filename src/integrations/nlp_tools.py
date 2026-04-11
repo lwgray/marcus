@@ -22,6 +22,7 @@ from src.ai.advanced.prd.advanced_parser import (  # noqa: E402
     AdvancedPRDParser,
     ProjectConstraints,
 )
+from src.config.decomposer_config import is_contract_first  # noqa: E402
 from src.core.models import Priority, Task, TaskStatus  # noqa: E402
 from src.core.resilience import RetryConfig, with_retry  # noqa: E402
 from src.detection.board_analyzer import BoardAnalyzer  # noqa: E402
@@ -151,10 +152,32 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         Process project description into tasks.
 
         Implementation of abstract method from base class.
+
+        Decomposer strategy
+        -------------------
+        The active decomposer strategy is resolved from
+        ``options["decomposer"]`` or the ``MARCUS_DECOMPOSER``
+        environment variable via
+        :func:`src.config.decomposer_config.resolve_decomposer`:
+
+        - ``feature_based`` (default): calls
+          :meth:`AdvancedPRDParser.parse_prd_to_tasks`. Tasks shaped by
+          functional requirements.
+        - ``contract_first``: discovers domains from the PRD analysis,
+          generates contract artifacts via
+          :func:`_generate_contracts_by_domain`, and calls
+          :meth:`AdvancedPRDParser.decompose_by_contract` to produce
+          tasks where each task owns a contract interface (GH-320 PR 2).
+
+        If contract-first is selected but contract generation or
+        decomposition fails (weak contracts, LLM failure, empty
+        domains), the caller falls back to feature-based with a loud
+        warning — never a silent fallback.
         """
         # Extract arguments from kwargs
-        project_name = kwargs.get("project_name")  # noqa: F841
+        project_name = kwargs.get("project_name") or "Unnamed Project"
         options = kwargs.get("options")
+        project_root = options.get("project_root") if options else None
 
         # Detect context (Phase 1)
         await self.board_analyzer.analyze_board("default", [])
@@ -169,6 +192,34 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         constraints = self._build_constraints(options)
         logger.info(f"Parsing PRD with constraints: {constraints}")
 
+        # Contract-first decomposition path (GH-320 PR 2)
+        if is_contract_first(options):
+            logger.info(
+                "[decomposer] contract_first strategy selected — "
+                "attempting contract-first decomposition"
+            )
+            contract_tasks = await self._try_contract_first_decomposition(
+                description=description,
+                project_name=project_name,
+                project_root=project_root,
+                constraints=constraints,
+                options=options,
+            )
+            if contract_tasks is not None:
+                logger.info(
+                    f"[decomposer] contract_first produced "
+                    f"{len(contract_tasks)} task(s)"
+                )
+                return contract_tasks
+            # Fell through to feature-based fallback
+            logger.warning(
+                "[decomposer] contract_first decomposition failed or "
+                "produced weak contracts; falling back to feature_based "
+                "(this is a visible fallback — the user asked for "
+                "contract_first and is not getting it)"
+            )
+
+        # Feature-based decomposition path (default + fallback target)  # noqa: E501
         prd_result = await self.prd_parser.parse_prd_to_tasks(description, constraints)
 
         task_count = len(prd_result.tasks) if prd_result.tasks else 0
@@ -212,6 +263,198 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             logger.info("No dependencies returned from PRD parser")
 
         return prd_result.tasks
+
+    async def _try_contract_first_decomposition(
+        self,
+        description: str,
+        project_name: str,
+        project_root: Optional[str],
+        constraints: ProjectConstraints,
+        options: Optional[Dict[str, Any]],
+    ) -> Optional[List[Task]]:
+        """
+        Attempt contract-first decomposition (GH-320 PR 2).
+
+        Runs the full contract-first pipeline:
+
+        1. Deep PRD analysis to get functional requirements.
+        2. Discover natural domain groupings from the requirements.
+        3. Generate contract artifacts per domain via
+           :func:`_generate_contracts_by_domain`.
+        4. Call :meth:`AdvancedPRDParser.decompose_by_contract` with
+           the generated contracts to produce contract-owned tasks.
+
+        The method returns ``None`` on any failure so the caller can
+        fall back to feature-based decomposition with a visible
+        warning. No silent fallbacks.
+
+        Parameters
+        ----------
+        description : str
+            Project description (from the user).
+        project_name : str
+            Project name (used in contract artifact metadata).
+        project_root : Optional[str]
+            Where contract artifacts are written. If ``None``,
+            contract-first cannot proceed (artifacts have nowhere to
+            land) and the method returns None.
+        constraints : ProjectConstraints
+            Project constraints from the caller. Forwarded to the
+            PRD parser and the decomposer.
+        options : Optional[Dict[str, Any]]
+            Project options dict. Used for the agent count hint.
+
+        Returns
+        -------
+        Optional[List[Task]]
+            A list of contract-owned tasks on success, or ``None``
+            on any failure. Caller falls back to feature_based when
+            None is returned.
+
+        Notes
+        -----
+        Domain discovery and contract generation are the two
+        pre-existing weak points — they rely on LLM quality. If the
+        LLM produces a single undifferentiated "General" domain or
+        empty contract artifacts for every domain, contract-first
+        decomposition cannot proceed and we fall back.
+
+        GH-320 : Contract-first task decomposition.
+        Experiment 4 (pending) : LLM-generated contract validation gate.
+        """
+        if project_root is None:
+            logger.warning(
+                "[decomposer] contract_first requires project_root in "
+                "options; falling back to feature_based"
+            )
+            return None
+
+        agent_count = 2
+        if options is not None:
+            agent_count = int(options.get("agent_count", 2))
+
+        try:
+            prd_analysis = await self.prd_parser._analyze_prd_deeply(
+                description, constraints
+            )
+        except Exception as e:
+            logger.warning(
+                f"[decomposer] contract_first PRD analysis failed: {e}; "
+                f"falling back to feature_based"
+            )
+            return None
+
+        functional_reqs = prd_analysis.functional_requirements or []
+        if not functional_reqs:
+            logger.warning(
+                "[decomposer] contract_first: PRD produced no functional "
+                "requirements; falling back to feature_based"
+            )
+            return None
+
+        try:
+            domain_groups = await self.prd_parser._discover_domains(functional_reqs)
+        except Exception as e:
+            logger.warning(
+                f"[decomposer] contract_first domain discovery failed: {e}; "
+                f"falling back to feature_based"
+            )
+            return None
+
+        if not domain_groups:
+            logger.warning(
+                "[decomposer] contract_first: no domains discovered; "
+                "falling back to feature_based"
+            )
+            return None
+
+        # Build ``{domain_name: description}`` mapping that
+        # ``_generate_contracts_by_domain`` expects. Each domain
+        # description is a bulleted list of its features — enough
+        # context for the LLM to generate a meaningful contract.
+        domains_for_contracts: Dict[str, str] = {}
+        feature_map = {
+            req.get("id", f"feature_{idx}"): req
+            for idx, req in enumerate(functional_reqs, start=1)
+        }
+        for domain_name, feature_ids in domain_groups.items():
+            bullets = []
+            for feature_id in feature_ids:
+                feature = feature_map.get(feature_id)
+                if feature is None:
+                    continue
+                name = feature.get("name", feature_id)
+                feature_desc = feature.get("description", "")
+                bullets.append(f"- {name}: {feature_desc}")
+            domains_for_contracts[domain_name] = (
+                f"Domain: {domain_name}\n\nFeatures:\n" + "\n".join(bullets)
+            )
+
+        try:
+            contract_artifacts = await _generate_contracts_by_domain(
+                domains=domains_for_contracts,
+                project_description=description,
+                project_name=project_name,
+                project_root=project_root,
+            )
+        except Exception as e:
+            logger.warning(
+                f"[decomposer] contract_first contract generation failed: "
+                f"{e}; falling back to feature_based"
+            )
+            return None
+
+        # Check contract completeness threshold: at least one domain
+        # must produce usable artifacts.
+        usable_contracts = {
+            domain: payload
+            for domain, payload in contract_artifacts.items()
+            if payload is not None and payload.get("artifacts")
+        }
+        if not usable_contracts:
+            logger.warning(
+                "[decomposer] contract_first: contract generation "
+                "produced no usable artifacts for any domain; falling "
+                "back to feature_based"
+            )
+            return None
+
+        try:
+            tasks = await self.prd_parser.decompose_by_contract(
+                prd_analysis=prd_analysis,
+                contract_artifacts=contract_artifacts,
+                agent_count=agent_count,
+                constraints=constraints,
+            )
+        except Exception as e:
+            # Catch broadly so the fallback path is bulletproof. The
+            # advertised behavior of this helper is "return None on any
+            # decomposition failure so the caller falls back to
+            # feature_based". Narrowing to ValueError/RuntimeError
+            # leaked TypeError/AttributeError from malformed-but-
+            # parseable LLM JSON (e.g. ``estimated_minutes: null``
+            # causing ``float(None)`` → TypeError, or non-string
+            # description breaking ``.strip()``) — those should
+            # trigger fallback, not crash project creation. Codex
+            # caught this on PR #327 review. ``decompose_by_contract``
+            # also now coerces its inputs defensively so most of these
+            # never fire, but the broad catch is the last line of
+            # defense for unknown shape drift in LLM output.
+            logger.warning(
+                f"[decomposer] contract_first decomposer failed "
+                f"({type(e).__name__}): {e}; falling back to "
+                f"feature_based"
+            )
+            return None
+
+        if not tasks:
+            logger.warning(
+                "[decomposer] contract_first decomposer returned no "
+                "tasks; falling back to feature_based"
+            )
+            return None
+
+        return tasks
 
     async def create_project_from_description(
         self,
@@ -378,13 +621,30 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
 
                 # Add integration verification task if appropriate
                 # Must be added BEFORE documentation so doc task
-                # depends on integration task
+                # depends on integration task.
+                #
+                # For contract-first decomposition (GH-320 PR 2),
+                # pass the shared contract file path so the
+                # integration task description instructs the
+                # verification agent to treat it as authoritative
+                # (fix implementations, not the contract).
                 from src.integrations.integration_verification import (
                     enhance_project_with_integration,
                 )
 
+                contract_file_for_integration: Optional[str] = None
+                for task in safe_tasks:
+                    ctx = getattr(task, "source_context", None) or {}
+                    candidate = ctx.get("contract_file")
+                    if candidate:
+                        contract_file_for_integration = candidate
+                        break
+
                 safe_tasks = enhance_project_with_integration(
-                    safe_tasks, description, project_name
+                    safe_tasks,
+                    description,
+                    project_name,
+                    contract_file=contract_file_for_integration,
                 )
                 logger.info(
                     "After integration enhancement: " f"{len(safe_tasks)} tasks"

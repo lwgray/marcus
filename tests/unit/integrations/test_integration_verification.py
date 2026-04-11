@@ -387,6 +387,127 @@ class TestEnhanceProjectWithIntegration:
         assert len(result) == len(design_only)
 
 
+class TestIntegrationTaskContractFile:
+    """
+    GH-320 PR 2: Integration task names the contract file when
+    contract-first decomposition is active.
+
+    The integration agent must treat the contract as authoritative:
+    fix implementations that diverge, never edit the contract to
+    match a broken implementation. Without this instruction in the
+    task description, the integration agent could silently "fix" a
+    mismatch by editing the contract, breaking the invariant that
+    made contract-first decomposition work.
+    """
+
+    def test_integration_task_includes_contract_preamble_when_set(
+        self, sample_implementation_tasks: list[Task]
+    ) -> None:
+        """contract_file set → task description includes preamble."""
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        task = IntegrationTaskGenerator.create_integration_task(
+            sample_implementation_tasks,
+            project_name="Snake Game",
+            contract_file="docs/api/types.ts",
+        )
+
+        assert task is not None
+        assert "CONTRACT-FIRST PROJECT" in task.description
+        assert "docs/api/types.ts" in task.description
+
+    def test_integration_task_preamble_forbids_contract_modification(
+        self, sample_implementation_tasks: list[Task]
+    ) -> None:
+        """
+        Preamble must instruct the agent NOT to modify the contract.
+
+        This is the load-bearing invariant. If an integration agent
+        can silently edit the contract to match a broken
+        implementation, contract-first decomposition breaks for
+        all future runs.
+        """
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        task = IntegrationTaskGenerator.create_integration_task(
+            sample_implementation_tasks,
+            project_name="Snake Game",
+            contract_file="docs/api/types.ts",
+        )
+
+        assert task is not None
+        description_lower = task.description.lower()
+        assert "fix the implementation" in description_lower
+        assert "do not modify the contract" in description_lower or (
+            "do not" in description_lower and "contract" in description_lower
+        )
+
+    def test_integration_task_no_preamble_when_contract_file_none(
+        self, sample_implementation_tasks: list[Task]
+    ) -> None:
+        """Feature-based path (contract_file=None) → no preamble."""
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        task = IntegrationTaskGenerator.create_integration_task(
+            sample_implementation_tasks,
+            project_name="Dashboard",
+            contract_file=None,
+        )
+
+        assert task is not None
+        assert "CONTRACT-FIRST PROJECT" not in task.description
+
+    def test_enhance_project_with_integration_passes_contract_file(
+        self, sample_implementation_tasks: list[Task]
+    ) -> None:
+        """
+        enhance_project_with_integration forwards contract_file to the
+        integration task description.
+        """
+        from src.integrations.integration_verification import (
+            enhance_project_with_integration,
+        )
+
+        result = enhance_project_with_integration(
+            sample_implementation_tasks,
+            project_description="Build a snake game",
+            project_name="Snake Game",
+            contract_file="docs/api/snake-types.ts",
+        )
+
+        integration_tasks = [t for t in result if "type:integration" in t.labels]
+        assert len(integration_tasks) == 1
+        assert "docs/api/snake-types.ts" in integration_tasks[0].description
+        assert "CONTRACT-FIRST PROJECT" in integration_tasks[0].description
+
+    def test_enhance_project_with_integration_default_no_contract(
+        self, sample_implementation_tasks: list[Task]
+    ) -> None:
+        """
+        Backward-compat: callers that don't pass contract_file get the
+        unchanged (non-contract-first) integration task.
+        """
+        from src.integrations.integration_verification import (
+            enhance_project_with_integration,
+        )
+
+        result = enhance_project_with_integration(
+            sample_implementation_tasks,
+            project_description="Build a dashboard",
+            project_name="Dashboard",
+        )
+
+        integration_tasks = [t for t in result if "type:integration" in t.labels]
+        assert len(integration_tasks) == 1
+        assert "CONTRACT-FIRST PROJECT" not in integration_tasks[0].description
+
+
 class TestPhaseEnumUpdates:
     """Test that INTEGRATION is properly added to phase enums."""
 

@@ -49,6 +49,7 @@ class IntegrationTaskGenerator:
     def create_integration_task(
         existing_tasks: List[Task],
         project_name: str = "Project",
+        contract_file: Optional[str] = None,
     ) -> Optional[Task]:
         """
         Create an integration verification task.
@@ -62,6 +63,16 @@ class IntegrationTaskGenerator:
             List of all project tasks created so far.
         project_name : str
             Name of the project.
+        contract_file : Optional[str]
+            Path to the shared contract artifact when contract-first
+            decomposition is active (GH-320 PR 2). When set, the
+            integration task description explicitly names this file
+            and instructs the integration agent to treat it as
+            authoritative — fix implementations that diverge, do NOT
+            modify the contract. Without this instruction, an
+            integration agent could silently "fix" a mismatch by
+            editing the contract, breaking the invariant that made
+            contract-first decomposition work in the first place.
 
         Returns
         -------
@@ -99,7 +110,7 @@ class IntegrationTaskGenerator:
         )
 
         description = IntegrationTaskGenerator._generate_integration_description(
-            project_name
+            project_name, contract_file=contract_file
         )
 
         acceptance_criteria = [
@@ -176,6 +187,7 @@ class IntegrationTaskGenerator:
     @staticmethod
     def _generate_integration_description(
         project_name: str,
+        contract_file: Optional[str] = None,
     ) -> str:
         """
         Generate the integration task description.
@@ -188,13 +200,39 @@ class IntegrationTaskGenerator:
         ----------
         project_name : str
             Name of the project.
+        contract_file : Optional[str]
+            Path to the shared contract artifact when contract-first
+            decomposition is active. When set, a contract-authority
+            preamble is prepended to the description so the integration
+            agent treats the contract as read-only.
 
         Returns
         -------
         str
             Detailed task description with verification steps.
         """
-        return f"""Verify that {project_name} actually builds, starts, \
+        preamble = ""
+        if contract_file:
+            preamble = (
+                "**CONTRACT-FIRST PROJECT**: This project was decomposed "
+                "using contract-first decomposition (GH-320). The shared "
+                f"contract lives at:\n\n"
+                f"    {contract_file}\n\n"
+                "**The contract is AUTHORITATIVE**. Agents built their "
+                "implementations against it. If any implementation "
+                "diverges from the contract during your verification, "
+                "FIX THE IMPLEMENTATION — do NOT modify the contract "
+                "file. The contract was the agreed-upon interface "
+                "boundary; silently editing it to match a broken "
+                "implementation defeats the purpose of contract-first "
+                "decomposition and will cause future regressions.\n\n"
+                "Before starting Phase 1, `Read` the contract file so "
+                "you know the authoritative interface shapes, "
+                "identifiers, and configuration values. Use the "
+                "contract as your reference when verifying cross-agent "
+                "boundaries in step 9.\n\n---\n\n"
+            )
+        return preamble + f"""Verify that {project_name} actually builds, starts, \
 and works end-to-end — and FIX any issues you find.
 
 **IMPORTANT**: This is an integration AND remediation task. You verify \
@@ -488,6 +526,7 @@ def enhance_project_with_integration(
     tasks: List[Task],
     project_description: str,
     project_name: str = "Project",
+    contract_file: Optional[str] = None,
 ) -> List[Task]:
     """
     Add integration verification task to project if appropriate.
@@ -503,6 +542,11 @@ def enhance_project_with_integration(
         Project description.
     project_name : str
         Name of the project.
+    contract_file : Optional[str]
+        Path to the shared contract artifact when contract-first
+        decomposition is active (GH-320 PR 2). Forwarded to the
+        integration task generator so the verification agent treats
+        the contract as read-only authoritative.
 
     Returns
     -------
@@ -513,7 +557,9 @@ def enhance_project_with_integration(
         logger.info("Skipping integration verification for this project")
         return tasks
 
-    task = IntegrationTaskGenerator.create_integration_task(tasks, project_name)
+    task = IntegrationTaskGenerator.create_integration_task(
+        tasks, project_name, contract_file=contract_file
+    )
 
     if task:
         logger.info(f"Added integration verification task: {task.name}")
